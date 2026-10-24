@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -47,6 +48,10 @@ type AssetRepo interface {
 	GetByID(ctx context.Context, userID, id uint64) (*model.Asset, error)
 	// GetByStorageKey 按对象 key 查询（不带用户条件，给 /files/<key> 路由用），不存在返回 repository.ErrNotFound。
 	GetByStorageKey(ctx context.Context, key string) (*model.Asset, error)
+	// FindBySha256 按内容哈希与文件大小查找素材，不带用户条件，按 id 升序最多 5 条；查不到返回空切片，sha 为空串时恒为空。
+	FindBySha256(ctx context.Context, sha string, byteSize int64) ([]model.Asset, error)
+	// SetSha256IfEmpty 给还没有哈希的素材回填 sha256，已有哈希时不覆盖（幂等），素材不存在也返回 nil。
+	SetSha256IfEmpty(ctx context.Context, id uint64, sha string) error
 }
 
 // StoreRegistry 是素材服务依赖的存储解析接口，由 storage.Registry 实现。
@@ -326,7 +331,15 @@ func (s *AssetService) ingest(ctx context.Context, p assetIngest) (*model.Asset,
 		return nil, "", errcode.ErrAssetInvalid.WithMsg("文件内容为空")
 	}
 
-	// 2. 按 magic bytes 嗅探真实类型，忽略客户端声称的 Content-Type / 扩展名（防止伪装类型）
+	// 2. 对整个临时文件计算 SHA-256：导入导出按内容哈希复用已有文件。用 SectionReader 走 ReadAt，
+	//    不移动文件偏移；后面写存储前会统一 Seek 回头部
+	hasher := sha256.New()
+	if _, err := io.Copy(hasher, io.NewSectionReader(f, 0, n)); err != nil {
+		return nil, "", fmt.Errorf("计算素材哈希失败: %w", err)
+	}
+	sum := hex.EncodeToString(hasher.Sum(nil))
+
+	// 3. 按 magic bytes 嗅探真实类型，忽略客户端声称的 Content-Type / 扩展名（防止伪装类型）
 	head := make([]byte, assetHeadLen)
 	hn, _ := f.ReadAt(head, 0)
 	mime, ok := sniffAssetMime(head[:hn])
@@ -340,7 +353,7 @@ func (s *AssetService) ingest(ctx context.Context, p assetIngest) (*model.Asset,
 		return nil, "", errcode.ErrAssetInvalid.WithMsg("不支持的文件类型，仅支持常见的图片、视频、音频格式")
 	}
 
-	// 3. 确定种类：以内容为准；生成产物若与期望种类冲突则拒绝。
+	// 4. 确定种类：以内容为准；生成产物若与期望种类冲突则拒绝。
 	//    video 与 audio 允许互换，因为 mp4 / webm 容器既可能装视频也可能只装音频
 	kind := assetKindOfMime(mime)
 	if p.Kind != "" && p.Kind != kind {
@@ -350,21 +363,21 @@ func (s *AssetService) ingest(ctx context.Context, p assetIngest) (*model.Asset,
 		kind = p.Kind
 	}
 
-	// 4. 探测元数据（宽高 / 时长）；探测失败不算错误，对应字段留 0
+	// 5. 探测元数据（宽高 / 时长）；探测失败不算错误，对应字段留 0
 	meta := probeAssetMeta(mime, f, n)
 
-	// 5. 取当前默认存储：本次写入、记录 storage_id、失败清理都用这一份，不会中途再取，
+	// 6. 取当前默认存储：本次写入、记录 storage_id、失败清理都用这一份，不会中途再取，
 	//    所以写入过程中管理员切换默认存储，也不会出现“文件在 A、记录指向 B”
 	h, err := s.stores.Default(ctx)
 	if err != nil {
 		return nil, "", fmt.Errorf("获取默认存储失败: %w", err)
 	}
 
-	// 6. 生成不可猜测的对象 key：{前缀}{用户ID}/{年月}/{随机uuid}{扩展名}
+	// 7. 生成不可猜测的对象 key：{前缀}{用户ID}/{年月}/{随机uuid}{扩展名}
 	//    扩展名取自嗅探结果而不是文件名，避免客户端塞入奇怪的后缀
 	key := fmt.Sprintf("%s%d/%s/%s%s", p.KeyPrefix, p.UserID, s.now().Format("200601"), newAssetUUID(), assetMimeExt[mime])
 
-	// 7. 写入存储；失败也尝试删一次，防止对象已部分落地却没有对应记录
+	// 8. 写入存储；失败也尝试删一次，防止对象已部分落地却没有对应记录
 	if _, err := f.Seek(0, io.SeekStart); err != nil {
 		return nil, "", fmt.Errorf("回读素材临时文件失败: %w", err)
 	}
@@ -373,7 +386,7 @@ func (s *AssetService) ingest(ctx context.Context, p assetIngest) (*model.Asset,
 		return nil, "", fmt.Errorf("写入存储失败: %w", err)
 	}
 
-	// 8. 插入素材行；失败必须删除刚写入的对象，否则会留下永远没人引用的孤儿文件
+	// 9. 插入素材行；失败必须删除刚写入的对象，否则会留下永远没人引用的孤儿文件
 	name := p.FileName
 	if name == "" {
 		name = "unnamed" + assetMimeExt[mime]
@@ -391,6 +404,7 @@ func (s *AssetService) ingest(ctx context.Context, p assetIngest) (*model.Asset,
 		Source:     p.Source,
 		TaskID:     p.TaskID,
 		FileName:   name,
+		Sha256:     sum,
 	}
 	if err := s.repo.Create(ctx, asset); err != nil {
 		s.cleanup(ctx, h.Storage, key)

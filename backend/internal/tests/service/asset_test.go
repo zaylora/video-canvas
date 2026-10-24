@@ -3,11 +3,14 @@ package service_test
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -72,6 +75,35 @@ func (f *fakeAssetRepo) GetByStorageKey(ctx context.Context, key string) (*model
 	return nil, repository.ErrNotFound
 }
 
+// FindBySha256 模拟仓库实现：不带用户条件，sha 为空返回空，按 id 升序最多 5 条。
+func (f *fakeAssetRepo) FindBySha256(ctx context.Context, sha string, byteSize int64) ([]model.Asset, error) {
+	if f.getErr != nil {
+		return nil, f.getErr
+	}
+	rows := []model.Asset{}
+	if sha == "" {
+		return rows, nil
+	}
+	for _, a := range f.rows {
+		if a.Sha256 == sha && a.ByteSize == byteSize {
+			rows = append(rows, *a)
+		}
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].ID < rows[j].ID })
+	if len(rows) > 5 {
+		rows = rows[:5]
+	}
+	return rows, nil
+}
+
+// SetSha256IfEmpty 模拟仓库实现：只在原哈希为空时写入，素材不存在也返回 nil。
+func (f *fakeAssetRepo) SetSha256IfEmpty(ctx context.Context, id uint64, sha string) error {
+	if a, ok := f.rows[id]; ok && a.Sha256 == "" {
+		a.Sha256 = sha
+	}
+	return nil
+}
+
 // fakeAssetStore 实现 storage.Storage，记录写入 / 删除，可注入各种失败。
 type fakeAssetStore struct {
 	objects   map[string][]byte
@@ -80,6 +112,7 @@ type fakeAssetStore struct {
 	putErr    error
 	putPartly bool // 写入部分内容后再失败，模拟对象已部分落地
 	openErr   error
+	openCalls int // Open() 被调用的次数，用来验证哈希补算只读一次存储
 	urlErr    error
 	urlCalls  int // URL() 被调用的次数，用来验证签名结果被缓存
 	delErr    error
@@ -110,6 +143,7 @@ func (f *fakeAssetStore) Put(ctx context.Context, key string, r io.Reader, size 
 }
 
 func (f *fakeAssetStore) Open(ctx context.Context, key string) (io.ReadCloser, error) {
+	f.openCalls++
 	if f.openErr != nil {
 		return nil, f.openErr
 	}
@@ -726,5 +760,213 @@ func TestAssetService_SaveGenerated_KindStored(t *testing.T) {
 	}
 	if a.FileName != "unnamed.mp4" {
 		t.Fatalf("文件名为空时使用默认名：%q", a.FileName)
+	}
+}
+
+// ---- SHA-256：上传计算、补算、按哈希复制、回收 ----
+
+func assetSha(b []byte) string {
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
+}
+
+func TestAssetService_Upload_StoresSha256(t *testing.T) {
+	png := assetTestPNG(t, 6, 6)
+	svc, repo, store := newAssetTestService(config.Storage{MaxUpload: 1 << 20})
+	v, err := svc.Upload(context.Background(), 7, UploadInput{FileName: "a.png", Size: -1, Body: bytes.NewReader(png)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := assetSha(png)
+	if got := repo.rows[v.ID].Sha256; got != want {
+		t.Fatalf("入库的 Sha256 应是 %s，实际 %q", want, got)
+	}
+	// 算哈希后文件游标必须回到开头，否则写入存储的内容会被截断
+	if !bytes.Equal(store.objects[repo.rows[v.ID].StorageKey], png) {
+		t.Fatal("算哈希不应影响写入存储的内容")
+	}
+}
+
+func TestAssetService_EnsureSha256_BackfillsOnce(t *testing.T) {
+	svc, repo, store := newAssetTestService(config.Storage{})
+	data := []byte("some-old-asset-bytes")
+	repo.rows[5] = &model.Asset{ID: 5, UserID: 1, Kind: "image", StorageID: 1, StorageKey: "u1/202609/a.png", MimeType: "image/png", ByteSize: int64(len(data))}
+	store.objects["u1/202609/a.png"] = data
+
+	for i := 0; i < 2; i++ {
+		sha, a, err := svc.EnsureSha256(context.Background(), 1, 5)
+		if err != nil {
+			t.Fatalf("第 %d 次：%v", i+1, err)
+		}
+		if sha != assetSha(data) || a.ID != 5 || a.Sha256 != sha {
+			t.Fatalf("第 %d 次返回不对：%q %+v", i+1, sha, a)
+		}
+	}
+	if repo.rows[5].Sha256 != assetSha(data) {
+		t.Fatalf("哈希应已写回库：%q", repo.rows[5].Sha256)
+	}
+	if store.openCalls != 1 {
+		t.Fatalf("已有哈希后不应再读存储，Open 次数 %d", store.openCalls)
+	}
+	for _, c := range store.closers {
+		if !c.closed {
+			t.Fatal("读取后必须关闭存储对象")
+		}
+	}
+}
+
+func TestAssetService_EnsureSha256_Unreadable(t *testing.T) {
+	t.Run("存储里没有对象", func(t *testing.T) {
+		svc, repo, _ := newAssetTestService(config.Storage{})
+		repo.rows[5] = &model.Asset{ID: 5, UserID: 1, StorageID: 1, StorageKey: "u1/missing.png"}
+		if _, _, err := svc.EnsureSha256(context.Background(), 1, 5); !errors.Is(err, ErrAssetUnreadable) {
+			t.Fatalf("期望 ErrAssetUnreadable，实际：%v", err)
+		}
+		if repo.rows[5].Sha256 != "" {
+			t.Fatal("读不到文件时不应写回哈希")
+		}
+	})
+	t.Run("别人的素材", func(t *testing.T) {
+		svc, repo, store := newAssetTestService(config.Storage{})
+		repo.rows[5] = &model.Asset{ID: 5, UserID: 1, StorageID: 1, StorageKey: "u1/a.png"}
+		store.objects["u1/a.png"] = []byte("x")
+		if _, _, err := svc.EnsureSha256(context.Background(), 2, 5); !errors.Is(err, ErrAssetUnreadable) {
+			t.Fatalf("期望 ErrAssetUnreadable，实际：%v", err)
+		}
+		if store.openCalls != 0 {
+			t.Fatal("别人的素材不应打开存储对象")
+		}
+	})
+	t.Run("素材不存在", func(t *testing.T) {
+		svc, _, _ := newAssetTestService(config.Storage{})
+		if _, _, err := svc.EnsureSha256(context.Background(), 1, 404); !errors.Is(err, ErrAssetUnreadable) {
+			t.Fatalf("期望 ErrAssetUnreadable，实际：%v", err)
+		}
+	})
+	t.Run("素材所属存储已不存在", func(t *testing.T) {
+		svc, repo, _ := newAssetTestService(config.Storage{})
+		repo.rows[5] = &model.Asset{ID: 5, UserID: 1, StorageID: 99, StorageKey: "u1/a.png"}
+		if _, _, err := svc.EnsureSha256(context.Background(), 1, 5); !errors.Is(err, ErrAssetUnreadable) {
+			t.Fatalf("期望 ErrAssetUnreadable，实际：%v", err)
+		}
+	})
+}
+
+// seedHashedAsset 往 repo / store 里放一条带哈希的素材。
+func seedHashedAsset(repo *fakeAssetRepo, store *fakeAssetStore, id, userID uint64, key string, data []byte, withObject bool) {
+	repo.rows[id] = &model.Asset{
+		ID: id, UserID: userID, Kind: "image", StorageID: 1, StorageKey: key, MimeType: "image/png",
+		ByteSize: int64(len(data)), Width: 30, Height: 20, DurationMs: 0, Source: model.AssetSourceGenerated,
+		TaskID: new(uint64), FileName: "src.png", Sha256: assetSha(data),
+	}
+	if withObject {
+		store.objects[key] = data
+	}
+}
+
+func TestAssetService_CopyBySha256_CopiesForNewUser(t *testing.T) {
+	svc, repo, store := newAssetTestService(config.Storage{})
+	data := []byte("png-bytes-for-copy")
+	seedHashedAsset(repo, store, 5, 1, "g1/202601/src.png", data, true)
+
+	got, err := svc.CopyBySha256(context.Background(), 2, assetSha(data), int64(len(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.UserID != 2 || got.ID != 0 || got.Source != model.AssetSourceUpload || got.TaskID != nil {
+		t.Fatalf("归属 / 来源不对：%+v", got)
+	}
+	if got.StorageKey == "g1/202601/src.png" || !strings.HasPrefix(got.StorageKey, "u2/202609/") || !strings.HasSuffix(got.StorageKey, ".png") {
+		t.Fatalf("应生成新 key：%q", got.StorageKey)
+	}
+	if got.StorageID != 1 || got.Kind != "image" || got.MimeType != "image/png" || got.ByteSize != int64(len(data)) ||
+		got.Width != 30 || got.Height != 20 || got.FileName != "src.png" || got.Sha256 != assetSha(data) {
+		t.Fatalf("元数据应取自源素材：%+v", got)
+	}
+	if !bytes.Equal(store.objects[got.StorageKey], data) || store.types[got.StorageKey] != "image/png" {
+		t.Fatal("新 key 下的内容应与源一致")
+	}
+	if !bytes.Equal(store.objects["g1/202601/src.png"], data) {
+		t.Fatal("源对象必须保留")
+	}
+	if len(repo.rows) != 1 {
+		t.Fatal("CopyBySha256 不应入库，由调用方在事务里插入")
+	}
+}
+
+func TestAssetService_CopyBySha256_SkipsUnreadableCandidate(t *testing.T) {
+	svc, repo, store := newAssetTestService(config.Storage{})
+	data := []byte("png-bytes-for-copy")
+	seedHashedAsset(repo, store, 5, 1, "u1/lost.png", data, false)
+	seedHashedAsset(repo, store, 6, 3, "u3/ok.png", data, true)
+
+	got, err := svc.CopyBySha256(context.Background(), 2, assetSha(data), int64(len(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(store.objects[got.StorageKey], data) {
+		t.Fatal("应从第二个候选复制成功")
+	}
+}
+
+func TestAssetService_CopyBySha256_NotFound(t *testing.T) {
+	svc, repo, store := newAssetTestService(config.Storage{})
+	data := []byte("png-bytes-for-copy")
+	seedHashedAsset(repo, store, 5, 1, "u1/a.png", data, true)
+	seedHashedAsset(repo, store, 6, 1, "u1/lost.png", append([]byte("z"), data...), false)
+
+	tests := []struct {
+		name string
+		sha  string
+		size int64
+	}{
+		{"哈希不存在", assetSha([]byte("other")), int64(len(data))},
+		{"大小对不上", assetSha(data), int64(len(data)) + 1},
+		{"空哈希", "", int64(len(data))},
+		{"候选文件全部读不到", assetSha(append([]byte("z"), data...)), int64(len(data) + 1)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := svc.CopyBySha256(context.Background(), 2, tt.sha, tt.size); !errors.Is(err, ErrAssetNotFoundByHash) {
+				t.Fatalf("期望 ErrAssetNotFoundByHash，实际：%v", err)
+			}
+		})
+	}
+}
+
+func TestAssetService_CopyBySha256_PutFailureCleansUp(t *testing.T) {
+	svc, repo, store := newAssetTestService(config.Storage{})
+	data := []byte("png-bytes-for-copy")
+	seedHashedAsset(repo, store, 5, 1, "u1/a.png", data, true)
+	store.putErr, store.putPartly = errors.New("disk full"), true
+
+	_, err := svc.CopyBySha256(context.Background(), 2, assetSha(data), int64(len(data)))
+	if err == nil || errors.Is(err, ErrAssetNotFoundByHash) {
+		t.Fatalf("写存储失败应返回内部错误，而不是“找不到”：%v", err)
+	}
+	if len(store.deleted) != 1 || !strings.HasPrefix(store.deleted[0], "u2/") || len(store.objects) != 1 {
+		t.Fatalf("应删除已部分写入的新对象：deleted=%v objects=%d", store.deleted, len(store.objects))
+	}
+}
+
+func TestAssetService_DiscardCopies_RemovesObjects(t *testing.T) {
+	svc, _, store := newAssetTestService(config.Storage{})
+	store.objects["u2/a.png"] = []byte("a")
+	store.objects["u2/b.png"] = []byte("b")
+	store.objects["u2/keep.png"] = []byte("k")
+
+	svc.DiscardCopies(context.Background(), []*model.Asset{
+		{StorageID: 1, StorageKey: "u2/a.png"},
+		{StorageID: 1, StorageKey: "u2/b.png"},
+		{StorageID: 99, StorageKey: "u2/unknown-store.png"}, // 存储已不存在：跳过，不能 panic
+	})
+	if _, ok := store.objects["u2/a.png"]; ok {
+		t.Fatal("a 应被删除")
+	}
+	if _, ok := store.objects["u2/b.png"]; ok {
+		t.Fatal("b 应被删除")
+	}
+	if _, ok := store.objects["u2/keep.png"]; !ok {
+		t.Fatal("不在列表里的对象不能删")
 	}
 }
