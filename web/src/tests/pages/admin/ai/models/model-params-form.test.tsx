@@ -33,6 +33,21 @@ describe("ModelParamsForm", () => {
     expect(html).not.toContain("新参数名");
   });
 
+  test("音频模型能在「参考素材」里开图片参考，但没有视频和音频参考", () => {
+    const html = render("audio");
+    expect(html).toContain("参考素材");
+    expect(html).toContain("接收参考图片");
+    expect(html).not.toContain("接收参考音频");
+    expect(html).not.toContain("接收参考视频");
+  });
+
+  test("视频模型的参考素材仍有图片、音频、视频三项；文本和 Agent 模型没有参考素材", () => {
+    const video = render("video");
+    for (const label of ["接收参考图片", "接收参考音频", "接收参考视频"])
+      expect(video).toContain(label);
+    for (const kind of ["text", "agent"]) expect(render(kind)).not.toContain("参考素材");
+  });
+
   test("Agent 模型有「上游响应超时」，视频等其他模型没有", () => {
     expect(render("agent")).toContain("上游响应超时");
     for (const kind of ["video", "image", "audio", "text"])
