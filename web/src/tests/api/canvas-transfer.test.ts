@@ -27,6 +27,20 @@ describe("api/canvas：导出与导入", () => {
     expect(result.skippedAssets).toBe(2);
   });
 
+  test("导出和导入放宽请求超时到 5 分钟（默认 2 分钟不够复制大量素材）", async () => {
+    get.mockResolvedValue({ document: {} });
+    post.mockResolvedValue({
+      canvas: { id: "7", title: "t", revision: 1 },
+      report: { assets: { total: 0, copied: 0 }, characters: { created: 0 }, edges_dropped: 0 },
+    });
+
+    await exportCanvas("42");
+    await importCanvas({});
+
+    expect(get.mock.calls[0]?.[2]?.timeout).toBe(5 * 60 * 1000);
+    expect(post.mock.calls[0]?.[2]?.timeout).toBe(5 * 60 * 1000);
+  });
+
   test("exportCanvas 缺少 report 时 skippedAssets 为 0", async () => {
     get.mockResolvedValue({ document: {} });
     expect((await exportCanvas("42")).skippedAssets).toBe(0);

@@ -159,15 +159,26 @@ export const saveCanvasGraph = (
 export const deleteCanvas = (id: string) => service.delete<void>(`/canvas/${id}`);
 
 /**
+ * 导出 / 导入画布的请求超时（毫秒）。
+ * 为什么比默认的 2 分钟长：导入要逐个复制最多 1 GB 的素材，导出要为老素材补算哈希；
+ * 与后端为这两个接口放宽的 5 分钟读写超时一致。
+ */
+const CANVAS_TRANSFER_TIMEOUT = 5 * 60 * 1000;
+
+/**
  * 导出画布为文档
  * @param id 画布 ID
  * @returns 导出文档，以及因找不到文件被跳过的素材数
  */
 export const exportCanvas = (id: string): Promise<CanvasExportResultDto> =>
-  service.get<BackendCanvasExportDto>(`/canvas/${id}/export`).then((data) => ({
-    document: data.document,
-    skippedAssets: data.report?.skipped_assets ?? 0,
-  }));
+  service
+    .get<BackendCanvasExportDto>(`/canvas/${id}/export`, undefined, {
+      timeout: CANVAS_TRANSFER_TIMEOUT,
+    })
+    .then((data) => ({
+      document: data.document,
+      skippedAssets: data.report?.skipped_assets ?? 0,
+    }));
 
 /**
  * 把导出文档导入为一张新画布
@@ -176,7 +187,11 @@ export const exportCanvas = (id: string): Promise<CanvasExportResultDto> =>
  */
 export const importCanvas = (document: unknown): Promise<CanvasImportResultDto> =>
   service
-    .post<BackendCanvasImportDto>("/canvas/import", { document })
+    .post<BackendCanvasImportDto>(
+      "/canvas/import",
+      { document },
+      { timeout: CANVAS_TRANSFER_TIMEOUT },
+    )
     .then(({ canvas, report }) => ({
       canvas,
       report: {
