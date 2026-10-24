@@ -138,7 +138,7 @@ func Parse(raw []byte) (*Document, error) {
 // 引用不全返回 ErrInvalid，超出体量返回 ErrLimit。
 func (d *Document) Validate(l Limits) error {
 	// 1. 体量上限放在最前面：超大文件不必再逐项检查
-	if err := d.checkLimits(l); err != nil {
+	if err := d.CheckLimits(l); err != nil {
 		return err
 	}
 	// 2. assets 的键必须是 64 位小写十六进制
@@ -157,8 +157,9 @@ func (d *Document) Validate(l Limits) error {
 	return d.checkCharacters()
 }
 
-// checkLimits 检查节点数、素材数和素材总大小是否超出上限，素材大小为负时返回 ErrInvalid。
-func (d *Document) checkLimits(l Limits) error {
+// CheckLimits 检查节点数、素材数和素材总大小是否超出上限（ErrLimit），素材大小为负时返回 ErrInvalid。
+// 不查 MaxBytes（看不到原文）。Validate 第一步就调它；导出也用它，保证导出的文件一定能被导入。
+func (d *Document) CheckLimits(l Limits) error {
 	if len(d.Canvas.Nodes) > l.MaxNodes {
 		return fmt.Errorf("%w: 节点数 %d 超过上限 %d", ErrLimit, len(d.Canvas.Nodes), l.MaxNodes)
 	}

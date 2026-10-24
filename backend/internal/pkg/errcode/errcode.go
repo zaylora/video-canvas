@@ -55,6 +55,8 @@ var (
 	ErrCanvasImportInvalid  = New(30005, "导入文件格式不对", http.StatusBadRequest)
 	ErrCanvasImportTooNew   = New(30006, "导入文件来自更新版本，请升级后再导入", http.StatusBadRequest)
 	ErrCanvasImportTooLarge = New(30007, "导入文件或素材数量超限", http.StatusRequestEntityTooLarge)
+	// 画布导出：导出的文件超出导入上限时拒绝导出（导出了也导不回来），具体原因用 WithMsg 给出
+	ErrCanvasExportTooLarge = New(30008, "画布太大，超过导入上限，无法导出", http.StatusRequestEntityTooLarge)
 )
 
 // 生成任务 / 积分 / 素材 / AI 配置模块 4xxxx

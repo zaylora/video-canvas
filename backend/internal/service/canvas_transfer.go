@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -112,7 +113,8 @@ type ExportResult struct {
 }
 
 // Export 把当前用户的一张画布导出成文档：素材 ID 换成内容哈希，角色卡内联进文件。
-// 个别素材读不到不会让导出失败，只计入 Report.SkippedAssets；画布不存在或不属于该用户返回 ErrCanvasNotFound。
+// 个别素材读不到不会让导出失败，只计入 Report.SkippedAssets；画布不存在或不属于该用户返回 ErrCanvasNotFound；
+// 导出结果超出导入上限（节点、素材数、素材总大小、文件大小）返回 ErrCanvasExportTooLarge。
 func (s *CanvasTransferService) Export(ctx context.Context, userID, id uint64) (*ExportResult, error) {
 	// 1. 带 user_id 取画布：别人的画布和不存在的画布统一返回「画布不存在」，不暴露画布是否存在
 	p, err := s.canvases.GetByID(ctx, userID, id)
@@ -154,7 +156,34 @@ func (s *CanvasTransferService) Export(ctx context.Context, userID, id uint64) (
 	if err != nil {
 		return nil, err
 	}
+
+	// 6. 按导入上限检查导出结果：超限的文件导出了也导不回来，不如现在就说清楚原因（30008）
+	if err := s.checkExportLimits(doc); err != nil {
+		return nil, err
+	}
 	return &ExportResult{Document: doc, Report: ExportReport{SkippedAssets: report.SkippedAssets}}, nil
+}
+
+// checkExportLimits 用导入的上限检查导出文档：节点数、素材数、素材总大小，以及文件大小。
+// 文件大小按两格缩进序列化来量，因为前端下载时就是这样写文件的（JSON.stringify(data, null, 2)），
+// 导入时比的是这个文件的字节数；Go 会把 <>& 转义得更长，量出来只会偏大，不会放过超限的文件。
+func (s *CanvasTransferService) checkExportLimits(doc *canvasdoc.Document) error {
+	if err := doc.CheckLimits(s.limits); err != nil {
+		if errors.Is(err, canvasdoc.ErrLimit) {
+			return errcode.ErrCanvasExportTooLarge.WithMsg(
+				errcode.ErrCanvasExportTooLarge.Msg + "：" + strings.TrimPrefix(err.Error(), canvasdoc.ErrLimit.Error()+": "))
+		}
+		return err
+	}
+	raw, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		return fmt.Errorf("序列化导出文档: %w", err)
+	}
+	if int64(len(raw)) > s.limits.MaxBytes {
+		return errcode.ErrCanvasExportTooLarge.WithMsg(
+			errcode.ErrCanvasExportTooLarge.Msg + "：导出文件超过 " + formatBytes(s.limits.MaxBytes))
+	}
+	return nil
 }
 
 // loadCharacters 按画布里的十六进制角色卡 ID 批量查出该用户的角色卡，返回以十六进制 ID 为键的条目，

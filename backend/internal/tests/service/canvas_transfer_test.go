@@ -336,3 +336,56 @@ func TestCanvasTransfer_Export_CharacterAssetsAreHashed(t *testing.T) {
 		}
 	}
 }
+
+// withLimits 用给定上限重建导出服务，其余依赖不变。
+func (e *transferEnv) withLimits(l canvasdoc.Limits) *transferEnv {
+	e.svc = service.NewCanvasTransferService(service.CanvasTransferDeps{
+		Canvases: e.canvases, Assets: e.assets, Characters: e.characters, AppVersion: "v1.2.3", Limits: l,
+		Now: func() time.Time { return time.Date(2026, 10, 24, 8, 0, 0, 0, time.UTC) },
+	})
+	return e
+}
+
+func TestCanvasTransfer_Export_ChecksImportLimits(t *testing.T) {
+	// 默认画布：3 个节点、4 个素材（101、201、202、203），素材总大小 101+201+202+203 = 707 字节
+	limit := func(edit func(l *canvasdoc.Limits)) canvasdoc.Limits {
+		l := canvasdoc.DefaultLimits()
+		edit(&l)
+		return l
+	}
+	cases := []struct {
+		name   string
+		limits canvasdoc.Limits
+		reason string // 提示里应出现的具体原因，空表示不应超限
+	}{
+		{"未超限照常导出", canvasdoc.DefaultLimits(), ""},
+		{"恰好等于上限照常导出", limit(func(l *canvasdoc.Limits) { l.MaxNodes, l.MaxAssets, l.MaxAssetBytes = 3, 4, 707 }), ""},
+		{"节点超限", limit(func(l *canvasdoc.Limits) { l.MaxNodes = 2 }), "节点数"},
+		{"素材数超限", limit(func(l *canvasdoc.Limits) { l.MaxAssets = 3 }), "素材数"},
+		{"素材总大小超限", limit(func(l *canvasdoc.Limits) { l.MaxAssetBytes = 706 }), "素材总大小"},
+		{"文件超过大小上限", limit(func(l *canvasdoc.Limits) { l.MaxBytes = 100 }), "文件"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newTransferEnv(t, transferPayload(idcodec.Encode(7)))
+			e.addCard(7)
+			res, err := e.withLimits(tc.limits).svc.Export(context.Background(), transferUser, 5)
+			if tc.reason == "" {
+				if err != nil || res == nil {
+					t.Fatalf("不应超限: %v", err)
+				}
+				return
+			}
+			var ce *errcode.Error
+			if !errors.As(err, &ce) || ce.Code != 30008 {
+				t.Fatalf("应返回 30008，实际 %v", err)
+			}
+			if !strings.Contains(ce.Msg, tc.reason) || strings.Contains(ce.Msg, "画布文件超出限制") {
+				t.Errorf("提示应带具体原因 %q 且不带哨兵前缀: %q", tc.reason, ce.Msg)
+			}
+			if ce.HTTPStatus() != 413 || res != nil {
+				t.Errorf("状态码 %d、结果 %v", ce.HTTPStatus(), res)
+			}
+		})
+	}
+}
