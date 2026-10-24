@@ -295,7 +295,7 @@ var leakKeys = map[string]bool{
 func checkNoLeak(c CanvasPart) error {
 	for _, list := range [][]map[string]any{c.Nodes, c.Edges} {
 		for _, item := range list {
-			if key, found := findLeakKey(item); found {
+			if key, found := findKey(item, leakKeys); found {
 				id, _ := item["id"].(string)
 				return fmt.Errorf("导出画布: %q 里残留原环境字段 %q，需要登记改写规则", id, key)
 			}
@@ -304,21 +304,21 @@ func checkNoLeak(c CanvasPart) error {
 	return nil
 }
 
-// findLeakKey 在任意 JSON 值里查找 leakKeys 中的字段名。
-func findLeakKey(v any) (string, bool) {
+// findKey 在任意 JSON 值里查找 keys 中的字段名。同层的键按字典序检查，同一份内容总是报同一个字段。
+func findKey(v any, keys map[string]bool) (string, bool) {
 	switch x := v.(type) {
 	case map[string]any:
-		for k, child := range x {
-			if leakKeys[k] {
+		for _, k := range sortedKeys(x) {
+			if keys[k] {
 				return k, true
 			}
-			if key, found := findLeakKey(child); found {
+			if key, found := findKey(x[k], keys); found {
 				return key, true
 			}
 		}
 	case []any:
 		for _, child := range x {
-			if key, found := findLeakKey(child); found {
+			if key, found := findKey(child, keys); found {
 				return key, true
 			}
 		}
