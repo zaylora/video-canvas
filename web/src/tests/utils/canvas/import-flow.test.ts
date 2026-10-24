@@ -45,6 +45,17 @@ describe("runCanvasImport：列表页导入流程", () => {
     expect(deps.importCanvas).not.toHaveBeenCalled();
   });
 
+  test("读取文件失败：提示读取失败，不发请求也不抛错", async () => {
+    const deps = setup();
+    deps.file.text.mockImplementation(async () => {
+      throw new Error("NotReadableError");
+    });
+    const outcome = await runCanvasImport(deps);
+
+    expect(outcome).toEqual({ kind: "invalid", message: "读取文件失败" });
+    expect(deps.importCanvas).not.toHaveBeenCalled();
+  });
+
   test("不是 JSON：invalid，不发请求", async () => {
     const deps = setup({ text: "这不是 JSON" });
     const outcome = await runCanvasImport(deps);

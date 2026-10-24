@@ -3,6 +3,9 @@ import type { CanvasImportResultDto } from "@/api/canvas/type";
 
 import { IMPORT_TOO_LARGE_MESSAGE, MAX_IMPORT_BYTES, precheckImportText } from "./transfer-file";
 
+/** 读取所选文件失败时给用户的提示 */
+const READ_FAILED_MESSAGE = "读取文件失败";
+
 /** 导入报告，列表页弹窗和流程共用 */
 export type ImportReport = CanvasImportResultDto["report"];
 
@@ -61,7 +64,7 @@ export function summarizeImportReport(report: ImportReport): ImportReportSummary
 /**
  * 导入一个画布文件：先在本地预检，再提交，最后按报告决定直接打开还是先展示报告。
  * 为什么先比大小再读内容：超大文件没必要读进内存。
- * 请求失败时只返回 error，不向外抛错。
+ * 读文件失败返回 invalid，请求失败只返回 error，都不向外抛错。
  * @param deps 文件和注入的外部能力
  * @returns 导入结果，由调用方决定提示和跳转
  */
@@ -69,7 +72,17 @@ export async function runCanvasImport(deps: CanvasImportDeps): Promise<ImportOut
   const { file } = deps;
   if (file.size > MAX_IMPORT_BYTES) return { kind: "invalid", message: IMPORT_TOO_LARGE_MESSAGE };
 
-  const checked = precheckImportText(file.size, await file.text());
+  let text: string;
+  try {
+    text = await file.text();
+  } catch {
+    /**
+     * 读文件不经过请求层，没有全局提示；文件被移走、权限变化等都会读失败，要就地告诉用户。
+     */
+    return { kind: "invalid", message: READ_FAILED_MESSAGE };
+  }
+
+  const checked = precheckImportText(file.size, text);
   if (!checked.ok) return { kind: "invalid", message: checked.message };
 
   let result: CanvasImportResultDto;
