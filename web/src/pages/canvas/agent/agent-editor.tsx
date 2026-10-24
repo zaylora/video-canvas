@@ -33,7 +33,7 @@ import { cn } from "@/lib/utils";
 import type { Chip, ChipType } from "@/utils/agent/chips";
 import { chipNode, docToMessage, messageToDoc, type DocNode } from "@/utils/agent/editor-doc";
 import type { AgentSkillDto } from "@/api/agent/type.d";
-import { ghostContent, pendingRefs } from "@/utils/agent/selection-ghost";
+import { ghostContent, nextDismissed, pendingRefs } from "@/utils/agent/selection-ghost";
 import type { RefNode, SelectionRef } from "@/utils/agent/selection-refs";
 import { filterSkills, skillMenuNotice } from "@/utils/agent/skills";
 
@@ -321,11 +321,30 @@ export function AgentEditor({
   const [empty, setEmpty] = useState(true);
   // 文档里已有的节点 chip（换行拼成字符串，没变化时 setState 不触发重渲染）
   const [committedKey, setCommittedKey] = useState("");
-  // 浅色占位 = 画布选中、且文档里还没有的节点
-  const pending = useMemo(
-    () => pendingRefs(selection, refNodes, committedKey ? committedKey.split("\n") : []),
-    [selection, refNodes, committedKey],
+  // 用户关掉的占位：引用了又删掉（退格、撤销、发送后清空）、画布上仍然选着的节点。
+  // 占位只在刚选中时出现一次，关掉后不能再冒出来，否则删不掉；取消选中后清掉，再选中重新出一次
+  const [dismissed, setDismissed] = useState<string[]>([]);
+  const committedIds = useMemo(
+    () => (committedKey ? committedKey.split("\n") : []),
+    [committedKey],
   );
+  // 画布选中变了：取消选中的节点从"已关闭"里去掉（渲染期间同步算，不用 effect，免得多渲染一帧闪出占位）
+  const [seenSelection, setSeenSelection] = useState(selection);
+  if (seenSelection !== selection) {
+    setSeenSelection(selection);
+    setDismissed((d) => {
+      const next = nextDismissed(d, selection, committedIds, committedIds);
+      return next.join("\n") === d.join("\n") ? d : next;
+    });
+  }
+  // 浅色占位 = 画布选中、文档里还没有、也没被关掉的节点
+  const pending = useMemo(
+    () => pendingRefs(selection, refNodes, committedIds, dismissed),
+    [selection, refNodes, committedIds, dismissed],
+  );
+  // 文档变化的回调挂在编辑器创建时，要读最新的选中和上一次的 chip，所以放进 ref
+  const selectionRef = useRef(selection);
+  const committedRef = useRef<string[]>([]);
   const pendingKey = pending.map((r) => `${r.id}\u0001${r.kind}\u0001${r.label}`).join("\n");
   const pendingRef = useRef(pending);
   // 键盘处理挂在编辑器创建时，要读最新值，所以放进 ref
@@ -433,7 +452,17 @@ export function AgentEditor({
       setEmpty(e.isEmpty);
       onChange(docToMessage(e.getJSON() as DocNode));
     },
-    onTransaction: ({ editor: e }) => setCommittedKey(committedNodeIds(e.state).join("\n")),
+    onTransaction: ({ editor: e }) => {
+      const next = committedNodeIds(e.state);
+      const before = committedRef.current;
+      committedRef.current = next;
+      setCommittedKey(next.join("\n"));
+      // 有 chip 消失（而节点还选着）就把它的占位关掉；没变化时返回原数组，不触发重渲染
+      setDismissed((d) => {
+        const closed = nextDismissed(d, selectionRef.current, before, next);
+        return closed.join("\n") === d.join("\n") ? d : closed;
+      });
+    },
     // 输入框激活：浅色占位原地变深，成为真正的引用，光标落在它们后面。
     // 点击会在 focus 之后再落光标，所以等一帧再写，免得被点击的光标位置盖掉
     onFocus: ({ editor: e }) => {
@@ -451,17 +480,32 @@ export function AgentEditor({
           })
           .insertContentAt(ghostPos(e.state, ghost.pos), content)
           .run();
+        // 占位已经变成真正的引用：清掉待推的占位，免得同一帧里还没执行的延后推送把它又画回来
+        pendingRef.current = [];
       });
     },
   });
 
-  // 占位内容跟着画布选中走：推给装饰层，不进撤销栈
+  useEffect(() => {
+    selectionRef.current = selection;
+  }, [selection]);
+
+  // 占位内容跟着画布选中走：推给装饰层，不进撤销栈。
+  // 延后一帧再推：点画布节点时，选中更新和输入框失焦几乎同时发生，失焦才会记下光标位置。
+  // 立刻推的话占位先画在旧位置、失焦后又搬到光标处，DOM 重建、入场动画播两遍，看起来闪两下；
+  // 等一帧，位置记好了再一次画对。选中在这一帧里连续变（先取消再选中）也只画最后一次
   useEffect(() => {
     pendingRef.current = pending;
     if (!editor || editor.isDestroyed) return;
-    editor.view.dispatch(
-      editor.state.tr.setMeta(ghostKey, { refs: pending }).setMeta("addToHistory", false),
-    );
+    const frame = requestAnimationFrame(() => {
+      if (editor.isDestroyed) return;
+      editor.view.dispatch(
+        editor.state.tr
+          .setMeta(ghostKey, { refs: pendingRef.current })
+          .setMeta("addToHistory", false),
+      );
+    });
+    return () => cancelAnimationFrame(frame);
     // pending 每次渲染都是新数组，用内容拼的 key 判断有没有真的变
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, pendingKey]);

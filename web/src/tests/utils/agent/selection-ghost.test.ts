@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { ghostContent, pendingRefs } from "@/utils/agent/selection-ghost";
+import { ghostContent, nextDismissed, pendingRefs } from "@/utils/agent/selection-ghost";
 import type { RefNode } from "@/utils/agent/selection-refs";
 
 const nodes: RefNode[] = [
@@ -38,6 +38,52 @@ describe("pendingRefs：画布选中、但还没写进输入框的节点", () =>
   test("选中的是组：保留组种类，没名字用「节点组」", () => {
     const [ref] = pendingRefs(["g1"], nodes, []);
     expect(ref).toMatchObject({ id: "g1", label: "节点组", kind: "group" });
+  });
+});
+
+describe("pendingRefs：用户关闭过的占位不再冒出来", () => {
+  test("已关闭的节点不出占位，别的照常出", () => {
+    expect(pendingRefs(["n1", "n2"], nodes, [], ["n1"]).map((r) => r.id)).toEqual(["n2"]);
+  });
+
+  test("不传已关闭列表时和以前一样", () => {
+    expect(pendingRefs(["n1"], nodes, []).map((r) => r.id)).toEqual(["n1"]);
+  });
+});
+
+describe("nextDismissed：什么时候把占位关掉、什么时候重新放出来", () => {
+  test("引用 chip 被删掉（退格、撤销、发送后清空）而节点还选着：关掉，占位不再回来", () => {
+    expect(nextDismissed([], ["n1"], ["n1"], [])).toEqual(["n1"]);
+  });
+
+  test("只关掉真的消失的那个，还在输入框里的和没碰过的不动", () => {
+    expect(nextDismissed([], ["n1", "n2", "n3"], ["n1", "n2"], ["n2"])).toEqual(["n1"]);
+  });
+
+  test("占位变深（输入框里多了 chip）不算关闭", () => {
+    expect(nextDismissed([], ["n1"], [], ["n1"])).toEqual([]);
+  });
+
+  test("画布上取消选中后，关闭记录清掉：再选中同一个节点，占位重新出现一次", () => {
+    const afterDelete = nextDismissed([], ["n1"], ["n1"], []);
+    const afterDeselect = nextDismissed(afterDelete, [], [], []);
+    expect(afterDeselect).toEqual([]);
+    expect(pendingRefs(["n1"], nodes, [], afterDeselect).map((r) => r.id)).toEqual(["n1"]);
+  });
+
+  test("已关闭的 A 还选着时多选了 B：只出 B 的占位，A 保持关闭", () => {
+    const dismissed = nextDismissed([], ["n1"], ["n1"], []);
+    const next = nextDismissed(dismissed, ["n1", "n2"], [], []);
+    expect(next).toEqual(["n1"]);
+    expect(pendingRefs(["n1", "n2"], nodes, [], next).map((r) => r.id)).toEqual(["n2"]);
+  });
+
+  test("删掉的 chip 对应的节点本来就没被选中（手动 @ 的）：不记录", () => {
+    expect(nextDismissed([], ["n2"], ["n1"], [])).toEqual([]);
+  });
+
+  test("同一个节点删了又被记录多次：不重复", () => {
+    expect(nextDismissed(["n1"], ["n1"], ["n1"], [])).toEqual(["n1"]);
   });
 });
 
