@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 
 import { useModelsStore } from "@/store/models";
 import {
@@ -31,9 +31,10 @@ describe("partitionLinkable：多选引用时哪些节点能接到新节点上",
     expect(skipped).toEqual([]);
   });
 
-  test("新建音频节点：只有文本能接", () => {
-    const { linkable } = partitionLinkable(selected, { kind: "audio" });
-    expect(linkable.map((item) => item.id)).toEqual(["t"]);
+  test("新建音频节点：文本、图片能接，视频、音频接不上", () => {
+    const { linkable, skipped } = partitionLinkable(selected, { kind: "audio" });
+    expect(linkable.map((item) => item.id)).toEqual(["t", "i"]);
+    expect(skipped.map((item) => item.id)).toEqual(["v", "a"]);
   });
 
   test("保留调用方带的额外字段，方便按 id 去接线", () => {
@@ -166,5 +167,49 @@ describe("视频节点是文生视频时也能接图片：连上后自动切到�
     expect(opForLink({ kind: "script" }, t2v)).toBeUndefined();
     expect(opForLink({ kind: "image" }, { ...t2v, params: { op: "omni" } })).toBeUndefined();
     expect(opForLink({ kind: "image" }, { kind: "image" })).toBeUndefined();
+  });
+});
+
+describe("音频节点能引用图片：只看目标模型有没有开图片参考", () => {
+  const audioCaps = (imageOn: boolean) => ({
+    refs: {
+      image: { on: imageOn, max: 1, max_mb: 10 },
+      audio: { on: false, max: 0, max_mb: 0 },
+      video: { on: false, max: 0, max_mb: 0 },
+    },
+  });
+  const setAudioModel = (imageOn: boolean) =>
+    useModelsStore.setState({
+      byKind: {
+        audio: { status: "ready", models: [{ key: "a1", capabilities: audioCaps(imageOn) }] },
+      } as never,
+    });
+  const target = { kind: "audio" as const, model: "a1" };
+
+  afterEach(() => useModelsStore.setState({ byKind: {} }));
+
+  test("后台开了图片参考：图片节点能连到音频节点", () => {
+    setAudioModel(true);
+    expect(canLinkNodes({ kind: "image" }, target)).toBe(true);
+  });
+
+  test("后台没开图片参考：图片节点仍然连不上音频节点", () => {
+    setAudioModel(false);
+    expect(canLinkNodes({ kind: "image" }, target)).toBe(false);
+  });
+
+  test("音频模型只收图片：视频、音频节点连不上", () => {
+    setAudioModel(true);
+    expect(canLinkNodes({ kind: "video" }, target)).toBe(false);
+    expect(canLinkNodes({ kind: "audio" }, target)).toBe(false);
+  });
+
+  test("@ 菜单里列出画布上有素材的图片节点", () => {
+    setAudioModel(true);
+    const nodes = [
+      { id: "audio", data: { kind: "audio" as const, model: "a1" } },
+      { id: "img", data: { kind: "image" as const, src: "/i.png", assetId: "i" } },
+    ];
+    expect(mentionableNodes("audio", nodes, []).canvas.map((item) => item.id)).toEqual(["img"]);
   });
 });

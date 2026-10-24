@@ -34,7 +34,7 @@ const (
 // downstream 是每种节点能直接驱动生成的下游种类，与前端 constants/canvas 的 DOWNSTREAM_KINDS 一致。
 var downstream = map[string][]string{
 	KindScript:   {KindImage, KindVideo, KindAudio}, // 文本节点没有输入口，也就没有任何节点能连进它
-	KindImage:    {KindImage, KindVideo},
+	KindImage:    {KindImage, KindVideo, KindAudio}, // 接音频节点要音频模型开了图片参考，前端按模型能力把关，这里只看种类
 	KindVideo:    {KindVideo},
 	KindAudio:    {KindVideo},
 	KindDirector: {},

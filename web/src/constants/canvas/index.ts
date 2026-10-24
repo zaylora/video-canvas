@@ -8,13 +8,14 @@ export * from "./model-library";
 export * from "./node-library";
 
 /**
- * 每种节点能直接驱动生成的下游种类：文本是万能上游，图片能再生图或生视频，
+ * 每种节点能直接驱动生成的下游种类：文本是万能上游，图片能再生图、生视频或作音频的参考，
  * 音视频只往视频走。拉线落空时据此决定菜单里哪些项可点。
  */
 export const DOWNSTREAM_KINDS: Record<NodeKind, NodeKind[]> = {
   // 文本节点是手写内容，没有输入口：不接上游，也就没有哪种节点能连进它
   script: ["image", "video", "audio"],
-  image: ["image", "video"],
+  // 图片接音频节点：音频模型在后台开了图片参考时才真正连得上，由 canLinkNodes 按模型能力把关
+  image: ["image", "video", "audio"],
   video: ["video"],
   audio: ["video"],
   // 导演台不接上游、也不能直接当参考：要先导出成视频 / 图片节点

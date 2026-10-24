@@ -111,7 +111,8 @@ func TestApplyConnectRules(t *testing.T) {
 		{"图片到视频", "image", "video", false},
 		{"视频到图片", "video", "image", true},
 		{"音频到视频", "audio", "video", false},
-		{"图片到音频", "image", "audio", true},
+		{"图片到音频：音频模型可引用图片", "image", "audio", false},
+		{"视频到音频", "video", "audio", true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
