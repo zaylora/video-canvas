@@ -6,13 +6,14 @@ import {
   Check,
   ChevronDown,
   CloudAlert,
+  FileDown,
   LoaderCircle,
   Plus,
   RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { createCanvas } from "@/api/canvas";
+import { createCanvas, exportCanvas } from "@/api/canvas";
 import { Logo } from "@/components/brand/logo";
 import { ChromeButton, ChromePill, ChromeTooltip } from "@/components/canvas/chrome/chrome";
 import {
@@ -25,6 +26,8 @@ import {
 import type { SaveStatus } from "@/hooks/use-canvas-persistence";
 import { DURATION, EASE_OUT } from "@/lib/motion";
 import { cn } from "@/lib/utils";
+import { runCanvasExport } from "@/utils/canvas/export-flow";
+import { downloadJson } from "@/utils/canvas/transfer-file";
 
 /** 画布名最长多少字 */
 const TITLE_MAX = 60;
@@ -139,13 +142,16 @@ function SaveIndicator({ status, onSave }: { status: SaveStatus; onSave: () => v
   );
 }
 
-/** 左上角：品牌菜单（回列表、新建画布）、画布名、保存状态 */
+/** 左上角：品牌菜单（回列表、新建画布、导出画布）、画布名、保存状态 */
 export function TopLeftBar({
+  canvasId,
   title,
   onRename,
   saveStatus,
   onSaveNow,
 }: {
+  /** 当前画布 ID，导出用 */
+  canvasId: string;
   title: string;
   onRename: (title: string) => void;
   saveStatus: SaveStatus;
@@ -154,6 +160,7 @@ export function TopLeftBar({
 }) {
   const navigate = useNavigate();
   const [creating, setCreating] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   /** 离开前先把没存的内容存掉；存不上就留在原地，别让内容悄悄丢了 */
   const leaveTo = async (to: string) => {
@@ -181,6 +188,24 @@ export function TopLeftBar({
     }
   };
 
+  /** 导出期间菜单项置灰，防止重复点击连发请求、连下多份文件 */
+  const exportThisCanvas = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      await runCanvasExport({
+        canvasId,
+        title,
+        saveNow: onSaveNow,
+        exportCanvas,
+        download: downloadJson,
+        notify: toast,
+      });
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <ChromePill className="max-w-[calc(100vw-24px)] pr-1">
       <DropdownMenu modal={false}>
@@ -204,6 +229,11 @@ export function TopLeftBar({
           <DropdownMenuItem disabled={creating} onClick={() => void newCanvas()}>
             <Plus />
             新建画布
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem disabled={exporting} onClick={() => void exportThisCanvas()}>
+            <FileDown />
+            导出画布
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
