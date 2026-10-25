@@ -211,7 +211,8 @@ test("插话：运行中补充要求，记 message.user（steer），下一次�
     for (let i = 0; i < 100 && !e.go.paths().some((p) => p.includes("/tools/")); i++) await new Promise((x) => setTimeout(x, 20));
     await e.engine.interject("1", r.id, "再暖一点");
     await e.engine.idle();
-    assert.deepEqual(e.persisted("message.user")[1], { text: "再暖一点", steer: true });
+    const steer = e.persisted("message.user")[1];
+    assert.deepEqual([steer.text, steer.steer, typeof steer.id], ["再暖一点", true, "string"]);
     assert.match(JSON.stringify(e.go.modelRequests[1].body.messages), /再暖一点/, "工具跑完后的下一次请求带上插话");
     assert.equal(e.go.modelRequests.length, 2, "不打断正在执行的工具，只多一次请求");
     assert.equal(e.run(r.id).status, "succeeded");

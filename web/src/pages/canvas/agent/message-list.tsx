@@ -5,7 +5,9 @@ import {
   Check,
   ChevronRight,
   CircleStop,
+  Clock,
   Copy,
+  Layers,
   Play,
   TriangleAlert,
 } from "lucide-react";
@@ -15,11 +17,15 @@ import { ChromeTooltip } from "@/components/canvas/chrome/chrome";
 import { Button } from "@/components/ui/button";
 import { runStatusText } from "@/constants/agent";
 import type { AgentController } from "@/hooks/use-agent-controller";
-import { DURATION, EASE_OUT } from "@/lib/motion";
+import { DURATION, EASE_OUT, SPRING } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { parseMessage } from "@/utils/agent/chips";
+import { contextUsage, formatTokens } from "@/utils/agent/context-usage";
 import { anchoredScrollTop, trackHistoryKeys } from "@/utils/agent/message-scroll";
 import type { TimelineItem } from "@/utils/agent/timeline";
+
+/** 还在排队、没被读到的插话 */
+const isQueued = (item: TimelineItem) => item.type === "user" && item.queued === "waiting";
 
 import { ActivityGroup } from "./activity-group";
 import type { RefNode } from "@/utils/agent/selection-refs";
@@ -73,7 +79,7 @@ export function MessageText({ text }: { text: string }) {
  * 消息流：实时新增的消息淡入上浮，历史（首次加载、往上翻补来的）和流式更新不播动画。
  * 挂载时历史已经加载好，首次布局前就停在底部；往上翻到快到顶时加载更早一页，补完后视线停在原来看的那条上。
  * 贴着底部时自动跟随（内容高度变化也跟，比如卡片展开、图片加载）；用户往上翻看时不打扰，有新内容就出现「回到底部」。
- * 末尾是状态行：运行中唯一的实时指示。
+ * 末尾是状态行：运行中唯一的实时指示；还没被 Agent 读到的插话排在状态行下面（虚线气泡），读到时飞进时间线。
  */
 export function MessageList({
   ctl,
@@ -101,6 +107,9 @@ export function MessageList({
   const historyKeys = trackHistoryKeys(history, keys);
   if (historyKeys.size !== history.size) setHistory(historyKeys);
   const reduce = useReducedMotion();
+  /** 插话排队：还没读到的在状态行下面，其余按时间线顺序 */
+  const queue = ctl.timeline.filter(isQueued);
+  const body = ctl.timeline.filter((item) => !isQueued(item));
 
   /** 上次看到的内容高度：只有内容真的变高了，才算「有新内容」 */
   const lastHeight = useRef(0);
@@ -169,11 +178,16 @@ export function MessageList({
         }}
       >
         <div ref={content} className="flex flex-col gap-3 px-4 pt-3 pb-2">
-          {ctl.timeline.map((item) =>
+          {body.map((item) =>
             item.type === "assistant" && item.streaming && !item.text ? null : (
               <motion.div
                 key={item.key}
-                initial={!historyKeys.has(item.key) && !reduce ? { opacity: 0, y: 6 } : false}
+                // 插话是从下面的队列飞进时间线的（共享 layoutId），不再叠一层淡入
+                initial={
+                  !historyKeys.has(item.key) && !reduce && !(item.type === "user" && item.steerId)
+                    ? { opacity: 0, y: 6 }
+                    : false
+                }
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: DURATION.base, ease: EASE_OUT }}
               >
@@ -190,6 +204,7 @@ export function MessageList({
           <AnimatePresence>
             {ctl.statusLine && <StatusLine key={ctl.statusLine.runId} line={ctl.statusLine} />}
           </AnimatePresence>
+          {queue.length > 0 && <SteerQueue queue={queue} ctl={ctl} />}
         </div>
       </div>
       {/* 顶部的加载提示悬浮在列表上，不占文档流：出现和消失都不会让内容位移 */}
@@ -258,6 +273,7 @@ function Item({
 }) {
   switch (item.type) {
     case "user":
+      if (item.steerId) return <Steer item={item} ctl={ctl} />;
       return (
         <div className="flex flex-col items-end gap-1">
           {item.steer && <span className="text-muted-foreground text-[11px]">插话</span>}
@@ -275,6 +291,8 @@ function Item({
       return <ApprovalRow approvalId={item.approvalId} ctl={ctl} />;
     case "status":
       return <StatusCard item={item} ctl={ctl} />;
+    case "compaction":
+      return <CompactionDivider item={item} window={ctl.context.window} />;
     case "plan-done":
       return (
         <p className="text-muted-foreground flex items-center gap-2 text-[13px]">
@@ -287,6 +305,171 @@ function Item({
     case "run-feedback":
       return <RunFeedback runId={item.runId} ctl={ctl} />;
   }
+}
+
+/**
+ * 自动压缩的分隔行：一条淡淡的线加一句话，不抢正文。成功时写「整理前 → 整理后」的占用（整理后要等下一次模型调用的用量到了才有，
+ * 之前写「…」），失败时琥珀色，说清楚这一轮不再自动整理。悬停或聚焦弹出说明：聊天记录没有变，变的是 Agent 读到的上下文。
+ */
+function CompactionDivider({
+  item,
+  window,
+}: {
+  item: Extract<TimelineItem, { type: "compaction" }>;
+  window: number;
+}) {
+  /** 窗口大小已知用百分比，否则用 Token 数 */
+  const fmt = (tokens: number) =>
+    window > 0 ? `${contextUsage(tokens, window).percent}%` : formatTokens(tokens);
+  const afterText = item.after === null ? "…" : fmt(item.after);
+  return (
+    <ChromeTooltip
+      label={
+        <span className="block max-w-65 text-[12px] leading-relaxed">
+          {item.failed
+            ? "这次没能把较早的对话整理成摘要（比如模型暂时不可用）。这一轮不会再自动整理，对话继续变长可能很快到上限；可以新开一个对话接着做。"
+            : "聊天记录没有变：上面的消息都还在。只是 Agent 读到的上下文里，较早的部分换成了一份摘要（要点、已完成的事、节点和任务信息都保留）。"}
+        </span>
+      }
+    >
+      <div
+        role="separator"
+        tabIndex={0}
+        aria-label={item.failed ? "较早的对话没能整理" : "已整理较早的对话"}
+        className={cn(
+          "text-muted-foreground focus-visible:ring-node-ring/60 flex items-center gap-2.5 rounded-md text-[11.5px] outline-none focus-visible:ring-2",
+          item.failed && "text-status-warning",
+        )}
+      >
+        <span
+          className={cn("h-px flex-1", item.failed ? "bg-status-warning/45" : "bg-foreground/12")}
+        />
+        <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+          {item.failed ? <TriangleAlert className="size-3.25" /> : <Layers className="size-3.25" />}
+          {item.failed ? (
+            "较早的对话没能整理 · 这一轮不再自动整理，建议新开对话"
+          ) : (
+            <>
+              已整理较早的对话 · 上下文 <span className="tabular-nums">{fmt(item.before)}</span> →{" "}
+              <motion.span
+                key={afterText}
+                initial={item.after === null ? false : { opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: DURATION.fast }}
+                className="tabular-nums"
+              >
+                {afterText}
+              </motion.span>
+            </>
+          )}
+        </span>
+        <span
+          className={cn("h-px flex-1", item.failed ? "bg-status-warning/45" : "bg-foreground/12")}
+        />
+      </div>
+    </ChromeTooltip>
+  );
+}
+
+/** 排队说明：按运行现在的状态说什么时候会被读到 */
+function queueCaption(status: string | undefined, count: number) {
+  const when =
+    status === "waiting_input" || status === "waiting_approval"
+      ? "你回答之后"
+      : status === "step_limit"
+        ? "你点「继续」之后"
+        : "Agent 完成当前这一步之后";
+  return `${when}会读取${count > 1 ? ` · 共 ${count} 条，一起读` : ""}`;
+}
+
+/** 还没被 Agent 读到的插话：排在消息流末尾，下面一行说明什么时候会读 */
+function SteerQueue({ queue, ctl }: { queue: TimelineItem[]; ctl: AgentController }) {
+  const reduce = useReducedMotion();
+  const status = ctl.state.runs[queue[0]?.type === "user" ? (queue[0].runId ?? "") : ""]?.status;
+  return (
+    <div className="flex flex-col gap-2">
+      {queue.map((item) => (
+        <motion.div
+          key={item.key}
+          initial={reduce ? false : { opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: DURATION.base, ease: EASE_OUT }}
+        >
+          <Item item={item} ctl={ctl} showThinking={false} nodes={[]} refNodes={[]} />
+        </motion.div>
+      ))}
+      <p className="text-muted-foreground flex items-center justify-end gap-1.5 text-[11.5px]">
+        <Clock className="text-status-running size-3" />
+        {queueCaption(status, queue.length)}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * 运行中的插话（后端给了 id 的）：排队中是虚线气泡，读到之后变成实线并飞进时间线（共享 layoutId）；
+ * 运行结束也没读到的是琥珀色虚线，用户还没发新消息时给「作为新消息发送」。
+ */
+function Steer({
+  item,
+  ctl,
+}: {
+  item: Extract<TimelineItem, { type: "user" }>;
+  ctl: AgentController;
+}) {
+  const reduce = useReducedMotion();
+  const waiting = item.queued === "waiting";
+  const missed = item.queued === "missed";
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <span
+        className={cn(
+          "text-muted-foreground flex min-h-4 items-center gap-1 text-[11px]",
+          missed && "text-status-warning",
+        )}
+      >
+        {waiting && (
+          <>
+            <Clock className="text-status-running size-3" />
+            插话 · 排队中
+          </>
+        )}
+        {missed && (
+          <>
+            <TriangleAlert className="size-3" />
+            运行已结束，这条没有被读取
+            {item.resendable && !ctl.busy && (
+              <>
+                {" · "}
+                <button
+                  type="button"
+                  onClick={() => void ctl.send(item.text)}
+                  className="text-foreground decoration-foreground/35 hover:decoration-foreground focus-visible:ring-node-ring/60 rounded-sm underline underline-offset-3 outline-none focus-visible:ring-2"
+                >
+                  作为新消息发送
+                </button>
+              </>
+            )}
+          </>
+        )}
+        {!waiting && !missed && "插话"}
+      </span>
+      <motion.div
+        layoutId={reduce ? undefined : `steer-${item.key}`}
+        transition={SPRING}
+        className={cn(
+          "max-w-[88%] rounded-2xl rounded-br-sm px-3 py-2 text-[13.5px] leading-[1.7] break-words whitespace-pre-wrap",
+          waiting &&
+            "text-foreground/80 border-foreground/30 bg-foreground/3 border border-dashed px-[11px] py-[7px]",
+          missed &&
+            "border-status-warning/70 bg-status-warning/8 border border-dashed px-[11px] py-[7px]",
+          !waiting && !missed && "agent-inset bg-foreground/7",
+        )}
+      >
+        <MessageText text={item.text} />
+      </motion.div>
+    </div>
+  );
 }
 
 /**

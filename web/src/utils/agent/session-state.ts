@@ -63,6 +63,8 @@ export type AgentSessionState = {
   feedback: Record<string, AgentFeedback>;
   /** 会话当前的上下文大小（Token）：最近一次对话调用送进模型的输入，压缩之后会变小；还没有调用过是 0 */
   contextTokens: number;
+  /** 正在压缩较早对话的那一轮运行（context.compacting 临时事件置位；压缩结束、运行结束清除），没有为 null */
+  compacting: string | null;
 };
 
 /** 运行还占着画布的状态：Agent 在跑或在等用户 */
@@ -90,6 +92,7 @@ export const emptySession = (): AgentSessionState => ({
   plans: {},
   feedback: {},
   contextTokens: 0,
+  compacting: null,
 });
 
 const asString = (v: unknown) => (typeof v === "string" ? v : "");
@@ -112,8 +115,12 @@ function foldDerived(state: AgentSessionState, ev: AgentEventDto): AgentSessionS
         ACTIVE_RUN_STATUSES.includes(status) && status !== "recovering"
           ? state.stream
           : { runId: null, text: "", thinking: "" };
-      return { ...state, runs, stream };
+      // 运行结束了（停止、失败）压缩也不会再有下文，别一直显示「正在整理」
+      const compacting = ACTIVE_RUN_STATUSES.includes(status) ? state.compacting : null;
+      return { ...state, runs, stream, compacting };
     }
+    case "context.compacted":
+      return { ...state, compacting: null };
     case "run.usage": {
       // 只有已经知道的运行才记用量：用量事件不该凭空造出一轮运行
       const prev = ev.run_id ? state.runs[ev.run_id] : undefined;
@@ -182,6 +189,7 @@ export function applyAgentEvent(state: AgentSessionState, ev: AgentEventDto): Ag
       };
       return { ...state, stream };
     }
+    if (ev.type === "context.compacting") return { ...state, compacting: ev.run_id };
     return state;
   }
   if (state.events.some((e) => e.seq === ev.seq)) return state;
@@ -235,8 +243,14 @@ export function applyHistoryPage(
     if (runs[id].spent === undefined) delete runs[id].spent;
   }
 
+  // 实时才有的「正在压缩」：这一轮已经结束就清掉（残余标记）
+  const compactingRun = state.compacting ? runs[state.compacting] : undefined;
+  const compacting =
+    compactingRun && ACTIVE_RUN_STATUSES.includes(compactingRun.status) ? state.compacting : null;
+
   return {
     ...state,
+    compacting,
     events,
     lastSeq,
     baseSeq,

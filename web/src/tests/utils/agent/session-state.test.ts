@@ -275,3 +275,43 @@ describe("聊天记录分页：从最新往回加载", () => {
     expect(s.runs.r4.spent).toBe(9);
   });
 });
+
+describe("压缩中状态", () => {
+  const ev = (type: string, data: Record<string, unknown>, seq: number, run = "r1") => ({
+    session_id: "s1",
+    canvas_id: "c1",
+    run_id: run,
+    seq,
+    type,
+    data,
+    created_at: "",
+  });
+  const running = [ev("run.status", { status: "running" }, 1)];
+  const fold = (events: ReturnType<typeof ev>[]) => events.reduce(applyAgentEvent, emptySession());
+
+  test("收到临时事件 context.compacting 置位；context.compacted 清除", () => {
+    const compacting = applyAgentEvent(fold(running), ev("context.compacting", {}, 0));
+    expect(compacting.compacting).toBe("r1");
+    expect(compacting.events).toHaveLength(1); // 临时事件不进事件列表
+    expect(
+      applyAgentEvent(compacting, ev("context.compacted", { before: 1 }, 2)).compacting,
+    ).toBeNull();
+  });
+
+  test("运行结束（停止、失败）也清除，不会一直显示「正在整理」", () => {
+    const compacting = applyAgentEvent(fold(running), ev("context.compacting", {}, 0));
+    expect(
+      applyAgentEvent(compacting, ev("run.status", { status: "canceled" }, 2)).compacting,
+    ).toBeNull();
+  });
+
+  test("加载历史时：运行已经结束的残留标记被清掉", () => {
+    const compacting = applyAgentEvent(fold(running), ev("context.compacting", {}, 0));
+    const page = applyHistoryPage(
+      compacting,
+      [...running, ev("run.status", { status: "failed" }, 2)],
+      false,
+    );
+    expect(page.compacting).toBeNull();
+  });
+});

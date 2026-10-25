@@ -650,6 +650,253 @@ describe("状态行", () => {
   });
 });
 
+describe("插话排队", () => {
+  const user = (items: TimelineItem[], i: number) => {
+    const it = items[i];
+    if (it?.type !== "user") throw new Error(`第 ${i} 项不是用户消息：${it?.type}`);
+    return it;
+  };
+
+  test("还没读到的插话停在消息流末尾排队，在流式回答之后；key 取收下它的事件序号", () => {
+    reset();
+    const queued = ev("message.user", { id: "u1", text: "改成竖屏", steer: true });
+    const items = buildTimeline(
+      fold([
+        ev("message.user", { text: "拆分镜" }),
+        ev("run.status", { status: "running" }),
+        ev("tool.start", { id: "c1", name: "canvas_get_state" }),
+        queued,
+        ev("message.delta", { text: "我先读" }, "r1", 0),
+      ]),
+    );
+    expect(items.map((i) => i.type)).toEqual(["user", "activity", "assistant", "user"]);
+    expect(user(items, 3)).toMatchObject({
+      text: "改成竖屏",
+      steer: true,
+      queued: "waiting",
+      steerId: "u1",
+      runId: "r1",
+      key: `e${queued.seq}`,
+    });
+  });
+
+  test("steer.read 之后插话才进入时间线：位置在读到它的那一刻，key 不变", () => {
+    reset();
+    const queued = ev("message.user", { id: "u1", text: "改成竖屏", steer: true });
+    const items = buildTimeline(
+      fold([
+        ev("message.user", { text: "拆分镜" }),
+        ev("run.status", { status: "running" }),
+        ev("tool.start", { id: "c1", name: "canvas_get_state" }),
+        queued,
+        ev("tool.end", { id: "c1", name: "canvas_get_state", summary: "读取" }),
+        ev("steer.read", { ids: ["u1"] }),
+        ev("message.done", { text: "好的，竖屏" }),
+      ]),
+    );
+    // 插话排在活动块之后、看了它的那条回答之前，不再是发送时的位置
+    expect(items.map((i) => i.type)).toEqual(["user", "activity", "user", "assistant"]);
+    expect(user(items, 2)).toMatchObject({ steer: true, key: `e${queued.seq}` });
+    expect(user(items, 2).queued).toBeUndefined();
+  });
+
+  test("几条插话一起读到：按收下的顺序，在同一个位置", () => {
+    reset();
+    const items = buildTimeline(
+      fold([
+        ev("message.user", { text: "拆分镜" }),
+        ev("run.status", { status: "running" }),
+        ev("message.user", { id: "u1", text: "甲", steer: true }),
+        ev("message.user", { id: "u2", text: "乙", steer: true }),
+        ev("steer.read", { ids: ["u1", "u2"] }),
+        ev("message.done", { text: "收到" }),
+      ]),
+    );
+    expect(items.map((i) => (i.type === "user" ? i.text : i.type))).toEqual([
+      "拆分镜",
+      "甲",
+      "乙",
+      "assistant",
+    ]);
+    expect(items.slice(1, 3).every((i) => i.type === "user" && !i.queued)).toBe(true);
+  });
+
+  test("等你回答期间排着的插话还在队列里，回答之后读到才进入时间线", () => {
+    reset();
+    const events = [
+      ev("message.user", { text: "拆分镜" }),
+      ev("run.status", { status: "running" }),
+      ev("message.user", { id: "u1", text: "用双剑", steer: true }),
+      ev("approval.created", { id: "a1", run_id: "r1", kind: "ask", status: "pending" }),
+      ev("run.status", { status: "waiting_input" }),
+    ];
+    const waiting = buildTimeline(fold(events));
+    expect(waiting.map((i) => i.type)).toEqual(["user", "approval", "user"]);
+    expect(user(waiting, 2)).toMatchObject({ queued: "waiting", runId: "r1" });
+
+    const answered = buildTimeline(
+      fold([
+        ...events,
+        ev("run.status", { status: "running" }),
+        ev("steer.read", { ids: ["u1"] }),
+        ev("message.done", { text: "好" }),
+      ]),
+    );
+    expect(answered.map((i) => i.type)).toEqual(["user", "approval", "user", "assistant"]);
+    expect(user(answered, 2).queued).toBeUndefined();
+  });
+
+  test("steer.dropped：没读到也不会再读到，留在它被丢掉的位置（在「已停止」卡片之前），标为 missed", () => {
+    reset();
+    const items = buildTimeline(
+      fold([
+        ev("message.user", { text: "拆分镜" }),
+        ev("run.status", { status: "running" }),
+        ev("message.user", { id: "u1", text: "改成竖屏", steer: true }),
+        ev("steer.dropped", { ids: ["u1"], reason: "canceled" }),
+        ev("run.status", { status: "canceled" }),
+      ]),
+    );
+    expect(items.map((i) => i.type)).toEqual(["user", "user", "status", "run-feedback"]);
+    expect(user(items, 1)).toMatchObject({ queued: "missed", resendable: true, steerId: "u1" });
+  });
+
+  test("没读到的插话只有在用户还没发新消息时才能「作为新消息发送」", () => {
+    reset();
+    const items = buildTimeline(
+      fold([
+        ev("message.user", { text: "拆分镜" }),
+        ev("run.status", { status: "running" }),
+        ev("message.user", { id: "u1", text: "改成竖屏", steer: true }),
+        ev("steer.dropped", { ids: ["u1"], reason: "failed" }),
+        ev("run.status", { status: "failed", error: "上游挂了" }),
+        ev("message.user", { text: "改成竖屏" }, "r2"),
+      ]),
+    );
+    const missed = items.find((i) => i.type === "user" && i.queued === "missed");
+    expect(missed).toMatchObject({ resendable: false });
+  });
+
+  test("旧事件里没有 id 的插话照旧按事件顺序放，不排队", () => {
+    reset();
+    const items = buildTimeline(
+      fold([
+        ev("message.user", { text: "拆分镜" }),
+        ev("run.status", { status: "running" }),
+        ev("message.user", { text: "再暖一点", steer: true }),
+        ev("message.done", { text: "好" }),
+      ]),
+    );
+    expect(items.map((i) => i.type)).toEqual(["user", "user", "assistant"]);
+    expect(user(items, 1)).toMatchObject({ steer: true });
+    expect(user(items, 1).queued).toBeUndefined();
+  });
+
+  test("运行已经结束、却没收到 steer.read / steer.dropped（事件丢了）：不能一直排队，按没读到处理", () => {
+    reset();
+    const items = buildTimeline(
+      fold([
+        ev("message.user", { text: "拆分镜" }),
+        ev("run.status", { status: "running" }),
+        ev("message.user", { id: "u1", text: "改成竖屏", steer: true }),
+        ev("run.status", { status: "failed", error: "上游挂了" }),
+      ]),
+    );
+    expect(items.find((i) => i.type === "user" && i.steer)).toMatchObject({ queued: "missed" });
+  });
+
+  test("步数用尽暂停时排着的插话仍在排队：点「继续」才会读", () => {
+    reset();
+    const items = buildTimeline(
+      fold([
+        ev("message.user", { text: "拆分镜" }),
+        ev("run.status", { status: "running" }),
+        ev("message.user", { id: "u1", text: "用双剑", steer: true }),
+        ev("run.status", { status: "step_limit" }),
+      ]),
+    );
+    expect(items.find((i) => i.type === "user" && i.steer)).toMatchObject({
+      queued: "waiting",
+      runId: "r1",
+    });
+  });
+});
+
+describe("压缩提示", () => {
+  const compaction = (items: TimelineItem[]) =>
+    items.filter(
+      (i): i is Extract<TimelineItem, { type: "compaction" }> => i.type === "compaction",
+    );
+
+  test("压缩完成：在发生的位置留一条分隔行，压缩后的占用等之后第一条用量到了才补上", () => {
+    reset();
+    const base = [
+      ev("message.user", { text: "重画分镜" }),
+      ev("run.status", { status: "running" }),
+      ev("tool.start", { id: "c1", name: "canvas_get_state" }),
+      ev("tool.end", { id: "c1", name: "canvas_get_state", summary: "读取" }),
+      ev("context.compacted", { before: 82_000 }),
+    ];
+    const waiting = buildTimeline(fold(base));
+    expect(waiting.map((i) => i.type)).toEqual(["user", "activity", "compaction"]);
+    expect(compaction(waiting)[0]).toMatchObject({ failed: false, before: 82_000, after: null });
+
+    const done = buildTimeline(
+      fold([...base, ev("run.usage", { spent_credits: 3, context_tokens: 31_000 })]),
+    );
+    expect(compaction(done)[0]).toMatchObject({ before: 82_000, after: 31_000 });
+  });
+
+  test("压缩失败：标 failed，没有压缩后的占用", () => {
+    reset();
+    const items = buildTimeline(
+      fold([
+        ev("message.user", { text: "重画分镜" }),
+        ev("run.status", { status: "running" }),
+        ev("context.compacted", { failed: true }),
+        ev("run.usage", { spent_credits: 3, context_tokens: 82_000 }),
+      ]),
+    );
+    expect(compaction(items)[0]).toMatchObject({ failed: true, after: null });
+  });
+
+  test("一轮里压缩多次：每条各取自己之后的第一条用量", () => {
+    reset();
+    const items = buildTimeline(
+      fold([
+        ev("message.user", { text: "重画分镜" }),
+        ev("run.status", { status: "running" }),
+        ev("context.compacted", { before: 80_000 }),
+        ev("run.usage", { context_tokens: 30_000 }),
+        ev("run.usage", { context_tokens: 60_000 }),
+        ev("context.compacted", { before: 85_000 }),
+        ev("run.usage", { context_tokens: 35_000 }),
+      ]),
+    );
+    expect(compaction(items).map((c) => [c.before, c.after])).toEqual([
+      [80_000, 30_000],
+      [85_000, 35_000],
+    ]);
+  });
+
+  test("状态行：压缩中说在整理较早的对话，压缩结束换回思考中；等你回答时仍是等你回答", () => {
+    reset();
+    const running = [
+      ev("run.status", { status: "queued" }),
+      ev("run.status", { status: "running" }),
+    ];
+    const compacting = fold([...running, ev("context.compacting", {}, "r1", 0)]);
+    expect(buildStatusLine(compacting)).toMatchObject({
+      text: "正在整理较早的对话…",
+      waiting: false,
+    });
+    // 计时不因为换文案而重来
+    expect(buildStatusLine(compacting)?.since).toBe(Date.parse(at(1)));
+    const after = applyAgentEvent(compacting, ev("context.compacted", { before: 80_000 }));
+    expect(buildStatusLine(after)?.text).toBe("思考中…");
+  });
+});
+
 /** 取活动块（断言用） */
 function activity(item: TimelineItem | undefined) {
   if (item?.type !== "activity") throw new Error("不是活动块");

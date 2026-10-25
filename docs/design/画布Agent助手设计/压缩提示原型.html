@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>压缩提示原型</title>
+<!--
+  画布 Agent 浮窗：自动压缩的提示（设计文档 6.11）。只加两处：状态行换文案、时间线里一条淡淡的分隔行；别的都不动。
+  颜色抄自 web/src/index.css，时长和曲线与 web/src/lib/motion.ts 一致（fast 120ms / base 180ms / exit 126ms / slow 240ms / EASE_OUT）。
+  操作：右上切「现状 / 新方案」对比，再切「成功 / 失败」；点「推进」让 Agent 往下走一步。
+-->
+<style>
+  :root {
+    --background: oklch(1 0 0);
+    --foreground: oklch(0.145 0 0);
+    --popover: oklch(1 0 0);
+    --primary: oklch(0.205 0 0);
+    --primary-foreground: oklch(0.985 0 0);
+    --muted-foreground: oklch(0.556 0 0);
+    --canvas-bg: oklch(0.975 0 0);
+    --canvas-dot: oklch(0 0 0 / 0.14);
+    --chrome: oklch(1 0 0 / 0.82);
+    --chrome-border: oklch(0 0 0 / 0.08);
+    --chrome-hover: oklch(0 0 0 / 0.05);
+    --node-ring: oklch(0.2 0 0 / 0.85);
+    --preset: oklch(0.55 0.2 295);
+    --status-running: oklch(0.58 0.15 250);
+    --status-success: oklch(0.6 0.15 155);
+    --status-warning: oklch(0.7 0.16 70);
+    --destructive: oklch(0.577 0.245 27.325);
+    --sheen: oklch(1 0 0 / 0.5);
+    --radius: 0.625rem;
+    --ease: cubic-bezier(0.2, 0, 0, 1);
+  }
+  [data-theme="dark"] {
+    --background: oklch(0.145 0 0);
+    --foreground: oklch(0.985 0 0);
+    --popover: oklch(0.205 0 0);
+    --primary: oklch(0.922 0 0);
+    --primary-foreground: oklch(0.205 0 0);
+    --muted-foreground: oklch(0.708 0 0);
+    --canvas-bg: oklch(0.13 0 0);
+    --canvas-dot: oklch(1 0 0 / 0.08);
+    --chrome: oklch(0.2 0 0 / 0.78);
+    --chrome-border: oklch(1 0 0 / 0.08);
+    --chrome-hover: oklch(1 0 0 / 0.07);
+    --node-ring: oklch(1 0 0 / 0.72);
+    --preset: oklch(0.6 0.19 295);
+    --status-running: oklch(0.75 0.12 240);
+    --status-success: oklch(0.75 0.15 155);
+    --status-warning: oklch(0.8 0.15 75);
+    --destructive: oklch(0.704 0.191 22.216);
+    --sheen: oklch(1 0 0 / 0.06);
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--canvas-bg); color: var(--foreground);
+    font: 13px/1.5 "Geist", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, sans-serif;
+    background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px); background-size: 20px 20px;
+  }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+  button:disabled { cursor: not-allowed; }
+  :focus-visible { outline: 2px solid color-mix(in oklab, var(--node-ring) 60%, transparent); outline-offset: 2px; border-radius: 6px; }
+  svg.i { width: 14px; height: 14px; flex: none; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .tnum { font-variant-numeric: tabular-nums; }
+
+  .layout { display: flex; gap: 24px; justify-content: center; align-items: flex-start; padding: 24px; min-height: 100svh; flex-wrap: wrap; }
+
+  /* ---------- 控制台（只在原型里有） ---------- */
+  .console { width: 300px; display: flex; flex-direction: column; gap: 14px; }
+  .console h1 { margin: 0; font-size: 16px; font-weight: 600; }
+  .console p { margin: 0; color: var(--muted-foreground); font-size: 12.5px; line-height: 1.7; }
+  .group { display: flex; flex-direction: column; gap: 6px; }
+  .group > label { font-size: 11px; color: var(--muted-foreground); letter-spacing: .04em; }
+  .seg { display: flex; padding: 3px; border-radius: 999px; background: var(--chrome); box-shadow: 0 0 0 1px var(--chrome-border); }
+  .seg button { flex: 1; height: 28px; border-radius: 999px; font-size: 12.5px; color: var(--muted-foreground); transition: background-color 120ms var(--ease), color 120ms var(--ease); }
+  .seg button[aria-pressed="true"] { background: color-mix(in oklab, var(--foreground) 12%, transparent); color: var(--foreground); }
+  .btn { display: flex; align-items: center; justify-content: center; gap: 6px; height: 34px; border-radius: var(--radius); background: var(--primary); color: var(--primary-foreground); font-weight: 500; transition: transform 120ms var(--ease), opacity 120ms var(--ease); }
+  .btn:active:not(:disabled) { transform: scale(0.96); }
+  .btn:disabled { opacity: .35; }
+  .btn.ghost { background: var(--chrome); color: var(--foreground); box-shadow: 0 0 0 1px var(--chrome-border); }
+  .note { padding: 10px 12px; border-radius: var(--radius); background: var(--chrome); box-shadow: 0 0 0 1px var(--chrome-border); font-size: 12px; line-height: 1.7; color: var(--muted-foreground); }
+  .note b { color: var(--foreground); font-weight: 600; }
+  .annot { color: var(--destructive); font-size: 11.5px; }
+
+  /* ---------- 浮窗 ---------- */
+  .panel {
+    width: 400px; height: 660px; display: flex; flex-direction: column; overflow: hidden;
+    background: var(--popover); border-radius: calc(var(--radius) * 2.2);
+    box-shadow: 0 0 0 1px var(--chrome-border), 0 24px 48px oklch(0 0 0 / 0.28);
+  }
+  .head { display: flex; align-items: center; height: 48px; padding: 0 16px; flex: none; font-size: 14.5px; font-weight: 600; }
+  .stream { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 16px; display: flex; flex-direction: column; gap: 12px; scroll-behavior: smooth; }
+  .stream::-webkit-scrollbar { width: 6px; } .stream::-webkit-scrollbar-thumb { background: var(--chrome-border); border-radius: 3px; }
+
+  .msg-user { align-self: flex-end; max-width: 88%; background: color-mix(in oklab, var(--foreground) 7%, transparent); border-radius: 18px 18px 4px 18px; padding: 8px 12px; font-size: 13.5px; line-height: 1.7; box-shadow: inset 0 0 0 1px var(--chrome-border), inset 0 1px 0 var(--sheen); }
+  .msg-ai { font-size: 13.5px; line-height: 1.7; }
+  .msg-ai p { margin: 0 0 6px; }
+  .act-head { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; margin-left: -8px; border-radius: 6px; color: var(--muted-foreground); font-size: 13px; }
+  .act-rows { margin: 4px 0 0 6px; padding-left: 12px; border-left: 1px solid color-mix(in oklab, var(--foreground) 10%, transparent); display: flex; flex-direction: column; gap: 2px; color: var(--muted-foreground); font-size: 12.5px; }
+  .act-rows .row { display: flex; gap: 6px; align-items: center; }
+  .act-rows .row .i { color: var(--status-success); }
+
+  /* 状态行（同代码里的 StatusLine） */
+  .status-line { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted-foreground); min-height: 20px; }
+  .status-line::before { content: ""; width: 8px; height: 8px; border-radius: 99px; flex: none; background: radial-gradient(circle at 35% 30%, color-mix(in oklab, var(--status-running) 85%, white), var(--preset)); box-shadow: 0 0 8px color-mix(in oklab, var(--preset) 60%, transparent); }
+  .status-line .txt { transition: opacity 120ms var(--ease); }
+  .status-line .esc { margin-left: auto; display: flex; align-items: center; gap: 4px; font-size: 11px; opacity: .8; }
+  kbd { display: inline-grid; place-items: center; height: 18px; min-width: 18px; padding: 0 4px; border-radius: 5px; font: inherit; font-size: 11px; background: color-mix(in oklab, var(--foreground) 5%, transparent); box-shadow: 0 0 0 1px var(--chrome-border); }
+  .shimmer { background: linear-gradient(90deg, var(--muted-foreground) 30%, var(--foreground) 50%, var(--muted-foreground) 70%); background-size: 250% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: shimmer 1.6s linear infinite; }
+  @keyframes shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+
+  /* 压缩分隔行：一条淡淡的线，中间一句话，不抢正文 */
+  .divider { position: relative; display: flex; align-items: center; gap: 10px; color: var(--muted-foreground); font-size: 11.5px; outline-offset: 4px; }
+  .divider .line { flex: 1; height: 1px; background: color-mix(in oklab, var(--foreground) 12%, transparent); transform: scaleX(0); animation: grow 240ms var(--ease) 60ms forwards; }
+  .divider .line:first-child { transform-origin: right center; }
+  .divider .line:last-child { transform-origin: left center; }
+  @keyframes grow { to { transform: scaleX(1); } }
+  .divider .label { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; cursor: default; }
+  .divider .label .i { width: 13px; height: 13px; }
+  .divider.warn { color: var(--status-warning); }
+  .divider.warn .line { background: color-mix(in oklab, var(--status-warning) 45%, transparent); }
+  .divider .after { transition: opacity 120ms var(--ease); }
+  /* 悬停 / 聚焦的说明 */
+  .tip { position: absolute; left: 50%; bottom: calc(100% + 8px); width: 280px; transform: translateX(-50%) translateY(4px); opacity: 0; pointer-events: none; padding: 8px 10px; border-radius: 10px; background: var(--popover); color: var(--foreground); font-size: 12px; line-height: 1.65; white-space: normal; text-align: left; box-shadow: 0 0 0 1px var(--chrome-border), 0 8px 24px oklch(0 0 0 / 0.25); transition: opacity 120ms var(--ease), transform 120ms var(--ease); z-index: 3; }
+  .divider:hover .tip, .divider:focus-visible .tip { opacity: 1; transform: translateX(-50%); }
+
+  .enter { animation: rise 180ms var(--ease) both; }
+  @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+  /* 输入区 */
+  .composer { padding: 10px 12px 12px; flex: none; }
+  .box { padding: 10px 10px 8px 14px; border-radius: 18px; box-shadow: 0 0 0 1px color-mix(in oklab, var(--foreground) 12%, transparent); }
+  .box .ph { color: var(--muted-foreground); font-size: 13.5px; min-height: 26px; }
+  .bar { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+  .ctx { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px 0 6px; border-radius: 8px; color: var(--muted-foreground); font-size: 11.5px; }
+  .ctx:hover { background: var(--chrome-hover); }
+  .ring { width: 16px; height: 16px; transform: rotate(-90deg); }
+  .ring circle { fill: none; stroke-width: 2.4; stroke-linecap: round; }
+  .ring .bg { stroke: color-mix(in oklab, var(--foreground) 14%, transparent); }
+  .ring .fg { stroke: var(--muted-foreground); stroke-dasharray: 43.98; transition: stroke-dashoffset 240ms var(--ease), stroke 240ms var(--ease); }
+  .ctx[data-tone="warn"] .fg { stroke: var(--status-warning); }
+  .ctx[data-tone="danger"] .fg { stroke: var(--destructive); }
+  .send { margin-left: auto; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 99px; background: color-mix(in oklab, var(--foreground) 10%, transparent); color: var(--muted-foreground); }
+  .send .i { width: 18px; height: 18px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .enter { animation: fadein 126ms linear both; }
+    @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+    .divider .line { animation: none; transform: none; }
+    .shimmer { animation: none; color: var(--muted-foreground); background: none; }
+    .tip { transform: translateX(-50%); }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <aside class="console">
+    <h1>压缩提示</h1>
+    <p>对话快满时 Agent 会自动把较早的内容压成摘要。这要多一次模型调用、多等几秒；之后模型看到的上下文变小了，聊天记录却一条没少。现在用户对这些一无所知。</p>
+
+    <div class="group">
+      <label>方案</label>
+      <div class="seg" role="group" aria-label="方案">
+        <button id="m-old" aria-pressed="false">现状</button>
+        <button id="m-new" aria-pressed="true">新方案</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <label>结局</label>
+      <div class="seg" role="group" aria-label="结局">
+        <button data-sc="ok" aria-pressed="true">整理成功</button>
+        <button data-sc="fail" aria-pressed="false">整理失败</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <label>推进（模拟 Agent）</label>
+      <button class="btn" id="step"></button>
+      <button class="btn ghost" id="reset">重置</button>
+    </div>
+
+    <div class="group">
+      <label>主题</label>
+      <div class="seg"><button id="t-dark" aria-pressed="true">深色</button><button id="t-light" aria-pressed="false">浅色</button></div>
+    </div>
+
+    <div class="note" id="note"></div>
+  </aside>
+
+  <section class="panel" aria-label="Agent 浮窗">
+    <div class="head">雨夜便利店分镜</div>
+    <div class="stream" id="stream"></div>
+    <div class="composer">
+      <div class="box">
+        <div class="ph">给 Agent 发消息…</div>
+        <div class="bar">
+          <button class="ctx" id="ctx" data-tone="warn" aria-label="上下文用量">
+            <svg class="ring" viewBox="0 0 16 16"><circle class="bg" cx="8" cy="8" r="7"/><circle class="fg" id="ring" cx="8" cy="8" r="7"/></svg>
+            <span class="tnum" id="pct">82%</span>
+          </button>
+          <span class="send"><svg class="i" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg></span>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+(() => {
+  const $ = (s, r = document) => r.querySelector(s);
+  const stream = $("#stream"), stepBtn = $("#step"), note = $("#note"), ring = $("#ring"), pct = $("#pct"), ctx = $("#ctx");
+  const ICON = {
+    check: '<svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>',
+    chev: '<svg class="i" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg>',
+    layers: '<svg class="i" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5 9-5z"/><path d="m3 13 9 5 9-5"/></svg>',
+    alert: '<svg class="i" viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>',
+  };
+  const BEFORE = 82, AFTER = 31;
+  const S = { mode: "new", sc: "ok", step: 0, timer: 0, secs: 0 };
+
+  const el = (html) => { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content.firstElementChild; };
+  const toBottom = () => { stream.scrollTop = stream.scrollHeight; };
+  const tone = (p) => (p >= 90 ? "danger" : p >= 75 ? "warn" : "normal");
+  function setCtx(p) {
+    pct.textContent = p + "%"; ctx.dataset.tone = tone(p);
+    ring.style.strokeDashoffset = String(43.98 * (1 - p / 100));
+  }
+  const TIP_OK = "聊天记录没有变：上面的消息都还在。只是 Agent 读到的上下文里，较早的部分换成了一份摘要（要点、已完成的事、节点和任务信息都保留）。";
+  const TIP_FAIL = "这次没能把较早的对话整理成摘要（比如模型暂时不可用）。这一轮不会再自动整理，对话继续变长可能很快到上限；可以新开一个对话接着做。";
+
+  const status = (text, shimmer = true) => el(`<div class="status-line enter" role="status" id="live"><span class="txt ${shimmer ? "shimmer" : ""}">${text}</span><span class="tnum secs"></span><span class="esc"><kbd>Esc</kbd>停止</span></div>`);
+  const setStatus = (text) => { const t = $("#live .txt"); t.style.opacity = 0; setTimeout(() => { t.textContent = text; t.style.opacity = 1; }, 120); };
+  function tick(on) {
+    clearInterval(S.timer);
+    if (!on) return;
+    S.timer = setInterval(() => { S.secs++; const s = $("#live .secs"); if (s) s.textContent = S.secs + "s"; }, 1000);
+  }
+
+  function reset() {
+    clearInterval(S.timer); S.step = 0; S.secs = 0;
+    stream.innerHTML = "";
+    stream.append(el('<div class="msg-user">把第 5 到 8 场的分镜图都按新的角色设定重画。</div>'));
+    stream.append(el(`<div class="msg-ai"><div class="act-head">${ICON.chev}已处理 38s · 读取 6 · 修改 4</div><div class="act-rows"><div class="row">${ICON.check}读取画布目录（42 个节点）</div><div class="row">${ICON.check}修改 4 个节点的提示词</div></div></div>`));
+    stream.append(status("思考中…"));
+    S.secs = 41; $("#live .secs").textContent = "41s";
+    tick(true);
+    setCtx(BEFORE);
+    render(); toBottom();
+  }
+
+  function render() {
+    stepBtn.disabled = S.step >= 1.5;
+    stepBtn.textContent = S.step === 1.5 ? "模型调用中…" : S.step === 0 ? "让上下文触线（开始压缩）" : S.step === 1 ? (S.sc === "ok" ? "压缩完成，模型继续" : "压缩失败，模型继续") : "已结束";
+    note.innerHTML = noteText();
+  }
+
+  function noteText() {
+    if (S.mode === "old")
+      return `<b>现状</b>：压缩开始后状态行还是「思考中…」，只是比平时久，用户不知道在等什么；完成后环里的数字悄悄变小，消息流里没有任何痕迹。失败时更是完全无声。`;
+    if (S.step === 0) return `<b>新方案</b>：触线的瞬间，状态行换成「正在整理较早的对话…」，计时照走。环不动，等压缩真的完成。`;
+    if (S.step === 1 && S.sc === "ok") return `<b>压缩完成</b>：时间线里留一条淡淡的分隔行（线从中间向两边展开），写明整理前的占用；「→」后面的数字等下一次模型调用的用量到了才补上，不先编一个。悬停或聚焦它会解释「聊天记录没变」。`;
+    if (S.step === 1) return `<b>压缩失败</b>：琥珀色分隔行，直接说没整理成、这一轮不再自动整理、可以新开对话。环保持原样，因为占用真的没降。`;
+    return S.sc === "ok" ? `<b>用量到了</b>：环从 ${BEFORE}% 降到 ${AFTER}%（数字滚动），分隔行里补上「→ ${AFTER}%」。` : `<b>继续</b>：对话照常往下，环还在 ${BEFORE}%。`;
+  }
+
+  function divider(kind) {
+    const ok = kind === "ok";
+    return el(`<div class="divider enter ${ok ? "" : "warn"}" id="div" tabindex="0" role="separator" aria-label="${ok ? "已整理较早的对话" : "较早的对话没能整理"}">
+      <span class="line"></span>
+      <span class="label">${ok ? ICON.layers : ICON.alert}${ok ? `已整理较早的对话 · 上下文 ${BEFORE}% → <span class="after tnum">…</span>` : "较早的对话没能整理 · 这一轮不再自动整理，建议新开对话"}</span>
+      <span class="line"></span>
+      <span class="tip" role="tooltip">${ok ? TIP_OK : TIP_FAIL}</span>
+    </div>`);
+  }
+
+  function step() {
+    if (S.step === 0) {
+      if (S.mode === "new") setStatus("正在整理较早的对话…");
+      S.step = 1; render(); return;
+    }
+    if (S.step === 1) {
+      if (S.mode === "new") {
+        stream.insertBefore(divider(S.sc), $("#live"));
+        if (S.sc === "ok") setStatus("思考中…"); else setStatus("思考中…");
+      }
+      S.step = 1.5; render(); toBottom();
+      // 下一次模型调用的用量到了
+      setTimeout(() => {
+        const ok = S.sc === "ok";
+        if (ok) { setCtx(AFTER); const a = $("#div .after"); if (a) { a.style.opacity = 0; setTimeout(() => { a.textContent = AFTER + "%"; a.style.opacity = 1; }, 120); } }
+        const live = $("#live"); tick(false);
+        live.replaceWith(el(`<div class="msg-ai enter"><p>前 4 场我已经按新设定改好了提示词，接下来画第 5 场。</p></div>`));
+        if (S.mode === "old") stream.append(el(`<div class="annot enter">↑ 现状：环悄悄从 ${BEFORE}% 掉到 ${AFTER}%，消息流里没有任何痕迹${ok ? "" : "；失败的话连这点变化都没有"}</div>`));
+        S.step = 2; render(); toBottom();
+      }, 900);
+      return;
+    }
+  }
+
+  stepBtn.onclick = () => { if (S.step === 1.5) return; step(); };
+  $("#reset").onclick = reset;
+  const seg = (ids, on) => ids.forEach((id) => { const b = $(id); b.onclick = () => { on(id); ids.forEach((x) => $(x).setAttribute("aria-pressed", String(x === id))); }; });
+  seg(["#m-old", "#m-new"], (id) => { S.mode = id === "#m-old" ? "old" : "new"; reset(); });
+  document.querySelectorAll("[data-sc]").forEach((b) => (b.onclick = () => {
+    S.sc = b.dataset.sc;
+    document.querySelectorAll("[data-sc]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    reset();
+  }));
+  seg(["#t-dark", "#t-light"], (id) => { document.documentElement.dataset.theme = id === "#t-dark" ? "dark" : "light"; });
+  reset();
+})();
+</script>
+</body>
+</html>

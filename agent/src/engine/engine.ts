@@ -6,6 +6,7 @@
  * 持久化的事件（run.status、message.done、tool.*、approval.*、run.usage、plan.updated、message.user）由引擎写进 AgentStore
  * 并通过 onEvent 交出去；文字增量（message.delta / thinking.delta）只交出去不落库。
  */
+import { randomUUID } from "node:crypto";
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
 import type { AssistantMessage, Message } from "@earendil-works/pi-ai";
 import {
@@ -121,6 +122,10 @@ interface Active {
   recovering: boolean;
   /** 恢复前就已经落库的 tool.start 的调用 id：续跑时被重放的工具不再发第二遍（只抑制一次，模型可能复用 id） */
   startedBefore: Set<string>;
+  /** 已经交给 Pi、还在它收件箱里的插话（id → 提交）；被读到、撤回或丢掉时移出 */
+  steers: Map<string, Submission>;
+  /** 收下了、还没读到也没丢掉的插话（id → 正文，按收下的顺序）：已交给 Pi 的在 steers 里，其余是引擎扣着的 */
+  unread: Map<string, string>;
   modelError?: { code?: number; status?: number; message?: string };
   drive?: Promise<void>;
 }
@@ -253,8 +258,10 @@ export class AgentEngine {
       if (sess && convId && tasks.length > 0 && !tasks.some((t) => t.state.kind === "blocked") && downtime <= window) {
         try {
           const rc = this.#rc(run, sess, []);
-          const a = await this.#attach(sess, run, rc, await this.#o.platform.prepare(rc, {}));
+          const a = await this.#attach(sess, run, rc, await this.#o.platform.prepare(rc, {}), true);
           a.recovering = true;
+          // 重启前交给 Pi 的插话：用插话 id 当请求 id 找回它们的提交（已知的请求 id 返回原来的提交，不会重复提交），读到时才发得出 steer.read
+          for (const [id, text] of a.unread) a.steers.set(id, await a.conv.submit({ type: "input", content: text, whenBusy: "steer", requestId: id }, context));
           for (const e of store.listEvents(run.sessionId, 0, 100_000)) if (e.runId === run.id && e.type === "tool.start") a.startedBefore.add(String((e.payload as { id: string }).id));
           this.#emit(this.#ev(a), "run.status", statusEvent("recovering"));
           resumed.push(a);
@@ -271,6 +278,7 @@ export class AgentEngine {
       if (convId && liveByConv.has(convId)) await (await this.#convOf(convId))?.abort(context).catch(() => {});
       try {
         store.updateRunIf(run.id, ["queued", "running"], { status: "interrupted" });
+        await this.#dropUnread(run, "interrupted");
         this.#emit({ id: run.id, userId: run.userId, sessionId: run.sessionId, canvasId: run.canvasId }, "run.status", statusEvent("interrupted"));
       } catch {
         // 已经不在 queued / running：别处处理过了；会话删了写不了事件也不要紧
@@ -380,7 +388,7 @@ export class AgentEngine {
     this.#emit(ev, "run.status", statusEvent("queued"));
 
     await this.#launch(run, this.#session(req.userId, sess.id), {
-      selection, prepare: { message, max_steps: maxSteps }, recordHarness: true,
+      selection, prepare: { message, max_steps: maxSteps }, recordHarness: true, fresh: true,
       kickoff: (a, setup) => a.conv.submit({ type: "input", content: setup.first_message ?? message }, context),
     });
     return { ...run, status: "queued" };
@@ -406,7 +414,7 @@ export class AgentEngine {
   }
 
   /** 让这个运行有一个可用的 Pi 会话：创建或取出，配置模型、系统提示词和这一轮可用的工具 */
-  async #attach(sess: Session, run: Run, rc: RunContext, setup: RunSetup): Promise<Active> {
+  async #attach(sess: Session, run: Run, rc: RunContext, setup: RunSetup, loadUnread: boolean): Promise<Active> {
     const limits = compactionLimits(setup.model.context_window);
     this.#compaction.set(`${PROVIDER_ID}/${rc.model_key}`, { reserveTokens: limits.reserve, keepRecentTokens: limits.keepRecent });
     this.#models.ensure({ key: rc.model_key!, name: setup.model.name, context_window: setup.model.context_window, max_tokens: setup.model.max_tokens, vision: setup.model.vision });
@@ -425,7 +433,7 @@ export class AgentEngine {
     const convId = String(conv.id);
     await this.#watch(conv, convId);
     this.#contexts.set(convId, rc);
-    const a: Active = { run, convId, rc, conv, paused: false, finishing: false, steps: run.steps, maxSteps: run.maxSteps, callIds: [], summaryCallIds: [], compactionDisabled: false, recovering: false, startedBefore: new Set(), lock: Promise.resolve() };
+    const a: Active = { run, convId, rc, conv, paused: false, finishing: false, steps: run.steps, maxSteps: run.maxSteps, callIds: [], summaryCallIds: [], compactionDisabled: false, recovering: false, startedBefore: new Set(), steers: new Map(), unread: new Map(loadUnread ? this.#unreadSteers(run) : []), lock: Promise.resolve() };
     this.#active.set(convId, a);
     this.#answered.set(convId, 0);
     this.#byRun.set(run.id, a);
@@ -453,6 +461,8 @@ export class AgentEngine {
     prepare: { message?: string; max_steps?: number };
     /** 第一段才记版本；之后沿用，运行中途发版也不会让同一次运行有两个版本 */
     recordHarness?: boolean;
+    /** 新发起的运行：还没有任何事件，不用去找没读到的插话 */
+    fresh?: boolean;
     kickoff: (a: Active, setup: RunSetup) => Promise<Submission>;
   }): Promise<void> {
     if (this.#closing) throw Err.unavailable();
@@ -463,7 +473,7 @@ export class AgentEngine {
     try {
       const setup = await this.#o.platform.prepare(rc, o.prepare);
       if (o.recordHarness) store.updateRunIf(run.id, ["queued"], { promptVersion: setup.harness.prompt_version, toolsHash: setup.harness.tools_hash, buildSha: setup.harness.build_sha, harnessKey: setup.harness.key });
-      a = await this.#attach(sess, run, rc, setup);
+      a = await this.#attach(sess, run, rc, setup, !o.fresh);
       kickoff = () => o.kickoff(a, setup);
     } catch (e) {
       this.#failQueued(run, sess, e);
@@ -507,11 +517,18 @@ export class AgentEngine {
     for (;;) {
       await a.conv.waitForIdle(context);
       const quiet = await this.#locked(a, async () => {
-        const busy = (await this.#harness.inspect(context)).submissions.some((s) => s.conversationId === a.conv.id);
+        const pending = async () => (await this.#harness.inspect(context)).submissions.some((s) => s.conversationId === a.conv.id);
+        let busy = await pending();
+        if (busy && a.modelError) {
+          // 模型调用失败：Pi 把没读到的插话留在收件箱里，空闲了也不会有人去读。不撤回的话这里会一直等下去（还是一个不让出事件循环的空转）
+          for (const sub of a.steers.values()) await sub.abort(context).catch(() => {});
+          busy = await pending();
+        }
         if (!busy) a.finishing = true;
         return !busy;
       });
       if (quiet) return;
+      await sleep(SETTLE_POLL_MS); // 刚好有插话落在收尾瞬间，Pi 马上会开新一轮：让出一下事件循环再看
     }
   }
 
@@ -541,6 +558,8 @@ export class AgentEngine {
     }
     try {
       const updated = store.updateRunIf(a.run.id, ["running"], fields);
+      // 运行结束了还没读到的插话不会再被读到（Pi 默认把它们留在收件箱里等下一次输入，一并撤回，免得用户重发后读两遍）
+      await this.#dropUnread(a.run, updated.status === "succeeded" ? "ended" : "failed", a);
       this.#emit(this.#ev(a), "run.status", statusEvent(updated.status, extra));
     } catch (e) {
       if (!(e instanceof StateConflictError)) throw e; // 刚好被取消了：保持取消
@@ -632,6 +651,7 @@ export class AgentEngine {
     } catch {
       try {
         store.updateRunIf(run.id, ["running"], { status: "interrupted" });
+        await this.#dropUnread(run, "interrupted");
         this.#emit(ev, "run.status", statusEvent("interrupted"));
       } catch {
         // 已经不在 running：别处处理过了
@@ -662,11 +682,23 @@ export class AgentEngine {
   async #feedBack(a: Active, approval: Approval, text: string): Promise<Submission> {
     const entries = (await a.conv.entries({}, 50, undefined, context)).items;
     const placeholder = entries.find((e) => e.kind === "pi.tool-result" && (e.model?.[0] as { toolCallId?: string } | undefined)?.toolCallId === approval.toolCallId);
-    if (!placeholder?.model) return a.conv.submit({ type: "input", content: `${APPROVAL_NUDGE}\n${text}` }, context);
+    if (!placeholder?.model) return this.#submitWithHeld(a, `${APPROVAL_NUDGE}\n${text}`);
     const real = { ...placeholder.model[0], isError: false, content: [{ type: "text", text }] };
     const write = await a.conv.submit({ type: "write", entry: { kind: "app.approval", data: { approvalId: approval.id }, edits: [{ target: placeholder.id, action: "replace", messages: [real] }] } } as never, context);
     await write.wait(context);
-    return a.conv.submit({ type: "input", content: APPROVAL_NUDGE }, context);
+    return this.#submitWithHeld(a, APPROVAL_NUDGE);
+  }
+
+  /**
+   * 提交让运行继续的那条输入，等回答 / 等决定 / 步数暂停期间扣着的插话附在后面一起交给模型：它们在运行重新开始的这一刻被读到，
+   * 所以 steer.read 发在这之后（先交给 Pi 再发：提交失败时插话还扣着，不会被误报成已读到）。
+   */
+  async #submitWithHeld(a: Active, text: string): Promise<Submission> {
+    const held = [...a.unread];
+    const content = held.length ? `${text}\n\n用户在等待期间补充了：\n${held.map(([, t]) => `- ${t}`).join("\n")}` : text;
+    const sub = await a.conv.submit({ type: "input", content }, context);
+    this.#emitRead(a, held.map(([id]) => id));
+    return sub;
   }
 
   // ---- 继续 ----
@@ -699,7 +731,7 @@ export class AgentEngine {
       selection: [], prepare: {},
       kickoff: async (a) => {
         await a.conv.abort(context); // 被中断时 Pi 里可能还留着没跑完的任务：先收掉，从干净的状态接着走
-        return a.conv.submit({ type: "input", content: interrupted ? INTERRUPTED_TEXT : CONTINUE_TEXT }, context);
+        return this.#submitWithHeld(a, interrupted ? INTERRUPTED_TEXT : CONTINUE_TEXT);
       },
     });
     return queued;
@@ -721,6 +753,8 @@ export class AgentEngine {
       // 中止进行中的模型调用和工具；被中止的那次调用结算出来的用量、半截回答都在「已停止」之前落库
       await a.conv.abort(context).catch(() => {});
     }
+    // 没读到的插话（Pi 里排队的已被上面的中止撤回，等回答期间扣着的在引擎里）都不会再被读到，在「已停止」之前说清楚
+    await this.#dropUnread(run, "canceled", a);
     this.#emit({ id: run.id, userId: run.userId, sessionId: run.sessionId, canvasId: run.canvasId }, "run.status", statusEvent("canceled"));
     return store.getRun(userId, runId);
   }
@@ -734,9 +768,85 @@ export class AgentEngine {
     if (!a) throw Err.unavailable();
     await this.#locked(a, async () => {
       if (a.finishing) throw Err.state(); // 刚好在收尾
-      await a.conv.submit({ type: "input", content: msg, whenBusy: "steer" }, context); // 官方效果：工具跑完后、下一次请求前一起带上；不打断正在进行的步骤
-      this.#emit(this.#ev(a), "message.user", { text: msg, steer: true });
+      if (this.#o.store.getRun(userId, runId).status !== "running") throw Err.state(); // 刚好进入等待回答 / 等审批
+      // 先落库再交给 Pi：Pi 在边界放进记录时 steer.read 要跟在 message.user 后面。id 同时当 Pi 的请求 id，重启后靠它找回这条提交
+      const id = randomUUID();
+      this.#emit(this.#ev(a), "message.user", { id, text: msg, steer: true });
+      a.unread.set(id, msg);
+      try {
+        // 官方效果：工具跑完后、下一次请求前一起带上；不打断正在进行的步骤。本轮要用户回答时由 #withdrawSteers 撤回，等回答后再交
+        a.steers.set(id, await a.conv.submit({ type: "input", content: msg, whenBusy: "steer", requestId: id }, context));
+      } catch (e) {
+        a.unread.delete(id);
+        this.#emit(this.#ev(a), "steer.dropped", { ids: [id], reason: "failed" });
+        throw e;
+      }
     });
+  }
+
+  /** 这个运行里没读到、也没丢掉的插话，按收下的顺序（从落库的事件推出来，重启后也在） */
+  #unreadSteers(run: Run): Array<[string, string]> {
+    const open = new Map<string, string>();
+    for (const e of this.#o.store.listRunEvents(run.id)) {
+      const p = e.payload as { id?: string; text?: string; steer?: boolean; ids?: string[] } | null;
+      if (e.type === "message.user" && p?.steer && p.id) open.set(p.id, p.text ?? "");
+      else if (e.type === "steer.read" || e.type === "steer.dropped") for (const id of p?.ids ?? []) open.delete(id);
+    }
+    return [...open];
+  }
+
+  /** 这些插话被读到了（已经在 Pi 的记录里，下一次模型请求会带上）；同一个边界读到的几条一起发 */
+  #emitRead(a: Active, ids: string[]): void {
+    const read = ids.filter((id) => a.unread.delete(id));
+    if (read.length > 0) this.#emit(this.#ev(a), "steer.read", { ids: read });
+  }
+
+  /** 交给 Pi 的插话里，已经被放进记录的（提交状态 placed / done）就是读到了 */
+  async #markRead(a: Active): Promise<void> {
+    const ids: string[] = [];
+    for (const [id, sub] of a.steers) {
+      const rec = await sub.status(context).catch(() => undefined);
+      if (rec?.status === "placed" || rec?.status === "done") {
+        a.steers.delete(id);
+        ids.push(id);
+      }
+    }
+    this.#emitRead(a, ids);
+  }
+
+  /**
+   * 本轮要用户回答（提问、审批）或暂停时，把已经交给 Pi、还没读到的插话撤回来，由引擎扣着，等运行重新开始时一起交给模型。
+   * 否则 Pi 在本轮结束的边界把它们放进记录并自动开新一轮：运行明明在等回答，模型却又说话了。
+   */
+  async #withdrawSteers(a: Active): Promise<void> {
+    await this.#locked(a, async () => {
+      const read: string[] = [];
+      for (const [id, sub] of [...a.steers]) {
+        const r = await sub.abort(context).catch(() => "settled" as const);
+        a.steers.delete(id);
+        // 撤回时其实已经被放进记录：照读到处理
+        if (r === "already_placed" || (r === "settled" && (await sub.status(context).catch(() => undefined))?.status === "done")) read.push(id);
+      }
+      this.#emitRead(a, read);
+    });
+  }
+
+  /**
+   * 运行不会再读这些插话了（停止、失败、被中断、结束时还留着）：先把已经读到的算出来，撤回 Pi 收件箱里剩下的，再发 steer.dropped。
+   * 没有进行中的片段（等回答时停止、重启后收尾）就从事件里找。
+   */
+  async #dropUnread(run: Run, reason: string, a?: Active): Promise<void> {
+    let ids: string[];
+    if (a) {
+      await this.#markRead(a);
+      for (const sub of a.steers.values()) await sub.abort(context).catch(() => {});
+      a.steers.clear();
+      ids = [...a.unread.keys()];
+      a.unread.clear();
+    } else {
+      ids = this.#unreadSteers(run).map(([id]) => id);
+    }
+    if (ids.length > 0) this.#emit({ id: run.id, userId: run.userId, sessionId: run.sessionId, canvasId: run.canvasId }, "steer.dropped", { ids, reason });
   }
 
   #run(userId: string, runId: string): Run {
@@ -754,7 +864,15 @@ export class AgentEngine {
   #hooksExtension(): Extension {
     return defineExtension({
       name: "engine-events",
-      hooks: [hook(GenerationTask, { afterResponse: async (message, api) => this.#onAssistant(String(api.conversationId), message) })],
+      hooks: [hook(GenerationTask, {
+        // 每次请求模型之前：这时 Pi 已经把到边界的插话放进了记录，它们就是在这一刻被读到的
+        beforeRequest: async (_request, api) => {
+          const a = this.#active.get(String(api.conversationId));
+          if (a && a.steers.size > 0) await this.#markRead(a);
+          return undefined;
+        },
+        afterResponse: async (message, api) => this.#onAssistant(String(api.conversationId), message),
+      })],
     });
   }
 
@@ -772,6 +890,9 @@ export class AgentEngine {
           const model = api.models.getModel(PROVIDER_ID, a.rc.model_key!);
           if (!model) return { decline: true };
           const window = model.contextWindow;
+          // 前端靠这两个事件提示用户：开始是临时事件（状态行换文案），结束落库（时间线里留一条分隔行）
+          const before = this.#o.store.getRun(a.run.userId, a.run.id).contextTokens;
+          this.#push(this.#ev(a), "context.compacting", {});
           try {
             const sessionId = (await api.snapshot(ProviderDoc, api.conversationId, ctx))?.sessionId;
             if (sessionId) this.#contexts.bindSession(sessionId, a.convId);
@@ -789,9 +910,11 @@ export class AgentEngine {
             if (msg.stopReason === "error" || msg.stopReason === "aborted") throw new Error(msg.errorMessage || "摘要请求失败");
             const summary = msg.content.map((p) => (p.type === "text" ? p.text : "")).join("").trim();
             if (!summary) throw new Error("摘要为空");
+            this.#emit(this.#ev(a), "context.compacted", { before });
             return { summary };
           } catch {
             a.compactionDisabled = true;
+            this.#emit(this.#ev(a), "context.compacted", { failed: true });
             return { decline: true };
           }
         },
@@ -924,6 +1047,7 @@ export class AgentEngine {
       // 步数上限：用到头就暂停运行并让循环停下，用户可以追加后继续。嵌套调用不受它管：脚本整体在开始时已经算过步数
       if (!call.parentId && a.steps >= a.maxSteps) {
         this.#pause(a, "step_limit");
+        await this.#withdrawSteers(a);
         return { content: "已达到本轮的步数上限，运行已暂停，等待用户继续。", terminate: true };
       }
       if (a.startedBefore.delete(call.id)) return undefined; // 续跑时被重放的工具：tool.start 重启前已经发过
@@ -939,7 +1063,11 @@ export class AgentEngine {
       }
     },
     plan: async (run, steps) => this.#emit(this.#ev(this.#byRun.get(run.id)!), "plan.updated", { steps }),
-    approval: async (run, x) => this.#createApproval(this.#byRun.get(run.id)!, x),
+    approval: async (run, x) => {
+      const a = this.#byRun.get(run.id)!;
+      this.#createApproval(a, x);
+      await this.#withdrawSteers(a);
+    },
   };
 
   /** 运行暂停（步数用尽等）：状态迁移成功才发事件，并让本轮后面的调用不再执行 */

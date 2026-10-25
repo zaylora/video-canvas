@@ -231,3 +231,26 @@ test("一个在窗口内、一个已过期：过期的任务要收掉，否则�
     assert.equal(toolCalls(f).length, 3, "过期运行的工具没有被重做");
     assert.equal(await engine.liveTaskCount(), 0);
   }));
+
+test("重启前交给 Pi 的插话：重启后续跑时靠插话 id 找回提交，读到时照样发 steer.read，只读一次", () =>
+  withFiles({
+    turns: [{ tools: [{ id: "c1", name: "canvas_get_state" }] }, { text: "接上了" }],
+    tools: { canvas_get_state: hangFirst() },
+  }, async (f) => {
+    const first = await f.openEngine({ resumeWindowMs: 60_000 });
+    const run = await first.startRun({ userId: "1", sessionId: f.sessionId, message: "拆分镜", modelKey: "claude" });
+    await until(() => toolCalls(f).length === 1);
+    await first.interject("1", run.id, "再暖一点");
+    await first.close(); // 停机：插话还在 Pi 的收件箱里，没有被读到
+
+    const second = await f.openEngine({ resumeWindowMs: 60_000 });
+    await second.idle();
+    const events = f.store.listEvents(f.sessionId, 0, 1000);
+    const steer = events.find((e) => e.type === "message.user" && (e.payload as { steer?: boolean }).steer)!;
+    const reads = events.filter((e) => e.type === "steer.read");
+    assert.deepEqual(reads.map((e) => e.payload), [{ ids: [(steer.payload as { id: string }).id] }]);
+    assert.equal(events.filter((e) => e.type === "steer.dropped").length, 0);
+    const seen = f.go.modelRequests.map((q) => JSON.stringify(q.body.messages)).filter((m) => m.includes("再暖一点"));
+    assert.ok(seen.length >= 1, "续跑后的请求带上了插话");
+    assert.equal(f.store.getRun("1", run.id).status, "succeeded");
+  }));

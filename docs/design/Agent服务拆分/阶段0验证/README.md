@@ -19,6 +19,7 @@ node --disable-warning=ExperimentalWarning exp1-approval.ts
 | `exp8-before-request.ts` | 模型请求前的钩子（`beforeRequest`）：能不能在里面向「Go」要数据并注入给模型；钩子出错或想拦住调用时会怎样 | 能要数据、每次请求前都调用、注入内容不进记录；**钩子抛异常拦不住调用**，只会被上报并跳过 |
 | `exp9-restart.ts` | 重启后没跑完的运行怎么办：正常停机 / 被杀后 `resume()`；对会话 `abort()` 再提交「继续」；不 `resume` 直接提交；连续崩溃触发重启上限 | 正常停机和被杀行为一致；调度是全局的，提交也会启动它；重启上限挡住后 `inspect()` 可见 `blocked/restart_limit`。结论见设计文档 20.6 |
 | `exp10-run-context.ts` | 一个 Harness 托管很多会话时，每次模型请求怎么带上「这是哪个运行」：按提供方会话 id 登记、包一层提供方加请求头；动态注册新模型 | 并发不串、下一轮换上下文生效、新模型可用。结论见设计文档 20.7 |
+| `exp11-steer-queue.ts` | 插话排队以后什么时候算「被读到」、运行结束或中止时没读到的怎么办（5 个场景，设置和引擎一致） | 提交状态 `queued → placed` 的 `placed` 就是被读到（紧挨着下一次模型请求）；**排队的插话不会丢，会在本轮结束后自动开新一轮来读**——包括提问工具让本轮停下的时候（模型会在等回答期间继续说话，见设计文档 20.23）；`abort()` 才会把它们撤回成 `unanswered/aborted`（单条用 `submission.abort()`）；多条一起读 |
 | `exp6-many.ts` | 一个 Harness（一个 SQLite 文件）同时托管很多会话 | 200 个会话 × 3 轮同时进行，全部完成，没有串内容 |
 
 `exp6-many.ts` 可以带参数：`node … exp6-many.ts 500`。

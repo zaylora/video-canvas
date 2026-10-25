@@ -88,3 +88,45 @@ test("再次压缩时把之前的摘要并进新摘要（增量更新）", () =>
     const second = text((e.go.summaryRequests[1].body.messages as unknown[]).at(-1));
     assert.match(second, /<之前的摘要>[\s\S]*第 1 版摘要[\s\S]*<\/之前的摘要>/);
   }));
+
+// 前端的压缩提示（设计文档 画布Agent助手设计 6.11）：开始发临时事件 context.compacting，结束发落库事件 context.compacted
+test("压缩开始发临时事件（不落库），成功后发落库事件 context.compacted，带压缩前的上下文大小", () =>
+  withEngine({
+    setup: SMALL_WINDOW, turns: [toolTurn("c1"), toolTurn("c2"), toolTurn("c3"), { text: "做完了" }],
+    tools: { canvas_get_state: { content: BIG } }, summary: "## 目标\n把剧本拆成分镜", usage,
+  }, async (e) => {
+    const run = await e.start();
+    await e.engine.idle();
+    assert.ok(e.go.summaryRequests.length >= 1, "触发了压缩");
+
+    const starts = e.events.filter((ev) => ev.type === "context.compacting");
+    assert.ok(starts.length >= 1);
+    assert.ok(starts.every((ev) => ev.seq === 0 && ev.runId === run.id), "临时事件：序号 0，不落库、不参与回放");
+    assert.deepEqual(e.persisted("context.compacting"), []);
+
+    const done = e.persisted("context.compacted");
+    assert.equal(done.length, starts.length, "每次压缩开始都有结束");
+    assert.ok(done.every((d) => typeof d.before === "number" && d.before > 0 && d.failed === undefined), `成功的带 before：${JSON.stringify(done)}`);
+    // 先说开始，再说完成
+    const order = e.events.filter((ev) => ev.type.startsWith("context.compact")).map((ev) => ev.type);
+    assert.deepEqual(order.slice(0, 2), ["context.compacting", "context.compacted"]);
+  }));
+
+test("摘要失败：照样发 context.compacted，标 failed，前端据此说「没整理成」", () =>
+  withEngine({
+    setup: SMALL_WINDOW, turns: [toolTurn("c1"), toolTurn("c2"), toolTurn("c3"), toolTurn("c4"), { text: "做完了" }],
+    tools: { canvas_get_state: { content: BIG } }, summary: () => ({ error: { status: 502, message: "上游调用失败" } }), usage,
+  }, async (e) => {
+    await e.start();
+    await e.engine.idle();
+    assert.equal(e.go.summaryRequests.length, 1, "只试了一次");
+    assert.equal(e.events.filter((ev) => ev.type === "context.compacting").length, 1);
+    assert.deepEqual(e.persisted("context.compacted"), [{ failed: true }]);
+  }));
+
+test("没有触发压缩：不发任何压缩事件", () =>
+  withEngine({ turns: [{ text: "好" }] }, async (e) => {
+    await e.start();
+    await e.engine.idle();
+    assert.equal(e.events.filter((ev) => ev.type.startsWith("context.compact")).length, 0);
+  }));
