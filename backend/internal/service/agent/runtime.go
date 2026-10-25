@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,7 +27,7 @@ const waitExitLimit = 15 * time.Second
 // RuntimeConfig 是运行时的配置。
 type RuntimeConfig struct {
 	NodePath   string // node 可执行文件
-	ScriptPath string // agent/src/main.mjs 的路径
+	ScriptPath string // 入口脚本的路径（agent/src/main.ts 或构建产物 agent/dist/main.js）
 	BridgeURL  string // 桥的地址，如 http://127.0.0.1:47001，Node 用它回调 Go
 	// ServiceToken 是桥的服务令牌，不为空时交给 Node，它的每个桥请求都带上；空表示桥只靠运行令牌
 	ServiceToken string
@@ -226,7 +227,7 @@ func (r *ProcessRuntime) launch(ctx context.Context, run *model.AgentRun, in mod
 	cleanup := func() { r.d.Bridge.RevokeToken(seg.token); _ = os.RemoveAll(dir); release() } // 目录已经没了也不要紧
 	// 3. 启动并发送启动参数
 	proc, err := r.d.Launcher.Launch(ctx, LaunchSpec{
-		Name: r.d.Config.NodePath, Args: []string{r.d.Config.ScriptPath}, Dir: dir,
+		Name: r.d.Config.NodePath, Args: nodeArgs(r.d.Config.ScriptPath), Dir: dir,
 		Env: []string{"PATH=/usr/bin:/bin", "HOME=" + dir, "TMPDIR=" + dir, "NODE_ENV=production", "NODE_OPTIONS=--max-old-space-size=512"},
 	})
 	if err != nil {
@@ -289,6 +290,15 @@ func (r *ProcessRuntime) watch(run *model.AgentRun, seg *segment) {
 	}
 	logger.Error("Agent 进程异常退出，运行已标为中断", zap.Uint64("run_id", run.ID), zap.Int("code", exit.Code), zap.String("stderr", exit.StderrTail))
 	r.d.Agent.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "run.status", statusEvent(model.RunInterrupted, "error", "运行进程异常退出"))
+}
+
+// nodeArgs 是启动 node 的参数。入口是 TypeScript 源码（开发时）时，Node 每次启动都会往 stderr 打一行
+// 「类型剥离是实验特性」的警告，而 stderr 尾部会存进诊断记录，所以关掉这条警告；构建产物（.js）不加参数。
+func nodeArgs(script string) []string {
+	if strings.HasSuffix(script, ".ts") {
+		return []string{"--disable-warning=ExperimentalWarning", script}
+	}
+	return []string{script}
 }
 
 // segment 取运行当前的进程。

@@ -1,29 +1,37 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildAllTools, AGENT_TOOLS } from "../src/agent-tools/index.mjs";
-import { runAgent } from "../src/run.mjs";
-import { TOOL_DECLS, baseInput, fakeBridge } from "./helpers.mjs";
+import type { AgentToolResult } from "@earendil-works/pi-agent-core";
+import { buildAllTools, AGENT_TOOLS } from "../src/agent-tools/index.ts";
+import type { Bridge } from "../src/bridge-client.ts";
+import { runAgent } from "../src/run.ts";
+import type { CodemodeLimits, RunInput, ToolEvent, ToolEventReply, ToolReply } from "../src/types.ts";
+import { TOOL_DECLS, baseInput, fakeBridge, withBridge } from "./helpers.ts";
 
-const withBridge = async (opts, fn) => { const b = await fakeBridge(opts); try { await fn(b); } finally { await b.close(); } };
-const text = (r) => r.content.map((p) => p.text ?? "").join("\n");
+const text = (r: AgentToolResult<unknown>): string => r.content.map((p) => ("text" in p ? p.text : "")).join("\n");
 const NOT_SCRIPTABLE = new Set(["canvas_delete", "ask_user", "generate_media", "canvas_inspect_image"]);
 /** Go 下发的声明：会创建审批的和返回图片的工具标为不可被脚本调用 */
 const decls = () => TOOL_DECLS.map((d) => ({ ...d, scriptable: !NOT_SCRIPTABLE.has(d.name) }));
 
+type ToolHandler = (id: string, name: string, args: unknown, signal?: AbortSignal, extra?: { parentToolCallId?: string }) => Promise<Partial<ToolReply>>;
+
 /** 假桥客户端：记录嵌套调用和报备，工具的回复由 handler 决定 */
-function fakeBridgeClient({ tool = async (_id, name, args) => ({ content: `${name}:${JSON.stringify(args)}` }), toolEvent = async () => ({ allowed: true }) } = {}) {
-  const calls = [], events = [];
+function fakeBridgeClient({ tool = async (_id, name, args) => ({ content: `${name}:${JSON.stringify(args)}` }), toolEvent = async () => ({ allowed: true }) }: {
+  tool?: ToolHandler;
+  toolEvent?: (ev: ToolEvent) => Promise<ToolEventReply>;
+} = {}) {
+  const calls: { id: string; name: string; args: unknown; parent?: string }[] = [];
+  const events: ToolEvent[] = [];
   return {
     calls, events,
-    tool: async (id, name, args, signal, extra) => { calls.push({ id, name, args, parent: extra?.parentToolCallId }); return tool(id, name, args, signal, extra); },
-    toolEvent: async (p) => { events.push(p); return toolEvent(p); },
+    tool: async (id: string, name: string, args: unknown, signal?: AbortSignal, extra?: { parentToolCallId?: string }) => { calls.push({ id, name, args, parent: extra?.parentToolCallId }); return tool(id, name, args, signal, extra); },
+    toolEvent: async (p: ToolEvent) => { events.push(p); return toolEvent(p); },
   };
 }
 
-function make(bridge, over = {}) {
-  const logs = [];
-  const tools = buildAllTools({ bridge, input: { tools: decls(), model: { vision: true }, ...over.input }, onTerminate: over.onTerminate ?? (() => {}), log: (m, e) => logs.push([m, e]), limits: over.limits });
-  return { tools, logs, codemode: tools.find((t) => t.name === "codemode") };
+function make(bridge: ReturnType<typeof fakeBridgeClient>, over: { input?: Partial<RunInput>; onTerminate?: () => void; limits?: Partial<CodemodeLimits> } = {}) {
+  const logs: [string, unknown][] = [];
+  const tools = buildAllTools({ bridge: bridge as unknown as Bridge, input: { tools: decls(), model: { vision: true }, ...over.input } as RunInput, onTerminate: over.onTerminate ?? (() => {}), log: (m, e) => logs.push([m, e]), limits: over.limits });
+  return { tools, logs, codemode: tools.find((t) => t.name === "codemode")! };
 }
 
 // ---- Agent 注册表：和 Go 下发的工具合并 ----
@@ -65,7 +73,7 @@ test("codemode 的说明：只列可被脚本调用的工具，给出 TypeScript
   for (const no of NOT_SCRIPTABLE) assert.ok(!codemode.description.includes(no), `${no} 不能被脚本调用，不该出现在说明里`);
   assert.match(codemode.description, /tools\./);
   assert.match(codemode.description, /60 秒/);
-  assert.deepEqual(codemode.parameters.required, ["code"]);
+  assert.deepEqual((codemode.parameters as { required?: string[] }).required, ["code"]);
 });
 
 // ---- 执行 ----
@@ -101,10 +109,10 @@ test("脚本：报备开始和结束，Go 据此在时间线里记「运行脚�
   assert.equal(end.phase, "end");
   assert.equal(end.tool_call_id, "cm1");
   assert.equal(end.is_error, false);
-  assert.match(end.summary, /1 次/);
+  assert.match(end.summary!, /1 次/);
   // 结束时带上返回给模型的文本，和落库的工具结果一致
   assert.equal(typeof end.result, "string");
-  assert.ok(end.result.length > 0);
+  assert.ok(end.result!.length > 0);
 });
 
 test("脚本：失败时结束报备也带上返回给模型的错误文本", async () => {
@@ -113,7 +121,7 @@ test("脚本：失败时结束报备也带上返回给模型的错误文本", as
   await codemode.execute("cm1", { code: `throw new Error("坏了")` });
   const end = bridge.events[1];
   assert.equal(end.is_error, true);
-  assert.match(end.result, /坏了/);
+  assert.match(end.result!, /坏了/);
 });
 
 test("脚本：单个值传给数组参数照样自动包成数组（和直接调用工具一致）", async () => {
@@ -138,7 +146,7 @@ test("脚本抛错：作为错误结果交回模型，并列出出错前已经�
   assert.match(out, /canvas_apply_ops/);
   assert.match(out, /canvas_arrange/);
   assert.match(out, /不要重复/);
-  assert.equal(bridge.events.at(-1).is_error, true);
+  assert.equal(bridge.events.at(-1)!.is_error, true);
 });
 
 test("嵌套工具返回错误：脚本里是一个抛出的 Error，脚本可以接住继续", async () => {
@@ -156,7 +164,7 @@ test("嵌套工具返回错误：脚本里是一个抛出的 Error，脚本可�
 });
 
 test("脚本超时：中止并说明，已完成的调用要列出来", async () => {
-  const bridge = fakeBridgeClient({ tool: async (_id, name, _a, signal) => (name === "task_get" ? new Promise((_res, rej) => signal.addEventListener("abort", () => rej(new Error("被中止")))) : { content: "ok" }) });
+  const bridge = fakeBridgeClient({ tool: async (_id, name, _a, signal) => (name === "task_get" ? new Promise((_res, rej) => signal!.addEventListener("abort", () => rej(new Error("被中止")))) : { content: "ok" }) });
   const { codemode } = make(bridge, { limits: { timeoutMs: 400 } });
   const r = await codemode.execute("cm1", { code: `await tools.canvas_get_state({}); await tools.task_get({ taskId: "slow" }); return 1` });
   assert.equal(r.isError, true);
@@ -175,7 +183,7 @@ test("嵌套调用次数超过上限：脚本被中止，原因写清楚", async
 });
 
 test("用户停止：脚本立即中止，不再调用工具", async () => {
-  const bridge = fakeBridgeClient({ tool: async (_id, _n, _a, signal) => new Promise((_res, rej) => signal.addEventListener("abort", () => rej(new Error("被中止")))) });
+  const bridge = fakeBridgeClient({ tool: async (_id, _n, _a, signal) => new Promise((_res, rej) => signal!.addEventListener("abort", () => rej(new Error("被中止")))) });
   const { codemode } = make(bridge);
   const ac = new AbortController();
   setTimeout(() => ac.abort(), 150);
@@ -225,7 +233,7 @@ test("运行：模型调 codemode，嵌套调用经桥带父 id、报备开始�
   }, async (b) => {
     const r = await runAgent(baseInput(b.url, { tools: decls() }));
     assert.equal(r.status, "done");
-    assert.deepEqual(b.rec.chats[0].tools.map((t) => t.function.name).at(-1), "codemode", "codemode 作为 Agent 自己的工具下发给模型");
+    assert.deepEqual(b.rec.chats[0].tools.map((t: any) => t.function.name).at(-1), "codemode", "codemode 作为 Agent 自己的工具下发给模型");
     assert.equal(b.rec.tools.length, 1);
     assert.equal(b.rec.tools[0].name, "canvas_get_state");
     assert.equal(b.rec.tools[0].parent_tool_call_id, "cm1");
@@ -240,6 +248,6 @@ test("运行：模型调 codemode，嵌套调用经桥带父 id、报备开始�
 test("运行：停用清单带 codemode 时模型看不到它", async () => {
   await withBridge({ models: [{ text: "好" }] }, async (b) => {
     await runAgent(baseInput(b.url, { tools: decls(), disabled_tools: ["codemode"] }));
-    assert.ok(!b.rec.chats[0].tools.some((t) => t.function.name === "codemode"));
+    assert.ok(!b.rec.chats[0].tools.some((t: any) => t.function.name === "codemode"));
   });
 });

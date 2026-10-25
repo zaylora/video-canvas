@@ -90,7 +90,7 @@ type JWT struct {
 type Agent struct {
 	Enabled    bool   `mapstructure:"enabled"`     // 是否启用；关闭时发起运行会返回「Agent 暂不可用」
 	NodePath   string `mapstructure:"node_path"`   // node 可执行文件，默认 node（在 PATH 里找），要求 >= 22.19
-	RuntimeDir string `mapstructure:"runtime_dir"` // 仓库根目录 agent/ 目录（含 src/main.mjs 和已安装的 node_modules），默认 ../agent
+	RuntimeDir string `mapstructure:"runtime_dir"` // 仓库根目录 agent/ 目录（含 src/main.ts（或构建产物 dist/main.js）和已安装的 node_modules），默认 ../agent
 	BridgeAddr string `mapstructure:"bridge_addr"` // 桥的监听地址，默认 127.0.0.1:0（随机端口）；不是回环地址时必须配 ServiceToken
 	// ServiceToken 是桥的服务令牌：配了以后桥的每个请求都要带请求头 X-Agent-Service-Token，除一次性的运行令牌外多一道校验。
 	// Agent 拆成独立服务后，桥要监听内网地址，这是回环之外唯一的屏障，所以要求至少 MinServiceTokenLen 个字符。

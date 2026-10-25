@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { validateToolArguments } from "@earendil-works/pi-ai";
-import { buildTools, wrapScalarArrays } from "../src/tools.mjs";
-import { TOOL_DEFS as LEGACY } from "./fixtures/legacy-tool-defs.mjs";
-import { TOOL_DECLS } from "./helpers.mjs";
+import type { AgentTool } from "@earendil-works/pi-agent-core";
+import { validateToolArguments, type Tool } from "@earendil-works/pi-ai";
+import { buildTools, wrapScalarArrays } from "../src/tools.ts";
+import { TOOL_DEFS as LEGACY } from "./fixtures/legacy-tool-defs.ts";
+import type { ToolReply } from "../src/types.ts";
+import { TOOL_DECLS } from "./helpers.ts";
 
-const fakeBridge = (r = { content: "ok" }) => ({ tool: async () => r });
+const fakeBridge = (r: ToolReply = { content: "ok" }) => ({ tool: async () => r });
 
 test("buildTools：按 Go 下发的声明构造，名字、顺序、说明、参数原样；label 用下发的界面名称", () => {
   const decls = [
@@ -30,7 +32,7 @@ test("buildTools：execute 回调桥，terminate 通知运行时", async () => {
   const r = await t.execute("c1", {}, undefined);
   assert.equal(terminated, 1);
   assert.equal(r.terminate, true);
-  assert.equal(r.content[0].text, "等用户回答");
+  assert.equal((r.content[0] as { text: string }).text, "等用户回答");
 });
 
 // 迁移前用 typebox 定义，现在 Go 下发普通 JSON Schema：同一批参数过两边，接受与拒绝的结果必须一致
@@ -51,10 +53,10 @@ const CASES = {
 };
 
 // 新的一边按 pi 的真实流程走：先 prepareArguments，再校验
-const outcome = (tool, args) => {
+const outcome = (tool: Pick<AgentTool, "name"> & Partial<Pick<AgentTool, "prepareArguments">> & Tool, args: unknown) => {
   try {
     const prepared = tool.prepareArguments ? tool.prepareArguments(args) : args;
-    return { ok: true, args: validateToolArguments(tool, { name: tool.name, arguments: prepared }) };
+    return { ok: true, args: validateToolArguments(tool, { type: "toolCall", id: "t", name: tool.name, arguments: prepared as never }) };
   } catch {
     return { ok: false };
   }
@@ -63,11 +65,11 @@ const outcome = (tool, args) => {
 test("参数校验：新的 JSON Schema 和迁移前的 typebox 定义，对同一批参数接受与拒绝一致", () => {
   assert.deepEqual(Object.keys(CASES), TOOL_DECLS.map((d) => d.name), "每个工具都要有校验用例");
   const bridge = fakeBridge();
-  const diffs = [];
+  const diffs: string[] = [];
   for (const decl of TOOL_DECLS) {
-    const legacy = LEGACY.find((d) => d.name === decl.name);
+    const legacy = LEGACY.find((d) => d.name === decl.name)!;
     const built = buildTools(bridge, [decl])[0];
-    for (const args of CASES[decl.name]) {
+    for (const args of CASES[decl.name as keyof typeof CASES]) {
       const a = outcome(legacy, args), b = outcome(built, args);
       if (a.ok !== b.ok) diffs.push(`${decl.name} ${JSON.stringify(args)}: typebox=${a.ok} json-schema=${b.ok}`);
     }

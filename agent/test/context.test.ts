@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ELIDED, trimContext } from "../src/context.mjs";
+import { ELIDED, trimContext, type Msg, type Part } from "../src/context.ts";
 
-const tr = (id, text) => ({ role: "toolResult", toolCallId: id, content: [{ type: "text", text }] });
-const user = (t) => ({ role: "user", content: [{ type: "text", text: t }] });
+/** 测试里构造的消息：内容一定是数组 */
+type TestMsg = Msg & { content: Part[] };
+
+const tr = (id: string, text: string): TestMsg => ({ role: "toolResult", toolCallId: id, content: [{ type: "text", text }] });
+const user = (t: string): TestMsg => ({ role: "user", content: [{ type: "text", text: t }] });
 
 test("没超预算：原样返回同一个数组", () => {
   const msgs = [user("hi"), tr("a", "x")];
@@ -15,7 +18,7 @@ test("超预算：从最旧的工具结果开始省略，最近 keepLast 条不�
   const out = trimContext(msgs, { window: 1000, ratio: 0.7, keepLast: 6 });
   assert.equal(out[1].content[0].text, ELIDED);
   assert.notEqual(out.at(-1), undefined);
-  assert.equal(msgs[1].content[0].text.length, 500, "不能改入参");
+  assert.equal(msgs[1].content[0].text!.length, 500, "不能改入参");
 });
 
 test("省到不再超预算就停下，不多省", () => {
@@ -28,12 +31,12 @@ test("省到不再超预算就停下，不多省", () => {
 test("最近的消息里的大结果也不动，哪怕超预算", () => {
   const msgs = [user("q"), tr("a", "长".repeat(5000))];
   const out = trimContext(msgs, { window: 100, ratio: 0.7, keepLast: 6 });
-  assert.equal(out[1].content[0].text.length, 5000);
+  assert.equal(out[1].content[0].text!.length, 5000);
 });
 
-import { IMAGE_ELIDED, dropOldImages } from "../src/context.mjs";
+import { IMAGE_ELIDED, dropOldImages } from "../src/context.ts";
 
-const img = (id) => ({ role: "toolResult", toolCallId: id, content: [{ type: "text", text: "已附上图片" }, { type: "image", data: "AAAA", mimeType: "image/png" }, { type: "image", data: "BBBB", mimeType: "image/png" }] });
+const img = (id: string): TestMsg => ({ role: "toolResult", toolCallId: id, content: [{ type: "text", text: "已附上图片" }, { type: "image", data: "AAAA", mimeType: "image/png" }, { type: "image", data: "BBBB", mimeType: "image/png" }] });
 
 test("dropOldImages：keep=0 去掉全部图片，文字保留，连续的图片只留一个占位", () => {
   const msgs = [user("q"), img("a")];

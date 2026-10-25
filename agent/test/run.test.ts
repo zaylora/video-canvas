@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { test } from "node:test";
-import { runAgent } from "../src/run.mjs";
-import { TOOL_DECLS, baseInput, fakeBridge, sleep } from "./helpers.mjs";
+import { runAgent } from "../src/run.ts";
+import { TOOL_DECLS, baseInput, fakeBridge, sleep, withBridge, type FakeBridge } from "./helpers.ts";
 
-const withBridge = async (opts, fn) => { const b = await fakeBridge(opts); try { await fn(b); } finally { await b.close(); } };
 
 test("请求形状：走桥、带令牌、流式带用量、max_tokens 而不是 max_completion_tokens、没有 store", async () => {
   await withBridge({ models: [{ text: "好" }] }, async (b) => {
@@ -16,7 +15,7 @@ test("请求形状：走桥、带令牌、流式带用量、max_tokens 而不是
     assert.ok(body.stream_options.include_usage);
     assert.equal(body.max_tokens, 8192);
     assert.ok(!("store" in body) && !("max_completion_tokens" in body));
-    assert.equal(body.messages.filter((m) => m.role === "system").length, 1, "系统提示只能有一条");
+    assert.equal(body.messages.filter((m: any) => m.role === "system").length, 1, "系统提示只能有一条");
   });
 });
 
@@ -24,8 +23,8 @@ test("每个回合结束把对话历史交回 Go，最后报告完成", async ()
   await withBridge({ models: [{ text: "好" }] }, async (b) => {
     await runAgent(baseInput(b.url));
     assert.ok(b.rec.states.length >= 1);
-    const last = b.rec.states.at(-1);
-    assert.deepEqual(last.map((m) => m.role), ["user", "assistant"]);
+    const last = b.rec.states.at(-1)!;
+    assert.deepEqual(last.map((m: any) => m.role), ["user", "assistant"]);
     assert.deepEqual(b.rec.finishes, [{ status: "done", message: "" }]);
   });
 });
@@ -53,12 +52,12 @@ test("工具返回 terminate：整批执行完后停下，不再请求模型（�
     assert.equal(b.rec.chats.length, 1, "terminate 后不能再调模型");
     assert.equal(r.status, "paused", "因工具要求停下而结束要报 paused：Go 据此不改运行状态，避免误伤已经续跑的新片段");
     assert.deepEqual(b.rec.finishes.at(-1), { status: "paused", message: "" });
-    assert.equal(b.rec.states.at(-1).at(-1).role, "toolResult", "历史停在工具结果上，等审批后续跑");
+    assert.equal(b.rec.states.at(-1)!.at(-1).role, "toolResult", "历史停在工具结果上，等审批后续跑");
   });
 });
 
 test("同一条消息里提问和别的工具一起调：提问后立刻停下，后面的不执行，续跑能接上", async () => {
-  let history;
+  let history: any[] = [];
   await withBridge({
     models: [
       { tools: [
@@ -71,9 +70,9 @@ test("同一条消息里提问和别的工具一起调：提问后立刻停下�
   }, async (b) => {
     const r = await runAgent(baseInput(b.url));
     assert.equal(r.status, "paused");
-    assert.deepEqual(b.rec.tools.map((t) => t.name), ["ask_user"], "暂停后同批的其他调用不能执行");
+    assert.deepEqual(b.rec.tools.map((t: any) => t.name), ["ask_user"], "暂停后同批的其他调用不能执行");
     assert.equal(b.rec.chats.length, 1, "暂停后不能再调模型");
-    history = b.rec.states.at(-1);
+    history = b.rec.states.at(-1)!;
     assert.equal(history.at(-1).role, "toolResult", "历史停在工具结果上");
     assert.match(JSON.stringify(history.at(-1).content), /没有执行/, "被跳过的调用要告诉模型稍后重新调用");
   });
@@ -111,11 +110,11 @@ test("tools：Go 下发的工具原样声明给模型，Agent 自己的 codemode
   await withBridge({ models: [{ text: "好" }] }, async (b) => {
     const two = TOOL_DECLS.filter((d) => ["canvas_get_state", "plan_update"].includes(d.name));
     await runAgent(baseInput(b.url, { tools: two }));
-    assert.deepEqual(b.rec.chats[0].tools.map((t) => t.function.name), ["canvas_get_state", "plan_update", "codemode"]);
+    assert.deepEqual(b.rec.chats[0].tools.map((t: any) => t.function.name), ["canvas_get_state", "plan_update", "codemode"]);
   });
   await withBridge({ models: [{ text: "好" }] }, async (b) => {
     await runAgent(baseInput(b.url));
-    const names = b.rec.chats[0].tools.map((t) => t.function.name);
+    const names = b.rec.chats[0].tools.map((t: any) => t.function.name);
     assert.deepEqual(names.slice(0, 12), TOOL_DECLS.map((d) => d.name), "Go 下发多少就声明多少，顺序不变");
     assert.deepEqual(names.slice(12), ["codemode"]);
   });
@@ -128,7 +127,7 @@ test("tools：Go 下发的工具原样声明给模型，Agent 自己的 codemode
 test("工具声明里带参数的 JSON Schema 和中文说明", async () => {
   await withBridge({ models: [{ text: "好" }] }, async (b) => {
     await runAgent(baseInput(b.url));
-    const t = b.rec.chats[0].tools.find((x) => x.function.name === "canvas_apply_ops").function;
+    const t = b.rec.chats[0].tools.find((x: any) => x.function.name === "canvas_apply_ops").function;
     assert.match(t.description, /30 项/);
     assert.equal(t.parameters.properties.ops.type, "array");
     assert.ok(t.parameters.properties.ops.items.properties.op.anyOf || t.parameters.properties.ops.items.properties.op.enum);
@@ -136,32 +135,32 @@ test("工具声明里带参数的 JSON Schema 和中文说明", async () => {
 });
 
 test("历史恢复：新进程接着之前的对话", async () => {
-  let history;
+  let history: any[] = [];
   await withBridge({ models: [{ text: "第一轮" }] }, async (b) => {
     await runAgent(baseInput(b.url));
-    history = b.rec.states.at(-1);
+    history = b.rec.states.at(-1)!;
   });
   await withBridge({ models: [{ text: "第二轮" }] }, async (b) => {
     await runAgent(baseInput(b.url, { messages: history, prompt: { text: "继续" } }));
     const msgs = b.rec.chats[0].messages;
-    assert.deepEqual(msgs.map((m) => m.role), ["system", "user", "assistant", "user"], "系统提示不能因为恢复历史而重复");
+    assert.deepEqual(msgs.map((m: any) => m.role), ["system", "user", "assistant", "user"], "系统提示不能因为恢复历史而重复");
     assert.match(JSON.stringify(msgs), /第一轮/);
   });
 });
 
 test("审批后续跑（continue）：模型看到的是真实结果，不是等待占位", async () => {
-  let history;
+  let history: any[] = [];
   await withBridge({
     models: [{ tools: [{ id: "c1", name: "canvas_delete", args: { nodeIds: ["a"], reason: "x" } }] }],
     tool: async () => ({ content: "已提交给用户确认，等待决定。", terminate: true }),
   }, async (b) => {
     await runAgent(baseInput(b.url));
-    history = b.rec.states.at(-1);
+    history = b.rec.states.at(-1)!;
   });
   await withBridge({ models: [{ text: "已按你的决定删除" }] }, async (b) => {
     const r = await runAgent(baseInput(b.url, { mode: "continue", messages: history, tool_result: { tool_call_id: "c1", content: "用户已批准，已删除 1 个节点" } }));
     assert.equal(r.status, "done");
-    const toolMsg = b.rec.chats[0].messages.findLast((m) => m.role === "tool");
+    const toolMsg = b.rec.chats[0].messages.findLast((m: any) => m.role === "tool");
     assert.match(toolMsg.content, /已批准，已删除 1 个节点/);
     assert.doesNotMatch(JSON.stringify(b.rec.chats[0].messages), /等待决定/);
   });
@@ -172,12 +171,12 @@ test("续跑时找不到对应的工具调用：报错而不是乱接", async ()
     const r = await runAgent(baseInput(b.url, { mode: "continue", messages: [{ role: "user", content: [{ type: "text", text: "hi" }], timestamp: 1 }], tool_result: { tool_call_id: "ghost", content: "x" } }));
     assert.equal(r.status, "error");
     assert.match(r.message, /ghost/);
-    assert.deepEqual(b.rec.finishes.at(-1).status, "error");
+    assert.deepEqual(b.rec.finishes.at(-1)!.status, "error");
   });
 });
 
 test("resume：去掉结尾中断的 assistant，从最后一条用户消息接着走", async () => {
-  const history = [
+  const history: any[] = [
     { role: "user", content: [{ type: "text", text: "拆分镜" }], timestamp: 1 },
     { role: "assistant", content: [{ type: "text", text: "说到一半" }], api: "openai-completions", provider: "bridge", model: "agent",
       usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "aborted", timestamp: 2 },
@@ -185,7 +184,7 @@ test("resume：去掉结尾中断的 assistant，从最后一条用户消息接�
   await withBridge({ models: [{ text: "接着做" }] }, async (b) => {
     const r = await runAgent(baseInput(b.url, { mode: "resume", messages: history }));
     assert.equal(r.status, "done");
-    assert.deepEqual(b.rec.chats[0].messages.map((m) => m.role), ["system", "user"]);
+    assert.deepEqual(b.rec.chats[0].messages.map((m: any) => m.role), ["system", "user"]);
   });
 });
 
@@ -223,16 +222,16 @@ test("模型报错（预算用尽 402）：报告 error 并带上原因", async 
     assert.equal(r.status, "error");
     assert.match(r.message, /超出本轮积分预算/);
     assert.equal(b.rec.chats.length, 1, "不能自动重试：每次尝试都会计费");
-    assert.equal(b.rec.finishes.at(-1).status, "error");
+    assert.equal(b.rec.finishes.at(-1)!.status, "error");
   });
 });
 
 test("历史保存失败（令牌无效）：只记日志，运行照常报告", async () => {
   await withBridge({ models: [{ text: "好" }], stateStatus: 401 }, async (b) => {
-    const logs = [];
-    const r = await runAgent(baseInput(b.url), { log: (m) => logs.push(m) });
+    const logs: string[] = [];
+    const r = await runAgent(baseInput(b.url), { log: (m: any) => logs.push(m) });
     assert.equal(r.status, "done");
-    assert.ok(logs.some((m) => m.includes("保存对话历史失败")));
+    assert.ok(logs.some((m: any) => m.includes("保存对话历史失败")));
   });
 });
 
@@ -251,14 +250,14 @@ test("上下文裁剪：超过窗口的 70% 时较早的工具结果被换成占
     // 4 个大结果超过窗口的 70%，必然要裁剪；裁剪之后够用，不该触发摘要压缩
     await runAgent(baseInput(b.url, { model: { name: "m", context_window: 40000, max_tokens: 1000, vision: false } }));
     assert.equal(b.rec.summaries.length, 0, "裁剪够用时不做摘要");
-    const last = b.rec.chats.at(-1).messages.filter((m) => m.role === "tool");
-    assert.ok(last.some((m) => String(m.content).includes("已省略")), "较早的工具结果应被省略");
+    const last = b.rec.chats.at(-1).messages.filter((m: any) => m.role === "tool");
+    assert.ok(last.some((m: any) => String(m.content).includes("已省略")), "较早的工具结果应被省略");
     assert.ok(!String(last.at(-1).content).includes("已省略"), "最近的工具结果不能被省略");
   });
 });
 
 test("多个工具按顺序执行（不并发）", async () => {
-  const order = [];
+  const order: string[] = [];
   await withBridge({
     models: [{ tools: [{ id: "a", name: "model_list", args: { kind: "image" } }, { id: "b", name: "model_list", args: { kind: "video" } }] }, { text: "ok" }],
     tool: async (j) => { order.push(j.tool_call_id + ":start"); await sleep(j.tool_call_id === "a" ? 80 : 1); order.push(j.tool_call_id + ":end"); return { content: "x" }; },
@@ -271,8 +270,8 @@ test("多个工具按顺序执行（不并发）", async () => {
 test("看图：启动消息带图片 → 请求里是 image_url 分段", async () => {
   await withBridge({ models: [{ text: "看到了" }] }, async (b) => {
     await runAgent(baseInput(b.url, { prompt: { text: "看这张图", images: [{ data: "AAAA", mime_type: "image/png" }] } }));
-    const user = b.rec.chats[0].messages.find((m) => m.role === "user");
-    assert.ok(user.content.some((p) => p.type === "image_url"));
+    const user = b.rec.chats[0].messages.find((m: any) => m.role === "user");
+    assert.ok(user.content.some((p: any) => p.type === "image_url"));
   });
 });
 
@@ -299,8 +298,8 @@ test("看图：对象存储的图片以地址交给模型（不转 base64）；�
   }, async (b) => {
     const r = await runAgent(baseInput(b.url));
     assert.equal(r.status, "done");
-    const parts = b.rec.chats[1].messages.flatMap((m) => (Array.isArray(m.content) ? m.content : [])).filter((p) => p.type === "image_url");
-    assert.deepEqual(parts.map((p) => p.image_url.url), [url], "第二次请求里是原样的地址，不是 data: 开头");
+    const parts = b.rec.chats[1].messages.flatMap((m: any) => (Array.isArray(m.content) ? m.content : [])).filter((p: any) => p.type === "image_url");
+    assert.deepEqual(parts.map((p: any) => p.image_url.url), [url], "第二次请求里是原样的地址，不是 data: 开头");
     const saved = JSON.stringify(b.rec.states.at(-1));
     assert.doesNotMatch(saved, /cdn\.example\.com/, "历史里不存图片地址（签名会过期）");
     assert.match(saved, /图片已省略/);
@@ -308,8 +307,8 @@ test("看图：对象存储的图片以地址交给模型（不转 base64）；�
 });
 
 test("同一回合里的多个工具：每个工具结果出来就把历史交回 Go，崩溃最多丢一个工具", async () => {
-  let statesWhenBStarted;
-  let b;
+  let statesWhenBStarted: any[][] = [];
+  let b: FakeBridge;
   await withBridge({
     models: [{ tools: [{ id: "a", name: "model_list", args: { kind: "image" } }, { id: "b", name: "model_list", args: { kind: "video" } }] }, { text: "ok" }],
     tool: async (j) => {
@@ -322,8 +321,8 @@ test("同一回合里的多个工具：每个工具结果出来就把历史交�
   });
   const last = statesWhenBStarted.at(-1);
   assert.ok(last, "第二个工具开始时已经保存过历史");
-  assert.ok(last.some((m) => m.role === "toolResult" && m.toolCallId === "a"), "第一个工具的结果已在保存的历史里");
-  assert.ok(!last.some((m) => m.role === "toolResult" && m.toolCallId === "b"), "第二个工具还没跑完");
+  assert.ok(last.some((m: any) => m.role === "toolResult" && m.toolCallId === "a"), "第一个工具的结果已在保存的历史里");
+  assert.ok(!last.some((m: any) => m.role === "toolResult" && m.toolCallId === "b"), "第二个工具还没跑完");
 });
 test("同一份历史不重复保存：回合最后一个工具结果已经保存过，turn_end 不再发一遍", async () => {
   await withBridge({
@@ -337,7 +336,7 @@ test("同一份历史不重复保存：回合最后一个工具结果已经保�
 
 test("崩溃留下的半截工具批次：没有结果的调用补上「结果丢失」，历史才能发给模型", async () => {
   const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
-  const history = [
+  const history: any[] = [
     { role: "user", content: [{ type: "text", text: "拆分镜" }], timestamp: 1 },
     { role: "assistant", content: [
       { type: "toolCall", id: "a", name: "model_list", arguments: { kind: "image" } },
@@ -345,13 +344,13 @@ test("崩溃留下的半截工具批次：没有结果的调用补上「结果�
     ], api: "openai-completions", provider: "bridge", model: "agent", usage, stopReason: "toolUse", timestamp: 2 },
     { role: "toolResult", toolCallId: "a", toolName: "model_list", content: [{ type: "text", text: "图片模型列表" }], isError: false, timestamp: 3 },
   ];
-  for (const mode of ["resume", "start"]) {
+  for (const mode of ["resume", "start"] as const) {
     await withBridge({ models: [{ text: "接着做" }] }, async (bridge) => {
       const input = mode === "resume" ? { mode, messages: history } : { mode, messages: history, prompt: { text: "继续" } };
       const r = await runAgent(baseInput(bridge.url, input));
       assert.equal(r.status, "done");
-      const tools = bridge.rec.chats[0].messages.filter((m) => m.role === "tool");
-      assert.deepEqual(tools.map((m) => m.tool_call_id), ["a", "b"], mode + "：每个 tool_call 都有对应的 tool 消息");
+      const tools = bridge.rec.chats[0].messages.filter((m: any) => m.role === "tool");
+      assert.deepEqual(tools.map((m: any) => m.tool_call_id), ["a", "b"], mode + "：每个 tool_call 都有对应的 tool 消息");
       assert.match(tools[0].content, /图片模型列表/, "已有的结果原样保留");
       assert.match(tools[1].content, /没有拿到结果.*可能已经执行/, "补的结果提醒模型先确认再决定要不要重做");
     });
@@ -360,10 +359,10 @@ test("崩溃留下的半截工具批次：没有结果的调用补上「结果�
 
 test("历史完整时不补任何结果；结尾因出错而中止的 assistant 也不补", async () => {
   const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
-  const aborted = { role: "assistant", content: [{ type: "toolCall", id: "z", name: "model_list", arguments: {} }], api: "openai-completions", provider: "bridge", model: "agent", usage, stopReason: "aborted", timestamp: 2 };
+  const aborted: any = { role: "assistant", content: [{ type: "toolCall", id: "z", name: "model_list", arguments: {} }], api: "openai-completions", provider: "bridge", model: "agent", usage, stopReason: "aborted", timestamp: 2 };
   await withBridge({ models: [{ text: "接着做" }] }, async (bridge) => {
     await runAgent(baseInput(bridge.url, { mode: "resume", messages: [{ role: "user", content: [{ type: "text", text: "拆分镜" }], timestamp: 1 }, aborted] }));
-    assert.deepEqual(bridge.rec.chats[0].messages.map((m) => m.role), ["system", "user"], "被中止的 assistant 照旧整条去掉，不给它补工具结果");
+    assert.deepEqual(bridge.rec.chats[0].messages.map((m: any) => m.role), ["system", "user"], "被中止的 assistant 照旧整条去掉，不给它补工具结果");
   });
 });
 
@@ -385,7 +384,7 @@ test("服务令牌：启动参数里带了就随每个桥请求发出去（模�
 
 test("服务令牌：摘要压缩的模型请求也带（它同样走桥）", async () => {
   const big = "字".repeat(60000);
-  const history = [];
+  const history: any[] = [];
   for (let i = 0; i < 8; i++) {
     history.push({ role: "user", content: [{ type: "text", text: big }], timestamp: i * 2 + 1 });
     history.push({ role: "assistant", content: [{ type: "text", text: big }], api: "openai-completions", provider: "bridge", model: "agent",
@@ -395,6 +394,6 @@ test("服务令牌：摘要压缩的模型请求也带（它同样走桥）", as
     await runAgent(baseInput(bridge.url, { service_token: "svc-token-0123456789abcdef0123456789", messages: history, prompt: { text: "继续" },
       model: { name: "Claude", context_window: 200000, max_tokens: 8192, vision: true } }));
     assert.ok(bridge.rec.summaries.length >= 1, "这条历史应触发摘要压缩");
-    assert.ok(bridge.rec.serviceTokens.every((t) => t === "svc-token-0123456789abcdef0123456789"), "摘要请求也带服务令牌");
+    assert.ok(bridge.rec.serviceTokens.every((t: any) => t === "svc-token-0123456789abcdef0123456789"), "摘要请求也带服务令牌");
   });
 });

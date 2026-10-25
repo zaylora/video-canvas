@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { EventEmitter } from "node:events";
 import readline from "node:readline";
-import { runAgent } from "./run.mjs";
+import { runAgent } from "./run.ts";
+import type { RunInput } from "./types.ts";
 
 /**
  * 进程入口。stdin 第一行是启动参数（JSON），之后每行是一条控制消息：
@@ -9,14 +10,14 @@ import { runAgent } from "./run.mjs";
  *   {"type":"abort"}               中止
  * 日志写 stderr（JSON 行）；结果通过桥交给 Go，进程退出码只表示「有没有跑完并报告」：0 报告了，1 没能报告。
  */
-const log = (msg, extra = {}) => process.stderr.write(JSON.stringify({ msg, ...extra }) + "\n");
+const log = (msg: string, extra: Record<string, unknown> = {}) => process.stderr.write(JSON.stringify({ msg, ...extra }) + "\n");
 const control = new EventEmitter();
 const rl = readline.createInterface({ input: process.stdin });
 
 let started = false;
 rl.on("line", async (line) => {
   if (!line.trim()) return;
-  let msg;
+  let msg: RunInput & { type?: string; text?: unknown };
   try {
     msg = JSON.parse(line);
   } catch {
@@ -29,7 +30,7 @@ rl.on("line", async (line) => {
       await runAgent(msg, { control, log });
       process.exit(0);
     } catch (e) {
-      log("无法向桥报告结果", { error: String(e?.message ?? e) });
+      log("无法向桥报告结果", { error: String((e as Error)?.message ?? e) });
       process.exit(1);
     }
   }

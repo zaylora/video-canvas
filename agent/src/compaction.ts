@@ -1,5 +1,6 @@
+import type { Message } from "@earendil-works/pi-ai";
 import { estimateContextTokens } from "@earendil-works/pi-ai/utils/estimate";
-import { charsOf } from "./context.mjs";
+import { charsOf, type Msg, type Part } from "./context.ts";
 
 /**
  * 摘要式压缩：历史超过窗口的触发线时，把较早的消息交给模型写成一份结构化摘要，换掉它们，最近的消息原样留下。
@@ -35,28 +36,28 @@ const FORMAT = `按下面的格式写，没有的部分写「无」，不要加�
 后面还要用的节点 id、组 id、任务 id、模型 key。`;
 
 /** 摘要请求的最大输出 Token：不超过 4096，窗口很小时不超过窗口的四分之一 */
-export const summaryMaxTokens = (window) => Math.max(256, Math.min(4096, Math.floor(window * 0.25)));
+export const summaryMaxTokens = (window: number): number => Math.max(256, Math.min(4096, Math.floor(window * 0.25)));
 
 const TOOL_RESULT_CHARS = 1500; // 序列化时每条工具结果最多留多少字
 const TOOL_ARG_CHARS = 300;
 
 /** 触发线和保留量：默认 reserve 16384、keepRecent 20000，窗口小的模型按比例收紧 */
-export function compactionLimits(window) {
+export function compactionLimits(window: number): { reserve: number; keepRecent: number } {
   return { reserve: Math.min(16384, Math.floor(window * 0.15)), keepRecent: Math.min(20000, Math.floor(window * 0.25)) };
 }
 
-const textOf = (m) => (typeof m.content === "string" ? m.content : (m.content ?? []).map((p) => (p.type === "text" ? p.text : "")).join(""));
+const textOf = (m: Msg): string => (typeof m.content === "string" ? m.content : (m.content ?? []).map((p) => (p.type === "text" ? p.text : "")).join(""));
 
-export function isSummaryMessage(m) {
+export function isSummaryMessage(m: Msg | undefined): boolean {
   return m?.role === "user" && textOf(m).startsWith(SUMMARY_PREFIX);
 }
 
-function makeSummaryMessage(summary) {
+function makeSummaryMessage(summary: string) {
   return { role: "user", content: [{ type: "text", text: `${SUMMARY_PREFIX}${SUMMARY_INTRO}\n\n${summary}` }], timestamp: Date.now() };
 }
 
 /** 摘要消息里去掉前缀和说明后的正文 */
-function summaryBody(m) {
+function summaryBody(m: Msg): string {
   const t = textOf(m);
   const i = t.indexOf("\n\n");
   return i < 0 ? t.slice(SUMMARY_PREFIX.length) : t.slice(i + 2);
@@ -67,7 +68,7 @@ function summaryBody(m) {
  * 切点只能落在用户或助手消息前，永远不落在工具结果上，工具调用和它的结果成对留下。
  * 越线处不是合法切点时先往新的方向找，找不到再往旧的方向退。
  */
-export function findCutPoint(messages, keepRecent) {
+export function findCutPoint(messages: Msg[], keepRecent: number): number {
   let acc = 0;
   let at = -1;
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -78,35 +79,35 @@ export function findCutPoint(messages, keepRecent) {
     }
   }
   if (at <= 0) return 0;
-  const valid = (i) => messages[i].role !== "toolResult";
+  const valid = (i: number) => messages[i].role !== "toolResult";
   for (let i = at; i < messages.length; i++) if (valid(i)) return i;
   for (let i = at - 1; i > 0; i--) if (valid(i)) return i;
   return 0;
 }
 
-const clip = (t, n) => (t.length > n ? `${t.slice(0, n)}…（已截断，原 ${t.length} 字）` : t);
+const clip = (t: string, n: number) => (t.length > n ? `${t.slice(0, n)}…（已截断，原 ${t.length} 字）` : t);
 
 /** 把消息拼成给摘要模型读的文字：工具结果和参数截短，图片只留占位 */
-export function serializeMessages(messages, { maxResultChars = TOOL_RESULT_CHARS, maxArgChars = TOOL_ARG_CHARS } = {}) {
-  const out = [];
+export function serializeMessages(messages: Msg[], { maxResultChars = TOOL_RESULT_CHARS, maxArgChars = TOOL_ARG_CHARS }: { maxResultChars?: number; maxArgChars?: number } = {}): string {
+  const out: string[] = [];
   for (const m of messages) {
     if (m.role === "user") out.push(`[用户]\n${textOf(m)}`);
     else if (m.role === "assistant") {
-      const parts = [];
-      for (const p of m.content ?? []) {
+      const parts: string[] = [];
+      for (const p of (m.content as Part[] | undefined) ?? []) {
         if (p.type === "text" && p.text) parts.push(`[助手]\n${p.text}`);
         else if (p.type === "toolCall") parts.push(`[助手调用工具] ${p.name}(${clip(JSON.stringify(p.arguments ?? {}), maxArgChars)})`);
       }
       if (parts.length) out.push(parts.join("\n"));
     } else if (m.role === "toolResult") {
-      const body = (m.content ?? []).map((p) => (p.type === "text" ? p.text : "[图片]")).join("\n");
+      const body = ((m.content as Part[] | undefined) ?? []).map((p) => (p.type === "text" ? p.text : "[图片]")).join("\n");
       out.push(`[工具结果] ${m.toolName ?? ""}\n${clip(body, maxResultChars)}`);
     }
   }
   return out.join("\n\n");
 }
 
-function buildPrompt(previous, conversation) {
+function buildPrompt(previous: string, conversation: string): string {
   if (previous) {
     return `<之前的摘要>\n${previous}\n</之前的摘要>\n\n<对话>\n${conversation}\n</对话>\n\n` +
       `<对话> 是在之前的摘要之后新发生的内容。把它并入之前的摘要，写出更新后的完整摘要：保留仍然有效的内容，更新进度，` +
@@ -115,25 +116,31 @@ function buildPrompt(previous, conversation) {
   return `<对话>\n${conversation}\n</对话>\n\n以上是需要摘要的对话。\n\n${FORMAT}`;
 }
 
+export interface CompactorOptions<M extends Msg> {
+  /** 调模型写摘要 */
+  summarize: (prompt: string, signal?: AbortSignal) => Promise<string>;
+  /** 模型的上下文窗口（Token） */
+  window: number;
+  /** 系统提示和工具声明占的字数 */
+  overhead?: number;
+  /** 发给模型前的视图（裁剪旧工具结果和图片之后），触发线按它量 */
+  view?: (msgs: M[]) => M[];
+  onError?: (e: unknown) => void;
+}
+
 /**
  * 创建压缩器。
- * @param {object} o
- * @param {(prompt: string, signal?: AbortSignal) => Promise<string>} o.summarize 调模型写摘要
- * @param {number} o.window 模型的上下文窗口（Token）
- * @param {number} [o.overhead] 系统提示和工具声明占的字数
- * @param {(msgs: any[]) => any[]} [o.view] 发给模型前的视图（裁剪旧工具结果和图片之后），触发线按它量
- * @param {(e: Error) => void} [o.onError]
  */
-export function createCompactor({ summarize, window, overhead = 0, view = (m) => m, onError }) {
+export function createCompactor<M extends Msg>({ summarize, window, overhead = 0, view = (m) => m, onError }: CompactorOptions<M>) {
   const limits = compactionLimits(window);
   // 摘要失败后这个运行片段里不再重试，免得每个回合都白付一次钱
   let disabled = !(window > 0);
 
   /** 估算现在要发出去的上下文大小：中文接近一字一个 Token，pi 的估算（3.5 字符一个）会偏低，取两者较大的 */
-  function measure(msgs) {
+  function measure(msgs: M[]): number {
     let est = 0;
     try {
-      est = estimateContextTokens(msgs).tokens;
+      est = estimateContextTokens(msgs as unknown as Message[]).tokens; // 只读内容估算，传进来的就是 pi 的消息
     } catch {
       /* 估算不出来就只用字数 */
     }
@@ -142,7 +149,7 @@ export function createCompactor({ summarize, window, overhead = 0, view = (m) =>
 
   return {
     /** 需要压缩时返回压缩后的消息数组，不需要或压不动返回 null */
-    async compact(messages, signal) {
+    async compact(messages: M[], signal?: AbortSignal): Promise<M[] | null> {
       if (disabled || measure(view(messages)) <= window - limits.reserve) return null;
       const hasPrevious = isSummaryMessage(messages[0]);
       const rest = hasPrevious ? messages.slice(1) : messages;
@@ -154,7 +161,7 @@ export function createCompactor({ summarize, window, overhead = 0, view = (m) =>
       try {
         const summary = ((await summarize(buildPrompt(hasPrevious ? summaryBody(messages[0]) : "", conversation), signal)) ?? "").trim();
         if (!summary) throw new Error("摘要为空");
-        return [makeSummaryMessage(summary), ...rest.slice(cut)];
+        return [makeSummaryMessage(summary) as unknown as M, ...rest.slice(cut)];
       } catch (e) {
         disabled = true;
         onError?.(e);

@@ -40,7 +40,7 @@ const (
 // AgentRuntimePaths 是解析好的运行时路径。
 type AgentRuntimePaths struct {
 	Node   string // node 可执行文件的绝对路径
-	Script string // agent/src/main.mjs 的绝对路径
+	Script string // 入口脚本的绝对路径：仓库里是 agent/src/main.ts，部署镜像里是 agent/dist/main.js
 }
 
 // NodeVersionOK 解析 `node --version` 的输出（如 v23.6.0），判断是否满足最低版本；解析不了返回错误。
@@ -82,14 +82,28 @@ func ResolveAgentRuntime(cfg config.Agent) (AgentRuntimePaths, error) {
 	if err != nil {
 		return AgentRuntimePaths{}, err
 	}
-	script := filepath.Join(dir, "src", "main.mjs")
-	if _, err := os.Stat(script); err != nil {
-		return AgentRuntimePaths{}, fmt.Errorf("agent.runtime_dir=%q 里找不到 src/main.mjs：%w", cfg.RuntimeDir, err)
+	script, err := agentEntryScript(dir)
+	if err != nil {
+		return AgentRuntimePaths{}, fmt.Errorf("agent.runtime_dir=%q 里找不到 src/main.ts 或 dist/main.js，请在 %s 下运行 npm run build：%w", cfg.RuntimeDir, dir, err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "node_modules")); err != nil {
 		return AgentRuntimePaths{}, fmt.Errorf("agent 目录还没有安装依赖，请在 %s 下运行 npm ci：%w", dir, err)
 	}
 	return AgentRuntimePaths{Node: node, Script: script}, nil
+}
+
+// agentEntryScript 选入口脚本。仓库里有源码就直接跑源码（Node 22.19+ 自带类型剥离，不用先构建），
+// 部署镜像里只有 npm run build 的产物。两者同时存在时用源码：开发时改了 src，不能被旧的 dist 盖住。
+func agentEntryScript(dir string) (string, error) {
+	src := filepath.Join(dir, "src", "main.ts")
+	if _, err := os.Stat(src); err == nil {
+		return src, nil
+	}
+	built := filepath.Join(dir, "dist", "main.js")
+	if _, err := os.Stat(built); err != nil {
+		return "", err
+	}
+	return built, nil
 }
 
 // ListenLoopback 监听一个回环地址。配置校验已经要求过回环，这里再确认一次（防御纵深）：

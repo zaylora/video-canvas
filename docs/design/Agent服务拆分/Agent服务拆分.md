@@ -370,3 +370,17 @@ Agent 服务 ──模型 / 工具 / 技能 / 计费──▶ Go 平台能力 AP
 - 读了 1.4.0 的发布说明：对这三个包只有修复和新增，没有破坏性变更。和我们相关的有：摘要不再有固定输出上限（我们用自己的压缩，不受影响）；空白字符的工具输出不再让 OpenAI 兼容接口返回 400；输出被截断后恢复时不再留下孤立的工具结果。
 - 没有改任何源码。验证：`agent/` 的 `npm test` 87 个全过；在临时目录用锁文件 `npm ci` 干净通过（Dockerfile 用的就是 `npm ci --omit=dev`）；Go 的端到端用例加 `-count=1` 强制重跑（`go test` 的缓存不会感知 `node_modules` 变化），建画布并计费、审批后续跑、流式中途取消、杀进程后续跑全部通过。
 - 注意：`pi-durable` 1.4.0 要求 `pi-ai` 也是 1.4.0，这一步已经满足，阶段 3 接入时不再需要同步升级。
+
+### 16.6 阶段 2b-1：Agent 运行时改写成 TypeScript（2026-10-25，单独提交）
+
+行为不变，只改写语言、补类型检查和构建。选型：Node 22 运行，`tsc` 构建，依赖仍用 npm（见对话中对 Bun 的评估：Pi Durable 的官方 SQLite 存储用 `node:sqlite`，本机 Bun 1.2.8 没有它，Bun 当运行时要自己写适配）。
+
+- **文件**：`agent/src/*.mjs` 和 `agent/test/*.mjs` 全部改成 `.ts`（`git mv`，保留历史）。新增 `src/types.ts`，放和 Go 通信的数据结构（启动参数、工具声明、工具结果、工具注册表）。
+- **工具链**：`typescript` 7.0.2、`@types/node` 22.20.5（精确版本，devDependencies）。`tsconfig.json` 查源码和测试（`strict`、`erasableSyntaxOnly`、`verbatimModuleSyntax`），`tsconfig.build.json` 只编译 `src` 到 `dist/`。导入写 `.ts` 后缀，构建时自动改成 `.js`（`rewriteRelativeImportExtensions`）。
+- **脚本**：`npm run typecheck`、`npm test`（Node 类型剥离直接跑 `.ts`，不用先编译）、`npm run build`。
+- **入口选择**（`initialize.agentEntryScript`）：目录里有 `src/main.ts` 就用源码，否则用 `dist/main.js`。开发时不用构建，改了 `src` 也不会被旧的 `dist` 盖住；部署镜像里只有 `dist/`。入口是 `.ts` 时给 node 加 `--disable-warning=ExperimentalWarning`，免得每次运行的 stderr 里都有一行「类型剥离是实验特性」，而 stderr 尾部会存进诊断记录。
+- **Docker**：`backend/Dockerfile` 新增 `agent-build` 阶段（`npm ci` 含开发依赖，`npm run build`）；最终镜像只带 `dist/` 和生产依赖，不带 `src`、`tsc`。`agent/dist` 加进 `.gitignore` 和 `Dockerfile.dockerignore`。
+- **CI**：新增 `agent` 任务（`npm ci`、`typecheck`、`test`、`build`）。之前 CI 没有跑 Node 侧的任何测试。
+- **类型上的取舍**：`Msg`/`Part` 是只列出用到字段的宽松形状，pi 的消息能直接赋给它，函数用泛型保持原类型；少数地方用显式转换并写了原因（Go 下发的是普通 JSON Schema 不是 typebox、`renderDeclarations` 只渲染声明不执行）。测试里收到的请求体用 `any`。
+- **验证**：`npm run typecheck` 零错误；`npm test` 87 个全过；`npm run build` 产物可用：用假桥分别以 `dist/main.js` 和 `src/main.ts` 拉起真实子进程跑完整的一次运行（工具往返、保存历史、带服务令牌、报告完成）都通过；`docker build` 完整镜像成功，镜像里 `dist/` 在、`src` 和 `tsc` 不在，`node /app/agent/dist/run.js` 能导入全部依赖；Go 的 `go vet`、`go test -count=1 ./...`（含 4 个跑真实 Node 子进程的端到端用例，现在跑的是 `src/main.ts`）、`golangci-lint` 全部通过。
+- **没做**：TS 7 目前的 `tsc` 是原生实现，没有 `tsserver` 之外的编程接口；如果以后需要程序化调用编译器，要另评估。

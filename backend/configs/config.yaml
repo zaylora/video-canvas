@@ -61,7 +61,7 @@ agent:
   # 所以默认关闭，显式开启（docker compose 部署时由 APP_AGENT_ENABLED 环境变量开启）。渠道、模型、凭证和计费在后台的 AI 配置里（模型种类选 agent），不在这里。
   enabled: false
   node_path: node # node 可执行文件；不在 PATH 里时写绝对路径
-  runtime_dir: ../agent # 含 src/main.mjs 和 node_modules 的目录
+  runtime_dir: ../agent # 含 src/main.ts（部署镜像里是构建产物 dist/main.js）和 node_modules 的目录
   bridge_addr: 127.0.0.1:0 # 桥的监听地址，默认必须是回环地址；0 表示随机端口。Node 进程通过它回调 Go（模型、工具、状态）。监听内网地址（Agent 拆成独立服务）时必须配服务令牌，见下一行
   # service_token: 服务令牌，至少 32 个字符；配了以后桥的每个请求都要带请求头 X-Agent-Service-Token，非回环地址才允许监听。
   # 只用环境变量 APP_AGENT_SERVICE_TOKEN 提供，不要写进这个文件（openssl rand -hex 32 可以生成）

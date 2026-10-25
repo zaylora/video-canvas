@@ -185,7 +185,7 @@ func newE2E(t *testing.T, turns ...llmTurn) *e2eEnv {
 	t.Cleanup(bridgeSrv.Close)
 	rt := agentsvc.NewProcessRuntime(agentsvc.RuntimeDeps{
 		Repo: repo, Bridge: bridge, Canvas: canvasSvc, Agent: svc, Registry: e2eRegistry{base: llm.srv.URL}, Launcher: agentsvc.ExecLauncher{},
-		Config: agentsvc.RuntimeConfig{NodePath: node, ScriptPath: filepath.Join(dir, "src/main.mjs"), BridgeURL: bridgeSrv.URL, WorkRoot: t.TempDir(), CancelGrace: 3 * time.Second},
+		Config: agentsvc.RuntimeConfig{NodePath: node, ScriptPath: filepath.Join(dir, "src/main.ts"), BridgeURL: bridgeSrv.URL, WorkRoot: t.TempDir(), CancelGrace: 3 * time.Second},
 	})
 	svc.SetRuntime(rt)
 	t.Cleanup(rt.Shutdown)

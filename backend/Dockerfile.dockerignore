@@ -8,5 +8,6 @@ backend/**/*_test.go
 backend/Dockerfile.dev
 backend/.air.toml
 agent/test
+agent/dist
 web
 docs

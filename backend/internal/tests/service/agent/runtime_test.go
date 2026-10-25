@@ -95,7 +95,7 @@ func newRuntimeEnv(t *testing.T, opts ...func(*RuntimeConfig)) *runtimeEnv {
 	b := newBridgeEnv(t)
 	l := &fakeLauncher{}
 	work := t.TempDir()
-	cfg := RuntimeConfig{NodePath: "/usr/bin/node", ScriptPath: "/opt/agent-runtime/src/main.mjs", BridgeURL: "http://127.0.0.1:47001", WorkRoot: work, CancelGrace: 80 * time.Millisecond}
+	cfg := RuntimeConfig{NodePath: "/usr/bin/node", ScriptPath: "/opt/agent-runtime/dist/main.js", BridgeURL: "http://127.0.0.1:47001", WorkRoot: work, CancelGrace: 80 * time.Millisecond}
 	for _, o := range opts {
 		o(&cfg)
 	}
@@ -137,7 +137,7 @@ func TestProcessRuntime_StartBuildsInputAndLaunches(t *testing.T) {
 	run, in := e.startRun(t, "storyboard", "n_script")
 
 	spec, _ := e.l.last()
-	if spec.Name != "/usr/bin/node" || len(spec.Args) != 1 || spec.Args[0] != "/opt/agent-runtime/src/main.mjs" {
+	if spec.Name != "/usr/bin/node" || len(spec.Args) != 1 || spec.Args[0] != "/opt/agent-runtime/dist/main.js" {
 		t.Errorf("启动命令不对: %+v", spec)
 	}
 	if !strings.HasPrefix(spec.Dir, e.work) {
@@ -600,6 +600,17 @@ func TestProcessRuntime_PassesDisabledToolsToNode(t *testing.T) {
 	got, _ := in["disabled_tools"].([]any)
 	if len(got) != 2 || got[0] != "codemode" || got[1] != "web_search" {
 		t.Errorf("disabled_tools=%v", in["disabled_tools"])
+	}
+}
+
+// 开发时直接跑 TypeScript 源码（Node 的类型剥离），每次启动会往 stderr 打一行「实验特性」警告，
+// 而 stderr 尾部会存进运行的诊断记录，所以对 .ts 入口关掉这条警告；构建产物（.js）不加任何参数。
+func TestProcessRuntime_TypeScriptEntryHidesExperimentalWarning(t *testing.T) {
+	e := newRuntimeEnv(t, func(c *RuntimeConfig) { c.ScriptPath = "/opt/agent-runtime/src/main.ts" })
+	e.startRun(t, "all")
+	spec, _ := e.l.last()
+	if len(spec.Args) != 2 || spec.Args[0] != "--disable-warning=ExperimentalWarning" || spec.Args[1] != "/opt/agent-runtime/src/main.ts" {
+		t.Errorf(".ts 入口应先关掉实验特性警告: %v", spec.Args)
 	}
 }
 

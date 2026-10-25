@@ -1,5 +1,7 @@
-import { CodemodeSandbox, renderDeclarations } from "@earendil-works/pi-codemode";
-import { wrapScalarArrays } from "../tools.mjs";
+import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
+import { CodemodeSandbox, renderDeclarations, type CodemodeJsonSchema, type CodemodeResult, type CodemodeTool } from "@earendil-works/pi-codemode";
+import { wrapScalarArrays } from "../tools.ts";
+import type { AgentToolSpec, CodemodeLimits, ToolCtx, ToolDecl } from "../types.ts";
 
 /**
  * codemode：模型写一小段 JavaScript，一次调用多个工具；中间结果只在脚本里流转，不进模型的上下文。
@@ -15,11 +17,11 @@ export const LABEL = "运行脚本";
 export const VERB = "脚本";
 
 /** 默认限制：单次脚本超时、脚本里最多调几次工具、虚拟机内存、返回给模型的文字上限。Go 对一个运行里的嵌套调用总数另有上限 */
-export const DEFAULT_LIMITS = { timeoutMs: 60_000, maxNestedCalls: 100, memoryLimitBytes: 128 << 20, maxResultChars: 8000 };
+export const DEFAULT_LIMITS: CodemodeLimits = { timeoutMs: 60_000, maxNestedCalls: 100, memoryLimitBytes: 128 << 20, maxResultChars: 8000 };
 
-const scriptable = (ctx) => (ctx.decls ?? []).filter((d) => d.scriptable && (d.executor ?? "server") === "server");
+const scriptable = (ctx: ToolCtx): ToolDecl[] => (ctx.decls ?? []).filter((d) => d.scriptable && (d.executor ?? "server") === "server");
 
-export const codemodeTool = {
+export const codemodeTool: AgentToolSpec = {
   name: NAME,
   label: LABEL,
   verb: VERB,
@@ -27,10 +29,10 @@ export const codemodeTool = {
   create: createCodemode,
 };
 
-function createCodemode(ctx) {
+function createCodemode(ctx: ToolCtx): AgentTool {
   const limits = { ...DEFAULT_LIMITS, ...ctx.limits };
   const decls = scriptable(ctx);
-  const declarations = renderDeclarations({ tools: decls.map((d) => ({ name: d.name, description: d.description, inputSchema: d.parameters })) });
+  const declarations = renderDeclarations({ tools: decls.map((d) => ({ name: d.name, description: d.description, inputSchema: d.parameters as CodemodeJsonSchema })) as CodemodeTool[] }); // 只用来渲染类型声明，不会执行，所以没有 execute
   return {
     name: NAME,
     label: LABEL,
@@ -44,7 +46,7 @@ function createCodemode(ctx) {
   };
 }
 
-function describe(declarations, limits) {
+function describe(declarations: string, limits: CodemodeLimits): string {
   return [
     "写一段 JavaScript 脚本，在一次调用里连续调用多个工具，中间结果不进你的上下文：批量读取、批量修改、对几十个节点循环处理时用它，比一个个调用工具省得多。",
     "脚本是异步函数的函数体：可以 await，可以 return。用 tools.工具名({参数}) 调用下面列出的工具，参数是 JSON；工具返回的是文字（需要时自己 JSON.parse）。用 text(...) 写进输出，return 的值也会返回给你：只返回你需要的结论，不要把工具的原始结果整个打印出来。",
@@ -57,10 +59,10 @@ function describe(declarations, limits) {
   ].join("\n");
 }
 
-const clip = (s, n) => (s.length > n ? `${s.slice(0, n)}…（已截断，原 ${s.length} 字）` : s);
-const oneLine = (s) => String(s ?? "").replace(/\s+/g, " ").trim();
+const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…（已截断，原 ${s.length} 字）` : s);
+const oneLine = (s: unknown) => String(s ?? "").replace(/\s+/g, " ").trim();
 
-async function run(ctx, decls, limits, toolCallId, params, signal) {
+async function run(ctx: ToolCtx, decls: ToolDecl[], limits: CodemodeLimits, toolCallId: string, params: unknown, signal?: AbortSignal) {
   const base = { tool_call_id: toolCallId, name: NAME, label: LABEL, verb: VERB };
   // 开始前向 Go 报备：Go 计 1 步、在时间线里记「运行脚本」；步数用尽时不运行，停下等用户继续
   // 脚本本身随开始报备一起交给 Go 留存：事后分析 Agent 为什么这样写，要看到它写了什么
@@ -70,13 +72,13 @@ async function run(ctx, decls, limits, toolCallId, params, signal) {
     return toResult(started.content || "已达到本轮的步数上限，运行已暂停，等待用户继续。", true, true);
   }
 
-  const completed = []; // 已经成功的嵌套调用：失败时告诉模型哪些已经生效
+  const completed: { name: string; note: string }[] = []; // 已经成功的嵌套调用：失败时告诉模型哪些已经生效
   let nested = 0;
-  const sandboxTools = decls.map((d) => ({
+  const sandboxTools: CodemodeTool[] = decls.map((d) => ({
     name: d.name,
     description: d.description,
-    inputSchema: d.parameters,
-    execute: async (args, { signal: callSignal }) => {
+    inputSchema: d.parameters as CodemodeJsonSchema,
+    execute: async (args: unknown, { signal: callSignal }: { signal: AbortSignal }) => {
       if (nested >= limits.maxNestedCalls) throw new Error(`脚本里调用工具的次数已达上限（${limits.maxNestedCalls} 次）`);
       nested++;
       const r = await ctx.bridge.tool(`${toolCallId}.${nested}`, d.name, wrapScalarArrays(d.parameters, args), callSignal, { parentToolCallId: toolCallId });
@@ -88,9 +90,9 @@ async function run(ctx, decls, limits, toolCallId, params, signal) {
   }));
 
   const sandbox = new CodemodeSandbox({ tools: sandboxTools, timeoutMs: limits.timeoutMs, memoryLimitBytes: limits.memoryLimitBytes });
-  let result;
+  let result: CodemodeResult;
   try {
-    result = await sandbox.execute(String(params?.code ?? ""), { signal });
+    result = await sandbox.execute(String((params as { code?: unknown } | undefined)?.code ?? ""), { signal });
   } finally {
     await sandbox.close().catch(() => {});
   }
@@ -99,14 +101,14 @@ async function run(ctx, decls, limits, toolCallId, params, signal) {
   try {
     await ctx.bridge.toolEvent({ phase: "end", ...base, is_error: isError, summary: isError ? `脚本失败：${clip(oneLine(result.ok ? "" : result.error.message), 80)}` : `脚本调用了 ${nested} 次工具`, result: text });
   } catch (e) {
-    ctx.log?.("报备脚本结束失败", { error: String(e?.message ?? e) }); // 只是时间线上少一条结束事件，不影响脚本的结果
+    ctx.log?.("报备脚本结束失败", { error: String((e as Error)?.message ?? e) }); // 只是时间线上少一条结束事件，不影响脚本的结果
   }
   return toResult(text, isError, false);
 }
 
-const toResult = (text, isError, terminate) => ({ content: [{ type: "text", text }], details: {}, isError, terminate });
+const toResult = (text: string, isError: boolean, terminate: boolean): AgentToolResult<object> => ({ content: [{ type: "text", text }], details: {}, isError, terminate });
 
-function format(result, completed, nested, limits) {
+function format(result: CodemodeResult, completed: { name: string; note: string }[], nested: number, limits: CodemodeLimits) {
   const output = result.output.filter((o) => o.type === "text").map((o) => o.text).join("\n");
   if (result.ok) {
     const parts = [];
@@ -116,11 +118,11 @@ function format(result, completed, nested, limits) {
     return { text: parts.join("\n"), isError: false };
   }
   const { kind, message } = result.error;
-  const reason = {
+  const reason = ({
     timeout: `脚本运行超时（超过 ${limits.timeoutMs / 1000} 秒），已被中止`,
     aborted: "脚本被中止",
     sandbox: `脚本沙箱出错：${message}`,
-  }[kind] ?? `脚本出错：${message}`;
+  } as Record<string, string | undefined>)[kind] ?? `脚本出错：${message}`;
   const parts = [reason];
   if (output) parts.push("出错前的输出：\n" + clip(output, limits.maxResultChars));
   if (completed.length) {

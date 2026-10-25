@@ -1,14 +1,16 @@
 /** 运行中插话的处理：说明来意，并在模型正在输出回答时中止当前回答，让重答一次就把新旧两句话结合起来 */
+import type { Agent } from "@earendil-works/pi-agent-core";
+import type { UserMessage } from "@earendil-works/pi-ai";
 
 const NOTE = "请结合之前的请求一起考虑，在同一次回复里回应，不要分开回答。";
 
 /** 给插话加一层说明：不然模型会把它当成一个新问题单独回答 */
-export function wrapSteer(text) {
+export function wrapSteer(text: string): string {
   return `【用户在你执行任务时补充】${text}\n${NOTE}`;
 }
 
 /** pi 的用户消息 */
-export function steerMessage(text) {
+export function steerMessage(text: string): UserMessage {
   return { role: "user", content: [{ type: "text", text: wrapSteer(text) }], timestamp: Date.now() };
 }
 
@@ -29,10 +31,10 @@ export function steerMessage(text) {
  */
 export const STEER_WINDOW_MS = 500;
 
-export function createSteering(agent, { windowMs = STEER_WINDOW_MS } = {}) {
+export function createSteering(agent: Agent, { windowMs = STEER_WINDOW_MS }: { windowMs?: number } = {}) {
   let inflight = false; // 模型请求在进行中：发出请求 → 助手消息结束
   let interrupting = false;
-  let timer = null;
+  let timer: NodeJS.Timeout | null = null;
 
   function arm() {
     if (!inflight || interrupting || timer) return;
@@ -47,12 +49,12 @@ export function createSteering(agent, { windowMs = STEER_WINDOW_MS } = {}) {
   }
 
   agent.subscribe((e) => {
-    if (e.message?.role !== "assistant") return;
+    if (!("message" in e) || e.message.role !== "assistant") return;
     if (e.type === "message_start") inflight = true;
     else if (e.type === "message_end") inflight = false;
   });
   return {
-    push(text) {
+    push(text: string) {
       agent.steer(steerMessage(text));
       arm();
     },
@@ -66,7 +68,7 @@ export function createSteering(agent, { windowMs = STEER_WINDOW_MS } = {}) {
     },
     /** 取消还没到点的中止（用户点了停止，或运行已经结束） */
     dispose() {
-      clearTimeout(timer);
+      if (timer) clearTimeout(timer);
       timer = null;
     },
     /** 这次运行是不是被插话中止的；读一次就清掉标记 */

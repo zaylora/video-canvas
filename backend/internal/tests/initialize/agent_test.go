@@ -53,10 +53,10 @@ func TestResolveAgentRuntime_Errors(t *testing.T) {
 		t.Skip("没有 node，跳过其余用例")
 	}
 
-	t.Run("目录里没有 main.mjs", func(t *testing.T) {
+	t.Run("目录里没有入口脚本：两个位置都要说", func(t *testing.T) {
 		_, err := ResolveAgentRuntime(config.Agent{Enabled: true, NodePath: node, RuntimeDir: t.TempDir()})
-		if err == nil || !strings.Contains(err.Error(), "main.mjs") {
-			t.Errorf("应指出缺 main.mjs: %v", err)
+		if err == nil || !strings.Contains(err.Error(), "src/main.ts") || !strings.Contains(err.Error(), "dist/main.js") || !strings.Contains(err.Error(), "npm run build") {
+			t.Errorf("应指出缺 src/main.ts 或 dist/main.js，并提示构建: %v", err)
 		}
 	})
 
@@ -65,7 +65,7 @@ func TestResolveAgentRuntime_Errors(t *testing.T) {
 		if err := os.MkdirAll(filepath.Join(dir, "src"), 0o750); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(dir, "src", "main.mjs"), []byte("//"), 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, "src", "main.ts"), []byte("//"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		_, err := ResolveAgentRuntime(config.Agent{Enabled: true, NodePath: node, RuntimeDir: dir})
@@ -83,8 +83,37 @@ func TestResolveAgentRuntime_Errors(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !filepath.IsAbs(p.Node) || !filepath.IsAbs(p.Script) || !strings.HasSuffix(p.Script, filepath.Join("src", "main.mjs")) {
-			t.Errorf("应是绝对路径: %+v", p)
+		if !filepath.IsAbs(p.Node) || !filepath.IsAbs(p.Script) || !strings.HasSuffix(p.Script, filepath.Join("src", "main.ts")) {
+			t.Errorf("应是绝对路径，仓库里直接跑源码: %+v", p)
+		}
+	})
+
+	// 部署镜像里只有构建产物 dist/main.js；仓库里源码和产物可能同时存在，这时用源码，
+	// 免得开发时改了 src 却被旧的 dist 盖住
+	t.Run("入口脚本的选择：有源码用源码，只有产物用产物", func(t *testing.T) {
+		write := func(dir, rel string) {
+			t.Helper()
+			if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, rel)), 0o750); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, rel), []byte("//"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		deployed := t.TempDir()
+		write(deployed, "dist/main.js")
+		write(deployed, "node_modules/.keep")
+		p, err := ResolveAgentRuntime(config.Agent{Enabled: true, NodePath: node, RuntimeDir: deployed})
+		if err != nil || !strings.HasSuffix(p.Script, filepath.Join("dist", "main.js")) {
+			t.Errorf("只有 dist 时用产物: %+v %v", p, err)
+		}
+		both := t.TempDir()
+		write(both, "dist/main.js")
+		write(both, "src/main.ts")
+		write(both, "node_modules/.keep")
+		p, err = ResolveAgentRuntime(config.Agent{Enabled: true, NodePath: node, RuntimeDir: both})
+		if err != nil || !strings.HasSuffix(p.Script, filepath.Join("src", "main.ts")) {
+			t.Errorf("两者都有时用源码: %+v %v", p, err)
 		}
 	})
 }

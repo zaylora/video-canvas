@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { test } from "node:test";
-import { runAgent } from "../src/run.mjs";
-import { baseInput, fakeBridge, sleep } from "./helpers.mjs";
+import { runAgent } from "../src/run.ts";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import type { Msg } from "../src/context.ts";
+import { baseInput, fakeBridge, sleep, text, withBridge } from "./helpers.ts";
 
-const withBridge = async (opts, fn) => { const b = await fakeBridge(opts); try { await fn(b); } finally { await b.close(); } };
-const text = (m) => (typeof m.content === "string" ? m.content : (m.content ?? []).map((p) => p.text ?? "").join(""));
-const users = (msgs) => msgs.filter((m) => m.role === "user").map(text);
+const users = (msgs: Msg[]): string[] => msgs.filter((m) => m.role === "user").map(text);
 
 test("工具执行时连发两条插话：不打断，下一次请求里一起带上，只多一次模型调用", async () => {
   await withBridge({
@@ -39,7 +39,7 @@ test("插话带说明：告诉模型这是对当前任务的补充，要一起�
     await sleep(80);
     control.emit("steer", "再暖一点");
     await run;
-    const steer = users(b.rec.chats[1].messages).find((t) => t.includes("再暖一点"));
+    const steer = users(b.rec.chats[1].messages).find((t) => t.includes("再暖一点"))!;
     assert.match(steer, /用户在你执行任务时补充/);
     assert.match(steer, /同一次回复/);
   });
@@ -60,10 +60,10 @@ test("模型正在输出时插话：中止半截回答，带着新旧两句话�
     assert.equal(b.rec.chats.length, 2);
     const second = b.rec.chats[1].messages;
     assert.deepEqual(users(second).slice(0, 1), ["拆分镜"], "原请求还在");
-    assert.match(users(second).at(-1), /改成竖屏/, "插话排在原请求之后");
-    assert.ok(!second.some((m) => m.role === "assistant"), "半截回答不交给模型");
-    const saved = b.rec.states.at(-1);
-    assert.ok(!saved.some((m) => m.stopReason === "aborted"), "保存的历史里没有被中止的消息");
+    assert.match(users(second).at(-1)!, /改成竖屏/, "插话排在原请求之后");
+    assert.ok(!second.some((m: Msg) => m.role === "assistant"), "半截回答不交给模型");
+    const saved = b.rec.states.at(-1)!;
+    assert.ok(!saved.some((m: Msg) => m.stopReason === "aborted"), "保存的历史里没有被中止的消息");
     assert.match(JSON.stringify(saved.at(-1)), /结合后的回答/);
   });
 });
@@ -110,7 +110,7 @@ test("暂停等回答时队列里还有插话：不丢，追加进历史，续�
     const r = await run;
     assert.equal(r.status, "paused");
     assert.equal(b.rec.chats.length, 1, "暂停时不再请求模型");
-    const saved = b.rec.states.at(-1);
+    const saved = b.rec.states.at(-1)!;
     assert.equal(saved.at(-1).role, "user", "插话排在工具结果之后");
     assert.equal(saved.at(-2).role, "toolResult");
     assert.match(text(saved.at(-1)), /对了，要竖屏/);
@@ -149,8 +149,8 @@ test("窗口内回答自己结束了：不中止，已完成的回答留在历�
     assert.equal(r.status, "done");
     assert.equal(b.rec.chats.length, 2);
     const second = b.rec.chats[1].messages;
-    assert.ok(second.some((m) => m.role === "assistant" && /简短回答/.test(text(m))), "完整的回答不丢");
-    assert.match(users(second).at(-1), /补充一句/);
+    assert.ok(second.some((m: Msg) => m.role === "assistant" && /简短回答/.test(text(m))), "完整的回答不丢");
+    assert.match(users(second).at(-1)!, /补充一句/);
   });
 });
 
@@ -173,9 +173,9 @@ test("慢模型：响应头还没回来时插话，也中止这次请求并合�
     assert.equal(b.rec.chats.length, 2);
     const second = b.rec.chats[1].messages;
     assert.deepEqual(users(second).slice(0, 1), ["拆分镜"]);
-    assert.match(users(second).at(-1), /你是谁/);
-    assert.ok(!second.some((m) => m.role === "assistant"), "被中止的请求没有任何内容进历史");
-    assert.match(JSON.stringify(b.rec.states.at(-1).at(-1)), /合并后的回答/);
+    assert.match(users(second).at(-1)!, /你是谁/);
+    assert.ok(!second.some((m: Msg) => m.role === "assistant"), "被中止的请求没有任何内容进历史");
+    assert.match(JSON.stringify(b.rec.states.at(-1)!.at(-1)), /合并后的回答/);
   });
 });
 
@@ -194,7 +194,7 @@ test("慢模型：连着两句插话（都在响应头回来之前），合并�
     assert.ok(Date.now() - start < 2500, `不该等慢请求回来：用了 ${Date.now() - start}ms`);
     assert.equal(b.rec.chats.length, 2);
     const second = b.rec.chats[1].messages;
-    assert.ok(!second.some((m) => m.role === "assistant"), "第一次请求被中止，没有内容进历史");
+    assert.ok(!second.some((m: Msg) => m.role === "assistant"), "第一次请求被中止，没有内容进历史");
     const sent = users(second).join("\n");
     assert.match(sent, /你是谁/);
     assert.match(sent, /再加一个角色/);
@@ -207,7 +207,7 @@ test("压缩（摘要）期间收到插话：摘要不被打断，请求一发�
     content: [{ type: "text", text: (i % 2 ? "A" : "U") + i + "字".repeat(358) }],
     ...(i % 2 ? { api: "openai-completions", provider: "bridge", model: "agent", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "stop" } : {}),
     timestamp: 1,
-  }));
+  })) as AgentMessage[];
   await withBridge({
     models: [{ text: "第一个回答", delay: 3000 }, { text: "合并后的回答" }],
     summaries: [{ text: "目标：拆分镜", delay: 600 }],
@@ -222,7 +222,7 @@ test("压缩（摘要）期间收到插话：摘要不被打断，请求一发�
     assert.ok(Date.now() - start < 3000, `用了 ${Date.now() - start}ms`);
     assert.equal(b.rec.summaries.length, 1, "摘要照常生成完，没有被插话打断");
     assert.equal(b.rec.chats.length, 2);
-    assert.match(users(b.rec.chats[1].messages).at(-1), /你是谁/);
+    assert.match(users(b.rec.chats[1].messages).at(-1)!, /你是谁/);
     assert.match(JSON.stringify(b.rec.chats[1].messages), /目标：拆分镜/, "重答用的是压缩后的历史");
   });
 });

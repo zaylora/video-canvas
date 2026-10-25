@@ -86,6 +86,34 @@ jobs:
       - name: Test
         run: go test -race ./...
 
+  # 画布 Agent 运行时（Node/TypeScript）：和 backend 镜像里用的是同一套 npm ci 与构建
+  agent:
+    name: Agent (typecheck + test + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22 # package.json 的 engines 要求 >= 22.19
+          cache: npm
+          cache-dependency-path: agent/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
   web:
     name: Web (format + typecheck + lint + test + build)
     runs-on: ubuntu-latest
