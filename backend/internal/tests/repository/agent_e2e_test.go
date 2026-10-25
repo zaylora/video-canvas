@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -25,6 +26,7 @@ import (
 	agenthandler "video-canvas/internal/handler/agent"
 	"video-canvas/internal/llmgateway"
 	"video-canvas/internal/model"
+	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/provider"
 	"video-canvas/internal/provider/modelcfg"
 	. "video-canvas/internal/repository"
@@ -788,6 +790,78 @@ func TestE2E_PlatformPrepareRunOverHTTPOnRealDB(t *testing.T) {
 	e.db.Model(&model.AgentEvent{}).Count(&events)
 	if runs != 0 || events != 0 {
 		t.Errorf("准备不落任何记录: 运行 %d 事件 %d", runs, events)
+	}
+}
+
+// platformJSON 以 Agent 服务的身份调用一个平台接口（GET 或带 JSON 体的 POST），返回 HTTP 状态和信封。
+func (e *e2eEnv) platformJSON(t *testing.T, method, path, ctxJSON, body string) (int, map[string]any) {
+	t.Helper()
+	req, err := http.NewRequest(method, e.bridgeURL+"/internal/platform/v1"+path, strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Agent-Service-Token", e.serviceToken)
+	if ctxJSON != "" {
+		req.Header.Set("X-Agent-Context", base64.RawURLEncoding.EncodeToString([]byte(ctxJSON)))
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var out map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatal(err)
+	}
+	return resp.StatusCode, out
+}
+
+// 会话侧的四件事经真实 HTTP + 真实 Postgres：画布归属、模型清单、消息引用、撤销（改动记录在 agent_mutations 里）。
+func TestE2E_PlatformSessionSideOverHTTPOnRealDB(t *testing.T) {
+	e := newE2E(t, e2eProcessToken)
+	cid := strconv.FormatUint(e.canvas.ID, 10)
+
+	// 画布归属：自己的通过；别人的和不存在的一样是「画布不存在」
+	if st, out := e.platformJSON(t, http.MethodPost, "/canvases/check", "", fmt.Sprintf(`{"user_id":"1","canvas_id":"%s"}`, cid)); st != 200 || out["code"] != float64(0) {
+		t.Fatalf("自己的画布: %d %v", st, out)
+	}
+	if st, out := e.platformJSON(t, http.MethodPost, "/canvases/check", "", fmt.Sprintf(`{"user_id":"2","canvas_id":"%s"}`, cid)); st != 404 || out["code"] != float64(errcode.ErrCanvasNotFound.Code) {
+		t.Errorf("别人的画布: %d %v", st, out)
+	}
+
+	// 模型清单
+	if st, out := e.platformJSON(t, http.MethodGet, "/agent/models", "", ""); st != 200 || out["data"] == nil {
+		t.Errorf("模型清单: %d %v", st, out)
+	}
+
+	// 消息引用：读真实的画布；选中的节点里已不存在的去掉
+	st, out := e.platformJSON(t, http.MethodPost, "/messages/check", "", fmt.Sprintf(`{"user_id":"1","canvas_id":"%s","message":"拆 @[剧本](node:n_script)","selection":["n_script","ghost"]}`, cid))
+	if st != 200 || fmt.Sprint(out["data"].(map[string]any)["selection"]) != "[n_script]" {
+		t.Errorf("消息引用: %d %v", st, out)
+	}
+	if st, out := e.platformJSON(t, http.MethodPost, "/messages/check", "", fmt.Sprintf(`{"user_id":"1","canvas_id":"%s","message":"拆 @[幽灵](node:ghost)"}`, cid)); st != 400 || !strings.Contains(fmt.Sprint(out["msg"]), "幽灵") {
+		t.Errorf("引用不存在的节点: %d %v", st, out)
+	}
+
+	// 撤销：先经平台写一个节点（雪花大小的运行 id，Go 的库里没有这个运行），再撤销，画布回到原样；再撤销一次是「已撤销」
+	const runID, sessID uint64 = 1152921504606846977, 1152921504606846978
+	ctxJSON := fmt.Sprintf(`{"run_id":"%d","user_id":"1","session_id":"%d","canvas_id":"%s","mode":"all","model_key":"claude"}`, runID, sessID, cid)
+	e.platformPost(t, "canvas_apply_ops", ctxJSON, "task-undo-1", `{"args":{"ops":[{"op":"create_node","tempId":"a","kind":"image","label":"新节点"}]}}`)
+	before := len(e.graph(t).Nodes)
+	st, out = e.platformJSON(t, http.MethodPost, fmt.Sprintf("/runs/%d/undo", runID), ctxJSON, "")
+	if st != 200 || out["code"] != float64(0) {
+		t.Fatalf("撤销: %d %v", st, out)
+	}
+	d := out["data"].(map[string]any)
+	if d["reverted"].(float64) == 0 || d["revision"].(float64) == 0 || d["skipped"] == nil {
+		t.Errorf("撤销结果: %v", d)
+	}
+	if after := len(e.graph(t).Nodes); after != before-1 {
+		t.Errorf("新建的节点应被撤销: %d → %d", before, after)
+	}
+	if st, out := e.platformJSON(t, http.MethodPost, fmt.Sprintf("/runs/%d/undo", runID), ctxJSON, ""); st != 409 || out["code"] != float64(errcode.ErrAgentAlreadyUndone.Code) {
+		t.Errorf("重复撤销: %d %v", st, out)
 	}
 }
 

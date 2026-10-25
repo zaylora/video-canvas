@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"video-canvas/internal/agent/canvasgraph"
 	. "video-canvas/internal/handler/agent"
 	"video-canvas/internal/llmgateway"
 	"video-canvas/internal/model"
@@ -53,6 +54,43 @@ type fakePlatform struct {
 	// 运行准备
 	prepReq agentsvc.PrepareRequest
 	setup   *agentsvc.RunSetup
+
+	// 会话侧
+	models        []model.AgentModelView
+	checkedUser   uint64
+	checkedCanvas uint64
+	checkedMsg    string
+	checkedSel    []string
+	selection     []string
+	undo          *agentsvc.UndoResult
+}
+
+func (f *fakePlatform) AgentModels(context.Context) ([]model.AgentModelView, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.models, nil
+}
+
+func (f *fakePlatform) CheckCanvas(_ context.Context, userID, canvasID uint64) error {
+	f.checkedUser, f.checkedCanvas = userID, canvasID
+	return f.err
+}
+
+func (f *fakePlatform) CheckMessage(_ context.Context, userID, canvasID uint64, msg string, sel []string) ([]string, error) {
+	f.checkedUser, f.checkedCanvas, f.checkedMsg, f.checkedSel = userID, canvasID, msg, sel
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.selection, nil
+}
+
+func (f *fakePlatform) UndoPlatformRun(_ context.Context, rc agentsvc.RunContext) (*agentsvc.UndoResult, error) {
+	f.rc = rc
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.undo, nil
 }
 
 func (f *fakePlatform) PrepareRun(_ context.Context, rc agentsvc.RunContext, req agentsvc.PrepareRequest) (*agentsvc.RunSetup, error) {
@@ -132,6 +170,10 @@ func newPlatformRouter(api PlatformAPI) *gin.Engine {
 	g.POST("/model/chat/completions", h.ChatCompletions)
 	g.GET("/runs/:run_id/usage", h.Usage)
 	g.POST("/runs/prepare", h.PrepareRun)
+	g.GET("/agent/models", h.AgentModels)
+	g.POST("/canvases/check", h.CheckCanvas)
+	g.POST("/messages/check", h.CheckMessage)
+	g.POST("/runs/:run_id/undo", h.UndoRun)
 	g.POST("/approvals/propose", h.ProposeApproval)
 	g.POST("/approvals/resolve", h.ResolveApproval)
 	g.POST("/approvals/execute", h.ExecuteApproval)
@@ -595,4 +637,98 @@ func TestPlatformHandler_ChatCompletions_BusinessErrorsCarryTheirCodeInAHeader(t
 		})
 	}
 	// 令牌模式的桥同样（共用 serveModelStream）
+}
+
+// ---- 会话侧：Agent 服务实现前端的 REST 接口时向 Go 问的几件事 ----
+
+func TestPlatformHandler_AgentModels(t *testing.T) {
+	api := &fakePlatform{models: []model.AgentModelView{{Key: "claude", Name: "Claude", Vision: true, ContextWindow: 200000}}}
+	w := platformCall(newPlatformRouter(api), http.MethodGet, "/internal/platform/v1/agent/models", "", nil)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"key":"claude"`) || !strings.Contains(w.Body.String(), `"context_window":200000`) {
+		t.Errorf("%d %s", w.Code, w.Body)
+	}
+	w = platformCall(newPlatformRouter(&fakePlatform{err: errcode.ErrAgentModelNA}), http.MethodGet, "/internal/platform/v1/agent/models", "", nil)
+	if respCode(t, w) != errcode.ErrAgentModelNA.Code {
+		t.Errorf("业务错误保留错误码: %s", w.Body)
+	}
+}
+
+func TestPlatformHandler_CheckCanvas(t *testing.T) {
+	api := &fakePlatform{}
+	// 雪花大小的用户和画布 id 必须是十进制字符串，不经过浮点数
+	w := platformCall(newPlatformRouter(api), http.MethodPost, "/internal/platform/v1/canvases/check", `{"user_id":"1152921504606846977","canvas_id":"7"}`, nil)
+	if w.Code != 200 || respCode(t, w) != 0 || api.checkedUser != 1152921504606846977 || api.checkedCanvas != 7 {
+		t.Errorf("%d %s user=%d canvas=%d", w.Code, w.Body, api.checkedUser, api.checkedCanvas)
+	}
+	for name, body := range map[string]string{
+		"id 是数字": `{"user_id":1,"canvas_id":"7"}`, "缺画布": `{"user_id":"1"}`, "id 为 0": `{"user_id":"0","canvas_id":"7"}`, "不是 JSON": `x`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			w := platformCall(newPlatformRouter(&fakePlatform{}), http.MethodPost, "/internal/platform/v1/canvases/check", body, nil)
+			if w.Code != 400 || respCode(t, w) != errcode.ErrInvalidParams.Code {
+				t.Errorf("应 400 参数错误: %d %s", w.Code, w.Body)
+			}
+		})
+	}
+	w = platformCall(newPlatformRouter(&fakePlatform{err: errcode.ErrCanvasNotFound}), http.MethodPost, "/internal/platform/v1/canvases/check", `{"user_id":"2","canvas_id":"7"}`, nil)
+	if w.Code != 404 || respCode(t, w) != errcode.ErrCanvasNotFound.Code {
+		t.Errorf("画布不存在原样返回: %d %s", w.Code, w.Body)
+	}
+}
+
+func TestPlatformHandler_CheckMessage(t *testing.T) {
+	api := &fakePlatform{selection: []string{"n1"}}
+	w := platformCall(newPlatformRouter(api), http.MethodPost, "/internal/platform/v1/messages/check", `{"user_id":"1","canvas_id":"7","message":"拆 @[剧本](node:n1)","selection":["n1","ghost"]}`, nil)
+	if w.Code != 200 || api.checkedMsg != "拆 @[剧本](node:n1)" || len(api.checkedSel) != 2 || !strings.Contains(w.Body.String(), `"selection":["n1"]`) {
+		t.Errorf("%d %s %+v", w.Code, w.Body, api)
+	}
+	// 选中的节点为空时响应里是空数组，不是 null
+	api2 := &fakePlatform{selection: nil}
+	w = platformCall(newPlatformRouter(api2), http.MethodPost, "/internal/platform/v1/messages/check", `{"user_id":"1","canvas_id":"7","message":"你好"}`, nil)
+	if !strings.Contains(w.Body.String(), `"selection":[]`) {
+		t.Errorf("空选择是 []: %s", w.Body)
+	}
+	for name, body := range map[string]string{
+		"消息太长": `{"user_id":"1","canvas_id":"7","message":"` + strings.Repeat("字", 20001) + `"}`,
+		"选中太多": `{"user_id":"1","canvas_id":"7","message":"x","selection":[` + strings.TrimSuffix(strings.Repeat(`"n",`, 201), ",") + `]}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			w := platformCall(newPlatformRouter(&fakePlatform{}), http.MethodPost, "/internal/platform/v1/messages/check", body, nil)
+			if w.Code != 400 {
+				t.Errorf("应 400: %d %s", w.Code, w.Body)
+			}
+		})
+	}
+	w = platformCall(newPlatformRouter(&fakePlatform{err: errcode.ErrInvalidParams.WithMsg("引用的节点「幽灵」不可用")}), http.MethodPost, "/internal/platform/v1/messages/check", `{"user_id":"1","canvas_id":"7","message":"x"}`, nil)
+	if w.Code != 400 || !strings.Contains(w.Body.String(), "幽灵") {
+		t.Errorf("引用不合法的说明原样返回: %d %s", w.Code, w.Body)
+	}
+}
+
+func TestPlatformHandler_UndoRun(t *testing.T) {
+	hdr := map[string]string{"X-Agent-Context": ctxHeader(goodCtx)}
+	api := &fakePlatform{undo: &agentsvc.UndoResult{Reverted: 3, Skipped: []canvasgraph.Skip{}, Revision: 9}}
+	w := platformCall(newPlatformRouter(api), http.MethodPost, "/internal/platform/v1/runs/1152921504606846977/undo", ``, hdr)
+	if w.Code != 200 || api.rc.RunID != 1152921504606846977 || !strings.Contains(w.Body.String(), `"reverted":3`) || !strings.Contains(w.Body.String(), `"skipped":[]`) {
+		t.Errorf("%d %s", w.Code, w.Body)
+	}
+	for name, c := range map[string]struct {
+		path string
+		hdr  map[string]string
+	}{
+		"路径里的运行和上下文里的不一致": {"/internal/platform/v1/runs/999/undo", hdr},
+		"运行 id 不是数字":      {"/internal/platform/v1/runs/abc/undo", hdr},
+		"缺上下文头":           {"/internal/platform/v1/runs/1152921504606846977/undo", nil},
+	} {
+		t.Run(name, func(t *testing.T) {
+			w := platformCall(newPlatformRouter(&fakePlatform{undo: &agentsvc.UndoResult{}}), http.MethodPost, c.path, ``, c.hdr)
+			if w.Code != 400 || respCode(t, w) != errcode.ErrInvalidParams.Code {
+				t.Errorf("应 400: %d %s", w.Code, w.Body)
+			}
+		})
+	}
+	w = platformCall(newPlatformRouter(&fakePlatform{err: errcode.ErrAgentAlreadyUndone}), http.MethodPost, "/internal/platform/v1/runs/1152921504606846977/undo", ``, hdr)
+	if w.Code != 409 || respCode(t, w) != errcode.ErrAgentAlreadyUndone.Code {
+		t.Errorf("已撤销过原样返回: %d %s", w.Code, w.Body)
+	}
 }

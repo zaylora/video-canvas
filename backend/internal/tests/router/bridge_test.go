@@ -100,6 +100,22 @@ func (p *platformStub) PrepareRun(context.Context, agentsvc.RunContext, agentsvc
 	p.calls++
 	return &agentsvc.RunSetup{}, nil
 }
+func (p *platformStub) AgentModels(context.Context) ([]model.AgentModelView, error) {
+	p.calls++
+	return []model.AgentModelView{}, nil
+}
+func (p *platformStub) CheckCanvas(context.Context, uint64, uint64) error {
+	p.calls++
+	return nil
+}
+func (p *platformStub) CheckMessage(context.Context, uint64, uint64, string, []string) ([]string, error) {
+	p.calls++
+	return nil, nil
+}
+func (p *platformStub) UndoPlatformRun(context.Context, agentsvc.RunContext) (*agentsvc.UndoResult, error) {
+	p.calls++
+	return &agentsvc.UndoResult{}, nil
+}
 func (p *platformStub) ProposeApproval(context.Context, agentsvc.RunContext, string, json.RawMessage) (*agentsvc.ApprovalProposal, error) {
 	p.calls++
 	return &agentsvc.ApprovalProposal{}, nil
@@ -179,13 +195,16 @@ func TestNewBridge_PlatformRoutesNeedTheServiceToken(t *testing.T) {
 	}
 }
 
-// 运行准备和审批的预估、解析、执行同样只认服务令牌：执行会删画布、创建生成任务（花积分），不能裸露
+// 运行准备、审批的预估解析执行、会话侧的画布校验 / 消息校验 / 撤销同样只认服务令牌：执行会删画布、创建生成任务（花积分），不能裸露
 func TestNewBridge_ApprovalRoutesNeedTheServiceToken(t *testing.T) {
 	const token = "service-token-0123456789abcdef0123456789"
 	plat := &platformStub{}
 	srv := httptest.NewServer(router.NewBridge("test", agenthandler.NewAgentBridgeHandler(&stubBridge{}), agenthandler.NewPlatformHandler(plat), token))
 	defer srv.Close()
 	for path, body := range map[string]string{
+		"/internal/platform/v1/canvases/check":    `{"user_id":"1","canvas_id":"7"}`,
+		"/internal/platform/v1/messages/check":    `{"user_id":"1","canvas_id":"7","message":"x"}`,
+		"/internal/platform/v1/runs/9/undo":       `{}`,
 		"/internal/platform/v1/runs/prepare":      `{}`,
 		"/internal/platform/v1/approvals/propose": `{"kind":"ask","args":{}}`,
 		"/internal/platform/v1/approvals/resolve": `{"kind":"ask","payload":{},"decision":{"decision":"approve"}}`,

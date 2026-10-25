@@ -210,6 +210,13 @@ func (s *AgentCanvasService) Undo(ctx context.Context, userID, runID uint64) (*U
 	if model.IsActiveRun(run.Status) {
 		return nil, errcode.ErrAgentState
 	}
+	return s.UndoRun(ctx, run)
+}
+
+// UndoRun 撤销某运行对画布的全部改动，不看运行记录：运行是不是自己的、是不是已经结束，由持有运行记录的一方校验
+// （令牌模式下是上面的 Undo，独立的 Agent 服务下是 Agent 服务自己）。这里只按运行的用户、画布、id 做画布上的事。
+func (s *AgentCanvasService) UndoRun(ctx context.Context, run *model.AgentRun) (*UndoResult, error) {
+	runID := run.ID
 	// 3. 取出还没被撤销的改动。生成绑定（bind）不参与：撤销不会取消已批准的生成任务，
 	//    也就不能把节点上的 taskId 抹掉
 	changes, err := s.undoableChanges(ctx, runID)

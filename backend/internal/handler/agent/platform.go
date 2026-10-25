@@ -42,6 +42,14 @@ type PlatformAPI interface {
 	ExecutePlatformTool(ctx context.Context, rc agentsvc.RunContext, toolCallID, name string, args json.RawMessage) (*agentsvc.ToolResult, error)
 	// EndPlatformRun 释放一个运行在内存里的状态。
 	EndPlatformRun(runID uint64)
+	// AgentModels 返回当前可用的 Agent 模型。
+	AgentModels(ctx context.Context) ([]model.AgentModelView, error)
+	// CheckCanvas 确认画布属于这个用户。
+	CheckCanvas(ctx context.Context, userID, canvasID uint64) error
+	// CheckMessage 校验消息里的引用，返回去掉了不存在节点的选中列表。
+	CheckMessage(ctx context.Context, userID, canvasID uint64, message string, selection []string) ([]string, error)
+	// UndoPlatformRun 撤销某运行对画布的全部改动。
+	UndoPlatformRun(ctx context.Context, rc agentsvc.RunContext) (*agentsvc.UndoResult, error)
 	// PrepareRun 给 Agent 服务一次运行（或续跑）需要的、由平台决定的内容：模型规格、系统提示词、工具声明、第一条消息、版本。
 	PrepareRun(ctx context.Context, rc agentsvc.RunContext, req agentsvc.PrepareRequest) (*agentsvc.RunSetup, error)
 	// ProposeApproval 为需要用户决定的工具调用（生成、删除、提问）算出审批内容和预估积分，不落库。
@@ -290,4 +298,76 @@ func (h *PlatformHandler) PrepareRun(c *gin.Context) {
 		return
 	}
 	response.OK(c, out)
+}
+
+// AgentModels 返回当前可用的 Agent 模型（没有时是空数组）。
+func (h *PlatformHandler) AgentModels(c *gin.Context) {
+	list, err := h.svc.AgentModels(c.Request.Context())
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, list)
+}
+
+// canvasBody 标明是谁的哪张画布。ID 是十进制字符串：雪花 ID 超过 2^53，用数字会在 JavaScript 里丢精度。
+type canvasBody struct {
+	UserID   uint64 `json:"user_id,string" binding:"required,min=1" label:"user_id"`
+	CanvasID uint64 `json:"canvas_id,string" binding:"required,min=1" label:"canvas_id"`
+}
+
+// CheckCanvas 确认画布属于这个用户；别人的和不存在的一样返回「画布不存在」。
+func (h *PlatformHandler) CheckCanvas(c *gin.Context) {
+	var req canvasBody
+	if !handler.BindJSON(c, &req) {
+		return
+	}
+	if err := h.svc.CheckCanvas(c.Request.Context(), req.UserID, req.CanvasID); err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, nil)
+}
+
+// messageBody 是消息引用校验的请求体，字段上限与发起运行的请求一致。
+type messageBody struct {
+	canvasBody
+	Message   string   `json:"message" binding:"max=20000" label:"message"`
+	Selection []string `json:"selection" binding:"max=200,dive,max=64" label:"selection"`
+}
+
+// CheckMessage 校验消息里的引用（节点、模型、技能），返回去掉了已不存在节点的选中列表。
+func (h *PlatformHandler) CheckMessage(c *gin.Context) {
+	var req messageBody
+	if !handler.BindJSON(c, &req) {
+		return
+	}
+	sel, err := h.svc.CheckMessage(c.Request.Context(), req.UserID, req.CanvasID, req.Message, req.Selection)
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	if sel == nil {
+		sel = []string{}
+	}
+	response.OK(c, map[string]any{"selection": sel})
+}
+
+// UndoRun 撤销某运行对画布的全部改动。路径里的运行必须和上下文里声明的一致。
+func (h *PlatformHandler) UndoRun(c *gin.Context) {
+	rc, ok := parseRunContext(c)
+	if !ok {
+		return
+	}
+	runID, err := strconv.ParseUint(c.Param("run_id"), 10, 64)
+	if err != nil || runID == 0 || runID != rc.RunID {
+		response.Fail(c, errcode.ErrInvalidParams.WithMsg("路径里的 run_id 必须是正整数，并且和 "+RunContextHeader+" 里的一致"))
+		return
+	}
+	res, err := h.svc.UndoPlatformRun(c.Request.Context(), rc)
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, res)
 }
