@@ -1,15 +1,18 @@
 package repository_test
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -138,6 +141,57 @@ type e2eSecrets struct{}
 
 func (e2eSecrets) Get(context.Context, string) (string, error) { return "sk-e2e", nil }
 
+// e2eRuntime 是端到端用例的运行方式：每个用例在两种方式下各跑一遍，保证行为一致。
+type e2eRuntime string
+
+const (
+	e2eProcess e2eRuntime = "process" // 每个运行片段起一个 Node 子进程
+	e2eHTTP    e2eRuntime = "http"    // 一个常驻的 Node 服务，Go 通过 HTTP 调它
+)
+
+const e2eServiceToken = "e2e-service-token-0123456789abcdef0123456789"
+
+func eachRuntime(t *testing.T, fn func(t *testing.T, rt e2eRuntime)) {
+	t.Helper()
+	for _, rt := range []e2eRuntime{e2eProcess, e2eHTTP} {
+		t.Run(string(rt), func(t *testing.T) { fn(t, rt) })
+	}
+}
+
+// startAgentService 起一个真实的 Agent 服务（agent/src/serve.ts），返回它的地址；测试结束时关掉。
+func startAgentService(t *testing.T, node, dir string) string {
+	t.Helper()
+	cmd := exec.Command(node, "--disable-warning=ExperimentalWarning", filepath.Join(dir, "src", "serve.ts"))
+	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "AGENT_SERVICE_TOKEN=" + e2eServiceToken, "AGENT_LISTEN=127.0.0.1:0"}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = cmd.Process.Kill(); _ = cmd.Wait() })
+	addr := make(chan string, 1)
+	go func() {
+		re := regexp.MustCompile(`"addr":"([^"]+)"`)
+		sc := bufio.NewScanner(stderr)
+		for sc.Scan() {
+			if m := re.FindStringSubmatch(sc.Text()); m != nil {
+				addr <- m[1]
+				break
+			}
+		}
+		_, _ = io.Copy(io.Discard, stderr) // 之后的日志丢掉，免得管道写满卡住服务
+	}()
+	select {
+	case a := <-addr:
+		return "http://" + a
+	case <-time.After(15 * time.Second):
+		t.Fatal("Agent 服务没有在 15 秒内启动")
+		return ""
+	}
+}
+
 // ---- 环境 ----
 
 type e2eEnv struct {
@@ -151,7 +205,7 @@ type e2eEnv struct {
 	canvas *model.CanvasProject
 }
 
-func newE2E(t *testing.T, turns ...llmTurn) *e2eEnv {
+func newE2E(t *testing.T, mode e2eRuntime, turns ...llmTurn) *e2eEnv {
 	t.Helper()
 	node, err := exec.LookPath("node")
 	if err != nil {
@@ -181,11 +235,18 @@ func newE2E(t *testing.T, turns ...llmTurn) *e2eEnv {
 		Repo: repo, Canvas: canvasSvc, Agent: svc, Billing: agentsvc.NewAgentBilling(repo),
 		Registry: e2eRegistry{base: llm.srv.URL}, Secrets: e2eSecrets{}, Streamer: llmgateway.New(llmgateway.Options{IdleTimeout: 10 * time.Second, IPAllowed: func(ip net.IP) bool { return ip.IsLoopback() }}), // 假上游在本机回环
 	})
-	bridgeSrv := httptest.NewServer(router.NewBridge("test", agenthandler.NewAgentBridgeHandler(bridge), ""))
+	// http 模式：Agent 是独立的 Node 服务，Go 和它互相靠服务令牌认；process 模式桥只靠运行令牌
+	var launcher agentsvc.Launcher = agentsvc.ExecLauncher{}
+	serviceToken := ""
+	if mode == e2eHTTP {
+		serviceToken = e2eServiceToken
+		launcher = &agentsvc.HTTPLauncher{BaseURL: startAgentService(t, node, dir), ServiceToken: serviceToken, HeartbeatTimeout: 30 * time.Second}
+	}
+	bridgeSrv := httptest.NewServer(router.NewBridge("test", agenthandler.NewAgentBridgeHandler(bridge), serviceToken))
 	t.Cleanup(bridgeSrv.Close)
 	rt := agentsvc.NewProcessRuntime(agentsvc.RuntimeDeps{
-		Repo: repo, Bridge: bridge, Canvas: canvasSvc, Agent: svc, Registry: e2eRegistry{base: llm.srv.URL}, Launcher: agentsvc.ExecLauncher{},
-		Config: agentsvc.RuntimeConfig{NodePath: node, ScriptPath: filepath.Join(dir, "src/main.ts"), BridgeURL: bridgeSrv.URL, WorkRoot: t.TempDir(), CancelGrace: 3 * time.Second},
+		Repo: repo, Bridge: bridge, Canvas: canvasSvc, Agent: svc, Registry: e2eRegistry{base: llm.srv.URL}, Launcher: launcher,
+		Config: agentsvc.RuntimeConfig{NodePath: node, ScriptPath: filepath.Join(dir, "src/main.ts"), BridgeURL: bridgeSrv.URL, ServiceToken: serviceToken, WorkRoot: t.TempDir(), CancelGrace: 3 * time.Second},
 	})
 	svc.SetRuntime(rt)
 	t.Cleanup(rt.Shutdown)
@@ -263,8 +324,10 @@ func lastRequestText(l *fakeLLM) string {
 }
 
 // 场景 1：用户说一句话，Agent 读目录、改画布、说完话；全程计费、记事件、存历史。
-func TestE2E_BuildsCanvasAndBills(t *testing.T) {
-	e := newE2E(t,
+func TestE2E_BuildsCanvasAndBills(t *testing.T) { eachRuntime(t, testTestE2EBuildsCanvasAndBills) }
+
+func testTestE2EBuildsCanvasAndBills(t *testing.T, rt e2eRuntime) {
+	e := newE2E(t, rt,
 		llmTurn{tools: []llmTool{{id: "call_1", name: "canvas_apply_ops", args: map[string]any{"ops": []any{
 			map[string]any{"op": "create_group", "tempId": "g", "label": "镜头 01"},
 			map[string]any{"op": "create_node", "tempId": "a", "kind": "image", "label": "关键帧", "prompt": "雨夜便利店门口", "parentGroup": "g"},
@@ -331,7 +394,11 @@ func TestE2E_BuildsCanvasAndBills(t *testing.T) {
 
 // 场景 2：删除要先审批；批准后续跑，模型看到的是真实结果。
 func TestE2E_DeleteNeedsApprovalThenContinues(t *testing.T) {
-	e := newE2E(t,
+	eachRuntime(t, testTestE2EDeleteNeedsApprovalThenContinues)
+}
+
+func testTestE2EDeleteNeedsApprovalThenContinues(t *testing.T, rt e2eRuntime) {
+	e := newE2E(t, rt,
 		llmTurn{tools: []llmTool{{id: "call_del", name: "canvas_delete", args: map[string]any{"nodeIds": []string{"n_old"}, "reason": "废稿"}}}},
 		llmTurn{text: "已清理。"},
 	)
@@ -370,7 +437,11 @@ func TestE2E_DeleteNeedsApprovalThenContinues(t *testing.T) {
 
 // 场景 3：模型流到一半用户点停止：进程被中止，已产生的部分照样计费，运行是 canceled。
 func TestE2E_CancelMidStreamStillBillsPartial(t *testing.T) {
-	e := newE2E(t, llmTurn{text: strings.Repeat("很长的回答", 60), slow: 30 * time.Millisecond})
+	eachRuntime(t, testTestE2ECancelMidStreamStillBillsPartial)
+}
+
+func testTestE2ECancelMidStreamStillBillsPartial(t *testing.T, rt e2eRuntime) {
+	e := newE2E(t, rt, llmTurn{text: strings.Repeat("很长的回答", 60), slow: 30 * time.Millisecond})
 	runID := e.start(t, "说点什么", "all")
 	deadline := time.Now().Add(15 * time.Second)
 	for len(e.llm.requests()) == 0 && time.Now().Before(deadline) {
@@ -412,7 +483,11 @@ func TestE2E_CancelMidStreamStillBillsPartial(t *testing.T) {
 
 // 场景 4：进程被杀（比如服务重启）：运行标为中断；点继续后新进程接着跑完。
 func TestE2E_KilledProcessCanBeResumed(t *testing.T) {
-	e := newE2E(t,
+	eachRuntime(t, testTestE2EKilledProcessCanBeResumed)
+}
+
+func testTestE2EKilledProcessCanBeResumed(t *testing.T, rt e2eRuntime) {
+	e := newE2E(t, rt,
 		llmTurn{text: strings.Repeat("很长的回答", 80), slow: 30 * time.Millisecond},
 		llmTurn{text: "接着说完了。"},
 	)

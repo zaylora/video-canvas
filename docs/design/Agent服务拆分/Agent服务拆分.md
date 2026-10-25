@@ -215,20 +215,25 @@ Agent 服务 ──模型 / 工具 / 技能 / 计费──▶ Go 平台能力 AP
 - 事件类型和现在的 `agent_events` 一致：`message.*`、`tool.*`、`plan.updated`、`approval.*`、`run.status`、`run.usage`、`canvas.patch`。这样前端不用改。
 - 推送可以丢，前端靠对账恢复，这和现在的约定一致。
 
-### 8.4 阶段 2 的运行时接口（Agent 服务提供，Go 调用）
+### 8.4 阶段 2 的运行时接口（Agent 服务提供，Go 调用；2026-10-25 按实现修正）
 
 | 接口 | 用途 |
 |---|---|
-| `POST /segments` | 启动一个片段，入参和现在 stdin 第一行的 JSON 相同（`start`/`continue`/`resume`） |
-| `POST /segments/:run_id/steer` | 插话 |
-| `POST /segments/:run_id/abort` | 中止 |
-| `GET /segments` | 列出正在跑的片段，Go 据此判断哪些运行已经中断 |
-| `GET /health` | 健康检查 |
+| `POST /segments` | 启动一个片段。请求体是启动参数（和进程模式 stdin 第一行一样），请求头 `X-Segment-Id` 是 Go 生成的片段 id。**响应是一条 NDJSON 流，一直开到片段结束**：先 `{"type":"accepted"}`，运行期间定时 `{"type":"heartbeat"}`，最后 `{"type":"exit","code":0\|1,"stderr_tail":"…"}`。`code` 和进程模式的退出码同义：0 报告了结束，1 没能报告 |
+| `POST /segments/:id/steer` | 插话，`{"text":"…"}` |
+| `POST /segments/:id/abort` | 中止（用户停止） |
+| `GET /segments` | 列出正在跑的片段，排障用 |
+| `GET /health` | 健康检查，不要令牌 |
 
-- **存活判断**：现在靠 `watch()` 等进程退出，阶段 2 改成**租约**。
-  - Go 每 30 秒调用一次 `GET /segments` 对账：运行还是 running，但服务里已经没有它的片段，就标为 `interrupted`。
-  - Agent 服务重启后列表为空，所以重启时的中断也能被发现。
-- **优雅停机**：Agent 服务收到 SIGTERM 后先中止所有片段并报告 `finish`，再退出。Compose 的 `stop_grace_period` 设为 30 秒。
+除健康检查外都要带 `X-Agent-Service-Token`。错误响应都是 `{"code","msg"}`：401 令牌无效、400 请求不合法、404 没有这个片段、409 片段 id 重复、503 并发满了或正在停机。
+
+- **存活判断：连接就是租约，不再轮询对账。** 最初设计是 Go 每 30 秒调一次 `GET /segments` 对账。实现时发现更简单也更及时的做法：`POST /segments` 的连接一直开着，
+  - 服务崩了、被杀、网络断了：流在没有 `exit` 行时结束，Go 立刻拿到异常退出（`Code=-1`），沿用现有的 `watch()` 把运行标为 `interrupted`；
+  - 服务假死：超过 `HeartbeatTimeout`（默认 60 秒，服务每 15 秒发一次心跳）没收到任何一行，Go 关掉连接并当作异常退出；
+  - Go 退出或强杀（`Kill`）：关掉连接，服务看到连接断开就中止这个片段，不会留下孤儿运行。Go 重启后，遗留的 `running` 运行本来就由启动时的 `InterruptActiveRuns` 标为中断。
+- **连接断开和服务停机都不向桥报告结束。** 这是实现时发现的必须做对的一点：桥的 `Finish` 收到 `done` 会把运行标成「成功」。进程模式被 SIGKILL 时什么都不报，运行才会是「已中断」，用户可以继续。所以服务在片段的主人没了（连接断开）或自己要停机时，中止片段的同时切断它和桥的联系（后续的桥请求直接失败），以 `exit` `code=1` 结束。只有用户主动停止（`/abort`）才照常报告，因为 Go 在发 abort 之前已经把运行状态设好。
+- **优雅停机**：收到 SIGTERM 后放弃所有片段（中止、不报告），等它们收尾，最多 25 秒，再退出；Compose 的 `stop_grace_period` 设为 30 秒。被切断的运行由 Go 标为中断，阶段 3 起由 Pi Durable 自动续跑。
+- **进程内并发**：多个片段在同一个 Node 进程里并发（`runAgent` 没有进程级全局状态）。一个片段里抛出的未处理异常只让它自己以 `code=1` 结束；漏掉的 Promise 异常只记日志；同步抛出且没人接住的异常说明进程状态不可信，进程退出由容器重启，Go 那边连接断开会把这些运行标为中断。并发上限 `AGENT_MAX_SEGMENTS`（默认 64）。
 
 ## 9. 部署（已确认）
 
@@ -282,7 +287,7 @@ Agent 服务 ──模型 / 工具 / 技能 / 计费──▶ Go 平台能力 AP
 
 **阶段 2**
 - `agent/` 改用 TS 后，保留并迁移现有的 `node --test` 用例（run、steer、compaction、context、tools、codemode）。
-- Go 侧给 `HTTPRuntime` 写测试，用 `httptest` 模拟 Agent 服务：启动、插话、中止、对账时把运行标为中断、服务重启后能发现中断。
+- Go 侧给 `HTTPLauncher` 写测试，用 `httptest` 模拟 Agent 服务：启动、被拒绝、插话、中止、断开、心跳超时、Kill。Go 的端到端用例每个都在 process 和 http 两种模式下各跑一遍（http 模式起真实的 Node 服务）。
 - 异步测试一律用轮询加超时。
 
 **阶段 3**
@@ -315,7 +320,7 @@ Agent 服务 ──模型 / 工具 / 技能 / 计费──▶ Go 平台能力 AP
 
 ### 14.3 默认值（不需要用户决定）
 - 服务间鉴权用共享服务令牌，放在 `.env`。
-- 阶段 2 的存活判断用 30 秒一次的对账。
+- 阶段 2 的存活判断靠 `POST /segments` 的长连接和心跳，不轮询（见 8.4）。
 - 第三方扩展默认不安装。
 
 ### 14.4 仍待确认
@@ -384,3 +389,27 @@ Agent 服务 ──模型 / 工具 / 技能 / 计费──▶ Go 平台能力 AP
 - **类型上的取舍**：`Msg`/`Part` 是只列出用到字段的宽松形状，pi 的消息能直接赋给它，函数用泛型保持原类型；少数地方用显式转换并写了原因（Go 下发的是普通 JSON Schema 不是 typebox、`renderDeclarations` 只渲染声明不执行）。测试里收到的请求体用 `any`。
 - **验证**：`npm run typecheck` 零错误；`npm test` 87 个全过；`npm run build` 产物可用：用假桥分别以 `dist/main.js` 和 `src/main.ts` 拉起真实子进程跑完整的一次运行（工具往返、保存历史、带服务令牌、报告完成）都通过；`docker build` 完整镜像成功，镜像里 `dist/` 在、`src` 和 `tsc` 不在，`node /app/agent/dist/run.js` 能导入全部依赖；Go 的 `go vet`、`go test -count=1 ./...`（含 4 个跑真实 Node 子进程的端到端用例，现在跑的是 `src/main.ts`）、`golangci-lint` 全部通过。
 - **没做**：TS 7 目前的 `tsc` 是原生实现，没有 `tsserver` 之外的编程接口；如果以后需要程序化调用编译器，要另评估。
+
+### 16.7 阶段 2b-2：Agent 作为常驻 HTTP 服务（2026-10-25，单独提交）
+
+选型：服务内部**在同一个进程里并发跑多个片段**（`runAgent` 没有进程级全局状态，已确认）；Go 侧不新写运行时，而是新增 `HTTPLauncher` 实现现有的 `Launcher` 接口，`ProcessRuntime` 的令牌、状态机、`watch()`、取消宽限期全部原样复用，`agent.runtime` 在 `process`（默认）和 `http` 之间切换。
+
+**Agent 服务（`agent/`）**
+- `src/server.ts`：`createAgentServer`，协议见 8.4。用 Node 自带的 `http`，没有新增依赖。服务令牌常量时间比较，少于 32 个字符拒绝创建；并发上限；片段 id 只允许 `[A-Za-z0-9_-]{1,64}`。
+- `src/serve.ts`：入口，用环境变量配置（`AGENT_SERVICE_TOKEN` 必填、`AGENT_LISTEN` 默认 `0.0.0.0:8090`、`AGENT_MAX_SEGMENTS`、`AGENT_HEARTBEAT_MS`），启动前自检并说清楚原因，日志里不出现令牌；SIGTERM / SIGINT 优雅停机；进程级异常处理见 8.4。
+- 进程模式的入口 `main.ts` 原样保留。
+
+**Go（`backend/`）**
+- `service/agent/http_launcher.go`：`HTTPLauncher`。第一次 `Send` 是启动请求，等到响应头回来才返回，所以被拒绝（401、409、503）或连不上都是启动失败；之后的 `Send` 是插话和中止；`Kill` 关掉连接；`Done` 在 `exit` 行、断开或心跳超时时触发。不走代理环境变量，连接超时 5 秒；片段不随发起启动的请求取消。
+- 配置：`agent.runtime`、`agent.url`、`agent.bridge_url`（环境变量 `APP_AGENT_RUNTIME`、`APP_AGENT_URL`、`APP_AGENT_BRIDGE_URL`）。`http` 模式必须同时配 `url`、`bridge_url` 和 `service_token`，格式都在启动时校验；该模式下不再要求本机有 Node 和入口脚本。
+- `initialize.AgentLauncher` 选启动器，`initialize.BridgeURLFor` 决定 Agent 访问桥的地址（http 模式用配置的对外地址，process 模式用本机监听地址）。
+
+**与设计的出入**
+- 存活判断从「Go 每 30 秒对账」改成「长连接 + 心跳」，见 8.4。
+- 连接断开和停机不向桥报告结束，见 8.4。这是写服务测试时发现的：最初的测试断言停机时「每个运行都向桥报告了结束」，仔细想才发现这会让被切断的运行变成「成功」。测试已按正确语义改写。
+- 不需要新增 `HTTPRuntime` 类型。
+
+**验证**
+- `agent/`：`npm run typecheck` 零错误；`npm test` 104 个全过（原 87，新增服务 13 个、入口 4 个）；构建产物 `dist/serve.js` 在 Alpine 容器里启动正常，健康检查通过、无令牌 401、收到停止信号 0 秒内以退出码 0 结束。
+- `backend/`：`go vet ./...` 无输出；`go test -count=1 -race ./...` 全过；4 个端到端用例（建画布并计费、审批后续跑、流式中途取消仍按已产生的用量计费、杀掉后续跑）**在 process 和 http 两种模式下各跑一遍**，http 模式起真实的 Node 服务；`golangci-lint` 0 问题。
+- 没做：Compose 里还没有 `agent` 服务、backend 镜像还带着 Node，这是 2b-3。

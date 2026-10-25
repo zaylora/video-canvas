@@ -118,6 +118,63 @@ func TestLoad_AgentServiceTokenFromEnv(t *testing.T) {
 	}
 }
 
+// agent.runtime：process（默认，每个片段起一个 Node 子进程）或 http（Agent 是独立的 HTTP 服务）。
+// http 模式下 Agent 在别的容器里，要知道服务地址、桥对外的地址，并且两边靠服务令牌互相认。
+func TestAgentConfig_RuntimeMode(t *testing.T) {
+	if got := (Agent{}).WithDefaults().Runtime; got != "process" {
+		t.Errorf("默认是 process: %q", got)
+	}
+	tok := strings.Repeat("a", 32)
+	ok := Agent{Enabled: true, Runtime: "http", URL: "http://agent:8090", BridgeURL: "http://backend:47001", BridgeAddr: "0.0.0.0:47001", ServiceToken: tok}
+	if err := ok.Validate(); err != nil {
+		t.Fatalf("完整的 http 配置应通过: %v", err)
+	}
+	cases := []struct {
+		name string
+		mut  func(a *Agent)
+		want string
+	}{
+		{"未知的 runtime", func(a *Agent) { a.Runtime = "grpc" }, "agent.runtime"},
+		{"没有服务地址", func(a *Agent) { a.URL = "" }, "agent.url"},
+		{"服务地址不是 http(s)", func(a *Agent) { a.URL = "agent:8090" }, "agent.url"},
+		{"服务地址带路径", func(a *Agent) { a.URL = "http://agent:8090/x" }, "agent.url"},
+		{"没有桥地址", func(a *Agent) { a.BridgeURL = "" }, "agent.bridge_url"},
+		{"桥地址格式不对", func(a *Agent) { a.BridgeURL = "backend:47001" }, "agent.bridge_url"},
+		{"没有服务令牌", func(a *Agent) { a.ServiceToken = "" }, "agent.service_token"},
+		{"服务令牌太短", func(a *Agent) { a.ServiceToken = "short" }, "agent.service_token"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			a := ok
+			tc.mut(&a)
+			err := a.Validate()
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("应报含 %q 的错误: %v", tc.want, err)
+			}
+		})
+	}
+	// process 模式不需要这些，旧配置照常通过
+	if err := (Agent{Enabled: true, Runtime: "process"}).Validate(); err != nil {
+		t.Errorf("process 模式不要求 url / bridge_url: %v", err)
+	}
+	if err := (Agent{Enabled: true}).Validate(); err != nil {
+		t.Errorf("不写 runtime 等同 process: %v", err)
+	}
+}
+
+func TestLoad_AgentRuntimeFromEnv(t *testing.T) {
+	t.Setenv("APP_AGENT_RUNTIME", "http")
+	t.Setenv("APP_AGENT_URL", "http://agent:8090")
+	t.Setenv("APP_AGENT_BRIDGE_URL", "http://backend:47001")
+	cfg, err := Load("../../../configs/config.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Agent.Runtime != "http" || cfg.Agent.URL != "http://agent:8090" || cfg.Agent.BridgeURL != "http://backend:47001" {
+		t.Errorf("环境变量应能覆盖: %+v", cfg.Agent)
+	}
+}
+
 func TestAgentConfig_DisabledSkipsValidation(t *testing.T) {
 	if err := (Agent{Enabled: false, BridgeAddr: "0.0.0.0:1"}).Validate(); err != nil {
 		t.Errorf("没启用就不校验（配置里留着无效值也不该挡住启动）: %v", err)

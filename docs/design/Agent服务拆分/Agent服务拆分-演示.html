@@ -457,7 +457,7 @@
 
         { lane: "agent", name: "Node 子进程", file: "pi-agent-core 1.3 · 跑完即退", at: [[0, 1, "same", ""], [2, 2, "gone", "换成长驻服务"]] },
         { lane: "agent", name: "自写：插话 · 压缩 · 裁剪 · 续跑", file: "steer / compaction / context / run.mjs · 549 行", at: [[0, 0, "same", "回合结束时整体覆盖保存历史"], [1, 1, "changed", "每个工具结果后保存历史"], [2, 2, "changed", "改写成 TS，行为不变"], [3, 3, "gone", "换成 Pi Durable 内置能力"]] },
-        { lane: "agent", name: "长驻 TS 服务", file: "pi 1.4 · 不存状态", at: [[2, 2, "new", "提供 /segments，Go 每 30 秒对账"], [3, 4, "changed", "成为 Pi Durable 的宿主"]] },
+        { lane: "agent", name: "长驻 TS 服务", file: "pi 1.4 · 不存状态", at: [[2, 2, "new", "提供 /segments，连接就是租约，Go 不用轮询"], [3, 4, "changed", "成为 Pi Durable 的宿主"]] },
         { lane: "agent", name: "Pi Durable Harness", file: "SQLite · 自动续跑 · 崩溃熔断", at: [[3, 4, "new", ""]] },
         { lane: "agent", name: "会话 · 运行 · 审批", at: [[3, 4, "in", "从 Go 搬来"]] },
         { lane: "agent", name: "扩展：画布 · 生成 · 技能 · 联网", file: "工具 + 各自的提示词片段", at: [[3, 4, "new", "工具通过平台 API 回调 Go"]] },
@@ -486,7 +486,7 @@
         ],
         [
           ["前端", "HTTP · WebSocket", "Go 后端"],
-          ["Go 后端", "HTTP：/segments 启动、插话、中止、对账", "Agent 服务", true],
+          ["Go 后端", "HTTP：/segments 启动（长连接），插话、中止", "Agent 服务", true],
           ["Agent 服务", "平台 API：服务令牌 + 运行令牌", "Go 后端"],
         ],
         [

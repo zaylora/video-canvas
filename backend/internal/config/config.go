@@ -88,7 +88,14 @@ type JWT struct {
 // Agent 是画布 Agent 的运行时配置。它依赖 Node（pi 的 agent 循环在独立的 Node 进程里跑），所以默认关闭，要显式开启。
 // 渠道、模型、凭证和计费都在后台的 AI 配置里，不在这里。
 type Agent struct {
-	Enabled    bool   `mapstructure:"enabled"`     // 是否启用；关闭时发起运行会返回「Agent 暂不可用」
+	Enabled bool `mapstructure:"enabled"` // 是否启用；关闭时发起运行会返回「Agent 暂不可用」
+	// Runtime 是 Agent 的运行方式：process（默认）每个运行片段起一个 Node 子进程；http 连独立部署的 Agent 服务（见 agent/src/serve.ts）
+	Runtime string `mapstructure:"runtime"`
+	// URL 是 Agent 服务的地址（http 模式），如 http://agent:8090，只写协议、主机和端口
+	URL string `mapstructure:"url"`
+	// BridgeURL 是 Agent 服务访问桥用的地址（http 模式），如 http://backend:47001：它要能从 Agent 容器连上，
+	// 和 BridgeAddr（本进程监听在哪）不是一回事。process 模式从监听地址推出来，不用配
+	BridgeURL  string `mapstructure:"bridge_url"`
 	NodePath   string `mapstructure:"node_path"`   // node 可执行文件，默认 node（在 PATH 里找），要求 >= 22.19
 	RuntimeDir string `mapstructure:"runtime_dir"` // 仓库根目录 agent/ 目录（含 src/main.ts（或构建产物 dist/main.js）和已安装的 node_modules），默认 ../agent
 	BridgeAddr string `mapstructure:"bridge_addr"` // 桥的监听地址，默认 127.0.0.1:0（随机端口）；不是回环地址时必须配 ServiceToken
@@ -107,6 +114,12 @@ type Agent struct {
 	// Go 的工具和 Agent 自己的工具（如 codemode）都可以停用，运维想关掉某个能力时加一项。
 	DisabledTools []string `mapstructure:"disabled_tools"`
 }
+
+// 取值见 Agent.Runtime
+const (
+	AgentRuntimeProcess = "process"
+	AgentRuntimeHTTP    = "http"
+)
 
 // MinServiceTokenLen 是服务令牌的最短长度：它在非回环监听时是唯一的屏障，太短的令牌等于没配。
 const MinServiceTokenLen = 32
@@ -134,6 +147,9 @@ func (a Agent) WithDefaults() Agent {
 	if a.BridgeAddr == "" {
 		a.BridgeAddr = "127.0.0.1:0"
 	}
+	if a.Runtime == "" {
+		a.Runtime = AgentRuntimeProcess
+	}
 	return a
 }
 
@@ -149,6 +165,15 @@ func (a Agent) Validate() error {
 			return fmt.Errorf("agent.searxng_url 必须是 http(s)://host[:port] 形式，当前是 %q", a.SearXNGURL)
 		}
 	}
+	switch a.WithDefaults().Runtime {
+	case AgentRuntimeProcess:
+	case AgentRuntimeHTTP:
+		if err := a.validateHTTPRuntime(); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("agent.runtime 只能是 %s 或 %s，当前是 %q", AgentRuntimeProcess, AgentRuntimeHTTP, a.Runtime)
+	}
 	if a.ServiceToken != "" && !ValidServiceToken(a.ServiceToken) {
 		return fmt.Errorf("agent.service_token 至少 %d 个字符（建议 openssl rand -hex 32）", MinServiceTokenLen)
 	}
@@ -158,6 +183,29 @@ func (a Agent) Validate() error {
 	}
 	if !IsLoopbackHost(host) && a.ServiceToken == "" {
 		return fmt.Errorf("agent.bridge_addr 必须是回环地址（127.0.0.1、::1 或 localhost），当前是 %q：桥只该被本机的 Node 进程访问；要让别的容器访问，请配置 agent.service_token（APP_AGENT_SERVICE_TOKEN）", host)
+	}
+	return nil
+}
+
+// validateHTTPRuntime 校验 http 模式必需的三项：Agent 服务地址、桥的对外地址、两边共用的服务令牌。
+func (a Agent) validateHTTPRuntime() error {
+	if err := checkOrigin("agent.url", a.URL); err != nil {
+		return err
+	}
+	if err := checkOrigin("agent.bridge_url", a.BridgeURL); err != nil {
+		return err
+	}
+	if !ValidServiceToken(a.ServiceToken) {
+		return fmt.Errorf("agent.runtime=http 需要 agent.service_token（APP_AGENT_SERVICE_TOKEN），至少 %d 个字符：它是 Go 与 Agent 服务互相认的唯一凭据", MinServiceTokenLen)
+	}
+	return nil
+}
+
+// checkOrigin 要求值是 http(s)://host[:port]，不带路径、查询和用户信息。
+func checkOrigin(name, raw string) error {
+	u, err := url.Parse(raw)
+	if raw == "" || err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.User != nil {
+		return fmt.Errorf("%s 必须是 http(s)://host[:port] 形式，当前是 %q", name, raw)
 	}
 	return nil
 }
@@ -251,7 +299,7 @@ func Load(path string) (*Config, error) {
 	// 否则升级时无法把它们导入为后台存储
 	for _, key := range []string{
 		"server.id_key", "database.allow_newer_schema", "update.updater_token", "ai.secret_key", "ai.allow_fake_ip", "storage.driver",
-		"agent.enabled", "agent.node_path", "agent.runtime_dir", "agent.bridge_addr", "agent.service_token", "agent.work_dir", "agent.web_enabled", "agent.searxng_url", "agent.disabled_tools",
+		"agent.enabled", "agent.runtime", "agent.url", "agent.bridge_url", "agent.node_path", "agent.runtime_dir", "agent.bridge_addr", "agent.service_token", "agent.work_dir", "agent.web_enabled", "agent.searxng_url", "agent.disabled_tools",
 		"storage.s3.endpoint", "storage.s3.region", "storage.s3.bucket", "storage.s3.access_key", "storage.s3.secret_key",
 		"storage.s3.use_ssl", "storage.s3.public_base_url", "storage.s3.path_prefix",
 	} {

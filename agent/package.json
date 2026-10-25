@@ -7,6 +7,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
+    "serve": "node --disable-warning=ExperimentalWarning src/serve.ts",
+    "start": "node dist/serve.js",
     "test": "node --test \"test/*.test.ts\""
   },
   "dependencies": {

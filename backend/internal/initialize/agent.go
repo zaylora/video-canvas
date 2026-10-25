@@ -92,6 +92,23 @@ func ResolveAgentRuntime(cfg config.Agent) (AgentRuntimePaths, error) {
 	return AgentRuntimePaths{Node: node, Script: script}, nil
 }
 
+// AgentLauncher 按配置选启动器：http 模式连独立的 Agent 服务，否则每个片段起一个 Node 子进程。
+func AgentLauncher(ac config.Agent) agentsvc.Launcher {
+	if ac.Runtime == config.AgentRuntimeHTTP {
+		return &agentsvc.HTTPLauncher{BaseURL: ac.URL, ServiceToken: ac.ServiceToken}
+	}
+	return agentsvc.ExecLauncher{}
+}
+
+// BridgeURLFor 是 Agent 访问桥用的地址：http 模式用配置里写的对外地址（Agent 容器要能连上），
+// 否则是本机的监听地址。
+func BridgeURLFor(ac config.Agent, listen net.Addr) string {
+	if ac.Runtime == config.AgentRuntimeHTTP {
+		return strings.TrimRight(ac.BridgeURL, "/")
+	}
+	return BridgeLocalURL(listen)
+}
+
 // agentEntryScript 选入口脚本。仓库里有源码就直接跑源码（Node 22.19+ 自带类型剥离，不用先构建），
 // 部署镜像里只有 npm run build 的产物。两者同时存在时用源码：开发时改了 src，不能被旧的 dist 盖住。
 func agentEntryScript(dir string) (string, error) {
@@ -200,9 +217,13 @@ func newAgentRuntime(cfg *config.Config, d agentDeps) (*agentRuntime, error) {
 	if !ac.Enabled {
 		return nil, nil
 	}
-	paths, err := ResolveAgentRuntime(ac)
-	if err != nil {
-		return nil, err
+	// http 模式下 Agent 在别的容器里，本机不需要 Node，也没有入口脚本可查
+	var paths AgentRuntimePaths
+	if ac.Runtime != config.AgentRuntimeHTTP {
+		var err error
+		if paths, err = ResolveAgentRuntime(ac); err != nil {
+			return nil, err
+		}
 	}
 	ln, err := ListenBridge(ac)
 	if err != nil {
@@ -220,8 +241,8 @@ func newAgentRuntime(cfg *config.Config, d agentDeps) (*agentRuntime, error) {
 		bridge.SetModelRequestRecorder(d.modelRequests)
 	}
 	rt := agentsvc.NewProcessRuntime(agentsvc.RuntimeDeps{
-		Repo: d.repo, Bridge: bridge, Canvas: d.canvas, Agent: d.agent, Registry: d.registry, Launcher: agentsvc.ExecLauncher{},
-		Config: agentsvc.RuntimeConfig{NodePath: paths.Node, ScriptPath: paths.Script, BridgeURL: BridgeLocalURL(ln.Addr()), ServiceToken: ac.ServiceToken, WorkRoot: ac.WorkDir, DisabledTools: AgentDisabledTools(ac)},
+		Repo: d.repo, Bridge: bridge, Canvas: d.canvas, Agent: d.agent, Registry: d.registry, Launcher: AgentLauncher(ac),
+		Config: agentsvc.RuntimeConfig{NodePath: paths.Node, ScriptPath: paths.Script, BridgeURL: BridgeURLFor(ac, ln.Addr()), ServiceToken: ac.ServiceToken, WorkRoot: ac.WorkDir, DisabledTools: AgentDisabledTools(ac)},
 	})
 	d.agent.SetRuntime(rt)
 	return &agentRuntime{

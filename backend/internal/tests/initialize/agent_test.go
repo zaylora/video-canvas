@@ -11,6 +11,7 @@ import (
 	"video-canvas/internal/config"
 	. "video-canvas/internal/initialize"
 	"video-canvas/internal/provider/webaccess"
+	agentsvc "video-canvas/internal/service/agent"
 )
 
 func TestParseNodeVersion(t *testing.T) {
@@ -175,6 +176,31 @@ func TestBridgeLocalURL(t *testing.T) {
 		if got := BridgeLocalURL(tc.addr); got != tc.want {
 			t.Errorf("BridgeLocalURL(%v)=%q，期望 %q", tc.addr, got, tc.want)
 		}
+	}
+}
+
+// http 模式：运行时用 HTTPLauncher 连独立的 Agent 服务，不再需要本机有 Node；
+// 桥地址是配置里写的对外地址（Agent 容器要能连上），不是本机监听地址。
+func TestAgentLauncher(t *testing.T) {
+	l, ok := AgentLauncher(config.Agent{Runtime: "http", URL: "http://agent:8090", ServiceToken: "tok"}).(*agentsvc.HTTPLauncher)
+	if !ok || l.BaseURL != "http://agent:8090" || l.ServiceToken != "tok" {
+		t.Errorf("http 模式应是 HTTPLauncher: %#v", l)
+	}
+	if _, ok := AgentLauncher(config.Agent{Runtime: "process"}).(agentsvc.ExecLauncher); !ok {
+		t.Error("process 模式应是 ExecLauncher")
+	}
+	if _, ok := AgentLauncher(config.Agent{}).(agentsvc.ExecLauncher); !ok {
+		t.Error("没写 runtime 应是 ExecLauncher")
+	}
+}
+
+func TestBridgeURLFor(t *testing.T) {
+	addr := &net.TCPAddr{IP: net.IPv4zero, Port: 47001}
+	if got := BridgeURLFor(config.Agent{Runtime: "http", BridgeURL: "http://backend:47001/"}, addr); got != "http://backend:47001" {
+		t.Errorf("http 模式用配置的对外地址（去掉结尾的斜杠）: %q", got)
+	}
+	if got := BridgeURLFor(config.Agent{}, addr); got != "http://127.0.0.1:47001" {
+		t.Errorf("process 模式用本机地址: %q", got)
 	}
 }
 

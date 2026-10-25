@@ -33,7 +33,7 @@
 
 ## 关键架构记忆
 
-- 仓库根目录 `agent/` 是画布 Agent 的 Node 运行时（pi agent 循环，零密钥，经桥回调 Go）；Go 侧的 Agent 逻辑在 `backend/internal/agent/`、`backend/internal/service/agent/` 和 `backend/internal/handler/agent/`。运行时是 TypeScript（`agent/src/*.ts`）；改动在 `agent/` 下依次跑 `npm run typecheck`、`npm test`、`npm run build`。开发时 Go 直接用 Node 22.19+ 的类型剥离跑 `src/main.ts`，不用先构建；部署镜像里只有 `npm run build` 生成的 `dist/`。源码只能用「可擦除」的 TS 语法（不用 enum、namespace、参数属性），`tsc` 已通过 `erasableSyntaxOnly` 检查。
+- 仓库根目录 `agent/` 是画布 Agent 的 Node 运行时（pi agent 循环，零密钥，经桥回调 Go）；Go 侧的 Agent 逻辑在 `backend/internal/agent/`、`backend/internal/service/agent/` 和 `backend/internal/handler/agent/`。运行时是 TypeScript（`agent/src/*.ts`）；改动在 `agent/` 下依次跑 `npm run typecheck`、`npm test`、`npm run build`。开发时 Go 直接用 Node 22.19+ 的类型剥离跑 `src/main.ts`，不用先构建；部署镜像里只有 `npm run build` 生成的 `dist/`。Agent 也可以作为独立的 HTTP 服务运行（`npm run serve` 开发、`npm start` 生产，入口 `src/serve.ts`，环境变量见该文件头部注释），Go 用 `agent.runtime: http` 连它。源码只能用「可擦除」的 TS 语法（不用 enum、namespace、参数属性），`tsc` 已通过 `erasableSyntaxOnly` 检查。
 
 - 产品是 React 无限画布 + Go API 的 AI 视频创作应用。
 - 后端链路为 `router → middleware → handler → service → repository/cache`，异步生成经 worker 和 JS plugin-runner 调用模型供应商。
