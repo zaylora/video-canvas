@@ -467,3 +467,25 @@ test("打开：另一个进程占着写锁时会等一会儿而不是立刻报 b
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// ---- 引擎要用的几处 ----
+
+test("会话绑定 Pi 的会话 id：绑定后能读出，不改更新时间（不影响列表顺序）；别人的、不存在的是 NotFound", withStore((s, c) => {
+  const a = newSession(s);
+  assert.equal(a.conversationId, "", "新会话还没有 Pi 会话");
+  c.tick(50);
+  s.bindConversation(a.id, "17");
+  const got = s.getSession("1", a.id);
+  assert.equal(got.conversationId, "17");
+  assert.equal(got.updatedAt, a.updatedAt, "绑定是内部动作，不能让会话在列表里跳到最前");
+  assert.throws(() => s.bindConversation("404", "1"), NotFoundError);
+  s.deleteSession("1", a.id);
+  assert.throws(() => s.bindConversation(a.id, "1"), NotFoundError, "已删除的会话");
+}));
+
+test("运行补丁可以写版本字段和步数上限（创建后由运行准备确定）；步数上限追加一轮", withStore((s) => {
+  const a = newSession(s);
+  const r = newRun(s, a.id, { status: "queued" });
+  const got = s.updateRunIf(r.id, ["queued"], { promptVersion: 15, toolsHash: "04c13780543e", buildSha: "abc1234", harnessKey: "k1", maxSteps: 80 });
+  assert.deepEqual([got.promptVersion, got.toolsHash, got.buildSha, got.harnessKey, got.maxSteps], [15, "04c13780543e", "abc1234", "k1", 80]);
+}));

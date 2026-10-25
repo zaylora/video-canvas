@@ -153,3 +153,34 @@ test("对象存储里的图片：工具把地址放在 data 里，发给上游�
     await s.close();
   }
 });
+
+test("模型代理回错误：HTTP 状态和业务错误码（响应头）交给 onError，不会当成一次成功的调用", async () => {
+  const { createServer } = await import("node:http");
+  const srv = createServer((req, res) => {
+    req.resume();
+    req.on("end", () => {
+      res.writeHead(402, { "content-type": "application/json", "x-agent-error-code": "60008" });
+      res.end(JSON.stringify({ error: { message: "超出本轮积分预算", type: "agent_error" } }));
+    });
+  });
+  await new Promise<void>((r) => srv.listen(0, "127.0.0.1", r));
+  const port = (srv.address() as import("node:net").AddressInfo).port;
+  const contexts = createRunContexts();
+  const errors: Array<{ status: number; code: number | undefined }> = [];
+  const calls: unknown[] = [];
+  const reg = createModelRegistry({ baseUrl: `http://127.0.0.1:${port}`, serviceToken: TOKEN, contexts, onCall: (c) => calls.push(c), onError: (e) => errors.push({ status: e.status, code: e.code }) });
+  reg.ensure(SPEC);
+  const registry = createRegistry();
+  registry.install(runContextExtension(contexts));
+  const harness = await Harness.open(new MemoryStorage(), { models: reg.models, registry, settings: { retry: { enabled: false } } }, context);
+  try {
+    const c = await harness.createConversation({ ownership: { kind: "ownerless" }, agent: { model: { provider: PROVIDER_ID, modelId: "claude" } } }, context);
+    contexts.set(String(c.id), rc("1001"));
+    await (await c.submit({ type: "input", content: "你好" }, context)).wait(context);
+    assert.deepEqual(errors, [{ status: 402, code: 60008 }]);
+    assert.equal(calls.length, 0);
+  } finally {
+    await harness.close(context);
+    await new Promise<void>((r) => srv.close(() => r()));
+  }
+});

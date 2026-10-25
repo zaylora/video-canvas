@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -130,6 +131,11 @@ func serveModelStream(c *gin.Context, call func(ctx context.Context, body []byte
 	err = call(ctx, body, extra, write)
 	if err != nil && !started {
 		status, msg, typ := openAIError(err)
+		// 业务错误把错误码放进响应头：调用方（Agent 服务）据此区分「本轮额度用完」等情况，不用比对文案
+		var ec *errcode.Error
+		if errors.As(err, &ec) {
+			c.Header(ErrorCodeHeader, strconv.Itoa(ec.Code))
+		}
 		writeOpenAIError(c, status, msg, typ)
 	}
 	// 流已经开始：状态码改不了，只能结束流；调用方会把提前结束当作错误

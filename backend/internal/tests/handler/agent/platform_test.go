@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -572,4 +573,26 @@ func TestPlatformHandler_PrepareRunRejectsBadRequests(t *testing.T) {
 	if respCode(t, w) != errcode.ErrAgentModelNA.Code {
 		t.Errorf("业务错误要保留错误码: %d %s", w.Code, w.Body)
 	}
+}
+
+// 模型代理的业务错误带一个响应头 X-Agent-Error-Code：Agent 服务据此区分「本轮额度用完」（运行进入 budget_exhausted、
+// 追加额度后可以继续）和别的模型错误。OpenAI 格式的错误体只有文字，不能靠比对文案。
+func TestPlatformHandler_ChatCompletions_BusinessErrorsCarryTheirCodeInAHeader(t *testing.T) {
+	for name, tc := range map[string]struct {
+		err  error
+		want string
+	}{
+		"预算用尽":   {errcode.ErrAgentOverBudget, strconv.Itoa(errcode.ErrAgentOverBudget.Code)},
+		"余额不足":   {errcode.ErrInsufficientCredits, strconv.Itoa(errcode.ErrInsufficientCredits.Code)},
+		"模型不可用":  {errcode.ErrAgentModelNA, strconv.Itoa(errcode.ErrAgentModelNA.Code)},
+		"内部错误不带": {errors.New("boom"), ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			w := platformCall(newPlatformRouter(&fakePlatform{err: tc.err}), http.MethodPost, chatPath, chatBody, map[string]string{"X-Agent-Context": ctxHeader(goodCtx)})
+			if got := w.Header().Get("X-Agent-Error-Code"); got != tc.want {
+				t.Errorf("X-Agent-Error-Code = %q，期望 %q", got, tc.want)
+			}
+		})
+	}
+	// 令牌模式的桥同样（共用 serveModelStream）
 }

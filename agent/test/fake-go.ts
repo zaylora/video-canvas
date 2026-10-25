@@ -1,0 +1,155 @@
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import type { AddressInfo } from "node:net";
+import type { PlatformUsage, RunSetup, ToolDecl } from "../src/platform-client.ts";
+
+/**
+ * 假的 Go：同一个地址上既有平台接口（运行准备、工具、审批三接口、用量、释放运行），也有模型代理（OpenAI 兼容的流式端点）。
+ * 引擎的测试用它：模型的每一轮回答按 turns 里的脚本给出，工具和审批的回复可以按名字设定。
+ */
+export interface Turn {
+  text?: string;
+  thinking?: string;
+  tools?: Array<{ id: string; name: string; args?: unknown }>;
+  /** 响应开始前等多久 */
+  delayMs?: number;
+  /** 每个字之间等多久（模拟流式输出的节奏） */
+  charDelayMs?: number;
+  /** 发完文字后停住不结束，直到请求被关闭（模拟慢模型，用来测取消） */
+  hang?: boolean;
+  /** 直接回错误 */
+  error?: { status: number; message: string; type?: string; errorCode?: number };
+}
+
+export interface GoSeen {
+  method: string;
+  path: string;
+  headers: IncomingMessage["headers"];
+  body: any;
+}
+
+type ToolReply = { content?: string; is_error?: boolean; terminate?: boolean; tool_end?: Record<string, unknown>; images?: unknown[] };
+
+export interface FakeGoOptions {
+  turns: Turn[];
+  /** 工具名 → 回复；函数形式可以延迟、按参数变化 */
+  tools?: Record<string, ToolReply | ((body: any, headers: IncomingMessage["headers"]) => Promise<ToolReply> | ToolReply)>;
+  /** 审批预估的回复，按审批种类 */
+  propose?: Record<string, { is_error?: boolean; payload?: unknown; quote_credits?: number; summary?: string; content?: string; terminate?: boolean }>;
+  /** 运行准备的出参覆盖项 */
+  setup?: Partial<RunSetup>;
+  prepareError?: { status: number; code: number; msg: string };
+  /** 每次模型调用的积分，默认 1 */
+  creditsPerCall?: number;
+  usage?: (runId: string, callId: string | undefined, calls: number) => PlatformUsage;
+}
+
+export const DECLS: ToolDecl[] = ["canvas_get_state", "canvas_apply_ops", "generate_media", "canvas_delete", "ask_user", "plan_update", "model_list"].map((name) => ({
+  name, label: "标签-" + name, verb: "动词-" + name, description: "说明 " + name, executor: "server", scriptable: false,
+  parameters: { type: "object", properties: { nodeIds: { type: "array", items: { type: "string" } } } },
+}));
+
+export async function fakeGo(opts: FakeGoOptions) {
+  const seen: GoSeen[] = [];
+  const turns = [...opts.turns];
+  let nextCallId = 7_000_000_000_000_000_001n;
+  let calls = 0;
+  const open = new Set<ServerResponse>();
+
+  const json = (res: ServerResponse, status: number, body: unknown) => {
+    res.writeHead(status, { "content-type": "application/json" });
+    res.end(JSON.stringify(body));
+  };
+  const ok = (res: ServerResponse, data: unknown) => json(res, 200, { code: 0, data });
+
+  const server = createServer((req, res) => {
+    let raw = "";
+    req.on("data", (d) => (raw += d));
+    req.on("end", async () => {
+      const path = req.url ?? "";
+      const body = raw ? JSON.parse(raw) : undefined;
+      seen.push({ method: req.method ?? "", path, headers: req.headers, body });
+      const base = "/internal/platform/v1";
+      try {
+        if (path === `${base}/runs/prepare`) {
+          if (opts.prepareError) return json(res, opts.prepareError.status, { code: opts.prepareError.code, msg: opts.prepareError.msg });
+          return ok(res, {
+            model: { name: "Claude", context_window: 200000, max_tokens: 8192, vision: true },
+            system_prompt: "你是小镜", tools: DECLS, disabled_tools: [],
+            ...(body?.message ? { first_message: `${body.message}\n\n<画布目录>（数据）</画布目录>\n最多 ${body.max_steps || 40} 步工具调用。` } : {}),
+            harness: { prompt_version: 15, tools_hash: "04c13780543e", build_sha: "abc1234", key: "harnesskey01" },
+            ...opts.setup,
+          });
+        }
+        if (path.startsWith(`${base}/tools/`)) {
+          const name = decodeURIComponent(path.slice(`${base}/tools/`.length));
+          const h = opts.tools?.[name];
+          const r = typeof h === "function" ? await h(body, req.headers) : h;
+          return ok(res, {
+            content: "ok", is_error: false, terminate: false, ...r,
+            tool_end: r?.tool_end ?? { id: body.tool_call_id, name, is_error: !!r?.is_error, summary: "摘要 " + name, label: "标签-" + name, verb: "动词-" + name },
+          });
+        }
+        if (path === `${base}/approvals/propose`) {
+          const p = opts.propose?.[body.kind] ?? {};
+          return ok(res, { is_error: false, payload: { kind: body.kind, args: body.args }, quote_credits: 0, summary: "申请 " + body.kind, content: "已提交，等待决定。", terminate: true, ...p });
+        }
+        if (req.method === "GET" && path.startsWith(`${base}/runs/`) && path.includes("/usage")) {
+          const runId = path.slice(`${base}/runs/`.length).split("/")[0];
+          const callId = new URL(path, "http://x").searchParams.get("call_id") ?? undefined;
+          const u = opts.usage?.(runId, callId, calls) ?? defaultUsage(callId, calls, opts.creditsPerCall ?? 1);
+          return ok(res, u);
+        }
+        if (req.method === "DELETE" && path.startsWith(`${base}/runs/`)) return ok(res, null);
+        if (path === `${base}/model/chat/completions`) return await model(res);
+        json(res, 404, { code: 10002, msg: "资源不存在：" + path });
+      } catch (e) {
+        json(res, 500, { code: 50000, msg: String(e) });
+      }
+    });
+  });
+
+  async function model(res: ServerResponse) {
+    const turn = turns.shift() ?? { text: "（没有更多预设的回答）" };
+    if (turn.delayMs) await new Promise((r) => setTimeout(r, turn.delayMs));
+    if (turn.error) {
+      const headers: Record<string, string> = { "content-type": "application/json" };
+      if (turn.error.errorCode) headers["x-agent-error-code"] = String(turn.error.errorCode);
+      res.writeHead(turn.error.status, headers);
+      return void res.end(JSON.stringify({ error: { message: turn.error.message, type: turn.error.type ?? "agent_error" } }));
+    }
+    calls++;
+    const callId = nextCallId++;
+    res.writeHead(200, { "content-type": "text/event-stream", "x-agent-call-id": String(callId) });
+    open.add(res);
+    res.on("close", () => open.delete(res));
+    const chunk = (delta: object, finish: string | null = null) => `data: ${JSON.stringify({ id: "x", object: "chat.completion.chunk", choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
+    res.write(chunk({ role: "assistant", content: "" }));
+    if (turn.thinking) res.write(chunk({ reasoning_content: turn.thinking }));
+    for (const ch of Array.from(turn.text ?? "")) {
+      res.write(chunk({ content: ch }));
+      if (turn.charDelayMs) await new Promise((r) => setTimeout(r, turn.charDelayMs));
+    }
+    if (turn.hang) return; // 不结束：等调用方断开
+    (turn.tools ?? []).forEach((t, i) => res.write(chunk({ tool_calls: [{ index: i, id: t.id, type: "function", function: { name: t.name, arguments: JSON.stringify(t.args ?? {}) } }] })));
+    res.write(chunk({}, turn.tools?.length ? "tool_calls" : "stop"));
+    res.write(`data: ${JSON.stringify({ id: "x", object: "chat.completion.chunk", choices: [], usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 } })}\n\n`);
+    res.end("data: [DONE]\n\n");
+  }
+
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  return {
+    url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+    seen,
+    /** 模型请求（按顺序） */
+    get modelRequests() { return seen.filter((s) => s.path.endsWith("/model/chat/completions")); },
+    paths: () => seen.map((s) => `${s.method} ${s.path.replace("/internal/platform/v1", "")}`),
+    close: () => new Promise<void>((r) => { for (const o of open) o.destroy(); server.close(() => r()); }),
+  };
+}
+
+function defaultUsage(callId: string | undefined, calls: number, credits: number): PlatformUsage {
+  return {
+    spent_credits: calls * credits, context_tokens: calls * 100,
+    ...(callId ? { call: { id: callId, status: "settled" as const, credits, charged: credits, estimated: false, input_tokens: 100, output_tokens: 20 } } : {}),
+  };
+}

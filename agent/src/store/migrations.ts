@@ -100,6 +100,12 @@ CREATE INDEX idx_agent_approvals_run ON agent_approvals (run_id, status);
 CREATE INDEX idx_agent_approvals_user ON agent_approvals (user_id);
 `,
   },
+  {
+    version: 2,
+    name: "session-conversation",
+    // 会话在 Pi Durable 里的会话 id：对话历史归 Pi，这里只记对应关系
+    sql: `ALTER TABLE agent_sessions ADD COLUMN conversation_id TEXT NOT NULL DEFAULT '';`,
+  },
 ];
 
 const checksum = (sql: string): string => createHash("sha256").update(sql).digest("hex");

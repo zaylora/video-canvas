@@ -11,6 +11,8 @@ export interface Session {
   modelKey: string;
   /** 最近一条事件的序号 */
   lastSeq: number;
+  /** 会话在 Pi Durable 里的会话 id；还没开始过对话为空串 */
+  conversationId: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -123,6 +125,11 @@ export interface RunPatch {
   spentCredits?: number;
   steps?: number;
   contextTokens?: number;
+  maxSteps?: number;
+  promptVersion?: number;
+  toolsHash?: string;
+  buildSha?: string;
+  harnessKey?: string;
 }
 
 export interface ApprovalPatch {

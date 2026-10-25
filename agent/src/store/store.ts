@@ -30,7 +30,7 @@ const json = (v: unknown): string => JSON.stringify(v === undefined ? {} : v);
 function sessionOf(r: Row): Session {
   return {
     id: id(r.id), userId: id(r.user_id), canvasId: id(r.canvas_id), title: String(r.title), mode: String(r.mode),
-    modelKey: String(r.model_key), lastSeq: num(r.last_seq), createdAt: num(r.created_at), updatedAt: num(r.updated_at),
+    modelKey: String(r.model_key), lastSeq: num(r.last_seq), conversationId: String(r.conversation_id), createdAt: num(r.created_at), updatedAt: num(r.updated_at),
   };
 }
 
@@ -92,6 +92,7 @@ const SESSION_COLUMNS = { title: "title", mode: "mode", modelKey: "model_key" };
 const RUN_COLUMNS = {
   status: "status", errorCode: "error_code", errorMessage: "error_message", endedAt: "ended_at", leaseUntil: "lease_until",
   mode: "mode", budgetCredits: "budget_credits", spentCredits: "spent_credits", steps: "steps", contextTokens: "context_tokens",
+  maxSteps: "max_steps", promptVersion: "prompt_version", toolsHash: "tools_hash", buildSha: "build_sha", harnessKey: "harness_key",
 };
 const APPROVAL_COLUMNS = { status: "status", decision: "decision", result: "result", decidedAt: "decided_at", quoteCredits: "quote_credits" };
 
@@ -209,6 +210,12 @@ export class AgentStore {
     if (changed === 0) throw new NotFoundError("会话");
   }
 
+  /** 记下会话在 Pi 里的会话 id。内部动作，不改更新时间 */
+  bindConversation(sessionId: string, conversationId: string): void {
+    const changed = this.#run("UPDATE agent_sessions SET conversation_id = ? WHERE id = ? AND deleted_at IS NULL", conversationId, dec(sessionId));
+    if (changed === 0) throw new NotFoundError("会话");
+  }
+
   /** 软删除：行还在（运行、事件、审批仍然引用它），但读、列表、追加事件都当它不存在 */
   deleteSession(userId: string, sessionId: string): void {
     const t = this.#now();
@@ -316,6 +323,14 @@ export class AgentStore {
   /** 原子累加步数和已花积分 */
   addRunUsage(runId: string, steps: number, credits: number): void {
     const changed = this.#run("UPDATE agent_runs SET steps = steps + ?, spent_credits = spent_credits + ?, updated_at = ? WHERE id = ?", steps, credits, this.#now(), dec(runId));
+    if (changed === 0) throw new NotFoundError("运行");
+  }
+
+  /** 记下运行的已花积分和上下文大小（覆盖旧值）。不看运行状态：取消后，被中止的那次调用结算出来的用量也要记上 */
+  setRunUsage(runId: string, usage: { spentCredits: number; contextTokens?: number }): void {
+    const changed = usage.contextTokens === undefined
+      ? this.#run("UPDATE agent_runs SET spent_credits = ?, updated_at = ? WHERE id = ?", usage.spentCredits, this.#now(), dec(runId))
+      : this.#run("UPDATE agent_runs SET spent_credits = ?, context_tokens = ?, updated_at = ? WHERE id = ?", usage.spentCredits, usage.contextTokens, this.#now(), dec(runId));
     if (changed === 0) throw new NotFoundError("运行");
   }
 

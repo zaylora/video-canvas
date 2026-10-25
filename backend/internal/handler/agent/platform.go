@@ -84,6 +84,9 @@ func parseRunContext(c *gin.Context) (agentsvc.RunContext, bool) {
 	return rc, true
 }
 
+// ErrorCodeHeader 是模型代理在业务错误时的响应头：值是业务错误码（十进制）。
+const ErrorCodeHeader = "X-Agent-Error-Code"
+
 // CallIDHeader 是响应头：上下文模式的模型代理把这次调用的 id（十进制字符串）放在这里，调用方事后据此查这次调用的积分。
 const CallIDHeader = "X-Agent-Call-Id"
 

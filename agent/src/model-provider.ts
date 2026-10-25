@@ -17,6 +17,7 @@ import { encodeRunContext, type RunContext } from "./platform-client.ts";
 
 export const PROVIDER_ID = "platform";
 const CALL_ID_HEADER = "x-agent-call-id";
+const ERROR_CODE_HEADER = "x-agent-error-code";
 
 /** 一个 Agent 模型的规格，来自运行准备接口（Go 的模型配置） */
 export interface ModelSpec {
@@ -73,6 +74,14 @@ export interface ModelCallInfo {
   callId: string;
 }
 
+export interface ModelErrorInfo {
+  sessionId: string | undefined;
+  /** HTTP 状态码 */
+  status: number;
+  /** Go 的业务错误码（响应头 X-Agent-Error-Code），比如本轮额度用完；不是业务错误时没有 */
+  code: number | undefined;
+}
+
 export interface ModelRegistryOptions {
   /** Go 的桥地址 */
   baseUrl: string;
@@ -80,6 +89,8 @@ export interface ModelRegistryOptions {
   contexts: RunContexts;
   /** 每次模型请求收到响应头时调用，带上 Go 给的调用 id */
   onCall?: (info: ModelCallInfo) => void;
+  /** 模型代理回了错误（HTTP 4xx/5xx）时调用。OpenAI 格式的错误体只有文字，业务错误码在响应头里 */
+  onError?: (info: ModelErrorInfo) => void;
 }
 
 /**
@@ -99,6 +110,17 @@ export function createModelRegistry(opts: ModelRegistryOptions) {
     return {
       ...o,
       ...(ctx && { headers: { ...o.headers, "X-Agent-Context": ctx } }),
+      // 重试策略在 Go（渠道限流、上游重试），这里不再重试，否则同一次失败会被算两遍
+      maxRetries: 0,
+      // 错误响应不会走 onResponse（SDK 直接抛错），所以在 fetch 这一层看状态码和业务错误码
+      fetch: async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+        const res = await (o.fetch ?? fetch)(input, init);
+        if (res.status >= 400) {
+          const code = Number(res.headers.get(ERROR_CODE_HEADER));
+          opts.onError?.({ sessionId: o.sessionId, status: res.status, code: Number.isInteger(code) && code > 0 ? code : undefined });
+        }
+        return res;
+      },
       // 对象存储里的图片只有地址：工具结果把地址放在 data 里，发出前还原成真正的地址
       onPayload: async (payload: unknown, model: Model<Api>) => restoreImageUrls((await o.onPayload?.(payload, model)) ?? payload),
       onResponse: async (res: ProviderResponse, model: Model<Api>) => {
