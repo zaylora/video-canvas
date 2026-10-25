@@ -1,0 +1,13 @@
+{
+  "name": "pi-durable-phase0-validation",
+  "private": true,
+  "type": "module",
+  "description": "Agent 服务拆分阶段 0：验证 Pi Durable 1.4 能不能承担画布 Agent 的审批、插话、压缩和崩溃恢复。不是产品代码，不进任何镜像。",
+  "engines": { "node": ">=22.19.0" },
+  "dependencies": {
+    "@earendil-works/chord": "1.4.0",
+    "@earendil-works/pi-ai": "1.4.0",
+    "@earendil-works/pi-durable": "1.4.0",
+    "@earendil-works/pi-telemetry": "1.4.0"
+  }
+}
