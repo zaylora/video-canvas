@@ -41,6 +41,11 @@ export interface FakeGoOptions {
   execute?: (body: any) => Record<string, unknown> | { error: { status: number; code: number; msg: string } } | "down";
   /** 摘要请求（X-Agent-Purpose: summary）的回答；函数形式可以按请求变化或出错。不消耗 turns */
   summary?: string | ((body: any, n: number) => string | { error: { status: number; message: string } });
+  /** 会话侧：模型清单、画布归属、消息引用、撤销 */
+  models?: unknown[];
+  checkCanvas?: (body: any) => { error: { status: number; code: number; msg: string } } | void;
+  checkMessage?: (body: any) => { selection: string[] } | { error: { status: number; code: number; msg: string } };
+  undo?: (runId: string) => Record<string, unknown> | { error: { status: number; code: number; msg: string } };
   /** 运行准备的出参覆盖项 */
   setup?: Partial<RunSetup>;
   prepareError?: { status: number; code: number; msg: string };
@@ -49,8 +54,14 @@ export interface FakeGoOptions {
   usage?: (runId: string, callId: string | undefined, calls: number) => PlatformUsage;
 }
 
-export const DECLS: ToolDecl[] = ["canvas_get_state", "canvas_apply_ops", "generate_media", "canvas_delete", "ask_user", "plan_update", "model_list"].map((name) => ({
-  name, label: "标签-" + name, verb: "动词-" + name, description: "说明 " + name, executor: "server", scriptable: false,
+/** 和 Go 里登记的界面名称、短动词一致 */
+const LABELS: Record<string, [string, string]> = {
+  canvas_get_state: ["读取画布", "读取"], canvas_apply_ops: ["修改画布", "修改"], generate_media: ["申请生成", "生成"], canvas_delete: ["申请删除", "删除"],
+  ask_user: ["向你提问", "提问"], plan_update: ["更新计划", "计划"], model_list: ["查看可用模型", "查模型"],
+};
+
+export const DECLS: ToolDecl[] = Object.keys(LABELS).map((name) => ({
+  name, label: LABELS[name][0], verb: LABELS[name][1], description: "说明 " + name, executor: "server", scriptable: false,
   parameters: { type: "object", properties: { nodeIds: { type: "array", items: { type: "string" } } } },
 }));
 
@@ -94,12 +105,28 @@ export async function fakeGo(opts: FakeGoOptions) {
           const r = typeof h === "function" ? await h(body, req.headers) : h;
           return ok(res, {
             content: "ok", is_error: false, terminate: false, ...r,
-            tool_end: r?.tool_end ?? { id: body.tool_call_id, name, is_error: !!r?.is_error, summary: "摘要 " + name, label: "标签-" + name, verb: "动词-" + name },
+            tool_end: r?.tool_end ?? { id: body.tool_call_id, name, is_error: !!r?.is_error, summary: "摘要 " + name, label: LABELS[name]?.[0], verb: LABELS[name]?.[1] },
           });
         }
         if (path === `${base}/approvals/propose`) {
           const p = opts.propose?.[body.kind] ?? {};
           return ok(res, { is_error: false, payload: { kind: body.kind, args: body.args }, quote_credits: 0, summary: "申请 " + body.kind, content: "已提交，等待决定。", terminate: true, ...p });
+        }
+        if (path === `${base}/agent/models`) return ok(res, opts.models ?? [{ key: "claude", name: "Claude", vision: true, context_window: 200000 }]);
+        if (path === `${base}/canvases/check`) {
+          const r = opts.checkCanvas?.(body);
+          if (r && isFailure(r)) return json(res, r.error.status, { code: r.error.code, msg: r.error.msg });
+          return ok(res, null);
+        }
+        if (path === `${base}/messages/check`) {
+          const r = opts.checkMessage?.(body) ?? { selection: body.selection ?? [] };
+          if (isFailure(r)) return json(res, r.error.status, { code: r.error.code, msg: r.error.msg });
+          return ok(res, r);
+        }
+        if (req.method === "POST" && /\/runs\/\d+\/undo$/.test(path)) {
+          const r = opts.undo?.(path.split("/").at(-2)!) ?? { reverted: 1, skipped: [], revision: 5 };
+          if (isFailure(r)) return json(res, r.error.status, { code: r.error.code, msg: r.error.msg });
+          return ok(res, r);
         }
         if (path === `${base}/approvals/resolve`) {
           const r = opts.resolve?.(body) ?? defaultResolve(body);

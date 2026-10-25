@@ -133,3 +133,27 @@ test("usage 和 endRun：路径、查询参数、方法", () =>
     assert.equal(f.seen[2].method, "DELETE");
     assert.equal(f.seen[2].path, "/internal/platform/v1/runs/1152921504606846977");
   }));
+
+test("会话侧四个接口：模型清单、画布归属、消息引用、撤销——路径、请求体、返回值", () =>
+  withPlatform(async (p, f) => {
+    f.reply("GET /internal/platform/v1/agent/models", { json: { code: 0, data: [{ key: "claude", name: "Claude", vision: true, context_window: 200000 }] } });
+    assert.deepEqual(await p.models(), [{ key: "claude", name: "Claude", vision: true, context_window: 200000 }]);
+    assert.equal(f.seen[0].headers["x-agent-context"], undefined, "不需要运行上下文");
+    assert.equal(f.seen[0].headers["x-agent-service-token"], TOKEN);
+
+    await p.checkCanvas("1152921504606846977", "7");
+    assert.deepEqual(f.seen[1].body, { user_id: "1152921504606846977", canvas_id: "7" });
+    assert.equal(f.seen[1].path, "/internal/platform/v1/canvases/check");
+    await assert.rejects(p.checkCanvas("1", "abc"), /canvas_id/);
+    f.reply("POST /internal/platform/v1/canvases/check", { status: 404, json: { code: 30001, msg: "画布不存在" } });
+    await assert.rejects(p.checkCanvas("2", "7"), (e: PlatformError) => e.status === 404 && e.code === 30001);
+
+    f.reply("POST /internal/platform/v1/messages/check", { json: { code: 0, data: { selection: ["n1"] } } });
+    assert.deepEqual(await p.checkMessage("1", "7", "拆 @[剧本](node:n1)", ["n1", "ghost"]), ["n1"]);
+    assert.deepEqual(f.seen.at(-1)!.body, { user_id: "1", canvas_id: "7", message: "拆 @[剧本](node:n1)", selection: ["n1", "ghost"] });
+
+    f.reply("POST /internal/platform/v1/runs/", { json: { code: 0, data: { reverted: 2, skipped: [], revision: 9 } } });
+    assert.deepEqual(await p.undo(rc), { reverted: 2, skipped: [], revision: 9 });
+    assert.equal(f.seen.at(-1)!.path, "/internal/platform/v1/runs/1152921504606846977/undo");
+    assert.deepEqual(decodeRunContext(String(f.seen.at(-1)!.headers["x-agent-context"])), rc);
+  }));

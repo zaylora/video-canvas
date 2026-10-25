@@ -151,6 +151,22 @@ export interface PlatformUsage {
   };
 }
 
+export interface AgentModel {
+  key: string;
+  name: string;
+  vision: boolean;
+  /** 上下文窗口（Token），没配置是 0；画布据此显示上下文用量 */
+  context_window: number;
+}
+
+export interface UndoResult {
+  /** 恢复或删除了多少项 */
+  reverted: number;
+  skipped: Array<Record<string, unknown>>;
+  /** 撤销后的画布 revision；运行根本没改过画布时为 0（调用方据此不发 run.undone） */
+  revision: number;
+}
+
 export interface PlatformOptions {
   /** Go 的桥地址，如 http://backend:47001 */
   baseUrl: string;
@@ -191,7 +207,29 @@ export function createPlatform({ baseUrl, serviceToken, fetchImpl = fetch }: Pla
     return env.data;
   }
 
+  const userCanvas = (userId: string, canvasId: string) => {
+    for (const [name, v] of [["user_id", userId], ["canvas_id", canvasId]] as const) {
+      try {
+        if (parseDecimal(v) === 0n) throw new Error("zero");
+      } catch {
+        throw new Error(`${name} 必须是正整数的十进制字符串，当前是 ${JSON.stringify(v)}`);
+      }
+    }
+    return { user_id: userId, canvas_id: canvasId };
+  };
+
   return {
+    /** 当前可用的 Agent 模型（没有时是空数组） */
+    models: (signal?: AbortSignal) => call<AgentModel[]>("GET", "/agent/models", undefined, undefined, { signal }),
+    /** 确认画布属于这个用户；别人的和不存在的一样抛「画布不存在」（30001） */
+    checkCanvas: async (userId: string, canvasId: string, signal?: AbortSignal): Promise<void> => {
+      await call<null>("POST", "/canvases/check", undefined, userCanvas(userId, canvasId), { signal });
+    },
+    /** 校验消息里的引用（节点、模型、技能），返回去掉了已不存在节点的选中列表 */
+    checkMessage: async (userId: string, canvasId: string, message: string, selection: string[] = [], signal?: AbortSignal): Promise<string[]> =>
+      (await call<{ selection: string[] }>("POST", "/messages/check", undefined, { ...userCanvas(userId, canvasId), message, selection }, { signal })).selection,
+    /** 撤销某运行对画布的全部改动（改动记录在 Go）。运行是不是自己的、是否已结束由调用方校验 */
+    undo: (rc: RunContext, signal?: AbortSignal) => call<UndoResult>("POST", `/runs/${rc.run_id}/undo`, rc, undefined, { signal }),
     /** 执行一次工具调用。工具层的失败是 is_error 的普通结果；调用本身出错才抛 PlatformError */
     tool: (rc: RunContext, name: string, args: unknown, o: ToolCallOptions) =>
       call<PlatformToolResult>("POST", `/tools/${encodeURIComponent(name)}`, rc, { tool_call_id: o.toolCallId, args: args ?? {} }, { idemKey: o.idemKey, signal: o.signal }),

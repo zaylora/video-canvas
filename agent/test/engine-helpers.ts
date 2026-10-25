@@ -10,6 +10,7 @@ export const TOKEN = "service-token-0123456789abcdef0123456789";
 export const codec = createIdCodec("test-key");
 
 export interface Env {
+  platform: ReturnType<typeof createPlatform>;
   /** 把引擎的时钟往后拨（毫秒） */
   advanceClock(ms: number): void;
   go: Awaited<ReturnType<typeof fakeGo>>;
@@ -26,16 +27,18 @@ export interface Env {
 
 export async function withEngine(go: FakeGoOptions, fn: (e: Env) => Promise<void>, opts: { approvalTtlMs?: number; canvasId?: string } = {}) {
   const g = await fakeGo(go);
-  let clock = Date.now();
-  const store = openStore(":memory:", { workerId: 1, now: () => clock });
+  let skew = 0; // advanceClock 往后拨的量；平时用真实时间，时间戳才会随时间前进
+  const clock = () => Date.now() + skew;
+  const store = openStore(":memory:", { workerId: 1, now: clock });
   const events: PublishedEvent[] = [];
+  const platform = createPlatform({ baseUrl: g.url, serviceToken: TOKEN });
   const engine = await AgentEngine.open({
-    store, platform: createPlatform({ baseUrl: g.url, serviceToken: TOKEN }), baseUrl: g.url, serviceToken: TOKEN,
-    storage: new MemoryStorage(), codec, onEvent: (ev) => events.push(ev), now: () => clock, approvalTtlMs: opts.approvalTtlMs,
+    store, platform, baseUrl: g.url, serviceToken: TOKEN,
+    storage: new MemoryStorage(), codec, onEvent: (ev) => events.push(ev), now: clock, approvalTtlMs: opts.approvalTtlMs,
   });
   const session = store.createSession({ userId: "1", canvasId: opts.canvasId ?? "7", title: "新对话", mode: "all", modelKey: "" });
   const env: Env = {
-    go: g, store, engine, events, sessionId: session.id, advanceClock: (ms) => { clock += ms; },
+    platform, go: g, store, engine, events, sessionId: session.id, advanceClock: (ms) => { skew += ms; },
     start: (over = {}) => engine.startRun({ userId: "1", sessionId: session.id, message: "拆分镜", modelKey: "claude", ...over }),
     types: () => store.listEvents(session.id, 0, 1000).map((x) => x.type),
     persisted: (type) => store.listEvents(session.id, 0, 1000).filter((x) => x.type === type).map((x) => x.payload as Record<string, any>),

@@ -64,7 +64,7 @@ test("工具回合：message.done 带工具调用 → tool.start → tool.end（
     await e.engine.idle();
     assert.deepEqual(e.types().filter((t) => t !== "run.usage"), ["message.user", "run.status", "run.status", "message.done", "tool.start", "tool.end", "message.done", "run.status"]);
     assert.deepEqual(e.persisted("message.done")[0].tool_calls, [{ id: "call_0", name: "canvas_get_state" }]);
-    assert.deepEqual(e.persisted("tool.start")[0], { id: "call_0", name: "canvas_get_state", label: "标签-canvas_get_state", verb: "动词-canvas_get_state" });
+    assert.deepEqual(e.persisted("tool.start")[0], { id: "call_0", name: "canvas_get_state", label: "读取画布", verb: "读取" });
     assert.deepEqual(e.persisted("tool.end")[0], { id: "call_0", name: "canvas_get_state", is_error: false, summary: "读取 1 个节点", node_ids: ["n1"], label: "读取画布", verb: "读取" });
     assert.equal(e.run(r.id).steps, 1);
     assert.equal(e.run(r.id).status, "succeeded");

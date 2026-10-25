@@ -1,0 +1,1139 @@
+{
+  "events": {
+    "approval.created": {
+      "decision": {},
+      "expires_at": "\u003ctime\u003e",
+      "id": "\u003cid\u003e",
+      "kind": "generate",
+      "payload": {
+        "items": [
+          {
+            "count": 2,
+            "label": "林夏",
+            "model_key": "seedream",
+            "model_name": "Seedream",
+            "node_id": "n1",
+            "price": 8
+          },
+          {
+            "count": 1,
+            "label": "老周",
+            "model_key": "seedream",
+            "model_name": "Seedream",
+            "node_id": "n2",
+            "price": 8
+          }
+        ],
+        "reason": "先锁定角色"
+      },
+      "quote_credits": 24,
+      "run_id": "\u003cid\u003e",
+      "status": "pending"
+    },
+    "approval.decided": {
+      "decision": {
+        "decision": "approve",
+        "items": [
+          {
+            "count": 1,
+            "label": "林夏",
+            "model_key": "seedream",
+            "model_name": "Seedream",
+            "node_id": "n1",
+            "price": 8
+          },
+          {
+            "count": 1,
+            "label": "老周",
+            "model_key": "seedream",
+            "model_name": "Seedream",
+            "node_id": "n2",
+            "price": 8
+          }
+        ]
+      },
+      "expires_at": "\u003ctime\u003e",
+      "id": "\u003cid\u003e",
+      "kind": "generate",
+      "payload": {
+        "items": [
+          {
+            "count": 2,
+            "label": "林夏",
+            "model_key": "seedream",
+            "model_name": "Seedream",
+            "node_id": "n1",
+            "price": 8
+          },
+          {
+            "count": 1,
+            "label": "老周",
+            "model_key": "seedream",
+            "model_name": "Seedream",
+            "node_id": "n2",
+            "price": 8
+          }
+        ],
+        "reason": "先锁定角色"
+      },
+      "quote_credits": 16,
+      "run_id": "\u003cid\u003e",
+      "status": "executed"
+    },
+    "message.delta": {
+      "text": "我先看看画布。"
+    },
+    "message.done": {
+      "credits": 5,
+      "estimated": false,
+      "partial": false,
+      "text": "我先看看画布。",
+      "thinking": "先看画布",
+      "tool_calls": [
+        {
+          "id": "call_1",
+          "name": "canvas_get_state"
+        }
+      ]
+    },
+    "message.user": {
+      "mode": "all",
+      "selection": [
+        "n_script"
+      ],
+      "text": "拆分镜"
+    },
+    "plan.updated": {
+      "steps": [
+        {
+          "status": "doing",
+          "title": "拆分镜"
+        },
+        {
+          "status": "todo",
+          "title": "出图"
+        }
+      ]
+    },
+    "run.status": {
+      "status": "queued"
+    },
+    "run.undone": {
+      "reverted": 1,
+      "skipped": 0
+    },
+    "run.usage": {
+      "context_tokens": 1000000,
+      "spent_credits": 0
+    },
+    "thinking.delta": {
+      "text": "先看画布"
+    },
+    "tool.end": {
+      "id": "tc-canvas_get_state",
+      "is_error": false,
+      "label": "读取画布",
+      "name": "canvas_get_state",
+      "summary": "读取画布目录（1 个节点）",
+      "verb": "读取"
+    },
+    "tool.start": {
+      "id": "tc-canvas_get_state",
+      "label": "读取画布",
+      "name": "canvas_get_state",
+      "verb": "读取"
+    }
+  },
+  "run_statuses": {
+    "canceled": {
+      "hint": "没做完的计划还留着，可以接着让它做",
+      "status": "canceled",
+      "title": "已停止"
+    },
+    "queued": {
+      "status": "queued"
+    },
+    "running": {
+      "status": "running"
+    },
+    "succeeded": {
+      "error": "",
+      "status": "succeeded"
+    },
+    "waiting_approval": {
+      "status": "waiting_approval"
+    }
+  },
+  "status_texts": {
+    "budget_exhausted": {
+      "hint": "追加额度后可以继续",
+      "title": "本轮额度用完了"
+    },
+    "canceled": {
+      "hint": "没做完的计划还留着，可以接着让它做",
+      "title": "已停止"
+    },
+    "expired": {
+      "hint": "你太久没有回应，这一轮已经结束",
+      "title": "等待超时"
+    },
+    "failed": {
+      "hint": "可以换个说法重试",
+      "title": "运行失败"
+    },
+    "interrupted": {
+      "hint": "服务重启或运行进程退出了，可以从断点继续",
+      "title": "运行被中断"
+    },
+    "queued": {
+      "hint": "",
+      "title": ""
+    },
+    "running": {
+      "hint": "",
+      "title": ""
+    },
+    "step_limit": {
+      "hint": "继续的话会再给一轮步数",
+      "title": "达到本轮步数上限"
+    },
+    "succeeded": {
+      "hint": "",
+      "title": ""
+    },
+    "timeout": {
+      "hint": "可以继续，或换个说法重试",
+      "title": "运行超时"
+    },
+    "waiting_approval": {
+      "hint": "",
+      "title": ""
+    },
+    "waiting_input": {
+      "hint": "",
+      "title": ""
+    }
+  },
+  "views": {
+    "approval_decided": {
+      "decision": {
+        "decision": "approve",
+        "items": [
+          {
+            "count": 1,
+            "label": "林夏",
+            "model_key": "seedream",
+            "model_name": "Seedream",
+            "node_id": "n1",
+            "price": 8
+          },
+          {
+            "count": 1,
+            "label": "老周",
+            "model_key": "seedream",
+            "model_name": "Seedream",
+            "node_id": "n2",
+            "price": 8
+          }
+        ]
+      },
+      "expires_at": "\u003ctime\u003e",
+      "id": "\u003cid\u003e",
+      "kind": "generate",
+      "payload": {
+        "items": [
+          {
+            "count": 2,
+            "label": "林夏",
+            "model_key": "seedream",
+            "model_name": "Seedream",
+            "node_id": "n1",
+            "price": 8
+          },
+          {
+            "count": 1,
+            "label": "老周",
+            "model_key": "seedream",
+            "model_name": "Seedream",
+            "node_id": "n2",
+            "price": 8
+          }
+        ],
+        "reason": "先锁定角色"
+      },
+      "quote_credits": 16,
+      "run_id": "\u003cid\u003e",
+      "status": "executed"
+    },
+    "events": [
+      {
+        "canvas_id": null,
+        "created_at": "\u003ctime\u003e",
+        "data": {
+          "mode": "all",
+          "selection": [
+            "n_script"
+          ],
+          "text": "拆分镜"
+        },
+        "run_id": "\u003cid\u003e",
+        "seq": 1,
+        "session_id": "\u003cid\u003e",
+        "type": "message.user"
+      },
+      {
+        "canvas_id": null,
+        "created_at": "\u003ctime\u003e",
+        "data": {
+          "status": "queued"
+        },
+        "run_id": "\u003cid\u003e",
+        "seq": 2,
+        "session_id": "\u003cid\u003e",
+        "type": "run.status"
+      },
+      {
+        "canvas_id": null,
+        "created_at": "\u003ctime\u003e",
+        "data": {
+          "status": "running"
+        },
+        "run_id": "\u003cid\u003e",
+        "seq": 3,
+        "session_id": "\u003cid\u003e",
+        "type": "run.status"
+      },
+      {
+        "canvas_id": null,
+        "created_at": "\u003ctime\u003e",
+        "data": {
+          "context_tokens": 1000000,
+          "spent_credits": 0
+        },
+        "run_id": "\u003cid\u003e",
+        "seq": 4,
+        "session_id": "\u003cid\u003e",
+        "type": "run.usage"
+      },
+      {
+        "canvas_id": null,
+        "created_at": "\u003ctime\u003e",
+        "data": {
+          "credits": 5,
+          "estimated": false,
+          "partial": false,
+          "text": "我先看看画布。",
+          "thinking": "先看画布",
+          "tool_calls": [
+            {
+              "id": "call_1",
+              "name": "canvas_get_state"
+            }
+          ]
+        },
+        "run_id": "\u003cid\u003e",
+        "seq": 5,
+        "session_id": "\u003cid\u003e",
+        "type": "message.done"
+      },
+      {
+        "canvas_id": null,
+        "created_at": "\u003ctime\u003e",
+        "data": {
+          "id": "tc-canvas_get_state",
+          "label": "读取画布",
+          "name": "canvas_get_state",
+          "verb": "读取"
+        },
+        "run_id": "\u003cid\u003e",
+        "seq": 6,
+        "session_id": "\u003cid\u003e",
+        "type": "tool.start"
+      },
+      {
+        "canvas_id": null,
+        "created_at": "\u003ctime\u003e",
+        "data": {
+          "id": "tc-canvas_get_state",
+          "is_error": false,
+          "label": "读取画布",
+          "name": "canvas_get_state",
+          "summary": "读取画布目录（1 个节点）",
+          "verb": "读取"
+        },
+        "run_id": "\u003cid\u003e",
+        "seq": 7,
+        "session_id": "\u003cid\u003e",
+        "type": "tool.end"
+      },
+      {
+        "canvas_id": null,
+        "created_at": "\u003ctime\u003e",
+        "data": {
+          "id": "tc-plan_update",
+          "label": "更新计划",
+          "name": "plan_update",
+          "verb": "计划"
+        },
+        "run_id": "\u003cid\u003e",
+        "seq": 8,
+        "session_id": "\u003cid\u003e",
+        "type": "tool.start"
+      },
+      {
+        "canvas_id": null,
+        "created_at": "\u003ctime\u003e",
+        "data": {
+          "steps": [
+            {
+              "status": "doing",
+              "title": "拆分镜"
+            },
+            {
+              "status": "todo",
+              "title": "出图"
+            }
+          ]
+        },
+        "run_id": "\u003cid\u003e",
+        "seq": 9,
+        "session_id": "\u003cid\u003e",
+        "type": "plan.updated"
+      },
+      {
+        "canvas_id": null,
+        "created_at": "\u003ctime\u003e",
+        "data": {
+          "id": "tc-plan_update",
+          "is_error": false,
+          "label": "更新计划",
+          "name": "plan_update",
+          "summary": "更新计划（2 步）",
+          "verb": "计划"
+        },
+        "run_id": "\u003cid\u003e",
+        "seq": 10,
+        "session_id": "\u003cid\u003e",
+        "type": "tool.end"
+      },
+      {
+        "canvas_id": null,
+        "created_at": "\u003ctime\u003e",
+        "data": {
+          "id": "tc-canvas_apply_ops",
+          "label": "修改画布",
+          "name": "canvas_apply_ops",
+          "verb": "修改"
+        },
+        "run_id": "\u003cid\u003e",
+        "seq": 11,
+        "session_id": "\u003cid\u003e",
+        "type": "tool.start"
+      },
+      {
+        "canvas_id": null,
+        "created_at": "\u003ctime\u003e",
+        "data": {
+          "created": [
+            "\u003cnode\u003e"
+          ],
+          "id": "tc-canvas_apply_ops",
+          "is_error": false,
+          "label": "修改画布",
+          "name": "canvas_apply_ops",
+          "node_ids": [
+            "\u003cnode\u003e"
+          ],
+          "summary": "应用 2 项操作",
+          "updated": [],
+          "verb": "修改"
+        },
+        "run_id": "\u003cid\u003e",
+        "seq": 12,
+        "session_id": "\u003cid\u003e",
+        "type": "tool.end"
+      },
+      {
+        "canvas_id": null,
+        "created_at": "\u003ctime\u003e",
+        "data": {
+          "decision": {},
+          "expires_at": "\u003ctime\u003e",
+          "id": "\u003cid\u003e",
+          "kind": "generate",
+          "payload": {
+            "items": [
+              {
+                "count": 2,
+                "label": "林夏",
+                "model_key": "seedream",
+                "model_name": "Seedream",
+                "node_id": "n1",
+                "price": 8
+              },
+              {
+                "count": 1,
+                "label": "老周",
+                "model_key": "seedream",
+                "model_name": "Seedream",
+                "node_id": "n2",
+                "price": 8
+              }
+            ],
+            "reason": "先锁定角色"
+          },
+          "quote_credits": 24,
+          "run_id": "\u003cid\u003e",
+          "status": "pending"
+        },
+        "run_id": "\u003cid\u003e",
+        "seq": 13,
+        "session_id": "\u003cid\u003e",
+        "type": "approval.created"
+      },
+      {
+        "canvas_id": null,
+        "created_at": "\u003ctime\u003e",
+        "data": {
+          "status": "waiting_approval"
+        },
+        "run_id": "\u003cid\u003e",
+        "seq": 14,
+        "session_id": "\u003cid\u003e",
+        "type": "run.status"
+      },
+      {
+        "canvas_id": null,
+        "created_at": "\u003ctime\u003e",
+        "data": {
+          "status": "running"
+        },
+        "run_id": "\u003cid\u003e",
+        "seq": 15,
+        "session_id": "\u003cid\u003e",
+        "type": "run.status"
+      },
+      {
+        "canvas_id": null,
+        "created_at": "\u003ctime\u003e",
+        "data": {
+          "context_tokens": 1000000,
+          "spent_credits": 16
+        },
+        "run_id": "\u003cid\u003e",
+        "seq": 16,
+        "session_id": "\u003cid\u003e",
+        "type": "run.usage"
+      },
+      {
+        "canvas_id": null,
+        "created_at": "\u003ctime\u003e",
+        "data": {
+          "decision": {
+            "decision": "approve",
+            "items": [
+              {
+                "count": 1,
+                "label": "林夏",
+                "model_key": "seedream",
+                "model_name": "Seedream",
+                "node_id": "n1",
+                "price": 8
+              },
+              {
+                "count": 1,
+                "label": "老周",
+                "model_key": "seedream",
+                "model_name": "Seedream",
+                "node_id": "n2",
+                "price": 8
+              }
+            ]
+          },
+          "expires_at": "\u003ctime\u003e",
+          "id": "\u003cid\u003e",
+          "kind": "generate",
+          "payload": {
+            "items": [
+              {
+                "count": 2,
+                "label": "林夏",
+                "model_key": "seedream",
+                "model_name": "Seedream",
+                "node_id": "n1",
+                "price": 8
+              },
+              {
+                "count": 1,
+                "label": "老周",
+                "model_key": "seedream",
+                "model_name": "Seedream",
+                "node_id": "n2",
+                "price": 8
+              }
+            ],
+            "reason": "先锁定角色"
+          },
+          "quote_credits": 16,
+          "run_id": "\u003cid\u003e",
+          "status": "executed"
+        },
+        "run_id": "\u003cid\u003e",
+        "seq": 17,
+        "session_id": "\u003cid\u003e",
+        "type": "approval.decided"
+      },
+      {
+        "canvas_id": null,
+        "created_at": "\u003ctime\u003e",
+        "data": {
+          "error": "",
+          "status": "succeeded"
+        },
+        "run_id": "\u003cid\u003e",
+        "seq": 18,
+        "session_id": "\u003cid\u003e",
+        "type": "run.status"
+      },
+      {
+        "canvas_id": null,
+        "created_at": "\u003ctime\u003e",
+        "data": {
+          "reverted": 1,
+          "skipped": 0
+        },
+        "run_id": "\u003cid\u003e",
+        "seq": 19,
+        "session_id": "\u003cid\u003e",
+        "type": "run.undone"
+      },
+      {
+        "canvas_id": null,
+        "created_at": "\u003ctime\u003e",
+        "data": {
+          "mode": "all",
+          "selection": null,
+          "text": "再来一轮"
+        },
+        "run_id": "\u003cid\u003e",
+        "seq": 20,
+        "session_id": "\u003cid\u003e",
+        "type": "message.user"
+      },
+      {
+        "canvas_id": null,
+        "created_at": "\u003ctime\u003e",
+        "data": {
+          "status": "queued"
+        },
+        "run_id": "\u003cid\u003e",
+        "seq": 21,
+        "session_id": "\u003cid\u003e",
+        "type": "run.status"
+      },
+      {
+        "canvas_id": null,
+        "created_at": "\u003ctime\u003e",
+        "data": {
+          "status": "running"
+        },
+        "run_id": "\u003cid\u003e",
+        "seq": 22,
+        "session_id": "\u003cid\u003e",
+        "type": "run.status"
+      },
+      {
+        "canvas_id": null,
+        "created_at": "\u003ctime\u003e",
+        "data": {
+          "steer": true,
+          "text": "再暖一点"
+        },
+        "run_id": "\u003cid\u003e",
+        "seq": 23,
+        "session_id": "\u003cid\u003e",
+        "type": "message.user"
+      },
+      {
+        "canvas_id": null,
+        "created_at": "\u003ctime\u003e",
+        "data": {
+          "hint": "没做完的计划还留着，可以接着让它做",
+          "status": "canceled",
+          "title": "已停止"
+        },
+        "run_id": "\u003cid\u003e",
+        "seq": 24,
+        "session_id": "\u003cid\u003e",
+        "type": "run.status"
+      }
+    ],
+    "history": {
+      "events": [
+        {
+          "canvas_id": null,
+          "created_at": "\u003ctime\u003e",
+          "data": {
+            "mode": "all",
+            "selection": [
+              "n_script"
+            ],
+            "text": "拆分镜"
+          },
+          "run_id": "\u003cid\u003e",
+          "seq": 1,
+          "session_id": "\u003cid\u003e",
+          "type": "message.user"
+        },
+        {
+          "canvas_id": null,
+          "created_at": "\u003ctime\u003e",
+          "data": {
+            "status": "queued"
+          },
+          "run_id": "\u003cid\u003e",
+          "seq": 2,
+          "session_id": "\u003cid\u003e",
+          "type": "run.status"
+        },
+        {
+          "canvas_id": null,
+          "created_at": "\u003ctime\u003e",
+          "data": {
+            "status": "running"
+          },
+          "run_id": "\u003cid\u003e",
+          "seq": 3,
+          "session_id": "\u003cid\u003e",
+          "type": "run.status"
+        },
+        {
+          "canvas_id": null,
+          "created_at": "\u003ctime\u003e",
+          "data": {
+            "context_tokens": 1000000,
+            "spent_credits": 0
+          },
+          "run_id": "\u003cid\u003e",
+          "seq": 4,
+          "session_id": "\u003cid\u003e",
+          "type": "run.usage"
+        },
+        {
+          "canvas_id": null,
+          "created_at": "\u003ctime\u003e",
+          "data": {
+            "credits": 5,
+            "estimated": false,
+            "partial": false,
+            "text": "我先看看画布。",
+            "thinking": "先看画布",
+            "tool_calls": [
+              {
+                "id": "call_1",
+                "name": "canvas_get_state"
+              }
+            ]
+          },
+          "run_id": "\u003cid\u003e",
+          "seq": 5,
+          "session_id": "\u003cid\u003e",
+          "type": "message.done"
+        },
+        {
+          "canvas_id": null,
+          "created_at": "\u003ctime\u003e",
+          "data": {
+            "id": "tc-canvas_get_state",
+            "label": "读取画布",
+            "name": "canvas_get_state",
+            "verb": "读取"
+          },
+          "run_id": "\u003cid\u003e",
+          "seq": 6,
+          "session_id": "\u003cid\u003e",
+          "type": "tool.start"
+        },
+        {
+          "canvas_id": null,
+          "created_at": "\u003ctime\u003e",
+          "data": {
+            "id": "tc-canvas_get_state",
+            "is_error": false,
+            "label": "读取画布",
+            "name": "canvas_get_state",
+            "summary": "读取画布目录（1 个节点）",
+            "verb": "读取"
+          },
+          "run_id": "\u003cid\u003e",
+          "seq": 7,
+          "session_id": "\u003cid\u003e",
+          "type": "tool.end"
+        },
+        {
+          "canvas_id": null,
+          "created_at": "\u003ctime\u003e",
+          "data": {
+            "id": "tc-plan_update",
+            "label": "更新计划",
+            "name": "plan_update",
+            "verb": "计划"
+          },
+          "run_id": "\u003cid\u003e",
+          "seq": 8,
+          "session_id": "\u003cid\u003e",
+          "type": "tool.start"
+        },
+        {
+          "canvas_id": null,
+          "created_at": "\u003ctime\u003e",
+          "data": {
+            "steps": [
+              {
+                "status": "doing",
+                "title": "拆分镜"
+              },
+              {
+                "status": "todo",
+                "title": "出图"
+              }
+            ]
+          },
+          "run_id": "\u003cid\u003e",
+          "seq": 9,
+          "session_id": "\u003cid\u003e",
+          "type": "plan.updated"
+        },
+        {
+          "canvas_id": null,
+          "created_at": "\u003ctime\u003e",
+          "data": {
+            "id": "tc-plan_update",
+            "is_error": false,
+            "label": "更新计划",
+            "name": "plan_update",
+            "summary": "更新计划（2 步）",
+            "verb": "计划"
+          },
+          "run_id": "\u003cid\u003e",
+          "seq": 10,
+          "session_id": "\u003cid\u003e",
+          "type": "tool.end"
+        },
+        {
+          "canvas_id": null,
+          "created_at": "\u003ctime\u003e",
+          "data": {
+            "id": "tc-canvas_apply_ops",
+            "label": "修改画布",
+            "name": "canvas_apply_ops",
+            "verb": "修改"
+          },
+          "run_id": "\u003cid\u003e",
+          "seq": 11,
+          "session_id": "\u003cid\u003e",
+          "type": "tool.start"
+        },
+        {
+          "canvas_id": null,
+          "created_at": "\u003ctime\u003e",
+          "data": {
+            "created": [
+              "\u003cnode\u003e"
+            ],
+            "id": "tc-canvas_apply_ops",
+            "is_error": false,
+            "label": "修改画布",
+            "name": "canvas_apply_ops",
+            "node_ids": [
+              "\u003cnode\u003e"
+            ],
+            "summary": "应用 2 项操作",
+            "updated": [],
+            "verb": "修改"
+          },
+          "run_id": "\u003cid\u003e",
+          "seq": 12,
+          "session_id": "\u003cid\u003e",
+          "type": "tool.end"
+        },
+        {
+          "canvas_id": null,
+          "created_at": "\u003ctime\u003e",
+          "data": {
+            "decision": {},
+            "expires_at": "\u003ctime\u003e",
+            "id": "\u003cid\u003e",
+            "kind": "generate",
+            "payload": {
+              "items": [
+                {
+                  "count": 2,
+                  "label": "林夏",
+                  "model_key": "seedream",
+                  "model_name": "Seedream",
+                  "node_id": "n1",
+                  "price": 8
+                },
+                {
+                  "count": 1,
+                  "label": "老周",
+                  "model_key": "seedream",
+                  "model_name": "Seedream",
+                  "node_id": "n2",
+                  "price": 8
+                }
+              ],
+              "reason": "先锁定角色"
+            },
+            "quote_credits": 24,
+            "run_id": "\u003cid\u003e",
+            "status": "pending"
+          },
+          "run_id": "\u003cid\u003e",
+          "seq": 13,
+          "session_id": "\u003cid\u003e",
+          "type": "approval.created"
+        },
+        {
+          "canvas_id": null,
+          "created_at": "\u003ctime\u003e",
+          "data": {
+            "status": "waiting_approval"
+          },
+          "run_id": "\u003cid\u003e",
+          "seq": 14,
+          "session_id": "\u003cid\u003e",
+          "type": "run.status"
+        },
+        {
+          "canvas_id": null,
+          "created_at": "\u003ctime\u003e",
+          "data": {
+            "status": "running"
+          },
+          "run_id": "\u003cid\u003e",
+          "seq": 15,
+          "session_id": "\u003cid\u003e",
+          "type": "run.status"
+        },
+        {
+          "canvas_id": null,
+          "created_at": "\u003ctime\u003e",
+          "data": {
+            "context_tokens": 1000000,
+            "spent_credits": 16
+          },
+          "run_id": "\u003cid\u003e",
+          "seq": 16,
+          "session_id": "\u003cid\u003e",
+          "type": "run.usage"
+        },
+        {
+          "canvas_id": null,
+          "created_at": "\u003ctime\u003e",
+          "data": {
+            "decision": {
+              "decision": "approve",
+              "items": [
+                {
+                  "count": 1,
+                  "label": "林夏",
+                  "model_key": "seedream",
+                  "model_name": "Seedream",
+                  "node_id": "n1",
+                  "price": 8
+                },
+                {
+                  "count": 1,
+                  "label": "老周",
+                  "model_key": "seedream",
+                  "model_name": "Seedream",
+                  "node_id": "n2",
+                  "price": 8
+                }
+              ]
+            },
+            "expires_at": "\u003ctime\u003e",
+            "id": "\u003cid\u003e",
+            "kind": "generate",
+            "payload": {
+              "items": [
+                {
+                  "count": 2,
+                  "label": "林夏",
+                  "model_key": "seedream",
+                  "model_name": "Seedream",
+                  "node_id": "n1",
+                  "price": 8
+                },
+                {
+                  "count": 1,
+                  "label": "老周",
+                  "model_key": "seedream",
+                  "model_name": "Seedream",
+                  "node_id": "n2",
+                  "price": 8
+                }
+              ],
+              "reason": "先锁定角色"
+            },
+            "quote_credits": 16,
+            "run_id": "\u003cid\u003e",
+            "status": "executed"
+          },
+          "run_id": "\u003cid\u003e",
+          "seq": 17,
+          "session_id": "\u003cid\u003e",
+          "type": "approval.decided"
+        },
+        {
+          "canvas_id": null,
+          "created_at": "\u003ctime\u003e",
+          "data": {
+            "error": "",
+            "status": "succeeded"
+          },
+          "run_id": "\u003cid\u003e",
+          "seq": 18,
+          "session_id": "\u003cid\u003e",
+          "type": "run.status"
+        },
+        {
+          "canvas_id": null,
+          "created_at": "\u003ctime\u003e",
+          "data": {
+            "reverted": 1,
+            "skipped": 0
+          },
+          "run_id": "\u003cid\u003e",
+          "seq": 19,
+          "session_id": "\u003cid\u003e",
+          "type": "run.undone"
+        },
+        {
+          "canvas_id": null,
+          "created_at": "\u003ctime\u003e",
+          "data": {
+            "mode": "all",
+            "selection": null,
+            "text": "再来一轮"
+          },
+          "run_id": "\u003cid\u003e",
+          "seq": 20,
+          "session_id": "\u003cid\u003e",
+          "type": "message.user"
+        },
+        {
+          "canvas_id": null,
+          "created_at": "\u003ctime\u003e",
+          "data": {
+            "status": "queued"
+          },
+          "run_id": "\u003cid\u003e",
+          "seq": 21,
+          "session_id": "\u003cid\u003e",
+          "type": "run.status"
+        },
+        {
+          "canvas_id": null,
+          "created_at": "\u003ctime\u003e",
+          "data": {
+            "status": "running"
+          },
+          "run_id": "\u003cid\u003e",
+          "seq": 22,
+          "session_id": "\u003cid\u003e",
+          "type": "run.status"
+        },
+        {
+          "canvas_id": null,
+          "created_at": "\u003ctime\u003e",
+          "data": {
+            "steer": true,
+            "text": "再暖一点"
+          },
+          "run_id": "\u003cid\u003e",
+          "seq": 23,
+          "session_id": "\u003cid\u003e",
+          "type": "message.user"
+        },
+        {
+          "canvas_id": null,
+          "created_at": "\u003ctime\u003e",
+          "data": {
+            "hint": "没做完的计划还留着，可以接着让它做",
+            "status": "canceled",
+            "title": "已停止"
+          },
+          "run_id": "\u003cid\u003e",
+          "seq": 24,
+          "session_id": "\u003cid\u003e",
+          "type": "run.status"
+        }
+      ],
+      "has_more": false
+    },
+    "models": [
+      {
+        "context_window": 0,
+        "key": "claude",
+        "name": "Claude",
+        "vision": true
+      },
+      {
+        "context_window": 0,
+        "key": "deepseek",
+        "name": "DeepSeek",
+        "vision": false
+      }
+    ],
+    "run_canceled": {
+      "budget_credits": 50,
+      "canvas_id": "\u003cid\u003e",
+      "context_tokens": 0,
+      "created_at": "\u003ctime\u003e",
+      "ended_at": "\u003ctime\u003e",
+      "error_code": "",
+      "error_message": "",
+      "id": "\u003cid\u003e",
+      "max_steps": 40,
+      "mode": "all",
+      "session_id": "\u003cid\u003e",
+      "spent_credits": 0,
+      "status": "canceled",
+      "steps": 0
+    },
+    "run_started": {
+      "budget_credits": 50,
+      "canvas_id": "\u003cid\u003e",
+      "context_tokens": 0,
+      "created_at": "\u003ctime\u003e",
+      "ended_at": null,
+      "error_code": "",
+      "error_message": "",
+      "id": "\u003cid\u003e",
+      "max_steps": 40,
+      "mode": "all",
+      "session_id": "\u003cid\u003e",
+      "spent_credits": 0,
+      "status": "queued",
+      "steps": 0
+    },
+    "session": {
+      "canvas_id": "\u003cid\u003e",
+      "created_at": "\u003ctime\u003e",
+      "id": "\u003cid\u003e",
+      "last_seq": 0,
+      "mode": "storyboard",
+      "model_key": "claude",
+      "title": "角色设计",
+      "updated_at": "\u003ctime\u003e"
+    },
+    "undo": {
+      "reverted": 1,
+      "revision": 3,
+      "skipped": []
+    }
+  }
+}

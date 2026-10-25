@@ -400,6 +400,10 @@ func testTestE2EBuildsCanvasAndBills(t *testing.T, rt e2eRuntime) {
 	if !strings.Contains(sess.SessionJSONL, "搭好了镜头 01") || strings.Contains(sess.SessionJSONL, `"role":"system"`) {
 		t.Errorf("应保存对话历史（不含系统提示）: %.200s", sess.SessionJSONL)
 	}
+	// 令牌由监听进程退出的 goroutine 收回，晚于运行状态变成成功：轮询等待，不要立刻断言
+	for deadline := time.Now().Add(5 * time.Second); e.bridge.TokenCount() != 0 && time.Now().Before(deadline); {
+		time.Sleep(20 * time.Millisecond)
+	}
 	if e.bridge.TokenCount() != 0 {
 		t.Errorf("运行结束后令牌应全部收回: %d", e.bridge.TokenCount())
 	}

@@ -178,6 +178,13 @@ func (f *fakeAgentCanvasRepo) UpdateRunIf(_ context.Context, id uint64, from []s
 			r.ErrorCode = v.(string)
 		case "error_message":
 			r.ErrorMessage = v.(string)
+		case "ended_at":
+			// 和真实仓储一样：迁到终态时调用方写结束时间，继续运行时清掉
+			if t, ok := v.(time.Time); ok {
+				r.EndedAt = &t
+			} else {
+				r.EndedAt = nil
+			}
 		}
 	}
 	c := *r

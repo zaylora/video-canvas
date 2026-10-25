@@ -183,10 +183,10 @@ test("嵌套调用次数超过上限：脚本被中止，原因写清楚", async
 });
 
 test("用户停止：脚本立即中止，不再调用工具", async () => {
-  const bridge = fakeBridgeClient({ tool: async (_id, _n, _a, signal) => new Promise((_res, rej) => signal!.addEventListener("abort", () => rej(new Error("被中止")))) });
-  const { codemode } = make(bridge);
   const ac = new AbortController();
-  setTimeout(() => ac.abort(), 150);
+  // 第一次工具调用开始后用户点停止（不用固定的定时器：机器忙时沙箱启动可能比定时器还慢，中止就先于第一次调用了）
+  const bridge = fakeBridgeClient({ tool: async (_id, _n, _a, signal) => new Promise((_res, rej) => { signal!.addEventListener("abort", () => rej(new Error("被中止"))); setTimeout(() => ac.abort(), 20); }) });
+  const { codemode } = make(bridge);
   const start = Date.now();
   const r = await codemode.execute("cm1", { code: `await tools.canvas_get_state({}); await tools.canvas_get_state({}); return 1` }, ac.signal);
   assert.ok(Date.now() - start < 3000);

@@ -140,7 +140,7 @@ export interface ApprovalView {
 }
 
 /** Go 平台的业务错误原样变成引擎的业务错误；连不上、5xx 是「Agent 暂不可用」 */
-function fromPlatform(e: unknown): Error {
+export function fromPlatform(e: unknown): Error {
   if (e instanceof PlatformError && e.code !== undefined && e.status >= 400 && e.status < 500) return new AgentError(e.code, e.status, e.message);
   if (e instanceof PlatformError) return Err.unavailable();
   return e as Error;
@@ -284,6 +284,11 @@ export class AgentEngine {
 
   #convOf(convId: string): Promise<Conversation | undefined> | undefined {
     return this.#harness.conversation(Number(convId) as unknown as ConversationId, context);
+  }
+
+  /** 给某个运行追加一条事件（撤销等不由引擎自己驱动的动作用），写库并交给 onEvent */
+  recordEvent(run: Run, type: string, payload: unknown): void {
+    this.#emit({ id: run.id, userId: run.userId, sessionId: run.sessionId, canvasId: run.canvasId }, type, payload);
   }
 
   /** Pi 里还没跑完的任务数（诊断和测试用）：启动恢复之后，没有对应进行中运行的任务应该是 0 */
