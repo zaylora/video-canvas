@@ -89,7 +89,10 @@ type AgentBridge struct {
 	d      BridgeDeps
 	mu     sync.Mutex
 	tokens map[string]*bridgeSession
-	calls  map[uint64]int // 运行 id → 进行中的模型调用数（含结算和写事件的收尾），取消时等它归零
+	// platformRuns 是上下文模式下每个运行的内存状态（联网次数、技能固定版本）：没有令牌，状态按运行 id 存；
+	// 见 platform.go。受 mu 保护
+	platformRuns map[uint64]*platformRun
+	calls        map[uint64]int // 运行 id → 进行中的模型调用数（含结算和写事件的收尾），取消时等它归零
 	// toolRec 逐条留存工具调用；为 nil 时不记。装配阶段用 SetToolRecorder 绑定
 	toolRec ToolCallRecorder
 	// reqRec 留存模型调用实际发给上游的请求体；为 nil 时不记。装配阶段用 SetModelRequestRecorder 绑定
@@ -108,7 +111,7 @@ func NewAgentBridge(d BridgeDeps) *AgentBridge {
 	if d.Canvas != nil && d.Registry != nil {
 		d.Canvas.SetModelOps(registryModelOps(d.Registry))
 	}
-	return &AgentBridge{d: d, tokens: map[string]*bridgeSession{}, calls: map[uint64]int{}}
+	return &AgentBridge{d: d, tokens: map[string]*bridgeSession{}, platformRuns: map[uint64]*platformRun{}, calls: map[uint64]int{}}
 }
 
 // IssueToken 为一个运行片段签发一次性令牌：Node 进程只拿到它，没有任何渠道密钥。

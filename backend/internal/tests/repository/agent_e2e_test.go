@@ -3,6 +3,7 @@ package repository_test
 import (
 	"bufio"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -205,6 +206,9 @@ type e2eEnv struct {
 	llm    *fakeLLM
 	sess   *model.AgentSession
 	canvas *model.CanvasProject
+	// bridgeURL 是桥的地址；serviceToken 不为空时同一个监听上还挂着平台接口
+	bridgeURL    string
+	serviceToken string
 }
 
 func newE2E(t *testing.T, mode e2eRuntime, turns ...llmTurn) *e2eEnv {
@@ -246,7 +250,7 @@ func newE2E(t *testing.T, mode e2eRuntime, turns ...llmTurn) *e2eEnv {
 	if mode == e2eHTTP {
 		launcher = &agentsvc.HTTPLauncher{BaseURL: startAgentService(t, node, dir), ServiceToken: serviceToken, HeartbeatTimeout: 30 * time.Second}
 	}
-	bridgeSrv := httptest.NewServer(router.NewBridge("test", agenthandler.NewAgentBridgeHandler(bridge), serviceToken))
+	bridgeSrv := httptest.NewServer(router.NewBridge("test", agenthandler.NewAgentBridgeHandler(bridge), agenthandler.NewPlatformHandler(bridge), serviceToken))
 	t.Cleanup(bridgeSrv.Close)
 	rt := agentsvc.NewProcessRuntime(agentsvc.RuntimeDeps{
 		Repo: repo, Bridge: bridge, Canvas: canvasSvc, Agent: svc, Registry: e2eRegistry{base: llm.srv.URL}, Launcher: launcher,
@@ -254,7 +258,7 @@ func newE2E(t *testing.T, mode e2eRuntime, turns ...llmTurn) *e2eEnv {
 	})
 	svc.SetRuntime(rt)
 	t.Cleanup(rt.Shutdown)
-	return &e2eEnv{db: db, repo: repo, svc: svc, rt: rt, bridge: bridge, llm: llm, sess: sess, canvas: canvas}
+	return &e2eEnv{db: db, repo: repo, svc: svc, rt: rt, bridge: bridge, llm: llm, sess: sess, canvas: canvas, bridgeURL: bridgeSrv.URL, serviceToken: serviceToken}
 }
 
 // waitApprovals 等运行的审批记录达到 n 条。CreateApproval 先把运行置为等待状态、再写审批（先 CAS 是为了运行已被取消时不产生审批），
@@ -533,5 +537,102 @@ func testTestE2EKilledProcessCanBeResumed(t *testing.T, rt e2eRuntime) {
 	}
 	if !has(e.eventTypes(t), "message.done") {
 		t.Error("续跑后应有 message.done")
+	}
+}
+
+// ---- 平台 API 的上下文模式：真实 HTTP、真实 Postgres ----
+
+// platformPost 以 Agent 服务的身份调一次平台接口：服务令牌、上下文头（base64url 的 JSON，ID 是十进制字符串）、幂等键。
+func (e *e2eEnv) platformPost(t *testing.T, tool, ctxJSON, idemKey, body string) (int, map[string]any) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPost, e.bridgeURL+"/internal/platform/v1/tools/"+tool, strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Agent-Service-Token", e.serviceToken)
+	req.Header.Set("X-Agent-Context", base64.RawURLEncoding.EncodeToString([]byte(ctxJSON)))
+	if idemKey != "" {
+		req.Header.Set("X-Idempotency-Key", idemKey)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var out map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatal(err)
+	}
+	return resp.StatusCode, out
+}
+
+// Agent 服务的 ID 是雪花算法生成的，超过 2^53：必须在头部解析、bigint 列里都不丢精度；运行记录在 Go 的库里根本不存在，
+// 画布写入照常成功，并且不写任何事件（事件归 Agent 服务）。
+func TestE2E_PlatformToolOverHTTPOnRealDB(t *testing.T) {
+	e := newE2E(t, e2eProcessToken)
+	const runID, sessID uint64 = 1152921504606846977, 1152921504606846978 // 2^60 + 1、2^60 + 2：转成 float64 会变成同一个数
+	ctxJSON := fmt.Sprintf(`{"run_id":"%d","user_id":"1","session_id":"%d","canvas_id":"%d","mode":"all","model_key":"claude"}`, runID, sessID, e.canvas.ID)
+	ops := `{"args":{"ops":[{"op":"create_node","tempId":"a","kind":"image","label":"关键帧"},{"op":"connect","source":"n_script","target":"a"}]}}`
+
+	var runs, eventsBefore int64
+	e.db.Model(&model.AgentRun{}).Where("id = ?", runID).Count(&runs)
+	e.db.Model(&model.AgentEvent{}).Count(&eventsBefore)
+	if runs != 0 {
+		t.Fatal("前提：Go 的库里没有这个运行")
+	}
+
+	status, first := e.platformPost(t, "canvas_apply_ops", ctxJSON, "task-0192-aaaa", ops)
+	if status != 200 || first["code"] != float64(0) {
+		t.Fatalf("status=%d %v", status, first)
+	}
+	data := first["data"].(map[string]any)
+	if data["is_error"] == true {
+		t.Fatalf("写画布应成功: %v", data["content"])
+	}
+	// 同一个幂等键再来一次（崩溃后重放）：返回同样的结果，画布不再变
+	_, again := e.platformPost(t, "canvas_apply_ops", ctxJSON, "task-0192-aaaa", ops)
+	if again["data"].(map[string]any)["content"] != data["content"] {
+		t.Errorf("重放的结果要和第一次一样:\n%v\n%v", data["content"], again["data"].(map[string]any)["content"])
+	}
+
+	var muts []model.AgentMutation
+	e.db.Where("run_id = ?", runID).Find(&muts)
+	if len(muts) != 1 {
+		t.Fatalf("重放只能留下一条改动记录，实际 %d", len(muts))
+	}
+	if muts[0].RunID != runID || muts[0].IdemKey != "task-0192-aaaa" {
+		t.Errorf("run_id 要无损存进 bigint，幂等键要存下来: run_id=%d idem=%q", muts[0].RunID, muts[0].IdemKey)
+	}
+	if n := len(e.graph(t).Nodes); n != 3 {
+		t.Errorf("画布应是 2 个原有节点 + 1 个新节点: %d", n)
+	}
+	var eventsAfter int64
+	e.db.Model(&model.AgentEvent{}).Count(&eventsAfter)
+	if eventsAfter != eventsBefore {
+		t.Errorf("上下文模式下 Go 不写事件: %d → %d", eventsBefore, eventsAfter)
+	}
+
+	// 相邻的两个 ID 在 float64 下会撞成同一个：用另一个运行 id 调用，画布写入要记在它自己名下
+	otherCtx := fmt.Sprintf(`{"run_id":"%d","user_id":"1","session_id":"%d","canvas_id":"%d","mode":"all"}`, runID+1, sessID, e.canvas.ID)
+	e.platformPost(t, "canvas_apply_ops", otherCtx, "task-0192-bbbb", `{"args":{"ops":[{"op":"create_node","tempId":"b","kind":"image","label":"另一个"}]}}`)
+	var n1, n2 int64
+	e.db.Model(&model.AgentMutation{}).Where("run_id = ?", runID).Count(&n1)
+	e.db.Model(&model.AgentMutation{}).Where("run_id = ?", runID+1).Count(&n2)
+	if n1 != 1 || n2 != 1 {
+		t.Errorf("相邻的两个大 ID 不能混成一个: %d / %d", n1, n2)
+	}
+
+	// 服务令牌错了：进不来
+	req, _ := http.NewRequest(http.MethodPost, e.bridgeURL+"/internal/platform/v1/tools/canvas_get_state", strings.NewReader(`{}`))
+	req.Header.Set("X-Agent-Context", base64.RawURLEncoding.EncodeToString([]byte(ctxJSON)))
+	req.Header.Set("X-Agent-Service-Token", "wrong-wrong-wrong-wrong-wrong-wrong-wrong")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("令牌不对应 401: %d", resp.StatusCode)
 	}
 }

@@ -249,7 +249,7 @@ func newAgentRuntime(cfg *config.Config, d agentDeps) (*agentRuntime, error) {
 	return &agentRuntime{
 		mode: ac.WithDefaults().Runtime, rt: rt, ln: ln,
 		// 没有读写超时：对话是长连接的流式响应，可能持续几分钟；防慢速攻击靠只监听回环地址或内网（配了服务令牌）
-		server: &http.Server{Handler: router.NewBridge(cfg.Server.Mode, agenthandler.NewAgentBridgeHandler(bridge), ac.ServiceToken), ReadHeaderTimeout: 10 * time.Second},
+		server: &http.Server{Handler: router.NewBridge(cfg.Server.Mode, agenthandler.NewAgentBridgeHandler(bridge), agenthandler.NewPlatformHandler(bridge), ac.ServiceToken), ReadHeaderTimeout: 10 * time.Second},
 	}, nil
 }
 
