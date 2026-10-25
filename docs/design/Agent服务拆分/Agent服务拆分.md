@@ -876,3 +876,28 @@ Agent 服务生成的会话、运行、审批、事件 ID 都用雪花算法，�
 - **真实 HTTP + 真实 Postgres**：画布目录读自真实的库（选中的 `n_old` 和 `n_script` 都在第一条消息里），雪花大小的运行 id，不落任何记录。
 
 **接下来**（3.2-1 起都在 TypeScript 里）：加依赖、平台客户端、模型提供方（exp10 的做法）。
+
+### 20.9 3.2-1：依赖、平台客户端、模型提供方（2026-10-25）
+
+**依赖**：`agent/` 新增 `@earendil-works/pi-durable`、`chord`、`pi-telemetry`，版本钉死 `1.4.0`（和 `pi-agent-core`、`pi-ai` 同版本，和阶段 0 验证目录一致）。锁文件已更新，Node 22 下 `npm ci`、类型检查、测试通过。
+
+**`src/platform-client.ts`（平台客户端）**：Agent 调 Go 平台的唯一入口，和 3.0、3.2-0 做的七个接口一一对应：`tool`、`prepare`、`propose`、`resolve`、`execute`、`usage`、`endRun`。
+- 服务令牌随每个请求；`X-Agent-Context` 是运行上下文 JSON 的 base64url（含中文的节点 id 也能往返）；工具调用可带 `X-Idempotency-Key`。
+- 运行上下文的四个身份字段必须是规范的十进制字符串，传数字（雪花 ID 会丢精度）、前导零、零、非数字一律在**本地**报错；上下文头超过 Go 的 16KB 上限（选中的节点太多）也在本地报错并说明原因，不等 Go 返回 400。幂等键格式、审批 id 同样先在本地校验。
+- 错误分三类，调用方要分得清：业务错误（信封 `code` 不为 0，带 HTTP 状态和业务码）、HTTP 非 2xx 或不是 JSON（反向代理的 502 页面）、连不上（状态码 0）；请求被 `signal` 中止时抛出的是原来的中止错误，**不包装成 PlatformError**。
+- 响应类型和 Go 的 JSON 逐字段对应（`tool_end`、`RunSetup`、审批三个结构、用量）。
+
+**`src/model-provider.ts`（模型提供方）**：把 exp10 的做法落成代码。
+- `RunContexts`：应用每次提交前登记「会话 id → 运行上下文」；`runContextExtension` 的 `beforeRequest` 钩子登记「提供方会话 id → 会话 id」；流函数据此给每个请求加 `X-Agent-Context`。
+- 响应头 `X-Agent-Call-Id`（十进制字符串，超过 2^53）通过 `onCall` 交出，带上提供方会话 id，3.2-3 用它查这次调用的积分，写进 `message.done`。
+- `createModelRegistry().ensure(spec)`：模型规格（上下文窗口、输出上限、是否看图）随管理员配置变化，Harness 打开之后可以反复调用，**规格有变化才重新注册**。兼容老的 OpenAI 网关：请求里没有 `store`、`max_completion_tokens`，输出上限用 `max_tokens`。
+- 压缩时我们自己在 `beforeCompact` 里调模型，请求头要自己带 `X-Agent-Purpose: summary` 和运行上下文（3.2-3 做）。
+
+**测试**（先写测试、确认因预期原因失败，再实现）
+- 平台客户端 12 条：路径、请求头、请求体、返回值；上下文的编码往返和校验；业务错误 / 非 JSON / 连不上 / 中止四种失败的区别；审批三接口和用量、释放运行。用一个假的 Go 服务（`test/platform-fake.ts`）。
+- 模型提供方 7 条，**用真的 Pi Harness 加假的模型代理**（`test/model-proxy-fake.ts`）：请求发到正确路径并带服务令牌；两个会话并发不串（请求内容也对得上各自的上下文）；同一会话下一轮换了上下文生效；调用 id 交给 `onCall` 并能找回会话；模型规格更新和新增；没有较新的请求字段。
+- 变异检查：去掉会话登记（4 条失败）、去掉规格有变化才注册的判断（1 条失败）、不取响应头里的调用 id（1 条失败）。
+
+**没有覆盖、留给后面**
+- 没登记运行上下文的会话发模型请求时，请求会不带 `X-Agent-Context` 发出，由 Go 返回 400（OpenAI 格式的错误，Pi 记为模型错误）。这是编码错误，3.2-3 的运行引擎保证提交前一定登记，并有测试。
+- 还没有和真实的 Go 联调，全部用假服务；联调放在 3.2-3 的端到端里。
