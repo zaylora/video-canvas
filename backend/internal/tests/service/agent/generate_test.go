@@ -22,9 +22,14 @@ type fakeGenTasks struct {
 	errAt map[int]error // 第 i 次提交失败
 	next  uint64
 	task  *model.GenerationTaskView
+	// onCreate 在每次提交开始时调用，用来模拟提交过程中请求被取消
+	onCreate func()
 }
 
 func (f *fakeGenTasks) Create(_ context.Context, _ uint64, key string, req *model.CreateGenerationTaskReq) (*model.CreateGenerationTaskResp, error) {
+	if f.onCreate != nil {
+		f.onCreate()
+	}
 	i := len(f.reqs)
 	f.reqs, f.keys = append(f.reqs, req), append(f.keys, key)
 	if err := f.errAt[i]; err != nil {

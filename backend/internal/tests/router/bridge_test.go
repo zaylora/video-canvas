@@ -11,6 +11,7 @@ import (
 
 	agenthandler "video-canvas/internal/handler/agent"
 	"video-canvas/internal/middleware"
+	"video-canvas/internal/model"
 	"video-canvas/internal/router"
 	agentsvc "video-canvas/internal/service/agent"
 )
@@ -95,11 +96,29 @@ func (p *platformStub) PlatformRunUsage(context.Context, agentsvc.RunContext, ui
 	return &agentsvc.PlatformUsage{}, nil
 }
 
+func (p *platformStub) ProposeApproval(context.Context, agentsvc.RunContext, string, json.RawMessage) (*agentsvc.ApprovalProposal, error) {
+	p.calls++
+	return &agentsvc.ApprovalProposal{}, nil
+}
+func (p *platformStub) ResolveApproval(context.Context, agentsvc.RunContext, string, json.RawMessage, model.DecideAgentApprovalReq) (*agentsvc.ApprovalOutcome, error) {
+	p.calls++
+	return &agentsvc.ApprovalOutcome{}, nil
+}
+func (p *platformStub) ExecuteApproval(context.Context, agentsvc.RunContext, string, uint64, string, agentsvc.ApprovalOutcome) (*agentsvc.ApprovalExecution, error) {
+	p.calls++
+	return &agentsvc.ApprovalExecution{}, nil
+}
+
 const platformCtxJSON = `{"run_id":"9","user_id":"1","session_id":"5","canvas_id":"7"}`
 
 func platformReq(t *testing.T, srv *httptest.Server, method, path, serviceToken string) int {
 	t.Helper()
-	req, _ := http.NewRequest(method, srv.URL+path, strings.NewReader(`{}`))
+	return platformReqBody(t, srv, method, path, serviceToken, `{}`)
+}
+
+func platformReqBody(t *testing.T, srv *httptest.Server, method, path, serviceToken, body string) int {
+	t.Helper()
+	req, _ := http.NewRequest(method, srv.URL+path, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Agent-Context", base64.RawURLEncoding.EncodeToString([]byte(platformCtxJSON)))
 	if serviceToken != "" {
@@ -152,6 +171,27 @@ func TestNewBridge_PlatformRoutesNeedTheServiceToken(t *testing.T) {
 		}
 		if code := platformReq(t, srv, c.method, c.path, token); code != http.StatusOK || plat.calls != before+1 {
 			t.Errorf("%s %s 令牌正确应放行: code=%d", c.method, c.path, code)
+		}
+	}
+}
+
+// 审批的预估、解析、执行三个接口同样只认服务令牌：执行会删画布、创建生成任务（花积分），不能裸露
+func TestNewBridge_ApprovalRoutesNeedTheServiceToken(t *testing.T) {
+	const token = "service-token-0123456789abcdef0123456789"
+	plat := &platformStub{}
+	srv := httptest.NewServer(router.NewBridge("test", agenthandler.NewAgentBridgeHandler(&stubBridge{}), agenthandler.NewPlatformHandler(plat), token))
+	defer srv.Close()
+	for path, body := range map[string]string{
+		"/internal/platform/v1/approvals/propose": `{"kind":"ask","args":{}}`,
+		"/internal/platform/v1/approvals/resolve": `{"kind":"ask","payload":{},"decision":{"decision":"approve"}}`,
+		"/internal/platform/v1/approvals/execute": `{"kind":"delete","approval_id":"1","outcome":{"status":"approved"}}`,
+	} {
+		before := plat.calls
+		if code := platformReqBody(t, srv, http.MethodPost, path, "", body); code != http.StatusUnauthorized || plat.calls != before {
+			t.Errorf("%s 没带服务令牌应 401 且不进业务: code=%d", path, code)
+		}
+		if code := platformReqBody(t, srv, http.MethodPost, path, token, body); code != http.StatusOK || plat.calls != before+1 {
+			t.Errorf("%s 令牌正确应放行: code=%d calls=%d", path, code, plat.calls)
 		}
 	}
 }

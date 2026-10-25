@@ -127,6 +127,8 @@ type edit struct {
 	changes []canvasgraph.Change
 	idMap   map[string]string
 	extra   any
+	// result 是调用方自己的结果（比如生成任务的提交结果）：随改动记录一起存，重放时原样取回
+	result json.RawMessage
 }
 
 // ApplyOps 应用一批编辑操作（建改节点和组、连线、移动）。整批原子：任何一项不合法都不会写入。
@@ -388,11 +390,12 @@ func IdempotencyKeyFrom(ctx context.Context) string {
 type writeOutcome struct {
 	IDMap    map[string]string `json:"id_map,omitempty"`
 	Warnings []string          `json:"warnings,omitempty"`
+	Result   json.RawMessage   `json:"result,omitempty"`
 }
 
 // resultJSON 序列化这次写入返回给调用方的结果；序列化不出来时留空对象，只是重放时少了映射，不影响写入本身。
 func resultJSON(ed *edit) datatypes.JSON {
-	out := writeOutcome{IDMap: ed.idMap}
+	out := writeOutcome{IDMap: ed.idMap, Result: ed.result}
 	if w, ok := ed.extra.([]string); ok {
 		out.Warnings = w
 	}
@@ -473,11 +476,29 @@ func (s *AgentCanvasService) Generations(ctx context.Context, run *model.AgentRu
 // BindTasks 把批准后创建的生成任务绑定到节点（节点 id → 任务 id 的十进制字符串）。
 // 绑定只写 taskId 和状态，记为 bind 改动：撤销本轮不会碰它，因为已提交的任务撤销不了。
 func (s *AgentCanvasService) BindTasks(ctx context.Context, run *model.AgentRun, toolCallID string, tasks map[string]string) (*WriteResult, error) {
+	return s.bindTasks(ctx, run, toolCallID, tasks, nil)
+}
+
+// bindTasks 同 BindTasks，并把调用方的提交结果随这条 bind 改动一起存下来（带幂等键的重放用 priorBindResult 取回）。
+func (s *AgentCanvasService) bindTasks(ctx context.Context, run *model.AgentRun, toolCallID string, tasks map[string]string, result json.RawMessage) (*WriteResult, error) {
 	res, _, err := s.mutate(ctx, run, toolCallID, model.MutationBind, 0, func(g *canvasgraph.Graph) (*edit, error) {
 		r := canvasgraph.BindTasks(g, tasks)
-		return &edit{graph: r.Graph, changes: r.Changes}, nil
+		return &edit{graph: r.Graph, changes: r.Changes, result: result}, nil
 	})
 	return res, err
+}
+
+// priorBindResult 取同一个幂等键下已经完成的绑定带着的提交结果：有就说明这个批准已经执行过，不用再提交任务。
+func (s *AgentCanvasService) priorBindResult(ctx context.Context, run *model.AgentRun, idemKey string) (json.RawMessage, bool, error) {
+	prior, err := s.priorWrite(ctx, run.ID, idemKey, model.MutationBind)
+	if err != nil || prior == nil {
+		return nil, false, err
+	}
+	var out writeOutcome
+	if json.Unmarshal(prior.ResultJSON, &out) != nil || len(out.Result) == 0 {
+		return nil, false, nil // 记录里没有结果（旧数据）：按没执行过处理，由任务服务的幂等键兜底不重复扣费
+	}
+	return out.Result, true, nil
 }
 
 // VideoRef 取一个视频节点当前的视频素材，给 Agent「看视频」和截帧用。

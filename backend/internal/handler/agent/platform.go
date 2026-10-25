@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"video-canvas/internal/handler"
+	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/pkg/response"
 	agentsvc "video-canvas/internal/service/agent"
@@ -41,6 +42,12 @@ type PlatformAPI interface {
 	ExecutePlatformTool(ctx context.Context, rc agentsvc.RunContext, toolCallID, name string, args json.RawMessage) (*agentsvc.ToolResult, error)
 	// EndPlatformRun 释放一个运行在内存里的状态。
 	EndPlatformRun(runID uint64)
+	// ProposeApproval 为需要用户决定的工具调用（生成、删除、提问）算出审批内容和预估积分，不落库。
+	ProposeApproval(ctx context.Context, rc agentsvc.RunContext, kind string, args json.RawMessage) (*agentsvc.ApprovalProposal, error)
+	// ResolveApproval 把用户的决定解析成实际批准了什么，纯逻辑。
+	ResolveApproval(ctx context.Context, rc agentsvc.RunContext, kind string, payload json.RawMessage, req model.DecideAgentApprovalReq) (*agentsvc.ApprovalOutcome, error)
+	// ExecuteApproval 执行批准的内容（幂等，键是审批 id），并写出给模型看的结果文字。
+	ExecuteApproval(ctx context.Context, rc agentsvc.RunContext, kind string, approvalID uint64, toolCallID string, outcome agentsvc.ApprovalOutcome) (*agentsvc.ApprovalExecution, error)
 }
 
 // PlatformHandler 是 Agent 服务调用 Go 平台能力的接口。它和桥挂在同一个内网监听上，必须配了服务令牌才挂载。
@@ -166,4 +173,92 @@ func (h *PlatformHandler) EndRun(c *gin.Context) {
 	}
 	h.svc.EndPlatformRun(id)
 	response.OK(c, nil)
+}
+
+// proposeBody 是审批预估的请求体：kind 是审批种类（generate、delete、ask），args 是模型给那个工具的参数。
+type proposeBody struct {
+	Kind string          `json:"kind" binding:"required,max=32" label:"kind"`
+	Args json.RawMessage `json:"args"` // 不传按空对象
+}
+
+// ProposeApproval 为一次需要用户决定的工具调用算出审批内容和预估积分。工具层的失败是 200 加 is_error，不是 HTTP 错误。
+func (h *PlatformHandler) ProposeApproval(c *gin.Context) {
+	rc, ok := parseRunContext(c)
+	if !ok {
+		return
+	}
+	var req proposeBody
+	if !handler.BindJSON(c, &req) {
+		return
+	}
+	args := req.Args
+	if len(args) == 0 {
+		args = json.RawMessage(`{}`)
+	}
+	out, err := h.svc.ProposeApproval(c.Request.Context(), rc, req.Kind, args)
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, out)
+}
+
+// resolveBody 是解析用户决定的请求体：payload 是预估时给出的审批内容，原样传回来。
+type resolveBody struct {
+	Kind     string                       `json:"kind" binding:"required,max=32" label:"kind"`
+	Payload  json.RawMessage              `json:"payload" binding:"required" label:"payload"`
+	Decision model.DecideAgentApprovalReq `json:"decision" binding:"required" label:"decision"`
+}
+
+// ResolveApproval 把用户的决定解析成实际批准了什么。超预算、一项都没批准这类业务错误原样返回标准错误。
+func (h *PlatformHandler) ResolveApproval(c *gin.Context) {
+	rc, ok := parseRunContext(c)
+	if !ok {
+		return
+	}
+	var req resolveBody
+	if !handler.BindJSON(c, &req) {
+		return
+	}
+	if string(req.Payload) == "null" {
+		response.Fail(c, errcode.ErrInvalidParams.WithMsg("payload 不能是 null"))
+		return
+	}
+	out, err := h.svc.ResolveApproval(c.Request.Context(), rc, req.Kind, req.Payload, req.Decision)
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, out)
+}
+
+// executeBody 是执行审批的请求体。approval_id 是十进制字符串：雪花 ID 超过 2^53，用数字会在 JavaScript 里丢精度。
+type executeBody struct {
+	Kind       string                    `json:"kind" binding:"required,max=32" label:"kind"`
+	ApprovalID string                    `json:"approval_id" binding:"required,max=20" label:"approval_id"`
+	ToolCallID string                    `json:"tool_call_id" binding:"max=128" label:"tool_call_id"`
+	Outcome    *agentsvc.ApprovalOutcome `json:"outcome" binding:"required" label:"outcome"`
+}
+
+// ExecuteApproval 执行用户批准的内容。执行是幂等的（键是审批 id）：调用方在记录结果前崩溃，重试得到的是第一次的结果。
+func (h *PlatformHandler) ExecuteApproval(c *gin.Context) {
+	rc, ok := parseRunContext(c)
+	if !ok {
+		return
+	}
+	var req executeBody
+	if !handler.BindJSON(c, &req) {
+		return
+	}
+	id, err := strconv.ParseUint(req.ApprovalID, 10, 64)
+	if err != nil || id == 0 {
+		response.Fail(c, errcode.ErrInvalidParams.WithMsg("approval_id 必须是正整数的十进制字符串"))
+		return
+	}
+	out, err := h.svc.ExecuteApproval(c.Request.Context(), rc, req.Kind, id, req.ToolCallID, *req.Outcome)
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, out)
 }

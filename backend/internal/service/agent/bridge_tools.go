@@ -64,6 +64,26 @@ type toolCall struct {
 	sess *bridgeSession
 	id   string
 	args json.RawMessage
+	// propose 不为 nil 时是「预估」：需要用户决定的工具把审批内容记在这里，不创建审批、不改运行状态（审批归 Agent 服务）
+	propose *approvalDraft
+}
+
+// approvalDraft 是需要用户决定的工具算出来的审批内容。
+type approvalDraft struct {
+	kind    string
+	payload any
+	quote   int
+}
+
+// requestApproval 是生成、删除、提问三个工具共用的出口：令牌模式创建审批并让运行进入等待状态；
+// 预估模式只把内容记下来。
+func (b *AgentBridge) requestApproval(ctx context.Context, tc *toolCall, kind string, payload any, quote int) error {
+	if tc.propose != nil {
+		*tc.propose = approvalDraft{kind: kind, payload: payload, quote: quote}
+		return nil
+	}
+	_, err := b.d.Agent.CreateApproval(ctx, tc.run, tc.id, kind, payload, quote)
+	return err
 }
 
 // maxNestedCalls 是一个运行片段里 codemode 脚本最多发起多少次嵌套调用。嵌套调用不计入步数，所以另设一个上限，
@@ -359,7 +379,7 @@ func (b *AgentBridge) toolDelete(ctx context.Context, tc *toolCall) (*toolOut, e
 			p.Labels, p.Outputs = append(p.Labels, label), append(p.Outputs, has)
 		}
 	}
-	if _, err := b.d.Agent.CreateApproval(ctx, tc.run, tc.id, model.ApprovalDelete, p, 0); err != nil {
+	if err := b.requestApproval(ctx, tc, model.ApprovalDelete, p, 0); err != nil {
 		return nil, err
 	}
 	return &toolOut{content: "已提交给用户确认，等待决定。用户决定后你会收到结果。", terminate: true,
@@ -427,7 +447,7 @@ func (b *AgentBridge) toolAsk(ctx context.Context, tc *toolCall) (*toolOut, erro
 	default:
 		return nil, fail("kind 只能是 choice 或 model")
 	}
-	if _, err := b.d.Agent.CreateApproval(ctx, tc.run, tc.id, model.ApprovalAsk, p, 0); err != nil {
+	if err := b.requestApproval(ctx, tc, model.ApprovalAsk, p, 0); err != nil {
 		return nil, err
 	}
 	return &toolOut{content: "已向用户提问，等待回答。用户回答后你会收到结果。", terminate: true, summary: "向用户提问：" + truncateRunes(q, 40)}, nil

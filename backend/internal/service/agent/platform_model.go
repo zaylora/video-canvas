@@ -45,12 +45,10 @@ func (b *AgentBridge) ProxyModelPlatform(ctx context.Context, rc RunContext, bod
 	if err != nil {
 		return err
 	}
-	used, err := b.d.RunUsage.RunModelUsage(ctx, rc.UserID, rc.RunID)
+	run, err := b.platformRunState(ctx, rc)
 	if err != nil {
 		return err
 	}
-	run := rc.run()
-	run.SpentCredits = rc.SpentExtra + used.Credits
 	inputChars := utf8.RuneCount(body)
 	if err := b.d.Billing.Preflight(ctx, run, snap.Model.Pricing, snap.Model.Capabilities, inputChars); err != nil {
 		return err
@@ -93,6 +91,21 @@ func (b *AgentBridge) ProxyModelPlatform(ctx context.Context, rc RunContext, bod
 		logger.Error("Agent 对话结算失败", zap.Error(berr), zap.Uint64("call_id", call.ID), zap.Uint64("run_id", rc.RunID))
 	}
 	return serr
+}
+
+// platformRunState 构造带「本轮已花积分」的运行：调用方声明的 spent_extra 加上 Go 按调用记录累加的模型调用实扣。
+// 预算检查（模型代理的预检、批准生成时的预算）都用它。
+func (b *AgentBridge) platformRunState(ctx context.Context, rc RunContext) (*model.AgentRun, error) {
+	if b.d.RunUsage == nil {
+		return nil, errors.New("平台接口没有配置 RunUsage")
+	}
+	used, err := b.d.RunUsage.RunModelUsage(ctx, rc.UserID, rc.RunID)
+	if err != nil {
+		return nil, err
+	}
+	run := rc.run()
+	run.SpentCredits = rc.SpentExtra + used.Credits
+	return run, nil
 }
 
 // PlatformUsage 是一个运行的用量：Agent 服务据此发 run.usage（已花积分、上下文大小）和 message.done 里的积分。

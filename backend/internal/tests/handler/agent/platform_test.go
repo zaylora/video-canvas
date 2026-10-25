@@ -14,6 +14,7 @@ import (
 
 	. "video-canvas/internal/handler/agent"
 	"video-canvas/internal/llmgateway"
+	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
 	agentsvc "video-canvas/internal/service/agent"
 )
@@ -37,6 +38,40 @@ type fakePlatform struct {
 	// 用量
 	usage       *agentsvc.PlatformUsage
 	usageCallID uint64
+
+	// 审批
+	kind       string
+	payload    string
+	decision   model.DecideAgentApprovalReq
+	approvalID uint64
+	outcome    agentsvc.ApprovalOutcome
+	proposal   *agentsvc.ApprovalProposal
+	approved   *agentsvc.ApprovalOutcome
+	execution  *agentsvc.ApprovalExecution
+}
+
+func (f *fakePlatform) ProposeApproval(_ context.Context, rc agentsvc.RunContext, kind string, args json.RawMessage) (*agentsvc.ApprovalProposal, error) {
+	f.rc, f.kind, f.args = rc, kind, string(args)
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.proposal, nil
+}
+
+func (f *fakePlatform) ResolveApproval(_ context.Context, rc agentsvc.RunContext, kind string, payload json.RawMessage, req model.DecideAgentApprovalReq) (*agentsvc.ApprovalOutcome, error) {
+	f.rc, f.kind, f.payload, f.decision = rc, kind, string(payload), req
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.approved, nil
+}
+
+func (f *fakePlatform) ExecuteApproval(_ context.Context, rc agentsvc.RunContext, kind string, approvalID uint64, toolCallID string, o agentsvc.ApprovalOutcome) (*agentsvc.ApprovalExecution, error) {
+	f.rc, f.kind, f.approvalID, f.callID, f.outcome = rc, kind, approvalID, toolCallID, o
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.execution, nil
 }
 
 func (f *fakePlatform) ExecutePlatformTool(ctx context.Context, rc agentsvc.RunContext, callID, name string, args json.RawMessage) (*agentsvc.ToolResult, error) {
@@ -83,6 +118,9 @@ func newPlatformRouter(api PlatformAPI) *gin.Engine {
 	g.DELETE("/runs/:run_id", h.EndRun)
 	g.POST("/model/chat/completions", h.ChatCompletions)
 	g.GET("/runs/:run_id/usage", h.Usage)
+	g.POST("/approvals/propose", h.ProposeApproval)
+	g.POST("/approvals/resolve", h.ResolveApproval)
+	g.POST("/approvals/execute", h.ExecuteApproval)
 	return r
 }
 
@@ -357,5 +395,115 @@ func TestPlatformHandler_Usage_Validation(t *testing.T) {
 	w := platformCall(newPlatformRouter(&fakePlatform{err: errcode.ErrNotFound}), http.MethodGet, "/internal/platform/v1/runs/1152921504606846977/usage?call_id=5", "", hdr)
 	if w.Code != 404 {
 		t.Errorf("调用不存在应 404: %d", w.Code)
+	}
+}
+
+// ---- 审批：预估、解析、执行 ----
+
+const approvalsPath = "/internal/platform/v1/approvals/"
+
+func TestPlatformHandler_ProposeApprovalPassesContextKindAndArgs(t *testing.T) {
+	api := &fakePlatform{proposal: &agentsvc.ApprovalProposal{Payload: json.RawMessage(`{"items":[]}`), QuoteCredits: 5, Summary: "生成 1 个，预估 5 积分", Content: "已提交，等待决定", Terminate: true}}
+	w := platformCall(newPlatformRouter(api), http.MethodPost, approvalsPath+"propose",
+		`{"kind":"generate","args":{"items":[{"nodeId":"n1"}],"reason":"出图"}}`, map[string]string{"X-Agent-Context": ctxHeader(goodCtx)})
+	if w.Code != 200 || respCode(t, w) != 0 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if api.kind != "generate" || api.rc.RunID != 1152921504606846977 || api.rc.UserID != 1 || !strings.Contains(api.args, `"nodeId":"n1"`) {
+		t.Errorf("业务层收到的: kind=%s rc=%+v args=%s", api.kind, api.rc, api.args)
+	}
+	var body struct {
+		Data struct {
+			QuoteCredits int    `json:"quote_credits"`
+			Terminate    bool   `json:"terminate"`
+			Content      string `json:"content"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil || body.Data.QuoteCredits != 5 || !body.Data.Terminate || body.Data.Content == "" {
+		t.Errorf("响应: %s", w.Body)
+	}
+	// 不传参数按空对象
+	platformCall(newPlatformRouter(api), http.MethodPost, approvalsPath+"propose", `{"kind":"ask"}`, map[string]string{"X-Agent-Context": ctxHeader(goodCtx)})
+	if api.args != "{}" {
+		t.Errorf("没有 args 要按空对象: %q", api.args)
+	}
+}
+
+func TestPlatformHandler_ResolveApprovalPassesPayloadAndDecision(t *testing.T) {
+	api := &fakePlatform{approved: &agentsvc.ApprovalOutcome{Status: "approved", QuoteCredits: 24}}
+	w := platformCall(newPlatformRouter(api), http.MethodPost, approvalsPath+"resolve",
+		`{"kind":"generate","payload":{"items":[{"node_id":"a"}]},"decision":{"decision":"approve","items":[{"index":0,"approve":true,"count":1}],"add_budget":10}}`,
+		map[string]string{"X-Agent-Context": ctxHeader(goodCtx)})
+	if w.Code != 200 || respCode(t, w) != 0 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if api.kind != "generate" || !strings.Contains(api.payload, `"node_id":"a"`) || api.decision.Decision != "approve" || len(api.decision.Items) != 1 || api.decision.AddBudget != 10 {
+		t.Errorf("业务层收到的: %s %s %+v", api.kind, api.payload, api.decision)
+	}
+	if !strings.Contains(w.Body.String(), `"status":"approved"`) || !strings.Contains(w.Body.String(), `"quote_credits":24`) {
+		t.Errorf("响应: %s", w.Body)
+	}
+}
+
+func TestPlatformHandler_ExecuteApprovalParsesTheSnowflakeApprovalID(t *testing.T) {
+	api := &fakePlatform{execution: &agentsvc.ApprovalExecution{Status: "executed", Result: json.RawMessage(`{"changes":1}`), OutcomeText: "用户批准了删除，已删除 1 个节点。"}}
+	w := platformCall(newPlatformRouter(api), http.MethodPost, approvalsPath+"execute",
+		`{"kind":"delete","approval_id":"1152921504606846983","tool_call_id":"call_9","outcome":{"status":"approved","node_ids":["n1"],"edge_ids":[],"decision":{"decision":"approve"}}}`,
+		map[string]string{"X-Agent-Context": ctxHeader(goodCtx)})
+	if w.Code != 200 || respCode(t, w) != 0 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	// 审批 id 超过 2^53，必须是十进制字符串，不能经过浮点数
+	if api.approvalID != 1152921504606846983 || api.callID != "call_9" || api.kind != "delete" {
+		t.Errorf("业务层收到的: id=%d call=%s kind=%s", api.approvalID, api.callID, api.kind)
+	}
+	if api.outcome.Status != "approved" || len(api.outcome.NodeIDs) != 1 || api.outcome.NodeIDs[0] != "n1" || api.outcome.Decision["decision"] != "approve" {
+		t.Errorf("outcome 要原样传下去: %+v", api.outcome)
+	}
+	if !strings.Contains(w.Body.String(), `"outcome_text":"用户批准了删除，已删除 1 个节点。"`) || !strings.Contains(w.Body.String(), `"status":"executed"`) {
+		t.Errorf("响应: %s", w.Body)
+	}
+}
+
+func TestPlatformHandler_ApprovalEndpointsRejectBadRequests(t *testing.T) {
+	hdr := map[string]string{"X-Agent-Context": ctxHeader(goodCtx)}
+	cases := map[string]struct {
+		path, body string
+		hdr        map[string]string
+	}{
+		"预估缺上下文头":           {"propose", `{"kind":"ask"}`, nil},
+		"预估缺 kind":          {"propose", `{"args":{}}`, hdr},
+		"预估不是 JSON":         {"propose", `不是 JSON`, hdr},
+		"解析缺上下文头":           {"resolve", `{"kind":"delete","payload":{},"decision":{"decision":"approve"}}`, nil},
+		"解析缺 payload":       {"resolve", `{"kind":"delete","decision":{"decision":"approve"}}`, hdr},
+		"解析 payload 是 null": {"resolve", `{"kind":"delete","payload":null,"decision":{"decision":"approve"}}`, hdr},
+		"解析决定不认识":           {"resolve", `{"kind":"delete","payload":{},"decision":{"decision":"maybe"}}`, hdr},
+		"解析缺决定":             {"resolve", `{"kind":"delete","payload":{}}`, hdr},
+		"执行缺上下文头":           {"execute", `{"kind":"delete","approval_id":"1","outcome":{"status":"approved"}}`, nil},
+		"执行审批 id 是数字":       {"execute", `{"kind":"delete","approval_id":1,"outcome":{"status":"approved"}}`, hdr},
+		"执行审批 id 不是数字":      {"execute", `{"kind":"delete","approval_id":"abc","outcome":{"status":"approved"}}`, hdr},
+		"执行审批 id 为 0":       {"execute", `{"kind":"delete","approval_id":"0","outcome":{"status":"approved"}}`, hdr},
+		"执行缺 outcome":       {"execute", `{"kind":"delete","approval_id":"1"}`, hdr},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			api := &fakePlatform{}
+			w := platformCall(newPlatformRouter(api), http.MethodPost, approvalsPath+tc.path, tc.body, tc.hdr)
+			if w.Code != 400 || respCode(t, w) != errcode.ErrInvalidParams.Code {
+				t.Fatalf("应 400 参数错误: status=%d %s", w.Code, w.Body)
+			}
+			if api.kind != "" {
+				t.Error("请求不合法不能走到业务层")
+			}
+		})
+	}
+}
+
+func TestPlatformHandler_ApprovalBusinessErrorsKeepTheirCode(t *testing.T) {
+	hdr := map[string]string{"X-Agent-Context": ctxHeader(goodCtx)}
+	api := &fakePlatform{err: errcode.ErrAgentOverBudget}
+	w := platformCall(newPlatformRouter(api), http.MethodPost, approvalsPath+"resolve", `{"kind":"generate","payload":{},"decision":{"decision":"approve"}}`, hdr)
+	if respCode(t, w) != errcode.ErrAgentOverBudget.Code {
+		t.Errorf("超预算要原样返回业务错误码（Agent 服务据此提示用户加预算）: %d %s", w.Code, w.Body)
 	}
 }

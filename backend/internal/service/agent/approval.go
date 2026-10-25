@@ -288,29 +288,42 @@ func chosen(total int, items []model.ApprovalItemDecision) (map[int]int, error) 
 
 // execute 执行批准的内容并把结果写回审批：删除直接改画布，生成交给 executor。
 func (s *AgentService) execute(ctx context.Context, run *model.AgentRun, a *model.AgentApproval, out *outcome) *model.AgentApproval {
-	var result json.RawMessage
-	var err error
-	switch {
-	case a.Kind == model.ApprovalDelete && out.status != model.ApprovalRejected:
-		var res *WriteResult
-		if res, err = s.canvas.DeleteApproved(ctx, run, a.ToolCallID, out.nodeIDs, out.edgeIDs); err == nil {
-			result, _ = json.Marshal(res) // WriteResult 只含数字和字符串，序列化不会失败
-		}
-	case a.Kind == model.ApprovalGenerate && out.status != model.ApprovalRejected && s.exec != nil:
-		result, err = s.exec.Execute(ctx, run, a.ID, out.gen)
-	default:
+	result, ran, err := s.runApproved(ctx, run, a.Kind, a.ID, a.ToolCallID, out)
+	if !ran {
 		return a
 	}
-	status, body := model.ApprovalExecuted, result
-	if err != nil {
-		status = model.ApprovalFailed
-		body, _ = json.Marshal(map[string]string{"error": err.Error()}) // 同上，只含字符串
-	}
+	status, body := approvalExecResult(result, err)
 	final, uerr := s.repo.UpdateApprovalIf(ctx, a.ID, []string{model.ApprovalApproved, model.ApprovalPartial}, map[string]any{"status": status, "result_json": body})
 	if uerr != nil {
 		return a
 	}
 	return final
+}
+
+// runApproved 是执行的纯逻辑部分，不碰审批记录：令牌模式（execute）和平台 API 的执行接口（ExecuteApproval）共用。
+// ran 为假表示这个决定不需要执行任何东西（拒绝、提问，或没有配置生成执行器）。
+func (s *AgentService) runApproved(ctx context.Context, run *model.AgentRun, kind string, approvalID uint64, toolCallID string, out *outcome) (result json.RawMessage, ran bool, err error) {
+	switch {
+	case kind == model.ApprovalDelete && out.status != model.ApprovalRejected:
+		var res *WriteResult
+		if res, err = s.canvas.DeleteApproved(ctx, run, toolCallID, out.nodeIDs, out.edgeIDs); err == nil {
+			result, _ = json.Marshal(res) // WriteResult 只含数字和字符串，序列化不会失败
+		}
+		return result, true, err
+	case kind == model.ApprovalGenerate && out.status != model.ApprovalRejected && s.exec != nil:
+		result, err = s.exec.Execute(ctx, run, approvalID, out.gen)
+		return result, true, err
+	}
+	return nil, false, nil
+}
+
+// approvalExecResult 把执行结果变成审批的状态和 result_json：失败时 result_json 只记原因。
+func approvalExecResult(result json.RawMessage, err error) (status string, body json.RawMessage) {
+	if err != nil {
+		body, _ = json.Marshal(map[string]string{"error": err.Error()}) // 只含字符串，序列化不会失败
+		return model.ApprovalFailed, body
+	}
+	return model.ApprovalExecuted, result
 }
 
 // approvalOutcomeText 把审批的结果写成给模型看的工具结果：用户批准了什么、拒绝了什么、回答了什么，

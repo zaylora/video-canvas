@@ -637,6 +637,108 @@ func TestE2E_PlatformToolOverHTTPOnRealDB(t *testing.T) {
 	}
 }
 
+// platformApproval 以 Agent 服务的身份调用审批的三个接口之一，返回 HTTP 状态和解析后的响应。
+func (e *e2eEnv) platformApproval(t *testing.T, op, ctxJSON, body string) (int, map[string]any) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPost, e.bridgeURL+"/internal/platform/v1/approvals/"+op, strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Agent-Service-Token", e.serviceToken)
+	req.Header.Set("X-Agent-Context", base64.RawURLEncoding.EncodeToString([]byte(ctxJSON)))
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var out map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatal(err)
+	}
+	return resp.StatusCode, out
+}
+
+// 删除审批的完整流程走真实 HTTP 和真实 Postgres：预估 → 解析 → 执行 → 重放。
+// 运行和审批 id 都是雪花大小（超过 2^53）；Go 的库里没有这个运行，也不会为它创建审批记录；
+// 执行的幂等键（审批 id）存进 agent_mutations.idem_key，重放不再删一次。
+func TestE2E_PlatformApprovalFlowOverHTTPOnRealDB(t *testing.T) {
+	e := newE2E(t, e2eProcessToken)
+	const runID, sessID, approvalID uint64 = 1152921504606846977, 1152921504606846978, 1152921504606846979
+	ctxJSON := fmt.Sprintf(`{"run_id":"%d","user_id":"1","session_id":"%d","canvas_id":"%d","mode":"all","model_key":"claude"}`, runID, sessID, e.canvas.ID)
+
+	// 预估：算出审批内容；不落库
+	status, prop := e.platformApproval(t, "propose", ctxJSON, `{"kind":"delete","args":{"nodeIds":["n_old"],"reason":"废稿"}}`)
+	if status != 200 || prop["code"] != float64(0) {
+		t.Fatalf("预估: status=%d %v", status, prop)
+	}
+	pd := prop["data"].(map[string]any)
+	if pd["is_error"] == true || pd["terminate"] != true {
+		t.Fatalf("预估应成功并要求停下等用户: %v", pd)
+	}
+	payload, _ := json.Marshal(pd["payload"])
+	var approvals, events int64
+	e.db.Model(&model.AgentApproval{}).Count(&approvals)
+	e.db.Model(&model.AgentEvent{}).Count(&events)
+	if approvals != 0 || events != 0 {
+		t.Fatalf("预估不落库（审批归 Agent 服务）: 审批 %d 事件 %d", approvals, events)
+	}
+
+	// 解析：用户批准
+	status, res := e.platformApproval(t, "resolve", ctxJSON, fmt.Sprintf(`{"kind":"delete","payload":%s,"decision":{"decision":"approve"}}`, payload))
+	if status != 200 || res["code"] != float64(0) {
+		t.Fatalf("解析: status=%d %v", status, res)
+	}
+	outcome, _ := json.Marshal(res["data"])
+	if rd := res["data"].(map[string]any); rd["status"] != "approved" {
+		t.Fatalf("应整体批准: %v", rd)
+	}
+
+	// 执行；再执行一次（崩溃后重试）要得到同样的结果
+	execBody := fmt.Sprintf(`{"kind":"delete","approval_id":"%d","tool_call_id":"call_del","outcome":%s}`, approvalID, outcome)
+	status, first := e.platformApproval(t, "execute", ctxJSON, execBody)
+	if status != 200 || first["code"] != float64(0) {
+		t.Fatalf("执行: status=%d %v", status, first)
+	}
+	fd := first["data"].(map[string]any)
+	if fd["status"] != "executed" || !strings.Contains(fd["outcome_text"].(string), "已删除 1 个节点") {
+		t.Fatalf("执行结果: %v", fd)
+	}
+	_, again := e.platformApproval(t, "execute", ctxJSON, execBody)
+	ad := again["data"].(map[string]any)
+	if ad["status"] != "executed" || ad["outcome_text"] != fd["outcome_text"] {
+		t.Errorf("重放要和第一次一样:\n%v\n%v", fd, ad)
+	}
+
+	var muts []model.AgentMutation
+	e.db.Where("run_id = ?", runID).Find(&muts)
+	if len(muts) != 1 || muts[0].Kind != model.MutationDelete || muts[0].IdemKey != fmt.Sprintf("approval-%d", approvalID) {
+		t.Fatalf("只能留下一条删除改动，幂等键是审批 id: %+v", muts)
+	}
+	for _, n := range e.graph(t).Nodes {
+		if n.ID() == "n_old" {
+			t.Error("节点应已被删除")
+		}
+	}
+	e.db.Model(&model.AgentApproval{}).Count(&approvals)
+	if approvals != 0 {
+		t.Errorf("Go 不为平台调用创建审批记录: %d", approvals)
+	}
+
+	// 服务令牌错了：进不来，也删不了东西
+	req, _ := http.NewRequest(http.MethodPost, e.bridgeURL+"/internal/platform/v1/approvals/execute", strings.NewReader(execBody))
+	req.Header.Set("X-Agent-Context", base64.RawURLEncoding.EncodeToString([]byte(ctxJSON)))
+	req.Header.Set("X-Agent-Service-Token", "wrong-wrong-wrong-wrong-wrong-wrong-wrong")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("令牌不对应 401: %d", resp.StatusCode)
+	}
+}
+
 // platformChat 以 Agent 服务的身份走一次上下文模式的模型代理，返回 HTTP 状态、响应头和响应体。
 func (e *e2eEnv) platformChat(t *testing.T, ctxJSON, purpose string) (int, http.Header, string) {
 	t.Helper()

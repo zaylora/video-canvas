@@ -38,6 +38,9 @@ func NewBridge(mode string, h *agenthandler.AgentBridgeHandler, platform *agenth
 		p.DELETE("/runs/:run_id", platform.EndRun)
 		p.GET("/runs/:run_id/usage", platform.Usage)
 		p.POST("/model/chat/completions", platform.ChatCompletions)
+		p.POST("/approvals/propose", platform.ProposeApproval)
+		p.POST("/approvals/resolve", platform.ResolveApproval)
+		p.POST("/approvals/execute", platform.ExecuteApproval)
 	}
 	return r
 }
