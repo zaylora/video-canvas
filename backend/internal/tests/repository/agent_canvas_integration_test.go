@@ -2,6 +2,7 @@ package repository_test
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"video-canvas/internal/agent/canvasgraph"
@@ -92,5 +93,82 @@ func TestAgentCanvasService_EndToEndOnRealDB(t *testing.T) {
 
 	if _, err := svc.Undo(ctx, 1, run.ID); err == nil {
 		t.Error("再次撤销应返回已撤销")
+	}
+}
+
+// 重放要在真实的库上验证：内存替身绕过了序列化，新列有没有真的存下来、读出来，只有真实的库才知道；
+// 并发的重复调用靠的是真实的事务和乐观锁。
+func TestAgentCanvasService_ReplayOnRealDB(t *testing.T) {
+	ctx := context.Background()
+	db := agentDB(t)
+	r := NewAgentRepository(db)
+	svc := agentsvc.NewAgentCanvasService(r, nil)
+
+	canvas := &model.CanvasProject{UserID: 1, Title: "画布", Revision: 1,
+		PayloadJSON: []byte(`{"nodes":[{"id":"n_script","type":"canvas","position":{"x":0,"y":0},"data":{"kind":"script","label":"剧本"}}],"edges":[],"viewport":{"zoom":1}}`)}
+	if err := db.Create(canvas).Error; err != nil {
+		t.Fatal(err)
+	}
+	s := newSession(t, r, 1, canvas.ID)
+	run := newRun(t, r, s, model.RunRunning)
+	ops := []byte(`[{"op":"create_node","tempId":"a","kind":"image","label":"关键帧"},{"op":"connect","source":"n_script","target":"a"}]`)
+
+	first, err := svc.ApplyOps(agentsvc.WithIdempotencyKey(ctx, "key_1"), run, "call_1", ops)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 结果列真的存进了库：直接读行
+	var row model.AgentMutation
+	if err := db.Where("run_id = ? AND idem_key = ?", run.ID, "key_1").First(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	if string(row.ResultJSON) == "" || string(row.ResultJSON) == "{}" {
+		t.Fatalf("id_map 应已存进 result_json: %q", row.ResultJSON)
+	}
+
+	again, err := svc.ApplyOps(agentsvc.WithIdempotencyKey(ctx, "key_1"), run, "call_1", ops)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.MutationID != first.MutationID || again.IDMap["a"] != first.IDMap["a"] || again.Revision != first.Revision {
+		t.Fatalf("重放要原样还原: %+v / %+v", first, again)
+	}
+	var count int64
+	db.Model(&model.AgentMutation{}).Where("run_id = ?", run.ID).Count(&count)
+	var cv model.CanvasProject
+	db.First(&cv, canvas.ID)
+	if count != 1 || cv.Revision != 2 {
+		t.Fatalf("重放不能再写：改动记录 %d 条，画布 revision %d", count, cv.Revision)
+	}
+
+	// 并发的重复调用（另一个工具调用 id）：真实事务下也只能写一次
+	const n = 10
+	results := make([]*agentsvc.WriteResult, n)
+	errs := make([]error, n)
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			results[i], errs[i] = svc.ApplyOps(agentsvc.WithIdempotencyKey(ctx, "key_2"), run, "call_2", []byte(`[{"op":"create_node","tempId":"b","kind":"image","label":"备用帧"}]`))
+		}()
+	}
+	close(start)
+	wg.Wait()
+	for i, e := range errs {
+		if e != nil {
+			t.Fatalf("第 %d 个并发调用出错: %v", i, e)
+		}
+	}
+	db.Model(&model.AgentMutation{}).Where("run_id = ? AND idem_key = ?", run.ID, "key_2").Count(&count)
+	if count != 1 {
+		t.Fatalf("并发的重复调用只能写一条记录，实际 %d", count)
+	}
+	for i, res := range results {
+		if res.IDMap["b"] == "" || res.IDMap["b"] != results[0].IDMap["b"] {
+			t.Errorf("第 %d 个调用拿到的 id_map 不一致: %v / %v", i, res.IDMap, results[0].IDMap)
+		}
 	}
 }

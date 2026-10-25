@@ -154,6 +154,8 @@ type AgentMutation struct {
 	ToolCallID     string         `gorm:"size:64;not null;default:''" json:"tool_call_id"`                      // 触发它的工具调用
 	Kind           string         `gorm:"size:16;not null" json:"kind"`                                         // 改动种类，取值见 Mutation* 常量
 	ChangesJSON    datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'" json:"changes"`                      // canvasgraph.Change 列表
+	IdemKey        string         `gorm:"column:idem_key;size:64;not null;default:''" json:"-"`                 // 调用方给的幂等键（阶段 3 里是 Pi 的工具任务 id）；空表示不要求幂等
+	ResultJSON     datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"-"`                            // 调用方当时拿到的结果（tempId→真实 id、提醒），同一个幂等键重放时原样还原
 	RevisionBefore uint64         `gorm:"not null" json:"revision_before"`                                      // 写入前的画布 revision
 	RevisionAfter  uint64         `gorm:"not null" json:"revision_after"`                                       // 写入后的画布 revision
 	UndoneAt       *time.Time     `json:"undone_at"`                                                            // 被撤销的时间
