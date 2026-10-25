@@ -106,6 +106,29 @@ func ListenLoopback(addr string) (net.Listener, error) {
 	return lc.Listen(context.Background(), "tcp", addr)
 }
 
+// ListenBridge 按配置监听桥。回环地址照旧；非回环地址只有配了合格的服务令牌才放行
+// （配置校验之外再拦一道：绑到别的地址就只剩令牌这一道屏障了）。
+func ListenBridge(ac config.Agent) (net.Listener, error) {
+	addr := ac.WithDefaults().BridgeAddr
+	if config.ValidServiceToken(ac.ServiceToken) {
+		var lc net.ListenConfig
+		return lc.Listen(context.Background(), "tcp", addr)
+	}
+	return ListenLoopback(addr)
+}
+
+// BridgeLocalURL 是本机进程回调桥用的地址：监听在 0.0.0.0 或 :: 时 Addr() 是「未指定地址」，不能直接拿来连，换成 127.0.0.1。
+func BridgeLocalURL(addr net.Addr) string {
+	tcp, ok := addr.(*net.TCPAddr)
+	if !ok {
+		return "http://" + addr.String()
+	}
+	if tcp.IP == nil || tcp.IP.IsUnspecified() {
+		return "http://" + net.JoinHostPort("127.0.0.1", strconv.Itoa(tcp.Port))
+	}
+	return "http://" + tcp.String()
+}
+
 // agentRuntime 是装配好的画布 Agent 运行时：桥的监听服务和进程运行时。
 type agentRuntime struct {
 	rt     *agentsvc.ProcessRuntime
@@ -167,7 +190,7 @@ func newAgentRuntime(cfg *config.Config, d agentDeps) (*agentRuntime, error) {
 	if err != nil {
 		return nil, err
 	}
-	ln, err := ListenLoopback(ac.BridgeAddr)
+	ln, err := ListenBridge(ac)
 	if err != nil {
 		return nil, fmt.Errorf("监听桥地址失败：%w", err)
 	}
@@ -184,13 +207,13 @@ func newAgentRuntime(cfg *config.Config, d agentDeps) (*agentRuntime, error) {
 	}
 	rt := agentsvc.NewProcessRuntime(agentsvc.RuntimeDeps{
 		Repo: d.repo, Bridge: bridge, Canvas: d.canvas, Agent: d.agent, Registry: d.registry, Launcher: agentsvc.ExecLauncher{},
-		Config: agentsvc.RuntimeConfig{NodePath: paths.Node, ScriptPath: paths.Script, BridgeURL: "http://" + ln.Addr().String(), WorkRoot: ac.WorkDir, DisabledTools: AgentDisabledTools(ac)},
+		Config: agentsvc.RuntimeConfig{NodePath: paths.Node, ScriptPath: paths.Script, BridgeURL: BridgeLocalURL(ln.Addr()), ServiceToken: ac.ServiceToken, WorkRoot: ac.WorkDir, DisabledTools: AgentDisabledTools(ac)},
 	})
 	d.agent.SetRuntime(rt)
 	return &agentRuntime{
 		rt: rt, ln: ln,
-		// 没有读写超时：对话是长连接的流式响应，可能持续几分钟；防慢速攻击靠只监听回环地址
-		server: &http.Server{Handler: router.NewBridge(cfg.Server.Mode, agenthandler.NewAgentBridgeHandler(bridge)), ReadHeaderTimeout: 10 * time.Second},
+		// 没有读写超时：对话是长连接的流式响应，可能持续几分钟；防慢速攻击靠只监听回环地址或内网（配了服务令牌）
+		server: &http.Server{Handler: router.NewBridge(cfg.Server.Mode, agenthandler.NewAgentBridgeHandler(bridge), ac.ServiceToken), ReadHeaderTimeout: 10 * time.Second},
 	}, nil
 }
 

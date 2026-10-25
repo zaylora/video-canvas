@@ -306,3 +306,95 @@ test("看图：对象存储的图片以地址交给模型（不转 base64）；�
     assert.match(saved, /图片已省略/);
   });
 });
+
+test("同一回合里的多个工具：每个工具结果出来就把历史交回 Go，崩溃最多丢一个工具", async () => {
+  let statesWhenBStarted;
+  let b;
+  await withBridge({
+    models: [{ tools: [{ id: "a", name: "model_list", args: { kind: "image" } }, { id: "b", name: "model_list", args: { kind: "video" } }] }, { text: "ok" }],
+    tool: async (j) => {
+      if (j.tool_call_id === "b") statesWhenBStarted = structuredClone(b.rec.states);
+      return { content: "结果-" + j.tool_call_id };
+    },
+  }, async (_b) => {
+    b = _b;
+    await runAgent(baseInput(b.url));
+  });
+  const last = statesWhenBStarted.at(-1);
+  assert.ok(last, "第二个工具开始时已经保存过历史");
+  assert.ok(last.some((m) => m.role === "toolResult" && m.toolCallId === "a"), "第一个工具的结果已在保存的历史里");
+  assert.ok(!last.some((m) => m.role === "toolResult" && m.toolCallId === "b"), "第二个工具还没跑完");
+});
+test("同一份历史不重复保存：回合最后一个工具结果已经保存过，turn_end 不再发一遍", async () => {
+  await withBridge({
+    models: [{ tools: [{ id: "a", name: "model_list", args: { kind: "image" } }] }, { text: "好" }],
+  }, async (bridge) => {
+    await runAgent(baseInput(bridge.url));
+    const lens = bridge.rec.states.map((s) => s.length);
+    assert.deepEqual(lens, [3, 4, 4], "工具结果后 3 条、回答结束后 4 条、收尾再交一次最终历史");
+  });
+});
+
+test("崩溃留下的半截工具批次：没有结果的调用补上「结果丢失」，历史才能发给模型", async () => {
+  const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
+  const history = [
+    { role: "user", content: [{ type: "text", text: "拆分镜" }], timestamp: 1 },
+    { role: "assistant", content: [
+      { type: "toolCall", id: "a", name: "model_list", arguments: { kind: "image" } },
+      { type: "toolCall", id: "b", name: "canvas_apply_ops", arguments: { ops: [] } },
+    ], api: "openai-completions", provider: "bridge", model: "agent", usage, stopReason: "toolUse", timestamp: 2 },
+    { role: "toolResult", toolCallId: "a", toolName: "model_list", content: [{ type: "text", text: "图片模型列表" }], isError: false, timestamp: 3 },
+  ];
+  for (const mode of ["resume", "start"]) {
+    await withBridge({ models: [{ text: "接着做" }] }, async (bridge) => {
+      const input = mode === "resume" ? { mode, messages: history } : { mode, messages: history, prompt: { text: "继续" } };
+      const r = await runAgent(baseInput(bridge.url, input));
+      assert.equal(r.status, "done");
+      const tools = bridge.rec.chats[0].messages.filter((m) => m.role === "tool");
+      assert.deepEqual(tools.map((m) => m.tool_call_id), ["a", "b"], mode + "：每个 tool_call 都有对应的 tool 消息");
+      assert.match(tools[0].content, /图片模型列表/, "已有的结果原样保留");
+      assert.match(tools[1].content, /没有拿到结果.*可能已经执行/, "补的结果提醒模型先确认再决定要不要重做");
+    });
+  }
+});
+
+test("历史完整时不补任何结果；结尾因出错而中止的 assistant 也不补", async () => {
+  const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
+  const aborted = { role: "assistant", content: [{ type: "toolCall", id: "z", name: "model_list", arguments: {} }], api: "openai-completions", provider: "bridge", model: "agent", usage, stopReason: "aborted", timestamp: 2 };
+  await withBridge({ models: [{ text: "接着做" }] }, async (bridge) => {
+    await runAgent(baseInput(bridge.url, { mode: "resume", messages: [{ role: "user", content: [{ type: "text", text: "拆分镜" }], timestamp: 1 }, aborted] }));
+    assert.deepEqual(bridge.rec.chats[0].messages.map((m) => m.role), ["system", "user"], "被中止的 assistant 照旧整条去掉，不给它补工具结果");
+  });
+});
+
+test("服务令牌：启动参数里带了就随每个桥请求发出去（模型、工具、历史、结束），没带就不发", async () => {
+  await withBridge({
+    models: [{ tools: [{ id: "a", name: "model_list", args: { kind: "image" } }] }, { text: "好" }],
+  }, async (bridge) => {
+    await runAgent(baseInput(bridge.url, { service_token: "svc-token-0123456789abcdef0123456789" }));
+    // 2 次模型请求 + 1 次工具 + 若干次历史 + 1 次结束
+    assert.ok(bridge.rec.serviceTokens.length >= 5, "实际请求数 " + bridge.rec.serviceTokens.length);
+    assert.deepEqual([...new Set(bridge.rec.serviceTokens)], ["svc-token-0123456789abcdef0123456789"], "每个请求都带同一个服务令牌");
+    assert.equal(bridge.rec.auths[0], "Bearer tok-123", "运行令牌照旧");
+  });
+  await withBridge({ models: [{ text: "好" }] }, async (bridge) => {
+    await runAgent(baseInput(bridge.url));
+    assert.deepEqual([...new Set(bridge.rec.serviceTokens)], [undefined], "没配服务令牌时不发这个请求头");
+  });
+});
+
+test("服务令牌：摘要压缩的模型请求也带（它同样走桥）", async () => {
+  const big = "字".repeat(60000);
+  const history = [];
+  for (let i = 0; i < 8; i++) {
+    history.push({ role: "user", content: [{ type: "text", text: big }], timestamp: i * 2 + 1 });
+    history.push({ role: "assistant", content: [{ type: "text", text: big }], api: "openai-completions", provider: "bridge", model: "agent",
+      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "stop", timestamp: i * 2 + 2 });
+  }
+  await withBridge({ models: [{ text: "好" }] }, async (bridge) => {
+    await runAgent(baseInput(bridge.url, { service_token: "svc-token-0123456789abcdef0123456789", messages: history, prompt: { text: "继续" },
+      model: { name: "Claude", context_window: 200000, max_tokens: 8192, vision: true } }));
+    assert.ok(bridge.rec.summaries.length >= 1, "这条历史应触发摘要压缩");
+    assert.ok(bridge.rec.serviceTokens.every((t) => t === "svc-token-0123456789abcdef0123456789"), "摘要请求也带服务令牌");
+  });
+});

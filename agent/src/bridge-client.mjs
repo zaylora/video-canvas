@@ -2,6 +2,11 @@
  * 桥客户端：Node 进程和 Go 的全部通信都在这里。进程里没有任何渠道密钥，只有一个一次性的桥令牌。
  * 响应约定：Go 的标准格式 {code, msg, data}，code 不为 0 或 HTTP 非 2xx 都视为失败。
  */
+/** 服务令牌的请求头；没配返回空对象 */
+export function serviceHeaders(serviceToken) {
+  return serviceToken ? { "X-Agent-Service-Token": serviceToken } : {};
+}
+
 export class BridgeError extends Error {
   constructor(message, status, code) {
     super(message);
@@ -12,15 +17,16 @@ export class BridgeError extends Error {
 }
 
 /**
- * @param {{ baseUrl: string, token: string, fetchImpl?: typeof fetch }} opts
+ * 配了服务令牌（Agent 作为独立服务从内网访问桥时）就随每个请求带上 X-Agent-Service-Token；模型请求不在这里发，见 serviceHeaders。
+ * @param {{ baseUrl: string, token: string, serviceToken?: string, fetchImpl?: typeof fetch }} opts
  */
-export function createBridge({ baseUrl, token, fetchImpl = fetch }) {
+export function createBridge({ baseUrl, token, serviceToken, fetchImpl = fetch }) {
   const base = baseUrl.replace(/\/+$/, "") + "/internal/agent/bridge";
 
   async function post(path, body, signal) {
     const res = await fetchImpl(base + path, {
       method: "POST",
-      headers: { "content-type": "application/json", authorization: "Bearer " + token },
+      headers: { "content-type": "application/json", authorization: "Bearer " + token, ...serviceHeaders(serviceToken) },
       body: JSON.stringify(body),
       signal,
     });

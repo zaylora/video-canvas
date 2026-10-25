@@ -25,11 +25,13 @@ const waitExitLimit = 15 * time.Second
 
 // RuntimeConfig 是运行时的配置。
 type RuntimeConfig struct {
-	NodePath    string        // node 可执行文件
-	ScriptPath  string        // agent/src/main.mjs 的路径
-	BridgeURL   string        // 桥的地址，如 http://127.0.0.1:47001，Node 用它回调 Go
-	WorkRoot    string        // 每个片段的临时目录建在这里，空表示系统临时目录
-	CancelGrace time.Duration // 发 abort 之后等进程自己退出多久，超时强杀；0 取 5 秒
+	NodePath   string // node 可执行文件
+	ScriptPath string // agent/src/main.mjs 的路径
+	BridgeURL  string // 桥的地址，如 http://127.0.0.1:47001，Node 用它回调 Go
+	// ServiceToken 是桥的服务令牌，不为空时交给 Node，它的每个桥请求都带上；空表示桥只靠运行令牌
+	ServiceToken string
+	WorkRoot     string        // 每个片段的临时目录建在这里，空表示系统临时目录
+	CancelGrace  time.Duration // 发 abort 之后等进程自己退出多久，超时强杀；0 取 5 秒
 	// DisabledTools 是运行时停用的工具名（比如关掉联网就停用 web_search、web_fetch）：不下发给 Agent，模型看不到它们
 	DisabledTools []string
 }
@@ -174,6 +176,9 @@ func (r *ProcessRuntime) baseInput(ctx context.Context, run *model.AgentRun, in 
 		"model":         map[string]any{"name": snap.Model.Label, "context_window": caps.Context.Window, "max_tokens": caps.Context.Output, "vision": caps.Vision},
 		"system_prompt": prompts.SystemWithSkills(mode, catalog),
 		"tools":         r.declaredTools(mode, caps.Vision),
+	}
+	if r.d.Config.ServiceToken != "" {
+		input["service_token"] = r.d.Config.ServiceToken
 	}
 	if len(r.d.Config.DisabledTools) > 0 {
 		input["disabled_tools"] = r.d.Config.DisabledTools // Agent 自己的工具（如 codemode）靠它决定启用与否

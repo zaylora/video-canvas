@@ -1,6 +1,7 @@
 package initialize_test
 
 import (
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -102,6 +103,48 @@ func TestListenLoopback(t *testing.T) {
 		if l, err := ListenLoopback(bad); err == nil {
 			l.Close()
 			t.Errorf("%q 不是回环地址，应拒绝", bad)
+		}
+	}
+}
+
+// ListenBridge 按配置监听桥：回环地址照旧；非回环地址只有配了服务令牌才放行（配置校验之外再拦一道）。
+func TestListenBridge(t *testing.T) {
+	ln, err := ListenBridge(config.Agent{BridgeAddr: "127.0.0.1:0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ln.Close()
+	if l, err := ListenBridge(config.Agent{BridgeAddr: "0.0.0.0:0"}); err == nil {
+		l.Close()
+		t.Error("没配服务令牌时不能监听非回环地址")
+	}
+	if l, err := ListenBridge(config.Agent{BridgeAddr: "0.0.0.0:0", ServiceToken: "short"}); err == nil {
+		l.Close()
+		t.Error("令牌太短等于没配，不能监听非回环地址")
+	}
+	ln, err = ListenBridge(config.Agent{BridgeAddr: "0.0.0.0:0", ServiceToken: strings.Repeat("k", 32)})
+	if err != nil {
+		t.Fatalf("配了合格的服务令牌就应该能监听: %v", err)
+	}
+	ln.Close()
+}
+
+// 桥监听在 0.0.0.0 / :: 时，本机的 Node 进程不能连「未指定地址」，要换成 127.0.0.1。
+func TestBridgeLocalURL(t *testing.T) {
+	cases := []struct {
+		addr net.Addr
+		want string
+	}{
+		{&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 47001}, "http://127.0.0.1:47001"},
+		{&net.TCPAddr{IP: net.IPv4zero, Port: 47001}, "http://127.0.0.1:47001"},
+		{&net.TCPAddr{IP: net.IPv6unspecified, Port: 47001}, "http://127.0.0.1:47001"},
+		{&net.TCPAddr{Port: 47001}, "http://127.0.0.1:47001"},
+		{&net.TCPAddr{IP: net.ParseIP("10.0.0.5"), Port: 47001}, "http://10.0.0.5:47001"},
+		{&net.TCPAddr{IP: net.ParseIP("::1"), Port: 47001}, "http://[::1]:47001"},
+	}
+	for _, tc := range cases {
+		if got := BridgeLocalURL(tc.addr); got != tc.want {
+			t.Errorf("BridgeLocalURL(%v)=%q，期望 %q", tc.addr, got, tc.want)
 		}
 	}
 }

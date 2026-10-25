@@ -6,7 +6,7 @@ import http from "node:http";
  * models 是模型回合的脚本；tool 是工具回调的处理函数；记录收到的所有请求。
  */
 export async function fakeBridge({ models = [], summaries = [], tool = async () => ({ content: "ok" }), toolEvent = async () => ({ allowed: true }), stateStatus = 200 } = {}) {
-  const rec = { chats: [], summaries: [], headers: [], tools: [], toolEvents: [], states: [], finishes: [], auths: [], closed: 0 };
+  const rec = { chats: [], summaries: [], headers: [], tools: [], toolEvents: [], states: [], finishes: [], auths: [], serviceTokens: [], closed: 0 };
   let turn = 0;
   let summaryTurn = 0;
   const srv = http.createServer((req, res) => {
@@ -14,6 +14,7 @@ export async function fakeBridge({ models = [], summaries = [], tool = async () 
     req.on("data", (c) => (body += c));
     req.on("end", async () => {
       rec.auths.push(req.headers.authorization);
+      rec.serviceTokens.push(req.headers["x-agent-service-token"]);
       const json = body ? JSON.parse(body) : {};
       const ok = (data) => { res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ code: 0, msg: "success", data })); };
 

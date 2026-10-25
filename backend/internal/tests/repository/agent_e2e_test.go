@@ -181,7 +181,7 @@ func newE2E(t *testing.T, turns ...llmTurn) *e2eEnv {
 		Repo: repo, Canvas: canvasSvc, Agent: svc, Billing: agentsvc.NewAgentBilling(repo),
 		Registry: e2eRegistry{base: llm.srv.URL}, Secrets: e2eSecrets{}, Streamer: llmgateway.New(llmgateway.Options{IdleTimeout: 10 * time.Second, IPAllowed: func(ip net.IP) bool { return ip.IsLoopback() }}), // 假上游在本机回环
 	})
-	bridgeSrv := httptest.NewServer(router.NewBridge("test", agenthandler.NewAgentBridgeHandler(bridge)))
+	bridgeSrv := httptest.NewServer(router.NewBridge("test", agenthandler.NewAgentBridgeHandler(bridge), ""))
 	t.Cleanup(bridgeSrv.Close)
 	rt := agentsvc.NewProcessRuntime(agentsvc.RuntimeDeps{
 		Repo: repo, Bridge: bridge, Canvas: canvasSvc, Agent: svc, Registry: e2eRegistry{base: llm.srv.URL}, Launcher: agentsvc.ExecLauncher{},

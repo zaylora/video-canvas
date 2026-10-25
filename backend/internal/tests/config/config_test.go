@@ -67,6 +67,57 @@ func TestAgentConfig_BridgeAddrMustBeLoopback(t *testing.T) {
 	}
 }
 
+// 配了服务令牌，桥才允许监听非回环地址（Agent 拆成独立容器后要从内网访问）：
+// 令牌是唯一的屏障，所以必须足够长；没配令牌时仍只允许回环。
+func TestAgentConfig_ServiceTokenOpensNonLoopbackBridge(t *testing.T) {
+	long := strings.Repeat("a", 32)
+	cases := []struct {
+		name    string
+		addr    string
+		token   string
+		wantErr bool
+	}{
+		{"回环不配令牌", "127.0.0.1:0", "", false},
+		{"回环配了合格的令牌", "127.0.0.1:0", long, false},
+		{"非回环不配令牌", "0.0.0.0:47001", "", true},
+		{"非回环令牌太短", "0.0.0.0:47001", strings.Repeat("a", 31), true},
+		{"非回环令牌够长", "0.0.0.0:47001", long, false},
+		{"内网地址加令牌", "192.168.1.10:47001", long, false},
+		{"容器名加令牌", "agent-bridge:47001", long, false},
+		{"回环但令牌太短也拒绝", "127.0.0.1:0", "short", true},
+		{"地址格式不对", "not-an-address", long, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := Agent{Enabled: true, BridgeAddr: tc.addr, ServiceToken: tc.token}.Validate()
+			if (err != nil) != tc.wantErr {
+				t.Errorf("Validate(%q, token=%d 字符) err=%v，期望出错=%v", tc.addr, len(tc.token), err, tc.wantErr)
+			}
+		})
+	}
+	if err := (Agent{Enabled: true, BridgeAddr: "0.0.0.0:1"}).Validate(); err == nil || strings.Contains(err.Error(), "aaaa") {
+		t.Errorf("报错里不能带出令牌内容: %v", err)
+	}
+}
+
+func TestLoad_AgentServiceTokenFromEnv(t *testing.T) {
+	cfg, err := Load("../../../configs/config.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Agent.ServiceToken != "" {
+		t.Errorf("默认不配服务令牌: %q", cfg.Agent.ServiceToken)
+	}
+	t.Setenv("APP_AGENT_SERVICE_TOKEN", strings.Repeat("t", 40))
+	cfg, err = Load("../../../configs/config.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Agent.ServiceToken != strings.Repeat("t", 40) {
+		t.Error("服务令牌应能用环境变量 APP_AGENT_SERVICE_TOKEN 提供（不写进 YAML）")
+	}
+}
+
 func TestAgentConfig_DisabledSkipsValidation(t *testing.T) {
 	if err := (Agent{Enabled: false, BridgeAddr: "0.0.0.0:1"}).Validate(); err != nil {
 		t.Errorf("没启用就不校验（配置里留着无效值也不该挡住启动）: %v", err)

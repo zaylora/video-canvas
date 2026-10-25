@@ -603,6 +603,18 @@ func TestProcessRuntime_PassesDisabledToolsToNode(t *testing.T) {
 	}
 }
 
+func TestProcessRuntime_PassesServiceTokenToNode(t *testing.T) {
+	// 配了服务令牌，桥的每个请求都要带它：Node 靠启动参数拿到，没配就不传
+	_, in := newRuntimeEnv(t).startRun(t, "all")
+	if _, has := in["service_token"]; has {
+		t.Errorf("没配服务令牌时不传 service_token: %v", in["service_token"])
+	}
+	_, in = newRuntimeEnv(t, func(c *RuntimeConfig) { c.ServiceToken = "svc-token-0123456789abcdef0123456789" }).startRun(t, "all")
+	if in["service_token"] != "svc-token-0123456789abcdef0123456789" {
+		t.Errorf("service_token=%v", in["service_token"])
+	}
+}
+
 func TestProcessRuntime_PromptStatesTheSelection(t *testing.T) {
 	// 给模型的消息里要明确写出用户选中了什么，不能只靠目录里的排序
 	e := newRuntimeEnv(t)

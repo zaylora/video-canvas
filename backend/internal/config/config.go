@@ -91,8 +91,12 @@ type Agent struct {
 	Enabled    bool   `mapstructure:"enabled"`     // 是否启用；关闭时发起运行会返回「Agent 暂不可用」
 	NodePath   string `mapstructure:"node_path"`   // node 可执行文件，默认 node（在 PATH 里找），要求 >= 22.19
 	RuntimeDir string `mapstructure:"runtime_dir"` // 仓库根目录 agent/ 目录（含 src/main.mjs 和已安装的 node_modules），默认 ../agent
-	BridgeAddr string `mapstructure:"bridge_addr"` // 桥的监听地址，必须是回环地址，默认 127.0.0.1:0（随机端口）
-	WorkDir    string `mapstructure:"work_dir"`    // 每个运行片段的临时目录建在这里，默认系统临时目录
+	BridgeAddr string `mapstructure:"bridge_addr"` // 桥的监听地址，默认 127.0.0.1:0（随机端口）；不是回环地址时必须配 ServiceToken
+	// ServiceToken 是桥的服务令牌：配了以后桥的每个请求都要带请求头 X-Agent-Service-Token，除一次性的运行令牌外多一道校验。
+	// Agent 拆成独立服务后，桥要监听内网地址，这是回环之外唯一的屏障，所以要求至少 MinServiceTokenLen 个字符。
+	// 只通过环境变量 APP_AGENT_SERVICE_TOKEN 提供，不写进 YAML。
+	ServiceToken string `mapstructure:"service_token"`
+	WorkDir      string `mapstructure:"work_dir"` // 每个运行片段的临时目录建在这里，默认系统临时目录
 	// WebEnabled 是否开放联网工具（搜索、读网页），默认开启。联网请求由 Go 发出（Agent 进程不联网），
 	// 内网和本机地址一律拒绝；关闭后模型看不到这两个工具。
 	WebEnabled bool `mapstructure:"web_enabled"`
@@ -102,6 +106,21 @@ type Agent struct {
 	// DisabledTools 是停用的工具名（逗号分隔的环境变量 APP_AGENT_DISABLED_TOOLS 也行）：不下发给模型。
 	// Go 的工具和 Agent 自己的工具（如 codemode）都可以停用，运维想关掉某个能力时加一项。
 	DisabledTools []string `mapstructure:"disabled_tools"`
+}
+
+// MinServiceTokenLen 是服务令牌的最短长度：它在非回环监听时是唯一的屏障，太短的令牌等于没配。
+const MinServiceTokenLen = 32
+
+// ValidServiceToken 报告令牌是否够长。
+func ValidServiceToken(token string) bool { return len(token) >= MinServiceTokenLen }
+
+// IsLoopbackHost 报告监听地址的主机部分是不是回环地址（127.0.0.1、::1 或 localhost）。
+func IsLoopbackHost(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // WithDefaults 补上没配置的项。
@@ -118,8 +137,9 @@ func (a Agent) WithDefaults() Agent {
 	return a
 }
 
-// Validate 校验启用时的配置。桥的端点用一次性令牌鉴权，但它只该被本机的 Node 进程访问，
+// Validate 校验启用时的配置。桥的端点用一次性令牌鉴权，默认只该被本机的 Node 进程访问，
 // 所以监听地址必须是回环地址：配成 0.0.0.0 或外网地址，令牌之外就没有任何屏障了，直接拒绝启动。
+// 唯一的例外是配了足够长的服务令牌（Agent 拆成独立服务后从内网访问桥）：这时每个请求还要多带一道服务令牌。
 func (a Agent) Validate() error {
 	if !a.Enabled {
 		return nil
@@ -129,14 +149,15 @@ func (a Agent) Validate() error {
 			return fmt.Errorf("agent.searxng_url 必须是 http(s)://host[:port] 形式，当前是 %q", a.SearXNGURL)
 		}
 	}
+	if a.ServiceToken != "" && !ValidServiceToken(a.ServiceToken) {
+		return fmt.Errorf("agent.service_token 至少 %d 个字符（建议 openssl rand -hex 32）", MinServiceTokenLen)
+	}
 	host, _, err := net.SplitHostPort(a.WithDefaults().BridgeAddr)
 	if err != nil {
 		return fmt.Errorf("agent.bridge_addr 必须是 host:port 形式: %w", err)
 	}
-	if host != "localhost" {
-		if ip := net.ParseIP(host); ip == nil || !ip.IsLoopback() {
-			return fmt.Errorf("agent.bridge_addr 必须是回环地址（127.0.0.1、::1 或 localhost），当前是 %q：桥只该被本机的 Node 进程访问", host)
-		}
+	if !IsLoopbackHost(host) && a.ServiceToken == "" {
+		return fmt.Errorf("agent.bridge_addr 必须是回环地址（127.0.0.1、::1 或 localhost），当前是 %q：桥只该被本机的 Node 进程访问；要让别的容器访问，请配置 agent.service_token（APP_AGENT_SERVICE_TOKEN）", host)
 	}
 	return nil
 }
@@ -230,7 +251,7 @@ func Load(path string) (*Config, error) {
 	// 否则升级时无法把它们导入为后台存储
 	for _, key := range []string{
 		"server.id_key", "database.allow_newer_schema", "update.updater_token", "ai.secret_key", "ai.allow_fake_ip", "storage.driver",
-		"agent.enabled", "agent.node_path", "agent.runtime_dir", "agent.bridge_addr", "agent.work_dir", "agent.web_enabled", "agent.searxng_url", "agent.disabled_tools",
+		"agent.enabled", "agent.node_path", "agent.runtime_dir", "agent.bridge_addr", "agent.service_token", "agent.work_dir", "agent.web_enabled", "agent.searxng_url", "agent.disabled_tools",
 		"storage.s3.endpoint", "storage.s3.region", "storage.s3.bucket", "storage.s3.access_key", "storage.s3.secret_key",
 		"storage.s3.use_ssl", "storage.s3.public_base_url", "storage.s3.path_prefix",
 	} {

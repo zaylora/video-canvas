@@ -1,0 +1,944 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Agent 服务拆分</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      /* 布局：顶栏标签页切换四个视图；架构视图是「阶段选择 + 四条泳道」，其余是对比表和左右代码。
+         颜色沿用仓库其他演示的令牌（Geist + HSL 中性色），状态色只用于标记变化。 */
+      :root {
+        --radius: 10px;
+        --background: 0 0% 100%;
+        --foreground: 240 10% 3.9%;
+        --card: 0 0% 100%;
+        --muted: 240 4.8% 95.9%;
+        --muted-foreground: 240 3.8% 46.1%;
+        --border: 240 5.9% 90%;
+        --primary: 240 5.9% 10%;
+        --primary-foreground: 0 0% 98%;
+        --code-bg: 240 5% 97%;
+        --ok: 5 150 105;
+        --bad: 220 38 38;
+        --warn: 180 83 9;
+        --info: 2 132 199;
+        --violet: 124 58 237;
+        --font-ui: Geist, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        --font-mono: "Geist Mono", "SF Mono", Consolas, monospace;
+        color-scheme: light;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) {
+          --background: 240 10% 3.9%;
+          --foreground: 0 0% 98%;
+          --card: 240 10% 5.5%;
+          --muted: 240 3.7% 15.9%;
+          --muted-foreground: 240 5% 64.9%;
+          --border: 240 3.7% 17%;
+          --primary: 0 0% 98%;
+          --primary-foreground: 240 5.9% 10%;
+          --code-bg: 240 8% 7.5%;
+          --ok: 52 211 153;
+          --bad: 248 113 113;
+          --warn: 251 191 36;
+          --info: 56 189 248;
+          --violet: 167 139 250;
+          color-scheme: dark;
+        }
+      }
+      :root[data-theme="dark"] {
+        --background: 240 10% 3.9%;
+        --foreground: 0 0% 98%;
+        --card: 240 10% 5.5%;
+        --muted: 240 3.7% 15.9%;
+        --muted-foreground: 240 5% 64.9%;
+        --border: 240 3.7% 17%;
+        --primary: 0 0% 98%;
+        --primary-foreground: 240 5.9% 10%;
+        --code-bg: 240 8% 7.5%;
+        --ok: 52 211 153;
+        --bad: 248 113 113;
+        --warn: 251 191 36;
+        --info: 56 189 248;
+        --violet: 167 139 250;
+        color-scheme: dark;
+      }
+
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: var(--font-ui);
+        font-size: 14px;
+        line-height: 1.6;
+        background: hsl(var(--background));
+        color: hsl(var(--foreground));
+        -webkit-font-smoothing: antialiased;
+      }
+      h1, h2, h3, p { margin: 0; }
+      h1, h2, h3 { text-wrap: balance; }
+      button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+      button:focus-visible { outline: 2px solid hsl(var(--info)); outline-offset: 2px; border-radius: 6px; }
+      code, .mono { font-family: var(--font-mono); }
+      code { font-size: 0.9em; background: hsl(var(--muted)); padding: 1px 5px; border-radius: 5px; }
+      [hidden] { display: none !important; }
+      .muted { color: hsl(var(--muted-foreground)); }
+      .wrap {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding-left: max(16px, env(safe-area-inset-left, 0px));
+        padding-right: max(16px, env(safe-area-inset-right, 0px));
+      }
+
+      /* ---- 顶栏 ---- */
+      body::before {
+        content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10;
+        background: hsl(var(--background));
+      }
+      .top {
+        position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20;
+        background: hsl(var(--background) / 0.94);
+        backdrop-filter: blur(8px);
+        border-bottom: 1px solid hsl(var(--border));
+      }
+      .top .wrap { padding-block: 14px 0; display: grid; gap: 10px; }
+      .titlerow { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+      .titlerow h1 { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
+      .titlerow .spacer { margin-left: auto; }
+      .pill {
+        font-size: 12px; padding: 2px 8px; border-radius: 999px;
+        border: 1px solid hsl(var(--border)); color: hsl(var(--muted-foreground));
+      }
+      .themebtn {
+        font-size: 12px; padding: 4px 10px; border-radius: 8px;
+        border: 1px solid hsl(var(--border)); color: hsl(var(--muted-foreground));
+      }
+      .themebtn:hover { color: hsl(var(--foreground)); }
+      .tabs { display: flex; gap: 4px; overflow-x: auto; }
+      .tab {
+        padding: 8px 12px 10px; font-weight: 500; color: hsl(var(--muted-foreground));
+        border-bottom: 2px solid transparent; white-space: nowrap;
+      }
+      .tab:hover { color: hsl(var(--foreground)); }
+      .tab[aria-selected="true"] { color: hsl(var(--foreground)); border-bottom-color: hsl(var(--primary)); }
+
+      main .wrap { padding-block: 24px 64px; display: grid; gap: 28px; }
+      .lead { max-width: 68ch; color: hsl(var(--muted-foreground)); }
+      .sectionhead { display: grid; gap: 4px; }
+      .sectionhead h2 { font-size: 17px; font-weight: 600; }
+
+      /* ---- 阶段选择 ---- */
+      .stages { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+      .stage {
+        text-align: left; padding: 10px 12px; border-radius: var(--radius);
+        border: 1px solid hsl(var(--border)); background: hsl(var(--card));
+        display: grid; gap: 2px; min-width: 0;
+      }
+      .stage:hover { border-color: hsl(var(--muted-foreground) / 0.5); }
+      .stage .no { font-family: var(--font-mono); font-size: 12px; color: hsl(var(--muted-foreground)); }
+      .stage .nm { font-weight: 600; }
+      .stage[aria-pressed="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); border-color: hsl(var(--primary)); }
+      .stage[aria-pressed="true"] .no { color: hsl(var(--primary-foreground) / 0.7); }
+
+      .stagecard {
+        display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 20px;
+        padding: 16px 18px; border-radius: var(--radius); background: hsl(var(--muted));
+      }
+      .stagecard > div { display: grid; gap: 4px; align-content: start; min-width: 0; }
+      .label { font-size: 12px; letter-spacing: 0.04em; color: hsl(var(--muted-foreground)); }
+
+      /* ---- 泳道 ---- */
+      .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: hsl(var(--muted-foreground)); }
+      .legend span { display: inline-flex; align-items: center; gap: 6px; }
+      .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+      .lanes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; align-items: start; }
+      .lane { border: 1px solid hsl(var(--border)); border-radius: var(--radius); background: hsl(var(--card)); min-width: 0; }
+      .lane header {
+        padding: 10px 12px; border-bottom: 1px solid hsl(var(--border));
+        display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+      }
+      .lane header h3 { font-size: 14px; font-weight: 600; }
+      .lane header .count { font-size: 12px; color: hsl(var(--muted-foreground)); font-variant-numeric: tabular-nums; }
+      .lane ul { list-style: none; margin: 0; padding: 8px; display: grid; gap: 6px; }
+      .comp {
+        padding: 8px 10px 8px 12px; border-radius: 8px; border: 1px solid hsl(var(--border));
+        position: relative; display: grid; gap: 2px;
+      }
+      .comp::before {
+        content: ""; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px; border-radius: 3px;
+        background: var(--st, transparent);
+      }
+      .comp .nm { font-weight: 500; display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+      .comp .tag { font-size: 11px; padding: 0 6px; border-radius: 999px; color: var(--st); border: 1px solid var(--st); }
+      .comp .file { font-family: var(--font-mono); font-size: 11.5px; color: hsl(var(--muted-foreground)); overflow-wrap: anywhere; }
+      .comp .det { font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+      .comp.same { --st: transparent; }
+      .comp.changed { --st: hsl(var(--info)); }
+      .comp.new { --st: hsl(var(--ok)); background: hsl(var(--ok) / 0.05); }
+      .comp.in { --st: hsl(var(--violet)); background: hsl(var(--violet) / 0.05); }
+      .comp.out { --st: hsl(var(--warn)); }
+      .comp.gone { --st: hsl(var(--bad)); opacity: 0.7; }
+      .comp.gone .nm > b { text-decoration: line-through; }
+
+      .flows { display: grid; gap: 6px; }
+      .flow {
+        display: grid; grid-template-columns: minmax(0, 9em) auto minmax(0, 1fr) auto minmax(0, 9em); align-items: center; gap: 10px;
+        padding: 8px 12px; border-radius: 8px; background: hsl(var(--muted) / 0.6); font-size: 13px;
+      }
+      .flow .via { font-family: var(--font-mono); font-size: 12px; color: hsl(var(--muted-foreground)); text-align: center; overflow-wrap: anywhere; }
+      .flow .arrow { color: hsl(var(--muted-foreground)); }
+      .flow .b { text-align: right; }
+      .flow.changedflow { background: hsl(var(--info) / 0.08); }
+
+      /* ---- 表格 ---- */
+      .filters { display: flex; gap: 6px; flex-wrap: wrap; }
+      .chip {
+        padding: 4px 12px; border-radius: 999px; border: 1px solid hsl(var(--border)); font-size: 13px;
+        color: hsl(var(--muted-foreground));
+      }
+      .chip[aria-pressed="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); border-color: hsl(var(--primary)); }
+      .tablebox { overflow-x: auto; border: 1px solid hsl(var(--border)); border-radius: var(--radius); }
+      table { border-collapse: collapse; width: 100%; min-width: 860px; }
+      th, td { padding: 10px 12px; text-align: left; vertical-align: top; border-bottom: 1px solid hsl(var(--border)); }
+      th { font-weight: 500; font-size: 12.5px; color: hsl(var(--muted-foreground)); background: hsl(var(--muted) / 0.5); }
+      tr:last-child td { border-bottom: 0; }
+      td.fname { font-weight: 500; width: 15%; }
+      td.when { white-space: nowrap; font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+      tr.grouprow td { background: hsl(var(--muted) / 0.35); font-size: 12px; letter-spacing: 0.04em; color: hsl(var(--muted-foreground)); padding-block: 6px; }
+      .badge { font-size: 12px; padding: 1px 8px; border-radius: 999px; white-space: nowrap; border: 1px solid currentColor; }
+      .b-same { color: hsl(var(--muted-foreground)); }
+      .b-better { color: hsl(var(--ok)); }
+      .b-new { color: hsl(var(--violet)); }
+      .b-changed { color: hsl(var(--info)); }
+      .b-verify { color: hsl(var(--warn)); }
+
+      /* ---- 代码量 ---- */
+      .bars { display: grid; gap: 18px; }
+      .bar { display: grid; gap: 6px; }
+      .bar .head { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+      .bar .head b { font-weight: 600; }
+      .bar .head .mono { font-size: 12.5px; color: hsl(var(--muted-foreground)); font-variant-numeric: tabular-nums; }
+      .track { display: flex; height: 26px; border-radius: 6px; overflow: hidden; background: hsl(var(--muted)); }
+      .seg { height: 100%; min-width: 2px; }
+      .seglegend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12.5px; }
+      .seglegend span { display: inline-flex; align-items: center; gap: 6px; }
+      .seglegend .n { font-family: var(--font-mono); color: hsl(var(--muted-foreground)); font-variant-numeric: tabular-nums; }
+      .sw { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+      .c-keep { background: hsl(var(--ok)); }
+      .c-keep2 { background: hsl(var(--ok) / 0.55); }
+      .c-move { background: hsl(var(--violet)); }
+      .c-later { background: hsl(var(--warn)); }
+      .c-pi { background: hsl(var(--bad) / 0.75); }
+      .c-ext { background: hsl(var(--info)); }
+
+      /* ---- 代码左右对比 ---- */
+      .scenarios { display: flex; gap: 6px; flex-wrap: wrap; }
+      .diff { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+      .pane { border: 1px solid hsl(var(--border)); border-radius: var(--radius); overflow: hidden; min-width: 0; display: grid; grid-template-rows: auto 1fr auto; }
+      .pane header { padding: 8px 12px; border-bottom: 1px solid hsl(var(--border)); display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+      .pane header b { font-weight: 600; }
+      .pane header .src { font-family: var(--font-mono); font-size: 11.5px; color: hsl(var(--muted-foreground)); overflow-wrap: anywhere; }
+      .pane.before header { background: hsl(var(--muted) / 0.5); }
+      .pane.after header { background: hsl(var(--ok) / 0.07); }
+      pre {
+        margin: 0; padding: 12px 14px; overflow-x: auto; background: hsl(var(--code-bg));
+        font-family: var(--font-mono); font-size: 12.5px; line-height: 1.6;
+      }
+      .pane footer { padding: 8px 12px; border-top: 1px solid hsl(var(--border)); font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+      .cm { color: hsl(var(--muted-foreground)); }
+
+      /* ---- 待验证 ---- */
+      .checks { display: grid; gap: 10px; }
+      .check {
+        display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 14px; align-items: start;
+        padding: 14px 16px; border: 1px solid hsl(var(--border)); border-radius: var(--radius);
+      }
+      .check .no { font-family: var(--font-mono); font-size: 12px; color: hsl(var(--muted-foreground)); padding-top: 2px; }
+      .check h3 { font-size: 14px; font-weight: 600; }
+      .check p { color: hsl(var(--muted-foreground)); max-width: 75ch; }
+      .note {
+        padding: 14px 16px; border-radius: var(--radius); background: hsl(var(--warn) / 0.08);
+        border: 1px solid hsl(var(--warn) / 0.35); display: grid; gap: 6px;
+      }
+      .note h3 { font-size: 14px; font-weight: 600; }
+      .note p { max-width: 80ch; }
+
+      @media (max-width: 960px) {
+        .lanes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .stagecard { grid-template-columns: 1fr; gap: 12px; }
+      }
+      @media (max-width: 720px) {
+        .stages { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .lanes, .diff { grid-template-columns: 1fr; }
+        .flow { grid-template-columns: 1fr; gap: 2px; }
+        .flow .via, .flow .b { text-align: left; }
+        .flow .arrow { display: none; }
+        .check { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+      }
+      @media (prefers-reduced-motion: no-preference) {
+        .comp { transition: background-color 0.2s, opacity 0.2s; }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="top">
+      <div class="wrap">
+        <div class="titlerow">
+          <h1>Agent 服务拆分</h1>
+          <span class="pill">原型 · 2026-10-25 · 未实现</span>
+          <span class="spacer"></span>
+          <button class="themebtn" id="themeBtn" type="button">切换明暗</button>
+        </div>
+        <nav class="tabs" role="tablist" aria-label="视图">
+          <button class="tab" role="tab" id="tab-arch" aria-selected="true" data-view="arch">架构演进</button>
+          <button class="tab" role="tab" id="tab-feat" aria-selected="false" data-view="feat">功能对比</button>
+          <button class="tab" role="tab" id="tab-code" aria-selected="false" data-view="code">代码对比</button>
+          <button class="tab" role="tab" id="tab-check" aria-selected="false" data-view="check">待验证</button>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <!-- ============ 架构演进 ============ -->
+      <section class="wrap" id="view-arch" role="tabpanel" aria-labelledby="tab-arch">
+        <p class="lead">
+          选一个阶段，看每个部件在哪、有没有变。前端接口在整个过程中保持不变；钱和画布数据始终留在 Go。
+          详细方案见同目录的 <code>Agent服务拆分.md</code>。
+        </p>
+        <div class="stages" id="stages"></div>
+        <div class="stagecard" id="stageCard"></div>
+        <div class="legend">
+          <span><i class="dot" style="background: hsl(var(--border))"></i>不变</span>
+          <span><i class="dot" style="background: hsl(var(--info))"></i>有改动</span>
+          <span><i class="dot" style="background: hsl(var(--ok))"></i>新增</span>
+          <span><i class="dot" style="background: hsl(var(--violet))"></i>搬入</span>
+          <span><i class="dot" style="background: hsl(var(--warn))"></i>正在搬出（暂时保留）</span>
+          <span><i class="dot" style="background: hsl(var(--bad))"></i>本阶段删除</span>
+        </div>
+        <div class="lanes" id="lanes"></div>
+        <div class="sectionhead">
+          <h2>调用关系</h2>
+          <p class="muted">蓝底是这一阶段相对上一阶段变化的链路。</p>
+        </div>
+        <div class="flows" id="flows"></div>
+      </section>
+
+      <!-- ============ 功能对比 ============ -->
+      <section class="wrap" id="view-feat" role="tabpanel" aria-labelledby="tab-feat" hidden>
+        <p class="lead">
+          「拆之后」指阶段 3 完成以后的状态。标「待验证」的是行为可能和现在不一样、要在阶段 0 验证后才能定的地方。
+        </p>
+        <div class="filters" id="featFilters">
+          <button class="chip" type="button" data-f="all" aria-pressed="true">全部</button>
+          <button class="chip" type="button" data-f="user" aria-pressed="false">用户能感觉到的</button>
+          <button class="chip" type="button" data-f="dev" aria-pressed="false">开发与运维</button>
+          <button class="chip" type="button" data-f="verify" aria-pressed="false">只看待验证</button>
+        </div>
+        <div class="tablebox">
+          <table>
+            <thead>
+              <tr><th>功能</th><th>拆之前</th><th>拆之后</th><th>变化</th><th>从哪个阶段起</th></tr>
+            </thead>
+            <tbody id="featBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ============ 代码对比 ============ -->
+      <section class="wrap" id="view-code" role="tabpanel" aria-labelledby="tab-code" hidden>
+        <div class="sectionhead">
+          <h2>现在的代码去哪</h2>
+          <p class="muted">按文件职责粗分，两条按同一比例画。数字是当前行数（wc -l）。</p>
+        </div>
+        <div class="bars" id="bars"></div>
+
+        <div class="sectionhead">
+          <h2>同一件事，前后怎么写</h2>
+          <p class="muted">左边是仓库里的真实代码（节选）；右边是按 Pi Durable 1.4 README 写的示意，还没有运行过。</p>
+        </div>
+        <div class="scenarios" id="scenarios"></div>
+        <div class="diff" id="diff"></div>
+
+        <div class="sectionhead">
+          <h2>目录结构</h2>
+          <p class="muted">右边是提案，文件名到实现时再定。</p>
+        </div>
+        <div class="diff">
+          <div class="pane before">
+            <header><b>拆之前</b><span class="src">当前仓库</span></header>
+            <pre id="treeBefore"></pre>
+            <footer>Agent 的编排逻辑分在 Go 和 Node 两处，一起打包发版。</footer>
+          </div>
+          <div class="pane after">
+            <header><b>拆之后</b><span class="src">阶段 4 完成后</span></header>
+            <pre id="treeAfter"></pre>
+            <footer>Agent 服务只做组装；Go 只剩平台能力。</footer>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 待验证 ============ -->
+      <section class="wrap" id="view-check" role="tabpanel" aria-labelledby="tab-check" hidden>
+        <div class="note">
+          <h3>设计修正（2026-10-25）</h3>
+          <p>
+            最初打算在阶段 1 按 <code>tool_call_id</code> 去重，防止崩溃后重复写画布。读代码后发现，现在续跑时模型会重新生成调用，id 是新的，这样去重挡不住。
+            现在拆成两步：阶段 1 改为每个工具结果出来就保存历史，让续跑时模型看得到已经做过的事；阶段 3 之前再让写工具按 <code>tool_call_id</code> 幂等，
+            这是在 Pi Durable 里把写工具声明为可以重放的前提。设计文档的 2.3、8.2 节已同步修改。
+          </p>
+        </div>
+        <div class="checks" id="checks"></div>
+      </section>
+    </main>
+
+    <script>
+      /* ---------------- 数据：阶段 ---------------- */
+      const stages = [
+        {
+          name: "现状",
+          what: "Agent 跟着 Go 打在一个镜像里发版。每跑一个运行片段，Go 起一个 Node 子进程，跑完就退出。插话、压缩、续跑都是自己写的。",
+          user: "—",
+          back: "—",
+        },
+        {
+          name: "平台 API",
+          what: "把桥升级成平台能力 API：允许内网监听，加服务令牌。Node 改为每个工具结果出来就保存历史。现有运行时照常工作。",
+          user: "基本无感。崩溃后续跑时，同一回合里已经做完的改动不会再做一遍。",
+          back: "配置改回只监听本机。",
+        },
+        {
+          name: "运行时独立",
+          what: "agent/ 改写成长驻的 TS 服务，不存状态，同时升级到 Pi 1.4。Go 新增 HTTPRuntime，用配置在 process 和 http 之间切换。会话、运行、审批仍由 Go 管。",
+          user: "无感。从这一步起 Agent 可以单独发版、单独升级 Pi，Go 发版也不会打断正在跑的运行。",
+          back: "配置切回 process。",
+        },
+        {
+          name: "接入 Pi Durable",
+          what: "会话、运行、审批、插话、压缩、续跑搬进 Agent 服务，同时删掉两边的自写逻辑。Go 鉴权后把 /agent/* 反向代理过去，前端接口不变。",
+          user: "中断后自动接着跑，不用再点「继续」；丢进度最多丢一条记录。阶段 3 之前的会话变成只读。",
+          back: "反向代理开关切回 Go 的旧实现，这一阶段旧实现还在。",
+        },
+        {
+          name: "收尾",
+          what: "后台运行记录页和 agent-trace 改读 Agent 服务的导出接口。删除 Go 里的会话、运行、审批代码和旧运行时。",
+          user: "无感。",
+          back: "不可回退，前面各阶段都已在线上验证过。",
+        },
+      ];
+
+      /* ---------------- 数据：部件 ----------------
+         at: [起始阶段, 结束阶段, 状态, 说明]，没有覆盖到的阶段不显示 */
+      const lanes = [
+        { id: "web", name: "前端" },
+        { id: "go", name: "Go 后端" },
+        { id: "agent", name: "Agent 服务" },
+        { id: "ops", name: "部署" },
+      ];
+      const comps = [
+        { lane: "web", name: "Agent 对话面板", file: "web/src/api/agent/", at: [[0, 4, "same", "接口和事件格式全程不变"]] },
+        { lane: "web", name: "后台：运行记录", at: [[0, 3, "same", "读 Go 的观测接口"], [4, 4, "changed", "改读 Agent 服务的导出接口"]] },
+        { lane: "web", name: "后台：技能管理", at: [[0, 4, "same", "技能管理一直在 Go"]] },
+
+        { lane: "go", name: "鉴权与路由", file: "JWT · RBAC", at: [[0, 2, "same", ""], [3, 4, "changed", "新增 /agent/* 反向代理"]] },
+        { lane: "go", name: "会话 · 运行 · 审批", file: "agent.go run.go approval.go 等 · 约 1766 行", at: [[0, 2, "same", ""], [3, 3, "out", "旧会话只读，并作为回退保留"], [4, 4, "gone", "删除"]] },
+        { lane: "go", name: "进程运行时", file: "runtime.go process.go · 477 行", at: [[0, 1, "same", "每个片段起一个 node 子进程"], [2, 2, "changed", "新增 HTTPRuntime，配置切换"], [3, 3, "out", "只服务旧实现"], [4, 4, "gone", "删除"]] },
+        { lane: "go", name: "系统提示词 · 工具声明", file: "prompts/system.md · tool_decls.json", at: [[0, 2, "same", "9.8KB 一整块，启动时下发"], [3, 3, "out", "按工具拆开，搬进扩展"], [4, 4, "gone", "删除"]] },
+        { lane: "go", name: "桥 → 平台能力 API", file: "bridge*.go", at: [[0, 0, "same", "只监听本机，一次性运行令牌"], [1, 2, "changed", "允许内网监听，加服务令牌"], [3, 4, "changed", "加上下文头模式和事件推送入口"]] },
+        { lane: "go", name: "画布读写 · 撤销", file: "canvasgraph · canvas.go", at: [[0, 2, "same", "revision 乐观锁"], [3, 4, "changed", "写工具按 tool_call_id 幂等"]] },
+        { lane: "go", name: "模型网关 · 计费", at: [[0, 4, "same", "渠道密钥只在这里"]] },
+        { lane: "go", name: "生成任务 · 素材", at: [[0, 4, "same", "审批 id 做幂等键，不重复扣费"]] },
+        { lane: "go", name: "技能管理", file: "skill_*.go · 约 1690 行", at: [[0, 4, "same", "Agent 服务通过平台 API 读"]] },
+        { lane: "go", name: "运行观测", file: "observe*.go · 约 1767 行", at: [[0, 3, "same", ""], [4, 4, "gone", "改由 Agent 服务导出"]] },
+        { lane: "go", name: "WebSocket 推送", at: [[0, 2, "same", ""], [3, 4, "changed", "也转发 Agent 服务推来的事件"]] },
+
+        { lane: "agent", name: "Node 子进程", file: "pi-agent-core 1.3 · 跑完即退", at: [[0, 1, "same", ""], [2, 2, "gone", "换成长驻服务"]] },
+        { lane: "agent", name: "自写：插话 · 压缩 · 裁剪 · 续跑", file: "steer / compaction / context / run.mjs · 549 行", at: [[0, 0, "same", "回合结束时整体覆盖保存历史"], [1, 1, "changed", "每个工具结果后保存历史"], [2, 2, "changed", "改写成 TS，行为不变"], [3, 3, "gone", "换成 Pi Durable 内置能力"]] },
+        { lane: "agent", name: "长驻 TS 服务", file: "pi 1.4 · 不存状态", at: [[2, 2, "new", "提供 /segments，Go 每 30 秒对账"], [3, 4, "changed", "成为 Pi Durable 的宿主"]] },
+        { lane: "agent", name: "Pi Durable Harness", file: "SQLite · 自动续跑 · 崩溃熔断", at: [[3, 4, "new", ""]] },
+        { lane: "agent", name: "会话 · 运行 · 审批", at: [[3, 4, "in", "从 Go 搬来"]] },
+        { lane: "agent", name: "扩展：画布 · 生成 · 技能 · 联网", file: "工具 + 各自的提示词片段", at: [[3, 4, "new", "工具通过平台 API 回调 Go"]] },
+        { lane: "agent", name: "运行观测导出", at: [[4, 4, "in", "给后台和 agent-trace 用"]] },
+
+        { lane: "ops", name: "backend 镜像", at: [[0, 1, "same", "内含 Node 和 agent/"], [2, 4, "changed", "去掉 Node"]] },
+        { lane: "ops", name: "agent 镜像 · agent 服务", at: [[2, 4, "new", "单副本，只在内网可见"]] },
+        { lane: "ops", name: "agent_data 数据卷", at: [[3, 4, "new", "存 SQLite，用本地卷"]] },
+        { lane: "ops", name: "一键升级脚本", file: "scripts/update.sh", at: [[0, 2, "same", "只备份 Postgres"], [3, 4, "changed", "同时备份和恢复 agent_data"]] },
+        { lane: "ops", name: "Postgres · Redis", at: [[0, 4, "same", ""]] },
+      ];
+
+      const tagText = { same: "", changed: "改动", new: "新增", in: "搬入", out: "搬出中", gone: "删除" };
+
+      /* ---------------- 数据：调用关系 ---------------- */
+      const flows = [
+        [
+          ["前端", "HTTP · WebSocket", "Go 后端"],
+          ["Go 后端", "stdin：启动参数、插话、中止", "Node 子进程"],
+          ["Node 子进程", "桥：本机回环 + 一次性令牌", "Go 后端"],
+        ],
+        [
+          ["前端", "HTTP · WebSocket", "Go 后端"],
+          ["Go 后端", "stdin：启动参数、插话、中止", "Node 子进程"],
+          ["Node 子进程", "平台 API：服务令牌 + 运行令牌", "Go 后端", true],
+        ],
+        [
+          ["前端", "HTTP · WebSocket", "Go 后端"],
+          ["Go 后端", "HTTP：/segments 启动、插话、中止、对账", "Agent 服务", true],
+          ["Agent 服务", "平台 API：服务令牌 + 运行令牌", "Go 后端"],
+        ],
+        [
+          ["前端", "HTTP /api/v1/agent/*（鉴权）", "Go 后端"],
+          ["Go 后端", "反向代理 /agent/*", "Agent 服务", true],
+          ["Agent 服务", "平台 API：模型、工具、技能（上下文头）", "Go 后端", true],
+          ["Agent 服务", "事件推送 → WebSocket", "前端", true],
+        ],
+        [
+          ["前端", "HTTP /api/v1/agent/*（鉴权）", "Go 后端"],
+          ["Go 后端", "反向代理 /agent/*、观测导出", "Agent 服务", true],
+          ["Agent 服务", "平台 API：模型、工具、技能（上下文头）", "Go 后端"],
+          ["Agent 服务", "事件推送 → WebSocket", "前端"],
+        ],
+      ];
+
+      /* ---------------- 数据：功能对比 ---------------- */
+      const feats = [
+        ["user", "发起对话、流式回复", "Node 子进程经桥调用 Go 的模型网关", "Agent 服务经平台 API 调用同一个网关", "same", "—"],
+        ["user", "停止运行", "发 abort，宽限期后强杀进程", "Pi Durable 中止任务，已产生的用量照常结算", "same", "阶段 3"],
+        ["user", "审批生成 / 删除、回答提问", "工具暂停运行，用户决定后起新进程续跑", "交互不变；内部怎么建模要在阶段 0 验证", "verify", "阶段 3"],
+        ["user", "插话", "模型正在输出时，500ms 内的插话合并成一次，打断当前回答重答", "Pi 内置插话放在当前工具轮之后；能不能保留「打断正在输出的回答」待验证", "verify", "阶段 3"],
+        ["user", "中断后继续", "运行标为「已中断」，用户手动点「继续」", "自动接着跑；同一步连续崩溃 5 次后挂起，再提示用户", "better", "阶段 3"],
+        ["user", "Go 发版重启时", "正在跑的运行全部中断", "不受影响，Agent 服务不跟着重启", "better", "阶段 2"],
+        ["user", "Agent 发版重启时", "同上，两者在同一个镜像里", "重启后自动接着跑", "better", "阶段 3"],
+        ["user", "崩溃时丢掉的进度", "最多一整个回合（回合结束才保存）", "阶段 1 缩到一个工具结果；阶段 3 起每条记录单独提交", "better", "阶段 1 / 3"],
+        ["user", "长对话压缩", "自写，摘要格式按画布定制：节点、任务、审批", "Pi 内置压缩，可以按模型设阈值；画布专用的摘要格式能否保留待验证", "verify", "阶段 3"],
+        ["user", "撤销 Agent 的改动", "Go 按改动记录撤销", "不变，仍在 Go", "same", "—"],
+        ["user", "@ 技能、@ 节点", "Go 校验引用", "不变", "same", "—"],
+        ["user", "积分扣费", "按每次模型调用结算", "不变，仍在 Go", "same", "—"],
+        ["user", "历史会话", "都能继续聊", "阶段 3 之前的会话只读，不能继续", "changed", "阶段 3"],
+        ["user", "子 Agent、团队（导演 + 编剧 + 审阅）", "没有", "可以用 Pi Durable 的子任务实现，需设步数、预算、并发上限", "new", "阶段 3 之后"],
+        ["user", "跨会话记忆", "没有", "可以用 Pi 的 document 存，保存时带版本号", "new", "阶段 3 之后"],
+        ["dev", "发版", "Agent 和 Go 在一个镜像里", "两个镜像，用同一套 tag", "changed", "阶段 2"],
+        ["dev", "升级 Pi", "要重新发 Go", "只重建 agent 镜像，所有 Pi 包同版本一起升", "better", "阶段 2"],
+        ["dev", "新增一个 Agent 工具", "改三处：tool_decls.json、Go 处理函数、system.md 里的规则", "只用已有平台能力时，只在 Agent 服务里加一个扩展；要新平台能力才改 Go", "better", "阶段 3"],
+        ["dev", "第三方 Pi 扩展", "用不了", "白名单里的可以装，兼容性逐个确认", "new", "阶段 3"],
+        ["dev", "服务间安全", "只监听本机，靠监听地址隔离", "内网监听，服务令牌 + 运行令牌两层", "changed", "阶段 1"],
+        ["dev", "备份", "只 pg_dump", "pg_dump + agent_data 数据卷", "changed", "阶段 3"],
+        ["dev", "回退版本", "退回镜像", "镜像和 agent_data 一起退；SQLite 迁移不可逆", "changed", "阶段 3"],
+        ["dev", "扩容", "Agent 跟着 backend 进程", "agent 单副本；以后扩容要按会话分片", "changed", "阶段 2"],
+        ["dev", "运行观测", "Go 的 Postgres", "Agent 服务导出，另有 OTel 遥测", "changed", "阶段 4"],
+      ];
+      const badge = {
+        same: ["不变", "b-same"],
+        better: ["更好", "b-better"],
+        new: ["新增", "b-new"],
+        changed: ["有变化", "b-changed"],
+        verify: ["待验证", "b-verify"],
+      };
+
+      /* ---------------- 数据：代码量 ---------------- */
+      const bars = [
+        {
+          name: "Go：backend/internal/service/agent",
+          total: 8094,
+          segs: [
+            ["平台能力，留在 Go（画布、生成、视频、计费、桥、工具注册）", 2871, "c-keep"],
+            ["技能管理，留在 Go", 1690, "c-keep2"],
+            ["会话、运行、审批、运行时，阶段 3 搬走", 1766, "c-move"],
+            ["运行观测，阶段 4 搬走", 1767, "c-later"],
+          ],
+        },
+        {
+          name: "Node：agent/src",
+          total: 853,
+          segs: [
+            ["插话、压缩、裁剪、续跑：由 Pi 内置替代", 549, "c-pi"],
+            ["桥客户端、工具、codemode、入口：改写成扩展", 304, "c-ext"],
+          ],
+        },
+      ];
+
+      /* ---------------- 数据：代码场景 ---------------- */
+      const scenarios = [
+        {
+          name: "运行怎么跑起来",
+          beforeSrc: "agent/src/main.mjs",
+          before: `// stdin 第一行是启动参数，跑完一个片段进程就退出
+rl.on("line", async (line) => {
+  …
+  if (!started) {
+    started = true;
+    await runAgent(msg, { control, log });
+    process.exit(0);
+  }
+  if (msg.type === "steer") control.emit("steer", msg.text);
+  else if (msg.type === "abort") control.emit("abort");
+});`,
+          beforeNote: "Go 侧每个片段签发一次性令牌、起一个进程，靠等进程退出判断有没有跑完。",
+          after: `// Agent 服务启动时打开一次，之后一直在
+const harness = await Harness.open(
+  await openNodeSqliteStorage("/data/agent.sqlite"),
+  { models, registry }, context);
+harness.resume();          // 接着跑上次没跑完的
+
+// 用户发消息：同一个 requestId 重试不会提交两次
+await conversation.submit(
+  { type: "input", content: text, requestId }, context);`,
+          afterNote: "进程常驻；一次运行是若干个带检查点的任务，不再按片段起进程。",
+        },
+        {
+          name: "插话",
+          beforeSrc: "agent/src/run.mjs · settle()",
+          before: `// 自己处理「插话打断回答」之后的续跑
+for (;;) {
+  await agent.waitForIdle();
+  if (isAborted()) return agent.clearAllQueues();
+  if (steering.consumeInterrupt() &&
+      agent.state.messages.at(-1)?.stopReason === "aborted") {
+    agent.state.messages = stripFailedTail(agent.state.messages);
+    await agent.continue();
+    continue;
+  }
+  …
+}`,
+          beforeNote: "steer.mjs 另有 500ms 窗口：连着几句插话合并成一次打断。",
+          after: `// 插话：放在当前工具轮之后，和正在进行的工作合并
+await conversation.submit(
+  { type: "input", content: wrapSteer(text), whenBusy: "steer" },
+  context);
+
+// settings.steeringMode: "all"：多条插话一次放进去`,
+          afterNote: "待验证：能不能像现在一样打断正在输出的回答。不能的话，要用 hook 补，或接受行为变化。",
+        },
+        {
+          name: "崩溃后继续",
+          beforeSrc: "runtime.go · watch() / run.mjs · start()",
+          before: `// Go：进程没报告结束就没了 → 标为中断，等用户点「继续」
+if reported || cur.Status != model.RunRunning { return }
+r.d.Repo.UpdateRunIf(ctx, run.ID, []string{model.RunRunning},
+  map[string]any{"status": model.RunInterrupted})
+
+// Node：用户点「继续」后，去掉半截回答再接着走
+case "resume": {
+  const msgs = stripFailedTail(agent.state.messages);
+  …
+  return last.role === "user" || last.role === "toolResult"
+    ? agent.continue() : agent.prompt(CONTINUE_TEXT);
+}`,
+          beforeNote: "历史只在回合结束时保存，崩溃会丢掉整个回合。",
+          after: `// 进程重启后自动接着跑：每一步都有检查点
+harness.resume();
+
+// 读工具：崩溃后直接重跑
+defineTool({ name: "canvas_get_state", replay: "safe", … });
+
+// 写工具：Go 按 tool_call_id 幂等以后才能标 safe，
+// 否则模型收到 interrupted，自己决定要不要重试
+
+// 同一步连续崩溃 5 次（settings.restartLimit）就挂起，
+// 后台展示，再用 harness.retryTask(id) 重试`,
+          afterNote: "不需要用户点「继续」；挂起的任务要在界面上给出入口。",
+        },
+        {
+          name: "新增一个工具",
+          beforeSrc: "tool_decls.json · bridge_tools.go · system.md · tools.mjs",
+          before: `// ① backend/internal/service/agent/tool_decls.json
+{ "name": "canvas_arrange", "description": "…", "parameters": { … } }
+
+// ② Go 处理函数：参数校验、模式权限、执行、tool.start / tool.end
+
+// ③ backend/internal/agent/prompts/system.md：规则写进总提示词
+
+// Node 按 Go 下发的声明统一生成，execute 只回调桥
+execute: async (toolCallId, params, signal) => {
+  const r = await bridge.tool(toolCallId, d.name, params, signal);
+  …
+}`,
+          beforeNote: "工具停用后，system.md 里它的规则还在。",
+          after: `// Agent 服务里的一个扩展：工具和它的规则放在一起
+const Canvas = defineExtension({
+  name: "video-canvas-canvas",
+  sections: [section("canvas-rules", () => canvasRules)],
+  tools: [defineTool({
+    name: "canvas_arrange",
+    description: "…",
+    parameters: Type.Object({ … }),
+    execute: (args, api, ctx) => platform.tool("canvas_arrange", args, ctx),
+  })],
+});
+registry.install(Canvas);`,
+          afterNote: "只有需要新的平台能力（新的画布操作、新的生成类型）时才改 Go。",
+        },
+        {
+          name: "长对话压缩",
+          beforeSrc: "agent/src/run.mjs · compaction.mjs",
+          before: `// 自己决定什么时候压、压哪一段、摘要怎么拼回去
+const compactor = createCompactor({
+  window: m.context_window,
+  view: (msgs) => trimContext(dropOldImages(msgs, KEEP_IMAGES), …),
+  summarize: (prompt, signal) => summarize(models, piModel, prompt, signal, …),
+});
+
+// 摘要格式按画布定制：
+// 目标 / 要求和偏好 / 已完成（节点、任务、审批）/ 进行中和待办 …`,
+          beforeNote: "每次请求模型前检查一次，压缩后把结果写回 agent.state。",
+          after: `// Pi 内置：超过阈值就追加一条 pi.compaction，旧记录仍在存储里
+settings: {
+  compaction: {
+    modelOverrides: { "bridge/agent": { /* 按模型设阈值 */ } },
+  },
+}
+
+// 手动压缩时可以带要求
+await conversation.compact("保留节点 id、任务 id 和待处理的审批", context);`,
+          afterNote: "待验证：自动压缩时能否用画布专用的摘要格式。",
+        },
+      ];
+
+      const treeBefore = `agent/                      Node 运行时，每个片段一个进程
+  src/run.mjs               运行循环、续跑
+  src/steer.mjs             插话
+  src/compaction.mjs        压缩
+  src/context.mjs           裁剪、去图
+  src/bridge-client.mjs     调 Go 的桥
+  src/tools.mjs  agent-tools/
+backend/internal/
+  service/agent/            8094 行：会话、运行、审批、桥、
+                            画布、技能、观测都在这里
+  handler/agent/            1233 行
+  agent/canvasgraph/        画布操作
+  agent/prompts/system.md   总提示词
+  agent/skillpkg/ skills/
+backend/Dockerfile          打包 Go + Node + agent/`;
+
+      const treeAfter = `agent/                      TS 服务，长驻，Pi Durable 宿主
+  src/server.ts             HTTP：会话、运行、审批、观测导出
+  src/harness.ts            Harness + SQLite
+  src/platform.ts           调 Go 平台 API 的客户端
+  src/extensions/
+    canvas.ts               画布工具 + 规则
+    generate.ts             生成、任务查询
+    skills.ts               技能目录 + skill_search / skill_read
+    web.ts                  联网搜索、读网页
+  Dockerfile                agent 镜像
+backend/internal/
+  service/agent/            只剩平台能力：画布、生成、计费、桥、技能
+  handler/agent/            平台 API、技能、/agent/* 反向代理
+  agent/canvasgraph/        不变
+  agent/skillpkg/ skills/   不变
+backend/Dockerfile          只打包 Go`;
+
+      const checks = [
+        ["审批暂停怎么建模", "现在是工具要求终止、Node 进程退出，用户决定后 Go 再起一个进程续跑。Pi Durable 的 README 没有现成的例子。候选：工具返回 terminate，用户的决定作为一次提交进来；或者用自定义任务加 durable sleep。", "阶段 0"],
+        ["插话能否打断正在输出的回答", "现在模型正在输出时，500ms 内的插话合并成一次，打断当前回答重答。Pi 内置插话放在当前工具轮之后。做不到的话，要用 hook 补，或者接受这个行为变化。", "阶段 0"],
+        ["自动压缩能否用画布专用摘要", "现在的摘要按画布场景定制：节点、组、任务、审批、模型 key。Pi 内置压缩手动时可以带要求，自动压缩时能不能指定格式还没确认。", "阶段 0"],
+        ["写工具幂等的数据迁移", "要给 agent_mutations 和 agent_approvals 加 (run_id, tool_call_id) 唯一约束。加之前要先查存量数据里有没有重复记录，还要确认一次工具调用会不会写多条改动记录。", "阶段 3 之前"],
+        ["Pi 生态扩展的兼容性", "Pi Durable 的扩展格式是自己的 defineExtension。pi.dev 上很多包是给 pi-coding-agent 写的，能不能直接装要逐个确认。", "阶段 3"],
+        ["单副本能否扛住线上并发", "Pi Durable 一个存储只能被一个进程持有。上线前用运行观测数据核实峰值并发运行数。", "阶段 2 之前"],
+      ];
+
+      /* ---------------- 渲染 ---------------- */
+      const $ = (id) => document.getElementById(id);
+      const el = (tag, cls, text) => {
+        const n = document.createElement(tag);
+        if (cls) n.className = cls;
+        if (text !== undefined) n.textContent = text;
+        return n;
+      };
+
+      let stage = 0;
+
+      function entryAt(c, s) {
+        return c.at.find(([a, b]) => s >= a && s <= b);
+      }
+
+      function renderStages() {
+        const box = $("stages");
+        box.textContent = "";
+        stages.forEach((st, i) => {
+          const b = el("button", "stage");
+          b.type = "button";
+          b.setAttribute("aria-pressed", String(i === stage));
+          b.append(el("span", "no", i === 0 ? "现状" : "阶段 " + i), el("span", "nm", st.name));
+          b.addEventListener("click", () => { stage = i; renderArch(); });
+          box.append(b);
+        });
+      }
+
+      function renderStageCard() {
+        const st = stages[stage];
+        const box = $("stageCard");
+        box.textContent = "";
+        [["这一步做什么", st.what], ["用户能感觉到的", st.user], ["出问题怎么回退", st.back]].forEach(([k, v]) => {
+          const d = el("div");
+          d.append(el("span", "label", k), el("p", "", v));
+          box.append(d);
+        });
+      }
+
+      function renderLanes() {
+        const box = $("lanes");
+        box.textContent = "";
+        lanes.forEach((ln) => {
+          const visible = comps.filter((c) => c.lane === ln.id && entryAt(c, stage));
+          const sec = el("section", "lane");
+          const h = el("header");
+          h.append(el("h3", "", ln.name), el("span", "count", visible.length + " 项"));
+          const ul = el("ul");
+          if (!visible.length) ul.append(el("li", "comp same", "（这一阶段还没有）"));
+          visible.forEach((c) => {
+            const [, , st, det] = entryAt(c, stage);
+            const li = el("li", "comp " + st);
+            const nm = el("div", "nm");
+            nm.append(el("b", "", c.name));
+            if (tagText[st]) nm.append(el("span", "tag", tagText[st]));
+            li.append(nm);
+            if (c.file) li.append(el("div", "file", c.file));
+            if (det) li.append(el("div", "det", det));
+            ul.append(li);
+          });
+          sec.append(h, ul);
+          box.append(sec);
+        });
+      }
+
+      function renderFlows() {
+        const box = $("flows");
+        box.textContent = "";
+        flows[stage].forEach(([a, via, b, changed]) => {
+          const row = el("div", "flow" + (changed ? " changedflow" : ""));
+          row.append(el("span", "", a), el("span", "arrow", "→"), el("span", "via", via), el("span", "arrow", "→"), el("span", "b", b));
+          box.append(row);
+        });
+      }
+
+      function renderArch() {
+        renderStages();
+        renderStageCard();
+        renderLanes();
+        renderFlows();
+      }
+
+      let featFilter = "all";
+      function renderFeats() {
+        const body = $("featBody");
+        body.textContent = "";
+        const groups = [["user", "用户能感觉到的"], ["dev", "开发与运维"]];
+        groups.forEach(([g, label]) => {
+          if (featFilter !== "all" && featFilter !== "verify" && featFilter !== g) return;
+          const rows = feats.filter((f) => f[0] === g && (featFilter !== "verify" || f[4] === "verify"));
+          if (!rows.length) return;
+          const gr = el("tr", "grouprow");
+          const gtd = el("td", "", label);
+          gtd.colSpan = 5;
+          gr.append(gtd);
+          body.append(gr);
+          rows.forEach(([, name, before, after, ch, when]) => {
+            const tr = el("tr");
+            const bd = el("td");
+            bd.append(el("span", "badge " + badge[ch][1], badge[ch][0]));
+            tr.append(el("td", "fname", name), el("td", "", before), el("td", "", after), bd, el("td", "when", when));
+            body.append(tr);
+          });
+        });
+      }
+      $("featFilters").addEventListener("click", (e) => {
+        const b = e.target.closest("[data-f]");
+        if (!b) return;
+        featFilter = b.dataset.f;
+        document.querySelectorAll("#featFilters .chip").forEach((c) => c.setAttribute("aria-pressed", String(c === b)));
+        renderFeats();
+      });
+
+      function renderBars() {
+        const box = $("bars");
+        const max = Math.max(...bars.map((b) => b.total));
+        bars.forEach((b) => {
+          const wrap = el("div", "bar");
+          const head = el("div", "head");
+          head.append(el("b", "", b.name), el("span", "mono", b.total.toLocaleString("en-US") + " 行"));
+          const track = el("div", "track");
+          track.style.width = (b.total / max) * 100 + "%";
+          track.setAttribute("role", "img");
+          track.setAttribute("aria-label", b.segs.map(([n, v]) => n + " " + v + " 行").join("；"));
+          const leg = el("div", "seglegend");
+          b.segs.forEach(([name, v, cls]) => {
+            const s = el("div", "seg " + cls);
+            s.style.width = (v / b.total) * 100 + "%";
+            s.title = name + "：" + v + " 行";
+            track.append(s);
+            const li = el("span");
+            li.append(el("i", "sw " + cls), el("span", "", name), el("span", "n", v.toLocaleString("en-US")));
+            leg.append(li);
+          });
+          wrap.append(head, track, leg);
+          box.append(wrap);
+        });
+      }
+
+      let scen = 0;
+      function renderScenarios() {
+        const box = $("scenarios");
+        box.textContent = "";
+        scenarios.forEach((s, i) => {
+          const b = el("button", "chip", s.name);
+          b.type = "button";
+          b.setAttribute("aria-pressed", String(i === scen));
+          b.addEventListener("click", () => { scen = i; renderScenarios(); });
+          box.append(b);
+        });
+        const s = scenarios[scen];
+        const diff = $("diff");
+        diff.textContent = "";
+        [["before", "拆之前", s.beforeSrc, s.before, s.beforeNote], ["after", "拆之后（示意）", "Pi Durable 1.4 · 提案", s.after, s.afterNote]].forEach(([cls, t, src, code, note]) => {
+          const p = el("div", "pane " + cls);
+          const h = el("header");
+          h.append(el("b", "", t), el("span", "src", src));
+          p.append(h, el("pre", "", code), el("footer", "", note));
+          diff.append(p);
+        });
+      }
+
+      function renderChecks() {
+        const box = $("checks");
+        checks.forEach(([t, d, when], i) => {
+          const c = el("div", "check");
+          const mid = el("div");
+          mid.append(el("h3", "", t), el("p", "", d));
+          c.append(el("span", "no", String(i + 1).padStart(2, "0")), mid, el("span", "badge b-verify", when));
+          box.append(c);
+        });
+      }
+
+      /* ---------------- 标签页与主题 ---------------- */
+      const views = ["arch", "feat", "code", "check"];
+      function show(v) {
+        views.forEach((x) => {
+          $("view-" + x).hidden = x !== v;
+          $("tab-" + x).setAttribute("aria-selected", String(x === v));
+        });
+        try { localStorage.setItem("agent-split-view", v); } catch (e) {}
+      }
+      document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => show(t.dataset.view)));
+
+      $("themeBtn").addEventListener("click", () => {
+        const root = document.documentElement;
+        const cur = root.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+        root.dataset.theme = cur === "dark" ? "light" : "dark";
+      });
+
+      renderArch();
+      renderFeats();
+      renderBars();
+      renderScenarios();
+      $("treeBefore").textContent = treeBefore;
+      $("treeAfter").textContent = treeAfter;
+      renderChecks();
+      let saved = "arch";
+      try { saved = localStorage.getItem("agent-split-view") || "arch"; } catch (e) {}
+      show(views.includes(saved) ? saved : "arch");
+    </script>
+  </body>
+</html>

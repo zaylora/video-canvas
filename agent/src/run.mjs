@@ -1,7 +1,7 @@
 import { Agent } from "@earendil-works/pi-agent-core";
 import { createModels, createProvider } from "@earendil-works/pi-ai";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
-import { createBridge } from "./bridge-client.mjs";
+import { createBridge, serviceHeaders } from "./bridge-client.mjs";
 import { SUMMARY_SYSTEM_PROMPT, createCompactor, summaryMaxTokens } from "./compaction.mjs";
 import { dropOldImages, restoreImageUrls, trimContext } from "./context.mjs";
 import { createSteering } from "./steer.mjs";
@@ -10,6 +10,7 @@ import { buildAllTools } from "./agent-tools/index.mjs";
 const CONTINUE_TEXT = "请继续刚才的任务。";
 const MAX_ERROR_CHARS = 300;
 const SKIPPED_TEXT = "本轮已暂停等待用户，这条调用没有执行；用户回应后如仍需要请重新调用。";
+const LOST_RESULT_TEXT = "这次调用没有拿到结果（运行中断了），它可能已经执行。请先重新读取画布或任务确认现状，再决定要不要重做。";
 
 /**
  * 跑一个运行片段：开始、审批后续跑、或「继续」。Go 起一个进程调用它一次，片段结束进程就退出。
@@ -24,14 +25,22 @@ const SKIPPED_TEXT = "本轮已暂停等待用户，这条调用没有执行；�
  */
 export async function runAgent(input, io = {}) {
   const log = io.log ?? (() => {});
-  const bridge = createBridge({ baseUrl: input.bridge_url, token: input.token, fetchImpl: io.fetchImpl });
+  const bridge = createBridge({ baseUrl: input.bridge_url, token: input.token, serviceToken: input.service_token, fetchImpl: io.fetchImpl });
 
   // 因工具要求终止（等审批、等回答、步数用尽）而停下，要和「真的跑完了」区分开：
   // 前者报 paused，Go 只收回令牌、不改运行状态，否则用户批准得快时，旧进程的收尾会误伤已经续跑的新片段
   let paused = false;
   const { agent, steering } = buildAgent(input, bridge, () => (paused = true), () => paused, log);
+  // 每个工具结果出来、每个回合结束都交回一次历史：Go 已经执行了的工具，崩溃后续跑时模型看得到，不会当作没做过重来一遍。
+  // 内容没变（回合的最后一个工具结果刚存过）就不重复发
+  let saved = { length: -1, last: null };
   agent.subscribe(async (e) => {
-    if (e.type === "turn_end") await saveState(agent, bridge, log);
+    const toolResult = e.type === "message_end" && e.message.role === "toolResult";
+    if (e.type !== "turn_end" && !toolResult) return;
+    const msgs = agent.state.messages;
+    if (msgs.length === saved.length && msgs.at(-1) === saved.last) return;
+    saved = { length: msgs.length, last: msgs.at(-1) };
+    await saveState(agent, bridge, log);
   });
   io.control?.on("steer", (text) => steering.push(text));
   // 用户中止是正常结束：运行的状态由 Go 在处理「停止」时设好，这里不能把它报成出错
@@ -101,7 +110,8 @@ function buildAgent(input, bridge, onTerminate, isPaused, log) {
   };
   const provider = createProvider({
     id: "bridge", name: "bridge", baseUrl,
-    auth: { apiKey: { name: "bridge", resolve: async () => ({ auth: { apiKey: input.token } }) } },
+    // 模型请求（含摘要压缩）也走桥，同样要带服务令牌；pi 取的是认证结果里的请求头
+    auth: { apiKey: { name: "bridge", resolve: async () => ({ auth: { apiKey: input.token, ...(input.service_token && { headers: serviceHeaders(input.service_token) }) } }) } },
     models: [model], api: openAICompletionsApi(),
   });
   const models = createModels();
@@ -122,7 +132,7 @@ function buildAgent(input, bridge, onTerminate, isPaused, log) {
     // 直接给 state.messages 赋值会丢掉或沿用旧的系统提示
     initialState: {
       systemPrompt: input.system_prompt, model: piModel, tools: buildAllTools({ bridge, input, onTerminate, log }),
-      messages: stripSystem(input.messages ?? []),
+      messages: closeDanglingToolCalls(stripSystem(input.messages ?? [])),
     },
     streamFn: models.streamSimple.bind(models),
     transformContext: async (messages) => trimContext(dropOldImages(messages, KEEP_IMAGES), { window: m.context_window }),
@@ -182,6 +192,35 @@ async function start(agent, input) {
     default:
       throw new Error("未知的启动方式：" + input.mode);
   }
+}
+
+/**
+ * 给没有结果的工具调用补上结果。崩溃时一批工具可能只跑了一半，保存的历史里 assistant 的调用比工具结果多。
+ * pi-ai 发请求时也会补一句英文的「No result provided」让接口不报错，但模型会因此以为这些调用没做过；
+ * 这里补成明确的中文提示：可能已经执行，先确认现状。被出错或中止截断的 assistant 没有真正执行过工具，不补，由 stripFailedTail 整条去掉。
+ * 不修改入参；历史完整时原样返回。
+ */
+export function closeDanglingToolCalls(messages) {
+  const out = [];
+  let changed = false;
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i];
+    out.push(m);
+    if (m.role !== "assistant" || m.stopReason === "error" || m.stopReason === "aborted") continue;
+    const calls = (Array.isArray(m.content) ? m.content : []).filter((p) => p.type === "toolCall");
+    if (!calls.length) continue;
+    // 紧跟在这条 assistant 后面的工具结果
+    let j = i + 1;
+    while (j < messages.length && messages[j].role === "toolResult") out.push(messages[j++]);
+    const answered = new Set(messages.slice(i + 1, j).map((r) => r.toolCallId));
+    for (const c of calls) {
+      if (answered.has(c.id)) continue;
+      changed = true;
+      out.push({ role: "toolResult", toolCallId: c.id, toolName: c.name, content: [{ type: "text", text: LOST_RESULT_TEXT }], isError: true, timestamp: m.timestamp });
+    }
+    i = j - 1;
+  }
+  return changed ? out : messages;
 }
 
 /** 把最后一条匹配的工具结果换成真实结果：审批等待期间它只是「已提交确认」的占位 */
