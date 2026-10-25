@@ -18,6 +18,7 @@ import { encodeRunContext, type RunContext } from "./platform-client.ts";
 export const PROVIDER_ID = "platform";
 const CALL_ID_HEADER = "x-agent-call-id";
 const ERROR_CODE_HEADER = "x-agent-error-code";
+const PURPOSE_HEADER = "X-Agent-Purpose";
 
 /** 一个 Agent 模型的规格，来自运行准备接口（Go 的模型配置） */
 export interface ModelSpec {
@@ -72,6 +73,8 @@ export interface ModelCallInfo {
   sessionId: string | undefined;
   /** Go 给这次模型调用的 id（响应头，十进制字符串），事后据此查这次调用的积分 */
   callId: string;
+  /** 对话调用，还是压缩写摘要的内部调用（请求头 X-Agent-Purpose: summary）：摘要不是助手的话，没有对应的 message.done */
+  purpose: "main" | "summary";
 }
 
 export interface ModelErrorInfo {
@@ -80,6 +83,8 @@ export interface ModelErrorInfo {
   status: number;
   /** Go 的业务错误码（响应头 X-Agent-Error-Code），比如本轮额度用完；不是业务错误时没有 */
   code: number | undefined;
+  /** 摘要请求出错不等于运行出错：压缩失败只是不压缩，运行照常继续 */
+  purpose: "main" | "summary";
 }
 
 export interface ModelRegistryOptions {
@@ -117,7 +122,7 @@ export function createModelRegistry(opts: ModelRegistryOptions) {
         const res = await (o.fetch ?? fetch)(input, init);
         if (res.status >= 400) {
           const code = Number(res.headers.get(ERROR_CODE_HEADER));
-          opts.onError?.({ sessionId: o.sessionId, status: res.status, code: Number.isInteger(code) && code > 0 ? code : undefined });
+          opts.onError?.({ sessionId: o.sessionId, status: res.status, code: Number.isInteger(code) && code > 0 ? code : undefined, purpose: o.headers?.[PURPOSE_HEADER] === "summary" ? "summary" : "main" });
         }
         return res;
       },
@@ -125,7 +130,7 @@ export function createModelRegistry(opts: ModelRegistryOptions) {
       onPayload: async (payload: unknown, model: Model<Api>) => restoreImageUrls((await o.onPayload?.(payload, model)) ?? payload),
       onResponse: async (res: ProviderResponse, model: Model<Api>) => {
         const callId = res.headers[CALL_ID_HEADER];
-        if (callId) opts.onCall?.({ sessionId: o.sessionId, callId });
+        if (callId) opts.onCall?.({ sessionId: o.sessionId, callId, purpose: o.headers?.[PURPOSE_HEADER] === "summary" ? "summary" : "main" });
         await o.onResponse?.(res, model);
       },
     };

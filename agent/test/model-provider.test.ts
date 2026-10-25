@@ -14,7 +14,7 @@ const rc = (run: string, over: Partial<RunContext> = {}): RunContext => ({ run_i
 async function setup() {
   const proxy = await fakeModelProxy("收到");
   const contexts = createRunContexts();
-  const calls: Array<{ sessionId: string | undefined; callId: string }> = [];
+  const calls: Array<{ sessionId: string | undefined; callId: string; purpose?: string }> = [];
   const reg = createModelRegistry({ baseUrl: proxy.url, serviceToken: TOKEN, contexts, onCall: (c) => calls.push(c) });
   reg.ensure(SPEC);
   const registry = createRegistry();
@@ -166,9 +166,9 @@ test("模型代理回错误：HTTP 状态和业务错误码（响应头）交给
   await new Promise<void>((r) => srv.listen(0, "127.0.0.1", r));
   const port = (srv.address() as import("node:net").AddressInfo).port;
   const contexts = createRunContexts();
-  const errors: Array<{ status: number; code: number | undefined }> = [];
+  const errors: Array<{ status: number; code: number | undefined; purpose: string }> = [];
   const calls: unknown[] = [];
-  const reg = createModelRegistry({ baseUrl: `http://127.0.0.1:${port}`, serviceToken: TOKEN, contexts, onCall: (c) => calls.push(c), onError: (e) => errors.push({ status: e.status, code: e.code }) });
+  const reg = createModelRegistry({ baseUrl: `http://127.0.0.1:${port}`, serviceToken: TOKEN, contexts, onCall: (c) => calls.push(c), onError: (e) => errors.push({ status: e.status, code: e.code, purpose: e.purpose }) });
   reg.ensure(SPEC);
   const registry = createRegistry();
   registry.install(runContextExtension(contexts));
@@ -177,10 +177,30 @@ test("模型代理回错误：HTTP 状态和业务错误码（响应头）交给
     const c = await harness.createConversation({ ownership: { kind: "ownerless" }, agent: { model: { provider: PROVIDER_ID, modelId: "claude" } } }, context);
     contexts.set(String(c.id), rc("1001"));
     await (await c.submit({ type: "input", content: "你好" }, context)).wait(context);
-    assert.deepEqual(errors, [{ status: 402, code: 60008 }]);
+    assert.deepEqual(errors, [{ status: 402, code: 60008, purpose: "main" }]);
     assert.equal(calls.length, 0);
   } finally {
     await harness.close(context);
     await new Promise<void>((r) => srv.close(() => r()));
+  }
+});
+
+test("摘要调用（X-Agent-Purpose: summary）在 onCall 里标出用途，不会混进对话调用的 id 队列", async () => {
+  const s = await setup();
+  try {
+    const c = await s.conv();
+    s.contexts.set(String(c.id), rc("1001"));
+    const sub = await c.submit({ type: "input", content: "你好" }, context);
+    await sub.wait(context);
+    assert.equal(s.calls[0].purpose, "main");
+    // 摘要请求：自己调模型，带用途头
+    const m = s.reg.models.getModel(PROVIDER_ID, "claude")!;
+    const sessionId = s.calls[0].sessionId!;
+    await s.reg.models.completeSimple(m, { messages: [{ role: "user", content: [{ type: "text", text: "写摘要" }], timestamp: Date.now() }] }, { sessionId, headers: { "X-Agent-Purpose": "summary" } });
+    assert.equal(s.calls.at(-1)!.purpose, "summary");
+    assert.equal(s.proxy.requests.at(-1)!.headers["x-agent-purpose"], "summary");
+    assert.deepEqual(decodeRunContext(String(s.proxy.requests.at(-1)!.headers["x-agent-context"])).run_id, "1001", "摘要请求同样带运行上下文");
+  } finally {
+    await s.close();
   }
 });

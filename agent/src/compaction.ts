@@ -107,7 +107,7 @@ export function serializeMessages(messages: Msg[], { maxResultChars = TOOL_RESUL
   return out.join("\n\n");
 }
 
-function buildPrompt(previous: string, conversation: string): string {
+export function buildPrompt(previous: string, conversation: string): string {
   if (previous) {
     return `<之前的摘要>\n${previous}\n</之前的摘要>\n\n<对话>\n${conversation}\n</对话>\n\n` +
       `<对话> 是在之前的摘要之后新发生的内容。把它并入之前的摘要，写出更新后的完整摘要：保留仍然有效的内容，更新进度，` +

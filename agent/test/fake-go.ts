@@ -39,6 +39,8 @@ export interface FakeGoOptions {
   resolve?: (body: any) => Record<string, unknown> | { error: { status: number; code: number; msg: string } };
   /** 审批执行：默认批准的删除 / 生成 executed，拒绝和提问 none */
   execute?: (body: any) => Record<string, unknown> | { error: { status: number; code: number; msg: string } } | "down";
+  /** 摘要请求（X-Agent-Purpose: summary）的回答；函数形式可以按请求变化或出错。不消耗 turns */
+  summary?: string | ((body: any, n: number) => string | { error: { status: number; message: string } });
   /** 运行准备的出参覆盖项 */
   setup?: Partial<RunSetup>;
   prepareError?: { status: number; code: number; msg: string };
@@ -54,6 +56,7 @@ export const DECLS: ToolDecl[] = ["canvas_get_state", "canvas_apply_ops", "gener
 
 export async function fakeGo(opts: FakeGoOptions) {
   const seen: GoSeen[] = [];
+  const callLog: Array<{ callId: string; purpose: "main" | "summary" }> = [];
   let prepareError = opts.prepareError;
   const turns = [...opts.turns];
   let nextCallId = 7_000_000_000_000_000_001n;
@@ -116,7 +119,7 @@ export async function fakeGo(opts: FakeGoOptions) {
           return ok(res, u);
         }
         if (req.method === "DELETE" && path.startsWith(`${base}/runs/`)) return ok(res, null);
-        if (path === `${base}/model/chat/completions`) return await model(res);
+        if (path === `${base}/model/chat/completions`) return await (req.headers["x-agent-purpose"] === "summary" ? summarize(res, body) : model(res, body));
         json(res, 404, { code: 10002, msg: "资源不存在：" + path });
       } catch (e) {
         json(res, 500, { code: 50000, msg: String(e) });
@@ -124,7 +127,28 @@ export async function fakeGo(opts: FakeGoOptions) {
     });
   });
 
-  async function model(res: ServerResponse) {
+  let summaries = 0;
+  async function summarize(res: ServerResponse, body: any) {
+    const r = typeof opts.summary === "function" ? opts.summary(body, ++summaries) : (opts.summary ?? "## 目标\n摘要正文");
+    if (typeof r !== "string") {
+      res.writeHead(r.error.status, { "content-type": "application/json" });
+      return void res.end(JSON.stringify({ error: { message: r.error.message, type: "upstream_error" } }));
+    }
+    calls++;
+    const callId = nextCallId++;
+    callLog.push({ callId: String(callId), purpose: "summary" });
+    res.writeHead(200, { "content-type": "text/event-stream", "x-agent-call-id": String(callId) });
+    const chunk = (delta: object, finish: string | null = null) => `data: ${JSON.stringify({ id: "x", object: "chat.completion.chunk", choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
+    res.write(chunk({ role: "assistant", content: r }));
+    res.write(chunk({}, "stop"));
+    res.write(`data: ${JSON.stringify({ id: "x", object: "chat.completion.chunk", choices: [], usage: { prompt_tokens: 500, completion_tokens: 80, total_tokens: 580 } })}\n\n`);
+    res.end("data: [DONE]\n\n");
+  }
+
+  /** 按请求的大小报输入用量（约 3 个字符一个 Token）：Pi 估算上下文大小时会用上一次回答报告的真实用量 */
+  const promptTokens = (body: any) => Math.max(100, Math.ceil(JSON.stringify(body?.messages ?? []).length / 3));
+
+  async function model(res: ServerResponse, body: any) {
     const turn = turns.shift() ?? { text: "（没有更多预设的回答）" };
     if (turn.delayMs) await new Promise((r) => setTimeout(r, turn.delayMs));
     if (turn.error) {
@@ -135,6 +159,7 @@ export async function fakeGo(opts: FakeGoOptions) {
     }
     calls++;
     const callId = nextCallId++;
+    callLog.push({ callId: String(callId), purpose: "main" });
     res.writeHead(200, { "content-type": "text/event-stream", "x-agent-call-id": String(callId) });
     open.add(res);
     res.on("close", () => open.delete(res));
@@ -148,7 +173,7 @@ export async function fakeGo(opts: FakeGoOptions) {
     if (turn.hang) return; // 不结束：等调用方断开
     (turn.tools ?? []).forEach((t, i) => res.write(chunk({ tool_calls: [{ index: i, id: t.id, type: "function", function: { name: t.name, arguments: JSON.stringify(t.args ?? {}) } }] })));
     res.write(chunk({}, turn.tools?.length ? "tool_calls" : "stop"));
-    res.write(`data: ${JSON.stringify({ id: "x", object: "chat.completion.chunk", choices: [], usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 } })}\n\n`);
+    res.write(`data: ${JSON.stringify({ id: "x", object: "chat.completion.chunk", choices: [], usage: { prompt_tokens: promptTokens(body), completion_tokens: 20, total_tokens: promptTokens(body) + 20 } })}\n\n`);
     res.end("data: [DONE]\n\n");
   }
 
@@ -156,10 +181,14 @@ export async function fakeGo(opts: FakeGoOptions) {
   return {
     url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
     seen,
+    /** 每次成功的模型调用的 id 和用途，按服务顺序 */
+    callLog,
     /** 之后的运行准备都失败（null 恢复） */
     setPrepareError: (e: FakeGoOptions["prepareError"] | null) => { prepareError = e ?? undefined; },
     /** 模型请求（按顺序） */
-    get modelRequests() { return seen.filter((s) => s.path.endsWith("/model/chat/completions")); },
+    get modelRequests() { return seen.filter((s) => s.path.endsWith("/model/chat/completions") && s.headers["x-agent-purpose"] !== "summary"); },
+    /** 摘要请求（按顺序） */
+    get summaryRequests() { return seen.filter((s) => s.path.endsWith("/model/chat/completions") && s.headers["x-agent-purpose"] === "summary"); },
     paths: () => seen.map((s) => `${s.method} ${s.path.replace("/internal/platform/v1", "")}`),
     close: () => new Promise<void>((r) => { for (const o of open) o.destroy(); server.close(() => r()); }),
   };

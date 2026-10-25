@@ -7,11 +7,12 @@
  * 并通过 onEvent 交出去；文字增量（message.delta / thinking.delta）只交出去不落库。
  */
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
-import type { AssistantMessage } from "@earendil-works/pi-ai";
+import type { AssistantMessage, Message } from "@earendil-works/pi-ai";
 import {
-  GenerationTask, Harness, createRegistry, defineExtension, hook, watchEvents,
+  CompactionTask, GenerationTask, Harness, ProviderDoc, createRegistry, defineExtension, hook, watchEvents,
   type Conversation, type ConversationId, type Extension, type Storage, type Submission, type ToolRegistration,
 } from "@earendil-works/pi-durable";
+import { SUMMARY_SYSTEM_PROMPT, buildPrompt, compactionLimits, serializeMessages, summaryMaxTokens } from "../compaction.ts";
 import { createCodemode } from "../codemode.ts";
 import { createToolsExtension, type ToolHost, type ToolRun } from "../durable-tools.ts";
 import type { IdCodec } from "../ids.ts";
@@ -41,6 +42,9 @@ const CONTINUE_TEXT = "请继续刚才的任务。";
 /** 运行被中断时，最后一步的工具结果可能丢了，而那一步可能已经执行（Pi 补上的结果只说「被中止」，没说这一点） */
 const INTERRUPTED_TEXT = "上一次运行被中断了，最后一步的工具结果丢失，那一步可能已经执行。请先读取画布或任务确认现状，再继续刚才的任务。";
 const APPROVAL_NUDGE = "（用户已处理上面的请求，请根据结果继续）";
+const DEFAULT_LEASE_INTERVAL_MS = 10_000;
+const DEFAULT_LEASE_TTL_MS = 30_000;
+const DEFAULT_RESUME_WINDOW_MS = 5 * 60_000;
 const EXECUTE_ATTEMPTS = 3;
 const EXECUTE_RETRY_MS = 100;
 
@@ -71,6 +75,12 @@ export interface EngineOptions {
   now?: () => number;
   approvalTtlMs?: number;
   defaultMaxSteps?: number;
+  /** 运行期间每隔多久续一次租约（默认 10 秒）；启动恢复靠它判断停机多久 */
+  leaseIntervalMs?: number;
+  /** 租约有效期（默认 30 秒） */
+  leaseTtlMs?: number;
+  /** 启动时没跑完的运行，停机不超过这个时间就自动续跑，超过就标为中断（默认 5 分钟） */
+  resumeWindowMs?: number;
 }
 
 export interface StartRunRequest {
@@ -102,6 +112,14 @@ interface Active {
   maxSteps: number;
   /** 模型调用 id（响应头），按请求顺序，assistant 消息结束时取走一个 */
   callIds: string[];
+  /** 摘要调用的 id，写完摘要后单独结算 */
+  summaryCallIds: string[];
+  /** 摘要失败后这个运行片段里不再压缩，免得每个回合都白付一次钱 */
+  compactionDisabled: boolean;
+  /** 启动恢复后自动续跑中：已经发过「恢复中」，第一个别的事件到来时补一条 running */
+  recovering: boolean;
+  /** 恢复前就已经落库的 tool.start 的调用 id：续跑时被重放的工具不再发第二遍（只抑制一次，模型可能复用 id） */
+  startedBefore: Set<string>;
   modelError?: { code?: number; status?: number; message?: string };
   drive?: Promise<void>;
 }
@@ -136,6 +154,8 @@ export class AgentEngine {
   readonly #active = new Map<string, Active>(); // 会话 id（Pi）→ 片段
   readonly #byRun = new Map<string, Active>();
   readonly #decls = new Map<string, ToolDecl>();
+  /** "提供方/模型" → 压缩的触发线 */
+  readonly #compaction = new Map<string, { reserveTokens: number; keepRecentTokens: number }>();
   readonly #toolRegs = new Map<string, ToolRegistration>();
   readonly #registry = createRegistry();
   readonly #drives = new Set<Promise<void>>();
@@ -143,6 +163,8 @@ export class AgentEngine {
   readonly #stops: Array<() => Promise<unknown>> = [];
   #models!: ReturnType<typeof createModelRegistry>;
   #toolsKey = "";
+  #closing = false;
+  #leaseTimer: ReturnType<typeof setInterval> | undefined;
 
   private constructor(o: EngineOptions) {
     this.#o = o;
@@ -158,22 +180,115 @@ export class AgentEngine {
   async #init(): Promise<void> {
     this.#models = createModelRegistry({
       baseUrl: this.#o.baseUrl, serviceToken: this.#o.serviceToken, contexts: this.#contexts,
-      onCall: ({ sessionId, callId }) => this.#active.get(this.#contexts.conversationOf(sessionId ?? "") ?? "")?.callIds.push(callId),
-      onError: ({ sessionId, status, code }) => {
+      onCall: ({ sessionId, callId, purpose }) => {
         const a = this.#active.get(this.#contexts.conversationOf(sessionId ?? "") ?? "");
-        if (a) a.modelError = { ...a.modelError, status, code };
+        // 摘要不是助手的话，没有对应的 message.done：它的调用 id 单独放，免得错配到下一条对话消息上
+        if (a) (purpose === "summary" ? a.summaryCallIds : a.callIds).push(callId);
+      },
+      onError: ({ sessionId, status, code, purpose }) => {
+        const a = this.#active.get(this.#contexts.conversationOf(sessionId ?? "") ?? "");
+        if (a && purpose === "main") a.modelError = { ...a.modelError, status, code };
       },
     });
     this.#registry.install(runContextExtension(this.#contexts));
     this.#registry.install(this.#hooksExtension());
+    this.#registry.install(this.#compactionExtension());
     const codemode = createCodemode(this.host);
     for (const t of codemode.tools ?? []) this.#toolRegs.set(t.name, t);
     this.#registry.install(codemode);
     this.#harness = await Harness.open(this.#o.storage, {
       models: this.#models.models, registry: this.#registry,
       // 重试策略在 Go；同一轮的工具调用一个个执行；插话用官方效果（排队，下一次请求前一起带上）
-      settings: { retry: { enabled: false }, toolExecution: "sequential", steeringMode: "all", progress: { partialIntervalMs: PARTIAL_INTERVAL_MS } },
+      // 压缩的触发线按模型的上下文窗口算（窗口小的模型收紧）；后台压缩不用：写摘要要有运行的上下文，运行结束后没有
+      settings: () => ({
+        retry: { enabled: false }, toolExecution: "sequential", steeringMode: "all", progress: { partialIntervalMs: PARTIAL_INTERVAL_MS },
+        compaction: { enabled: true, backgroundTokens: 0, modelOverrides: Object.fromEntries(this.#compaction) },
+      }),
     }, context);
+    this.#leaseTimer = setInterval(() => this.#touchLeases(), this.#o.leaseIntervalMs ?? DEFAULT_LEASE_INTERVAL_MS);
+    this.#leaseTimer.unref();
+    await this.#recover();
+  }
+
+  // ---- 启动恢复（设计文档 20.6） ----
+
+  /**
+   * 服务启动时处理上次没跑完的运行（状态是 queued / running）。Pi 的调度是全局的，不能按会话选择性续跑，所以顺序固定：
+   * 先把窗口内要续跑的都接好，再把过期的收掉，最后才启动调度；这之前不接受任何请求。
+   *  - 停机不超过窗口、任务还在、没被重启上限挡住 → 自动续跑，先发「恢复中」（只是事件，库里仍是 running，画布没有被放走）；
+   *  - 否则 → 收掉 Pi 里没跑完的任务，标为中断，用户点「继续」；
+   *  - 等审批、等回答的运行没有活任务，状态在库里，不受影响。
+   */
+  async #recover(): Promise<void> {
+    const store = this.#o.store;
+    const runs = store.listRunsByStatus(["queued", "running"]);
+    const insp = await this.#harness.inspect(context);
+    const liveByConv = new Map<string, typeof insp.tasks[number][]>();
+    for (const t of insp.tasks) {
+      const c = String(t.record.conversationId);
+      liveByConv.set(c, [...(liveByConv.get(c) ?? []), t]);
+    }
+    const window = this.#o.resumeWindowMs ?? DEFAULT_RESUME_WINDOW_MS;
+    const ttl = this.#o.leaseTtlMs ?? DEFAULT_LEASE_TTL_MS;
+    const claimed = new Set<string>();
+    const resumed: Active[] = [];
+    const stale: Array<{ run: Run; convId: string }> = [];
+
+    for (const run of runs) {
+      let sess: Session | undefined;
+      try {
+        sess = store.getSession(run.userId, run.sessionId);
+      } catch {
+        // 会话已经删了
+      }
+      const convId = sess?.conversationId ?? "";
+      if (convId) claimed.add(convId);
+      const tasks = liveByConv.get(convId) ?? [];
+      const downtime = this.#now() - (run.leaseUntil ? run.leaseUntil - ttl : run.updatedAt);
+      if (sess && convId && tasks.length > 0 && !tasks.some((t) => t.state.kind === "blocked") && downtime <= window) {
+        try {
+          const rc = this.#rc(run, sess, []);
+          const a = await this.#attach(sess, run, rc, await this.#o.platform.prepare(rc, {}));
+          a.recovering = true;
+          for (const e of store.listEvents(run.sessionId, 0, 100_000)) if (e.runId === run.id && e.type === "tool.start") a.startedBefore.add(String((e.payload as { id: string }).id));
+          this.#emit(this.#ev(a), "run.status", statusEvent("recovering"));
+          resumed.push(a);
+          continue;
+        } catch {
+          // 平台暂时不可用等：当作过期处理，用户稍后点继续
+        }
+      }
+      stale.push({ run, convId });
+    }
+
+    // 过期的：收掉 Pi 里没跑完的任务，标为中断。注意 abort 会启动调度，所以放在窗口内的都接好之后
+    for (const { run, convId } of stale) {
+      if (convId && liveByConv.has(convId)) await (await this.#convOf(convId))?.abort(context).catch(() => {});
+      try {
+        store.updateRunIf(run.id, ["queued", "running"], { status: "interrupted" });
+        this.#emit({ id: run.id, userId: run.userId, sessionId: run.sessionId, canvasId: run.canvasId }, "run.status", statusEvent("interrupted"));
+      } catch {
+        // 已经不在 queued / running：别处处理过了；会话删了写不了事件也不要紧
+      }
+    }
+    // 不属于任何待恢复运行的活任务（运行早已结束）：收掉，免得调度一启动它们就自己跑起来
+    for (const convId of liveByConv.keys()) if (!claimed.has(convId)) await (await this.#convOf(convId))?.abort(context).catch(() => {});
+
+    this.#harness.resume();
+    for (const a of resumed) {
+      a.drive = this.#drive(a, async () => undefined);
+      this.#drives.add(a.drive);
+      void a.drive.finally(() => this.#drives.delete(a.drive!));
+    }
+  }
+
+  #convOf(convId: string): Promise<Conversation | undefined> | undefined {
+    return this.#harness.conversation(Number(convId) as unknown as ConversationId, context);
+  }
+
+  /** Pi 里还没跑完的任务数（诊断和测试用）：启动恢复之后，没有对应进行中运行的任务应该是 0 */
+  async liveTaskCount(): Promise<number> {
+    return (await this.#harness.inspect(context)).tasks.length;
   }
 
   /** 等所有进行中的运行片段都停下（测试和停机用） */
@@ -181,15 +296,39 @@ export class AgentEngine {
     while (this.#drives.size > 0) await Promise.allSettled([...this.#drives]);
   }
 
+  /**
+   * 正常停机：只关闭存储，**不中止运行**，也不把运行标成中断或失败。运行留在原状态，下次启动按窗口判断：
+   * 窗口内自动续跑，超过窗口标为中断。停机前最后续一次租约，重启后的停机时长从这一刻量起。
+   */
   async close(): Promise<void> {
-    await this.idle().catch(() => {});
+    if (this.#closing) return;
+    this.#closing = true;
+    if (this.#leaseTimer) clearInterval(this.#leaseTimer);
+    this.#touchLeases();
     for (const stop of this.#stops) await stop().catch(() => {});
     await this.#harness.close(context);
+    await Promise.allSettled([...this.#drives]);
+  }
+
+  /** 续租约：告诉「下次启动」这些运行一直活到现在 */
+  #touchLeases(): void {
+    if (this.#byRun.size === 0) return;
+    try {
+      this.#o.store.touchLease([...this.#byRun.keys()], this.#now() + (this.#o.leaseTtlMs ?? DEFAULT_LEASE_TTL_MS));
+    } catch {
+      // 租约只是恢复时的参考；写不进去不能让运行失败
+    }
   }
 
   // ---- 事件 ----
 
   #emit(run: { id: string; userId: string; sessionId: string; canvasId: string }, type: string, payload: unknown): void {
+    const resuming = this.#byRun.get(run.id);
+    if (resuming?.recovering && type !== "run.status") {
+      // 自动续跑接上了：第一件真正的事发生之前，先告诉前端不再是「恢复中」
+      resuming.recovering = false;
+      this.#emit(run, "run.status", statusEvent("running"));
+    }
     const rec = this.#o.store.appendEvent(run.sessionId, run.id, type, payload);
     this.#o.onEvent?.({ id: rec.id, sessionId: run.sessionId, runId: run.id, userId: run.userId, canvasId: run.canvasId, seq: rec.seq, type, payload, createdAt: rec.createdAt });
   }
@@ -207,6 +346,7 @@ export class AgentEngine {
   // ---- 发起运行 ----
 
   async startRun(req: StartRunRequest): Promise<Run> {
+    if (this.#closing) throw Err.unavailable();
     const store = this.#o.store;
     const sess = this.#session(req.userId, req.sessionId);
     const message = req.message.trim();
@@ -257,6 +397,8 @@ export class AgentEngine {
 
   /** 让这个运行有一个可用的 Pi 会话：创建或取出，配置模型、系统提示词和这一轮可用的工具 */
   async #attach(sess: Session, run: Run, rc: RunContext, setup: RunSetup): Promise<Active> {
+    const limits = compactionLimits(setup.model.context_window);
+    this.#compaction.set(`${PROVIDER_ID}/${rc.model_key}`, { reserveTokens: limits.reserve, keepRecentTokens: limits.keepRecent });
     this.#models.ensure({ key: rc.model_key!, name: setup.model.name, context_window: setup.model.context_window, max_tokens: setup.model.max_tokens, vision: setup.model.vision });
     this.#ensureTools(setup.tools);
     const enabled = [...setup.tools.map((t) => t.name), ...(setup.tools.some((t) => t.scriptable) && !setup.disabled_tools?.includes("codemode") ? ["codemode"] : [])]
@@ -273,9 +415,10 @@ export class AgentEngine {
     const convId = String(conv.id);
     await this.#watch(conv, convId);
     this.#contexts.set(convId, rc);
-    const a: Active = { run, convId, rc, conv, paused: false, finishing: false, steps: run.steps, maxSteps: run.maxSteps, callIds: [], lock: Promise.resolve() };
+    const a: Active = { run, convId, rc, conv, paused: false, finishing: false, steps: run.steps, maxSteps: run.maxSteps, callIds: [], summaryCallIds: [], compactionDisabled: false, recovering: false, startedBefore: new Set(), lock: Promise.resolve() };
     this.#active.set(convId, a);
     this.#byRun.set(run.id, a);
+    this.#touchLeases();
     return a;
   }
 
@@ -301,10 +444,11 @@ export class AgentEngine {
     recordHarness?: boolean;
     kickoff: (a: Active, setup: RunSetup) => Promise<Submission>;
   }): Promise<void> {
+    if (this.#closing) throw Err.unavailable();
     const store = this.#o.store;
     const rc = this.#rc(run, sess, o.selection);
     let a: Active;
-    let kickoff: () => Promise<Submission>;
+    let kickoff: () => Promise<Submission | undefined>;
     try {
       const setup = await this.#o.platform.prepare(rc, o.prepare);
       if (o.recordHarness) store.updateRunIf(run.id, ["queued"], { promptVersion: setup.harness.prompt_version, toolsHash: setup.harness.tools_hash, buildSha: setup.harness.build_sha, harnessKey: setup.harness.key });
@@ -332,16 +476,18 @@ export class AgentEngine {
     };
   }
 
-  async #drive(a: Active, kickoff: () => Promise<Submission>): Promise<void> {
+  /** kickoff 返回 undefined 表示接手一个已经在 Pi 里的任务（启动恢复），没有新提交可等 */
+  async #drive(a: Active, kickoff: () => Promise<Submission | undefined>): Promise<void> {
     try {
       const sub = await kickoff();
       await this.#untilQuiet(a);
-      const rec = await sub.wait(context);
-      await this.#finalize(a, rec.status === "unanswered" ? `运行中断：${rec.reason}` : undefined);
+      const rec = sub ? await sub.wait(context) : undefined;
+      await this.#finalize(a, rec?.status === "unanswered" ? `运行中断：${rec.reason}` : undefined);
     } catch (e) {
+      if (this.#closing) return; // 正常停机：运行留在原状态，下次启动按窗口判断
       await this.#finalize(a, String((e as Error)?.message ?? e));
     } finally {
-      await this.#release(a);
+      if (!this.#closing) await this.#release(a);
     }
   }
 
@@ -376,7 +522,7 @@ export class AgentEngine {
       fields = { status: "budget_exhausted", endedAt: this.#now() };
       extra = {};
     } else if (a.modelError || fallbackError) {
-      const msg = truncate(a.modelError?.message ?? fallbackError ?? "", MAX_ERROR_CHARS);
+      const msg = truncate(a.modelError?.message || fallbackError || "模型调用失败", MAX_ERROR_CHARS);
       fields = { status: "failed", errorCode: "agent_error", errorMessage: msg, endedAt: this.#now() };
       extra = { error: msg };
     } else {
@@ -601,6 +747,58 @@ export class AgentEngine {
     });
   }
 
+  /**
+   * 压缩：历史超过触发线时 Pi 调这个钩子，我们用画布专用的提示词让模型写摘要（节点、任务、审批、模型 key 不能丢）。
+   * 摘要请求走平台的模型代理（带运行上下文和摘要用途，Go 计费、检查额度）。出错就不压缩，运行照常继续。
+   */
+  #compactionExtension(): Extension {
+    return defineExtension({
+      name: "engine-compaction",
+      hooks: [hook(CompactionTask, {
+        beforeCompact: async (c, api, ctx) => {
+          const a = this.#active.get(String(api.conversationId));
+          if (!a || a.compactionDisabled) return { decline: true };
+          const model = api.models.getModel(PROVIDER_ID, a.rc.model_key!);
+          if (!model) return { decline: true };
+          const window = model.contextWindow;
+          try {
+            const sessionId = (await api.snapshot(ProviderDoc, api.conversationId, ctx))?.sessionId;
+            if (sessionId) this.#contexts.bindSession(sessionId, a.convId);
+            const [first, ...rest] = c.messages;
+            const previous = previousSummary(first);
+            let conversation = serializeMessages((previous === undefined ? c.messages : rest) as never);
+            const maxChars = Math.floor(window * 0.7); // 摘要请求本身也要装得进窗口：留出提示词和输出的位置
+            if (conversation.length > maxChars) conversation = `…（更早的内容已省略）\n${conversation.slice(-maxChars)}`;
+            const msg = await api.models.completeSimple(
+              model,
+              { systemPrompt: SUMMARY_SYSTEM_PROMPT, messages: [{ role: "user", content: [{ type: "text", text: buildPrompt(previous ?? "", conversation) }], timestamp: Date.now() }] },
+              { signal: ctx.abortSignal, maxTokens: summaryMaxTokens(window), sessionId, headers: { "X-Agent-Purpose": "summary" } },
+            );
+            await this.#settleSummaries(a);
+            if (msg.stopReason === "error" || msg.stopReason === "aborted") throw new Error(msg.errorMessage || "摘要请求失败");
+            const summary = msg.content.map((p) => (p.type === "text" ? p.text : "")).join("").trim();
+            if (!summary) throw new Error("摘要为空");
+            return { summary };
+          } catch {
+            a.compactionDisabled = true;
+            return { decline: true };
+          }
+        },
+      })],
+    });
+  }
+
+  /** 摘要调用也要计费：结算出来有扣费就推一条 run.usage（上下文大小只看对话调用，摘要不改它） */
+  async #settleSummaries(a: Active): Promise<void> {
+    for (const callId of a.summaryCallIds.splice(0)) {
+      const u = await this.#settled(a, callId);
+      if (!u?.call || u.call.charged <= 0) continue;
+      const spent = u.spent_credits + this.#extras(a.run.id);
+      this.#o.store.setRunUsage(a.run.id, { spentCredits: spent });
+      this.#emit(this.#ev(a), "run.usage", { spent_credits: spent, context_tokens: this.#o.store.getRun(a.run.userId, a.run.id).contextTokens });
+    }
+  }
+
   async #onAssistant(convId: string, msg: AssistantMessage): Promise<void> {
     const a = this.#active.get(convId);
     if (!a) return;
@@ -702,6 +900,7 @@ export class AgentEngine {
         this.#pause(a, "step_limit");
         return { content: "已达到本轮的步数上限，运行已暂停，等待用户继续。", terminate: true };
       }
+      if (a.startedBefore.delete(call.id)) return undefined; // 续跑时被重放的工具：tool.start 重启前已经发过
       this.#emit(this.#ev(a), "tool.start", { id: call.id, name: call.name, label: call.label, verb: call.verb, ...(call.parentId && { parent_id: call.parentId }) });
       return undefined;
     },
@@ -748,6 +947,13 @@ export class AgentEngine {
     this.#emit(this.#ev(a), "approval.created", this.#approvalView(approval));
     this.#emit(this.#ev(a), "run.status", statusEvent(next));
   }
+}
+
+/** Pi 把摘要放回上下文时套的说明：取出里面的摘要正文（下一次压缩时当作「之前的摘要」增量更新） */
+function previousSummary(first: Message | undefined): string | undefined {
+  if (first?.role !== "user") return undefined;
+  const text = typeof first.content === "string" ? first.content : first.content.map((p) => (p.type === "text" ? p.text : "")).join("");
+  return /^The conversation history before this point was compacted into the following summary:\n\n<summary>\n([\s\S]*)\n<\/summary>/.exec(text)?.[1];
 }
 
 /** 首条消息当会话标题：空白压成一个空格，最多 40 字 */

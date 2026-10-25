@@ -288,6 +288,17 @@ export class AgentStore {
     return runOf(row);
   }
 
+  /** 处于这些状态的所有运行（启动恢复用） */
+  listRunsByStatus(statuses: readonly string[]): Run[] {
+    if (statuses.length === 0) return [];
+    return this.#all(`SELECT * FROM agent_runs WHERE status IN (${statuses.map(() => "?").join(",")}) ORDER BY id ASC`, ...statuses).map(runOf);
+  }
+
+  /** 续租约：服务还活着。不改更新时间，也不看状态以外的东西——只对仍在跑的运行续 */
+  touchLease(runIds: readonly string[], leaseUntil: number): void {
+    for (const id of runIds) this.#run("UPDATE agent_runs SET lease_until = ? WHERE id = ? AND status IN ('queued','running')", leaseUntil, dec(id));
+  }
+
   /** 某画布上占着位置的活跃运行，没有返回 undefined */
   activeRun(canvasId: string): Run | undefined {
     const row = this.#get("SELECT * FROM agent_runs WHERE canvas_id = ? AND status IN ('queued','running','waiting_approval','waiting_input')", dec(canvasId));
