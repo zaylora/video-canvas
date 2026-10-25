@@ -9,7 +9,7 @@
     "typecheck": "tsc --noEmit",
     "serve": "node --disable-warning=ExperimentalWarning src/serve.ts",
     "start": "node dist/serve.js",
-    "test": "node --test \"test/*.test.ts\""
+    "test": "node --disable-warning=ExperimentalWarning --test \"test/*.test.ts\""
   },
   "dependencies": {
     "@earendil-works/pi-agent-core": "1.4.0",
