@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -99,7 +100,12 @@ type AgentBridge struct {
 	toolRec ToolCallRecorder
 	// reqRec 留存模型调用实际发给上游的请求体；为 nil 时不记。装配阶段用 SetModelRequestRecorder 绑定
 	reqRec ModelRequestRecorder
+	// disabledTools 是配置里停用的工具名，下发工具声明时去掉；装配阶段用 SetDisabledTools 绑定
+	disabledTools []string
 }
+
+// SetDisabledTools 设置停用的工具名（配置项），PrepareRun 下发工具声明时去掉它们，并把名单告诉 Agent（它自己的工具靠名单决定启用与否）。
+func (b *AgentBridge) SetDisabledTools(names []string) { b.disabledTools = slices.Clone(names) }
 
 // NewAgentBridge 创建桥。
 func NewAgentBridge(d BridgeDeps) *AgentBridge {

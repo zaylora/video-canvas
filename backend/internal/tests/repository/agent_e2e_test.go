@@ -744,6 +744,53 @@ func TestE2E_PlatformApprovalFlowOverHTTPOnRealDB(t *testing.T) {
 	}
 }
 
+// 运行准备经真实 HTTP：画布目录读自真实 Postgres（选中的节点优先），运行和会话 id 是雪花大小；不落任何记录。
+func TestE2E_PlatformPrepareRunOverHTTPOnRealDB(t *testing.T) {
+	e := newE2E(t, e2eProcessToken)
+	const runID, sessID uint64 = 1152921504606846977, 1152921504606846978
+	ctxJSON := fmt.Sprintf(`{"run_id":"%d","user_id":"1","session_id":"%d","canvas_id":"%d","mode":"storyboard","model_key":"claude","selection":["n_old"]}`, runID, sessID, e.canvas.ID)
+	req, _ := http.NewRequest(http.MethodPost, e.bridgeURL+"/internal/platform/v1/runs/prepare", strings.NewReader(`{"message":"把剧本拆成分镜","max_steps":30}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Agent-Service-Token", e.serviceToken)
+	req.Header.Set("X-Agent-Context", base64.RawURLEncoding.EncodeToString([]byte(ctxJSON)))
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var out struct {
+		Code int `json:"code"`
+		Data struct {
+			Model struct {
+				ContextWindow int `json:"context_window"`
+				MaxTokens     int `json:"max_tokens"`
+			} `json:"model"`
+			SystemPrompt string                  `json:"system_prompt"`
+			Tools        []struct{ Name string } `json:"tools"`
+			FirstMessage string                  `json:"first_message"`
+			Harness      struct{ Key string }    `json:"harness"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil || resp.StatusCode != 200 || out.Code != 0 {
+		t.Fatalf("status=%d code=%d err=%v", resp.StatusCode, out.Code, err)
+	}
+	d := out.Data
+	if d.SystemPrompt == "" || len(d.Tools) == 0 || d.Model.ContextWindow == 0 {
+		t.Errorf("模型、提示词、工具都要有: %+v", d)
+	}
+	for _, want := range []string{"把剧本拆成分镜", "n_script", "n_old", "最多 30 步工具调用"} {
+		if !strings.Contains(d.FirstMessage, want) {
+			t.Errorf("第一条消息缺少 %q（目录要读自真实的库）:\n%s", want, d.FirstMessage)
+		}
+	}
+	var runs, events int64
+	e.db.Model(&model.AgentRun{}).Count(&runs)
+	e.db.Model(&model.AgentEvent{}).Count(&events)
+	if runs != 0 || events != 0 {
+		t.Errorf("准备不落任何记录: 运行 %d 事件 %d", runs, events)
+	}
+}
+
 // platformChat 以 Agent 服务的身份走一次上下文模式的模型代理，返回 HTTP 状态、响应头和响应体。
 func (e *e2eEnv) platformChat(t *testing.T, ctxJSON, purpose string) (int, http.Header, string) {
 	t.Helper()

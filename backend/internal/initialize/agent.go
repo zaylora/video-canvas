@@ -235,6 +235,7 @@ func newAgentRuntime(cfg *config.Config, d agentDeps) (*agentRuntime, error) {
 		Repo: d.repo, Canvas: d.canvas, Agent: d.agent, Billing: agentsvc.NewAgentBilling(d.repo),
 		Registry: d.registry, Secrets: d.secrets, Tasks: d.tasks, Assets: d.assets, Frames: d.frames, FrameStore: d.frameStore, Streamer: llmgateway.New(llmgateway.Options{IPAllowed: d.ipAllowed}), Skills: d.skills, Web: web, RunUsage: d.repo,
 	})
+	bridge.SetDisabledTools(AgentDisabledTools(ac))
 	if d.toolCalls != nil {
 		bridge.SetToolRecorder(d.toolCalls)
 	}

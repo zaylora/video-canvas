@@ -857,3 +857,22 @@ Agent 服务生成的会话、运行、审批、事件 ID 都用雪花算法，�
 - Harness 打开之后可以再注册新模型（Go 下发的模型清单会变），新模型的请求同样带对。
 
 压缩用的摘要请求走 Pi 内置压缩时也经过同一个提供方；我们自己在 `beforeCompact` 里调模型时，请求头要自己带上运行上下文和 `X-Agent-Purpose: summary`。
+
+### 20.8 3.2-0：Go 补的两个口（2026-10-25，已实现）
+
+**做了什么**
+- **`tool_end`**：平台工具结果（`POST /internal/platform/v1/tools/:name`）多一个 `tool_end` 字段，内容就是令牌模式下 Go 自己发的那个 `tool.end` 事件（`id / name / is_error / summary / label / verb` 加各工具自己的 `node_ids / created / updated`……）。令牌模式和平台共用 `toolEndEvent` 一个函数组出来，不是复制；被拒绝的调用（未知工具、模式不允许）也有，摘要是拒绝原因。令牌模式的响应不变。`tool.start` 的内容只有 `id / name / label / verb`，label 和 verb 由工具声明带来，Agent 不用再问。
+- **运行准备** `POST /internal/platform/v1/runs/prepare`：入参运行上下文（头）加可选请求体 `{message, max_steps}`；出参 `{model{name,context_window,max_tokens,vision}, system_prompt, tools[], disabled_tools[], first_message, harness{prompt_version,tools_hash,build_sha,key}}`。
+  - 不带 `message` 是续跑：只给最新的模型、提示词、工具声明，没有第一条消息；
+  - 带 `message` 时读画布目录（选中的节点优先）拼出第一条用户消息，和令牌模式 `Start` 共用 `firstUserMessage`；
+  - 令牌模式的 `ProcessRuntime.baseInput` 也改成调同一个 `runSetup`，**组装逻辑只有一份**；既有测试一条没改全部通过；
+  - 工具声明随任务模式和模型是否支持看图变化，配置里停用的工具（`SetDisabledTools`）去掉并在 `disabled_tools` 里告诉 Agent；
+  - 不读写任何记录、不发事件。
+
+**测试**（先写测试、确认因预期原因失败，再实现）
+- `tool_end` 与令牌模式的 `tool.end` 事件**逐字段一致**（读画布、写画布、整理布局、查模型、未知工具、校验失败共 6 种；新建节点的随机 id 比较前抹掉）；拒绝也有；响应 JSON 里确实有这个字段；真实 HTTP 响应里也有。
+- 运行准备：模型规格取自快照、没有技能时提示词就是 `System(mode)`、有技能时带目录、工具随模式和看图变化、停用的工具去掉、第一条消息与 `prompts.User` 的拼装一致、默认 40 步、版本信息取自服务配置、各种错误（上下文不合法、非 Agent 模型、没有上下文规格、负的步数、别人的画布）、不发事件不建记录。
+- Handler 与路由：参数传递、各种非法请求不进入业务层、业务错误码保留、只认服务令牌。
+- **真实 HTTP + 真实 Postgres**：画布目录读自真实的库（选中的 `n_old` 和 `n_script` 都在第一条消息里），雪花大小的运行 id，不落任何记录。
+
+**接下来**（3.2-1 起都在 TypeScript 里）：加依赖、平台客户端、模型提供方（exp10 的做法）。

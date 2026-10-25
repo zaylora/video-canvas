@@ -42,6 +42,8 @@ type PlatformAPI interface {
 	ExecutePlatformTool(ctx context.Context, rc agentsvc.RunContext, toolCallID, name string, args json.RawMessage) (*agentsvc.ToolResult, error)
 	// EndPlatformRun 释放一个运行在内存里的状态。
 	EndPlatformRun(runID uint64)
+	// PrepareRun 给 Agent 服务一次运行（或续跑）需要的、由平台决定的内容：模型规格、系统提示词、工具声明、第一条消息、版本。
+	PrepareRun(ctx context.Context, rc agentsvc.RunContext, req agentsvc.PrepareRequest) (*agentsvc.RunSetup, error)
 	// ProposeApproval 为需要用户决定的工具调用（生成、删除、提问）算出审批内容和预估积分，不落库。
 	ProposeApproval(ctx context.Context, rc agentsvc.RunContext, kind string, args json.RawMessage) (*agentsvc.ApprovalProposal, error)
 	// ResolveApproval 把用户的决定解析成实际批准了什么，纯逻辑。
@@ -256,6 +258,30 @@ func (h *PlatformHandler) ExecuteApproval(c *gin.Context) {
 		return
 	}
 	out, err := h.svc.ExecuteApproval(c.Request.Context(), rc, req.Kind, id, req.ToolCallID, *req.Outcome)
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, out)
+}
+
+// prepareBody 是运行准备的请求体；整个请求体可以省略（续跑）。
+type prepareBody struct {
+	Message  string `json:"message" binding:"max=20000" label:"message"`
+	MaxSteps int    `json:"max_steps" binding:"min=0,max=1000" label:"max_steps"`
+}
+
+// PrepareRun 给 Agent 服务发起运行（或续跑）所需的、由平台决定的内容。不读写任何记录。
+func (h *PlatformHandler) PrepareRun(c *gin.Context) {
+	rc, ok := parseRunContext(c)
+	if !ok {
+		return
+	}
+	var req prepareBody
+	if c.Request.ContentLength != 0 && !handler.BindJSON(c, &req) {
+		return
+	}
+	out, err := h.svc.PrepareRun(c.Request.Context(), rc, agentsvc.PrepareRequest{Message: req.Message, MaxSteps: req.MaxSteps})
 	if err != nil {
 		response.Fail(c, err)
 		return

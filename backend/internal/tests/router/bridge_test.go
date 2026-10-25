@@ -96,6 +96,10 @@ func (p *platformStub) PlatformRunUsage(context.Context, agentsvc.RunContext, ui
 	return &agentsvc.PlatformUsage{}, nil
 }
 
+func (p *platformStub) PrepareRun(context.Context, agentsvc.RunContext, agentsvc.PrepareRequest) (*agentsvc.RunSetup, error) {
+	p.calls++
+	return &agentsvc.RunSetup{}, nil
+}
 func (p *platformStub) ProposeApproval(context.Context, agentsvc.RunContext, string, json.RawMessage) (*agentsvc.ApprovalProposal, error) {
 	p.calls++
 	return &agentsvc.ApprovalProposal{}, nil
@@ -175,13 +179,14 @@ func TestNewBridge_PlatformRoutesNeedTheServiceToken(t *testing.T) {
 	}
 }
 
-// 审批的预估、解析、执行三个接口同样只认服务令牌：执行会删画布、创建生成任务（花积分），不能裸露
+// 运行准备和审批的预估、解析、执行同样只认服务令牌：执行会删画布、创建生成任务（花积分），不能裸露
 func TestNewBridge_ApprovalRoutesNeedTheServiceToken(t *testing.T) {
 	const token = "service-token-0123456789abcdef0123456789"
 	plat := &platformStub{}
 	srv := httptest.NewServer(router.NewBridge("test", agenthandler.NewAgentBridgeHandler(&stubBridge{}), agenthandler.NewPlatformHandler(plat), token))
 	defer srv.Close()
 	for path, body := range map[string]string{
+		"/internal/platform/v1/runs/prepare":      `{}`,
 		"/internal/platform/v1/approvals/propose": `{"kind":"ask","args":{}}`,
 		"/internal/platform/v1/approvals/resolve": `{"kind":"ask","payload":{},"decision":{"decision":"approve"}}`,
 		"/internal/platform/v1/approvals/execute": `{"kind":"delete","approval_id":"1","outcome":{"status":"approved"}}`,

@@ -48,6 +48,18 @@ type fakePlatform struct {
 	proposal   *agentsvc.ApprovalProposal
 	approved   *agentsvc.ApprovalOutcome
 	execution  *agentsvc.ApprovalExecution
+
+	// 运行准备
+	prepReq agentsvc.PrepareRequest
+	setup   *agentsvc.RunSetup
+}
+
+func (f *fakePlatform) PrepareRun(_ context.Context, rc agentsvc.RunContext, req agentsvc.PrepareRequest) (*agentsvc.RunSetup, error) {
+	f.rc, f.prepReq = rc, req
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.setup, nil
 }
 
 func (f *fakePlatform) ProposeApproval(_ context.Context, rc agentsvc.RunContext, kind string, args json.RawMessage) (*agentsvc.ApprovalProposal, error) {
@@ -118,6 +130,7 @@ func newPlatformRouter(api PlatformAPI) *gin.Engine {
 	g.DELETE("/runs/:run_id", h.EndRun)
 	g.POST("/model/chat/completions", h.ChatCompletions)
 	g.GET("/runs/:run_id/usage", h.Usage)
+	g.POST("/runs/prepare", h.PrepareRun)
 	g.POST("/approvals/propose", h.ProposeApproval)
 	g.POST("/approvals/resolve", h.ResolveApproval)
 	g.POST("/approvals/execute", h.ExecuteApproval)
@@ -505,5 +518,58 @@ func TestPlatformHandler_ApprovalBusinessErrorsKeepTheirCode(t *testing.T) {
 	w := platformCall(newPlatformRouter(api), http.MethodPost, approvalsPath+"resolve", `{"kind":"generate","payload":{},"decision":{"decision":"approve"}}`, hdr)
 	if respCode(t, w) != errcode.ErrAgentOverBudget.Code {
 		t.Errorf("超预算要原样返回业务错误码（Agent 服务据此提示用户加预算）: %d %s", w.Code, w.Body)
+	}
+}
+
+// ---- 运行准备 ----
+
+func TestPlatformHandler_PrepareRunPassesContextAndBody(t *testing.T) {
+	api := &fakePlatform{setup: &agentsvc.RunSetup{SystemPrompt: "你是画布助手", FirstMessage: "拆分镜", Model: agentsvc.RunModel{ContextWindow: 200000}}}
+	w := platformCall(newPlatformRouter(api), http.MethodPost, "/internal/platform/v1/runs/prepare", `{"message":"拆分镜","max_steps":25}`, map[string]string{"X-Agent-Context": ctxHeader(goodCtx)})
+	if w.Code != 200 || respCode(t, w) != 0 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if api.rc.RunID != 1152921504606846977 || api.rc.ModelKey != "claude" || api.prepReq.Message != "拆分镜" || api.prepReq.MaxSteps != 25 {
+		t.Errorf("业务层收到的: %+v %+v", api.rc, api.prepReq)
+	}
+	for _, want := range []string{`"system_prompt":"你是画布助手"`, `"first_message":"拆分镜"`, `"context_window":200000`} {
+		if !strings.Contains(w.Body.String(), want) {
+			t.Errorf("响应缺少 %s: %s", want, w.Body)
+		}
+	}
+	// 续跑：不带请求体也行
+	platformCall(newPlatformRouter(api), http.MethodPost, "/internal/platform/v1/runs/prepare", ``, map[string]string{"X-Agent-Context": ctxHeader(goodCtx)})
+	if api.prepReq.Message != "" {
+		t.Errorf("续跑没有消息: %+v", api.prepReq)
+	}
+}
+
+func TestPlatformHandler_PrepareRunRejectsBadRequests(t *testing.T) {
+	hdr := map[string]string{"X-Agent-Context": ctxHeader(goodCtx)}
+	for name, c := range map[string]struct {
+		body string
+		hdr  map[string]string
+	}{
+		"缺上下文头":   {`{}`, nil},
+		"不是 JSON": {`不是 JSON`, hdr},
+		"步数上限是负数": {`{"message":"x","max_steps":-3}`, hdr},
+		"步数上限太大":  {`{"message":"x","max_steps":100000}`, hdr},
+		"消息太长":    {`{"message":"` + strings.Repeat("字", 20001) + `"}`, hdr},
+	} {
+		t.Run(name, func(t *testing.T) {
+			api := &fakePlatform{setup: &agentsvc.RunSetup{}}
+			w := platformCall(newPlatformRouter(api), http.MethodPost, "/internal/platform/v1/runs/prepare", c.body, c.hdr)
+			if w.Code != 400 || respCode(t, w) != errcode.ErrInvalidParams.Code {
+				t.Fatalf("应 400 参数错误: status=%d %s", w.Code, w.Body)
+			}
+			if api.prepReq.Message != "" || api.prepReq.MaxSteps != 0 {
+				t.Error("不合法的请求不能进入业务层")
+			}
+		})
+	}
+	// 模型不可用等业务错误原样返回
+	w := platformCall(newPlatformRouter(&fakePlatform{err: errcode.ErrAgentModelNA}), http.MethodPost, "/internal/platform/v1/runs/prepare", `{}`, hdr)
+	if respCode(t, w) != errcode.ErrAgentModelNA.Code {
+		t.Errorf("业务错误要保留错误码: %d %s", w.Code, w.Body)
 	}
 }

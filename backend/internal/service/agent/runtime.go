@@ -14,9 +14,7 @@ import (
 	"go.uber.org/zap"
 
 	"video-canvas/internal/agent/canvasgraph"
-	"video-canvas/internal/agent/prompts"
 	"video-canvas/internal/model"
-	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/provider"
 )
@@ -96,11 +94,10 @@ func (r *ProcessRuntime) Start(ctx context.Context, run *model.AgentRun, in mode
 	if err != nil {
 		return err
 	}
-	catJSON, err := json.Marshal(cat)
+	text, err := firstUserMessage(in.Message, cat, run.MaxSteps)
 	if err != nil {
 		return err
 	}
-	text := prompts.User(in.Message, string(catJSON), prompts.RunInfo{MaxSteps: run.MaxSteps})
 	input["mode"], input["prompt"] = "start", map[string]any{"text": text}
 	return r.launch(ctx, run, in, input, true)
 }
@@ -154,35 +151,22 @@ func (r *ProcessRuntime) waitExit(ctx context.Context, runID uint64) error {
 
 // baseInput 组装启动参数里与启动方式无关的部分：模型、系统提示词、可用工具、历史。
 func (r *ProcessRuntime) baseInput(ctx context.Context, run *model.AgentRun, in model.AgentRunInput) (map[string]any, error) {
-	snap, _, err := r.d.Bridge.resolveModel(ctx, in.ModelKey) // 顺便确认模型和渠道 Key 都可用，不可用就不要白起一个进程
+	mode := firstNonEmpty(in.Mode, run.Mode, model.AgentModeAll)
+	setup, err := r.d.Bridge.runSetup(ctx, run, in.ModelKey, mode, r.d.Config.DisabledTools) // 顺便确认模型和渠道 Key 都可用，不可用就不要白起一个进程
 	if err != nil {
 		return nil, err
 	}
-	caps := snap.Model.Capabilities
-	if caps.Context == nil {
-		return nil, errcode.ErrAgentModelNA
-	}
-	mode := firstNonEmpty(in.Mode, run.Mode, model.AgentModeAll)
-	// 技能目录随系统提示词：读不出来（数据库故障）不拦住运行，退化成没有目录，模型仍能 skill_search / skill_read
-	var catalog []prompts.SkillItem
-	if brief, err := r.d.Bridge.skillLib().Enabled(ctx); err != nil {
-		logger.Warn("读取技能目录失败，本次运行的提示词不带技能目录", zap.Error(err), zap.Uint64("run_id", run.ID))
-	} else {
-		for _, sk := range brief {
-			catalog = append(catalog, prompts.SkillItem{Name: sk.Name, Description: sk.Description})
-		}
-	}
 	input := map[string]any{
 		"bridge_url":    r.d.Config.BridgeURL,
-		"model":         map[string]any{"name": snap.Model.Label, "context_window": caps.Context.Window, "max_tokens": caps.Context.Output, "vision": caps.Vision},
-		"system_prompt": prompts.SystemWithSkills(mode, catalog),
-		"tools":         r.declaredTools(mode, caps.Vision),
+		"model":         setup.Model,
+		"system_prompt": setup.SystemPrompt,
+		"tools":         setup.Tools,
 	}
 	if r.d.Config.ServiceToken != "" {
 		input["service_token"] = r.d.Config.ServiceToken
 	}
-	if len(r.d.Config.DisabledTools) > 0 {
-		input["disabled_tools"] = r.d.Config.DisabledTools // Agent 自己的工具（如 codemode）靠它决定启用与否
+	if len(setup.DisabledTools) > 0 {
+		input["disabled_tools"] = setup.DisabledTools // Agent 自己的工具（如 codemode）靠它决定启用与否
 	}
 	state, err := r.d.Bridge.LoadState(ctx, run.UserID, run.SessionID)
 	if err != nil {
