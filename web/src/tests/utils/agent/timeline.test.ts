@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test";
 
 import type { AgentEventDto } from "@/api/agent/type";
-import { applyAgentEvent, emptySession } from "@/utils/agent/session-state";
+import {
+  ACTIVE_RUN_STATUSES,
+  activeRunId,
+  applyAgentEvent,
+  emptySession,
+} from "@/utils/agent/session-state";
 import {
   buildRunStrip,
   buildStatusLine,
@@ -544,6 +549,56 @@ describe("状态行", () => {
       ]);
       expect(buildStatusLine(s)?.since).toBe(Date.parse(at(HOURS)));
     }
+  });
+
+  test("服务重启后自动续跑（recovering）：算进行中，状态行说「正在恢复…」；接上后回到正常，计时从恢复那一刻起", () => {
+    reset();
+    const recovering = fold([
+      ev("run.status", { status: "queued" }, "r1", 1),
+      ev("run.status", { status: "running" }, "r1", 2),
+      ev("tool.start", { id: "a", name: "canvas_arrange" }, "r1", 3),
+      ev("run.status", { status: "recovering" }, "r1", 600),
+    ]);
+    // 还占着画布：流式残留不会被当成运行已结束清掉
+    expect(ACTIVE_RUN_STATUSES).toContain("recovering");
+    expect(activeRunId(recovering)).toBe("r1");
+    // 重启前那个工具已经不在了，不能继续显示「正在整理布局…」
+    expect(buildStatusLine(recovering)).toEqual({
+      runId: "r1",
+      text: "正在恢复…",
+      waiting: false,
+      since: Date.parse(at(600)),
+    });
+    // 接上了：服务补一条 running，之后和平常一样
+    const back = fold([...recovering.events, ev("run.status", { status: "running" }, "r1", 601)]);
+    const line = buildStatusLine(back);
+    expect(line?.text).toBe("正在整理布局…");
+    expect(line?.since).toBe(Date.parse(at(600)));
+  });
+
+  test("恢复中会清掉重启前流出的半截回答（它不会再来了），状态行才能显示", () => {
+    reset();
+    const s = fold([
+      ev("run.status", { status: "running" }, "r1", 1),
+      ev("message.delta", { text: "半截回答" }, "r1", 0),
+    ]);
+    expect(s.stream.text).toBe("半截回答");
+    const after = applyAgentEvent(s, ev("run.status", { status: "recovering" }, "r1", 2));
+    expect(after.stream.text).toBe("");
+    expect(buildStatusLine(after)?.text).toBe("正在恢复…");
+  });
+
+  test("恢复中不会在消息流里留一张状态卡片（不是需要用户知道的结果）", () => {
+    reset();
+    const items = buildTimeline(
+      fold([
+        ev("message.user", { text: "拆分镜" }),
+        ev("run.status", { status: "running" }),
+        ev("run.status", { status: "recovering" }),
+        ev("run.status", { status: "running" }),
+      ]),
+    );
+    expect(items.filter((i) => i.type === "status")).toEqual([]);
   });
 
   test("计时：直接 queued → running 仍从 queued 算；工具切换不重置；再次 queued 重新起算", () => {

@@ -81,16 +81,16 @@ function errorBody(e: unknown, log: NonNullable<ApiOptions["log"]>): { status: n
 export function createApiApp(o: ApiOptions): FastifyInstance {
   const { service, codec } = o;
   const log = o.log ?? ((msg, extra) => void process.stderr.write(JSON.stringify({ msg, ...extra }) + "\n"));
-  const app = Fastify({ bodyLimit: o.maxBody ?? DEFAULT_MAX_BODY, logger: false, disableRequestLogging: true });
+  const root = Fastify({ bodyLimit: o.maxBody ?? DEFAULT_MAX_BODY, logger: false, disableRequestLogging: true });
   const want = Buffer.from(o.serviceToken);
 
-  app.setErrorHandler((e, _req, reply) => {
+  root.setErrorHandler((e, _req, reply) => {
     const { status, body } = errorBody(e, log);
     return reply.code(status).send(body);
   });
-  app.setNotFoundHandler((_req, reply) => reply.code(404).send({ code: 10002, msg: "资源不存在" }));
+  root.setNotFoundHandler((_req, reply) => reply.code(404).send({ code: 10002, msg: "资源不存在" }));
   // 继续、取消、撤销这类不需要请求体的，前端可能什么都不发（甚至带着 JSON 的内容类型）：空体当 {}；不是合法 JSON 是 400
-  app.addContentTypeParser("application/json", { parseAs: "string" }, (_req, body, done) => {
+  root.addContentTypeParser("application/json", { parseAs: "string" }, (_req, body, done) => {
     const raw = String(body).trim();
     if (!raw) return done(null, {});
     try {
@@ -99,77 +99,80 @@ export function createApiApp(o: ApiOptions): FastifyInstance {
       done(new ValidationError("请求参数格式错误"));
     }
   });
-  app.addHook("onRequest", async (req, reply) => {
-    const got = Buffer.from(String(req.headers[SERVICE_TOKEN_HEADER] ?? ""));
-    const user = String(req.headers[USER_HEADER] ?? "");
-    if (got.length !== want.length || !timingSafeEqual(got, want) || !/^[1-9][0-9]{0,19}$/.test(user)) {
-      return reply.code(401).send({ code: 10003, msg: "未登录或登录已过期" });
-    }
+  // 鉴权钩子和路由放在子插件里：同一个实例上还能再挂不需要令牌的路由（健康检查）
+  root.register(async (app) => {
+    app.addHook("onRequest", async (req, reply) => {
+      const got = Buffer.from(String(req.headers[SERVICE_TOKEN_HEADER] ?? ""));
+      const user = String(req.headers[USER_HEADER] ?? "");
+      if (got.length !== want.length || !timingSafeEqual(got, want) || !/^[1-9][0-9]{0,19}$/.test(user)) {
+        return reply.code(401).send({ code: 10003, msg: "未登录或登录已过期" });
+      }
+    });
+
+    /** 路径里的编码 id 还原成十进制；格式不对是 10001「xxx 格式错误」 */
+    const id = (req: Req, name: string): string => {
+      const dec = codec.decodeDecimal(req.params[name]);
+      if (dec === undefined) throw Err.invalidParams(`${name} 格式错误`);
+      return dec;
+    };
+    const user = (req: FastifyRequest) => String(req.headers[USER_HEADER]);
+    const body = (req: FastifyRequest) => req.body ?? {};
+    const query = (req: FastifyRequest) => new URL(req.url, "http://x").searchParams;
+    const ok = (reply: FastifyReply, data?: unknown, status = 200) =>
+      reply.code(status).header("cache-control", "no-store").send({ code: 0, msg: "success", ...(data !== undefined && { data }) });
+
+    app.get("/agent/models", async (_req, reply) => ok(reply, await service.models()));
+    app.get("/canvas/:id/agent/sessions", async (req: Req, reply) => ok(reply, await service.listSessions(user(req), id(req, "id"))));
+    app.post("/canvas/:id/agent/sessions", async (req: Req, reply) => {
+      const canvas = id(req, "id");
+      return ok(reply, await service.createSession(user(req), canvas, validateBody(body(req), CREATE_SESSION)));
+    });
+    app.patch("/agent/sessions/:sid", async (req: Req, reply) => {
+      const sid = id(req, "sid");
+      return ok(reply, await service.renameSession(user(req), sid, validateBody(body(req), RENAME).title));
+    });
+    app.delete("/agent/sessions/:sid", async (req: Req, reply) => {
+      await service.deleteSession(user(req), id(req, "sid"));
+      return ok(reply);
+    });
+    app.get("/agent/sessions/:sid/events", async (req: Req, reply) => {
+      const sid = id(req, "sid");
+      const q = query(req);
+      return ok(reply, await service.events(user(req), sid, queryInt(q, "after", "after", 0), queryInt(q, "limit", "limit", 0, 200)));
+    });
+    app.get("/agent/sessions/:sid/history", async (req: Req, reply) => {
+      const sid = id(req, "sid");
+      const q = query(req);
+      return ok(reply, await service.history(user(req), sid, queryInt(q, "before", "before", 0), queryInt(q, "limit", "limit", 0, 200)));
+    });
+    app.post("/agent/sessions/:sid/runs", async (req: Req, reply) => {
+      const sid = id(req, "sid");
+      return ok(reply, await service.startRun(user(req), sid, validateBody(body(req), START_RUN) as never), 202);
+    });
+    app.post("/agent/runs/:rid/interject", async (req: Req, reply) => {
+      const rid = id(req, "rid");
+      await service.interject(user(req), rid, validateBody(body(req), INTERJECT).message);
+      return ok(reply);
+    });
+    app.post("/agent/runs/:rid/cancel", async (req: Req, reply) => ok(reply, await service.cancel(user(req), id(req, "rid"))));
+    app.post("/agent/runs/:rid/resume", async (req: Req, reply) => {
+      const rid = id(req, "rid");
+      return ok(reply, await service.resume(user(req), rid, validateBody(body(req), RESUME).add_budget));
+    });
+    app.post("/agent/runs/:rid/undo", async (req: Req, reply) => ok(reply, await service.undo(user(req), id(req, "rid"))));
+    app.put("/agent/runs/:rid/feedback", async (req: Req, reply) => {
+      const rid = id(req, "rid");
+      return ok(reply, await service.setFeedback(user(req), rid, validateBody(body(req), FEEDBACK) as never));
+    });
+    app.delete("/agent/runs/:rid/feedback", async (req: Req, reply) => {
+      await service.clearFeedback(user(req), id(req, "rid"));
+      return ok(reply);
+    });
+    app.post("/agent/approvals/:aid/decision", async (req: Req, reply) => {
+      const aid = id(req, "aid");
+      return ok(reply, await service.decide(user(req), aid, validateBody(body(req), DECIDE) as never));
+    });
   });
 
-  /** 路径里的编码 id 还原成十进制；格式不对是 10001「xxx 格式错误」 */
-  const id = (req: Req, name: string): string => {
-    const dec = codec.decodeDecimal(req.params[name]);
-    if (dec === undefined) throw Err.invalidParams(`${name} 格式错误`);
-    return dec;
-  };
-  const user = (req: FastifyRequest) => String(req.headers[USER_HEADER]);
-  const body = (req: FastifyRequest) => req.body ?? {};
-  const query = (req: FastifyRequest) => new URL(req.url, "http://x").searchParams;
-  const ok = (reply: FastifyReply, data?: unknown, status = 200) =>
-    reply.code(status).header("cache-control", "no-store").send({ code: 0, msg: "success", ...(data !== undefined && { data }) });
-
-  app.get("/agent/models", async (_req, reply) => ok(reply, await service.models()));
-  app.get("/canvas/:id/agent/sessions", async (req: Req, reply) => ok(reply, await service.listSessions(user(req), id(req, "id"))));
-  app.post("/canvas/:id/agent/sessions", async (req: Req, reply) => {
-    const canvas = id(req, "id");
-    return ok(reply, await service.createSession(user(req), canvas, validateBody(body(req), CREATE_SESSION)));
-  });
-  app.patch("/agent/sessions/:sid", async (req: Req, reply) => {
-    const sid = id(req, "sid");
-    return ok(reply, await service.renameSession(user(req), sid, validateBody(body(req), RENAME).title));
-  });
-  app.delete("/agent/sessions/:sid", async (req: Req, reply) => {
-    await service.deleteSession(user(req), id(req, "sid"));
-    return ok(reply);
-  });
-  app.get("/agent/sessions/:sid/events", async (req: Req, reply) => {
-    const sid = id(req, "sid");
-    const q = query(req);
-    return ok(reply, await service.events(user(req), sid, queryInt(q, "after", "after", 0), queryInt(q, "limit", "limit", 0, 200)));
-  });
-  app.get("/agent/sessions/:sid/history", async (req: Req, reply) => {
-    const sid = id(req, "sid");
-    const q = query(req);
-    return ok(reply, await service.history(user(req), sid, queryInt(q, "before", "before", 0), queryInt(q, "limit", "limit", 0, 200)));
-  });
-  app.post("/agent/sessions/:sid/runs", async (req: Req, reply) => {
-    const sid = id(req, "sid");
-    return ok(reply, await service.startRun(user(req), sid, validateBody(body(req), START_RUN) as never), 202);
-  });
-  app.post("/agent/runs/:rid/interject", async (req: Req, reply) => {
-    const rid = id(req, "rid");
-    await service.interject(user(req), rid, validateBody(body(req), INTERJECT).message);
-    return ok(reply);
-  });
-  app.post("/agent/runs/:rid/cancel", async (req: Req, reply) => ok(reply, await service.cancel(user(req), id(req, "rid"))));
-  app.post("/agent/runs/:rid/resume", async (req: Req, reply) => {
-    const rid = id(req, "rid");
-    return ok(reply, await service.resume(user(req), rid, validateBody(body(req), RESUME).add_budget));
-  });
-  app.post("/agent/runs/:rid/undo", async (req: Req, reply) => ok(reply, await service.undo(user(req), id(req, "rid"))));
-  app.put("/agent/runs/:rid/feedback", async (req: Req, reply) => {
-    const rid = id(req, "rid");
-    return ok(reply, await service.setFeedback(user(req), rid, validateBody(body(req), FEEDBACK) as never));
-  });
-  app.delete("/agent/runs/:rid/feedback", async (req: Req, reply) => {
-    await service.clearFeedback(user(req), id(req, "rid"));
-    return ok(reply);
-  });
-  app.post("/agent/approvals/:aid/decision", async (req: Req, reply) => {
-    const aid = id(req, "aid");
-    return ok(reply, await service.decide(user(req), aid, validateBody(body(req), DECIDE) as never));
-  });
-
-  return app;
+  return root;
 }

@@ -71,6 +71,7 @@ export const ACTIVE_RUN_STATUSES: readonly AgentRunStatus[] = [
   "running",
   "waiting_approval",
   "waiting_input",
+  "recovering",
 ];
 
 /** 空会话 */
@@ -106,9 +107,11 @@ function foldDerived(state: AgentSessionState, ev: AgentEventDto): AgentSessionS
         [ev.run_id]: { ...prev, status, error: asString(data.error) },
       };
       // 运行不再进行了，没落成 message.done 的残余文字不再有意义
-      const stream = ACTIVE_RUN_STATUSES.includes(status)
-        ? state.stream
-        : { runId: null, text: "", thinking: "" };
+      // 恢复中也要清：重启前流出的半截回答不会再来了（服务会重新请求模型）
+      const stream =
+        ACTIVE_RUN_STATUSES.includes(status) && status !== "recovering"
+          ? state.stream
+          : { runId: null, text: "", thinking: "" };
       return { ...state, runs, stream };
     }
     case "run.usage": {

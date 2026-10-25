@@ -512,12 +512,14 @@ export function buildStatusLine(state: AgentSessionState): StatusLine | null {
       // 等待的几小时不算在内，所以从恢复运行那一刻起算；一轮的头一条状态没有别的可依据，就用它
       const resumed =
         status === "running" && (prev === "waiting_approval" || prev === "waiting_input");
-      if (status === "queued" || resumed || since === null) since = time(ev);
+      if (status === "queued" || status === "recovering" || resumed || since === null)
+        since = time(ev);
       prev = status;
     }
   }
   const running = [...open.values()].at(-1);
-  const text = running ? `正在${running}…` : "思考中…";
+  // 服务重启后自动续跑中：重启前正在做的那一步已经不在了，先说正在恢复，接上后服务补一条 running
+  const text = status === "recovering" ? "正在恢复…" : running ? `正在${running}…` : "思考中…";
   return { runId, text, waiting: false, since };
 }
 

@@ -13,6 +13,8 @@ export type AgentRunStatus =
   | "waiting_approval"
   /** 等用户回答提问 */
   | "waiting_input"
+  /** 服务重启后自动续跑中（只作为事件出现，不是落库的状态）：接上之前显示「正在恢复…」，接上后回到 running */
+  | "recovering"
   /** 完成 */
   | "succeeded"
   /** 失败 */

@@ -15,7 +15,7 @@ test("工具执行时连发两条插话：不打断，下一次请求里一起�
   }, async (b) => {
     const control = new EventEmitter();
     const run = runAgent(baseInput(b.url), { control });
-    await sleep(80);
+    for (let i = 0; i < 250 && b.rec.tools.length === 0; i++) await sleep(20); // 等工具真的开始了再插话（机器忙时固定等待不可靠）
     control.emit("steer", "再暖一点");
     await sleep(40);
     control.emit("steer", "改成竖屏");
