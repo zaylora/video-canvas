@@ -15,6 +15,7 @@ node --disable-warning=ExperimentalWarning exp1-approval.ts
 | `exp3-steer.ts` | 官方插话（A）与「中止后重提」（B）的差别 | A：插话等回答写完才处理，用户会看到两段回答；B 能还原现在的打断重答。**已决定用官方效果（A）** |
 | `exp4-compaction.ts` | `beforeCompact` 钩子在自动、手动压缩时的参数，以及第二次压缩能不能拿到上一份摘要 | 钩子都会被调用；第二次的 `entries[0]` 是上一份摘要 |
 | `exp5-hook-model.ts` | 在钩子里用 `api.models` 调模型，按自己的提示词写摘要并返回 `{summary}` | 可行 |
+| `exp7-events.ts` | `watchEvents` 在一次「提问 → 模型说话并调工具 → 工具返回 → 回答」里给出的事件序列，用来和平台现有事件对照（阶段 3 的事件映射，见设计文档第 18 节） | Pi 的事件够细，能映射；但积分、画布改动、审批这些只有 Go 知道 |
 | `exp6-many.ts` | 一个 Harness（一个 SQLite 文件）同时托管很多会话 | 200 个会话 × 3 轮同时进行，全部完成，没有串内容 |
 
 `exp6-many.ts` 可以带参数：`node … exp6-many.ts 500`。

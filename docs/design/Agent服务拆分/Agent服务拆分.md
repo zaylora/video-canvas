@@ -493,3 +493,76 @@ Agent 服务 ──模型 / 工具 / 技能 / 计费──▶ Go 平台能力 AP
 - **多进程**：Pi Durable 一个存储只能被一个进程持有（文档明确写了），没有试，也不打算支持。
 - **升级演练**：1.4.0 的 SQLite schema 升级不可逆，升级前备份的流程要在阶段 3 做 `update.sh` 时验证。
 - **事件流**：`watchEvents` 能不能直接映射成现有的 `agent_events`（`message.*`、`tool.start/end`、`approval.*`…）没有试，这是阶段 3 前期要做的第一件事。
+
+## 18. 阶段 3 的事件映射结论（2026-10-25）
+
+阶段 3 的第一步是确认「前端完全不用改」能不能成立：现在前端靠 `agent_events` 的 12 类事件渲染，Pi 的 `watchEvents` 能不能映射成它们。结论是**能映射，但没必要映射：这些事件现在就不是 Agent 进程发的，而是 Go 发的，阶段 3 之后仍然该由 Go 发。**
+
+### 18.1 现状：12 类事件全部由 Go 发出
+
+逐个核对了发出位置（`backend/internal/service/agent/`）：
+
+| 事件 | 落库 | 谁发、在什么时候 | 里面有什么只有 Go 知道的 |
+|---|---|---|---|
+| `message.user` | 是 | `run.go`：用户发起运行、插话时 | 用户选中的节点 `selection`、是否插话 `steer` |
+| `message.delta` / `thinking.delta` | 否（临时） | `bridge.go`：模型代理转发上游流式输出，50ms 合并一次 | — |
+| `message.done` | 是 | `bridge.go`：一次模型调用结束 | 本次调用扣的积分 `credits`、是否估算 `estimated`、是否被截断 `partial` |
+| `tool.start` / `tool.end` | 是 | `bridge_tools.go`：Go 执行一次工具；Agent 自己的工具（codemode）经 `/tool-event` 报备后由 `bridge_agent_tool.go` 发 | 一行摘要 `summary`、被改动的节点 `node_ids`、撤销依据的改动记录 |
+| `plan.updated` | 是 | `bridge_tools.go`：`plan_update` 工具 | — |
+| `approval.created` / `approval.decided` | 是 | `approval.go` | 预估积分、批准后的执行结果 |
+| `run.status` | 是 | 11 处：`run.go`、`bridge.go`（开始、结束、预算用尽、步数用尽）、`approval.go`、`runtime.go`（中断） | 预算、步数、状态机的 CAS |
+| `run.usage` | 是 | `agent.go`：每次计费后 | 已花积分、上下文大小 |
+| `feedback.*`、`run.undone` | 是 | `observe.go`、`run.go` | 用户评价、撤销 |
+
+这些事件有一个共同点：**都是 Go 在处理一次平台调用时顺手发的**（模型代理、工具执行、用户的 HTTP 请求、审批决定、进程结束）。阶段 3 之后模型和工具仍然走 Go 的平台 API，所以 Go 仍然会看到每一次这样的调用。
+
+### 18.2 Pi 的事件能给什么（实测 exp7）
+
+一次「提问 → 模型说话并调工具 → 工具返回 → 回答」，`watchEvents` 给出：`message_start/end`（用户条目、`pi.system`、助手、工具结果）、`submission`、`run_start/end`、`turn_start/end`、`tool_execution_start/update/end`（带调用 id、工具名、参数、输出增量）、`usage_changed`。流式输出时还有 `message_update`（`text_delta`、`thinking_delta`）。
+
+逐项对照：
+
+| 平台事件 | Pi 能给 | 缺什么 |
+|---|---|---|
+| `message.user` | 自定义用户条目 `app.user` 的 `message_end`（实测 `data` 能带 `selection`、`steer`） | 够 |
+| `message.delta` / `thinking.delta` | `message_update` 的 `text_delta` / `thinking_delta` | 够 |
+| `message.done` | 助手的 `message_end` | **`credits`、`estimated`、`partial`** |
+| `tool.start` / `tool.end` | `tool_execution_start/end`（id、名字、参数） | **`summary`、`node_ids`、改动记录**（得靠工具结果的 `details` 带回） |
+| `plan.updated` | 无（是 Go 的工具） | 全部 |
+| `approval.*` | 无 | 全部 |
+| `run.status` | `run_start/end`、`submission` 大致对应 running、succeeded | 预算用尽、步数用尽、等审批、中断这些状态 |
+| `run.usage` | `usage_changed` 是 token，不是积分 | 积分 |
+
+Pi 的事件还带很多前端不需要的噪音（`pi.system`、`turn_start/end`、`inbox_update`…），映射时要过滤。
+
+### 18.3 决定：事件继续由 Go 发（推荐），不做映射层
+
+如果让 Agent 服务映射 Pi 的事件再推给 Go：
+- 积分、节点改动、审批这些字段 Agent 服务拿不到，要么让 Go 再补发一遍（同一件事两处各发一半），要么让工具结果把 Go 的数据绕一圈带回来；
+- Go 现在发的事件还得去掉，否则前端会收到重复的 `tool.start`、`message.done`；
+- 要新做一套事件的幂等键和重发机制。
+
+而如果事件继续由 Go 发：**前端、后台运行记录页、观测导出、`agent-trace` 全都不用动，`agent_events` 的序号（`seq`）也仍由 Go 分配**。第 8.3 节规划的「事件推送入口」（`POST /internal/platform/events`）在阶段 3 里不再需要。
+
+### 18.4 这个结论暴露的真正问题：重放会让事件重复
+
+Pi 在崩溃后会用**同一个 `toolCallId`** 重跑 `replay: "safe"` 的工具（实测 exp2）。Go 的 `executeTool` 每次调用都无条件发 `tool.start`，`recordToolStart` 虽然对重复的 `(run_id, tool_call_id)` 不覆盖，但**事件照发**。前端按 `tool.start` 的 id 建一行，重复的 `tool.start` 会多出一行并造成重复的 key。
+
+这和第 8.2 节要做的「写工具按 `(run_id, tool_call_id)` 幂等」是同一件事，应当一起解决：Go 收到一个已经完成过的 `(run_id, tool_call_id)` 时，**不再执行、不再发事件，直接返回第一次的结果**。依据不能是 `agent_tool_calls`（它是观测数据，写失败只记日志、结果会被截断和清理），要在真正产生副作用的表上加唯一约束（8.2 已写）。
+
+### 18.5 阶段 3 要做的事因此变小，但要定一个范围
+
+| | 方案一：只迁「对话状态与恢复」（推荐） | 方案二：会话、运行、审批、事件全迁（原计划） |
+|---|---|---|
+| Go 里保留 | 会话、运行、审批、事件、`agent_events`、观测、技能，约 5500 行 | 只剩平台能力 |
+| 搬进 Agent 服务 | 对话历史（取代 `session_jsonl` 和 `/state`）、续跑、压缩、插话 | 以上全部，外加运行状态机、审批、事件日志和回放接口 |
+| 要新做的 | 重放幂等（8.2）、`interrupted` 与自动续跑的衔接 | 以上，外加事件日志（序号、回放、保留策略）、审批执行经平台 API、观测导出迁移、后台运行记录页改读新服务 |
+| 前端和后台 | **不改** | 改读新服务，或由 Go 反向代理 |
+| 风险 | 小，每步可单独上线和回退 | 大，阶段 3 和 4 合并成一次 |
+| 以后做子 Agent、团队 | 子运行要在 Go 里建模（会话、运行、事件都要支持父子关系），Go 要动 | Agent 服务内部完成，Go 不动 |
+
+方案一是方案二的子集：以后需要时再把运行和事件搬过去，已经做的不浪费。
+
+### 18.6 方案一里仍要解决的一个衔接问题
+
+现在「Agent 服务断开 = Go 把运行标为 `interrupted`，等用户点继续」（长连接当租约）。接了 Pi Durable 之后，Agent 服务重启时 Pi 会**自动续跑**没跑完的运行，这和「Go 已经把它标成中断」冲突：桥令牌已经被收回，续跑出来的模型调用和工具调用会被 Go 拒绝。需要把「中断」改成两段：先是「恢复中」（Agent 服务重启后重新向 Go 登记这个运行，换新令牌），超过一个期限仍没有恢复才标为 `interrupted`。这是阶段 3 实现时最先要设计和测试的一块。
