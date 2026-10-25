@@ -220,6 +220,8 @@ export function createPlatform({ baseUrl, serviceToken, fetchImpl = fetch }: Pla
   };
 
   return {
+    /** 某个 id 在 Go 那边编码后的串：启动时用它核对两边的 ID 编码密钥是否一致（id-check.ts） */
+    encodeId: async (n: string, signal?: AbortSignal): Promise<string> => (await call<{ encoded: string }>("GET", `/ids/${encodeURIComponent(n)}`, undefined, undefined, { signal })).encoded,
     /** 当前可用的 Agent 模型（没有时是空数组） */
     models: (signal?: AbortSignal) => call<AgentModel[]>("GET", "/agent/models", undefined, undefined, { signal }),
     /** 确认画布属于这个用户；别人的和不存在的一样抛「画布不存在」（30001） */

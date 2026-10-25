@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { configFromEnv, startDurable } from "./durable.ts";
+import { serviceMode } from "./mode.ts";
 import { createAgentServer, MIN_SERVICE_TOKEN_LEN } from "./server.ts";
 
 /**
@@ -10,7 +11,8 @@ import { createAgentServer, MIN_SERVICE_TOKEN_LEN } from "./server.ts";
  *   AGENT_HEARTBEAT_MS   心跳间隔，默认 15000
  * 日志写 stderr（JSON 行）。收到 SIGTERM / SIGINT 时中止所有运行、等它们向桥报告结束，再退出。
  *
- * 配了 AGENT_DB_PATH 就是 durable 模式（Pi Durable 引擎 + 前端用的 REST 接口），额外的环境变量见 durable.ts 的 configFromEnv：
+ * AGENT_RUNTIME=durable（Compose 里传 backend 的 APP_AGENT_RUNTIME；没设时配了 AGENT_DB_PATH 就是）是 durable 模式
+ * （Pi Durable 引擎 + 前端用的 REST 接口），http / process 是旧的无状态模式。durable 额外的环境变量见 durable.ts 的 configFromEnv：
  *   AGENT_DB_PATH                  SQLite 文件（放本地卷）
  *   AGENT_BRIDGE_URL               Go 的桥地址，如 http://backend:47001
  *   AGENT_ID_KEY                   对外 ID 的编码密钥，必须和 Go 的 APP_SERVER_ID_KEY 一样
@@ -40,9 +42,15 @@ function parseListen(raw: string): { host: string; port: number } {
   return { host: m[1].replace(/^\[|\]$/g, ""), port: Number(m[2]) };
 }
 
-// 两种模式：配了 AGENT_DB_PATH 就是 durable 模式（Pi Durable 引擎 + REST 接口，会话、运行、审批都在这里）；
-// 否则是旧的无状态模式（Go 逐个启动运行片段，/segments），阶段 4 删除
-if (process.env.AGENT_DB_PATH) {
+// 两种模式（见 mode.ts）：durable（Pi Durable 引擎 + REST 接口，会话、运行、审批都在这里）；
+// 旧的无状态模式（Go 逐个启动运行片段，/segments），阶段 4 删除
+let mode;
+try {
+  mode = serviceMode(process.env);
+} catch (e) {
+  die(String((e as Error).message));
+}
+if (mode === "durable") {
   let svc;
   try {
     svc = await startDurable(configFromEnv(process.env), log);

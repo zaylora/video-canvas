@@ -9,6 +9,7 @@ import { createApiApp } from "./api/http.ts";
 import { AgentApiService } from "./api/service.ts";
 import { AgentEngine } from "./engine/engine.ts";
 import { EventPusher } from "./event-pusher.ts";
+import { startIdCheck, type IdCheck } from "./id-check.ts";
 import { createIdCodec } from "./ids.ts";
 import { createPlatform } from "./platform-client.ts";
 import { openStore } from "./store/store.ts";
@@ -71,12 +72,18 @@ export interface DurableService {
   close(): Promise<void>;
 }
 
-export async function startDurable(cfg: DurableConfig, log: (msg: string, extra?: Record<string, unknown>) => void): Promise<DurableService> {
+export interface DurableOptions {
+  /** ID 编码密钥核对的间隔（毫秒），测试用，默认 3000 */
+  idCheckIntervalMs?: number;
+}
+
+export async function startDurable(cfg: DurableConfig, log: (msg: string, extra?: Record<string, unknown>) => void, opts: DurableOptions = {}): Promise<DurableService> {
   mkdirSync(dirname(cfg.dbPath), { recursive: true });
   const codec = createIdCodec(cfg.idKey);
   const store = openStore(cfg.dbPath, { workerId: cfg.workerId });
   let engine: AgentEngine | undefined;
   let pusher: EventPusher | undefined;
+  let idCheck: IdCheck | undefined;
   try {
     const platform = createPlatform({ baseUrl: cfg.bridgeUrl, serviceToken: cfg.serviceToken });
     // 事件推给 Go，由它经 WebSocket 发给前端；丢了前端会按 seq 回放补回，所以这里失败只记日志（成串的失败合并成一条）
@@ -95,7 +102,10 @@ export async function startDurable(cfg: DurableConfig, log: (msg: string, extra?
       onEvent: (ev) => p.publish(ev),
     });
     const app = createApiApp({ service: new AgentApiService({ store, engine, platform, codec }), codec, serviceToken: cfg.serviceToken, log });
-    app.get("/health", async () => ({ ok: true }));
+    // 密钥和 Go 不一致时报不健康：一键升级的就绪检查会失败并自动回退，而不是升级成功后用户发现什么都打不开
+    const check = (idCheck = startIdCheck({ platform, codec, log, intervalMs: opts.idCheckIntervalMs }));
+    app.get("/health", async (_req, reply) =>
+      check.state() === "mismatch" ? reply.code(503).send({ ok: false, error: "ID 编码密钥和 Go 不一致，请检查 AGENT_ID_KEY 和 APP_SERVER_ID_KEY" }) : { ok: true });
     const url = await app.listen({ host: cfg.listen.host, port: cfg.listen.port });
     let closing: Promise<void> | undefined;
     const eng = engine;
@@ -103,12 +113,14 @@ export async function startDurable(cfg: DurableConfig, log: (msg: string, extra?
       url, engine: eng,
       close: () => (closing ??= (async () => {
         await app.close();
+        await check.stop();
         await eng.close();
         await p.close(); // 引擎收尾时发的最后几条事件也要推出去
         store.close();
       })()),
     };
   } catch (e) {
+    await idCheck?.stop();
     await engine?.close().catch(() => {});
     await pusher?.close(0);
     store.close();

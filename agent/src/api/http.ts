@@ -82,7 +82,7 @@ function errorBody(e: unknown, log: NonNullable<ApiOptions["log"]>): { status: n
 export function createApiApp(o: ApiOptions): FastifyInstance {
   const { service, codec } = o;
   const log = o.log ?? ((msg, extra) => void process.stderr.write(JSON.stringify({ msg, ...extra }) + "\n"));
-  const root = Fastify({ bodyLimit: o.maxBody ?? DEFAULT_MAX_BODY, logger: false, disableRequestLogging: true });
+  const root = Fastify({ bodyLimit: o.maxBody ?? DEFAULT_MAX_BODY, logger: false });
   const want = Buffer.from(o.serviceToken);
 
   root.setErrorHandler((e, _req, reply) => {

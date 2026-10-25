@@ -97,12 +97,12 @@ type durableEnv struct {
 }
 
 // startDurableAgent 起一个真实的 Agent 服务（durable 模式）：数据在 dbPath 的 SQLite 里，重启同一个路径就是恢复。
-func startDurableAgent(t *testing.T, node, dir, bridgeURL, dbPath string) (url string, kill func()) {
+func startDurableAgent(t *testing.T, node, dir, bridgeURL, dbPath string, idKey ...string) (url string, kill func()) {
 	t.Helper()
 	cmd := exec.Command(node, "--disable-warning=ExperimentalWarning", filepath.Join(dir, "src", "serve.ts"))
 	cmd.Env = []string{
 		"PATH=" + os.Getenv("PATH"), "AGENT_SERVICE_TOKEN=" + e2eServiceToken, "AGENT_LISTEN=127.0.0.1:0",
-		"AGENT_DB_PATH=" + dbPath, "AGENT_BRIDGE_URL=" + bridgeURL, "AGENT_ID_KEY=video-canvas-dev-id-key", // 和 idcodec 没调用 Init 时的默认密钥一致
+		"AGENT_DB_PATH=" + dbPath, "AGENT_BRIDGE_URL=" + bridgeURL, "AGENT_ID_KEY=" + append(idKey, "video-canvas-dev-id-key")[0], // 默认和 idcodec 没调用 Init 时的密钥一致
 	}
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
@@ -599,4 +599,28 @@ func hasEventType(evs []*agentsvc.AgentEventView, typ string) bool {
 		}
 	}
 	return false
+}
+
+// ID 编码密钥和 Go 不一致时，Agent 经真实的 Go 平台接口核对出来，/health 报不健康（一键升级的就绪检查据此回退）；密钥一致时是健康的。
+func TestE2EDurable_IDKeyMismatchMakesAgentUnhealthy(t *testing.T) {
+	e := newDurableE2E(t)
+	health := func(url string) int {
+		resp, err := http.Get(url + "/health")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		return resp.StatusCode
+	}
+	bad, _ := startDurableAgent(t, e.node, e.dir, e.bridge, filepath.Join(t.TempDir(), "bad.sqlite"), "some-other-key")
+	deadline := time.Now().Add(15 * time.Second)
+	for health(bad) != http.StatusServiceUnavailable {
+		if time.Now().After(deadline) {
+			t.Fatal("密钥不一致时 /health 应变成 503")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if got := health(e.agentURL); got != http.StatusOK {
+		t.Errorf("密钥一致的 Agent 应是健康的：%d", got)
+	}
 }

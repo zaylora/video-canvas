@@ -52,8 +52,9 @@ docker compose -f docker-compose.dev.yml exec backend go test ./...
 docker compose -f docker-compose.dev.yml exec web bun run typecheck
 
 # 把画布 Agent 当独立服务跑（可选，默认是 backend 容器里的 Node 子进程）：
-# 需要先在宿主机 agent/ 下 npm ci；两个变量要同时给 backend 和 agent 容器，所以每次都带上
-export AGENT_SERVICE_TOKEN=$(openssl rand -hex 32) APP_AGENT_RUNTIME=http
+# 需要先在宿主机 agent/ 下 npm ci；两个变量要同时给 backend 和 agent 容器，所以每次都带上。
+# durable：会话、运行、审批都在 agent 服务里（数据在 agent_data 卷）；http：旧的无状态服务
+export AGENT_SERVICE_TOKEN=$(openssl rand -hex 32) APP_AGENT_RUNTIME=durable
 docker compose -f docker-compose.dev.yml --profile agent up -d
 # 改了 agent/src 后重启它（它直接跑 TypeScript 源码，不用构建）
 docker compose -f docker-compose.dev.yml --profile agent restart agent

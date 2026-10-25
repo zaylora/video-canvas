@@ -42,6 +42,7 @@ func NewBridge(mode string, h *agenthandler.AgentBridgeHandler, platform *agenth
 		p.POST("/canvases/check", platform.CheckCanvas)
 		p.POST("/messages/check", platform.CheckMessage)
 		p.POST("/runs/:run_id/undo", platform.UndoRun)
+		p.GET("/ids/:n", platform.EncodeID) // Agent 服务启动时核对 ID 编码密钥
 		p.POST("/runs/prepare", platform.PrepareRun)
 		p.POST("/approvals/propose", platform.ProposeApproval)
 		p.POST("/approvals/resolve", platform.ResolveApproval)

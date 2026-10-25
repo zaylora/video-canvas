@@ -14,6 +14,7 @@ import (
 	"video-canvas/internal/handler"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
+	"video-canvas/internal/pkg/idcodec"
 	"video-canvas/internal/pkg/response"
 	agentsvc "video-canvas/internal/service/agent"
 )
@@ -404,4 +405,15 @@ func (h *PlatformHandler) UndoRun(c *gin.Context) {
 		return
 	}
 	response.OK(c, res)
+}
+
+// EncodeID 返回某个 id 在 Go 这边编码后的对外串。Agent 服务用同一个密钥给前端的 ID 编码，
+// 启动时拿几个 id 来对一下：密钥不一致时前端拿到的 ID 全都对不上，要在这里就发现，而不是等用户报「什么都打不开」。
+func (h *PlatformHandler) EncodeID(c *gin.Context) {
+	n, err := strconv.ParseUint(c.Param("n"), 10, 64)
+	if err != nil || n == 0 {
+		response.Fail(c, errcode.ErrInvalidParams.WithMsg("id 必须是正整数"))
+		return
+	}
+	response.OK(c, map[string]string{"encoded": idcodec.Encode(n)})
 }

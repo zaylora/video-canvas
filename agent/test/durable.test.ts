@@ -152,3 +152,55 @@ test("服务入口：durable 模式缺配置时直接退出并说清楚", async 
   assert.equal(await new Promise((r) => child.on("close", r)), 1);
   assert.match(err, /AGENT_BRIDGE_URL/);
 });
+
+test("服务入口：AGENT_RUNTIME=http 时即使配了 AGENT_DB_PATH 也是旧模式（Compose 恒设数据路径，回退不能进 durable）；durable 缺路径、值不认识直接退出", async () => {
+  const run = async (env: Record<string, string>) => {
+    const child = spawn("node", ["--disable-warning=ExperimentalWarning", new URL("../src/serve.ts", import.meta.url).pathname], {
+      env: { PATH: process.env.PATH ?? "", AGENT_SERVICE_TOKEN: TOKEN, AGENT_LISTEN: "127.0.0.1:0", ...env }, stdio: ["ignore", "ignore", "pipe"],
+    });
+    let err = "";
+    child.stderr!.on("data", (c) => (err += c));
+    const exited = new Promise<number | null>((r) => child.on("close", r));
+    for (let i = 0; i < 250 && !/"addr":"/.test(err) && child.exitCode === null; i++) await sleep(20);
+    if (child.exitCode === null) child.kill("SIGTERM");
+    return { code: await exited, err };
+  };
+  const legacy = await run({ AGENT_RUNTIME: "http", AGENT_DB_PATH: "/nonexistent-dir/agent.sqlite" });
+  assert.match(legacy.err, /Agent 服务已启动/);
+  assert.doesNotMatch(legacy.err, /durable/, "旧模式不碰数据库路径");
+  const missing = await run({ AGENT_RUNTIME: "durable" });
+  assert.equal(missing.code, 1);
+  assert.match(missing.err, /AGENT_DB_PATH/);
+  const bad = await run({ AGENT_RUNTIME: "grpc" });
+  assert.equal(bad.code, 1);
+  assert.match(bad.err, /durable、http 或 process/);
+});
+
+test("ID 密钥自检：和 Go 一致 /health 是 200；不一致 /health 是 503 并说明；Go 改对之后恢复", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "durable-"));
+  const go = await fakeGo({ turns: [], idKey: "another-go-key" }); // Go 用的密钥和 Agent 的（ID_KEY）不一样
+  const cfg = configFromEnv({ ...base, AGENT_DB_PATH: join(dir, "agent.sqlite"), AGENT_BRIDGE_URL: go.url, AGENT_LISTEN: "127.0.0.1:0" });
+  const logs: string[] = [];
+  const svc = await startDurable(cfg, (m) => logs.push(m), { idCheckIntervalMs: 5 });
+  try {
+    for (let i = 0; i < 300 && !logs.some((l) => /ID 编码密钥和 Go 不一致/.test(l)); i++) await sleep(10);
+    const res = await fetch(`${svc.url}/health`);
+    assert.equal(res.status, 503);
+    assert.match(((await res.json()) as { error: string }).error, /AGENT_ID_KEY/);
+    assert.ok(logs.some((l) => /APP_SERVER_ID_KEY/.test(l)));
+  } finally {
+    await svc.close();
+    await go.close();
+  }
+  const ok = await fakeGo({ turns: [] }); // 默认密钥和 Agent 的一致
+  const svc2 = await startDurable(configFromEnv({ ...base, AGENT_DB_PATH: join(dir, "agent.sqlite"), AGENT_BRIDGE_URL: ok.url, AGENT_LISTEN: "127.0.0.1:0" }), () => {}, { idCheckIntervalMs: 5 });
+  try {
+    await sleep(100);
+    assert.deepEqual([(await fetch(`${svc2.url}/health`)).status], [200]);
+    assert.ok(ok.paths().some((p) => p.startsWith("GET /ids/")), "启动后核对过");
+  } finally {
+    await svc2.close();
+    await ok.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
+import { createIdCodec } from "../src/ids.ts";
 import type { PlatformUsage, RunSetup, ToolDecl } from "../src/platform-client.ts";
 
 /**
@@ -49,6 +50,8 @@ export interface FakeGoOptions {
   /** 运行准备的出参覆盖项 */
   setup?: Partial<RunSetup>;
   prepareError?: { status: number; code: number; msg: string };
+  /** Go 的 ID 编码密钥（ID 核对用），默认和 durable 测试里的一样 */
+  idKey?: string;
   /** 每次模型调用的积分，默认 1 */
   creditsPerCall?: number;
   usage?: (runId: string, callId: string | undefined, calls: number) => PlatformUsage;
@@ -113,6 +116,8 @@ export async function fakeGo(opts: FakeGoOptions) {
           return ok(res, { is_error: false, payload: { kind: body.kind, args: body.args }, quote_credits: 0, summary: "申请 " + body.kind, content: "已提交，等待决定。", terminate: true, ...p });
         }
         if (path === `${base}/events`) return ok(res, null); // 事件推送：只记录
+        const idm = /^\/internal\/platform\/v1\/ids\/(\d+)$/.exec(path);
+        if (idm) return ok(res, { encoded: createIdCodec(opts.idKey ?? "test-id-key").encode(BigInt(idm[1])) });
         if (path === `${base}/agent/models`) return ok(res, opts.models ?? [{ key: "claude", name: "Claude", vision: true, context_window: 200000 }]);
         if (path === `${base}/canvases/check`) {
           const r = opts.checkCanvas?.(body);

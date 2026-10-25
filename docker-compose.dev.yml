@@ -49,8 +49,8 @@ services:
       # 否则启动自检会失败、后端会一直重启。不想装依赖：APP_AGENT_ENABLED=false docker compose -f docker-compose.dev.yml up -d
       APP_AGENT_ENABLED: ${APP_AGENT_ENABLED:-true}
       APP_AGENT_RUNTIME_DIR: /agent
-      # Agent 作为独立服务（可选）：AGENT_SERVICE_TOKEN=$(openssl rand -hex 32) APP_AGENT_RUNTIME=http docker compose -f docker-compose.dev.yml --profile agent up -d
-      # 默认 process：在 backend 容器里为每个运行片段起 Node 子进程
+      # Agent 作为独立服务（可选）：AGENT_SERVICE_TOKEN=$(openssl rand -hex 32) APP_AGENT_RUNTIME=durable docker compose -f docker-compose.dev.yml --profile agent up -d
+      # （durable：会话、运行、审批都在 agent 服务里；http：旧的无状态服务）。默认 process：在 backend 容器里为每个运行片段起 Node 子进程
       APP_AGENT_RUNTIME: ${APP_AGENT_RUNTIME:-process}
       APP_AGENT_URL: http://agent:8090
       APP_AGENT_BRIDGE_URL: http://backend:47001
@@ -83,12 +83,18 @@ services:
     working_dir: /agent
     command: ["npm", "run", "serve"]
     environment:
+      AGENT_RUNTIME: ${APP_AGENT_RUNTIME:-process}
       AGENT_SERVICE_TOKEN: ${AGENT_SERVICE_TOKEN:-}
       AGENT_LISTEN: 0.0.0.0:8090
+      # durable 模式用：数据文件、backend 的桥地址、对外 ID 的编码密钥（要和 backend 的一致，backend 默认用配置文件里的 id_key）
+      AGENT_DB_PATH: /data/agent.sqlite
+      AGENT_BRIDGE_URL: http://backend:47001
+      AGENT_ID_KEY: ${AGENT_ID_KEY:-id_key}
     expose:
       - "8090"
     volumes:
       - ./agent:/agent
+      - agent_data:/data
     healthcheck:
       test: ["CMD", "wget", "--spider", "--quiet", "http://127.0.0.1:8090/health"]
       interval: 5s
@@ -122,4 +128,5 @@ volumes:
   go_build_cache:
   go_mod_cache:
   backend_assets:
+  agent_data:
   web_node_modules:

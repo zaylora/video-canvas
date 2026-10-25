@@ -18,6 +18,7 @@ import (
 	"video-canvas/internal/llmgateway"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
+	"video-canvas/internal/pkg/idcodec"
 	agentsvc "video-canvas/internal/service/agent"
 )
 
@@ -772,5 +773,28 @@ func TestPlatform_PushEventsErrors(t *testing.T) {
 	status, _ = canvasCall(t, relayRouter(&fakeRelay{}), "POST", "/internal/platform/v1/events", `not json`)
 	if status != http.StatusBadRequest {
 		t.Errorf("请求体不是 JSON 应是 400：%d", status)
+	}
+}
+
+// ID 密钥一致性自检：Agent 服务用同一个密钥给前端的 ID 编码，两边不一致时前端拿到的 ID 全都对不上。
+// Go 把「编码后是什么」告诉 Agent，让它在启动时对一下。
+func TestPlatform_IDProbeEncodesWithGoKey(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h := NewPlatformHandler(&fakePlatform{})
+	r := gin.New()
+	r.GET("/internal/platform/v1/ids/:n", h.EncodeID)
+	// 超过 2^53 的雪花 id 也要对
+	for _, n := range []string{"1", "281474976710657123"} {
+		status, resp := canvasCall(t, r, "GET", "/internal/platform/v1/ids/"+n, "")
+		id, _ := strconv.ParseUint(n, 10, 64)
+		data, _ := resp["data"].(map[string]any)
+		if status != http.StatusOK || data["encoded"] != idcodec.Encode(id) {
+			t.Errorf("%s：%d %v", n, status, resp)
+		}
+	}
+	for _, bad := range []string{"0", "abc", "-1", "18446744073709551616"} {
+		if status, _ := canvasCall(t, r, "GET", "/internal/platform/v1/ids/"+bad, ""); status != http.StatusBadRequest {
+			t.Errorf("%q 应是 400：%d", bad, status)
+		}
 	}
 }

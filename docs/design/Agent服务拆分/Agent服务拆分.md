@@ -1157,3 +1157,33 @@ Agent 服务生成的会话、运行、审批、事件 ID 都用雪花算法，�
 - Go：摘要合并（运行本身、版本、用户消息、审批、评价取自 Agent，工具、模型调用、画布改动取自 Go；**雪花 id 超过 2^53 不丢精度**）；Go 自己库里有的运行不问 Agent；两边都没有是 60012；**Agent 不通是错误不是「不存在」**；导出合并两边（事件、审批、评价、上下文 / 工具、模型调用、改动）；`RunRequests` 认得 Agent 里的运行；同步（跳过运行中、结束后补上、游标带重叠、失败重试且不被后面成功的带过——变异检查：游标不停在失败前，测试失败；Agent 不通返回错误、没配 Remote 什么都不做）；HTTP 客户端（路径、查询、令牌、各种错误）；仓储（真实 PG：本地事实不读大字段、没记录不是错误）；平台工具留存（成功、被拒绝、未知工具、嵌套、重放）；`initialize`。
 - **全栈 e2e 新增场景 4**：真实 Agent 子进程 + 真实 PG，运行结束后同步 → 列表出现一行（运行字段来自 Agent，工具/模型调用/改动/积分来自 Go）→ 用户评价和撤销（经代理到 Agent）→ 再同步，摘要变成「点踩、被撤销」，按评价筛选命中 → 导出合并两边（事件含 `tool.end`、工具调用带完整参数和结果、模型调用带请求摘要和实扣 5 积分、评价、Markdown 里有用户请求和 Agent 的最后回复）→ 模型请求体可取。
 - **修一个会偶发失败的新用例**：「杀掉 Agent 后续跑」原本假定杀进程时第二轮模型调用正在流式输出，高并发时有时杀在请求发出之前（续跑的第一次请求就不是「重新请求被打断的那一轮」）。现在等第二轮请求真的到了上游再杀，并放慢流式速度；3 路并发各跑 5 次稳定。
+
+### 20.20 3.6：部署、升级备份、灰度与回退（2026-10-26）
+
+**用户确认的取向**：SQLite 用**在线备份**（不停机）；默认仍是 `process`，只有显式设 `APP_AGENT_RUNTIME=durable` 才切换。
+
+**服务入口的模式开关**（`agent/src/mode.ts`）。3.3c-2 里「配了 `AGENT_DB_PATH` 就是 durable」在 Compose 里会出事：数据路径是恒定设置的，回退到 `http` 时会因为有路径而误入 durable。现在由 `AGENT_RUNTIME` 显式决定（Compose 直接传 backend 的 `APP_AGENT_RUNTIME`）：`durable` 是新引擎、`http` / `process` 是旧的无状态服务；没设时沿用旧规则；`durable` 缺路径、值不认识直接退出并说清楚，不悄悄退回旧模式。
+
+**ID 编码密钥自检**（`agent/src/id-check.ts`，Go 新增 `GET /internal/platform/v1/ids/:n`）。看 Compose 时发现一个会静默出错的点：backend 容器**没有**转发 `APP_SERVER_ID_KEY`，实际用的是镜像里配置文件的默认值 `id_key`；Agent 的 `AGENT_ID_KEY` 要和它一样，否则前端拿到的 ID 全都对不上（表现是「什么都打不开」）。所以 Compose 里 `AGENT_ID_KEY` 默认也是 `id_key`，并加了运行期核对：Agent 启动后拿两个 id（含超过 2^53 的）让 Go 编码，和自己编的比——一致就不再打扰；不一致时 `/health` 返回 503（一键升级的就绪检查失败、自动回退），日志说明改哪里，且不含密钥；Go 暂时连不上保持「待定」，不当成不一致（两个容器启动顺序不确定）；之后继续核对，Go 改对重启后自己恢复。
+
+**在线备份**（`agent/src/backup.ts` + `backup-cli.ts`）：`VACUUM INTO`（读到一致的快照，结果是单个不依赖 `-wal` 的文件，含同一个文件里 Pi 的表），备份完 `integrity_check`，不覆盖已有文件，库不存在时报错而不是凭空建库，失败不留半截文件；成功输出一行 JSON。
+
+**Dockerfile / Compose**
+- 镜像里预建 `/data` 并交给 `app` 用户：命名卷按镜像目录的属主初始化，否则卷归 root、服务写不进去。
+- `agent` 服务：`AGENT_RUNTIME`、`AGENT_DB_PATH`、`AGENT_BRIDGE_URL`、`AGENT_ID_KEY`、`AGENT_RESUME_WINDOW_SECONDS`，`agent_data` 卷；注释写明 durable / http 的区别、启用和回退步骤。开发用 Compose 同步支持。
+- 顺手去掉 Fastify 5 已弃用的 `disableRequestLogging` 选项（日志本来就关着，启动时少一条弃用警告）。
+
+**`update.sh`**（`APP_AGENT_RUNTIME=durable` 时）：除 Postgres 的 `.dump` 外，在线备份 agent 数据到 `backups/pre-<版本>-<时间>.agent.sqlite`。
+- 做法：用**目标版本的镜像**起一次性容器 `docker compose run --rm --no-deps -T --entrypoint sh agent`，读 `agent_data` 卷——agent 正在运行、没在运行都行；备份先写到容器里的临时文件，再从标准输出流到宿主机，日志和结果 JSON 走标准错误。必须在重建之前。
+- **失败会中止升级**（服务保持原样、`IMAGE_TAG` 退回）：命令失败、空文件、内容不是 SQLite（校验文件头）都算。卷里还没有数据库（第一次启用）退出码 3，不算失败。两种备份各自保留最近 `--keep-backups` 份。`--no-backup` 一并跳过。
+- 回退：新版本起不来、退回旧版本后 agent 因「数据已被新版本升级」拒绝启动（Agent 迁移遇到比代码新的版本会报错，3.1 就有），脚本报「需要人工处理」并指到 Agent 备份和恢复步骤，而不是假装回退成功；回退时打印的日志里带上 agent 的。agent 因 ID 密钥不一致 unhealthy 时，`wait_ready` 会失败，走同样的回退。
+- 状态文件的 JSON 结构没有变（`backup` 仍是数据库备份路径，Agent 备份写在消息里），后台一键升级无需改动。
+
+**测试**
+- Agent（+13）：`serviceMode` 的各种组合；真起进程验证 `AGENT_RUNTIME=http` 即使配了数据路径也是旧模式、durable 缺路径和未知值退出；ID 自检 4 条（一致且用大 id、不一致且日志不含密钥并能恢复、Go 暂时不通保持待定、stop 之后不再请求）+ durable 服务的 `/health` 503/200；备份 3 条（服务还开着库时的一致快照且含 `pi_` 表、备份能直接当库用、不覆盖/不建库/不留半截、命令行的退出码和 stdout）。
+- Go：`ids/:n` 的 handler 和服务令牌；全栈 e2e 新增「密钥不一致时真实的 Agent 子进程 `/health` 变 503、一致的是 200」；**`update.sh` 用假 `docker` 命令整条流程跑**（`tests/scripts/update_test.go`，不需要 Docker 环境）：durable 备份两份且在重建之前、非 durable 和 `--no-backup` 不碰 agent 卷、第一次启用不被卡住、三种备份失败都中止且不留坏文件、两种备份各自保留最近 N 份、回退时 agent 数据过新要指到备份、回退日志带 agent。变异检查：去掉 SQLite 文件头校验、去掉备份清理，对应用例失败。
+- **真实容器演练**（本机 Docker）：构建镜像，durable 模式启动，`/data` 属主是 `app`、健康检查通过；用和 `update.sh` 完全相同的命令在运行中备份（188 KB、`integrity_check` ok、3 条迁移）；往库里写入垃圾表后停容器，按文档步骤恢复，再起容器：健康、垃圾表消失、迁移条数一致。
+
+**灰度与回退的语义**（已写进 `docs/docker-production.md`「Agent 独立服务」）：旧会话不迁移——切到 durable 后看不到切换前在 Postgres 里的会话（数据还在，切回就能看到）；durable 期间的会话留在 `agent_data` 卷里；退回前先等 durable 的运行结束（退回不会续跑它们）。阶段 4 会删除旧会话数据，之后才是不可逆的。
+
+**到这里 3.0–3.6 全部完成。** durable 已经可以在测试环境启用和灰度。**真实模型验证还没做**（codemode 的描述和行为换成了 Pi 内置的、压缩阈值和画布专用摘要提示词在真实模型上的表现），这是上线前最该做的一件事，之后才是阶段 4 清理旧代码。

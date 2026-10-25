@@ -270,3 +270,15 @@ func TestNewBridge_EventPushRouteNeedsRelayAndServiceToken(t *testing.T) {
 		t.Errorf("没配中继不应挂载事件推送: %d", code)
 	}
 }
+
+func TestNewBridge_IDProbeNeedsTheServiceToken(t *testing.T) {
+	const token = "service-token-0123456789abcdef0123456789"
+	srv := httptest.NewServer(router.NewBridge("test", agenthandler.NewAgentBridgeHandler(&stubBridge{}), agenthandler.NewPlatformHandler(&platformStub{}), token))
+	defer srv.Close()
+	if code := platformReq(t, srv, http.MethodGet, "/internal/platform/v1/ids/7", ""); code != http.StatusUnauthorized {
+		t.Errorf("没带服务令牌应 401: %d", code)
+	}
+	if code := platformReq(t, srv, http.MethodGet, "/internal/platform/v1/ids/7", token); code != http.StatusOK {
+		t.Errorf("令牌正确应放行: %d", code)
+	}
+}
