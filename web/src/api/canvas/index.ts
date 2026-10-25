@@ -1,7 +1,11 @@
 import service from "@/utils/requests/service";
 import type { RequestExtraConfig } from "@/utils/requests/service";
 import type {
+  BackendCanvasExportDto,
+  BackendCanvasImportDto,
   CanvasDetailDto,
+  CanvasExportResultDto,
+  CanvasImportResultDto,
   CanvasGraphDto,
   CanvasListQueryDto,
   CanvasListResponseDto,
@@ -153,3 +157,66 @@ export const saveCanvasGraph = (
  * @param id 画布 ID
  */
 export const deleteCanvas = (id: string) => service.delete<void>(`/canvas/${id}`);
+
+/**
+ * 导出 / 导入画布的请求超时（毫秒）。
+ * 为什么比默认的 2 分钟长：导入要逐个复制最多 1 GB 的素材，导出要为老素材补算哈希；
+ * 与后端为这两个接口放宽的 5 分钟读写超时一致。
+ */
+const CANVAS_TRANSFER_TIMEOUT = 5 * 60 * 1000;
+
+/**
+ * 导出画布为文档
+ * @param id 画布 ID
+ * @param signal 取消信号；取消后请求层原样抛出取消错误、不弹提示
+ * @returns 导出文档，以及因找不到文件被跳过的素材数
+ */
+export const exportCanvas = (id: string, signal?: AbortSignal): Promise<CanvasExportResultDto> =>
+  service
+    .get<BackendCanvasExportDto>(`/canvas/${id}/export`, undefined, {
+      timeout: CANVAS_TRANSFER_TIMEOUT,
+      signal,
+    })
+    .then((data) => ({
+      document: data.document,
+      skippedAssets: data.report?.skipped_assets ?? 0,
+    }));
+
+/**
+ * 把导出文档导入为一张新画布
+ * @param document 导出文档，前端不解析，原样交给后端校验
+ * @param signal 取消信号；取消后请求层原样抛出取消错误、不弹提示
+ * @returns 新画布和导入报告
+ */
+export const importCanvas = (
+  document: unknown,
+  signal?: AbortSignal,
+): Promise<CanvasImportResultDto> =>
+  service
+    .post<BackendCanvasImportDto>(
+      "/canvas/import",
+      { document },
+      { timeout: CANVAS_TRANSFER_TIMEOUT, signal },
+    )
+    .then(({ canvas, report }) => ({
+      canvas,
+      report: {
+        assets: {
+          total: report.assets.total,
+          copied: report.assets.copied,
+          missing: (report.assets.missing ?? []).map((item) => ({
+            nodeId: item.node_id,
+            fileName: item.file_name,
+          })),
+        },
+        characters: {
+          created: report.characters.created,
+          renamed: report.characters.renamed ?? [],
+          invalid: (report.characters.invalid ?? []).map((item) => ({
+            nodeId: item.node_id,
+            name: item.name,
+          })),
+        },
+        edgesDropped: report.edges_dropped,
+      },
+    }));

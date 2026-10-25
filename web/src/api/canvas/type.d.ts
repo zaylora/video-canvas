@@ -239,3 +239,151 @@ export interface SaveCanvasGraphResponseDto {
   /** 保存后的更新时间 */
   updatedAt: string;
 }
+
+/** 导出文档里的一条素材描述，仅用于展示和交叉校验 */
+export interface CanvasExportAsset {
+  /** 素材类型 */
+  kind: "image" | "video" | "audio";
+  /** MIME 类型 */
+  mimeType: string;
+  /** 文件字节数 */
+  byteSize: number;
+  /** 宽度，像素；0 表示没有该维度 */
+  width: number;
+  /** 高度，像素；0 表示没有该维度 */
+  height: number;
+  /** 时长，毫秒；0 表示没有该维度 */
+  durationMs: number;
+  /** 原文件名 */
+  fileName: string;
+}
+
+/** 导出文档里内嵌的角色卡内容，素材一律用 assets 的内容哈希引用 */
+export interface CanvasExportCharacter {
+  /** 角色名 */
+  name: string;
+  /** 角色描述 */
+  description: string;
+  /** 头像素材哈希 */
+  avatar: string;
+  /** 附加图片素材哈希，最多 4 张 */
+  extras: string[];
+  /** 声音素材哈希，null 表示没有声音 */
+  voice: string | null;
+}
+
+/** 画布导出文档（video-canvas/canvas）；前端只下载和回传，节点与连线不解析 */
+export interface CanvasExportDocument {
+  /** 固定为 "video-canvas/canvas" */
+  format: string;
+  /** 文件格式版本 */
+  version: number;
+  /** 导出时间，RFC 3339 UTC，只用于展示 */
+  exportedAt: string;
+  /** 导出时的应用版本，只用于排查 */
+  appVersion: string;
+  /** 画布本体 */
+  canvas: {
+    /** 画布标题 */
+    title: string;
+    /** 节点列表，顺序有意义，原样保留 */
+    nodes: Array<Record<string, unknown>>;
+    /** 连线列表 */
+    edges: Array<Record<string, unknown>>;
+  };
+  /** 用到的素材，键为 SHA-256 十六进制内容哈希 */
+  assets: Record<string, CanvasExportAsset>;
+  /** 内嵌的角色卡，键为文件内局部编号 */
+  characters: Record<string, CanvasExportCharacter>;
+}
+
+/** 导出画布的后端响应 */
+export interface BackendCanvasExportDto {
+  /** 导出文档 */
+  document: CanvasExportDocument;
+  /** 导出报告 */
+  report?: {
+    /** 因找不到文件而没有写进文档的素材数 */
+    skipped_assets?: number;
+  };
+}
+
+/** 导出画布的结果 */
+export interface CanvasExportResultDto {
+  /** 导出文档 */
+  document: CanvasExportDocument;
+  /** 因找不到文件而被跳过的素材数 */
+  skippedAssets: number;
+}
+
+/** 导入画布的后端响应 */
+export interface BackendCanvasImportDto {
+  /** 新建的画布 */
+  canvas: {
+    /** 画布 ID */
+    id: string;
+    /** 画布标题 */
+    title: string;
+    /** 当前版本号 */
+    revision: number;
+  };
+  /** 导入报告 */
+  report: {
+    /** 素材处理情况 */
+    assets: {
+      /** 文档里的素材总数 */
+      total: number;
+      /** 成功复制到当前账号的素材数 */
+      copied: number;
+      /** 找不到的素材所在节点 */
+      missing?: Array<{ node_id: string; file_name: string }> | null;
+    };
+    /** 角色卡处理情况 */
+    characters: {
+      /** 新建的角色卡数 */
+      created: number;
+      /** 因重名被改名的角色卡 */
+      renamed?: Array<{ from: string; to: string }> | null;
+      /** 内容不合法、未能新建的角色卡所在节点 */
+      invalid?: Array<{ node_id: string; name: string }> | null;
+    };
+    /** 因端点节点不存在而丢弃的连线数 */
+    edges_dropped: number;
+  };
+}
+
+/** 导入画布的结果 */
+export interface CanvasImportResultDto {
+  /** 新建的画布 */
+  canvas: {
+    /** 画布 ID */
+    id: string;
+    /** 画布标题 */
+    title: string;
+    /** 当前版本号 */
+    revision: number;
+  };
+  /** 导入报告 */
+  report: {
+    /** 素材处理情况 */
+    assets: {
+      /** 文档里的素材总数 */
+      total: number;
+      /** 成功复制到当前账号的素材数 */
+      copied: number;
+      /** 找不到的素材所在节点 */
+      missing: { nodeId: string; fileName: string }[];
+    };
+    /** 角色卡处理情况 */
+    characters: {
+      /** 新建的角色卡数 */
+      created: number;
+      /** 因重名被改名的角色卡 */
+      renamed: { from: string; to: string }[];
+      /** 内容不合法、未能新建的角色卡所在节点 */
+      invalid: { nodeId: string; name: string }[];
+    };
+    /** 因端点节点不存在而丢弃的连线数 */
+    edgesDropped: number;
+  };
+}

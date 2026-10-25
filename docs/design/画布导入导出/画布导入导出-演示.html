@@ -1,0 +1,1172 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>画布导入导出演示</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+    <style>
+      :root {
+        --radius: 0.625rem;
+        --background: 0 0% 100%;
+        --foreground: 240 10% 3.9%;
+        --card: 0 0% 100%;
+        --muted: 240 4.8% 95.9%;
+        --muted-foreground: 240 3.8% 46.1%;
+        --primary: 240 5.9% 10%;
+        --primary-foreground: 0 0% 98%;
+        --accent: 240 4.8% 95.9%;
+        --border: 240 5.9% 90%;
+        --ok: 5 150 105;
+        --bad: 220 38 38;
+        --warn: 180 83 9;
+        --info: 2 132 199;
+        --violet: 124 58 237;
+        color-scheme: light;
+      }
+      .dark {
+        --background: 240 10% 3.9%;
+        --foreground: 0 0% 98%;
+        --card: 240 10% 5.5%;
+        --muted: 240 3.7% 15.9%;
+        --muted-foreground: 240 5% 64.9%;
+        --primary: 0 0% 98%;
+        --primary-foreground: 240 5.9% 10%;
+        --accent: 240 3.7% 15.9%;
+        --border: 240 3.7% 17%;
+        --ok: 52 211 153;
+        --bad: 248 113 113;
+        --warn: 251 191 36;
+        --info: 56 189 248;
+        --violet: 167 139 250;
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        font-family: Geist, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        background: hsl(var(--background));
+        color: hsl(var(--foreground));
+        -webkit-font-smoothing: antialiased;
+        line-height: 1.55;
+      }
+      code, .mono { font-family: "Geist Mono", "SF Mono", Consolas, monospace; }
+      code { font-size: 0.92em; background: hsl(var(--muted)); padding: 1px 5px; border-radius: 5px; }
+      [data-lucide] { width: 1em; height: 1em; flex: none; }
+      h1, h2, h3, h4, p { margin: 0; }
+      button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+      table { border-collapse: collapse; width: 100%; }
+      th { font-weight: 500; text-align: left; }
+      [hidden] { display: none !important; }
+      .muted { color: hsl(var(--muted-foreground)); }
+      .row { display: flex; align-items: center; gap: 8px; }
+      .wrapflex { flex-wrap: wrap; }
+      .spacer { margin-left: auto; }
+
+      /* ---- 顶栏与标签页 ---- */
+      .top {
+        position: sticky; top: 0; z-index: 30;
+        background: hsl(var(--background) / 0.92);
+        backdrop-filter: blur(8px);
+        border-bottom: 1px solid hsl(var(--border));
+      }
+      .top-in { max-width: 1160px; margin: 0 auto; padding: 0 20px; display: flex; align-items: center; gap: 16px; height: 56px; }
+      .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; white-space: nowrap; }
+      .logo { width: 28px; height: 28px; border-radius: 8px; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; }
+      .tabs { display: flex; gap: 2px; margin-left: 8px; overflow-x: auto; }
+      .tab {
+        height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13px; font-weight: 500;
+        color: hsl(var(--muted-foreground)); white-space: nowrap; display: inline-flex; align-items: center; gap: 6px;
+        transition: background 0.15s, color 0.15s;
+      }
+      .tab:hover { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+      .tab[aria-selected="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn { height: 32px; padding: 0 10px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; }
+      .btn:hover { background: hsl(var(--accent)); }
+      .btn-primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn-primary:hover { background: hsl(var(--primary) / 0.9); }
+      .btn-outline { border: 1px solid hsl(var(--border)); }
+      .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+      .switch { width: 34px; height: 20px; border-radius: 999px; background: hsl(var(--border)); position: relative; transition: background 0.15s; }
+      .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+      .switch[aria-checked="true"] { background: rgb(var(--violet)); }
+      .switch[aria-checked="true"]::after { transform: translateX(14px); }
+
+      /* ---- 页面内容 ---- */
+      .wrap { max-width: 1160px; margin: 0 auto; padding: 32px 20px 80px; }
+      .h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+      .lead { margin-top: 10px; max-width: 820px; font-size: 15px; color: hsl(var(--muted-foreground)); }
+      .lead b { color: hsl(var(--foreground)); }
+      .sec { margin-top: 36px; }
+      .sec > h2 { font-size: 18px; font-weight: 600; }
+      .sec > .sub { margin: 4px 0 14px; max-width: 820px; font-size: 13.5px; color: hsl(var(--muted-foreground)); }
+      .card { border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: var(--radius); padding: 16px; }
+      .grid { display: grid; gap: 12px; }
+      .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      @media (max-width: 820px) {
+        .g2, .g3 { grid-template-columns: 1fr; }
+        .top-in { padding: 0 12px; }
+        .wrap { padding: 24px 16px 64px; }
+        .split { grid-template-columns: 1fr !important; }
+      }
+      ul.list { margin: 0; padding-left: 18px; font-size: 13.5px; }
+
+      /* ---- 标签 ---- */
+      .tag { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 999px; font-size: 11.5px; font-weight: 500; white-space: nowrap; }
+      .t-ok { background: rgb(var(--ok) / 0.12); color: rgb(var(--ok)); }
+      .t-bad { background: rgb(var(--bad) / 0.12); color: rgb(var(--bad)); }
+      .t-warn { background: rgb(var(--warn) / 0.12); color: rgb(var(--warn)); }
+      .t-info { background: rgb(var(--info) / 0.12); color: rgb(var(--info)); }
+      .t-mute { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
+      .t-violet { background: rgb(var(--violet) / 0.12); color: rgb(var(--violet)); }
+
+      /* ---- 提示框 ---- */
+      .callout { display: flex; gap: 10px; padding: 12px 14px; border-radius: var(--radius); font-size: 13.5px; border: 1px solid; }
+      .callout > i { margin-top: 3px; }
+      .c-info { background: rgb(var(--info) / 0.07); border-color: rgb(var(--info) / 0.3); }
+      .c-info > i { color: rgb(var(--info)); }
+      .c-warn { background: rgb(var(--warn) / 0.07); border-color: rgb(var(--warn) / 0.3); }
+      .c-warn > i { color: rgb(var(--warn)); }
+      .c-bad { background: rgb(var(--bad) / 0.07); border-color: rgb(var(--bad) / 0.3); }
+      .c-bad > i { color: rgb(var(--bad)); }
+      .c-ok { background: rgb(var(--ok) / 0.07); border-color: rgb(var(--ok) / 0.3); }
+      .c-ok > i { color: rgb(var(--ok)); }
+
+      /* ---- 主线流程图 ---- */
+      .flow { display: flex; align-items: stretch; gap: 6px; flex-wrap: wrap; padding: 14px; border-radius: var(--radius); }
+      .flow .node { flex: 1 1 140px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 12px; font-size: 12.5px; }
+      .flow .node b { display: block; font-size: 13px; margin-bottom: 2px; }
+      .flow .node.hl { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+      .flow .arrow { display: grid; place-items: center; color: hsl(var(--muted-foreground)); }
+      .flow-label { font-size: 12px; font-weight: 600; margin: 14px 0 6px; color: hsl(var(--muted-foreground)); }
+
+      /* ---- 对比表 ---- */
+      .cmp-wrap { overflow-x: auto; border: 1px solid hsl(var(--border)); border-radius: var(--radius); }
+      .cmp th, .cmp td { padding: 9px 12px; font-size: 13px; vertical-align: top; border-bottom: 1px solid hsl(var(--border)); }
+      .cmp tr:last-child th, .cmp tr:last-child td { border-bottom: 0; }
+      .cmp thead th { background: hsl(var(--muted)); font-size: 12.5px; white-space: nowrap; }
+      .cmp tbody th { width: 120px; color: hsl(var(--muted-foreground)); font-weight: 500; }
+      .cmp .y { color: rgb(var(--ok)); }
+      .cmp .m { color: rgb(var(--warn)); }
+      .cmp .m b, .cmp .m { font-weight: 500; }
+
+      /* ---- 有序步骤 ---- */
+      .steps { list-style: none; counter-reset: s; display: grid; gap: 12px; }
+      .steps li { counter-increment: s; position: relative; padding-left: 32px; font-size: 13.5px; }
+      .steps li::before {
+        content: counter(s); position: absolute; left: 0; top: 0; width: 22px; height: 22px; border-radius: 50%;
+        background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; font-size: 12px; font-weight: 600;
+      }
+      .steps li small { display: block; color: hsl(var(--muted-foreground)); font-size: 12.5px; }
+
+      .codeblock { background: hsl(var(--muted)); border-radius: var(--radius); padding: 14px; font-family: "Geist Mono", "SF Mono", Consolas, monospace; font-size: 12.5px; overflow-x: auto; }
+
+      /* ---- 假浏览器框（原型） ---- */
+      .frame { border: 1px solid hsl(var(--border)); border-radius: 12px; overflow: hidden; background: hsl(var(--background)); }
+      .frame-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: hsl(var(--muted)); font-size: 12px; color: hsl(var(--muted-foreground)); }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: hsl(var(--border)); }
+      .proto { min-height: 460px; position: relative; overflow: hidden; }
+
+      /* ---- 设计标注层 ---- */
+      .note { outline: 1.5px dashed rgb(var(--violet)); outline-offset: 3px; position: relative; }
+      .note-txt { display: none; margin-top: 6px; font-size: 11.5px; line-height: 1.5; color: rgb(var(--violet)); }
+      .show-notes .note-txt { display: block; }
+      body:not(.show-notes) .note { outline: none; }
+
+      .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 60; pointer-events: none; }
+      .toast > div { display: flex; align-items: center; gap: 8px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 14px; font-size: 13px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); }
+
+      /* ---- 本文件专用 ---- */
+      .seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px; background: hsl(var(--muted)); }
+      .seg button { height: 30px; padding: 0 12px; border-radius: 8px; font-size: 13px; font-weight: 500; color: hsl(var(--muted-foreground)); }
+      .seg button[aria-pressed="true"] { background: hsl(var(--background)); color: hsl(var(--foreground)); box-shadow: 0 1px 3px rgb(0 0 0 / 0.1); }
+      .split { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+      .jsonbox { background: hsl(var(--muted)); border-radius: var(--radius); padding: 10px 0; font-family: "Geist Mono", "SF Mono", Consolas, monospace; font-size: 12px; line-height: 1.7; overflow: auto; max-height: 620px; }
+      .jl { padding: 0 14px; white-space: pre; cursor: pointer; border-left: 3px solid transparent; }
+      .jl:hover { background: hsl(var(--accent)); }
+      .jl.sel { background: rgb(var(--violet) / 0.12); border-left-color: rgb(var(--violet)); }
+      .jk { color: rgb(var(--info)); }
+      .js { color: rgb(var(--ok)); }
+      .jn { color: rgb(var(--warn)); }
+      .jh { color: rgb(var(--violet)); }
+      .doc { position: sticky; top: 72px; }
+      .doc h3 { font-size: 15px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+      .doc p { font-size: 13.5px; margin-top: 8px; }
+      .doc .from { margin-top: 8px; font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+      .m-keep { background: rgb(var(--ok) / 0.12); color: rgb(var(--ok)); }
+      .m-rewrite { background: rgb(var(--info) / 0.12); color: rgb(var(--info)); }
+      .m-drop { background: rgb(var(--bad) / 0.12); color: rgb(var(--bad)); }
+      .m-new { background: rgb(var(--violet) / 0.12); color: rgb(var(--violet)); }
+
+      /* 原型里的画布 / 列表 */
+      .cv-top { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid hsl(var(--border)); position: relative; }
+      .cv-logo { display: inline-flex; align-items: center; gap: 4px; height: 32px; padding: 0 8px; border-radius: 8px; border: 1px solid hsl(var(--border)); }
+      .cv-logo:hover { background: hsl(var(--accent)); }
+      .menu { position: absolute; top: 48px; left: 14px; z-index: 5; width: 210px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 4px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); }
+      .menu button { display: flex; align-items: center; gap: 8px; width: 100%; height: 34px; padding: 0 10px; border-radius: 7px; font-size: 13px; text-align: left; }
+      .menu button:hover { background: hsl(var(--accent)); }
+      .menu hr { border: 0; border-top: 1px solid hsl(var(--border)); margin: 4px 0; }
+      .cv-body { position: relative; height: 330px; background-image: radial-gradient(hsl(var(--border)) 1px, transparent 1px); background-size: 18px 18px; }
+      .mnode { position: absolute; width: 130px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 8px 10px; font-size: 12px; box-shadow: 0 2px 6px rgb(0 0 0 / 0.06); }
+      .mnode b { display: block; font-size: 12.5px; }
+      .mnode .ph { margin-top: 6px; height: 54px; border-radius: 6px; background: hsl(var(--muted)); display: grid; place-items: center; color: hsl(var(--muted-foreground)); }
+      .overlay { position: absolute; inset: 0; background: rgb(0 0 0 / 0.35); display: grid; place-items: center; z-index: 10; padding: 16px; }
+      .dlg { width: min(460px, 100%); max-height: 100%; overflow: auto; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 14px; padding: 18px; box-shadow: 0 16px 40px rgb(0 0 0 / 0.2); }
+      .dlg h3 { font-size: 16px; font-weight: 600; }
+      .dlg .foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+      .stp { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 5px 0; color: hsl(var(--muted-foreground)); }
+      .stp.on { color: hsl(var(--foreground)); font-weight: 500; }
+      .stp.done { color: rgb(var(--ok)); }
+      .stp.fail { color: rgb(var(--bad)); font-weight: 500; }
+      .spin { animation: spin 0.9s linear infinite; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      .filebtn { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; border: 1px solid hsl(var(--border)); border-radius: 10px; padding: 9px 12px; font-size: 13px; }
+      .filebtn:hover { background: hsl(var(--accent)); }
+      .filebtn small { display: block; color: hsl(var(--muted-foreground)); font-size: 12px; }
+      .clist { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 16px; }
+      @media (max-width: 820px) { .clist { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+      .ccard { border: 1px solid hsl(var(--border)); border-radius: 10px; overflow: hidden; background: hsl(var(--card)); }
+      .ccard .cover { height: 78px; background: hsl(var(--muted)); display: grid; place-items: center; color: hsl(var(--muted-foreground)); }
+      .ccard .meta { padding: 8px 10px; font-size: 12.5px; }
+      .ccard.fresh { border-color: rgb(var(--ok)); box-shadow: 0 0 0 1px rgb(var(--ok)); }
+      .tools { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; margin-top: 16px; font-size: 13px; }
+      .tools label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+      .rep-list { margin: 6px 0 0; padding-left: 18px; font-size: 13px; }
+    </style>
+  </head>
+
+  <body class="show-notes">
+    <header class="top">
+      <div class="top-in">
+        <div class="brand">
+          <span class="logo"><i data-lucide="file-json"></i></span>画布导入导出演示
+        </div>
+        <div class="tabs" role="tablist">
+          <button class="tab" role="tab" data-tab="overview" aria-selected="true"><i data-lucide="map"></i>总览</button>
+          <button class="tab" role="tab" data-tab="json" aria-selected="false"><i data-lucide="braces"></i>JSON 格式</button>
+          <button class="tab" role="tab" data-tab="proto" aria-selected="false"><i data-lucide="layout-dashboard"></i>可点击原型</button>
+          <button class="tab" role="tab" data-tab="impl" aria-selected="false"><i data-lucide="database"></i>数据与接口</button>
+        </div>
+        <div class="spacer row">
+          <label class="row muted" style="font-size: 12px">
+            设计标注
+            <button class="switch" id="notesSw" role="switch" aria-checked="true" onclick="toggleNotes()"></button>
+          </label>
+          <button class="btn" onclick="document.documentElement.classList.toggle('dark')" aria-label="切换明暗主题">
+            <i data-lucide="sun-moon"></i>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <!-- ============ 1. 总览 ============ -->
+      <section id="tab-overview">
+        <h1 class="h1">把一张画布存成 JSON，在另一个账号里原样还原</h1>
+        <p class="lead">
+          在画布里点「导出」得到一个 <code>.canvas.json</code> 文件；在另一个账号的画布列表点「导入画布」选这个文件，得到一张<b>新画布</b>，内容和原画布一样。
+          <b>两张画布完全隔离：</b>素材文件也各存一份，之后任何一边改动、删节点、删画布，都不影响另一边。
+        </p>
+
+        <div class="callout c-info" style="margin-top: 16px">
+          <i data-lucide="info"></i>
+          <div>
+            <b>阅读说明。</b>项目现状来自读代码（文件路径见 Markdown 文档 §2.1）；同类产品来自官方文档和检索，<b>LibTV、即梦没有查到公开的画布 JSON 导入导出，不作依据</b>。
+            本文都是设计提案，<b>尚未实现</b>；原型里的数字和耗时是示意，数据在内存里，刷新复原。对应 Markdown：<code>画布导入导出.md</code>。<br />
+            <span class="muted">核实度图例：</span>
+            <span class="tag t-ok">已核对官方页面</span>
+            <span class="tag t-info">调研检索，未逐条复核</span>
+            <span class="tag t-warn">未验证 · 需实测</span>
+            <span class="tag t-violet">提案</span>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>主线流程：一张画布怎么从 A 账号到 B 账号</h2>
+          <p class="sub">关键在中间：JSON 里不放素材地址，只放内容哈希，B 导入时后端按哈希找到文件并复制一份给 B。</p>
+          <div class="flow-label">A 账号 · 导出</div>
+          <div class="flow note">
+            <div class="node"><b>点「导出画布」</b>先保存，只导出已保存内容</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>后端换掉素材引用</b>素材 ID / 地址 → 内容哈希；去掉任务状态</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>下载文件</b><code>标题.canvas.json</code></div>
+          </div>
+          <div class="flow-label">B 账号 · 导入</div>
+          <div class="flow note">
+            <div class="node"><b>列表页「导入画布」</b>选文件，前端先做轻量检查</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>按哈希找文件并复制</b>在存储里复制一份，建 B 名下的新素材</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>建角色卡 + 新画布</b>一个事务写入，返回导入报告</div>
+          </div>
+          <div class="note-txt">设计：改写 JSON、查哈希、复制文件都在后端做——哈希查找和文件复制只有后端能做，改写规则放一处才好测试；前端只负责选文件和下载。</div>
+          <div class="callout c-warn" style="margin-top: 10px">
+            <i data-lucide="corner-down-right"></i>
+            <div><b>素材找不到时（回退，画布仍可用）：</b>节点、提示词、连线都照常导入，只是那个节点的素材位置为空，导入后弹出报告列出是哪些节点。不会因为一个素材让整张画布导入失败。</div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>三类内容各怎么处理</h2>
+          <p class="sub">导出文件里什么带、什么不带，按这三类区分。</p>
+          <div class="grid g3">
+            <div class="card">
+              <div class="row"><i data-lucide="image"></i><b>素材（图 / 视频 / 音频）</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-violet">哈希引用</span><span class="tag t-warn">导入时复制文件</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>只写 SHA-256 和元信息，不写地址和 ID。</b>每个节点只带当前选中的那一版结果，历史版本不带。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="user-round"></i><b>角色卡</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-violet">内容内嵌</span><span class="tag t-mute">不进素材库</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>名称、设定、主图、补充图、声音都写进文件。</b>导入时给 B 新建一张卡，重名自动改成「名字 (2)」。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="ban"></i><b>运行状态</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-bad">不带</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b><code>revision</code>、<code>taskId</code>、<code>pendingTaskIds</code>、<code>errorTaskRef</code> 全不带；</b>「生成中」的节点导入后是「待生成」。</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>同类产品怎么做</h2>
+          <p class="sub">我们借鉴了什么、放弃了什么。LibTV 和即梦没有找到公开的画布 JSON 功能，所以只能对标有公开格式的产品。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead>
+                <tr><th></th><th>Excalidraw</th><th>tldraw</th><th>ComfyUI</th><th>Open Canvas</th><th>LibTV / 即梦</th></tr>
+              </thead>
+              <tbody>
+                <tr><th>文件格式</th><td class="y">JSON：<code>type</code> / <code>version</code> / <code>elements</code> / <code>files</code></td><td class="y">JSON：版本号 + schema + records</td><td class="y">两种：保存格式（带布局）和 API 格式</td><td>JSON，字段未写明</td><td class="m">未验证：未发现公开的画布文件</td></tr>
+                <tr><th>素材</th><td><span class="m">图片 base64 内嵌在 <code>files</code></span></td><td>素材记录单独存，没用的会剪掉</td><td>引用模型名，不涉及素材文件</td><td class="m">未验证：README 未写</td><td class="m">未验证</td></tr>
+                <tr><th>导入落点</th><td>打开文件</td><td>打开文件</td><td class="m">默认<b>替换当前画布</b></td><td class="y">每个文件<b>新建一张画布</b></td><td class="m">未验证</td></tr>
+                <tr><th>我们借鉴</th><td>信封 + 素材单独放 + 节点只引用</td><td>格式版本号，加载时迁移</td><td>保存格式要带布局；反面：别替换画布</td><td>导入 = 新建，不覆盖</td><td>—</td></tr>
+                <tr><th>核实度</th>
+                  <td><span class="tag t-ok">已核对官方文档</span></td>
+                  <td><span class="tag t-info">调研检索</span></td>
+                  <td><span class="tag t-ok">已核对官方文档</span></td>
+                  <td><span class="tag t-ok">已核对（仅导入行为）</span></td>
+                  <td><span class="tag t-warn">未验证 · 需登录实测</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>素材三种带法的对比</h2>
+          <p class="sub">为什么选「哈希引用 + 导入时复制」。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th></th><th>哈希引用（采用）</th><th>base64 内嵌</th><th>不带素材</th></tr></thead>
+              <tbody>
+                <tr><th>文件体积</th><td class="y">小，只有结构和哈希</td><td class="m">极大，带视频可到几百 MB</td><td class="y">最小</td></tr>
+                <tr><th>导入后素材在不在</th><td class="y">在（同一部署内）</td><td class="y">在，任何部署</td><td class="m">不在，节点是空的</td></tr>
+                <tr><th>跨部署</th><td class="m">不行：目标没有这个文件（本期不做）</td><td class="y">可以</td><td>结构可以，素材没有</td></tr>
+                <tr><th>导出耗时</th><td class="m">老素材要补算哈希，首次慢（未验证）</td><td class="m">要读全部文件</td><td class="y">快</td></tr>
+                <tr><th>实现复杂度</th><td class="m">中高：加哈希列、复制、改写引用</td><td>中</td><td class="y">低</td></tr>
+                <tr><th>核实度</th><td><span class="tag t-violet">提案</span></td><td><span class="tag t-violet">提案</span></td><td><span class="tag t-violet">提案</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>同事 B 导入我的画布时，会发生什么</h2>
+          <p class="sub">一次导入分几步，以及一个需要提前说清的边界。</p>
+          <div class="grid g2">
+            <div class="card">
+              <ol class="steps" style="margin: 0; padding: 0">
+                <li><b>校验文件</b><small>格式名、版本号、大小、数量上限、哈希格式、引用是否悬空。</small></li>
+                <li><b>找素材并复制</b><small>按哈希去重；找到就在存储里复制，建 B 名下的素材；找不到记入报告。</small></li>
+                <li><b>建角色卡</b><small>同名自动改名；主图找不到就不建卡，节点显示「已失效」。</small></li>
+                <li><b>改写并写入</b><small>把哈希换成新素材 ID，重建地址；素材、角色卡、画布在一个事务里写入。</small></li>
+                <li><b>给出报告</b><small>全部成功直接打开新画布；有缺失或改名先弹结果。</small></li>
+              </ol>
+            </div>
+            <div class="card">
+              <div class="callout c-warn">
+                <i data-lucide="triangle-alert"></i>
+                <div>
+                  <b>边界：拿到这个文件的人，就能在本系统里导入出同样的素材。</b>
+                  <ul class="list" style="margin-top: 6px">
+                    <li>哈希猜不出来，所以「拿到文件」等于「原主交出来的」。</li>
+                    <li>只在同一个部署内有效；换一套部署，文件里的哈希找不到对应文件。</li>
+                    <li>导入的素材占 B 自己的一份存储。</li>
+                  </ul>
+                </div>
+              </div>
+              <p class="muted" style="font-size: 12.5px; margin-top: 10px">导出时要提前告知用户：这份文件包含提示词和素材的内容标识，分享前请确认对象。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 2. JSON 格式：字段浏览器 ============ -->
+      <section id="tab-json" hidden>
+        <h1 class="h1">导出文件长什么样</h1>
+        <p class="lead">
+          下面是一份<b>示意</b>的导出文件（3 个节点、2 个素材、1 张角色卡）。<b>点任意一行</b>，右边会解释这个字段是什么、导出时怎么处理的。
+          素材哈希、模型 key、参数名都是示意值。
+        </p>
+        <div class="row wrapflex" style="margin-top: 12px">
+          <span class="tag m-keep">原样</span><span class="muted" style="font-size: 12.5px">和现在画布里存的一样</span>
+          <span class="tag m-rewrite">改写</span><span class="muted" style="font-size: 12.5px">值或字段名变了</span>
+          <span class="tag m-drop">不带</span><span class="muted" style="font-size: 12.5px">导出时删除</span>
+          <span class="tag m-new">新增</span><span class="muted" style="font-size: 12.5px">文件里才有</span>
+        </div>
+
+        <div class="split note" style="margin-top: 16px">
+          <div class="jsonbox" id="jbox"></div>
+          <div class="card doc" id="jdoc"></div>
+        </div>
+        <div class="note-txt">设计：字段名沿用现有画布数据，只改素材引用；这样导出器是「改写若干字段」而不是「重新造一套结构」，将来新增的普通字段会自动原样带上。</div>
+        <div class="row" style="margin-top: 10px">
+          <button class="btn btn-outline" onclick="copySample()"><i data-lucide="copy"></i>复制示例 JSON</button>
+          <span class="muted" style="font-size: 12.5px">示意内容，可粘贴到编辑器里看</span>
+        </div>
+
+        <div class="sec">
+          <h2>导出时对节点数据做了什么（完整对照）</h2>
+          <p class="sub">左边是现在画布里存的字段，右边是导出文件里的样子。这是开发者实现改写规则的依据（对应 Markdown §7.4）。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>现在存的字段</th><th>处理</th><th>导出文件里</th><th>原因</th></tr></thead>
+              <tbody>
+                <tr><th><code>id</code> / <code>type</code> / <code>position</code> / <code>parentId</code> / <code>origin</code></th><td><span class="tag m-keep">原样</span></td><td>同左</td><td>节点 ID 只在单张画布内唯一；提示词 <code>@</code> 引用、<code>parentId</code> 靠它</td></tr>
+                <tr><th><code>data.kind</code> / <code>label</code> / <code>prompt</code> / <code>model</code></th><td><span class="tag m-keep">原样</span></td><td>同左</td><td>业务内容</td></tr>
+                <tr><th><code>data.assetId</code></th><td><span class="tag m-rewrite">改写</span></td><td><code>data.assetHash</code></td><td>素材 ID 只在原账号有效</td></tr>
+                <tr><th><code>data.src</code></th><td><span class="tag m-drop">不带</span></td><td>—</td><td>地址里是存储 key，导入后按新素材重建</td></tr>
+                <tr><th><code>data.params.images / videos / audios</code></th><td><span class="tag m-rewrite">改写</span></td><td>素材 ID 数组 → 哈希数组</td><td>手动添加的参考素材</td></tr>
+                <tr><th><code>data.paramAssets</code></th><td><span class="tag m-rewrite">改写</span></td><td><b>键</b>从素材 ID 换成哈希；值去掉 <code>url</code>，留 <code>fileName</code>、<code>mediaType</code></td><td>这个对象以素材 ID 为键；地址导入时重建</td></tr>
+                <tr><th><code>data.outputs[]</code></th><td><span class="tag m-rewrite">改写</span></td><td>只留当前选中的一版：<code>assetHash</code>、<code>mediaType</code>、<code>model</code>、<code>createdAt</code></td><td>用户决定：不带历史版本</td></tr>
+                <tr><th><code>data.activeOutputId</code></th><td><span class="tag m-drop">不带</span></td><td>—</td><td>导入时设为唯一一版的新素材 ID</td></tr>
+                <tr><th><code>data.status</code></th><td><span class="tag m-rewrite">改写</span></td><td><code>running</code> → <code>idle</code>；其余原样</td><td>任务没跟过来</td></tr>
+                <tr><th><code>data.taskId</code> / <code>pendingTaskIds</code> / <code>errorTaskRef</code></th><td><span class="tag m-drop">不带</span></td><td>—</td><td>用户要求；任务只在原环境有意义</td></tr>
+                <tr><th><code>data.scene.thumb</code></th><td><span class="tag m-rewrite">改写</span></td><td><code>scene.thumbHash</code></td><td>导演台缩略图也是素材</td></tr>
+                <tr><th><code>data.characterId</code></th><td><span class="tag m-rewrite">改写</span></td><td><code>data.characterRef</code>（指向文件内 <code>characters</code>）</td><td>角色卡 ID 属于原账号</td></tr>
+                <tr><th><code>data.labelCache</code></th><td><span class="tag m-drop">不带</span></td><td>—</td><td>只是占位缓存，导入后实时取</td></tr>
+                <tr><th>其余字段（<code>text</code>、<code>error</code>、<code>mediaAspect</code>、<code>outpaintFrom</code>、未来新增）</th><td><span class="tag m-keep">原样</span></td><td>同左</td><td>不认识的字段原样透传，不丢</td></tr>
+                <tr><th>画布 <code>revision</code>、画布 ID、用户 ID</th><td><span class="tag m-drop">不带</span></td><td>—</td><td>导入是新建，<code>revision</code> 从 1 开始</td></tr>
+                <tr><th>画布 <code>viewport</code>（视口位置、缩放）</th><td><span class="tag m-drop">不带</span></td><td>—</td><td>用户决定不要；视口本来就是这台设备的视图状态，存在本机 localStorage。导入的新画布按默认视口打开</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 3. 可点击原型 ============ -->
+      <section id="tab-proto" hidden>
+        <h1 class="h1">导出和导入，走一遍</h1>
+        <p class="lead">
+          可点击原型，数据在内存里，刷新复原，<b>不会真的下载或上传文件</b>。已预置一张叫「雨夜短片」的画布。
+          想看失败：导出时勾「模拟保存失败」；导入时选「缺素材」或「格式不对」「新版本」「超大」的文件。也可以选本地文件（只做前端检查）。
+        </p>
+        <div class="row wrapflex" style="margin-top: 16px">
+          <div class="seg" role="group" aria-label="流程">
+            <button id="segExport" aria-pressed="true" onclick="setProto('export')">① 在画布里导出</button>
+            <button id="segImport" aria-pressed="false" onclick="setProto('import')">② 在列表页导入</button>
+          </div>
+        </div>
+        <div class="tools">
+          <label><input type="checkbox" id="optFail" onchange="S.failSave = this.checked" />模拟保存失败（冲突）</label>
+          <label><input type="checkbox" id="optSkip" onchange="S.skipAsset = this.checked" />模拟 1 个素材读不到</label>
+        </div>
+        <div class="frame note" style="margin-top: 14px">
+          <div class="frame-bar">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            <span style="margin-left: 8px" id="protoCrumb">app.example.com / 画布 / 雨夜短片</span>
+          </div>
+          <div class="proto" id="proto"></div>
+        </div>
+        <div class="note-txt">
+          设计：导出放画布内（它是对「当前这张画布」的动作），导入放列表页（它是「创建」动作，结果是新画布）。放弃了「导入进当前画布」——会破坏隔离，ComfyUI 的替换也会让用户丢工作。
+        </div>
+      </section>
+
+      <!-- ============ 4. 数据与接口（提案） ============ -->
+      <section id="tab-impl" hidden>
+        <h1 class="h1">数据与接口（提案）</h1>
+        <p class="lead">下面都是设计提案，尚未实现。对应 Markdown 设计文档 §7（格式）、§8（工程影响）。开发者只读这一页也能实现。</p>
+
+        <div class="sec">
+          <h2>关系</h2>
+          <p class="sub">文件里的对象和数据库里的对象怎么对应。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>对象</th><th>允许的关系</th><th>为什么</th></tr></thead>
+              <tbody>
+                <tr><th>文件里一条素材（哈希）</th><td>导入时对应 <code>assets</code> 里 0~N 条同哈希记录，取一条；复制后生成 <b>1 条</b>新记录</td><td>同一内容可能被多人上传；导入者要有自己的独立记录和文件</td></tr>
+                <tr><th>新素材记录</th><td><code>user_id</code> = 导入者；<code>storage_key</code> 新生成；<code>task_id</code> 为空</td><td><code>storage_key</code> 全局唯一，不能和原记录共用</td></tr>
+                <tr><th>文件里一张角色卡</th><td>导入时新建 1 张 <code>character_cards</code>，归导入者</td><td>角色卡用户私有，名称在同用户下不区分大小写唯一</td></tr>
+                <tr><th>导入出的画布</th><td>新的 <code>canvas_projects</code>，<code>revision = 1</code></td><td>与原画布无任何关联，互不影响</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>数据模型</h2>
+          <p class="sub">只改一张表，沿用现有 SQL 迁移机制（<code>backend/migrations/</code>），新增 <code>0012</code>（加列）和 <code>0013</code>（<code>.notx.sql</code> 并发建索引，大表规则）；不新建表。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th colspan="2"><code>assets</code> 表（新增一列）</th></tr></thead>
+              <tbody>
+                <tr><th><code>sha256</code></th><td><code>varchar(64) NOT NULL DEFAULT ''</code>。文件内容的 SHA-256，小写十六进制；空串表示还没算。<b>普通索引</b> <code>idx_assets_sha256</code>，不唯一；不含密钥。</td></tr>
+                <tr><th>写入时机</th><td>新上传 / 生成转存：落盘时顺手算；浏览器直传和历史素材：<b>导出时才补算</b>并写回；写回幂等（<code>WHERE sha256 = ''</code>），并发补算各算一次也无害</td></tr>
+                <tr><th>查找规则</th><td><code>WHERE sha256 = ? AND byte_size = ?</code>，取 <code>id</code> 最小且文件可读的一条；跨用户</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>接口</h2>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>方法与路径</th><th>请求</th><th>返回</th><th>业务错误</th></tr></thead>
+              <tbody>
+                <tr>
+                  <th><code>GET /canvas/:id/export</code></th>
+                  <td>路径参数画布 ID；需登录；只能导出自己的画布</td>
+                  <td><code>{ document, report }</code>；<code>document</code> 即导出文件；<code>report = { skipped_assets }</code>，被跳过（文件读不到）的素材数</td>
+                  <td><code>30001</code> 画布不存在（含别人的）</td>
+                </tr>
+                <tr>
+                  <th><code>POST /canvas/import</code></th>
+                  <td><code>{ document }</code>；文件大小、节点数、素材数、素材总字节有上限（示意：10 MB / 2000 / 200 / 1 GB）</td>
+                  <td>200（统一响应出口，没有 201），<code>{ canvas: { id, title, revision }, report }</code>；<code>report</code> 见下方</td>
+                  <td>
+                    <code>30005</code> 文件格式不对（缺 <code>format</code>、字段非法、引用悬空、哈希格式错）<br />
+                    <code>30006</code> 文件版本高于当前支持<br />
+                    <code>30007</code> 文件或素材数量超限
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="muted" style="font-size: 12.5px; margin-top: 8px">错误码编号沿用 <code>errcode</code> 现有 3000x 段，实现时按该包命名习惯定稿。</p>
+          <h3 style="font-size: 14px; margin: 14px 0 6px">导入报告 <code>report</code>（提案）</h3>
+          <div class="codeblock"><pre style="margin: 0; font: inherit; white-space: pre-wrap">{
+  "assets": {
+    "total": 12,                 // 去重后的素材个数
+    "copied": 11,                // 找到并复制成功
+    "missing": [{ "node_id": "n7", "file_name": "雨夜.mp4" }]   // 找不到：节点保留，素材位置置空
+  },
+  "characters": {
+    "created": 2,
+    "renamed": [{ "from": "林夏", "to": "林夏 (2)" }],        // 同名自动改名
+    "invalid": [{ "node_id": "n9", "name": "老王" }]          // 主图找不到，没建卡，节点「已失效」
+  },
+  "edges_dropped": 0             // source / target 指向不存在节点的连线
+}</pre></div>
+        </div>
+
+        <div class="sec">
+          <h2>导出 / 导入的核心流程（伪代码）</h2>
+          <div class="codeblock"><pre style="margin: 0; font: inherit; white-space: pre-wrap">// 导出（提案）
+export(userID, canvasID):
+  p = canvasRepo.GetByID(userID, canvasID)            // 带 user_id，别人的画布 = 不存在
+  payload = decode(p.PayloadJSON)
+  refs = collectAssetRefs(payload)                     // 集中清单：assetId / params.images|videos|audios / outputs / scene.thumb / 角色卡
+  for each distinct assetID in refs:
+      a = assetRepo.Get(userID, assetID)
+      if a.sha256 == "": a.sha256 = hashFile(a)        // 算完幂等写回；读不到则跳过并计数
+  doc = rewrite(payload, assetID→hash, 只保留 activeOutput, 去掉 status=running/taskId/…)
+  doc.characters = embed(角色卡内容, 主图/补充图/声音 → hash)
+  assert noLeak(doc)                                   // 不得出现 /files/、素材数字 ID、user_id、revision
+  return { document: doc, report: { skipped_assets } }
+
+// 导入（提案）
+import(userID, doc):
+  validate(doc)                                        // format / version / 大小 / 上限 / 哈希格式 / 引用不悬空
+  copied = {}                                          // hash → 新素材
+  for each hash in doc.assets:
+      src = assetRepo.FindBySha256(hash, doc.assets[hash].byteSize)   // 跨用户
+      if src == nil: report.missing += …; continue
+      key = newStorageKey()
+      storage.Put(key, storage.Open(src))              // 复制文件；失败进入 missing
+      copied[hash] = Asset{ userID, key, kind/mime/size/宽高/时长 取自 src, source: "upload", fileName: src.FileName }
+  tx:
+      insert copied assets
+      for each card in doc.characters: create 角色卡（主图缺失则跳过；重名改名「名 (2)」）
+      canvas = rewrite(doc.canvas, hash→新素材ID, 重建 src / paramAssets.url / outputs / activeOutputId / characterId)
+      insert canvas { userID, title+"（导入）", revision: 1 }
+  on tx failure: delete copied 的对象文件
+  return { canvas, report }</pre></div>
+        </div>
+
+        <div class="sec">
+          <h2>前端改动面（提案）</h2>
+          <div class="card">
+            <ul class="list">
+              <li>画布内 Logo 菜单（<code>top-left-bar.tsx</code>）新增「导出画布」：先 <code>onSaveNow</code>，失败不导出；成功后 <code>exportCanvas</code>，把 <code>document</code> 序列化成 Blob 下载。</li>
+              <li>列表页（<code>pages/home/canvas-list</code>）新增「导入画布」按钮、隐藏文件选择框、导入结果对话框。</li>
+              <li><code>web/src/api/canvas/</code> 新增 <code>exportCanvas</code>、<code>importCanvas</code>。不改 <code>serializeGraph</code> 和保存逻辑。</li>
+              <li>测试放 <code>web/src/tests/</code> 和 <code>backend/internal/tests/</code>，先写失败测试。</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>已确认的决定</h2>
+          <div class="card">
+            <ol class="list" style="padding-left: 18px">
+              <li><b>导出整张画布为 JSON；导入生成一张全新画布，与原画布完全隔离</b>：用户原话「相互隔离，不能说参考了这个修改了，另外就不修改了」。</li>
+              <li><b>同一部署、同一存储内搬画布；素材用内容哈希在后端定位，JSON 不写真实地址</b>：用户给出的思路，已核对可行（需新增哈希列）。</li>
+              <li><b>素材文件在存储里复制一份</b>：用户选择推荐项；原因是 <code>storage_key</code> 全局唯一，且要完全隔离。</li>
+              <li><b>拿到 JSON 就能认领素材</b>：用户选择推荐项；不做签名。</li>
+              <li><b>入口：列表页导入 + 画布内导出</b>：用户选择推荐项。</li>
+              <li><b>只带当前选中的那一版生成结果</b>：用户选择。</li>
+              <li><b>角色卡内嵌、导入时新建，不进素材库；不带 <code>revision</code>、<code>taskId</code>、<code>pendingTaskIds</code>、<code>running</code> 状态</b>：用户在访谈中明确。</li>
+              <li><b>不导出视口 <code>viewport</code></b>：用户原话「这个不需要」；导入的新画布按默认视口 <code>{0,0,1}</code> 打开，节点是否在视野内待实测（Markdown §11.4）。</li>
+              <li><b>已搁置</b>：跨部署搬画布、导出文件签名、导入到已有画布、列表卡片导出、异步导入。</li>
+              <li><b>主文档已回写</b>：以上决定见 Markdown §11.1、§11.2；默认值见 §11.3，待你扫一眼的两项见 §11.4。</li>
+            </ol>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+      const $ = (s, r = document) => r.querySelector(s);
+      const esc = (s) =>
+        String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const icons = () => {
+        if (window.lucide) lucide.createIcons();
+      };
+
+      function toggleNotes() {
+        const on = document.body.classList.toggle("show-notes");
+        $("#notesSw").setAttribute("aria-checked", String(on));
+      }
+
+      let toastTimer;
+      function toast(msg, kind = "ok") {
+        const icon = { ok: "circle-check", bad: "circle-x", warn: "triangle-alert" }[kind] || "info";
+        $("#toast").innerHTML = `<div><i data-lucide="${icon}" style="color: rgb(var(--${kind}))"></i>${esc(msg)}</div>`;
+        icons();
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => ($("#toast").innerHTML = ""), 2600);
+      }
+
+      function showTab(id) {
+        document.querySelectorAll("main > section").forEach((s) => (s.hidden = s.id !== "tab-" + id));
+        document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === id)));
+        window.scrollTo(0, 0);
+      }
+      document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab)));
+
+      /* =====================================================
+         JSON 字段浏览器（示意数据；字段说明与 Markdown §7 一致）
+         ===================================================== */
+      const H1 = "9f2c41b8d07e5a63" + "c1f4e8b2a7d9035e" + "6c8b1f4a2d7e90c3" + "b5a8f1e46d02c7ab";
+      const H2 = "1d7a90e3b46c28f5" + "a0c9e7d13b5f8264" + "7e2a4c6b9d0f1835" + "c4e8a2d6f0b97153";
+      const SAMPLE = {
+        format: "video-canvas/canvas",
+        version: 1,
+        exportedAt: "2026-10-24T08:00:00Z",
+        appVersion: "0.4.16",
+        canvas: {
+          title: "雨夜短片",
+          nodes: [
+            {
+              id: "n1",
+              type: "canvas",
+              position: { x: 80, y: 60 },
+              data: { kind: "script", label: "开场描述", prompt: "雨夜，一个女孩站在霓虹街角。", status: "done", text: "雨夜，霓虹闪烁……" },
+            },
+            {
+              id: "n2",
+              type: "canvas",
+              position: { x: 80, y: 260 },
+              data: { kind: "character", label: "林夏", characterRef: "c1" },
+            },
+            {
+              id: "n3",
+              type: "canvas",
+              position: { x: 420, y: 140 },
+              data: {
+                kind: "image",
+                label: "街角镜头",
+                prompt: "@[林夏](n2) 站在霓虹灯下，电影感",
+                model: "image-model-a",
+                status: "done",
+                params: { ratio: "16:9", images: [H2] },
+                mediaType: "image",
+                assetHash: H1,
+                outputs: [{ assetHash: H1, mediaType: "image", model: "image-model-a", createdAt: 1761300000000 }],
+              },
+            },
+          ],
+          edges: [
+            { id: "e1", source: "n1", target: "n3" },
+            { id: "e2", source: "n2", target: "n3" },
+          ],
+        },
+        assets: {
+          [H1]: { kind: "image", mimeType: "image/png", byteSize: 482113, width: 1280, height: 720, durationMs: 0, fileName: "街角镜头.png" },
+          [H2]: { kind: "image", mimeType: "image/png", byteSize: 210344, width: 768, height: 1024, durationMs: 0, fileName: "林夏-主图.png" },
+        },
+        characters: {
+          c1: { name: "林夏", description: "二十岁，短发，黑色风衣", avatar: H2, extras: [], voice: null },
+        },
+      };
+
+      /* mode：keep 原样 / rewrite 改写 / drop 不带（只在「原来」里出现）/ new 新增 */
+      const D = {
+        format: ["format", "new", "固定为 video-canvas/canvas。导入时第一项校验，用来分辨这是不是本系统导出的画布文件。", ""],
+        version: ["version", "new", "文件格式版本，当前为 1。导入时：比当前支持的高就拒绝（错误码 30006）；比当前低就按版本迁移。", ""],
+        exportedAt: ["exportedAt", "new", "导出时间（UTC，RFC 3339）。只展示，不参与任何逻辑。", ""],
+        appVersion: ["appVersion", "new", "导出时的应用版本，取仓库 VERSION。只用于排查问题。", ""],
+        canvas: ["canvas", "rewrite", "画布本体：标题、节点、连线。字段名沿用现有画布数据。", "原来是 canvas_projects.payload_json + title；revision、画布 ID、viewport 不带。"],
+        "canvas.title": ["canvas.title", "keep", "画布标题，1–255 字。导入后会在末尾加「（导入）」。", ""],
+        "canvas.nodes": ["canvas.nodes", "keep", "节点列表（含组节点）。顺序要保持：组排在成员之前。", ""],
+        "canvas.nodes[]": ["节点", "keep", "一个节点。保留现有字段名；素材引用、任务状态按下面各字段处理。", ""],
+        "canvas.nodes[].id": ["节点 id", "keep", "节点 ID，只在这张画布内唯一。原样保留，因为提示词里的 @[名字](节点id)、parentId、outpaintFrom 都靠它互相引用。", "导入出的是新画布，不会和别的画布冲突。"],
+        "canvas.nodes[].type": ["type", "keep", "固定 canvas（组节点是 group）。", ""],
+        "canvas.nodes[].position": ["position", "keep", "节点在画布上的坐标；有 parentId 时是相对所属组左上角的坐标。", ""],
+        "canvas.nodes[].data": ["data", "rewrite", "节点携带的业务数据。素材引用换成哈希，任务相关字段不带。", ""],
+        "canvas.nodes[].data.kind": ["kind", "keep", "节点种类：script / image / video / audio / director / character。", ""],
+        "canvas.nodes[].data.label": ["label", "keep", "节点标题。", ""],
+        "canvas.nodes[].data.prompt": ["prompt", "keep", "提示词，原样。其中 @[名字](节点id) 引用的是本文件里的节点 id，所以节点 id 不能变。", ""],
+        "canvas.nodes[].data.model": ["model", "keep", "所选模型 key。同一部署内模型配置相同，不做改写。", "模型在导入端不存在时的表现：未验证，需实测。"],
+        "canvas.nodes[].data.status": ["status", "rewrite", "生成状态。running 导出为 idle；idle / done / error 原样。", "原来是 running 时，说明有任务在跑，任务不会跟过来。"],
+        "canvas.nodes[].data.text": ["text", "keep", "文本节点生成出来的正文，原样。", ""],
+        "canvas.nodes[].data.mediaType": ["mediaType", "keep", "素材是图、视频还是音频。", ""],
+        "canvas.nodes[].data.assetHash": ["assetHash", "rewrite", "本节点当前素材的内容哈希（SHA-256，64 位小写十六进制），在顶层 assets 里能查到元信息。导入时按它在存储里找文件并复制。", "原来是 data.assetId（素材数字 ID，只在原账号有效）；data.src（/files/<存储key>）不带，导入后重建。"],
+        "canvas.nodes[].data.params": ["params", "rewrite", "按模型能力存的参数值。其中 images / videos / audios（手动添加的参考素材）从素材 ID 数组换成哈希数组；其余参数（比如比例）原样。", "原来 images 里是素材数字 ID，如 [\"1288\"]。"],
+        "canvas.nodes[].data.params.images": ["params.images", "rewrite", "手动添加的参考图。数组里每一项是素材哈希，在 assets 里有对应条目。videos、audios 同理。", "原来是素材数字 ID 数组。"],
+        "canvas.nodes[].data.outputs": ["outputs", "rewrite", "生成产物列表。按「只带当前选中那一版」的决定，只保留一项：assetHash、mediaType、model、createdAt。", "原来有历次生成的全部版本，还带 id、src、assetId、taskId、activeOutputId；这些不带。"],
+        "canvas.nodes[].data.outputs[]": ["outputs[]", "rewrite", "当前选中的那一版结果。导入时它的 id 和 activeOutputId 会被设为新素材 ID。", "原来的 taskId 不带。"],
+        "canvas.nodes[].data.characterRef": ["characterRef", "rewrite", "角色卡节点引用的角色卡，指向顶层 characters 里的局部编号（如 c1）。导入时新建角色卡，节点再指向新卡。", "原来是 data.characterId（十六进制串，属于原账号）；labelCache 不带。"],
+        "canvas.edges": ["canvas.edges", "keep", "连线列表。", ""],
+        "canvas.edges[]": ["连线", "keep", "id、source、target，以及可选的 sourceHandle、targetHandle。source / target 必须指向存在的节点，否则导入时丢弃这根线并记入报告。", ""],
+        assets: ["assets", "new", "本画布用到的所有素材，键是内容哈希。同一个文件被多个节点用，只写一条（按内容去重）。", "原来没有这一层：素材散落在各节点的 assetId / src 里。"],
+        "assets.*": ["assets[哈希]", "new", "素材的元信息：kind（image/video/audio）、mimeType、byteSize、width、height、durationMs、fileName。只用于展示和交叉校验：导入时以后端查到的记录为准，byteSize 对不上就当作找不到。", ""],
+        characters: ["characters", "new", "本画布节点引用的角色卡内容，键是文件内的局部编号。没有角色卡节点时是空对象。", "原来角色卡只存在 character_cards 表里，画布节点只存 characterId。"],
+        "characters.*": ["characters[编号]", "new", "一张角色卡：name（1–64 字）、description（≤500 字）、avatar（主图哈希，必填）、extras（补充图哈希数组，≤4）、voice（声音哈希或 null）。导入时给导入者新建一张；重名（不区分大小写）自动改成「名字 (2)」；不进素材库文件夹。", "主图找不到则不建卡，对应节点显示「已失效」。"],
+      };
+      const MAPS = new Set(["assets", "characters"]);
+      const modeText = { keep: "原样", rewrite: "改写", drop: "不带", new: "新增" };
+
+      function docFor(path) {
+        let p = path;
+        while (p) {
+          if (D[p]) return D[p];
+          const cut = Math.max(p.lastIndexOf("."), p.lastIndexOf("["));
+          if (cut < 0) break;
+          p = p.slice(0, cut);
+        }
+        return null;
+      }
+
+      function jsonLines() {
+        const lines = [];
+        const val = (v) =>
+          typeof v === "string"
+            ? `<span class="${/^[0-9a-f]{64}$/.test(v) ? "jh" : "js"}">${esc(JSON.stringify(v))}</span>`
+            : `<span class="jn">${esc(JSON.stringify(v))}</span>`;
+        const walk = (key, v, path, ind, comma, isMapChild) => {
+          const pad = "  ".repeat(ind);
+          const k = key === null ? "" : `<span class="jk">${esc(JSON.stringify(key))}</span>: `;
+          const c = comma ? "," : "";
+          if (Array.isArray(v) && v.length && typeof v[0] === "object") {
+            lines.push({ path, html: `${pad}${k}[` });
+            v.forEach((it, i) => walk(null, it, path + "[]", ind + 1, i < v.length - 1));
+            lines.push({ path, html: `${pad}]${c}` });
+          } else if (Array.isArray(v)) {
+            lines.push({ path, html: `${pad}${k}[${v.map(val).join(", ")}]${c}` });
+          } else if (v && typeof v === "object") {
+            lines.push({ path, html: `${pad}${k}{` });
+            const keys = Object.keys(v);
+            keys.forEach((kk, i) => {
+              const childPath = MAPS.has(path) ? path + ".*" : path ? path + "." + kk : kk;
+              walk(kk, v[kk], childPath, ind + 1, i < keys.length - 1);
+            });
+            lines.push({ path, html: `${pad}}${c}` });
+          } else {
+            lines.push({ path, html: `${pad}${k}${val(v)}${c}` });
+          }
+        };
+        walk(null, SAMPLE, "", 0, false);
+        return lines;
+      }
+      const JLINES = jsonLines();
+
+      function renderJson() {
+        $("#jbox").innerHTML = JLINES.map(
+          (l, i) => `<div class="jl" data-i="${i}">${l.html}</div>`,
+        ).join("");
+        $("#jbox").addEventListener("click", (e) => {
+          const el = e.target.closest(".jl");
+          if (!el) return;
+          selectLine(Number(el.dataset.i));
+        });
+        $("#jdoc").innerHTML = `<p class="muted">点左边任意一行，看这个字段的含义和导出处理。</p>`;
+      }
+      function selectLine(i) {
+        document.querySelectorAll(".jl.sel").forEach((n) => n.classList.remove("sel"));
+        const el = $(`.jl[data-i="${i}"]`);
+        if (el) el.classList.add("sel");
+        const path = JLINES[i].path;
+        const d = docFor(path);
+        if (!d) {
+          $("#jdoc").innerHTML = `<p class="muted">这一行是整个文件的外层括号。</p>`;
+          return;
+        }
+        $("#jdoc").innerHTML = `
+          <h3><code>${esc(d[0])}</code><span class="tag m-${d[1]}">${modeText[d[1]]}</span></h3>
+          <p>${esc(d[2])}</p>
+          ${d[3] ? `<div class="from"><b>对照：</b>${esc(d[3])}</div>` : ""}`;
+      }
+      function copySample() {
+        const text = JSON.stringify(SAMPLE, null, 2);
+        const done = () => toast("已复制示例 JSON（示意内容）");
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done, () => toast("浏览器不允许复制，请手动选中", "warn"));
+        } else {
+          toast("浏览器不允许复制，请手动选中", "warn");
+        }
+      }
+
+      /* =====================================================
+         可点击原型（模拟，非真实调用）
+         ===================================================== */
+      const S = {
+        proto: "export",
+        menu: false,
+        exportDlg: null, // null | "confirm" | "run" | "done" | "fail"
+        exportStep: 0,
+        exportSkipped: 0,
+        importDlg: null, // null | "pick" | "run" | "report" | "error"
+        importStep: 0,
+        scen: null,
+        list: [
+          { id: 1, title: "雨夜短片", nodes: 7, fresh: false },
+          { id: 2, title: "产品广告分镜", nodes: 12, fresh: false },
+          { id: 3, title: "未命名画布", nodes: 0, fresh: false },
+        ],
+        failSave: false,
+        skipAsset: false,
+      };
+      let timers = [];
+      const later = (fn, ms) => timers.push(setTimeout(fn, ms));
+      const clearTimers = () => {
+        timers.forEach(clearTimeout);
+        timers = [];
+      };
+
+      const SCEN = {
+        ok: { file: "雨夜短片.canvas.json", size: "86 KB", title: "雨夜短片", nodes: 7, assets: 6, missing: [], renamed: [], invalid: [] },
+        miss: {
+          file: "雨夜短片-缺素材.canvas.json",
+          size: "86 KB",
+          title: "雨夜短片",
+          nodes: 7,
+          assets: 6,
+          missing: [{ nodeId: "n7", fileName: "雨夜.mp4" }],
+          renamed: [{ from: "林夏", to: "林夏 (2)" }],
+          invalid: [{ nodeId: "n9", name: "老王" }],
+        },
+        badfmt: { file: "旧版导出.json", size: "12 KB", error: ["30005", "文件格式不对：缺少 format 字段，不是本系统导出的画布文件"] },
+        newver: { file: "新版本.canvas.json", size: "90 KB", error: ["30006", "文件来自更新版本（version 2），当前最高支持 1，请升级后再导入"] },
+        big: { file: "超大画布.canvas.json", size: "12 MB", client: "文件过大（12 MB），上限 10 MB（示意）" },
+      };
+      const SCEN_LIST = [
+        ["ok", "雨夜短片.canvas.json", "正常：全部素材都找得到"],
+        ["miss", "雨夜短片-缺素材.canvas.json", "缺 1 个素材，角色卡重名，1 张卡主图缺失"],
+        ["badfmt", "旧版导出.json", "格式不对：没有 format 字段"],
+        ["newver", "新版本.canvas.json", "版本不对：version 为 2"],
+        ["big", "超大画布.canvas.json", "超大：12 MB，前端直接拦下"],
+      ];
+
+      const protoHost = () => $("#proto");
+
+      function setProto(which) {
+        clearTimers();
+        S.proto = which;
+        S.menu = false;
+        S.exportDlg = null;
+        S.importDlg = null;
+        $("#segExport").setAttribute("aria-pressed", String(which === "export"));
+        $("#segImport").setAttribute("aria-pressed", String(which === "import"));
+        $("#protoCrumb").textContent =
+          which === "export" ? "app.example.com / 画布 / 雨夜短片" : "app.example.com / 项目列表 / 画布";
+        renderProto();
+      }
+
+      function stepRow(label, idx, cur, failIdx) {
+        const cls = failIdx === idx ? "fail" : idx < cur ? "done" : idx === cur ? "on" : "";
+        const icon = failIdx === idx ? "circle-x" : idx < cur ? "circle-check" : idx === cur ? "loader-circle" : "circle";
+        return `<div class="stp ${cls}"><i data-lucide="${icon}" class="${idx === cur && failIdx !== idx ? "spin" : ""}"></i>${esc(label)}</div>`;
+      }
+
+      function exportView() {
+        const dlg = S.exportDlg;
+        let overlay = "";
+        if (dlg === "confirm") {
+          overlay = `<div class="overlay"><div class="dlg">
+            <h3>导出画布「雨夜短片」</h3>
+            <p class="muted" style="font-size: 13.5px; margin-top: 8px">将保存当前画布，并生成 <code>雨夜短片.canvas.json</code>。</p>
+            <div class="callout c-warn" style="margin-top: 12px"><i data-lucide="triangle-alert"></i>
+              <div>导出文件包含提示词、参数和素材的内容标识。<b>拿到文件的人可以在本系统里导入出同样的素材</b>，分享前请确认对象。</div></div>
+            <div class="foot"><button class="btn btn-outline" data-act="exp-close">取消</button><button class="btn btn-primary" data-act="exp-go"><i data-lucide="download"></i>导出</button></div>
+          </div></div>`;
+        } else if (dlg === "run" || dlg === "fail") {
+          const failIdx = dlg === "fail" ? 0 : -1;
+          overlay = `<div class="overlay"><div class="dlg">
+            <h3>${dlg === "fail" ? "导出已中止" : "正在导出…"}</h3>
+            <div style="margin-top: 10px">
+              ${stepRow("保存画布", 0, S.exportStep, failIdx)}
+              ${stepRow("整理素材（补算内容哈希）", 1, S.exportStep, -1)}
+              ${stepRow("生成文件", 2, S.exportStep, -1)}
+            </div>
+            ${dlg === "fail" ? `<div class="callout c-bad" style="margin-top: 10px"><i data-lucide="circle-x"></i><div><b>画布有未保存的修改，保存失败（版本冲突）。</b>请先在画布里解决冲突，保存成功后再导出。导出只会读已保存的内容，不会导出不完整的画布。</div></div>
+            <div class="foot"><button class="btn btn-outline" data-act="exp-close">关闭</button></div>` : `<p class="muted" style="font-size: 12px; margin-top: 8px">模拟，非真实调用；耗时是示意。</p>`}
+          </div></div>`;
+        } else if (dlg === "done") {
+          overlay = `<div class="overlay"><div class="dlg">
+            <h3>导出完成</h3>
+            <div class="callout c-ok" style="margin-top: 12px"><i data-lucide="circle-check"></i>
+              <div><b>已下载 <code>雨夜短片.canvas.json</code>（86 KB，示意）。</b>${S.exportSkipped ? `<br />有 ${S.exportSkipped} 个素材文件读不到，已跳过：对应节点导入后素材位置为空。` : ""}</div></div>
+            <div class="foot"><button class="btn btn-outline" data-act="exp-view">查看文件格式</button><button class="btn btn-primary" data-act="exp-close">完成</button></div>
+          </div></div>`;
+        }
+        return `
+          <div class="cv-top">
+            <button class="cv-logo" data-act="menu" aria-label="画布菜单"><i data-lucide="film"></i><i data-lucide="chevron-down" style="width: 12px; height: 12px"></i></button>
+            <b style="font-size: 13px">雨夜短片</b>
+            <span class="tag t-ok"><i data-lucide="check" style="margin-right: 3px"></i>已保存</span>
+            ${S.menu ? `<div class="menu note">
+              <button data-act="noop"><i data-lucide="arrow-left"></i>返回项目列表</button>
+              <button data-act="noop"><i data-lucide="plus"></i>新建画布</button>
+              <hr />
+              <button data-act="exp-open"><i data-lucide="file-down"></i>导出画布<span class="tag t-violet spacer">新</span></button>
+            </div>` : ""}
+          </div>
+          <div class="cv-body">
+            <svg width="100%" height="100%" style="position: absolute; inset: 0; pointer-events: none">
+              <path d="M150 86 C 250 86, 250 170, 330 170" fill="none" stroke="hsl(var(--muted-foreground))" stroke-width="1.5" />
+              <path d="M150 250 C 250 250, 250 190, 330 190" fill="none" stroke="hsl(var(--muted-foreground))" stroke-width="1.5" />
+            </svg>
+            <div class="mnode" style="left: 20px; top: 40px"><b>开场描述</b><span class="muted">脚本</span><div class="ph"><i data-lucide="file-text"></i></div></div>
+            <div class="mnode" style="left: 20px; top: 204px"><b>林夏</b><span class="muted">角色卡</span><div class="ph"><i data-lucide="user-round"></i></div></div>
+            <div class="mnode" style="left: 330px; top: 124px"><b>街角镜头</b><span class="muted">图片</span><div class="ph"><i data-lucide="image"></i></div></div>
+          </div>
+          ${S.menu ? "" : `<div style="padding: 10px 14px"><span class="muted" style="font-size: 12.5px">点左上角 Logo 打开菜单，找「导出画布」。</span></div>`}
+          ${overlay}`;
+      }
+
+      function importView() {
+        const cards = S.list
+          .map(
+            (c) => `<div class="ccard ${c.fresh ? "fresh" : ""}">
+              <div class="cover"><i data-lucide="${c.nodes ? "layout-grid" : "square-dashed"}"></i></div>
+              <div class="meta"><b>${esc(c.title)}</b><div class="muted">${c.nodes} 个节点${c.fresh ? ' · <span style="color: rgb(var(--ok))">刚导入</span>' : ""}</div></div>
+            </div>`,
+          )
+          .join("");
+        let overlay = "";
+        if (S.importDlg === "pick") {
+          overlay = `<div class="overlay"><div class="dlg">
+            <h3>导入画布</h3>
+            <p class="muted" style="font-size: 13.5px; margin: 8px 0 12px">选择一个 <code>.canvas.json</code> 文件，会创建一张<b>新画布</b>，不会改动已有画布。下面是几份示意文件（点一下相当于选中该文件）：</p>
+            <div class="grid" style="gap: 8px">
+              ${SCEN_LIST.map(([k, name, desc]) => `<button class="filebtn" data-act="imp-pick" data-k="${k}"><i data-lucide="file-json"></i><span><b>${esc(name)}</b><small>${esc(desc)}</small></span></button>`).join("")}
+              <label class="filebtn" style="cursor: pointer"><i data-lucide="folder-open"></i><span><b>选择本地文件…</b><small>只做前端检查（能否解析、format、version），不会上传</small></span>
+                <input type="file" accept=".json,application/json" id="realFile" hidden /></label>
+            </div>
+            <div class="foot"><button class="btn btn-outline" data-act="imp-close">取消</button></div>
+          </div></div>`;
+        } else if (S.importDlg === "run") {
+          const sc = S.scen;
+          const failIdx = sc.error ? 0 : -1;
+          const steps = ["校验文件", `查找并复制素材（${sc.assets || 0} 个）`, "创建角色卡", "写入新画布"];
+          overlay = `<div class="overlay"><div class="dlg">
+            <h3>正在导入「${esc(sc.file)}」</h3>
+            <div style="margin-top: 10px">${steps.map((s, i) => stepRow(s, i, S.importStep, i === failIdx && S.importStep === 0 && sc.error ? 0 : -1)).join("")}</div>
+            <p class="muted" style="font-size: 12px; margin-top: 8px">模拟，非真实调用；素材较大时同步导入可能耗时较长（未验证）。</p>
+          </div></div>`;
+        } else if (S.importDlg === "report") {
+          const sc = S.scen;
+          overlay = `<div class="overlay"><div class="dlg">
+            <h3>导入完成，有 ${sc.missing.length + sc.renamed.length + sc.invalid.length} 项需要注意</h3>
+            <p class="muted" style="font-size: 13.5px; margin-top: 6px">新画布「${esc(sc.title)}（导入）」已创建，可以正常打开。</p>
+            ${sc.missing.length ? `<div class="callout c-warn" style="margin-top: 10px"><i data-lucide="image-off"></i><div><b>${sc.missing.length} 个素材找不到，已留空</b><ul class="rep-list">${sc.missing.map((m) => `<li>节点 <code>${esc(m.nodeId)}</code> · ${esc(m.fileName)}</li>`).join("")}</ul></div></div>` : ""}
+            ${sc.renamed.length ? `<div class="callout c-info" style="margin-top: 10px"><i data-lucide="user-round-pen"></i><div><b>${sc.renamed.length} 张角色卡重名，已自动改名</b><ul class="rep-list">${sc.renamed.map((m) => `<li>${esc(m.from)} → ${esc(m.to)}</li>`).join("")}</ul></div></div>` : ""}
+            ${sc.invalid.length ? `<div class="callout c-warn" style="margin-top: 10px"><i data-lucide="user-round-x"></i><div><b>${sc.invalid.length} 张角色卡主图缺失，没有创建</b><ul class="rep-list">${sc.invalid.map((m) => `<li>节点 <code>${esc(m.nodeId)}</code> · ${esc(m.name)}（显示为「已失效」）</li>`).join("")}</ul></div></div>` : ""}
+            <div class="foot"><button class="btn btn-primary" data-act="imp-open">打开画布</button></div>
+          </div></div>`;
+        } else if (S.importDlg === "error") {
+          const sc = S.scen;
+          overlay = `<div class="overlay"><div class="dlg">
+            <h3>导入失败</h3>
+            <div class="callout c-bad" style="margin-top: 12px"><i data-lucide="circle-x"></i><div><b>${esc(sc.error[1])}</b><br /><span class="muted">错误码 ${esc(sc.error[0])}；没有创建任何画布、素材或角色卡。</span></div></div>
+            <div class="foot"><button class="btn btn-outline" data-act="imp-close">关闭</button><button class="btn btn-primary" data-act="imp-pickagain">换一个文件</button></div>
+          </div></div>`;
+        }
+        return `
+          <div class="cv-top">
+            <b style="font-size: 15px">我的画布</b>
+            <span class="spacer row">
+              <button class="btn btn-outline note" data-act="imp-open-dlg"><i data-lucide="file-up"></i>导入画布<span class="tag t-violet">新</span></button>
+              <button class="btn btn-primary" data-act="noop"><i data-lucide="plus"></i>新建画布</button>
+            </span>
+          </div>
+          <div class="clist">${cards}</div>
+          ${overlay}`;
+      }
+
+      function renderProto() {
+        protoHost().innerHTML = S.proto === "export" ? exportView() : importView();
+        const f = $("#realFile");
+        if (f) f.addEventListener("change", onRealFile);
+        icons();
+      }
+
+      function startExport() {
+        S.exportDlg = "run";
+        S.exportStep = 0;
+        renderProto();
+        later(() => {
+          if (S.failSave) {
+            S.exportDlg = "fail";
+            renderProto();
+            return;
+          }
+          S.exportStep = 1;
+          renderProto();
+          later(() => {
+            S.exportStep = 2;
+            renderProto();
+            later(() => {
+              S.exportSkipped = S.skipAsset ? 1 : 0;
+              S.exportDlg = "done";
+              renderProto();
+            }, 700);
+          }, 800);
+        }, 700);
+      }
+
+      function startImport(sc) {
+        if (sc.client) {
+          S.importDlg = null;
+          renderProto();
+          toast(sc.client, "bad");
+          return;
+        }
+        S.scen = sc;
+        S.importDlg = "run";
+        S.importStep = 0;
+        renderProto();
+        later(() => {
+          if (sc.error) {
+            S.importDlg = "error";
+            renderProto();
+            return;
+          }
+          S.importStep = 1;
+          renderProto();
+          later(() => {
+            S.importStep = 2;
+            renderProto();
+            later(() => {
+              S.importStep = 3;
+              renderProto();
+              later(() => finishImport(sc), 700);
+            }, 700);
+          }, 900);
+        }, 600);
+      }
+
+      function finishImport(sc) {
+        S.list.forEach((c) => (c.fresh = false));
+        S.list.unshift({ id: Date.now(), title: sc.title + "（导入）", nodes: sc.nodes, fresh: true });
+        if (sc.missing.length || sc.renamed.length || sc.invalid.length) {
+          S.importDlg = "report";
+        } else {
+          S.importDlg = null;
+          toast("导入完成，已创建新画布「" + sc.title + "（导入）」");
+        }
+        renderProto();
+      }
+
+      function onRealFile(e) {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        if (file.size > 10 * 1024 * 1024) {
+          startImport({ file: file.name, client: "文件过大，上限 10 MB（示意）" });
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => {
+          let doc;
+          try {
+            doc = JSON.parse(String(reader.result));
+          } catch {
+            startImport({ file: file.name, size: "", error: ["30005", "不是有效的 JSON 文件，无法解析"] });
+            return;
+          }
+          if (!doc || doc.format !== "video-canvas/canvas") {
+            startImport({ file: file.name, error: ["30005", "文件格式不对：缺少或写错 format 字段，不是本系统导出的画布文件"] });
+          } else if (typeof doc.version !== "number" || doc.version > 1) {
+            startImport({ file: file.name, error: ["30006", "文件版本高于当前支持的版本（1），请升级后再导入"] });
+          } else {
+            const nodes = Array.isArray(doc.canvas && doc.canvas.nodes) ? doc.canvas.nodes.length : 0;
+            const assets = doc.assets && typeof doc.assets === "object" ? Object.keys(doc.assets).length : 0;
+            const title = String((doc.canvas && doc.canvas.title) || "未命名画布").slice(0, 50);
+            startImport({ file: file.name, title, nodes, assets, missing: [], renamed: [], invalid: [] });
+          }
+        };
+        reader.readAsText(file);
+      }
+
+      protoHost().addEventListener("click", (e) => {
+        const t = e.target.closest("[data-act]");
+        if (!t) {
+          if (S.menu) {
+            S.menu = false;
+            renderProto();
+          }
+          return;
+        }
+        const act = t.dataset.act;
+        if (act === "menu") S.menu = !S.menu;
+        else if (act === "noop") {
+          S.menu = false;
+          toast("示意：此处不在本设计范围内", "warn");
+        } else if (act === "exp-open") {
+          S.menu = false;
+          S.exportDlg = "confirm";
+        } else if (act === "exp-go") return startExport();
+        else if (act === "exp-close") S.exportDlg = null;
+        else if (act === "exp-view") {
+          S.exportDlg = null;
+          renderProto();
+          return showTab("json");
+        } else if (act === "imp-open-dlg" || act === "imp-pickagain") S.importDlg = "pick";
+        else if (act === "imp-close") S.importDlg = null;
+        else if (act === "imp-pick") return startImport(SCEN[t.dataset.k]);
+        else if (act === "imp-open") {
+          S.importDlg = null;
+          toast("示意：此处进入新画布");
+        }
+        renderProto();
+      });
+
+      renderJson();
+      renderProto();
+      icons();
+    </script>
+  </body>
+</html>

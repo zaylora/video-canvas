@@ -12,11 +12,12 @@ import (
 
 // Handlers 汇总所有 handler，新增模块时在这里加字段并注册路由。
 type Handlers struct {
-	Health        *handler.HealthHandler
-	User          *handler.UserHandler
-	Me            *handler.MeHandler // 个人中心：资料、头像、改密码、统计、热力图、积分流水
-	CanvasProject *handler.CanvasProjectHandler
-	Conversation  *handler.ConversationHandler // 首页生成：对话与生成记录
+	Health         *handler.HealthHandler
+	User           *handler.UserHandler
+	Me             *handler.MeHandler // 个人中心：资料、头像、改密码、统计、热力图、积分流水
+	CanvasProject  *handler.CanvasProjectHandler
+	CanvasTransfer *handler.CanvasTransferHandler // 画布导出为文档、从文档导入为新画布
+	Conversation   *handler.ConversationHandler   // 首页生成：对话与生成记录
 	// AgentProxy：画布 Agent 的会话、运行、审批、评价由独立的 Agent 服务负责，这些接口只校验登录态后反向代理过去
 	// （路径、方法、信封不变）；技能目录等仍由 Go 自己处理。为 nil 表示没有启用 Agent，这些接口统一返回「Agent 暂不可用」。
 	AgentProxy *agenthandler.AgentProxyHandler
@@ -108,6 +109,8 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		canvas.GET("/:id", h.CanvasProject.Get)
 		canvas.PUT("/:id", h.CanvasProject.Update)
 		canvas.DELETE("/:id", h.CanvasProject.Delete)
+		canvas.GET("/:id/export", h.CanvasTransfer.Export)
+		canvas.POST("/import", h.CanvasTransfer.Import)
 		fwd := agentRoute(h.AgentProxy)
 		canvas.GET("/:id/agent/sessions", fwd)
 		canvas.POST("/:id/agent/sessions", fwd)

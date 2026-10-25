@@ -670,7 +670,7 @@ Agent 服务生成的会话、运行、审批、事件 ID 都用雪花算法，�
 
 实现了第 19.6 节的设计：
 
-- `agent_mutations` 新增 `idem_key`、`result_json` 两列（迁移 `0012_agent_mutation_result.sql`）。
+- `agent_mutations` 新增 `idem_key`、`result_json` 两列（迁移 `0014_agent_mutation_result.sql`，最初是 0012，合并 master 时和它的 0012 编号重复而改号，并改成可重复执行）。
 - `AgentCanvasService` 新增 `WithIdempotencyKey(ctx, key)` / `IdempotencyKeyFrom(ctx)`；`mutate` 在读画布之后、应用修改之前查同一个 `(运行, 幂等键, 种类)` 的已有记录，有就用存下来的 `result_json`（`id_map`、提醒）和改动记录还原结果，不再写画布、不再推 `canvas.patch`。`ApplyOps`、`Arrange`、`DeleteApproved`、`BindTasks`、`AddFrames` 都走 `mutate`，一起获得幂等。
 - 没有改仓储接口：复用现有的 `ListMutations`。
 

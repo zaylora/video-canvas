@@ -49,6 +49,28 @@ func (r *AssetRepository) GetByID(ctx context.Context, userID, id uint64) (*mode
 	return &a, nil
 }
 
+// FindBySha256 按内容哈希与文件大小查找素材，不带用户条件：给画布导入 / 复制按内容复用已有文件用，
+// 调用方只取文件本身（存储位置），不会把别人的素材行暴露给用户。按 id 升序最多返回 5 条（取最早的几份即可），
+// sha 为空串时不会匹配“未计算”的行，直接返回空切片；查不到返回空切片（非 nil），不返回 ErrNotFound。
+func (r *AssetRepository) FindBySha256(ctx context.Context, sha string, byteSize int64) ([]model.Asset, error) {
+	rows := []model.Asset{}
+	if sha == "" {
+		return rows, nil
+	}
+	if err := r.db.WithContext(ctx).Where("sha256 = ? AND byte_size = ?", sha, byteSize).
+		Order("id ASC").Limit(5).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+// SetSha256IfEmpty 给还没有哈希的素材回填 sha256：条件 id = ? AND sha256 = ”，已有哈希时不覆盖，所以重复调用是幂等的；
+// 素材不存在（影响 0 行）同样返回 nil，不返回 ErrNotFound。不带用户条件，只由后端内部流程调用。
+func (r *AssetRepository) SetSha256IfEmpty(ctx context.Context, id uint64, sha string) error {
+	return r.db.WithContext(ctx).Model(&model.Asset{}).
+		Where("id = ? AND sha256 = ''", id).Update("sha256", sha).Error
+}
+
 // ListByIDs 按 id 批量查询素材，不带用户条件：给登录页展示这类“管理员挑选后全站公开”的场景用，
 // 归属已在管理员添加条目时校验过。不存在的 id 直接缺席，返回顺序不保证；ids 为空返回 nil。
 func (r *AssetRepository) ListByIDs(ctx context.Context, ids []uint64) ([]model.Asset, error) {

@@ -905,6 +905,7 @@ export const Flow = memo(function Flow({
 
                       <ChromeZone position="top-left">
                         <TopLeftBar
+                          canvasId={canvas.id}
                           title={title}
                           onRename={onRename}
                           saveStatus={saveStatus}
