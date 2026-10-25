@@ -110,7 +110,7 @@ func newBridgeEnvWith(t *testing.T, lib SkillLibrary, web provider.WebAccess) *b
 	br := NewAgentBridge(BridgeDeps{
 		Repo: e.repo, Canvas: NewAgentCanvasService(e.repo, e.bc), Agent: e.svc, Billing: NewAgentBilling(bill),
 		Registry: reg, Secrets: fakeSecrets{"channel:ch1": "sk-test"}, Streamer: str, Skills: lib, Web: web,
-		Now: func() time.Time { return now }, TokenTTL: time.Hour,
+		Now: func() time.Time { return now }, TokenTTL: time.Hour, RunUsage: &fakeRunUsage{bill: bill},
 	})
 	return &bridgeEnv{agentEnv: e, bill: bill, reg: reg, str: str, br: br, now: &now, webAccess: web}
 }

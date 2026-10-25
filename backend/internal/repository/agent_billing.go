@@ -44,6 +44,40 @@ func (r *AgentRepository) AvailableCredits(ctx context.Context, userID uint64) (
 	return acc.Balance - acc.Frozen, nil
 }
 
+// RunModelUsage 汇总一个运行里已结算的模型调用：实扣积分之和，以及最近一次对话调用送进模型的输入 Token 数。
+// 平台 API 的上下文模式下运行记录不在 Go 里，本轮已花的积分只能按调用记录累加。
+// 只数该用户的调用（运行 id 相同也不能混）；还没结算的不算；摘要调用要计费，但它的输入是被压缩的那段历史，
+// 不代表对话现在多大，所以不参与上下文大小。没有任何调用时全为 0，不是错误。
+func (r *AgentRepository) RunModelUsage(ctx context.Context, userID, runID uint64) (model.AgentRunModelUsage, error) {
+	var out model.AgentRunModelUsage
+	// 每个查询用新的 *gorm.DB：同一个对象上 Select 会留在后面的查询里（真实数据库报过 GROUP BY 错误）
+	settled := func() *gorm.DB {
+		return r.db.WithContext(ctx).Model(&model.AgentModelCall{}).Where("run_id = ? AND user_id = ? AND status = ?", runID, userID, model.ModelCallSettled)
+	}
+	if err := settled().Select("COALESCE(SUM(charged), 0)").Scan(&out.Credits).Error; err != nil {
+		return out, err
+	}
+	var last model.AgentModelCall
+	err := settled().Where("purpose = ?", "main").Order("id DESC").Limit(1).Take(&last).Error
+	switch {
+	case errors.Is(err, gorm.ErrRecordNotFound):
+	case err != nil:
+		return out, err
+	default:
+		out.ContextTokens = last.InputTokens
+	}
+	return out, nil
+}
+
+// ModelCall 取一个运行里的一次调用；不存在或不属于该用户和运行返回 ErrNotFound。
+func (r *AgentRepository) ModelCall(ctx context.Context, userID, runID, callID uint64) (*model.AgentModelCall, error) {
+	var c model.AgentModelCall
+	if err := r.db.WithContext(ctx).Where("id = ? AND run_id = ? AND user_id = ?", callID, runID, userID).First(&c).Error; err != nil {
+		return nil, translate(err)
+	}
+	return &c, nil
+}
+
 // SettleModelCall 按实际用量结算一次调用：在一个事务里完成「标记已结算」「锁账户」「写流水」「扣余额」。
 //
 // 扣费规则：

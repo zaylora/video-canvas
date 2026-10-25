@@ -222,3 +222,10 @@ type AgentModelCall struct {
 
 // TableName 表名。
 func (AgentModelCall) TableName() string { return "agent_model_calls" }
+
+// AgentRunModelUsage 是一个运行里模型调用的累计用量（不是表，从 agent_model_calls 汇总）。
+// 平台 API 的上下文模式下运行记录在 Agent 服务里，本轮已花的积分由 Go 按调用记录累加。
+type AgentRunModelUsage struct {
+	Credits       int // 已结算的对话和摘要调用实扣的积分之和
+	ContextTokens int // 最近一次对话调用送进模型的输入 Token 数，即会话当前的上下文大小；摘要调用不算
+}

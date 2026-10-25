@@ -36,6 +36,8 @@ func NewBridge(mode string, h *agenthandler.AgentBridgeHandler, platform *agenth
 		p := r.Group("/internal/platform/v1", middleware.RequireServiceToken(serviceToken))
 		p.POST("/tools/:name", platform.Tool)
 		p.DELETE("/runs/:run_id", platform.EndRun)
+		p.GET("/runs/:run_id/usage", platform.Usage)
+		p.POST("/model/chat/completions", platform.ChatCompletions)
 	}
 	return r
 }

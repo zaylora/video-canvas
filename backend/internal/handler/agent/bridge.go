@@ -93,14 +93,27 @@ func (h *AgentBridgeHandler) ChatCompletions(c *gin.Context) {
 		writeOpenAIError(c, http.StatusUnauthorized, "缺少桥令牌", "authentication_error")
 		return
 	}
+	serveModelStream(c, func(ctx context.Context, body []byte, _ http.Header, write func([]byte)) error {
+		return h.svc.ProxyModel(ctx, tok, body, write)
+	})
+}
+
+// serveModelStream 是令牌模式和上下文模式共用的对话端点外壳：读请求体、把上游的 SSE 原样转出；
+// 流开始之前出错时返回 OpenAI 格式的 JSON 错误和对应的 HTTP 状态。call 做真正的代理；
+// headers 里的头会在流开始（第一行写出）时加到响应上，比如上下文模式的调用 id。
+func serveModelStream(c *gin.Context, call func(ctx context.Context, body []byte, headers http.Header, write func([]byte)) error) {
 	body, err := io.ReadAll(io.LimitReader(c.Request.Body, maxBridgeBody+1))
 	if err != nil || len(body) > maxBridgeBody {
 		writeOpenAIError(c, http.StatusRequestEntityTooLarge, "请求体过大", "invalid_request_error")
 		return
 	}
 	started := false
+	extra := http.Header{}
 	write := func(line []byte) {
 		if !started {
+			for k, v := range extra {
+				c.Header(k, v[0])
+			}
 			c.Header("Content-Type", "text/event-stream")
 			c.Header("Cache-Control", "no-cache")
 			c.Header("X-Accel-Buffering", "no") // 反向代理不要缓冲，否则文字要等很久才出来
@@ -114,7 +127,7 @@ func (h *AgentBridgeHandler) ChatCompletions(c *gin.Context) {
 	if c.GetHeader("X-Agent-Purpose") == agentsvc.ModelPurposeSummary { // 只认已知的用途：别的值一律当普通对话，免得被用来藏起助手的回复
 		ctx = agentsvc.WithModelPurpose(ctx, agentsvc.ModelPurposeSummary)
 	}
-	err = h.svc.ProxyModel(ctx, tok, body, write)
+	err = call(ctx, body, extra, write)
 	if err != nil && !started {
 		status, msg, typ := openAIError(err)
 		writeOpenAIError(c, status, msg, typ)

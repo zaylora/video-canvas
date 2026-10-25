@@ -99,6 +99,21 @@ func (b *AgentBilling) Begin(ctx context.Context, run *model.AgentRun, modelKey 
 // 上游给了用量就用它；没给就按字数估（1 字 = 1 Token，偏保守），并在记录上标出是估的。
 // 一个字都没收到时不收费，只记下原因。实扣额记入本轮已花。
 func (b *AgentBilling) Settle(ctx context.Context, run *model.AgentRun, call *model.AgentModelCall, p modelcfg.Pricing, out CallOutcome) (*SettleResult, error) {
+	res, err := b.SettleExternal(ctx, call, p, out)
+	if err != nil {
+		return nil, err
+	}
+	if res.Charged > 0 {
+		if err := b.repo.AddRunUsage(ctx, run.ID, 0, res.Charged); err != nil {
+			return nil, err
+		}
+	}
+	return res, nil
+}
+
+// SettleExternal 同 Settle，但不更新运行的已花积分：运行记录不在 Go 里（上下文模式）时用它，
+// 本轮已花的积分由 Go 按调用记录累加（见 RunUsageSource）。
+func (b *AgentBilling) SettleExternal(ctx context.Context, call *model.AgentModelCall, p modelcfg.Pricing, out CallOutcome) (*SettleResult, error) {
 	in := repository.SettleCallInput{CallID: call.ID, UserID: call.UserID, Error: callError(out.Err),
 		Purpose: firstNonEmpty(out.Meta.Purpose, "main"), ChannelKey: out.Meta.ChannelKey, UpstreamModel: out.Meta.UpstreamModel,
 		LatencyMs: int(out.Meta.Latency.Milliseconds()), TTFTMs: int(out.Meta.TTFT.Milliseconds())}
@@ -116,11 +131,6 @@ func (b *AgentBilling) Settle(ctx context.Context, run *model.AgentRun, call *mo
 	settled, err := b.repo.SettleModelCall(ctx, in)
 	if err != nil {
 		return nil, err
-	}
-	if settled.Charged > 0 {
-		if err := b.repo.AddRunUsage(ctx, run.ID, 0, settled.Charged); err != nil {
-			return nil, err
-		}
 	}
 	return &SettleResult{Credits: settled.Credits, Charged: settled.Charged, Estimated: in.UsageEstimated, Shortfall: settled.Charged < settled.Credits, InputTokens: in.InputTokens}, nil
 }

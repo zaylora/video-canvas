@@ -85,6 +85,15 @@ func (p *platformStub) ExecutePlatformTool(context.Context, agentsvc.RunContext,
 	return &agentsvc.ToolResult{Content: "ok"}, nil
 }
 func (p *platformStub) EndPlatformRun(uint64) { p.ended++ }
+func (p *platformStub) ProxyModelPlatform(_ context.Context, _ agentsvc.RunContext, _ []byte, _ func(uint64), write func([]byte)) error {
+	p.calls++
+	write([]byte("data: [DONE]\n\n"))
+	return nil
+}
+func (p *platformStub) PlatformRunUsage(context.Context, agentsvc.RunContext, uint64) (*agentsvc.PlatformUsage, error) {
+	p.calls++
+	return &agentsvc.PlatformUsage{}, nil
+}
 
 const platformCtxJSON = `{"run_id":"9","user_id":"1","session_id":"5","canvas_id":"7"}`
 
@@ -128,6 +137,22 @@ func TestNewBridge_PlatformRoutesNeedTheServiceToken(t *testing.T) {
 	}
 	if code := platformReq(t, srv, http.MethodDelete, "/internal/platform/v1/runs/9", ""); code != http.StatusUnauthorized {
 		t.Errorf("释放运行状态也要服务令牌: %d", code)
+	}
+	// 模型代理和用量查询同样只认服务令牌
+	for _, c := range []struct{ method, path string }{
+		{http.MethodPost, "/internal/platform/v1/model/chat/completions"},
+		{http.MethodGet, "/internal/platform/v1/runs/9/usage"},
+	} {
+		before := plat.calls
+		if code := platformReq(t, srv, c.method, c.path, ""); code != http.StatusUnauthorized {
+			t.Errorf("%s %s 没带服务令牌应 401: %d", c.method, c.path, code)
+		}
+		if plat.calls != before {
+			t.Errorf("%s 被拒绝的请求不能进入业务", c.path)
+		}
+		if code := platformReq(t, srv, c.method, c.path, token); code != http.StatusOK || plat.calls != before+1 {
+			t.Errorf("%s %s 令牌正确应放行: code=%d", c.method, c.path, code)
+		}
 	}
 }
 

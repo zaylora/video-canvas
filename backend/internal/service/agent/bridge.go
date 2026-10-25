@@ -68,8 +68,10 @@ type BridgeDeps struct {
 	Streamer   ModelStreamer           // 大模型网关
 	Skills     SkillLibrary            // 技能库（内置 + 后台已启用）；为 nil 时只有内置技能
 	Web        provider.WebAccess      // 联网（搜索、抓网页）；为 nil 表示没有联网能力，联网工具返回「未启用」
-	Now        func() time.Time        // 为 nil 取系统时间
-	TokenTTL   time.Duration           // 令牌有效期，0 取 2 小时
+	// RunUsage 按调用记录汇总一个运行的用量（上下文模式的模型代理要用它算本轮已花的积分）；为 nil 时上下文模式的模型代理不可用
+	RunUsage RunUsageSource
+	Now      func() time.Time // 为 nil 取系统时间
+	TokenTTL time.Duration    // 令牌有效期，0 取 2 小时
 }
 
 // bridgeSession 是一个令牌对应的运行片段：Node 进程用它调用桥。

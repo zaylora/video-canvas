@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	. "video-canvas/internal/handler/agent"
+	"video-canvas/internal/llmgateway"
 	"video-canvas/internal/pkg/errcode"
 	agentsvc "video-canvas/internal/service/agent"
 )
@@ -26,6 +28,15 @@ type fakePlatform struct {
 	res     *agentsvc.ToolResult
 	err     error
 	ended   []uint64
+
+	// 模型代理
+	body        string
+	purpose     string
+	modelCallID uint64
+	lines       []string
+	// 用量
+	usage       *agentsvc.PlatformUsage
+	usageCallID uint64
 }
 
 func (f *fakePlatform) ExecutePlatformTool(ctx context.Context, rc agentsvc.RunContext, callID, name string, args json.RawMessage) (*agentsvc.ToolResult, error) {
@@ -41,6 +52,28 @@ func (f *fakePlatform) ExecutePlatformTool(ctx context.Context, rc agentsvc.RunC
 
 func (f *fakePlatform) EndPlatformRun(runID uint64) { f.ended = append(f.ended, runID) }
 
+func (f *fakePlatform) ProxyModelPlatform(ctx context.Context, rc agentsvc.RunContext, body []byte, onCall func(uint64), write func([]byte)) error {
+	f.rc, f.body, f.purpose = rc, string(body), agentsvc.ModelPurposeFrom(ctx)
+	if f.err != nil {
+		return f.err
+	}
+	if f.modelCallID != 0 {
+		onCall(f.modelCallID)
+	}
+	for _, l := range f.lines {
+		write([]byte(l))
+	}
+	return nil
+}
+
+func (f *fakePlatform) PlatformRunUsage(_ context.Context, rc agentsvc.RunContext, callID uint64) (*agentsvc.PlatformUsage, error) {
+	f.rc, f.usageCallID = rc, callID
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.usage, nil
+}
+
 func newPlatformRouter(api PlatformAPI) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	h := NewPlatformHandler(api)
@@ -48,6 +81,8 @@ func newPlatformRouter(api PlatformAPI) *gin.Engine {
 	g := r.Group("/internal/platform/v1")
 	g.POST("/tools/:name", h.Tool)
 	g.DELETE("/runs/:run_id", h.EndRun)
+	g.POST("/model/chat/completions", h.ChatCompletions)
+	g.GET("/runs/:run_id/usage", h.Usage)
 	return r
 }
 
@@ -166,5 +201,161 @@ func TestPlatformHandler_EndRun(t *testing.T) {
 		if w := platformCall(r, http.MethodDelete, "/internal/platform/v1/runs/"+bad, "", nil); w.Code != 400 {
 			t.Errorf("run_id=%q 应 400: %d", bad, w.Code)
 		}
+	}
+}
+
+// ---- 模型代理（OpenAI 兼容）和用量 ----
+
+const chatPath = "/internal/platform/v1/model/chat/completions"
+const chatBody = `{"model":"x","messages":[{"role":"user","content":"拆分镜"}]}`
+
+func TestPlatformHandler_ChatCompletions_StreamsAndReportsCallID(t *testing.T) {
+	api := &fakePlatform{modelCallID: 1152921504606846999, lines: []string{"data: {\"a\":1}\n", "\n", "data: [DONE]\n\n"}}
+	w := platformCall(newPlatformRouter(api), http.MethodPost, chatPath, chatBody, map[string]string{"X-Agent-Context": ctxHeader(goodCtx)})
+	if w.Code != 200 {
+		t.Fatalf("status=%d %s", w.Code, w.Body)
+	}
+	if ct := w.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/event-stream") {
+		t.Errorf("Content-Type=%q", ct)
+	}
+	if w.Header().Get("Cache-Control") != "no-cache" || w.Header().Get("X-Accel-Buffering") != "no" {
+		t.Errorf("流式响应要禁缓存、禁代理缓冲: %v", w.Header())
+	}
+	// 调用 id 在响应头里，十进制字符串（雪花 ID 超过 2^53）
+	if got := w.Header().Get("X-Agent-Call-Id"); got != "1152921504606846999" {
+		t.Errorf("X-Agent-Call-Id=%q", got)
+	}
+	if w.Body.String() != "data: {\"a\":1}\n\ndata: [DONE]\n\n" {
+		t.Errorf("上游的行应原样转出: %q", w.Body.String())
+	}
+	if api.rc.RunID != 1152921504606846977 || !strings.Contains(api.body, "拆分镜") {
+		t.Errorf("上下文和请求体要传给业务: %+v %q", api.rc, api.body)
+	}
+}
+
+func TestPlatformHandler_ChatCompletions_SummaryPurpose(t *testing.T) {
+	api := &fakePlatform{lines: []string{"data: [DONE]\n\n"}}
+	r := newPlatformRouter(api)
+	platformCall(r, http.MethodPost, chatPath, chatBody, map[string]string{"X-Agent-Context": ctxHeader(goodCtx), "X-Agent-Purpose": "summary"})
+	if api.purpose != agentsvc.ModelPurposeSummary {
+		t.Errorf("摘要用途要传下去: %q", api.purpose)
+	}
+	platformCall(r, http.MethodPost, chatPath, chatBody, map[string]string{"X-Agent-Context": ctxHeader(goodCtx), "X-Agent-Purpose": "anything-else"})
+	if api.purpose != "" {
+		t.Errorf("只认已知的用途，别的值一律当普通对话: %q", api.purpose)
+	}
+}
+
+// 流开始之前出错：返回 OpenAI 格式的 JSON 错误和对应的 HTTP 状态，调用方（pi 的 OpenAI 客户端）靠它显示报错、判断是否可重试。
+func TestPlatformHandler_ChatCompletions_ErrorsAreOpenAIShaped(t *testing.T) {
+	cases := []struct {
+		name       string
+		err        error
+		wantStatus int
+		wantMsg    string
+	}{
+		{"预算用尽", errcode.ErrAgentOverBudget, 402, "预算"},
+		{"余额不足", errcode.ErrInsufficientCredits, 402, "积分"},
+		{"模型不可用", errcode.ErrAgentModelNA, 400, "模型"},
+		{"上下文不合法", errcode.ErrInvalidParams.WithMsg("运行上下文缺少 model_key"), 400, "model_key"},
+		{"上游限流（可重试）", &llmgateway.UpstreamError{Status: 429, Message: "上游请求太频繁，请稍后重试", Retryable: true}, 429, "频繁"},
+		{"其他错误不外泄细节", errors.New("dial tcp 10.0.0.5:5432: secret-host"), 502, "上游"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			w := platformCall(newPlatformRouter(&fakePlatform{err: tc.err}), http.MethodPost, chatPath, chatBody, map[string]string{"X-Agent-Context": ctxHeader(goodCtx)})
+			if w.Code != tc.wantStatus {
+				t.Fatalf("status=%d，期望 %d: %s", w.Code, tc.wantStatus, w.Body)
+			}
+			var body struct {
+				Error struct {
+					Message string `json:"message"`
+					Type    string `json:"type"`
+				} `json:"error"`
+			}
+			if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil || !strings.Contains(body.Error.Message, tc.wantMsg) || body.Error.Type == "" {
+				t.Errorf("应是 OpenAI 格式的错误 {error:{message,type}}: %s", w.Body)
+			}
+			if strings.Contains(w.Body.String(), "secret-host") {
+				t.Errorf("内部错误细节不能返回: %s", w.Body)
+			}
+		})
+	}
+}
+
+func TestPlatformHandler_ChatCompletions_BadContextIsAnOpenAIError(t *testing.T) {
+	for name, hdr := range map[string]map[string]string{"缺上下文头": {}, "上下文不是 base64": {"X-Agent-Context": "!!!"}, "ID 是数字": {"X-Agent-Context": ctxHeader(`{"run_id":1,"user_id":"1","session_id":"2","canvas_id":"7"}`)}} {
+		t.Run(name, func(t *testing.T) {
+			api := &fakePlatform{}
+			w := platformCall(newPlatformRouter(api), http.MethodPost, chatPath, chatBody, hdr)
+			if w.Code != 400 || !strings.Contains(w.Body.String(), `"error"`) {
+				t.Fatalf("OpenAI 客户端只认 {error:{...}}: status=%d %s", w.Code, w.Body)
+			}
+			if api.body != "" {
+				t.Error("不能进入业务")
+			}
+		})
+	}
+}
+
+func TestPlatformHandler_ChatCompletions_BodyTooLarge(t *testing.T) {
+	big := `{"messages":[{"role":"user","content":"` + strings.Repeat("x", 33<<20) + `"}]}`
+	w := platformCall(newPlatformRouter(&fakePlatform{}), http.MethodPost, chatPath, big, map[string]string{"X-Agent-Context": ctxHeader(goodCtx)})
+	if w.Code != 413 {
+		t.Errorf("请求体过大应 413: %d", w.Code)
+	}
+}
+
+func TestPlatformHandler_Usage(t *testing.T) {
+	api := &fakePlatform{usage: &agentsvc.PlatformUsage{SpentCredits: 14, ContextTokens: 3000, Call: &agentsvc.PlatformCallUsage{ID: 1152921504606846999, Status: "settled", Credits: 5, Charged: 5}}}
+	r := newPlatformRouter(api)
+	w := platformCall(r, http.MethodGet, "/internal/platform/v1/runs/1152921504606846977/usage?call_id=1152921504606846999", "", map[string]string{"X-Agent-Context": ctxHeader(goodCtx)})
+	if w.Code != 200 || api.usageCallID != 1152921504606846999 {
+		t.Fatalf("status=%d callID=%d %s", w.Code, api.usageCallID, w.Body)
+	}
+	var out struct {
+		Data struct {
+			Spent int `json:"spent_credits"`
+			Ctx   int `json:"context_tokens"`
+			Call  struct {
+				ID      string `json:"id"`
+				Charged int    `json:"charged"`
+			} `json:"call"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil || out.Data.Spent != 14 || out.Data.Ctx != 3000 || out.Data.Call.ID != "1152921504606846999" || out.Data.Call.Charged != 5 {
+		t.Errorf("响应: %s", w.Body)
+	}
+	// 不带 call_id
+	platformCall(r, http.MethodGet, "/internal/platform/v1/runs/1152921504606846977/usage", "", map[string]string{"X-Agent-Context": ctxHeader(goodCtx)})
+	if api.usageCallID != 0 {
+		t.Errorf("没带 call_id 就是 0: %d", api.usageCallID)
+	}
+}
+
+func TestPlatformHandler_Usage_Validation(t *testing.T) {
+	hdr := map[string]string{"X-Agent-Context": ctxHeader(goodCtx)}
+	cases := map[string]struct {
+		path string
+		hdr  map[string]string
+	}{
+		"路径里的运行和上下文里的不一致": {"/internal/platform/v1/runs/999/usage", hdr},
+		"运行 id 不是数字":      {"/internal/platform/v1/runs/abc/usage", hdr},
+		"call_id 不是数字":    {"/internal/platform/v1/runs/1152921504606846977/usage?call_id=x", hdr},
+		"缺上下文头":           {"/internal/platform/v1/runs/1152921504606846977/usage", nil},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			api := &fakePlatform{usage: &agentsvc.PlatformUsage{}}
+			w := platformCall(newPlatformRouter(api), http.MethodGet, tc.path, "", tc.hdr)
+			if w.Code != 400 || respCode(t, w) != errcode.ErrInvalidParams.Code {
+				t.Fatalf("应 400 参数错误: status=%d %s", w.Code, w.Body)
+			}
+		})
+	}
+	// 业务错误（比如调用不属于这个运行）原样返回标准错误
+	w := platformCall(newPlatformRouter(&fakePlatform{err: errcode.ErrNotFound}), http.MethodGet, "/internal/platform/v1/runs/1152921504606846977/usage?call_id=5", "", hdr)
+	if w.Code != 404 {
+		t.Errorf("调用不存在应 404: %d", w.Code)
 	}
 }

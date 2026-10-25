@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
+	"net/http"
 	"regexp"
 	"strconv"
 
@@ -31,6 +33,10 @@ var idemKeyPattern = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,64}$`)
 
 // PlatformAPI 是平台 handler 依赖的业务，由 *agentsvc.AgentBridge 实现。
 type PlatformAPI interface {
+	// ProxyModelPlatform 代理一次模型调用（上下文模式）；onCall 在流开始之前收到这次调用的 id。
+	ProxyModelPlatform(ctx context.Context, rc agentsvc.RunContext, body []byte, onCall func(callID uint64), write func([]byte)) error
+	// PlatformRunUsage 查一个运行的用量；callID 不为 0 时一并给出这次调用的结算情况。
+	PlatformRunUsage(ctx context.Context, rc agentsvc.RunContext, callID uint64) (*agentsvc.PlatformUsage, error)
 	// ExecutePlatformTool 在上下文模式下执行一次工具调用；幂等键放在 ctx 里。
 	ExecutePlatformTool(ctx context.Context, rc agentsvc.RunContext, toolCallID, name string, args json.RawMessage) (*agentsvc.ToolResult, error)
 	// EndPlatformRun 释放一个运行在内存里的状态。
@@ -45,20 +51,74 @@ type PlatformHandler struct {
 // NewPlatformHandler 创建平台 handler。
 func NewPlatformHandler(svc PlatformAPI) *PlatformHandler { return &PlatformHandler{svc: svc} }
 
-// parseRunContext 读请求头里的运行上下文并校验格式；业务上的校验（身份字段是否齐、模式是否认识）在业务层。
-func parseRunContext(c *gin.Context) (agentsvc.RunContext, bool) {
+// runContextFrom 读请求头里的运行上下文并校验格式；业务上的校验（身份字段是否齐、模式是否认识）在业务层。
+func runContextFrom(c *gin.Context) (agentsvc.RunContext, error) {
 	var rc agentsvc.RunContext
 	raw := c.GetHeader(RunContextHeader)
 	if raw == "" || len(raw) > maxRunContextHeader {
-		response.Fail(c, errcode.ErrInvalidParams.WithMsg("缺少或过大的 "+RunContextHeader))
-		return rc, false
+		return rc, errors.New("缺少或过大的 " + RunContextHeader)
 	}
 	b, err := base64.RawURLEncoding.DecodeString(raw)
 	if err != nil || json.Unmarshal(b, &rc) != nil {
-		response.Fail(c, errcode.ErrInvalidParams.WithMsg(RunContextHeader+" 必须是运行上下文 JSON 的 base64url"))
+		return rc, errors.New(RunContextHeader + " 必须是运行上下文 JSON 的 base64url")
+	}
+	return rc, nil
+}
+
+// parseRunContext 同 runContextFrom，失败时直接写标准错误响应。
+func parseRunContext(c *gin.Context) (agentsvc.RunContext, bool) {
+	rc, err := runContextFrom(c)
+	if err != nil {
+		response.Fail(c, errcode.ErrInvalidParams.WithMsg(err.Error()))
 		return rc, false
 	}
 	return rc, true
+}
+
+// CallIDHeader 是响应头：上下文模式的模型代理把这次调用的 id（十进制字符串）放在这里，调用方事后据此查这次调用的积分。
+const CallIDHeader = "X-Agent-Call-Id"
+
+// ChatCompletions 是上下文模式的 OpenAI 兼容对话端点：Agent 服务里的 pi 把它当作模型提供方。
+// 流开始之前出错（含上下文不合法）一律返回 OpenAI 格式的错误：调用方的 OpenAI 客户端只认这个格式。
+func (h *PlatformHandler) ChatCompletions(c *gin.Context) {
+	rc, err := runContextFrom(c)
+	if err != nil {
+		writeOpenAIError(c, http.StatusBadRequest, err.Error(), "invalid_request_error")
+		return
+	}
+	serveModelStream(c, func(ctx context.Context, body []byte, headers http.Header, write func([]byte)) error {
+		if c.GetHeader("X-Agent-Purpose") == agentsvc.ModelPurposeSummary { // 只认已知的用途：别的值一律当普通对话
+			ctx = agentsvc.WithModelPurpose(ctx, agentsvc.ModelPurposeSummary)
+		}
+		return h.svc.ProxyModelPlatform(ctx, rc, body, func(id uint64) { headers.Set(CallIDHeader, strconv.FormatUint(id, 10)) }, write)
+	})
+}
+
+// Usage 查一个运行的用量（本轮模型调用已实扣的积分、上下文大小）；带 call_id 时一并给出这次调用的结算情况。
+// 路径里的运行必须和上下文里声明的一致：用户身份来自上下文，不能让一个运行去查另一个运行。
+func (h *PlatformHandler) Usage(c *gin.Context) {
+	rc, ok := parseRunContext(c)
+	if !ok {
+		return
+	}
+	runID, err := strconv.ParseUint(c.Param("run_id"), 10, 64)
+	if err != nil || runID == 0 || runID != rc.RunID {
+		response.Fail(c, errcode.ErrInvalidParams.WithMsg("路径里的 run_id 必须是正整数，并且和 "+RunContextHeader+" 里的一致"))
+		return
+	}
+	var callID uint64
+	if raw := c.Query("call_id"); raw != "" {
+		if callID, err = strconv.ParseUint(raw, 10, 64); err != nil || callID == 0 {
+			response.Fail(c, errcode.ErrInvalidParams.WithMsg("call_id 必须是正整数"))
+			return
+		}
+	}
+	out, err := h.svc.PlatformRunUsage(c.Request.Context(), rc, callID)
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, out)
 }
 
 // toolBody 是工具调用的请求体。

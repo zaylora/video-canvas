@@ -239,7 +239,7 @@ func newE2E(t *testing.T, mode e2eRuntime, turns ...llmTurn) *e2eEnv {
 	svc := agentsvc.NewAgentService(agentsvc.AgentDeps{Repo: repo, Canvas: canvasSvc, Models: e2eModels{}, Runtime: agentsvc.NoAgentRuntime{}})
 	bridge := agentsvc.NewAgentBridge(agentsvc.BridgeDeps{
 		Repo: repo, Canvas: canvasSvc, Agent: svc, Billing: agentsvc.NewAgentBilling(repo),
-		Registry: e2eRegistry{base: llm.srv.URL}, Secrets: e2eSecrets{}, Streamer: llmgateway.New(llmgateway.Options{IdleTimeout: 10 * time.Second, IPAllowed: func(ip net.IP) bool { return ip.IsLoopback() }}), // 假上游在本机回环
+		Registry: e2eRegistry{base: llm.srv.URL}, Secrets: e2eSecrets{}, RunUsage: repo, Streamer: llmgateway.New(llmgateway.Options{IdleTimeout: 10 * time.Second, IPAllowed: func(ip net.IP) bool { return ip.IsLoopback() }}), // 假上游在本机回环
 	})
 	// http 模式：Agent 是独立的 Node 服务，Go 和它互相靠服务令牌认；process 模式桥只靠运行令牌
 	var launcher agentsvc.Launcher = agentsvc.ExecLauncher{}
@@ -634,5 +634,130 @@ func TestE2E_PlatformToolOverHTTPOnRealDB(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("令牌不对应 401: %d", resp.StatusCode)
+	}
+}
+
+// platformChat 以 Agent 服务的身份走一次上下文模式的模型代理，返回 HTTP 状态、响应头和响应体。
+func (e *e2eEnv) platformChat(t *testing.T, ctxJSON, purpose string) (int, http.Header, string) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPost, e.bridgeURL+"/internal/platform/v1/model/chat/completions",
+		strings.NewReader(`{"model":"agent","stream":true,"messages":[{"role":"user","content":"拆分镜"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Agent-Service-Token", e.serviceToken)
+	req.Header.Set("X-Agent-Context", base64.RawURLEncoding.EncodeToString([]byte(ctxJSON)))
+	if purpose != "" {
+		req.Header.Set("X-Agent-Purpose", purpose)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, resp.Header, string(b)
+}
+
+func (e *e2eEnv) platformUsage(t *testing.T, ctxJSON, runID, query string) map[string]any {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, e.bridgeURL+"/internal/platform/v1/runs/"+runID+"/usage"+query, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("X-Agent-Service-Token", e.serviceToken)
+	req.Header.Set("X-Agent-Context", base64.RawURLEncoding.EncodeToString([]byte(ctxJSON)))
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var out map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+// 模型代理的整条链路：运行记录不在 Go 里（雪花 ID），请求头里的上下文 → 预检 → 假上游的流式响应 → 结算扣费 → 用量查询 → 预算拒绝。
+func TestE2E_PlatformModelProxyOverHTTPOnRealDB(t *testing.T) {
+	e := newE2E(t, e2eProcessToken, llmTurn{text: "好的"}, llmTurn{text: "再来一次"}, llmTurn{text: "不该走到上游"})
+	const runID uint64 = 1152921504606846977
+	ctxJSON := fmt.Sprintf(`{"run_id":"%d","user_id":"1","session_id":"1152921504606846978","canvas_id":"%d","mode":"all","model_key":"claude","budget_credits":10}`, runID, e.canvas.ID)
+
+	var balanceBefore model.UserCredit
+	e.db.Where("user_id = ?", 1).First(&balanceBefore)
+	var eventsBefore int64
+	e.db.Model(&model.AgentEvent{}).Count(&eventsBefore)
+
+	status, hdr, body := e.platformChat(t, ctxJSON, "")
+	// 上游是逐字流出的（"好"、"的"是两个分片），代理要原样转出，包括用量分片和结束标记
+	if status != 200 || !strings.Contains(body, `"content":"好"`) || !strings.Contains(body, `"content":"的"`) || !strings.Contains(body, `"prompt_tokens":1000000`) || !strings.Contains(body, "[DONE]") {
+		t.Fatalf("流应原样转出: status=%d %q", status, body)
+	}
+	callID := hdr.Get("X-Agent-Call-Id")
+	if callID == "" || !strings.HasPrefix(hdr.Get("Content-Type"), "text/event-stream") {
+		t.Fatalf("响应头: %v", hdr)
+	}
+
+	// 库里：调用记录按这个运行记账并已结算，积分真的扣了，没有这个运行的记录，也没有事件
+	var calls []model.AgentModelCall
+	e.db.Where("run_id = ?", runID).Find(&calls)
+	if len(calls) != 1 || calls[0].Status != model.ModelCallSettled || calls[0].Charged != 5 || fmt.Sprint(calls[0].ID) != callID {
+		t.Fatalf("应有一条已结算的调用，实扣 5 积分，id 和响应头一致: %+v (header=%s)", calls, callID)
+	}
+	var after model.UserCredit
+	e.db.Where("user_id = ?", 1).First(&after)
+	if balanceBefore.Balance-after.Balance != 5 {
+		t.Errorf("余额应少 5: %d → %d", balanceBefore.Balance, after.Balance)
+	}
+	var runs, eventsAfter int64
+	e.db.Model(&model.AgentRun{}).Where("id = ?", runID).Count(&runs)
+	e.db.Model(&model.AgentEvent{}).Count(&eventsAfter)
+	if runs != 0 || eventsAfter != eventsBefore {
+		t.Errorf("上下文模式下 Go 不建运行记录、不写事件: runs=%d events %d→%d", runs, eventsBefore, eventsAfter)
+	}
+
+	// 用量查询：本轮已花、上下文大小、这次调用的结算情况
+	u := e.platformUsage(t, ctxJSON, fmt.Sprint(runID), "?call_id="+callID)["data"].(map[string]any)
+	call := u["call"].(map[string]any)
+	if u["spent_credits"] != float64(5) || u["context_tokens"] != float64(1_000_000) || call["status"] != "settled" || call["charged"] != float64(5) || call["id"] != callID {
+		t.Errorf("用量: %v", u)
+	}
+
+	// 第二次：预算 10，已花 5，调用方又说已批准的生成花了 5（SpentExtra）→ 剩 0，最坏情况必然超出，被拒绝且不发往上游
+	over := strings.Replace(ctxJSON, `"budget_credits":10`, `"budget_credits":10,"spent_extra":5`, 1)
+	status, _, body = e.platformChat(t, over, "")
+	if status != 402 || !strings.Contains(body, `"error"`) || !strings.Contains(body, "预算") {
+		t.Errorf("预算用尽应 402 + OpenAI 格式错误: status=%d %s", status, body)
+	}
+	if n := len(e.llm.requests()); n != 1 {
+		t.Errorf("被拒绝的请求不能发往上游: %d", n)
+	}
+	var count int64
+	e.db.Model(&model.AgentModelCall{}).Where("run_id = ?", runID).Count(&count)
+	if count != 1 {
+		t.Errorf("被拒绝的请求不能创建调用记录: %d", count)
+	}
+
+	// 不限预算时第二次照常走，摘要用途要记成 summary
+	free := strings.Replace(ctxJSON, `,"budget_credits":10`, "", 1)
+	status, _, _ = e.platformChat(t, free, "summary")
+	if status != 200 {
+		t.Fatalf("status=%d", status)
+	}
+	e.db.Where("run_id = ?", runID).Order("id").Find(&calls)
+	if len(calls) != 2 || calls[1].Purpose != "summary" {
+		t.Errorf("第二次调用应记成摘要: %+v", calls)
+	}
+	u = e.platformUsage(t, ctxJSON, fmt.Sprint(runID), "")["data"].(map[string]any)
+	if u["spent_credits"] != float64(10) || u["context_tokens"] != float64(1_000_000) {
+		t.Errorf("两次都计费，上下文仍是对话调用的输入: %v", u)
+	}
+	// 别的用户查不到这个运行的调用
+	other := strings.Replace(ctxJSON, `"user_id":"1"`, `"user_id":"2"`, 1)
+	if res := e.platformUsage(t, other, fmt.Sprint(runID), "?call_id="+callID); res["code"] == float64(0) {
+		t.Errorf("别的用户不能查到这次调用: %v", res)
 	}
 }
