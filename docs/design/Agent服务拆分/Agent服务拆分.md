@@ -1100,3 +1100,27 @@ Agent 服务生成的会话、运行、审批、事件 ID 都用雪花算法，�
 **再加固两条旧测试**：阶段 2 的插话测试同样用固定 `sleep(80)` 赌工具已经开始，机器忙时偶发失败，改为等工具真的开始。`steer.test.ts` 里其余几处固定等待没出过问题，没动，阶段 4 随旧运行时一起删。
 
 **3.3 到此完成。** Agent 服务现在有完整的引擎、前端要的全部 15 个接口（13 + 评价 2 个）、与 Go 输出逐项对照的黄金文件、可启动的服务入口。还没有的是 Go 这一侧：反向代理 `/api/v1/agent/*`、事件推送到 WebSocket、`agent.runtime=durable` 开关——这是 3.4。
+
+### 20.18 3.4：Go 反向代理、事件推送和 `agent.runtime=durable`（2026-10-25）
+
+**第三种运行方式**：`agent.runtime` 现在是 `process`（每个运行片段起一个 Node 子进程）、`http`（连独立的无状态 Agent 服务）、`durable`（会话、运行、审批都在独立的 Agent 服务里，Go 只留平台能力）。`durable` 和 `http` 一样要求 `agent.url`、`agent.bridge_url`、合格的 `agent.service_token`（≥32 字符），桥默认监听 `0.0.0.0:47001`（`Agent.RemoteService()` 统一判断「是独立服务」）。切回旧方式只要改回 `process` / `http`，路由表和装配都按配置选，两条路径互不影响，阶段 4 才删旧的。
+
+**反向代理**（`handler/agent/proxy.go`，`httputil.ReverseProxy`）
+- 前端的 15 个 Agent 接口（含画布下的会话列表/创建、评价、`/agent/models`）在 durable 下全部转给 Agent 服务；**`/agent/skills`（技能目录）不转**，技能库还在 Go。路由表写成两套，`Handlers.AgentProxy` 非空才走代理，旧模式的路由一行没动。
+- Go 只做认证：路由上的 JWT 和「用户状态」中间件之后，`Forward` 把 `X-Agent-Service-Token`（配置里的）和 `X-Agent-User`（登录态里的用户 id，十进制）写进请求，**覆盖**前端伪造的同名头，**去掉** `Authorization` 和 `Cookie`（用户的登录凭据到此为止）。转发时去掉 `/api/v1` 前缀（Agent 服务的路由不带）。
+- 状态码、响应体、业务错误原样返回（信封由 Agent 服务按黄金文件产生）；连不上、超时（等响应头 30 秒）统一返回 `60005 Agent 暂不可用，请稍后重试`/503，**不暴露内部地址**，原因只进日志。
+- 一个坑：gin 的 `ResponseWriter` 声明实现了 `CloseNotifier`，底层写入器（测试里的 `ResponseRecorder`）没有时 `ReverseProxy` 会 panic；用只露出 `ResponseWriter` + `Unwrap` 的薄包装规避（刷新靠 `Unwrap` 找到底层的 `Flush`，流式响应不受影响）。
+
+**事件推送**（Agent → Go → 浏览器）
+- 浏览器的 WebSocket 连在 Go（用户频道 `user:{id}`），所以 Agent 服务产生的事件要经 Go 发出。Agent 侧 `EventPusher`（`agent/src/event-pusher.ts`）攒批（30 ms 窗口、每批 ≤100 条）、**同一时刻只有一个请求在途**（顺序不乱）、`publish` 不等网络（不拖慢引擎）、积压上限 2000（超了先丢最旧的临时事件，再丢最旧的）、失败只丢这一批并通知 `onError`（不重试）、停机时尽量推完（`close` 有超时，默认 3 秒）。
+- Go 侧 `POST /internal/platform/v1/events`（只在 durable 且配了服务令牌时挂载，和其他平台接口一样只认服务令牌）。请求体 `{events:[{user_id, session_id, canvas_id, run_id, seq, type, data, created_at}]}`，id 是十进制字符串；`EventRelay` **整批校验**（一条不合格整批 400，不会推出半批；1~200 条；`data` 必须是合法 JSON，没有内容时 Agent 发 `null`），再把 id 编码成对外的串（编码密钥只在 Go 手里），按 `AgentEventView` 的形状推到用户频道，**和 Go 自己产生的事件一模一样**，前端不用改。
+- **推送只是「让前端更快看到」**：事件已经落在 Agent 的库里，丢了不要紧，前端按 `seq` 走 HTTP 回放对账（这条路在 3.3 就有）。所以不做重试，也不为它引入队列。
+
+**顺手修的一个真问题：迟到的文字增量**（`engine.ts`）。文字增量（`message.delta`，`seq` 为 0）来自 Pi 的事件流，而 `message.done` 来自 `afterResponse` 钩子，钩子更早。模型回答得快时，最后一段增量会排在它所属的 `message.done` **之后**——前端按 `message.done` 清掉流式文字，迟到的增量又把它写回来，直到下一条 `message.done`（工具回合里是整个工具执行期间）都残留着一段重复的文字。现在：钩子里记「这条回答已定稿」，watcher 丢弃它还没处理完的增量（并清掉攒着的缓冲）；对应的 `message_end` 到了再销账。之前 `message_end` 会把攒着的尾巴刷出去，现在不刷：尾巴本来就在 `message.done` 里。先写了失败测试复现，再改。
+
+**测试**
+- Go：配置（durable 的必填项、默认桥地址、未知值的提示）；代理（转发请求、覆盖伪造头、去掉登录凭据、去前缀、未登录 401、上游挂了 60005/503、业务错误透传、地址校验）；路由（15 条路由都转、技能目录不转、没登录 401）；事件中继（形状、`run_id` 空→null、整批校验的 9 种坏数据、批量上限）；handler；桥路由（事件接口只在配了中继时挂载、只认服务令牌）；`initialize`（`AgentProxyFor`、durable 的桥地址）。
+- Agent：`EventPusher` 7 条（合批顺序、单请求在途、失败丢这一批、积压丢临时事件、关闭时推完、关闭超时）；durable 服务端到端推送；迟到增量的回归测试。变异检查：去掉「单请求在途」的保护，测试会失败（第一版测试没抓到，加强后抓到了）。
+- **全栈端到端**（`agent_durable_e2e_test.go`：浏览器 HTTP + JWT → Go 反向代理 → 真正的 Agent 子进程 → 回调 Go 的平台 API 和模型代理 → 真实 PostgreSQL → 假的 LLM）：① 建画布、结算 2 次调用各 5 积分、余额 100→90、每一条落库事件都经 Go 推到 `user:1` 且和回放一致；② 删除要审批 → 批准 → 续跑 → Go 记 delete 改动 → 撤销 → 重复撤销 `60007`；③ **杀掉 Agent 进程（SIGKILL）期间前端得到 503/60005，同一个库重启后运行自动续跑，画布不重复改、模型调用都已结算**。连跑 5 次稳定。
+
+**还没做（3.5 / 3.6）**：后台的运行记录、`agent-trace`、导出仍读 Go 的库，durable 的运行在那里看不到（3.5）；`update.sh` 备份 Agent 的数据卷、Compose 里 durable 的配置、灰度切换（3.6）。

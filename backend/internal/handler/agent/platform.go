@@ -62,7 +62,41 @@ type PlatformAPI interface {
 
 // PlatformHandler 是 Agent 服务调用 Go 平台能力的接口。它和桥挂在同一个内网监听上，必须配了服务令牌才挂载。
 type PlatformHandler struct {
-	svc PlatformAPI
+	svc   PlatformAPI
+	relay EventRelayAPI // 为 nil 表示不接收事件推送（没有路由）
+}
+
+// EventRelayAPI 把 Agent 服务产生的事件推给浏览器，由 *agentsvc.EventRelay 实现。
+type EventRelayAPI interface {
+	Publish(ctx context.Context, events []agentsvc.RelayEvent) error
+}
+
+// WithEventRelay 打开事件推送接口（agent.runtime=durable）。
+func (h *PlatformHandler) WithEventRelay(r EventRelayAPI) *PlatformHandler {
+	h.relay = r
+	return h
+}
+
+// HasEventRelay 说明是否接收事件推送：路由据此决定要不要挂 /events。
+func (h *PlatformHandler) HasEventRelay() bool { return h.relay != nil }
+
+// eventsBody 是事件推送的请求体。
+type eventsBody struct {
+	Events []agentsvc.RelayEvent `json:"events"`
+}
+
+// PushEvents 接收 Agent 服务成批推来的事件，转成浏览器看到的格式推到用户的 WebSocket 频道。
+// 事件已由 Agent 服务落库；推送丢了不要紧，前端按 seq 回放对账。
+func (h *PlatformHandler) PushEvents(c *gin.Context) {
+	var req eventsBody
+	if !handler.BindJSON(c, &req) {
+		return
+	}
+	if err := h.relay.Publish(c.Request.Context(), req.Events); err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, nil)
 }
 
 // NewPlatformHandler 创建平台 handler。

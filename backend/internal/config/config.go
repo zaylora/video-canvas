@@ -119,6 +119,8 @@ type Agent struct {
 const (
 	AgentRuntimeProcess = "process"
 	AgentRuntimeHTTP    = "http"
+	// AgentRuntimeDurable：会话、运行、审批、事件都在独立的 Agent 服务里（Pi Durable），Go 只保留平台 API 并反向代理前端的接口
+	AgentRuntimeDurable = "durable"
 )
 
 // DefaultHTTPBridgeAddr 是 http 模式下桥的默认监听地址：Agent 服务在别的容器里，要连得上就得是内网可达的固定端口。
@@ -150,7 +152,7 @@ func (a Agent) WithDefaults() Agent {
 	}
 	if a.BridgeAddr == "" {
 		a.BridgeAddr = "127.0.0.1:0"
-		if a.Runtime == AgentRuntimeHTTP {
+		if a.RemoteService() {
 			a.BridgeAddr = DefaultHTTPBridgeAddr
 		}
 	}
@@ -174,12 +176,12 @@ func (a Agent) Validate() error {
 	}
 	switch a.WithDefaults().Runtime {
 	case AgentRuntimeProcess:
-	case AgentRuntimeHTTP:
+	case AgentRuntimeHTTP, AgentRuntimeDurable:
 		if err := a.validateHTTPRuntime(); err != nil {
 			return err
 		}
 	default:
-		return fmt.Errorf("agent.runtime 只能是 %s 或 %s，当前是 %q", AgentRuntimeProcess, AgentRuntimeHTTP, a.Runtime)
+		return fmt.Errorf("agent.runtime 只能是 %s、%s 或 %s，当前是 %q", AgentRuntimeProcess, AgentRuntimeHTTP, AgentRuntimeDurable, a.Runtime)
 	}
 	if a.ServiceToken != "" && !ValidServiceToken(a.ServiceToken) {
 		return fmt.Errorf("agent.service_token 至少 %d 个字符（建议 openssl rand -hex 32）", MinServiceTokenLen)
@@ -194,7 +196,12 @@ func (a Agent) Validate() error {
 	return nil
 }
 
-// validateHTTPRuntime 校验 http 模式必需的三项：Agent 服务地址、桥的对外地址、两边共用的服务令牌。
+// RemoteService 说明 Agent 是不是独立部署的服务（http 或 durable）：是的话桥要监听内网地址，并且靠服务令牌互相认。
+func (a Agent) RemoteService() bool {
+	return a.Runtime == AgentRuntimeHTTP || a.Runtime == AgentRuntimeDurable
+}
+
+// validateHTTPRuntime 校验独立服务模式（http、durable）必需的三项：Agent 服务地址、桥的对外地址、两边共用的服务令牌。
 func (a Agent) validateHTTPRuntime() error {
 	if err := checkOrigin("agent.url", a.URL); err != nil {
 		return err
@@ -203,7 +210,7 @@ func (a Agent) validateHTTPRuntime() error {
 		return err
 	}
 	if !ValidServiceToken(a.ServiceToken) {
-		return fmt.Errorf("agent.runtime=http 需要 agent.service_token（APP_AGENT_SERVICE_TOKEN），至少 %d 个字符：它是 Go 与 Agent 服务互相认的唯一凭据", MinServiceTokenLen)
+		return fmt.Errorf("agent.runtime=%s 需要 agent.service_token（APP_AGENT_SERVICE_TOKEN），至少 %d 个字符：它是 Go 与 Agent 服务互相认的唯一凭据", a.Runtime, MinServiceTokenLen)
 	}
 	return nil
 }

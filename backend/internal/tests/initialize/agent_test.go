@@ -238,3 +238,32 @@ func TestAgentDisabledTools(t *testing.T) {
 		}
 	}
 }
+
+func TestBridgeURLFor_Durable(t *testing.T) {
+	addr := &net.TCPAddr{IP: net.IPv4zero, Port: 47001}
+	if got := BridgeURLFor(config.Agent{Runtime: "durable", BridgeURL: "http://backend:47001/"}, addr); got != "http://backend:47001" {
+		t.Errorf("durable 模式和 http 一样用配置的对外地址: %q", got)
+	}
+}
+
+// durable 模式：前端接口反向代理给 Agent 服务；别的模式或没启用 Agent 时不装配代理（路由继续走 Go 自己的实现）。
+func TestAgentProxyFor(t *testing.T) {
+	tok := strings.Repeat("a", 32)
+	for name, ac := range map[string]config.Agent{
+		"没启用":     {Enabled: false, Runtime: "durable", URL: "http://agent:8090", ServiceToken: tok},
+		"process": {Enabled: true, Runtime: "process"},
+		"http":    {Enabled: true, Runtime: "http", URL: "http://agent:8090", ServiceToken: tok},
+	} {
+		p, err := AgentProxyFor(ac)
+		if err != nil || p != nil {
+			t.Errorf("%s 不装配代理: %v %v", name, p, err)
+		}
+	}
+	p, err := AgentProxyFor(config.Agent{Enabled: true, Runtime: "durable", URL: "http://agent:8090", ServiceToken: tok})
+	if err != nil || p == nil {
+		t.Errorf("durable 要装配代理: %v %v", p, err)
+	}
+	if _, err := AgentProxyFor(config.Agent{Enabled: true, Runtime: "durable", URL: "agent:8090", ServiceToken: tok}); err == nil {
+		t.Error("地址不合法应报错")
+	}
+}

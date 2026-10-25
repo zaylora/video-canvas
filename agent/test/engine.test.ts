@@ -55,6 +55,18 @@ test("文字增量只推送不落库（seq 为 0）；完整内容在 message.do
     assert.equal(e.persisted("message.done")[0].thinking, "想一想");
   }));
 
+test("文字增量不会排在它所属的 message.done 之后：前端按 message.done 清掉流式文字，迟到的增量会残留成重复内容", () =>
+  withEngine({ turns: [{ tools: [{ id: "call_0", name: "canvas_get_state", args: {} }], text: "先看看画布" }, { text: "好了" }], tools: { canvas_get_state: { content: "空画布" } } }, async (e) => {
+    await e.start();
+    await e.engine.idle();
+    const order = e.events.map((x) => x.type).filter((t) => t === "message.delta" || t === "message.done");
+    // 模型回答得很快（一个 50ms 的刷新窗口内就结束）：它的增量要么在 message.done 之前发出，要么干脆不发
+    assert.ok(order.length > 0 && order.at(-1) === "message.done", `最后一个必须是 message.done：${order.join(",")}`);
+    for (let i = 1; i < order.length; i++) {
+      if (order[i] === "message.delta") assert.equal(order[i - 1], "message.delta", `增量前面只能是增量：${order.join(",")}`);
+    }
+  }));
+
 test("工具回合：message.done 带工具调用 → tool.start → tool.end（内容来自 Go）→ 下一轮；计 1 步", () =>
   withEngine({
     turns: [{ tools: [{ id: "call_0", name: "canvas_get_state", args: { nodeIds: ["n1"] } }] }, { text: "读完了" }],

@@ -732,3 +732,45 @@ func TestPlatformHandler_UndoRun(t *testing.T) {
 		t.Errorf("已撤销过原样返回: %d %s", w.Code, w.Body)
 	}
 }
+
+// fakeRelay 记录事件推送收到的批次。
+type fakeRelay struct {
+	got []agentsvc.RelayEvent
+	err error
+}
+
+func (f *fakeRelay) Publish(_ context.Context, events []agentsvc.RelayEvent) error {
+	f.got = append(f.got, events...)
+	return f.err
+}
+
+func relayRouter(relay EventRelayAPI) *gin.Engine {
+	gin.SetMode(gin.TestMode)
+	h := NewPlatformHandler(&fakePlatform{}).WithEventRelay(relay)
+	r := gin.New()
+	r.POST("/internal/platform/v1/events", h.PushEvents)
+	return r
+}
+
+func TestPlatform_PushEventsPassesBatchToRelay(t *testing.T) {
+	relay := &fakeRelay{}
+	body := `{"events":[{"user_id":"42","session_id":"7","canvas_id":"9","run_id":"8","seq":3,"type":"run.status","data":{"status":"running"},"created_at":"2026-10-25T08:00:00Z"}]}`
+	status, resp := canvasCall(t, relayRouter(relay), "POST", "/internal/platform/v1/events", body)
+	if status != http.StatusOK || resp["code"] != float64(0) {
+		t.Fatalf("应成功：%d %v", status, resp)
+	}
+	if len(relay.got) != 1 || relay.got[0].UserID != "42" || relay.got[0].Seq != 3 || string(relay.got[0].Data) != `{"status":"running"}` {
+		t.Errorf("事件应原样交给中继：%+v", relay.got)
+	}
+}
+
+func TestPlatform_PushEventsErrors(t *testing.T) {
+	status, resp := canvasCall(t, relayRouter(&fakeRelay{err: errcode.ErrInvalidParams.WithMsg("第 1 条事件的 type 必须是 1 到 64 个字符")}), "POST", "/internal/platform/v1/events", `{"events":[{}]}`)
+	if status != http.StatusBadRequest || resp["code"] != float64(10001) {
+		t.Errorf("中继的参数错误要原样返回：%d %v", status, resp)
+	}
+	status, _ = canvasCall(t, relayRouter(&fakeRelay{}), "POST", "/internal/platform/v1/events", `not json`)
+	if status != http.StatusBadRequest {
+		t.Errorf("请求体不是 JSON 应是 400：%d", status)
+	}
+}

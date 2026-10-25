@@ -77,6 +77,38 @@ test("启动：建数据目录和库、起 REST；/health 不要令牌；REST �
     }
   }));
 
+test("事件推送：运行产生的事件按序号成批推给 Go（带临时的文字增量），停机前推完", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "durable-"));
+  const go = await fakeGo({ turns: [{ text: "你好呀，这是一段需要流一会儿的回答", charDelayMs: 25 }] });
+  const cfg = configFromEnv({ ...base, AGENT_DB_PATH: join(dir, "agent.sqlite"), AGENT_BRIDGE_URL: go.url, AGENT_LISTEN: "127.0.0.1:0" });
+  const codec = createIdCodec(ID_KEY);
+  const svc = await startDurable(cfg, () => {});
+  try {
+    const h = { "x-agent-service-token": TOKEN, "x-agent-user": "1", "content-type": "application/json" };
+    const created = await (await fetch(`${svc.url}/canvas/${codec.encode(7n)}/agent/sessions`, { method: "POST", headers: h, body: "{}" })).json() as any;
+    const run = await fetch(`${svc.url}/agent/sessions/${created.data.id}/runs`, { method: "POST", headers: h, body: JSON.stringify({ message: "打个招呼" }) });
+    assert.equal(run.status, 202);
+    const pushed = () => go.seen.filter((s) => s.path === "/internal/platform/v1/events").flatMap((s) => s.body.events as Array<{ seq: number; type: string; user_id: string; canvas_id: string; run_id: string }>);
+    const t0 = Date.now();
+    while (!pushed().some((e) => e.type === "run.status" && (e as any).data?.status === "succeeded")) {
+      if (Date.now() - t0 > 5000) assert.fail("运行结束的事件没有推给 Go：" + JSON.stringify(pushed().map((e) => e.type)));
+      await sleep(10);
+    }
+    const events = pushed();
+    assert.ok(events.every((e) => e.user_id === "1" && e.canvas_id === "7"), "用户和画布 id 是十进制");
+    assert.ok(events.some((e) => e.seq === 0 && e.type === "message.delta"), "临时的文字增量也推");
+    const done = events.findIndex((e) => e.type === "message.done");
+    assert.ok(done >= 0 && events.slice(done).every((e) => e.type !== "message.delta"), "增量不会排在 message.done 之后");
+    const persisted = events.filter((e) => e.seq > 0).map((e) => e.seq);
+    assert.deepEqual(persisted, [...persisted].sort((a, b) => a - b), "落库的事件序号递增");
+    assert.deepEqual(persisted, [...new Set(persisted)], "没有重复");
+  } finally {
+    await svc.close();
+    await go.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("停机：关闭后不再接受请求；关闭是幂等的", () =>
   withService(async (_u, cfg) => {
     const a = await startDurable(cfg, () => {});

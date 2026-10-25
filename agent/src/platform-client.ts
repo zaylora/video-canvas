@@ -6,6 +6,7 @@
  * 响应约定：Go 的标准信封 {code, msg, data}。code 不为 0、HTTP 非 2xx、连不上，都是 PlatformError；
  * 请求被 signal 中止时抛出的是原来的中止错误，不包装：调用方要分得清「被取消」和「出错」。
  */
+import type { RelayEvent } from "./event-pusher.ts";
 import { parseDecimal } from "./ids.ts";
 
 /** 运行上下文。ID 一律是十进制字符串：雪花 ID 超过 2^53，用数字会在 JavaScript 里丢精度。 */
@@ -252,6 +253,10 @@ export function createPlatform({ baseUrl, serviceToken, fetchImpl = fetch }: Pla
     /** 运行的用量；带 callId（模型调用的 id，十进制字符串）时一并给出这次调用的结算情况 */
     usage: (rc: RunContext, callId?: string, signal?: AbortSignal) =>
       call<PlatformUsage>("GET", `/runs/${rc.run_id}/usage${callId ? `?call_id=${encodeURIComponent(callId)}` : ""}`, rc, undefined, { signal }),
+    /** 把事件成批推给 Go，由它经 WebSocket 发给浏览器（顺序由调用方保证）；事件已落在 Agent 自己的库里，推送失败不影响运行 */
+    pushEvents: async (events: RelayEvent[], signal?: AbortSignal): Promise<void> => {
+      await call<null>("POST", "/events", undefined, { events }, { signal });
+    },
     /** 运行结束：释放 Go 内存里这个运行的状态（联网次数、技能固定版本）；不调用也会在闲置过期后清掉 */
     endRun: (rc: RunContext, signal?: AbortSignal) => call<null>("DELETE", `/runs/${rc.run_id}`, rc, undefined, { signal }),
   };

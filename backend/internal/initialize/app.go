@@ -194,7 +194,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 	} else if n > 0 {
 		logger.Warn("上次退出时有 Agent 运行没有结束，已标为中断，用户可以点「继续」", zap.Int64("runs", n))
 	}
-	agentRT, err := newAgentRuntime(cfg, agentDeps{tasks: taskSvc, assets: assetSvc, frames: newVideoFrames(), frameStore: assetFrameStore{assetSvc}, repo: agentRepo, agent: agentSvc, canvas: agentCanvasSvc, registry: aiCfgSvc, secrets: aiCfgSvc, skills: skillSvc, toolCalls: observeRepo, modelRequests: observeRepo, ipAllowed: outboundIPPolicy(cfg)})
+	agentRT, err := newAgentRuntime(cfg, agentDeps{tasks: taskSvc, assets: assetSvc, frames: newVideoFrames(), frameStore: assetFrameStore{assetSvc}, repo: agentRepo, agent: agentSvc, canvas: agentCanvasSvc, registry: aiCfgSvc, secrets: aiCfgSvc, skills: skillSvc, toolCalls: observeRepo, modelRequests: observeRepo, ipAllowed: outboundIPPolicy(cfg), broadcaster: hub})
 	if err != nil {
 		stopRunner(runnerStop)
 		closeRedis(rdb)
@@ -262,11 +262,19 @@ func NewApp(cfg *config.Config) (*App, error) {
 		Repo: observeRepo, Runs: agentRepo, Events: agentSvc, Audit: auditRepo, Roles: roleLookup,
 	})
 	agentSvc.SetObserver(observeSvc)
-	if agentRT != nil {
+	if agentRT != nil && agentRT.rt != nil {
 		agentRT.rt.SetTailSink(observeSvc) // 运行进程退出时把 stderr 末尾留进运行摘要
 	}
 
+	agentProxy, err := AgentProxyFor(cfg.Agent)
+	if err != nil {
+		stopRunner(runnerStop)
+		closeRedis(rdb)
+		closeDB(db)
+		return nil, err
+	}
 	engineHTTP := router.New(cfg.Server.Mode, cfg.JWT.Secret, router.Handlers{
+		AgentProxy:    agentProxy,
 		Health:        handler.NewHealthHandler(db, rdb),
 		User:          handler.NewUserHandler(userSvc),
 		Me:            handler.NewMeHandler(meSvc),

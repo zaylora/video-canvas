@@ -46,6 +46,9 @@ func NewBridge(mode string, h *agenthandler.AgentBridgeHandler, platform *agenth
 		p.POST("/approvals/propose", platform.ProposeApproval)
 		p.POST("/approvals/resolve", platform.ResolveApproval)
 		p.POST("/approvals/execute", platform.ExecuteApproval)
+		if platform.HasEventRelay() {
+			p.POST("/events", platform.PushEvents) // Agent 服务把事件成批推来，Go 推给浏览器
+		}
 	}
 	return r
 }

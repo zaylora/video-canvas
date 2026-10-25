@@ -8,6 +8,7 @@ import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite
 import { createApiApp } from "./api/http.ts";
 import { AgentApiService } from "./api/service.ts";
 import { AgentEngine } from "./engine/engine.ts";
+import { EventPusher } from "./event-pusher.ts";
 import { createIdCodec } from "./ids.ts";
 import { createPlatform } from "./platform-client.ts";
 import { openStore } from "./store/store.ts";
@@ -75,12 +76,23 @@ export async function startDurable(cfg: DurableConfig, log: (msg: string, extra?
   const codec = createIdCodec(cfg.idKey);
   const store = openStore(cfg.dbPath, { workerId: cfg.workerId });
   let engine: AgentEngine | undefined;
+  let pusher: EventPusher | undefined;
   try {
     const platform = createPlatform({ baseUrl: cfg.bridgeUrl, serviceToken: cfg.serviceToken });
+    // 事件推给 Go，由它经 WebSocket 发给前端；丢了前端会按 seq 回放补回，所以这里失败只记日志（成串的失败合并成一条）
+    let lastWarn = 0;
+    const p = (pusher = new EventPusher({
+      push: (events) => platform.pushEvents(events),
+      onError: (e, dropped) => {
+        if (Date.now() - lastWarn < 10_000) return;
+        lastWarn = Date.now();
+        log("推送事件给平台失败，前端会通过回放补上", { dropped, error: String((e as Error)?.message ?? e) });
+      },
+    }));
     engine = await AgentEngine.open({
       store, platform, baseUrl: cfg.bridgeUrl, serviceToken: cfg.serviceToken, codec,
       storage: await openNodeSqliteStorage(cfg.dbPath, { prefix: "pi_" }), resumeWindowMs: cfg.resumeWindowMs,
-      // 事件推给 Go（再经 WebSocket 发给前端）的入口在 3.4；之前前端靠 HTTP 回放（events / history）对账
+      onEvent: (ev) => p.publish(ev),
     });
     const app = createApiApp({ service: new AgentApiService({ store, engine, platform, codec }), codec, serviceToken: cfg.serviceToken, log });
     app.get("/health", async () => ({ ok: true }));
@@ -92,11 +104,13 @@ export async function startDurable(cfg: DurableConfig, log: (msg: string, extra?
       close: () => (closing ??= (async () => {
         await app.close();
         await eng.close();
+        await p.close(); // 引擎收尾时发的最后几条事件也要推出去
         store.close();
       })()),
     };
   } catch (e) {
     await engine?.close().catch(() => {});
+    await pusher?.close(0);
     store.close();
     throw e;
   }

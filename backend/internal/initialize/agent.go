@@ -23,6 +23,7 @@ import (
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/pkg/videoframe"
+	"video-canvas/internal/pkg/ws"
 	"video-canvas/internal/provider"
 	"video-canvas/internal/provider/webaccess"
 	"video-canvas/internal/repository"
@@ -100,13 +101,21 @@ func AgentLauncher(ac config.Agent) agentsvc.Launcher {
 	return agentsvc.ExecLauncher{}
 }
 
-// BridgeURLFor 是 Agent 访问桥用的地址：http 模式用配置里写的对外地址（Agent 容器要能连上），
+// BridgeURLFor 是 Agent 访问桥用的地址：http 和 durable 模式用配置里写的对外地址（Agent 容器要能连上），
 // 否则是本机的监听地址。
 func BridgeURLFor(ac config.Agent, listen net.Addr) string {
-	if ac.Runtime == config.AgentRuntimeHTTP {
+	if ac.RemoteService() {
 		return strings.TrimRight(ac.BridgeURL, "/")
 	}
 	return BridgeLocalURL(listen)
+}
+
+// AgentProxyFor 在 durable 模式下创建前端 Agent 接口的反向代理；没启用 Agent 或不是 durable 返回 nil（路由走 Go 自己的实现）。
+func AgentProxyFor(ac config.Agent) (*agenthandler.AgentProxyHandler, error) {
+	if !ac.Enabled || ac.Runtime != config.AgentRuntimeDurable {
+		return nil, nil
+	}
+	return agenthandler.NewAgentProxy(ac.URL, ac.ServiceToken)
 }
 
 // agentEntryScript 选入口脚本。仓库里有源码就直接跑源码（Node 22.19+ 自带类型剥离，不用先构建），
@@ -162,8 +171,8 @@ func BridgeLocalURL(addr net.Addr) string {
 
 // agentRuntime 是装配好的画布 Agent 运行时：桥的监听服务和进程运行时。
 type agentRuntime struct {
-	mode   string // 运行方式：process 或 http，写进启动日志，运维一眼能看出
-	rt     *agentsvc.ProcessRuntime
+	mode   string                   // 运行方式：process 或 http，写进启动日志，运维一眼能看出
+	rt     *agentsvc.ProcessRuntime // durable 模式为 nil
 	server *http.Server
 	ln     net.Listener
 }
@@ -187,6 +196,8 @@ type agentDeps struct {
 	modelRequests agentsvc.ModelRequestRecorder
 	// ipAllowed 是出站请求的 IP 策略；nil 用默认（拒绝全部内网）
 	ipAllowed func(net.IP) bool
+	// broadcaster 是浏览器 WebSocket 的广播器；durable 模式下 Agent 服务推来的事件经它发出
+	broadcaster ws.Broadcaster
 }
 
 // webToolNames 是联网工具的名字：关掉联网时从下发给 Agent 的工具里去掉。
@@ -218,9 +229,9 @@ func newAgentRuntime(cfg *config.Config, d agentDeps) (*agentRuntime, error) {
 	if !ac.Enabled {
 		return nil, nil
 	}
-	// http 模式下 Agent 在别的容器里，本机不需要 Node，也没有入口脚本可查
+	// http 和 durable 模式下 Agent 在别的容器里，本机不需要 Node，也没有入口脚本可查
 	var paths AgentRuntimePaths
-	if ac.Runtime != config.AgentRuntimeHTTP {
+	if !ac.RemoteService() {
 		var err error
 		if paths, err = ResolveAgentRuntime(ac); err != nil {
 			return nil, err
@@ -242,15 +253,22 @@ func newAgentRuntime(cfg *config.Config, d agentDeps) (*agentRuntime, error) {
 	if d.modelRequests != nil {
 		bridge.SetModelRequestRecorder(d.modelRequests)
 	}
-	rt := agentsvc.NewProcessRuntime(agentsvc.RuntimeDeps{
-		Repo: d.repo, Bridge: bridge, Canvas: d.canvas, Agent: d.agent, Registry: d.registry, Launcher: AgentLauncher(ac),
-		Config: agentsvc.RuntimeConfig{NodePath: paths.Node, ScriptPath: paths.Script, BridgeURL: BridgeURLFor(ac, ln.Addr()), ServiceToken: ac.ServiceToken, WorkRoot: ac.WorkDir, DisabledTools: AgentDisabledTools(ac)},
-	})
-	d.agent.SetRuntime(rt)
+	platform := agenthandler.NewPlatformHandler(bridge)
+	// durable：会话、运行、审批都在 Agent 服务里，Go 没有进程运行时；Agent 服务产生的事件经 /events 推过来，由 Go 发给浏览器
+	var rt *agentsvc.ProcessRuntime
+	if ac.Runtime == config.AgentRuntimeDurable {
+		platform.WithEventRelay(agentsvc.NewEventRelay(d.broadcaster))
+	} else {
+		rt = agentsvc.NewProcessRuntime(agentsvc.RuntimeDeps{
+			Repo: d.repo, Bridge: bridge, Canvas: d.canvas, Agent: d.agent, Registry: d.registry, Launcher: AgentLauncher(ac),
+			Config: agentsvc.RuntimeConfig{NodePath: paths.Node, ScriptPath: paths.Script, BridgeURL: BridgeURLFor(ac, ln.Addr()), ServiceToken: ac.ServiceToken, WorkRoot: ac.WorkDir, DisabledTools: AgentDisabledTools(ac)},
+		})
+		d.agent.SetRuntime(rt)
+	}
 	return &agentRuntime{
 		mode: ac.WithDefaults().Runtime, rt: rt, ln: ln,
 		// 没有读写超时：对话是长连接的流式响应，可能持续几分钟；防慢速攻击靠只监听回环地址或内网（配了服务令牌）
-		server: &http.Server{Handler: router.NewBridge(cfg.Server.Mode, agenthandler.NewAgentBridgeHandler(bridge), agenthandler.NewPlatformHandler(bridge), ac.ServiceToken), ReadHeaderTimeout: 10 * time.Second},
+		server: &http.Server{Handler: router.NewBridge(cfg.Server.Mode, agenthandler.NewAgentBridgeHandler(bridge), platform, ac.ServiceToken), ReadHeaderTimeout: 10 * time.Second},
 	}, nil
 }
 
@@ -267,7 +285,9 @@ func (a *agentRuntime) stop(ctx context.Context) {
 	if err := a.server.Shutdown(ctx); err != nil {
 		_ = a.server.Close() // 优雅关闭超时就直接断开：进程马上要被杀了，没有继续等的意义
 	}
-	a.rt.Shutdown()
+	if a.rt != nil { // durable 模式没有进程运行时：运行在 Agent 服务里，由它自己恢复
+		a.rt.Shutdown()
+	}
 }
 
 // newVideoFrames 创建抽帧器；找不到 ffmpeg / ffprobe 时只记警告，Agent 的两个视频工具会提示「不能处理视频」。

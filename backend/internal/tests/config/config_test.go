@@ -351,3 +351,40 @@ func TestLoad_AgentDisabledTools(t *testing.T) {
 		t.Errorf("环境变量应能覆盖（逗号分隔）: %v", got)
 	}
 }
+
+// agent.runtime=durable：会话、运行、审批都在独立的 Agent 服务里（Pi Durable），Go 只做平台 API 和反向代理。
+// 它和 http 一样需要服务地址、桥的对外地址和服务令牌；桥也要监听内网的固定端口。
+func TestAgentConfig_DurableRuntime(t *testing.T) {
+	tok := strings.Repeat("a", 32)
+	ok := Agent{Enabled: true, Runtime: "durable", URL: "http://agent:8090", BridgeURL: "http://backend:47001", ServiceToken: tok}
+	if err := ok.Validate(); err != nil {
+		t.Fatalf("完整的 durable 配置应通过: %v", err)
+	}
+	if got := ok.WithDefaults().BridgeAddr; got != "0.0.0.0:47001" {
+		t.Errorf("durable 模式下桥默认监听内网的固定端口: %q", got)
+	}
+	for name, c := range map[string]struct {
+		mut  func(a *Agent)
+		want string
+	}{
+		"没有服务地址":  {func(a *Agent) { a.URL = "" }, "agent.url"},
+		"服务地址带路径": {func(a *Agent) { a.URL = "http://agent:8090/x" }, "agent.url"},
+		"没有桥地址":   {func(a *Agent) { a.BridgeURL = "" }, "agent.bridge_url"},
+		"没有服务令牌":  {func(a *Agent) { a.ServiceToken = "" }, "agent.service_token"},
+		"服务令牌太短":  {func(a *Agent) { a.ServiceToken = "short" }, "agent.service_token"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			a := ok
+			c.mut(&a)
+			if err := a.Validate(); err == nil || !strings.Contains(err.Error(), c.want) {
+				t.Errorf("应报含 %q 的错误: %v", c.want, err)
+			}
+		})
+	}
+	if err := (Agent{Enabled: true, Runtime: "grpc"}).Validate(); err == nil || !strings.Contains(err.Error(), "durable") {
+		t.Errorf("未知的 runtime 的提示里要列出 durable: %v", err)
+	}
+	if !ok.RemoteService() || (Agent{Runtime: "process"}).RemoteService() {
+		t.Error("http 和 durable 是独立服务，process 不是")
+	}
+}

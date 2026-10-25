@@ -243,3 +243,30 @@ func TestNewBridge_NoPlatformHandlerMeansNoPlatformRoutes(t *testing.T) {
 		t.Errorf("没有平台 handler 时应 404: %d", code)
 	}
 }
+
+type relayCounter struct{ batches int }
+
+func (r *relayCounter) Publish(context.Context, []agentsvc.RelayEvent) error { r.batches++; return nil }
+
+// 事件推送只在 durable 模式（配了中继）挂载，并且和其他平台接口一样只认服务令牌：它能往任意用户的 WebSocket 频道推消息。
+func TestNewBridge_EventPushRouteNeedsRelayAndServiceToken(t *testing.T) {
+	const token = "service-token-0123456789abcdef0123456789"
+	const body = `{"events":[{"user_id":"1","session_id":"5","canvas_id":"7","run_id":"9","seq":1,"type":"run.status","data":{},"created_at":"2026-10-25T08:00:00Z"}]}`
+
+	relay := &relayCounter{}
+	srv := httptest.NewServer(router.NewBridge("test", agenthandler.NewAgentBridgeHandler(&stubBridge{}), agenthandler.NewPlatformHandler(&platformStub{}).WithEventRelay(relay), token))
+	defer srv.Close()
+	if code := platformReqBody(t, srv, http.MethodPost, "/internal/platform/v1/events", "", body); code != http.StatusUnauthorized || relay.batches != 0 {
+		t.Errorf("没带服务令牌应 401 且不能进入业务: code=%d batches=%d", code, relay.batches)
+	}
+	if code := platformReqBody(t, srv, http.MethodPost, "/internal/platform/v1/events", token, body); code != http.StatusOK || relay.batches != 1 {
+		t.Errorf("令牌正确应放行: code=%d batches=%d", code, relay.batches)
+	}
+
+	// 没配中继（http / process 模式）：路由不存在
+	plain := httptest.NewServer(router.NewBridge("test", agenthandler.NewAgentBridgeHandler(&stubBridge{}), agenthandler.NewPlatformHandler(&platformStub{}), token))
+	defer plain.Close()
+	if code := platformReqBody(t, plain, http.MethodPost, "/internal/platform/v1/events", token, body); code != http.StatusNotFound {
+		t.Errorf("没配中继不应挂载事件推送: %d", code)
+	}
+}

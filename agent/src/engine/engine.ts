@@ -160,6 +160,10 @@ export class AgentEngine {
   readonly #registry = createRegistry();
   readonly #drives = new Set<Promise<void>>();
   readonly #watched = new Set<string>();
+  /** 会话 → 已发过 message.done、但文字增量的 watcher 还没处理到它的 message_end 的回答数 */
+  readonly #answered = new Map<string, number>();
+  /** 会话 → 丢掉 watcher 里攒着的增量 */
+  readonly #dropDeltas = new Map<string, () => void>();
   readonly #stops: Array<() => Promise<unknown>> = [];
   #models!: ReturnType<typeof createModelRegistry>;
   #toolsKey = "";
@@ -422,6 +426,7 @@ export class AgentEngine {
     this.#contexts.set(convId, rc);
     const a: Active = { run, convId, rc, conv, paused: false, finishing: false, steps: run.steps, maxSteps: run.maxSteps, callIds: [], summaryCallIds: [], compactionDisabled: false, recovering: false, startedBefore: new Set(), lock: Promise.resolve() };
     this.#active.set(convId, a);
+    this.#answered.set(convId, 0);
     this.#byRun.set(run.id, a);
     this.#touchLeases();
     return a;
@@ -807,6 +812,9 @@ export class AgentEngine {
   async #onAssistant(convId: string, msg: AssistantMessage): Promise<void> {
     const a = this.#active.get(convId);
     if (!a) return;
+    // 这条回答已经定稿：watcher 里还没处理完的它的增量作废（见 #watch），否则会排在 message.done 之后，前端残留成重复文字
+    this.#answered.set(convId, (this.#answered.get(convId) ?? 0) + 1);
+    this.#dropDeltas.get(convId)?.();
     const callId = a.callIds.shift();
     let credits: { charged: number; estimated: boolean } | undefined;
     if (callId) {
@@ -857,6 +865,13 @@ export class AgentEngine {
     let text = "";
     let thinking = "";
     let timer: ReturnType<typeof setTimeout> | undefined;
+    this.#dropDeltas.set(convId, () => {
+      if (timer) clearTimeout(timer);
+      timer = undefined;
+      text = thinking = "";
+    });
+    // 已经定稿（发过 message.done）、但 watcher 还没看到 message_end 的回答数：它们的增量一律丢弃
+    const stale = () => (this.#answered.get(convId) ?? 0) > 0;
     const flush = () => {
       timer = undefined;
       const a = this.#active.get(convId);
@@ -868,6 +883,12 @@ export class AgentEngine {
     };
     stream.start(async (events) => {
       for (const e of events) {
+        if (stale() && (e.type === "message_start" || e.type === "message_update")) continue;
+        if (e.type === "message_end" && e.entry.model?.some((m) => m.role === "assistant")) {
+          const n = this.#answered.get(convId) ?? 0;
+          if (n > 0) this.#answered.set(convId, n - 1); // 这条回答的收尾，它的增量上面已经丢掉了
+          continue;
+        }
         if (e.type === "message_start" && e.message.role === "assistant") {
           // 开始时已经有的文字（第一次中间提交之前流出的部分）也是增量
           for (const p of e.message.content) {
@@ -881,9 +902,6 @@ export class AgentEngine {
             else if (c.type === "thinking_delta") thinking += (c as unknown as { delta: string }).delta;
           }
           timer ??= setTimeout(flush, DELTA_FLUSH_MS);
-        } else if (e.type === "message_end" && (text || thinking)) {
-          if (timer) clearTimeout(timer);
-          flush();
         }
       }
     });
