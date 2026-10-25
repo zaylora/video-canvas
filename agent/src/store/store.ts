@@ -4,7 +4,7 @@ import { SNOWFLAKE_EPOCH_MS, createSnowflake, parseDecimal, type Snowflake } fro
 import { DuplicateError, NotFoundError, StateConflictError } from "./errors.ts";
 import { MIGRATIONS, migrate } from "./migrations.ts";
 import type {
-  AgentEventRecord, Approval, ApprovalPatch, NewApproval, NewRun, NewSession, Run, RunPatch, Session, SessionPatch,
+  AgentEventRecord, Approval, ApprovalPatch, Feedback, NewApproval, NewFeedback, NewRun, NewSession, Run, RunPatch, Session, SessionPatch,
 } from "./types.ts";
 
 export interface StoreOptions {
@@ -59,6 +59,13 @@ function approvalOf(r: Row): Approval {
     quoteCredits: num(r.quote_credits), status: String(r.status), decision: JSON.parse(String(r.decision)),
     result: JSON.parse(String(r.result)), decidedAt: r.decided_at === null ? null : num(r.decided_at),
     expiresAt: num(r.expires_at), createdAt: num(r.created_at), updatedAt: num(r.updated_at),
+  };
+}
+
+function feedbackOf(r: Row): Feedback {
+  return {
+    runId: id(r.run_id), userId: id(r.user_id), rating: num(r.rating), reasons: JSON.parse(String(r.reasons)) as string[],
+    comment: String(r.comment), createdAt: num(r.created_at), updatedAt: num(r.updated_at),
   };
 }
 
@@ -394,6 +401,34 @@ export class AgentStore {
   /** 把某运行所有待处理的审批置为已失效，返回条数；运行被停止或结束时调用 */
   expirePendingApprovals(runId: string): number {
     return this.#run("UPDATE agent_approvals SET status = 'expired', updated_at = ? WHERE run_id = ? AND status = 'pending'", this.#now(), dec(runId));
+  }
+
+  // ---- 评价 ----
+
+  /** 记下评价：同一人对同一运行覆盖（保留创建时间）。运行不存在抛 NotFoundError */
+  upsertFeedback(in_: NewFeedback): Feedback {
+    const t = this.#now();
+    try {
+      const row = this.#get(
+        `INSERT INTO agent_feedback (run_id, user_id, rating, reasons, comment, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (run_id, user_id) DO UPDATE SET rating = excluded.rating, reasons = excluded.reasons, comment = excluded.comment, updated_at = excluded.updated_at
+         RETURNING *`,
+        dec(in_.runId), dec(in_.userId), in_.rating, JSON.stringify(in_.reasons), in_.comment, t, t,
+      );
+      return feedbackOf(row!);
+    } catch (e) {
+      return translate(e, "运行");
+    }
+  }
+
+  getFeedback(runId: string, userId: string): Feedback | undefined {
+    const row = this.#get("SELECT * FROM agent_feedback WHERE run_id = ? AND user_id = ?", dec(runId), dec(userId));
+    return row ? feedbackOf(row) : undefined;
+  }
+
+  /** 取消评价，返回有没有删到 */
+  deleteFeedback(runId: string, userId: string): boolean {
+    return this.#run("DELETE FROM agent_feedback WHERE run_id = ? AND user_id = ?", dec(runId), dec(userId)) > 0;
   }
 
   // ---- 备份和关闭 ----

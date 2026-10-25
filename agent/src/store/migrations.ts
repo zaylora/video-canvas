@@ -106,6 +106,23 @@ CREATE INDEX idx_agent_approvals_user ON agent_approvals (user_id);
     // 会话在 Pi Durable 里的会话 id：对话历史归 Pi，这里只记对应关系
     sql: `ALTER TABLE agent_sessions ADD COLUMN conversation_id TEXT NOT NULL DEFAULT '';`,
   },
+  {
+    version: 3,
+    name: "feedback",
+    // 用户对一次运行的评价（👍/👎）：每个运行每人一条，改选就是覆盖
+    sql: `
+CREATE TABLE agent_feedback (
+  run_id     INTEGER NOT NULL REFERENCES agent_runs (id),
+  user_id    INTEGER NOT NULL,
+  rating     INTEGER NOT NULL,
+  reasons    TEXT    NOT NULL DEFAULT '[]',
+  comment    TEXT    NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (run_id, user_id)
+);
+`,
+  },
 ];
 
 const checksum = (sql: string): string => createHash("sha256").update(sql).digest("hex");

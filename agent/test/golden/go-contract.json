@@ -80,6 +80,15 @@
       "run_id": "\u003cid\u003e",
       "status": "executed"
     },
+    "feedback.cleared": {},
+    "feedback.set": {
+      "comment": "我要 6 个，它给了 12 个",
+      "rating": -1,
+      "reasons": [
+        "misread",
+        "slow"
+      ]
+    },
     "message.delta": {
       "text": "我先看看画布。"
     },
@@ -668,6 +677,14 @@
         "type": "run.status"
       }
     ],
+    "feedback": {
+      "comment": "我要 6 个，它给了 12 个",
+      "rating": -1,
+      "reasons": [
+        "misread",
+        "slow"
+      ]
+    },
     "history": {
       "events": [
         {

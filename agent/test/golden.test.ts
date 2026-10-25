@@ -88,6 +88,11 @@ test("黄金文件对照：同样的场景，TypeScript 的 REST 接口和事件
     views.run_canceled = normalize(canceled.body.data);
     await e.engine.idle();
 
+    // ---- 评价 ----
+    const fb = await h.call("PUT", `/agent/runs/${rid}/feedback`, { rating: -1, reasons: ["misread", "slow", "misread"], comment: "我要 6 个，它给了 12 个" });
+    views.feedback = normalize(fb.body.data);
+    assert.equal((await h.call("DELETE", `/agent/runs/${rid}/feedback`)).status, 200);
+
     // ---- 读 ----
     const evs = await h.call("GET", `/agent/sessions/${sid}/events?after=0&limit=200`);
     const hist = await h.call("GET", `/agent/sessions/${sid}/history`);
@@ -104,6 +109,7 @@ test("黄金文件对照：同样的场景，TypeScript 的 REST 接口和事件
     assert.equal(views.approval_decided.status, golden.views.approval_decided.status);
     assert.equal(views.approval_decided.kind, golden.views.approval_decided.kind);
     assert.deepEqual(flat(views.undo), flat(golden.views.undo), "撤销的结果");
+    assert.deepEqual(views.feedback, golden.views.feedback, "评价的视图（Go 录的就是这组输入）");
 
     // 回放和历史：每个元素的字段和类型；HTTP 回放里没有画布 id
     const goldenEv = golden.views.events[0];
@@ -131,6 +137,9 @@ test("黄金文件对照：同样的场景，TypeScript 的 REST 接口和事件
     assert.deepEqual([done.text, done.thinking, done.partial, done.tool_calls[0].name], [want("message.done").text, want("message.done").thinking, want("message.done").partial, want("message.done").tool_calls[0].name]);
     assert.deepEqual(normalize(mine("approval.created")), want("approval.created"));
     assert.deepEqual(flat(normalize(events("approval.decided")[0])), flat(want("approval.decided")));
+
+    assert.deepEqual(normalize(mine("feedback.set")), want("feedback.set"));
+    assert.deepEqual(normalize(mine("feedback.cleared")), want("feedback.cleared"));
 
     // run.status：Go 录到的每一种状态，内容完全一致（标题和提示文字就在里面）
     const seen: Record<string, any> = {};

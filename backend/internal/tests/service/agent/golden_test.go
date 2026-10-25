@@ -199,6 +199,22 @@ func recordGolden(t *testing.T) map[string]any {
 	}
 	b.bc.mu.Unlock()
 
+	// ---- 评价：用观测服务的测试装置录（评价归观测服务，不在 AgentService 里）----
+	oe := newObserveEnv(t)
+	fb, err := oe.svc.SetFeedback(ctx, 1, 5, &model.SetAgentFeedbackReq{Rating: -1, Reasons: []string{"misread", "slow", "misread"}, Comment: "我要 6 个，它给了 12 个"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	views["feedback"] = roundTrip(t, fb)
+	if err := oe.svc.ClearFeedback(ctx, 1, 5); err != nil {
+		t.Fatal(err)
+	}
+	for _, ev := range oe.events.events {
+		if _, seen := byType[ev.typ]; !seen {
+			byType[ev.typ] = roundTrip(t, ev.data)
+		}
+	}
+
 	texts := map[string]any{}
 	for _, st := range []string{"queued", "running", "waiting_approval", "waiting_input", "succeeded", "failed", "canceled", "budget_exhausted", "step_limit", "timeout", "interrupted", "expired"} {
 		title, hint := RunStatusText(st)

@@ -46,6 +46,12 @@ const DECIDE: FieldSpec[] = [
   { key: "add_budget", label: "追加预算", kind: "int", ...BUDGET },
 ];
 
+const FEEDBACK: FieldSpec[] = [
+  { key: "rating", label: "评价", kind: "int", required: true, oneof: ["1", "-1"] },
+  { key: "reasons", label: "原因", kind: "strings", max: 5, itemMax: 32 },
+  { key: "comment", label: "说明", kind: "string", max: 2000 },
+];
+
 export interface ApiOptions {
   service: AgentApiService;
   codec: IdCodec;
@@ -152,6 +158,14 @@ export function createApiApp(o: ApiOptions): FastifyInstance {
     return ok(reply, await service.resume(user(req), rid, validateBody(body(req), RESUME).add_budget));
   });
   app.post("/agent/runs/:rid/undo", async (req: Req, reply) => ok(reply, await service.undo(user(req), id(req, "rid"))));
+  app.put("/agent/runs/:rid/feedback", async (req: Req, reply) => {
+    const rid = id(req, "rid");
+    return ok(reply, await service.setFeedback(user(req), rid, validateBody(body(req), FEEDBACK) as never));
+  });
+  app.delete("/agent/runs/:rid/feedback", async (req: Req, reply) => {
+    await service.clearFeedback(user(req), id(req, "rid"));
+    return ok(reply);
+  });
   app.post("/agent/approvals/:aid/decision", async (req: Req, reply) => {
     const aid = id(req, "aid");
     return ok(reply, await service.decide(user(req), aid, validateBody(body(req), DECIDE) as never));

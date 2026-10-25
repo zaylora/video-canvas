@@ -204,3 +204,48 @@ test("模型清单：原样给前端；空清单是 []", async () => {
   await withApi({ turns: [] }, async (api) => assert.deepEqual(await api.models(), [{ key: "claude", name: "Claude", vision: true, context_window: 200000 }]));
   await withApi({ turns: [], models: [] }, async (api) => assert.deepEqual(await api.models(), []));
 });
+
+// ---- 评价 ----
+
+test("评价：点踩记下评分、去重后的原因和说明，发 feedback.set；点赞忽略原因；改选覆盖", () =>
+  withApi({ turns: [{ text: "好" }] }, async (api, e) => {
+    const run = await e.start();
+    await e.engine.idle();
+    const down = await api.setFeedback("1", run.id, { rating: -1, reasons: ["misread", "slow", "misread"], comment: "  我要 6 个，它给了 12 个  " });
+    assert.deepEqual(down, { rating: -1, reasons: ["misread", "slow"], comment: "我要 6 个，它给了 12 个" });
+    assert.deepEqual(e.persisted("feedback.set"), [down], "事件载荷里不放运行 id（事件自带）");
+    const up = await api.setFeedback("1", run.id, { rating: 1, reasons: ["slow"], comment: "" });
+    assert.deepEqual(up, { rating: 1, reasons: [], comment: "" });
+    assert.equal(e.store.getFeedback(run.id, "1")!.rating, 1, "覆盖，不是新增");
+    assert.equal(e.persisted("feedback.set").length, 2);
+  }));
+
+test("评价的限制：评分只能是 1 或 -1；原因必须是已知标签、最多 5 个；说明最多 500 字；运行得是自己的、已经结束", () =>
+  withApi({ turns: [{ tools: [{ id: "c1", name: "ask_user", args: { question: "几张？" } }] }] }, async (api, e) => {
+    const run = await e.start();
+    await e.engine.idle(); // 停在 waiting_input：还没结束
+    await assert.rejects(api.setFeedback("1", run.id, { rating: 1, reasons: [], comment: "" }), (err: AgentError) => err.code === 60014 && err.status === 409);
+    await e.engine.cancel("1", run.id);
+    const bad = (rating: number, reasons: string[], comment: string, re: RegExp) => assert.rejects(api.setFeedback("1", run.id, { rating, reasons, comment }), (err: AgentError) => err.code === 10001 && re.test(err.message));
+    await bad(0, [], "", /评价只能是 1 或 -1/);
+    await bad(2, [], "", /评价只能是 1 或 -1/);
+    await bad(-1, ["瞎填"], "", /未知的原因标签：瞎填/);
+    await bad(-1, Array(6).fill("slow"), "", /原因标签太多/);
+    await bad(-1, [], "字".repeat(501), /补充说明最多 500 字/);
+    await api.setFeedback("1", run.id, { rating: -1, reasons: [], comment: "字".repeat(500) }); // 正好 500 字
+    await assert.rejects(api.setFeedback("2", run.id, { rating: 1, reasons: [], comment: "" }), code(60012));
+    assert.equal(e.store.getFeedback(run.id, "2"), undefined);
+  }));
+
+test("取消评价：删掉并发 feedback.cleared；本来就没有是幂等的，不发事件；别人的运行 60012", () =>
+  withApi({ turns: [{ text: "好" }] }, async (api, e) => {
+    const run = await e.start();
+    await e.engine.idle();
+    await api.clearFeedback("1", run.id);
+    assert.equal(e.persisted("feedback.cleared").length, 0);
+    await api.setFeedback("1", run.id, { rating: 1, reasons: [], comment: "" });
+    await api.clearFeedback("1", run.id);
+    assert.deepEqual(e.persisted("feedback.cleared"), [{}]);
+    assert.equal(e.store.getFeedback(run.id, "1"), undefined);
+    await assert.rejects(api.clearFeedback("2", run.id), code(60012));
+  }));

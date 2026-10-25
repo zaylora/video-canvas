@@ -130,3 +130,24 @@ test("请求体太大：413；不是 JSON 对象：400", () =>
     const arr = await h.call("POST", `/agent/sessions/${enc(e.sessionId)}/runs`, "[1]");
     assert.equal(arr.status, 400);
   }, { maxBody: 2048 }));
+
+test("评价的接口：PUT 记下并返回服务端记的，DELETE 取消；校验措辞和 Go 一致", () =>
+  withHttp({ turns: [{ text: "好" }] }, async (h, e) => {
+    const run = await e.start();
+    await e.engine.idle();
+    const rid = enc(run.id);
+    const set = await h.call("PUT", `/agent/runs/${rid}/feedback`, { rating: -1, reasons: ["misread", "misread"], comment: "不对" });
+    assert.deepEqual([set.status, set.body.code, set.body.data], [200, 0, { rating: -1, reasons: ["misread"], comment: "不对" }]);
+    const clear = await h.call("DELETE", `/agent/runs/${rid}/feedback`);
+    assert.deepEqual(clear.body, { code: 0, msg: "success" });
+    const bad = async (body: unknown, want: RegExp) => {
+      const r = await h.call("PUT", `/agent/runs/${rid}/feedback`, body);
+      assert.deepEqual([r.status, r.body.code], [400, 10001], JSON.stringify(body).slice(0, 50));
+      assert.match(r.body.msg, want);
+    };
+    await bad({}, /评价为必填字段/);
+    await bad({ rating: 3 }, /评价必须是\[1 -1\]中的一个/);
+    await bad({ rating: -1, reasons: Array(6).fill("slow") }, /原因最多包含5项/);
+    await bad({ rating: -1, reasons: ["x".repeat(33)] }, /原因\[0\]长度不能超过32个字符/);
+    await bad({ rating: 1, comment: "字".repeat(2001) }, /说明长度不能超过2000个字符/);
+  }));

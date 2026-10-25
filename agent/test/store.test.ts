@@ -489,3 +489,25 @@ test("运行补丁可以写版本字段和步数上限（创建后由运行准�
   const got = s.updateRunIf(r.id, ["queued"], { promptVersion: 15, toolsHash: "04c13780543e", buildSha: "abc1234", harnessKey: "k1", maxSteps: 80 });
   assert.deepEqual([got.promptVersion, got.toolsHash, got.buildSha, got.harnessKey, got.maxSteps], [15, "04c13780543e", "abc1234", "k1", 80]);
 }));
+
+// ---- 评价 ----
+
+test("评价：每个运行每人一条，改选覆盖（保留创建时间、更新更新时间）；取消返回有没有删到；原因按数组存取", withStore((s, c) => {
+  const a = newSession(s);
+  const r = newRun(s, a.id, { status: "succeeded" });
+  assert.equal(s.getFeedback(r.id, "1"), undefined);
+  const first = s.upsertFeedback({ runId: r.id, userId: "1", rating: -1, reasons: ["misread", "slow"], comment: "我要 6 个" });
+  assert.deepEqual([first.rating, first.reasons, first.comment], [-1, ["misread", "slow"], "我要 6 个"]);
+  c.tick(10);
+  const again = s.upsertFeedback({ runId: r.id, userId: "1", rating: 1, reasons: [], comment: "" });
+  assert.deepEqual([again.rating, again.reasons], [1, []]);
+  assert.equal(again.createdAt, first.createdAt);
+  assert.equal(again.updatedAt, c.t);
+  assert.deepEqual(s.getFeedback(r.id, "1"), again);
+  s.upsertFeedback({ runId: r.id, userId: "2", rating: -1, reasons: ["other"], comment: "" });
+  assert.equal(s.getFeedback(r.id, "1")!.rating, 1, "别人的评价是另一条");
+  assert.equal(s.deleteFeedback(r.id, "1"), true);
+  assert.equal(s.deleteFeedback(r.id, "1"), false);
+  assert.ok(s.getFeedback(r.id, "2"));
+  assert.throws(() => s.upsertFeedback({ runId: "404", userId: "1", rating: 1, reasons: [], comment: "" }), NotFoundError, "运行不存在");
+}));

@@ -60,12 +60,14 @@ function check(obj: Record<string, unknown>, specs: readonly FieldSpec[], errors
         break;
       }
       case "int": {
-        if (missing) {
+        if (missing || (s.required && v === 0)) {
           if (s.required) errors.push(`${s.label}为必填字段`);
+          if (!missing) break; // required 的整数 0 等于没填（和 Go 的 validator 一致）
           out[s.key] = s.nullable ? null : 0;
           break;
         }
         const n = v as number;
+        if (s.oneof && !s.oneof.includes(String(n))) errors.push(`${s.label}必须是[${s.oneof.join(" ")}]中的一个`);
         if (s.min !== undefined && n < s.min) errors.push(`${s.label}必须大于或等于${s.min}`);
         if (s.max !== undefined && n > s.max) errors.push(`${s.label}必须小于或等于${s.max}`);
         out[s.key] = n;

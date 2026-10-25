@@ -1062,3 +1062,12 @@ Agent 服务生成的会话、运行、审批、事件 ID 都用雪花算法，�
 **测试**：服务 13 条、HTTP 8 条（含认证、全部校验措辞、413、空请求体）、黄金文件 1 条；agent 共 247 条，3 份全量并发跑无失败。
 
 **留给 3.3c**：评价（`PUT/DELETE /runs/:rid/feedback`，要定存储在哪）、把引擎和 REST 接进 `serve.ts`、前端 `recovering` 的小改。
+
+### 20.16 3.3c-1：评价放在 Agent 服务里（2026-10-25，用户决定）
+
+用户评价（👍/👎）属于运行的观测数据，按 D3「观测数据留在 Agent 服务」放进 Agent 的 SQLite：迁移 3 新增 `agent_feedback(run_id, user_id)`，每个运行每人一条，改选就是覆盖（保留创建时间）。
+
+- **接口**：`PUT /agent/runs/:rid/feedback`（返回服务端记下的 `{rating, reasons, comment}`）、`DELETE /agent/runs/:rid/feedback`；规则照搬 Go 的 `SetFeedback` / `ClearFeedback`——评分只能是 1 或 -1，原因必须是已知标签（`misread / wrong_edit / slow / bad_output / other`）、去重、最多 5 个、**点赞时忽略原因**，说明最多 500 字，运行得是自己的且已结束（`60014`），取消评价幂等、本来就没有不发事件。校验措辞与 Go 一致（「评价必须是[1 -1]中的一个」……），整数的 `required` 把 0 当没填，和 validator 一致。
+- **事件** `feedback.set` / `feedback.cleared`：内容与 Go 一致（载荷里不放运行 id，前端按事件自带的编码后的 `run_id` 对账）。
+- **黄金文件**：Go 的录制扩展到评价（视图和这两类事件，用观测服务的测试装置录），TypeScript 对照通过。
+- **留给 3.5（观测对接）**：Go 里评价还会同步到运行摘要（`agent_run_digests.feedback`）和后台的运行记录页；这些读模型在 Go，方案二下由 Go 向 Agent 服务要数据再合并，随 3.5 一起做。

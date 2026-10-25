@@ -139,3 +139,22 @@ export interface ApprovalPatch {
   decidedAt?: number | null;
   quoteCredits?: number;
 }
+
+export interface Feedback {
+  runId: string;
+  userId: string;
+  /** 1 有帮助，-1 没帮上忙 */
+  rating: number;
+  reasons: string[];
+  comment: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface NewFeedback {
+  runId: string;
+  userId: string;
+  rating: number;
+  reasons: string[];
+  comment: string;
+}

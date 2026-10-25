@@ -184,6 +184,29 @@ export class AgentApiService {
     return res;
   }
 
+  // ---- 评价 ----
+
+  /** 记下用户对一次运行的评价（👍/👎），再次调用就是改选。评价的是一整轮的结果，所以运行得是自己的、已经结束 */
+  async setFeedback(userId: string, runId: string, req: { rating: number; reasons: string[]; comment: string }): Promise<FeedbackView> {
+    if (req.rating !== 1 && req.rating !== -1) throw Err.invalidParams("评价只能是 1 或 -1");
+    const reasons = normalizeReasons(req.rating, req.reasons);
+    const comment = req.comment.trim();
+    if (Array.from(comment).length > MAX_FEEDBACK_COMMENT) throw Err.invalidParams(`补充说明最多 ${MAX_FEEDBACK_COMMENT} 字`);
+    const run = this.#run(userId, runId);
+    if (isActive(run.status)) throw new AgentError(60014, 409, "运行还没结束，结束后才能评价");
+    this.#o.store.upsertFeedback({ runId, userId, rating: req.rating, reasons, comment });
+    const view = { rating: req.rating, reasons, comment };
+    // 载荷里不放运行 id：前端按事件自带的编码后的 run_id 对账
+    this.#o.engine.recordEvent(run, "feedback.set", view);
+    return view;
+  }
+
+  /** 取消评价。本来就没有评价是幂等的，不发事件 */
+  async clearFeedback(userId: string, runId: string): Promise<void> {
+    const run = this.#run(userId, runId);
+    if (this.#o.store.deleteFeedback(runId, userId)) this.#o.engine.recordEvent(run, "feedback.cleared", {});
+  }
+
   // ---- 内部 ----
 
   /** 选本轮用的 Agent 模型：优先 want，其次清单第一个；want 不在已发布清单里是 60002 */
@@ -221,6 +244,28 @@ export class AgentApiService {
       throw fromPlatform(e);
     }
   }
+}
+
+export interface FeedbackView {
+  rating: number;
+  reasons: string[];
+  comment: string;
+}
+
+const MAX_FEEDBACK_COMMENT = 500;
+const MAX_FEEDBACK_REASONS = 5;
+const FEEDBACK_REASONS = ["misread", "wrong_edit", "slow", "bad_output", "other"];
+
+/** 校验并整理点踩原因：未知标签报参数错误，重复的去掉，点赞时一律忽略 */
+function normalizeReasons(rating: number, input: string[]): string[] {
+  if (rating !== -1) return [];
+  if (input.length > MAX_FEEDBACK_REASONS) throw Err.invalidParams("原因标签太多");
+  const out: string[] = [];
+  for (const r of input) {
+    if (!FEEDBACK_REASONS.includes(r)) throw Err.invalidParams("未知的原因标签：" + Array.from(r).slice(0, 32).join(""));
+    if (!out.includes(r)) out.push(r);
+  }
+  return out;
 }
 
 /** 第一个「一轮开头」事件的下标，没有返回 -1：用户发起的 message.user，运行中的插话（steer）不算 */
