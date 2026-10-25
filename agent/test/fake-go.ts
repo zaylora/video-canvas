@@ -35,6 +35,10 @@ export interface FakeGoOptions {
   tools?: Record<string, ToolReply | ((body: any, headers: IncomingMessage["headers"]) => Promise<ToolReply> | ToolReply)>;
   /** 审批预估的回复，按审批种类 */
   propose?: Record<string, { is_error?: boolean; payload?: unknown; quote_credits?: number; summary?: string; content?: string; terminate?: boolean }>;
+  /** 审批解析：默认拒绝 → rejected，否则 approved；预估积分取 payload.quote_credits */
+  resolve?: (body: any) => Record<string, unknown> | { error: { status: number; code: number; msg: string } };
+  /** 审批执行：默认批准的删除 / 生成 executed，拒绝和提问 none */
+  execute?: (body: any) => Record<string, unknown> | { error: { status: number; code: number; msg: string } } | "down";
   /** 运行准备的出参覆盖项 */
   setup?: Partial<RunSetup>;
   prepareError?: { status: number; code: number; msg: string };
@@ -50,6 +54,7 @@ export const DECLS: ToolDecl[] = ["canvas_get_state", "canvas_apply_ops", "gener
 
 export async function fakeGo(opts: FakeGoOptions) {
   const seen: GoSeen[] = [];
+  let prepareError = opts.prepareError;
   const turns = [...opts.turns];
   let nextCallId = 7_000_000_000_000_000_001n;
   let calls = 0;
@@ -71,7 +76,7 @@ export async function fakeGo(opts: FakeGoOptions) {
       const base = "/internal/platform/v1";
       try {
         if (path === `${base}/runs/prepare`) {
-          if (opts.prepareError) return json(res, opts.prepareError.status, { code: opts.prepareError.code, msg: opts.prepareError.msg });
+          if (prepareError) return json(res, prepareError.status, { code: prepareError.code, msg: prepareError.msg });
           return ok(res, {
             model: { name: "Claude", context_window: 200000, max_tokens: 8192, vision: true },
             system_prompt: "你是小镜", tools: DECLS, disabled_tools: [],
@@ -92,6 +97,17 @@ export async function fakeGo(opts: FakeGoOptions) {
         if (path === `${base}/approvals/propose`) {
           const p = opts.propose?.[body.kind] ?? {};
           return ok(res, { is_error: false, payload: { kind: body.kind, args: body.args }, quote_credits: 0, summary: "申请 " + body.kind, content: "已提交，等待决定。", terminate: true, ...p });
+        }
+        if (path === `${base}/approvals/resolve`) {
+          const r = opts.resolve?.(body) ?? defaultResolve(body);
+          if (isFailure(r)) return json(res, r.error.status, { code: r.error.code, msg: r.error.msg });
+          return ok(res, r);
+        }
+        if (path === `${base}/approvals/execute`) {
+          const r = opts.execute?.(body) ?? defaultExecute(body);
+          if (r === "down") return void res.destroy();
+          if (isFailure(r)) return json(res, r.error.status, { code: r.error.code, msg: r.error.msg });
+          return ok(res, r);
         }
         if (req.method === "GET" && path.startsWith(`${base}/runs/`) && path.includes("/usage")) {
           const runId = path.slice(`${base}/runs/`.length).split("/")[0];
@@ -140,6 +156,8 @@ export async function fakeGo(opts: FakeGoOptions) {
   return {
     url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
     seen,
+    /** 之后的运行准备都失败（null 恢复） */
+    setPrepareError: (e: FakeGoOptions["prepareError"] | null) => { prepareError = e ?? undefined; },
     /** 模型请求（按顺序） */
     get modelRequests() { return seen.filter((s) => s.path.endsWith("/model/chat/completions")); },
     paths: () => seen.map((s) => `${s.method} ${s.path.replace("/internal/platform/v1", "")}`),
@@ -153,3 +171,19 @@ function defaultUsage(callId: string | undefined, calls: number, credits: number
     ...(callId ? { call: { id: callId, status: "settled" as const, credits, charged: credits, estimated: false, input_tokens: 100, output_tokens: 20 } } : {}),
   };
 }
+
+function defaultResolve(body: any) {
+  const reject = body.decision?.decision === "reject";
+  if (reject) return { status: "rejected", decision: { decision: "reject", ...(body.decision.answer && { answer: body.decision.answer }) }, quote_credits: 0 };
+  return { status: "approved", decision: { decision: "approve", ...(body.decision?.answer && { answer: body.decision.answer }) }, quote_credits: Number(body.payload?.quote_credits ?? 0), node_ids: body.payload?.node_ids ?? [] };
+}
+
+function defaultExecute(body: any) {
+  const o = body.outcome;
+  if (o.status === "rejected") return { status: "none", outcome_text: "用户拒绝了这次请求。" + (o.decision?.answer ? "用户的说明：" + o.decision.answer : "") };
+  if (body.kind === "ask") return { status: "none", outcome_text: "用户回答：" + o.decision?.answer };
+  return { status: "executed", result: { ok: true }, outcome_text: `用户批准了${body.kind}，已执行。` };
+}
+
+type Failure = { error: { status: number; code: number; msg: string } };
+const isFailure = (r: unknown): r is Failure => typeof r === "object" && r !== null && "error" in r && typeof (r as Failure).error === "object";
