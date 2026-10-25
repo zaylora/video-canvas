@@ -25,6 +25,7 @@ var toolDeclsJSON []byte
 type ToolDecl struct {
 	Name        string          `json:"name"`
 	Label       string          `json:"label"`       // 界面名称，也作为 pi 工具的 label
+	Verb        string          `json:"verb"`        // 短动词，tool.start / tool.end 事件带着它，前端按动词归并活动块
 	Description string          `json:"description"` // 给模型看的说明
 	Parameters  json.RawMessage `json:"parameters"`  // 参数的 JSON Schema
 	Executor    string          `json:"executor"`    // 执行方，见 ToolExec*
@@ -139,7 +140,7 @@ func AgentToolDecls(mode string, vision bool) []ToolDecl {
 			continue
 		}
 		d := decls[s.name]
-		out = append(out, ToolDecl{Name: s.name, Label: s.label, Description: d.Description, Parameters: d.Parameters, Executor: ToolExecServer, Scriptable: s.scriptable})
+		out = append(out, ToolDecl{Name: s.name, Label: s.label, Verb: s.verb, Description: d.Description, Parameters: d.Parameters, Executor: ToolExecServer, Scriptable: s.scriptable})
 	}
 	return out
 }

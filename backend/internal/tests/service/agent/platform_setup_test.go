@@ -192,3 +192,21 @@ func mustCatalog(t *testing.T, b *bridgeEnv, rc RunContext) *canvasgraph.Catalog
 	}
 	return cat
 }
+
+// tool.start 事件要带界面名称和短动词；Agent 服务不再自己维护一张表，工具声明里就带着。
+func TestToolDecls_CarryTheVerbAndLabelOfTheEvents(t *testing.T) {
+	decls := AgentToolDecls("all", true)
+	if len(decls) == 0 {
+		t.Fatal("没有工具声明")
+	}
+	for _, d := range decls {
+		label, verb := ToolLabel(d.Name)
+		if d.Label != label || d.Verb != verb || verb == "" {
+			t.Errorf("%s: 声明里的 label/verb = %q/%q，事件里是 %q/%q", d.Name, d.Label, d.Verb, label, verb)
+		}
+	}
+	raw, _ := json.Marshal(decls[0])
+	if !strings.Contains(string(raw), `"verb":"`) {
+		t.Errorf("verb 要出现在 JSON 里: %s", raw)
+	}
+}

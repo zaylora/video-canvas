@@ -138,3 +138,18 @@ test("编码的运行上下文原样发出（和平台客户端同一个编码�
   ctxs.delete("7");
   assert.equal(ctxs.headerFor("7"), undefined);
 });
+
+test("对象存储里的图片：工具把地址放在 data 里，发给上游前还原成真正的地址（不是 data: URL）", async () => {
+  const s = await setup();
+  try {
+    const c = await s.conv();
+    s.contexts.set(String(c.id), rc("1001"));
+    const sub = await c.submit({ type: "input", content: [{ type: "text", text: "看图" }, { type: "image", data: "https://oss.example/a.jpg", mimeType: "image/jpeg" }, { type: "image", data: "QUJD", mimeType: "image/png" }] }, context);
+    await sub.wait(context);
+    const user = (s.proxy.requests[0].body.messages as Array<{ role: string; content: unknown }>).find((m) => m.role === "user")!;
+    const urls = (user.content as Array<{ type: string; image_url?: { url: string } }>).filter((p) => p.type === "image_url").map((p) => p.image_url!.url);
+    assert.deepEqual(urls, ["https://oss.example/a.jpg", "data:image/png;base64,QUJD"], "地址原样，内联图片仍是 data URL");
+  } finally {
+    await s.close();
+  }
+});

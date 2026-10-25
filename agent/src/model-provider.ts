@@ -12,6 +12,7 @@
 import { createModels, createProvider, type Api, type Model, type Provider, type ProviderResponse, type StreamOptions } from "@earendil-works/pi-ai";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { GenerationTask, ProviderDoc, defineExtension, hook, type Extension } from "@earendil-works/pi-durable";
+import { restoreImageUrls } from "./context.ts";
 import { encodeRunContext, type RunContext } from "./platform-client.ts";
 
 export const PROVIDER_ID = "platform";
@@ -98,6 +99,8 @@ export function createModelRegistry(opts: ModelRegistryOptions) {
     return {
       ...o,
       ...(ctx && { headers: { ...o.headers, "X-Agent-Context": ctx } }),
+      // 对象存储里的图片只有地址：工具结果把地址放在 data 里，发出前还原成真正的地址
+      onPayload: async (payload: unknown, model: Model<Api>) => restoreImageUrls((await o.onPayload?.(payload, model)) ?? payload),
       onResponse: async (res: ProviderResponse, model: Model<Api>) => {
         const callId = res.headers[CALL_ID_HEADER];
         if (callId) opts.onCall?.({ sessionId: o.sessionId, callId });

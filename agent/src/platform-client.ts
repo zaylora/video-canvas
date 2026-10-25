@@ -86,6 +86,8 @@ export interface PlatformToolResult {
 export interface ToolDecl {
   name: string;
   label: string;
+  /** 短动词：tool.start / tool.end 事件带着它，前端按动词归并活动块 */
+  verb: string;
   description: string;
   parameters: Record<string, unknown>;
   executor: string;
