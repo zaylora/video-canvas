@@ -2,23 +2,15 @@ package repository
 
 import (
 	"context"
-	"errors"
-	"slices"
 	"time"
 
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
-	gormlogger "gorm.io/gorm/logger"
 
 	"video-canvas/internal/model"
 )
 
-// ErrAgentStateConflict 状态迁移的 CAS 没有命中：记录不存在，或当前状态已不在期望的集合里（被别的流程抢先处理了）。
-// 调用方应当把它当作「已被处理」，而不是失败。
-var ErrAgentStateConflict = errors.New("agent state conflict")
-
-// AgentRepository 是画布 Agent 的数据访问：会话、运行、事件、改动日志、审批。
+// AgentRepository 是画布 Agent 的数据访问：画布、改动日志（撤销的依据）、模型调用的计费记录。会话、运行、审批、事件在 Agent 服务里。
 type AgentRepository struct {
 	db *gorm.DB
 }
@@ -34,77 +26,6 @@ func emptyJSON(v datatypes.JSON, def string) datatypes.JSON {
 	return v
 }
 
-// CreateSession 创建会话。
-func (r *AgentRepository) CreateSession(ctx context.Context, s *model.AgentSession) error {
-	return r.db.WithContext(ctx).Create(s).Error
-}
-
-// GetSession 按 id + user_id 查会话（排除已软删除的），不存在或不属于该用户返回 ErrNotFound。
-func (r *AgentRepository) GetSession(ctx context.Context, userID, id uint64) (*model.AgentSession, error) {
-	var s model.AgentSession
-	err := r.db.WithContext(ctx).Where("id = ? AND user_id = ?", id, userID).First(&s).Error
-	if err != nil {
-		return nil, translate(err)
-	}
-	return &s, nil
-}
-
-// ListSessions 列出某用户在某画布上的会话，最近更新的在前；不带 session_jsonl，那是大字段。
-func (r *AgentRepository) ListSessions(ctx context.Context, userID, canvasID uint64) ([]model.AgentSession, error) {
-	var out []model.AgentSession
-	err := r.db.WithContext(ctx).Omit("session_jsonl").
-		Where("user_id = ? AND canvas_id = ?", userID, canvasID).
-		Order("updated_at DESC, id DESC").Find(&out).Error
-	return out, err
-}
-
-// CountSessions 统计某用户在某画布上的会话数（排除已软删除的），用来限制每个画布的会话数量。
-func (r *AgentRepository) CountSessions(ctx context.Context, userID, canvasID uint64) (int64, error) {
-	var n int64
-	err := r.db.WithContext(ctx).Model(&model.AgentSession{}).
-		Where("user_id = ? AND canvas_id = ?", userID, canvasID).Count(&n).Error
-	return n, err
-}
-
-// UpdateSession 按 id + user_id 更新会话的指定字段，没有命中返回 ErrNotFound。
-func (r *AgentRepository) UpdateSession(ctx context.Context, userID, id uint64, fields map[string]any) error {
-	res := r.db.WithContext(ctx).Model(&model.AgentSession{}).
-		Where("id = ? AND user_id = ?", id, userID).Updates(fields)
-	if res.Error != nil {
-		return res.Error
-	}
-	if res.RowsAffected == 0 {
-		return ErrNotFound
-	}
-	return nil
-}
-
-// DeleteSession 软删除会话，没有命中返回 ErrNotFound。
-func (r *AgentRepository) DeleteSession(ctx context.Context, userID, id uint64) error {
-	res := r.db.WithContext(ctx).Where("id = ? AND user_id = ?", id, userID).Delete(&model.AgentSession{})
-	if res.Error != nil {
-		return res.Error
-	}
-	if res.RowsAffected == 0 {
-		return ErrNotFound
-	}
-	return nil
-}
-
-// CreateRun 创建运行。同一画布上已有活跃运行时返回 ErrDuplicate（由部分唯一索引保证，不会因并发漏判）。
-func (r *AgentRepository) CreateRun(ctx context.Context, run *model.AgentRun) error {
-	// 冲突是预期内的结果（用户双击、多标签页重复发起），调用方返回 409；不让 GORM 先打一条 ERROR 和整条 INSERT。
-	// 其他错误照样返回给调用方记录。
-	quiet := r.db.Session(&gorm.Session{Logger: r.db.Logger.LogMode(gormlogger.Silent)})
-	if err := quiet.WithContext(ctx).Create(run).Error; err != nil {
-		if isUniqueViolation(err) {
-			return ErrDuplicate
-		}
-		return err
-	}
-	return nil
-}
-
 // GetRun 按 id + user_id 查运行，不存在或不属于该用户返回 ErrNotFound。
 func (r *AgentRepository) GetRun(ctx context.Context, userID, id uint64) (*model.AgentRun, error) {
 	var run model.AgentRun
@@ -114,41 +35,11 @@ func (r *AgentRepository) GetRun(ctx context.Context, userID, id uint64) (*model
 	return &run, nil
 }
 
-// ActiveRun 查某画布上占位的活跃运行，没有返回 ErrNotFound。
-func (r *AgentRepository) ActiveRun(ctx context.Context, canvasID uint64) (*model.AgentRun, error) {
-	var run model.AgentRun
-	err := r.db.WithContext(ctx).Where("canvas_id = ? AND status IN ?", canvasID, model.ActiveRunStatuses).First(&run).Error
-	if err != nil {
-		return nil, translate(err)
-	}
-	return &run, nil
-}
-
-// UpdateRunIf 是运行状态迁移的 CAS：UPDATE … WHERE id=? AND status IN (from) … RETURNING *。
-// 没命中（运行不存在，或状态已不在 from 里）返回 ErrAgentStateConflict；迁到活跃状态时画布已被别的运行占用返回 ErrDuplicate。
-// 迁移到终态（不再占用画布）时由调用方在 fields 里写 ended_at。
-func (r *AgentRepository) UpdateRunIf(ctx context.Context, id uint64, from []string, fields map[string]any) (*model.AgentRun, error) {
-	var run model.AgentRun
-	res := r.db.WithContext(ctx).Model(&run).Clauses(clause.Returning{}).
-		Where("id = ? AND status IN ?", id, from).Updates(fields)
-	if res.Error != nil {
-		// 迁回活跃状态（如继续运行）时，画布可能已被别的运行占了，由部分唯一索引兜底
-		if isUniqueViolation(res.Error) {
-			return nil, ErrDuplicate
-		}
-		return nil, res.Error
-	}
-	if res.RowsAffected == 0 {
-		return nil, ErrAgentStateConflict
-	}
-	return &run, nil
-}
-
-// InterruptActiveRuns 把还停在 queued / running 的运行标为 interrupted，返回处理的条数。服务启动时调用：
-// 运行进程随旧服务一起没了，这些运行不会再有人推进，却占着画布。等审批和等回答的运行状态在库里，不受影响。
+// InterruptActiveRuns 把 Go 库里还停在活跃状态（排队、运行中、等审批、等回答）的旧运行标为 interrupted，返回处理的条数。
+// 运行已经全部由 Agent 服务管理，这些切换之前留下的旧运行不会再有人推进，不该一直显示成进行中。服务启动时调用，幂等。
 func (r *AgentRepository) InterruptActiveRuns(ctx context.Context) (int64, error) {
 	res := r.db.WithContext(ctx).Model(&model.AgentRun{}).
-		Where("status IN ?", []string{model.RunQueued, model.RunRunning}).
+		Where("status IN ?", []string{model.RunQueued, model.RunRunning, model.RunWaitingApproval, model.RunWaitingInput}).
 		Update("status", model.RunInterrupted)
 	return res.RowsAffected, res.Error
 }
@@ -168,41 +59,7 @@ func (r *AgentRepository) AddRunUsage(ctx context.Context, id uint64, steps, cre
 	return nil
 }
 
-// SetRunContextTokens 记下运行当前的上下文大小（最近一次对话调用的输入 Token 数），覆盖旧值；运行不存在返回 ErrNotFound。
-func (r *AgentRepository) SetRunContextTokens(ctx context.Context, id uint64, tokens int) error {
-	res := r.db.WithContext(ctx).Model(&model.AgentRun{}).Where("id = ?", id).Update("context_tokens", tokens)
-	if res.Error != nil {
-		return res.Error
-	}
-	if res.RowsAffected == 0 {
-		return ErrNotFound
-	}
-	return nil
-}
-
 // AppendEvent 给会话追加一条事件。序号在同一事务里用 UPDATE … RETURNING 原子地分配，
-// 并发追加不会拿到相同的 seq；会话不存在返回 ErrNotFound。
-func (r *AgentRepository) AppendEvent(ctx context.Context, sessionID, runID uint64, typ string, payload datatypes.JSON) (*model.AgentEvent, error) {
-	var ev *model.AgentEvent
-	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var s model.AgentSession
-		res := tx.Model(&s).Clauses(clause.Returning{Columns: []clause.Column{{Name: "last_seq"}}}).
-			Where("id = ?", sessionID).UpdateColumn("last_seq", gorm.Expr("last_seq + 1"))
-		if res.Error != nil {
-			return res.Error
-		}
-		if res.RowsAffected == 0 {
-			return ErrNotFound
-		}
-		ev = &model.AgentEvent{SessionID: sessionID, RunID: runID, Seq: s.LastSeq, Type: typ, PayloadJSON: emptyJSON(payload, "{}")}
-		return tx.Create(ev).Error
-	})
-	if err != nil {
-		return nil, err
-	}
-	return ev, nil
-}
-
 // ListEvents 列出会话里序号大于 afterSeq 的事件，按序号升序，最多 limit 条（<=0 取默认值）。
 func (r *AgentRepository) ListEvents(ctx context.Context, sessionID uint64, afterSeq int64, limit int) ([]model.AgentEvent, error) {
 	if limit <= 0 {
@@ -215,23 +72,6 @@ func (r *AgentRepository) ListEvents(ctx context.Context, sessionID uint64, afte
 }
 
 // ListEventsBefore 列出会话里序号小于 beforeSeq 的最新 limit 条事件，按序号升序（beforeSeq<=0 不设上界，limit<=0 取默认值）。
-// 聊天记录从最新往回翻页用它：不必把整个会话的事件读出来。
-func (r *AgentRepository) ListEventsBefore(ctx context.Context, sessionID uint64, beforeSeq int64, limit int) ([]model.AgentEvent, error) {
-	if limit <= 0 {
-		limit = defaultListLimit
-	}
-	q := r.db.WithContext(ctx).Where("session_id = ?", sessionID)
-	if beforeSeq > 0 {
-		q = q.Where("seq < ?", beforeSeq)
-	}
-	var out []model.AgentEvent
-	if err := q.Order("seq DESC").Limit(limit).Find(&out).Error; err != nil {
-		return nil, err
-	}
-	slices.Reverse(out)
-	return out, nil
-}
-
 // GetCanvas 按 id + user_id 读画布（含 payload_json），不存在或不属于该用户返回 ErrNotFound。
 // Agent 的工具只能碰运行所属用户自己的画布。
 func (r *AgentRepository) GetCanvas(ctx context.Context, userID, id uint64) (*model.CanvasProject, error) {
@@ -305,49 +145,4 @@ func (r *AgentRepository) ListMutations(ctx context.Context, runID uint64) ([]mo
 	return out, err
 }
 
-// CreateApproval 创建审批。
-func (r *AgentRepository) CreateApproval(ctx context.Context, a *model.AgentApproval) error {
-	a.PayloadJSON = emptyJSON(a.PayloadJSON, "{}")
-	a.DecisionJSON = emptyJSON(a.DecisionJSON, "{}")
-	a.ResultJSON = emptyJSON(a.ResultJSON, "{}")
-	return r.db.WithContext(ctx).Create(a).Error
-}
-
-// GetApproval 按 id + user_id 查审批，不存在或不属于该用户返回 ErrNotFound。
-func (r *AgentRepository) GetApproval(ctx context.Context, userID, id uint64) (*model.AgentApproval, error) {
-	var a model.AgentApproval
-	if err := r.db.WithContext(ctx).Where("id = ? AND user_id = ?", id, userID).First(&a).Error; err != nil {
-		return nil, translate(err)
-	}
-	return &a, nil
-}
-
-// ListApprovals 列出某运行的审批，按创建先后。
-func (r *AgentRepository) ListApprovals(ctx context.Context, runID uint64) ([]model.AgentApproval, error) {
-	var out []model.AgentApproval
-	err := r.db.WithContext(ctx).Where("run_id = ?", runID).Order("id ASC").Find(&out).Error
-	return out, err
-}
-
 // UpdateApprovalIf 是审批状态迁移的 CAS：只有当前状态在 from 里才更新，返回更新后的审批。
-// 没命中返回 ErrAgentStateConflict，意味着已经被处理过（重复点击、已过期、本轮已停止）。
-func (r *AgentRepository) UpdateApprovalIf(ctx context.Context, id uint64, from []string, fields map[string]any) (*model.AgentApproval, error) {
-	var a model.AgentApproval
-	res := r.db.WithContext(ctx).Model(&a).Clauses(clause.Returning{}).
-		Where("id = ? AND status IN ?", id, from).Updates(fields)
-	if res.Error != nil {
-		return nil, res.Error
-	}
-	if res.RowsAffected == 0 {
-		return nil, ErrAgentStateConflict
-	}
-	return &a, nil
-}
-
-// ExpirePendingApprovals 把某运行所有待处理的审批置为已失效，返回受影响的条数；运行被停止或结束时调用。
-func (r *AgentRepository) ExpirePendingApprovals(ctx context.Context, runID uint64) (int64, error) {
-	res := r.db.WithContext(ctx).Model(&model.AgentApproval{}).
-		Where("run_id = ? AND status = ?", runID, model.ApprovalPending).
-		Update("status", model.ApprovalExpired)
-	return res.RowsAffected, res.Error
-}

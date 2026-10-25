@@ -37,7 +37,7 @@ cp backend/configs/config.yaml backend/configs/config.local.yaml
 ./scripts/start.sh  # Windows 运行 scripts/start.bat；Ctrl+C 同时停止前后端
 ```
 
-- 脚本会编译后端并启动 Vite，前端把 `/api` 和 `/files` 代理到 `:8080`。
+- 脚本会编译后端并启动 Vite；如果 `agent/` 里装好了依赖（`cd agent && npm ci`，需要 Node 22.19+），还会同时启动画布 Agent 服务（127.0.0.1:8090，数据在 `backend/data/agent/`），没装就跳过、画布里的 Agent 提示「暂不可用」。前端把 `/api` 和 `/files` 代理到 `:8080`。
 - 后端优先读取 `config.local.yaml`。每个配置项都可以用环境变量覆盖，规则是 `APP_` 前缀加大写的配置路径，例如 `APP_DATABASE_DSN`。
 - 设置 `redis.enabled: false` 可以不启用 Redis，缓存层会直接查数据库。
 - 完整配置项见 [backend/README.md](../backend/README.md)。
@@ -54,7 +54,7 @@ flowchart LR
   S -->|生成任务| K[worker]
   K --> PR[plugin-runner<br/>JS 协议插件]
   PR --> M[模型供应商]
-  S <-->|桥接| A[agent runtime<br/>Node]
+  S <-->|反向代理 / 平台 API| A[agent 服务<br/>Node + SQLite]
   A -. 联网搜索 .-> SX[SearXNG]
   K -. 任务状态 .-> S
   S -. WebSocket 推送 .-> B
@@ -63,7 +63,7 @@ flowchart LR
 - **请求链路**：后端按 `router → middleware → handler → service → repository / cache` 分层。
 - **异步生成**：提交生成任务后立即返回，worker 通过 plugin-runner 调用模型供应商，状态经 WebSocket 推给前端。前端断线重连后会对账，补上断线期间的更新。
 - **协议插件**：每种供应商协议是一个 JS 插件，运行在隔离的 plugin-runner 进程中。插件契约见 [plugin-contract.md](../backend/docs/plugin-contract.md)。
-- **画布 Agent**：Agent 循环运行在独立的 Node 进程（`agent/`）里，进程内不保存任何密钥，模型调用、工具执行和状态读写都经桥接回到 Go 后端。
+- **画布 Agent**：Agent 是独立的常驻服务（`agent/`，Pi Durable + SQLite），会话、运行、审批、事件都在它里面，服务里不保存任何渠道密钥。Go 后端校验登录态后把前端的 Agent 接口反向代理过去，并通过平台 API 提供画布读写、模型代理和计费、生成任务、素材；Agent 的事件经 Go 推到 WebSocket。设计和进度见 [docs/design/Agent服务拆分/](design/Agent服务拆分/Agent服务拆分.md)。
 - **画布保存**：按 `revision` 乐观锁保存，版本冲突时返回 409。
 - **生产部署**：除上图服务外，生产 Compose 还包含 `updater`，用于后台一键升级和回退。
 

@@ -78,96 +78,17 @@ type approvalDraft struct {
 	quote   int
 }
 
-// requestApproval 是生成、删除、提问三个工具共用的出口：令牌模式创建审批并让运行进入等待状态；
-// 预估模式只把内容记下来。
-func (b *AgentBridge) requestApproval(ctx context.Context, tc *toolCall, kind string, payload any, quote int) error {
-	if tc.propose != nil {
-		*tc.propose = approvalDraft{kind: kind, payload: payload, quote: quote}
-		return nil
+// requestApproval 是生成、删除、提问三个工具共用的出口：只做「预估」——把审批内容记在 tc.propose 里，
+// 不创建审批、不改运行状态（审批归 Agent 服务）。
+func (b *AgentBridge) requestApproval(_ context.Context, tc *toolCall, kind string, payload any, quote int) error {
+	if tc.propose == nil {
+		return errors.New("需要用户决定的工具只能经审批预估接口执行")
 	}
-	_, err := b.d.Agent.CreateApproval(ctx, tc.run, tc.id, kind, payload, quote)
-	return err
+	*tc.propose = approvalDraft{kind: kind, payload: payload, quote: quote}
+	return nil
 }
 
-// maxNestedCalls 是一个运行片段里 codemode 脚本最多发起多少次嵌套调用。嵌套调用不计入步数，所以另设一个上限，
-// 免得一个脚本无限循环地改画布；Node 对单个脚本另有更小的上限。
-const maxNestedCalls = 300
-
-// ExecuteTool 执行 Node 回调的一次工具调用。工具层的失败（参数不对、校验不过、模式不允许）作为 IsError 的结果返回，
-// 让模型看到并自己改正；只有令牌无效、运行不在 running 这类「这次回调本身就不该发生」的情况才返回 error。
-func (b *AgentBridge) ExecuteTool(ctx context.Context, token, toolCallID, name string, args json.RawMessage) (*ToolResult, error) {
-	return b.executeTool(ctx, token, "", toolCallID, name, args)
-}
-
-// ExecuteNestedTool 执行 codemode 脚本里发起的一次嵌套调用。和普通调用的区别：
-// 不单独计步数、不受步数上限约束（整个脚本在开始时由 ReportAgentTool 计 1 步）；只有标为「可被脚本调用」的工具能在这里执行
-// （会创建审批并终止本轮的、返回图片的工具不行，脚本没法在「等审批」处停下）；一个运行片段里最多 maxNestedCalls 次。
-// 模式权限、参数校验、tool.start / tool.end 事件都和普通调用一样，事件带上 parent_id。
-func (b *AgentBridge) ExecuteNestedTool(ctx context.Context, token, parentID, toolCallID, name string, args json.RawMessage) (*ToolResult, error) {
-	return b.executeTool(ctx, token, parentID, toolCallID, name, args)
-}
-
-func (b *AgentBridge) executeTool(ctx context.Context, token, parentID, toolCallID, name string, args json.RawMessage) (*ToolResult, error) {
-	sess, err := b.session(token)
-	if err != nil {
-		return nil, err
-	}
-	run, err := b.activeRun(ctx, sess)
-	if err != nil {
-		return nil, err
-	}
-	// 令牌和运行都校验过才算一次真实的调用，从这里开始留存：被拒绝的调用（选错工具、模式不允许、步数用尽）也记，
-	// 它们正是事后分析 Agent 失败要看的东西
-	started := b.d.Now()
-	b.recordToolStart(ctx, run, toolCallID, parentID, name, args, started)
-	res, err := b.runTool(ctx, sess, run, parentID, toolCallID, name, args)
-	b.recordToolEnd(ctx, run, toolCallID, res, started)
-	return res, err
-}
-
-// runTool 校验并执行一次工具调用，规则见 ExecuteTool。
-func (b *AgentBridge) runTool(ctx context.Context, sess *bridgeSession, run *model.AgentRun, parentID, toolCallID, name string, args json.RawMessage) (*ToolResult, error) {
-	nested := parentID != ""
-	reject := func(msg string) (*ToolResult, error) {
-		return b.toolError(ctx, run, toolCallID, parentID, name, msg), nil
-	}
-	// 1. 步数上限：用到头就暂停运行并让循环停下，用户可以追加后继续。嵌套调用不受它管：脚本整体在开始时已经算过步数
-	if !nested && run.Steps >= run.MaxSteps {
-		b.pauseRun(ctx, run, model.RunStepLimit)
-		return &ToolResult{Content: "已达到本轮的步数上限，运行已暂停，等待用户继续。", IsError: true, Terminate: true}, nil
-	}
-	// 2. 当前任务模式不允许的工具，直接告诉模型；工具名认不得的也一样；脚本里还要求工具能被脚本调用，且次数没超上限
-	spec := findTool(name)
-	if spec == nil {
-		return reject("未知的工具：" + name)
-	}
-	if !spec.allowsMode(sess.mode) {
-		return reject(fmt.Sprintf("当前是「%s」模式，不能使用 %s。", modeLabel(sess.mode), name))
-	}
-	if nested {
-		if !spec.scriptable {
-			return reject(fmt.Sprintf("%s 不能在脚本里调用，请在脚本之外单独调用这个工具。", name))
-		}
-		if sess.nestedCalls.Add(1) > maxNestedCalls {
-			return reject(fmt.Sprintf("本轮脚本里调用工具的次数已达上限（%d 次）。", maxNestedCalls))
-		}
-	}
-	// 3. 执行：先记 tool.start，结束后记 tool.end；普通调用计入步数
-	b.d.Agent.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "tool.start", withParent(withToolLabel(map[string]any{"id": toolCallID, "name": name}, name), parentID))
-	out, herr := spec.run(b, ctx, &toolCall{run: run, sess: sess, id: toolCallID, args: args})
-	if !nested {
-		if err := b.d.Repo.AddRunUsage(ctx, run.ID, 1, 0); err != nil {
-			logger.Warn("记录 Agent 步数失败", zap.Error(err), zap.Uint64("run_id", run.ID))
-		}
-	}
-	res := b.finishTool(out, herr)
-	end := toolEndEvent(toolCallID, parentID, name, out, res)
-	b.d.Agent.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "tool.end", end)
-	res.summary, _ = end["summary"].(string)
-	return res, nil
-}
-
-// toolEndEvent 组出一次工具调用的 tool.end 事件内容。令牌模式（Go 发事件）和平台 API（把内容交给 Agent 服务发）共用这一份。
+// toolEndEvent 组出一次工具调用的 tool.end 事件内容，由 Agent 服务落库和推送（摘要、被改动的节点、界面名称只有这里知道）。
 func toolEndEvent(toolCallID, parentID, name string, out *toolOut, res *ToolResult) map[string]any {
 	end := withParent(withToolLabel(map[string]any{"id": toolCallID, "name": name, "is_error": res.IsError, "summary": firstNonEmpty(outSummary(out), summarizeError(res))}, name), parentID)
 	if out != nil {
@@ -184,12 +105,6 @@ func withParent(ev map[string]any, parentID string) map[string]any {
 		ev["parent_id"] = parentID
 	}
 	return ev
-}
-
-// toolError 为被拒绝的调用（未知工具、模式不允许）记一对事件并返回工具错误。
-func (b *AgentBridge) toolError(ctx context.Context, run *model.AgentRun, id, parentID, name, msg string) *ToolResult {
-	b.d.Agent.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "tool.end", withParent(withToolLabel(map[string]any{"id": id, "name": name, "is_error": true, "summary": msg}, name), parentID))
-	return &ToolResult{Content: msg, IsError: true, summary: msg}
 }
 
 // finishTool 把处理函数的结果转成对模型的回复：toolFailure 是普通工具错误；
@@ -393,35 +308,6 @@ func (b *AgentBridge) toolDelete(ctx context.Context, tc *toolCall) (*toolOut, e
 	}
 	return &toolOut{content: "已提交给用户确认，等待决定。用户决定后你会收到结果。", terminate: true,
 		summary: fmt.Sprintf("申请删除 %d 个节点", len(a.NodeIDs))}, nil
-}
-
-// toolPlan 更新计划：校验后记一条 plan.updated 事件，前端据此显示置顶计划。
-func (b *AgentBridge) toolPlan(ctx context.Context, tc *toolCall) (*toolOut, error) {
-	var a struct {
-		Steps []struct {
-			Title  string `json:"title"`
-			Status string `json:"status"`
-		} `json:"steps"`
-	}
-	if err := json.Unmarshal(tc.args, &a); err != nil {
-		return nil, fail("参数格式不对：%v", err)
-	}
-	if len(a.Steps) > maxPlanSteps {
-		return nil, fail("计划最多 %d 步", maxPlanSteps)
-	}
-	steps := make([]map[string]string, len(a.Steps))
-	for i, s := range a.Steps {
-		title := strings.TrimSpace(s.Title)
-		if title == "" || utf8.RuneCountInString(title) > maxPlanTitleLen {
-			return nil, fail("第 %d 步的标题不能为空，且不超过 %d 个字", i+1, maxPlanTitleLen)
-		}
-		if s.Status != "todo" && s.Status != "doing" && s.Status != "done" {
-			return nil, fail("第 %d 步的状态只能是 todo / doing / done", i+1)
-		}
-		steps[i] = map[string]string{"title": title, "status": s.Status}
-	}
-	b.d.Agent.emit(ctx, tc.run.UserID, tc.run.SessionID, tc.run.ID, tc.run.CanvasID, "plan.updated", map[string]any{"steps": steps})
-	return &toolOut{content: "计划已更新。", summary: fmt.Sprintf("更新计划（%d 步）", len(steps))}, nil
 }
 
 // toolAsk 向用户提问：选项题或选模型题，创建提问并让本轮停下等回答。

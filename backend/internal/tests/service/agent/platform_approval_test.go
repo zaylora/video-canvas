@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"reflect"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -31,20 +31,6 @@ func newApprovalEnv(t *testing.T, mode string) *genEnv {
 	return e
 }
 
-// approvalCount 数假仓储里某个运行的审批记录。
-func approvalCount(f *fakeAgentCanvasRepo, runID uint64) int {
-	st := f.st()
-	st.mu.Lock()
-	defer st.mu.Unlock()
-	n := 0
-	for _, a := range st.approvals {
-		if a.RunID == runID {
-			n++
-		}
-	}
-	return n
-}
-
 func propose(t *testing.T, e *genEnv, rc RunContext, kind string, args any) *ApprovalProposal {
 	t.Helper()
 	raw, _ := json.Marshal(args)
@@ -58,7 +44,6 @@ func propose(t *testing.T, e *genEnv, rc RunContext, kind string, args any) *App
 func TestProposeApproval_GenerateQuotesWithoutCreatingAnything(t *testing.T) {
 	e := newApprovalEnv(t, "all")
 	rc := platformCtx(900201, "all")
-	events, status := len(e.persistedTypes()), e.run.Status
 	p := propose(t, e, rc, "generate", map[string]any{"items": []map[string]string{{"nodeId": e.imgID(t)}}, "reason": "出角色图"})
 	if p.IsError || !p.Terminate {
 		t.Fatalf("预估应成功，并要求本轮停下等用户决定: %+v", p)
@@ -72,16 +57,6 @@ func TestProposeApproval_GenerateQuotesWithoutCreatingAnything(t *testing.T) {
 	}
 	if p.QuoteCredits != 5 || !strings.Contains(p.Summary, "预估 5 积分") || !strings.Contains(p.Content, "等待决定") {
 		t.Errorf("预估积分、摘要、给模型看的文字: %+v", p)
-	}
-	// 不落库：审批记录、事件、运行状态都不动（审批归 Agent 服务）
-	if got := approvalCount(e.repo, rc.RunID); got != 0 {
-		t.Errorf("预估不能创建审批记录: %d", got)
-	}
-	if got := approvalCount(e.repo, e.run.ID); got != 0 {
-		t.Errorf("也不能给令牌模式的运行创建: %d", got)
-	}
-	if len(e.persistedTypes()) != events || e.repo.runs[e.run.ID].Status != status {
-		t.Errorf("预估不发事件、不改运行状态")
 	}
 }
 
@@ -185,9 +160,9 @@ var _ = model.ApprovalGenerate
 
 // ---- 解析：用户的决定 → 实际批准了什么 ----
 //
-// 解析是从 AgentService.Decide 里抽出来的纯逻辑。方案二里 Agent 服务管审批的状态流转，规则（逐项勾选、张数只能少不能多、
-// 按批准的内容重新算价、查本轮预算）仍然只在 Go 里有一份。所以这里不靠人工核对，用**对照测试**：
-// 同样的输入分别走旧的 Decide 和新的 ResolveApproval，报错码、决定内容、预估积分、要执行的条目必须逐项一致。
+// 解析是纯逻辑。Agent 服务管审批的状态流转，规则（逐项勾选、张数只能少不能多、按批准的内容重新算价、查本轮预算）
+// 只在 Go 里有一份。下面的用例表把每条规则的结果冻结在 testdata/resolve-approval.golden.json 里（改规则要有意地更新它：
+// UPDATE_GOLDEN=1 go test -run TestResolveApproval_Rules），报错码、决定内容、预估积分、要执行的条目、要删除的节点逐项对照。
 
 type resolveCase struct {
 	name          string
@@ -216,38 +191,7 @@ func errCode(err error) int {
 	return 0
 }
 
-// viaDecide 走旧路径：真的建一个审批，再让 AgentService.Decide 去决定，从结果里读出解析的产物。
-func viaDecide(t *testing.T, c resolveCase) resolved {
-	t.Helper()
-	e := newAgentEnv(t)
-	run := e.runningRun(t)
-	e.repo.mu.Lock()
-	e.repo.runs[run.ID].BudgetCredits, e.repo.runs[run.ID].SpentCredits = c.budget, c.spent
-	e.repo.mu.Unlock()
-	run = &model.AgentRun{ID: run.ID, SessionID: run.SessionID, CanvasID: run.CanvasID, UserID: run.UserID, Status: model.RunRunning, Mode: run.Mode}
-	v, err := e.svc.CreateApproval(context.Background(), run, "tc1", c.kind, c.payload, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	req := c.req
-	got, err := e.svc.Decide(context.Background(), 1, uint64(v.ID), &req)
-	out := resolved{code: errCode(err)}
-	if err != nil {
-		return out
-	}
-	out.decision, out.quote = string(got.Decision), got.QuoteCredits
-	if len(e.gen.calls) > 0 {
-		out.gen = e.gen.calls[0]
-	}
-	var d struct {
-		NodeIDs []string `json:"node_ids"`
-	}
-	_ = json.Unmarshal(got.Decision, &d)
-	out.nodeIDs = d.NodeIDs
-	return out
-}
-
-// viaResolve 走新路径：不建任何记录，只把审批内容、决定和本轮预算交给平台。
+// viaResolve 不建任何记录，只把审批内容、决定和本轮预算交给平台，读出解析的产物。
 func viaResolve(t *testing.T, c resolveCase) resolved {
 	t.Helper()
 	b := newBridgeEnv(t)
@@ -264,7 +208,7 @@ func viaResolve(t *testing.T, c resolveCase) resolved {
 	return r
 }
 
-func TestResolveApproval_MatchesDecideRuleForRule(t *testing.T) {
+func TestResolveApproval_Rules(t *testing.T) {
 	gen := genPayload() // n1 林夏 ×2 @8、n2 老周 ×1 @8
 	del := DeletePayload{Reason: "废稿", NodeIDs: []string{"n_script", "n_b"}, Labels: []string{"剧本", "备用"}, Outputs: []bool{false, true}, EdgeIDs: []string{"e1"}}
 	ask := AskPayload{Question: "画幅？", Kind: "choice", Options: []string{"16:9", "9:16"}}
@@ -292,22 +236,31 @@ func TestResolveApproval_MatchesDecideRuleForRule(t *testing.T) {
 		{name: "提问：回答不能为空", kind: model.ApprovalAsk, payload: ask, req: approve},
 		{name: "提问：不回答", kind: model.ApprovalAsk, payload: ask, req: model.DecideAgentApprovalReq{Decision: "reject"}},
 	}
+	got := map[string]resolved{}
 	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			old, now := viaDecide(t, c), viaResolve(t, c)
-			if old.code != now.code {
-				t.Fatalf("报错码不一致：Decide=%d Resolve=%d", old.code, now.code)
-			}
-			if old.decision != now.decision || old.quote != now.quote {
-				t.Errorf("决定内容或预估积分不一致：\nDecide : %s (%d)\nResolve: %s (%d)", old.decision, old.quote, now.decision, now.quote)
-			}
-			if !reflect.DeepEqual(old.gen, now.gen) {
-				t.Errorf("要执行的生成条目不一致：\nDecide : %+v\nResolve: %+v", old.gen, now.gen)
-			}
-			if !reflect.DeepEqual(old.nodeIDs, now.nodeIDs) {
-				t.Errorf("要删除的节点不一致：%v / %v", old.nodeIDs, now.nodeIDs)
-			}
-		})
+		got[c.name] = viaResolve(t, c)
+	}
+	snap := map[string]map[string]any{}
+	for name, r := range got {
+		snap[name] = map[string]any{"code": r.code, "decision": r.decision, "quote": r.quote, "gen": r.gen, "node_ids": r.nodeIDs}
+	}
+	b, err := json.MarshalIndent(snap, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const path = "testdata/resolve-approval.golden.json"
+	if os.Getenv("UPDATE_GOLDEN") != "" {
+		if err := os.WriteFile(path, append(b, '\n'), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	want, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(string(want)) != strings.TrimSpace(string(b)) {
+		t.Errorf("审批决定的解析结果和冻结的不一致（有意改规则就更新 %s）:\n现在:\n%s\n冻结:\n%s", path, b, want)
 	}
 }
 
@@ -385,8 +338,8 @@ func newExecEnv(t *testing.T) *genEnv {
 	e := newApprovalEnv(t, "all")
 	canvas := NewAgentCanvasService(e.repo, e.bc)
 	svc := NewAgentService(AgentDeps{
-		Repo: e.repo, Canvas: canvas, Models: fakeAgentModels{list: defaultAgentModels}, Runtime: e.rt,
-		Generator: NewAgentGenerator(e.tasks, canvas, e.reg), Broadcaster: e.bc, Now: func() time.Time { return *e.now },
+		Repo: e.repo, Canvas: canvas, Models: fakeAgentModels{list: defaultAgentModels},
+		Generator: NewAgentGenerator(e.tasks, canvas, e.reg), Now: func() time.Time { return *e.now },
 	})
 	e.br = NewAgentBridge(BridgeDeps{
 		Repo: e.repo, Canvas: canvas, Agent: svc, Billing: NewAgentBilling(e.bill),
@@ -576,4 +529,11 @@ func TestExecuteApproval_CanceledRequestIsAnErrorNotAFailedApproval(t *testing.T
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("应返回取消错误: %v", err)
 	}
+}
+
+func genPayload() GeneratePayload {
+	return GeneratePayload{Reason: "先锁定角色", Items: []GenerateItem{
+		{NodeID: "n1", Label: "林夏", ModelKey: "seedream", ModelName: "Seedream", Price: 8, Count: 2},
+		{NodeID: "n2", Label: "老周", ModelKey: "seedream", ModelName: "Seedream", Price: 8, Count: 1},
+	}}
 }

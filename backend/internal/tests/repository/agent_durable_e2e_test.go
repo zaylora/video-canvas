@@ -179,7 +179,7 @@ func newDurableEnv(t *testing.T, turns []llmTurn, up *realUpstream) *durableEnv 
 
 	relay := &relayRecorder{}
 	canvasSvc := agentsvc.NewAgentCanvasService(repo, nil)
-	svc := agentsvc.NewAgentService(agentsvc.AgentDeps{Repo: repo, Canvas: canvasSvc, Models: e2eModels{}, Runtime: agentsvc.NoAgentRuntime{}})
+	svc := agentsvc.NewAgentService(agentsvc.AgentDeps{Repo: repo, Canvas: canvasSvc, Models: e2eModels{}})
 	bridge := agentsvc.NewAgentBridge(agentsvc.BridgeDeps{
 		Repo: repo, Canvas: canvasSvc, Agent: svc, Billing: agentsvc.NewAgentBilling(repo),
 		Registry: registry, Secrets: secrets, RunUsage: repo,
@@ -188,7 +188,7 @@ func newDurableEnv(t *testing.T, turns []llmTurn, up *realUpstream) *durableEnv 
 	bridge.SetToolRecorder(observeRepo)         // 工具调用的参数和结果留在 Go 的库里，后台导出要看
 	bridge.SetModelRequestRecorder(observeRepo) // 模型请求体同理
 	platform := agenthandler.NewPlatformHandler(bridge).WithEventRelay(agentsvc.NewEventRelay(relay))
-	bridgeSrv := httptest.NewServer(router.NewBridge("test", agenthandler.NewAgentBridgeHandler(bridge), platform, e2eServiceToken))
+	bridgeSrv := httptest.NewServer(router.NewBridge("test", platform, e2eServiceToken))
 	t.Cleanup(bridgeSrv.Close)
 
 	dbPath := filepath.Join(t.TempDir(), "agent", "agent.sqlite")
@@ -209,7 +209,7 @@ func newDurableEnv(t *testing.T, turns []llmTurn, up *realUpstream) *durableEnv 
 	if err != nil {
 		t.Fatal(err)
 	}
-	observe := agentsvc.NewObserveService(agentsvc.ObserveDeps{Repo: observeRepo, Runs: repo, Remote: &agentsvc.HTTPRemoteRuns{BaseURL: agentURL, ServiceToken: e2eServiceToken}})
+	observe := agentsvc.NewObserveService(agentsvc.ObserveDeps{Repo: observeRepo, Remote: &agentsvc.HTTPRemoteRuns{BaseURL: agentURL, ServiceToken: e2eServiceToken}})
 	return &durableEnv{observe: observe, db: db, repo: repo, llm: llm, canvas: canvas, api: api, agentURL: agentURL, relay: relay, jwt: jwt, dbPath: dbPath, node: node, dir: dir, bridge: bridgeSrv.URL, kill: kill}
 }
 

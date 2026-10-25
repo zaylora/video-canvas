@@ -78,39 +78,27 @@ docker compose --profile updater up -d    # 启动 updater
 - 升级时 updater 自己不会被重建；要升级 updater 本身，在部署目录再执行一次 `docker compose --profile updater up -d`。
 - 停用：`docker compose --profile updater rm -sf updater`。
 
-### Agent 独立服务（可选）
+### Agent 服务
 
-默认情况下画布 Agent 跑在 backend 容器里：每个运行片段起一个 Node 子进程，跑完退出。可以把 Agent 拆成独立的常驻服务（`agent` 容器，镜像 `video-canvas-agent`），有两种方式：
+画布 Agent 是独立的常驻服务（`agent` 容器，镜像 `video-canvas-agent`，Pi Durable + SQLite），**默认随 Compose 一起启动**：
 
-| `APP_AGENT_RUNTIME` | 会话、运行、审批在哪 | 重启 agent 容器 | 适合 |
-|---|---|---|---|
-| `process`（默认） | backend 的数据库 | — | 不想多一个容器 |
-| `durable` | **agent 容器自己的 SQLite（`agent_data` 卷）** | 没跑完的运行在窗口内自动续跑，界面显示「恢复中」 | 推荐：可单独发版、跟上 Pi 的更新，backend 重启不影响运行 |
-| `http` | backend 的数据库，agent 是无状态服务 | 中断正在跑的运行（用户点「继续」） | 旧方式，将被 durable 取代 |
+- 会话、运行、审批、事件和对话历史都在 agent 容器自己的数据里（`agent_data` 卷）；backend 负责登录校验、反向代理前端的接口，并提供平台能力（画布读写、模型代理和计费、生成任务、素材）；
+- 服务重启后没跑完的运行，停机时间不超过 `AGENT_RESUME_WINDOW_SECONDS`（默认 300 秒）会自动续跑，界面显示「恢复中」，超过就标为「已中断」由用户点「继续」。backend 重启不影响运行；
+- 可以单独发版、跟上 Pi 的更新；backend 镜像里没有 Node。
 
-只在 compose 内网提供服务，不对外开放任何端口。backend 和 agent 之间用同一个服务令牌互相认，令牌是唯一的凭据，请当作密码保管。
+只在 compose 内网提供服务，不对外开放任何端口。backend 和 agent 之间用同一个服务令牌（`.env` 里的 `AGENT_SERVICE_TOKEN`）互相认，令牌是唯一的凭据，请当作密码保管。**`deploy.sh` 新部署时会生成它；`update.sh`（包括后台一键升级）从没有独立 Agent 服务的旧版本升上来时，发现 `.env` 里没有就自动生成一个**（已有的不会动）。
 
-**启用 durable：**
-
-```bash
-# 在部署目录执行，三行都要
-echo "AGENT_SERVICE_TOKEN=$(openssl rand -hex 32)" >> .env   # 至少 32 个字符
-echo "APP_AGENT_RUNTIME=durable" >> .env
-echo "COMPOSE_PROFILES=agent" >> .env
-docker compose pull && docker compose up -d
-```
-
-- **一定要用 `COMPOSE_PROFILES=agent` 启用，不要每次手敲 `--profile agent`。** `update.sh` 和后台一键升级用的是不带 `--profile` 的 `docker compose pull/up`，只有这样 agent 才会跟着一起升级；否则升级后 backend 是新版、agent 还是旧版，两边的协议只在同一个版本里保证兼容。
-- **确认生效**：`docker compose ps` 里有 `agent` 且状态是 healthy；backend 启动日志里「画布 Agent 桥已启动」那一行带 `"runtime": "durable"`。agent 的健康检查还包含一项自检：它启动后会向 backend 核对「对外 ID 的编码密钥」是否一致，**不一致时报 unhealthy**（一键升级会因此自动回退），日志里会说明怎么改。backend 默认使用镜像里配置文件的 `id_key`，agent 的 `AGENT_ID_KEY` 默认也是 `id_key`；只有你改过 backend 的密钥才需要在 `.env` 里同步设 `AGENT_ID_KEY`。
-- **旧会话不会迁移**：切到 durable 之后，画布上看到的是 agent 里的会话；切换之前在 backend 数据库里的会话看不到（数据还在），切回 `process` / `http` 又能看到。durable 期间产生的会话同理留在 `agent_data` 卷里。
-- **后台的「运行记录」、导出、统计照常可用**，durable 的运行和历史运行在同一个列表里；durable 的运行比实际结束晚几秒（最多约 10 秒）出现在列表里，评价和撤销之后摘要也是这样更新。
-- **重启 agent 容器**：没跑完的运行，停机时间不超过 `AGENT_RESUME_WINDOW_SECONDS`（默认 300 秒）会自动续跑，超过就标为「已中断」由用户点「继续」。停止时服务有最多 30 秒收尾，不会中止运行。backend 重启不影响运行。
+- **确认生效**：`docker compose ps` 里有 `agent` 且状态是 healthy；backend 启动日志里有「画布 Agent 平台 API 已启动」。agent 的健康检查还包含一项自检：它启动后会向 backend 核对「对外 ID 的编码密钥」是否一致，**不一致时报 unhealthy**（一键升级会因此自动回退），日志里会说明怎么改。backend 默认使用镜像里配置文件的 `id_key`，agent 的 `AGENT_ID_KEY` 默认也是 `id_key`；只有你改过 backend 的密钥才需要在 `.env` 里同步设 `AGENT_ID_KEY`。
+- **不用 Agent**：`.env` 里设 `APP_AGENT_ENABLED=false`，画布里的 Agent 会提示「暂不可用」（agent 容器仍会启动，空闲时几乎不占资源）。还要在后台「AI 配置」里发布 agent 类型的模型才有可用模型。
+- **旧会话不会迁移**：从旧版本（Agent 跑在 backend 容器里）升上来之后，画布上看到的是 agent 服务里的新会话；之前保存在 backend 数据库里的旧会话不再显示（数据还在，后台的运行记录、导出和统计仍可查旧运行）。
+- **后台的「运行记录」、导出、统计**：新的运行和旧的运行在同一个列表里；新的运行比实际结束晚几秒（最多约 10 秒）出现在列表里，评价和撤销之后摘要也是这样更新。
+- **重启 agent 容器**：没跑完的运行按上面的窗口续跑。停止时服务有最多 30 秒收尾，不会中止运行。
 - 现在只支持**一个** agent 容器：不要把它扩成多副本（SQLite 单写者）。`agent_data` 是本地卷，不要换成网络盘。
 - agent 容器不访问 Postgres、不持有任何渠道密钥；模型调用（含计费）、画布读写、生成任务、素材都经 backend。
 
 **升级与备份**
 
-`update.sh`（包括后台一键升级）在 `APP_AGENT_RUNTIME=durable` 时，除了 Postgres 的 `pre-<版本>-<时间>.dump`，还会**在线**备份 agent 的数据到 `backups/pre-<版本>-<时间>.agent.sqlite`：不用停机、不打断运行，用目标版本的镜像读 `agent_data` 卷，备份完做完整性检查，两种备份各保留最近 `--keep-backups` 份。**备份失败会中止升级**（服务保持原样）；第一次启用、卷里还没有数据时不算失败。Agent 的数据只向前升级（迁移只新增），所以升级前备份。
+`update.sh`（包括后台一键升级）除了 Postgres 的 `pre-<版本>-<时间>.dump`，还会**在线**备份 agent 的数据到 `backups/pre-<版本>-<时间>.agent.sqlite`：不用停机、不打断运行，用目标版本的镜像读 `agent_data` 卷，备份完做完整性检查，两种备份各保留最近 `--keep-backups` 份。**备份失败会中止升级**（服务保持原样）；卷里还没有数据（第一次升级到有 Agent 服务的版本）时不算失败。Agent 的数据只向前升级（迁移只新增），所以升级前备份。
 
 升级失败会自动退回旧版本。如果新版本已经升级过 agent 的数据、旧镜像因此拒绝启动（日志里是「数据库的版本 N 比当前代码新」），`update.sh` 会报「需要人工处理」并指出备份文件：换回新版镜像，或按下面的步骤恢复。
 
@@ -131,16 +119,9 @@ docker compose run --rm --no-deps -T --entrypoint sh agent -c \
   'AGENT_DB_PATH=/data/agent.sqlite node dist/backup-cli.js /tmp/b.sqlite 1>&2 && cat /tmp/b.sqlite' > backups/manual-$(date +%Y%m%d%H%M%S).agent.sqlite
 ```
 
-**灰度与回退**
-
-1. 先在测试环境或低峰期启用 durable（上面三行），确认 `agent` healthy、画布里能发起运行、后台运行记录里能看到。
-2. 观察一段时间（建议看运行失败率、「恢复中」出现次数、`docker compose logs agent` 里有没有「推送事件给平台失败」）。
-3. 要退回：把 `.env` 里 `APP_AGENT_RUNTIME` 改回 `process`（或 `http`），去掉 `COMPOSE_PROFILES=agent`（process 时），执行 `docker compose up -d --remove-orphans`。已有的 durable 会话留在 `agent_data` 卷里，再切回来还在；**没跑完的 durable 运行在退回时不会自动续跑**，退回前先等它们结束。
-4. 想彻底清掉 durable 的数据：`docker compose down` 后 `docker volume rm <项目名>_agent_data`（先确认已备份）。
+**从旧版本升级后回退到旧版本**：用 `update.sh --tag <旧版本>` 回退镜像即可，旧版本的 Agent 跑在 backend 容器里，看到的是 backend 数据库里的旧会话；agent 服务里的新会话留在 `agent_data` 卷里（再升级回来还在）。**没跑完的新运行在退回时不会自动续跑**，退回前先等它们结束。想彻底清掉 agent 的数据：`docker compose down` 后 `docker volume rm <项目名>_agent_data`（先确认已备份）。
 
 **已知限制**：agent 的事件和会话目前没有保留期清理，数据只增不减，按用量规划 `agent_data` 卷的大小；备份文件也会随之变大。
-
-**旧的 http 方式**（不推荐，新部署请用 durable）：`.env` 里设 `APP_AGENT_RUNTIME=http`，其余同上。会话仍由 backend 管，重启 agent 容器会中断正在跑的运行（它们会显示「已中断」，用户可以点「继续」）；并发上限 `AGENT_MAX_SEGMENTS`（默认 64）、容器内存上限 2g（`AGENT_MEM_LIMIT`）都只对这种方式有意义，按经验定的，上线后看后台运行记录里的并发数再调。
 
 ### 联网工具与搜索（可选）
 

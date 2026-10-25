@@ -49,7 +49,7 @@ var toolSpecs = []toolSpec{
 	{name: "canvas_apply_ops", label: "修改画布", verb: "修改", scriptable: true, run: (*AgentBridge).toolApplyOps},
 	{name: "canvas_arrange", label: "整理布局", verb: "整理", scriptable: true, modes: layoutModes, run: (*AgentBridge).toolArrange},
 	{name: "canvas_delete", label: "申请删除", verb: "删除", modes: layoutModes, run: (*AgentBridge).toolDelete},
-	{name: "plan_update", label: "更新计划", verb: "计划", scriptable: true, run: (*AgentBridge).toolPlan},
+	{name: "plan_update", label: "更新计划", verb: "计划", scriptable: true, run: nil /* 计划只在 Agent 服务里执行（platformExcluded） */},
 	{name: "ask_user", label: "向你提问", verb: "提问", run: (*AgentBridge).toolAsk},
 	{name: "model_list", label: "查看可用模型", verb: "查模型", scriptable: true, run: (*AgentBridge).toolModelList},
 	{name: "generate_media", label: "申请生成", verb: "生成", modes: layoutModes, run: (*AgentBridge).toolGenerate},

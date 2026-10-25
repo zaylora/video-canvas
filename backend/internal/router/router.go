@@ -17,16 +17,14 @@ type Handlers struct {
 	Me            *handler.MeHandler // 个人中心：资料、头像、改密码、统计、热力图、积分流水
 	CanvasProject *handler.CanvasProjectHandler
 	Conversation  *handler.ConversationHandler // 首页生成：对话与生成记录
-	Agent         *agenthandler.AgentHandler   // 画布 Agent：会话、运行、审批
-	// AgentProxy 非空表示 agent.runtime=durable：会话、运行、审批、评价由独立的 Agent 服务负责，
-	// 这些接口只校验登录态后反向代理过去（路径、方法、信封不变，前端无感）；技能目录等仍由 Go 自己处理。
+	// AgentProxy：画布 Agent 的会话、运行、审批、评价由独立的 Agent 服务负责，这些接口只校验登录态后反向代理过去
+	// （路径、方法、信封不变）；技能目录等仍由 Go 自己处理。为 nil 表示没有启用 Agent，这些接口统一返回「Agent 暂不可用」。
 	AgentProxy *agenthandler.AgentProxyHandler
 	AgentSkill *agenthandler.SkillHandler // Agent 技能：用户端目录 + 管理端导入 / 版本 / 启停
 
-	// Agent 运行观测：用户反馈、后台只读查看与导出、分析令牌
-	AgentFeedback *agenthandler.AgentFeedbackHandler // 用户对运行打 👍/👎
-	AgentObserve  *agenthandler.AgentObserveHandler  // 后台运行记录（只读）和分析令牌管理
-	AnalysisToken middleware.TokenAuthenticator      // 校验分析令牌，本地 agent-trace 用它只读拉取运行记录
+	// Agent 运行观测：后台只读查看与导出、分析令牌
+	AgentObserve  *agenthandler.AgentObserveHandler // 后台运行记录（只读）和分析令牌管理
+	AnalysisToken middleware.TokenAuthenticator     // 校验分析令牌，本地 agent-trace 用它只读拉取运行记录
 
 	// 长任务生成相关
 	GenerationTask *handler.GenerationTaskHandler      // 任务提交 / 对账 / 取消 / 积分 / webhook
@@ -110,13 +108,9 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		canvas.GET("/:id", h.CanvasProject.Get)
 		canvas.PUT("/:id", h.CanvasProject.Update)
 		canvas.DELETE("/:id", h.CanvasProject.Delete)
-		if h.AgentProxy == nil {
-			canvas.GET("/:id/agent/sessions", h.Agent.ListSessions)
-			canvas.POST("/:id/agent/sessions", h.Agent.CreateSession)
-		} else {
-			canvas.GET("/:id/agent/sessions", h.AgentProxy.Forward)
-			canvas.POST("/:id/agent/sessions", h.AgentProxy.Forward)
-		}
+		fwd := agentRoute(h.AgentProxy)
+		canvas.GET("/:id/agent/sessions", fwd)
+		canvas.POST("/:id/agent/sessions", fwd)
 
 		// 首页生成的对话：对话和记录的 id 与画布一样是十六进制串；POST /:id/records 的 id 还可以是 default / new
 		conv := auth.Group("/conversations")
@@ -131,36 +125,19 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		// 画布 Agent：id 与画布一样是十六进制串
 		agent := auth.Group("/agent")
 		agent.GET("/skills", h.AgentSkill.UserList) // 已启用技能的目录（@ 弹层），技能库在 Go
-		if h.AgentProxy == nil {
-			agent.GET("/models", h.Agent.Models)
-			agent.PATCH("/sessions/:sid", h.Agent.RenameSession)
-			agent.DELETE("/sessions/:sid", h.Agent.DeleteSession)
-			agent.GET("/sessions/:sid/events", h.Agent.Events)   // ?after=序号&limit=
-			agent.GET("/sessions/:sid/history", h.Agent.History) // ?before=序号&limit=，聊天记录从最新往回翻
-			agent.POST("/sessions/:sid/runs", h.Agent.StartRun)  // 202
-			agent.POST("/runs/:rid/interject", h.Agent.Interject)
-			agent.POST("/runs/:rid/cancel", h.Agent.Cancel)
-			agent.POST("/runs/:rid/resume", h.Agent.Resume)
-			agent.POST("/runs/:rid/undo", h.Agent.Undo)
-			agent.PUT("/runs/:rid/feedback", h.AgentFeedback.Set)      // 👍/👎，再调用就是改选
-			agent.DELETE("/runs/:rid/feedback", h.AgentFeedback.Clear) // 取消评价
-			agent.POST("/approvals/:aid/decision", h.Agent.Decide)
-		} else {
-			fwd := h.AgentProxy.Forward
-			agent.GET("/models", fwd)
-			agent.PATCH("/sessions/:sid", fwd)
-			agent.DELETE("/sessions/:sid", fwd)
-			agent.GET("/sessions/:sid/events", fwd)
-			agent.GET("/sessions/:sid/history", fwd)
-			agent.POST("/sessions/:sid/runs", fwd)
-			agent.POST("/runs/:rid/interject", fwd)
-			agent.POST("/runs/:rid/cancel", fwd)
-			agent.POST("/runs/:rid/resume", fwd)
-			agent.POST("/runs/:rid/undo", fwd)
-			agent.PUT("/runs/:rid/feedback", fwd)
-			agent.DELETE("/runs/:rid/feedback", fwd)
-			agent.POST("/approvals/:aid/decision", fwd)
-		}
+		agent.GET("/models", fwd)
+		agent.PATCH("/sessions/:sid", fwd)
+		agent.DELETE("/sessions/:sid", fwd)
+		agent.GET("/sessions/:sid/events", fwd)  // ?after=序号&limit=
+		agent.GET("/sessions/:sid/history", fwd) // ?before=序号&limit=，聊天记录从最新往回翻
+		agent.POST("/sessions/:sid/runs", fwd)   // 202
+		agent.POST("/runs/:rid/interject", fwd)
+		agent.POST("/runs/:rid/cancel", fwd)
+		agent.POST("/runs/:rid/resume", fwd)
+		agent.POST("/runs/:rid/undo", fwd)
+		agent.PUT("/runs/:rid/feedback", fwd)    // 👍/👎，再调用就是改选
+		agent.DELETE("/runs/:rid/feedback", fwd) // 取消评价
+		agent.POST("/approvals/:aid/decision", fwd)
 
 		// 积分商城：只操作当前用户自己的订单；pending 是静态段，优先于 /orders/:no
 		pay := auth.Group("/payment")
@@ -416,4 +393,12 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		response.Fail(c, errcode.ErrNotFound)
 	})
 	return r
+}
+
+// agentRoute 是画布 Agent 接口的处理函数：启用了 Agent 就反向代理给 Agent 服务；没启用统一返回「Agent 暂不可用」。
+func agentRoute(p *agenthandler.AgentProxyHandler) gin.HandlerFunc {
+	if p != nil {
+		return p.Forward
+	}
+	return func(c *gin.Context) { response.Fail(c, errcode.ErrAgentUnavailable) }
 }

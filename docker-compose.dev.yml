@@ -45,16 +45,12 @@ services:
       # 开发机常开着代理工具的 Fake-IP 模式（所有域名被解析到 198.18.0.0/15），不放行就连不上任何外部接口；线上不要设
       APP_AI_ALLOW_FAKE_IP: "true"
       APP_STORAGE_LOCAL_DIR: "/app/data/assets"
-      # 画布 Agent：compose 默认开启，需先在宿主机仓库根目录 agent/ 下 npm ci（整个目录挂载进容器的 /agent），
-      # 否则启动自检会失败、后端会一直重启。不想装依赖：APP_AGENT_ENABLED=false docker compose -f docker-compose.dev.yml up -d
+      # 画布 Agent：默认开启，需要 AGENT_SERVICE_TOKEN（见下）。不用 Agent：APP_AGENT_ENABLED=false docker compose -f docker-compose.dev.yml up -d
       APP_AGENT_ENABLED: ${APP_AGENT_ENABLED:-true}
-      APP_AGENT_RUNTIME_DIR: /agent
-      # Agent 作为独立服务（可选）：AGENT_SERVICE_TOKEN=$(openssl rand -hex 32) APP_AGENT_RUNTIME=durable docker compose -f docker-compose.dev.yml --profile agent up -d
-      # （durable：会话、运行、审批都在 agent 服务里；http：旧的无状态服务）。默认 process：在 backend 容器里为每个运行片段起 Node 子进程
-      APP_AGENT_RUNTIME: ${APP_AGENT_RUNTIME:-process}
+      # 画布 Agent 是独立的服务（下方 agent），backend 负责登录校验、反向代理和平台能力。AGENT_SERVICE_TOKEN 是 backend 和 agent 互相认的凭据，开发环境有固定的默认值（只在本机 compose 内网用）
       APP_AGENT_URL: http://agent:8090
       APP_AGENT_BRIDGE_URL: http://backend:47001
-      APP_AGENT_SERVICE_TOKEN: ${AGENT_SERVICE_TOKEN:-}
+      APP_AGENT_SERVICE_TOKEN: ${AGENT_SERVICE_TOKEN:-dev-agent-service-token-0123456789abcdef0123456789}
     ports:
       - "8080:8080"
     healthcheck:
@@ -65,7 +61,6 @@ services:
       start_period: 5s
     volumes:
       - ./backend:/app
-      - ./agent:/agent
       - go_build_cache:/root/.cache/go-build
       - go_mod_cache:/go/pkg/mod
       - backend_assets:/app/data/assets
@@ -75,20 +70,18 @@ services:
       redis:
         condition: service_healthy
 
-  # Agent 服务（可选，默认不启动）：直接跑仓库里的 TypeScript 源码（Node 22.19+ 的类型剥离），不用构建；
-  # 和 backend 一样用宿主机上 agent/ 里 npm ci 装好的依赖。改了 agent/src 后 docker compose -f docker-compose.dev.yml restart agent
+  # Agent 服务：直接跑仓库里的 TypeScript 源码（Node 22.19+ 的类型剥离），不用构建；用宿主机上 agent/ 里 npm ci 装好的依赖。
+  # 改了 agent/src 后 docker compose -f docker-compose.dev.yml restart agent
   agent:
     image: node:22-alpine
-    profiles: ["agent"]
     working_dir: /agent
     command: ["npm", "run", "serve"]
     environment:
-      AGENT_RUNTIME: ${APP_AGENT_RUNTIME:-process}
-      AGENT_SERVICE_TOKEN: ${AGENT_SERVICE_TOKEN:-}
+      AGENT_SERVICE_TOKEN: ${AGENT_SERVICE_TOKEN:-dev-agent-service-token-0123456789abcdef0123456789}
       AGENT_LISTEN: 0.0.0.0:8090
-      # durable 模式用：数据文件、backend 的桥地址、对外 ID 的编码密钥（要和 backend 的一致，backend 默认用配置文件里的 id_key）
       AGENT_DB_PATH: /data/agent.sqlite
       AGENT_BRIDGE_URL: http://backend:47001
+      # 对外 ID 的编码密钥：要和 backend 的一致（backend 默认用配置文件里的 id_key）
       AGENT_ID_KEY: ${AGENT_ID_KEY:-id_key}
     expose:
       - "8090"

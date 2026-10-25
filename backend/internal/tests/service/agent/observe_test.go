@@ -166,7 +166,7 @@ func newObserveEnv(t *testing.T) *observeEnv {
 	e.runs[6] = &run6
 	e.repo.facts[6] = &model.AgentRunFacts{Run: run6}
 	e.svc = NewObserveService(ObserveDeps{
-		Repo: e.repo, Runs: e.runs, Events: e.events, Audit: e.audit,
+		Repo: e.repo, Audit: e.audit,
 		Roles: func(_ context.Context, id uint64) (string, error) { return e.roles[id], nil },
 		Now:   func() time.Time { return e.now },
 	})
@@ -196,130 +196,6 @@ func TestObserve_RefreshDigest(t *testing.T) {
 	if err := e.svc.RefreshDigest(ctx, 5); err == nil {
 		t.Error("写库失败应返回错误，由调用方决定只记日志")
 	}
-}
-
-func TestObserve_SetFeedback(t *testing.T) {
-	ctx := context.Background()
-
-	t.Run("点踩：记下评分、原因和说明；发事件；摘要同步", func(t *testing.T) {
-		e := newObserveEnv(t)
-		fb, err := e.svc.SetFeedback(ctx, 1, 5, &model.SetAgentFeedbackReq{Rating: -1, Reasons: []string{"misread", "slow", "misread"}, Comment: "我要 6 个，它给了 12 个"})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if fb.Rating != -1 || len(fb.Reasons) != 2 || fb.Comment != "我要 6 个，它给了 12 个" {
-			t.Errorf("原因去重后 2 个：%+v", fb)
-		}
-		got := e.repo.feedback[[2]uint64{5, 1}]
-		if got == nil || got.Rating != -1 {
-			t.Fatalf("应落库：%+v", got)
-		}
-		if types := e.events.types(); len(types) != 1 || types[0] != "feedback.set" {
-			t.Fatalf("events=%v", types)
-		}
-		ev := e.events.events[0]
-		if ev.userID != 1 || ev.sessionID != 2 || ev.runID != 5 || ev.canvasID != 7 {
-			t.Errorf("事件归属：%+v", ev)
-		}
-		if ev.data["rating"] != float64(-1) || ev.data["comment"] != "我要 6 个，它给了 12 个" {
-			t.Errorf("事件内容：%v", ev.data)
-		}
-		if _, has := ev.data["run_id"]; has {
-			t.Error("事件载荷里不放原始 run_id：前端靠事件自带的编码后的 run_id 对账")
-		}
-		if d := e.repo.digests[5]; d == nil || d.Feedback != -1 {
-			t.Errorf("摘要的 feedback 应同步：%+v", d)
-		}
-	})
-
-	t.Run("点赞：忽略原因；改选覆盖", func(t *testing.T) {
-		e := newObserveEnv(t)
-		_, _ = e.svc.SetFeedback(ctx, 1, 5, &model.SetAgentFeedbackReq{Rating: -1, Reasons: []string{"slow"}})
-		fb, err := e.svc.SetFeedback(ctx, 1, 5, &model.SetAgentFeedbackReq{Rating: 1, Reasons: []string{"slow"}})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if fb.Rating != 1 || len(fb.Reasons) != 0 {
-			t.Errorf("点赞不带原因：%+v", fb)
-		}
-		if e.repo.digests[5].Feedback != 1 || len(e.repo.feedback) != 1 {
-			t.Error("改选应覆盖，不新增")
-		}
-	})
-
-	t.Run("校验：评分、原因标签、说明长度", func(t *testing.T) {
-		e := newObserveEnv(t)
-		cases := map[string]*model.SetAgentFeedbackReq{
-			"评分不是 1/-1":  {Rating: 2},
-			"未知原因标签":     {Rating: -1, Reasons: []string{"nope"}},
-			"说明超过 500 字": {Rating: -1, Comment: strings.Repeat("字", 501)},
-		}
-		for name, req := range cases {
-			_, err := e.svc.SetFeedback(ctx, 1, 5, req)
-			wantAgentCode(t, err, errcode.ErrInvalidParams)
-			_ = name
-		}
-		if _, err := e.svc.SetFeedback(ctx, 1, 5, &model.SetAgentFeedbackReq{Rating: -1, Comment: strings.Repeat("字", 500)}); err != nil {
-			t.Errorf("刚好 500 字合法：%v", err)
-		}
-	})
-
-	t.Run("运行还在跑：60014；别人的运行：60012（不暴露是否存在）", func(t *testing.T) {
-		e := newObserveEnv(t)
-		_, err := e.svc.SetFeedback(ctx, 1, 6, &model.SetAgentFeedbackReq{Rating: 1})
-		wantAgentCode(t, err, errcode.ErrAgentRunNotEnded)
-		_, err = e.svc.SetFeedback(ctx, 2, 5, &model.SetAgentFeedbackReq{Rating: 1})
-		wantAgentCode(t, err, errcode.ErrAgentRunMissing)
-		_, err = e.svc.SetFeedback(ctx, 1, 404, &model.SetAgentFeedbackReq{Rating: 1})
-		wantAgentCode(t, err, errcode.ErrAgentRunMissing)
-		if len(e.events.events) != 0 || len(e.repo.feedback) != 0 {
-			t.Error("被拒绝的请求不应有任何副作用")
-		}
-	})
-
-	t.Run("暂停中的运行（步数用尽等）可以评价；等审批的不行", func(t *testing.T) {
-		e := newObserveEnv(t)
-		e.runs[5].Status = model.RunStepLimit
-		if _, err := e.svc.SetFeedback(ctx, 1, 5, &model.SetAgentFeedbackReq{Rating: -1}); err != nil {
-			t.Errorf("步数用尽后可评价：%v", err)
-		}
-		e.runs[5].Status = model.RunWaitingApproval
-		_, err := e.svc.SetFeedback(ctx, 1, 5, &model.SetAgentFeedbackReq{Rating: -1})
-		wantAgentCode(t, err, errcode.ErrAgentRunNotEnded)
-	})
-
-	t.Run("摘要同步失败不影响评价本身", func(t *testing.T) {
-		e := newObserveEnv(t)
-		e.repo.upsertErr = errors.New("库不可用")
-		if _, err := e.svc.SetFeedback(ctx, 1, 5, &model.SetAgentFeedbackReq{Rating: 1}); err != nil {
-			t.Errorf("评价已保存，摘要稍后会由别的事件刷新：%v", err)
-		}
-		if e.repo.feedback[[2]uint64{5, 1}] == nil {
-			t.Error("评价应已保存")
-		}
-	})
-}
-
-func TestObserve_ClearFeedback(t *testing.T) {
-	ctx := context.Background()
-	e := newObserveEnv(t)
-	_, _ = e.svc.SetFeedback(ctx, 1, 5, &model.SetAgentFeedbackReq{Rating: -1})
-	e.events.events = nil
-	if err := e.svc.ClearFeedback(ctx, 1, 5); err != nil {
-		t.Fatal(err)
-	}
-	if len(e.repo.feedback) != 0 || e.repo.digests[5].Feedback != 0 {
-		t.Error("评价应删除，摘要同步为 0")
-	}
-	if types := e.events.types(); len(types) != 1 || types[0] != "feedback.cleared" {
-		t.Errorf("events=%v", types)
-	}
-	// 本来就没有：幂等，不再发事件
-	e.events.events = nil
-	if err := e.svc.ClearFeedback(ctx, 1, 5); err != nil || len(e.events.events) != 0 {
-		t.Errorf("重复取消是幂等的，不发事件：err=%v events=%v", err, e.events.types())
-	}
-	wantAgentCode(t, e.svc.ClearFeedback(ctx, 2, 5), errcode.ErrAgentRunMissing)
 }
 
 func TestObserve_Tokens(t *testing.T) {

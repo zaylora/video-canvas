@@ -58,28 +58,6 @@ func (r *AgentObserveRepository) FinishToolCall(ctx context.Context, runID uint6
 	return r.db.WithContext(ctx).Model(&model.AgentToolCall{}).Where("run_id = ? AND tool_call_id = ?", runID, toolCallID).Updates(fields).Error
 }
 
-// GetFeedback 读某人对某运行的评价，没有返回 ErrNotFound。
-func (r *AgentObserveRepository) GetFeedback(ctx context.Context, runID, userID uint64) (*model.AgentFeedback, error) {
-	var fb model.AgentFeedback
-	if err := r.db.WithContext(ctx).Where("run_id = ? AND user_id = ?", runID, userID).First(&fb).Error; err != nil {
-		return nil, translate(err)
-	}
-	return &fb, nil
-}
-
-// UpsertFeedback 写评价：同一人对同一运行只有一条，再写就是改选（评分、原因、说明全部覆盖）。
-func (r *AgentObserveRepository) UpsertFeedback(ctx context.Context, fb *model.AgentFeedback) error {
-	return r.db.WithContext(ctx).Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "run_id"}, {Name: "user_id"}},
-		DoUpdates: clause.AssignmentColumns([]string{"rating", "reasons", "comment", "updated_at"}),
-	}).Create(fb).Error
-}
-
-// DeleteFeedback 取消评价；本来就没有也不是错误（取消是幂等的）。
-func (r *AgentObserveRepository) DeleteFeedback(ctx context.Context, runID, userID uint64) error {
-	return r.db.WithContext(ctx).Where("run_id = ? AND user_id = ?", runID, userID).Delete(&model.AgentFeedback{}).Error
-}
-
 // RunFacts 读生成运行摘要需要的事实，不按用户过滤（后台和事件钩子用）。运行不存在返回 ErrNotFound。
 // 工具调用不读参数和结果、审批和改动不读内容：摘要只数数，大字段留给导出。
 func (r *AgentObserveRepository) RunFacts(ctx context.Context, runID uint64) (*model.AgentRunFacts, error) {

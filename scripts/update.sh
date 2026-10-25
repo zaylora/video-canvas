@@ -2,7 +2,7 @@
 # 生产环境更新脚本（Linux / macOS），无需克隆仓库，可直接通过管道运行：
 #   curl -fsSL https://raw.githubusercontent.com/zaylora/video-canvas/master/scripts/update.sh | bash
 #
-# 流程：改 IMAGE_TAG → 取目标版本的 compose 文件 → 拉镜像 → 备份数据库（durable 模式再在线备份 Agent 的数据）→ 重建 → 等新版本健康
+# 流程：改 IMAGE_TAG → 取目标版本的 compose 文件 → 确保有 Agent 服务令牌 → 拉镜像 → 备份数据库和 Agent 的数据（在线）→ 重建 → 等新版本健康
 # 任何一步失败都会退回更新前的 IMAGE_TAG 和 compose 文件。后台「一键升级」（updater 容器）调用的也是这个脚本。
 set -euo pipefail
 
@@ -40,8 +40,8 @@ usage() {
   --prune              完成后清理悬空镜像（会清掉本机所有项目的悬空镜像，默认不清）
   -h, --help           显示帮助
 
-备份位置：部署目录下的 backups/（pre-<版本>-<时间>.dump 是数据库；.env 里 APP_AGENT_RUNTIME=durable 时还有
-pre-<版本>-<时间>.agent.sqlite，是 Agent 服务的数据），恢复方法见 docs/docker-production.md「升级与数据库迁移」和「Agent 独立服务」。
+备份位置：部署目录下的 backups/（pre-<版本>-<时间>.dump 是数据库；pre-<版本>-<时间>.agent.sqlite 是 Agent 服务的数据，
+没有数据时不备份），恢复方法见 docs/docker-production.md「升级与数据库迁移」和「Agent 服务」。
 EOF
 }
 
@@ -212,9 +212,7 @@ wait_ready() {
 rollback() {
   local reason="$1" logs
   logs="$(docker compose logs --tail=100 backend 2>&1 || true)"
-  if [ "$(env_value APP_AGENT_RUNTIME)" = "durable" ]; then
-    logs="$logs"$'\n'"----- agent 最后 50 行日志 -----"$'\n'"$(docker compose logs --tail=50 agent 2>&1 || true)"
-  fi
+  logs="$logs"$'\n'"----- agent 最后 50 行日志 -----"$'\n'"$(docker compose logs --tail=50 agent 2>&1 || true)"
   echo "[错误] $reason" >&2
   echo "----- 新版本 backend 最后 100 行日志 -----" >&2
   echo "$logs" >&2
@@ -232,7 +230,7 @@ rollback() {
     fail failed_needs_attention "$reason；退回 $OLD_TAG 后它拒绝启动：数据库已被 $NEW_TAG 迁移过。确认那些迁移只新增表或列后，在 .env 加 APP_DATABASE_ALLOW_NEWER_SCHEMA=true 再 docker compose up -d；否则用备份 ${BACKUP_FILE:-（无）} 恢复"
   fi
   if docker compose logs --tail=50 agent 2>&1 | grep -q "比当前代码"; then
-    fail failed_needs_attention "$reason；退回 $OLD_TAG 后 agent 拒绝启动：它的数据已被 $NEW_TAG 升级过。换回 $NEW_TAG，或停掉 agent、用备份 ${AGENT_BACKUP_FILE:-（无）} 恢复数据（见 docs/docker-production.md「Agent 独立服务」）"
+    fail failed_needs_attention "$reason；退回 $OLD_TAG 后 agent 拒绝启动：它的数据已被 $NEW_TAG 升级过。换回 $NEW_TAG，或停掉 agent、用备份 ${AGENT_BACKUP_FILE:-（无）} 恢复数据（见 docs/docker-production.md「Agent 服务」）"
   fi
   fail failed_needs_attention "$reason；退回 $OLD_TAG 后服务仍未就绪，请查看 docker compose logs backend agent 手动排查"
 }
@@ -254,6 +252,27 @@ if command -v curl >/dev/null 2>&1 && curl -fsSL --max-time 30 "$RAW/$ref/docker
 else
   echo "[提示] 无法获取 $ref 的 compose 文件，沿用本地版本。" >&2
 fi
+
+# ---------- 1b. 确保有 Agent 服务令牌 ----------
+
+# 画布 Agent 是独立的服务，backend 和它靠这个令牌互相认；没有它 backend 启用 Agent 时拒绝启动、agent 容器也起不来。
+# 从没有独立 Agent 服务的旧版本升上来时 .env 里还没有，这里生成一个（只增不改：已有的不动，回退也不用删）
+ensure_agent_token() {
+  local tok
+  tok="$(env_value AGENT_SERVICE_TOKEN)"
+  if [ "${#tok}" -ge 32 ]; then
+    return 0
+  fi
+  tok="$(openssl rand -hex 32 2>/dev/null || head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+  [ "${#tok}" -ge 32 ] || fail failed "无法生成 Agent 服务令牌，请在 .env 里手动加一行 AGENT_SERVICE_TOKEN=<至少 32 个字符>"
+  if grep -qE '^AGENT_SERVICE_TOKEN=' "$ENV_FILE"; then
+    sed -i.bak "s|^AGENT_SERVICE_TOKEN=.*|AGENT_SERVICE_TOKEN=$tok|" "$ENV_FILE" && rm -f "$ENV_FILE.bak"
+  else
+    printf '\nAGENT_SERVICE_TOKEN=%s\n' "$tok" >> "$ENV_FILE"
+  fi
+  echo "    已在 .env 里生成 AGENT_SERVICE_TOKEN（Agent 服务和 backend 互相认的凭据）"
+}
+ensure_agent_token
 
 # ---------- 2. 拉镜像（失败时服务一直没动） ----------
 
@@ -283,7 +302,7 @@ else
   echo "[提示] 已跳过数据库备份（--no-backup）。" >&2
 fi
 
-# ---------- 3b. 在线备份 Agent 的数据（durable 模式） ----------
+# ---------- 3b. 在线备份 Agent 的数据 ----------
 
 # 会话、运行、审批、事件和对话历史都在 agent_data 卷的 SQLite 里，Postgres 的备份里没有。用目标版本的镜像起一个一次性容器读卷：
 # agent 正在运行也行（SQLite 在线备份，不用停机），没在运行也行；备份先写到容器里的临时文件，再从标准输出流到宿主机，
@@ -314,7 +333,7 @@ backup_agent() {
   done
 }
 
-if [ "$BACKUP" = true ] && [ "$(env_value APP_AGENT_RUNTIME)" = "durable" ]; then
+if [ "$BACKUP" = true ]; then
   backup_agent
 fi
 

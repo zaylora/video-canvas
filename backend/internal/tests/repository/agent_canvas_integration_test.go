@@ -27,8 +27,8 @@ func TestAgentCanvasService_EndToEndOnRealDB(t *testing.T) {
 	if err := db.Create(canvas).Error; err != nil {
 		t.Fatal(err)
 	}
-	s := newSession(t, r, 1, canvas.ID)
-	run := newRun(t, r, s, model.RunRunning)
+	s := newSession(t, db, 1, canvas.ID)
+	run := newRun(t, db, s, model.RunRunning)
 
 	res, err := svc.ApplyOps(ctx, run, "tc1", []byte(`[
 	  {"op":"create_group","tempId":"g","label":"镜头 01"},
@@ -54,7 +54,7 @@ func TestAgentCanvasService_EndToEndOnRealDB(t *testing.T) {
 	}
 
 	// 运行结束后撤销：被用户改过的节点 a 保留（连带它的组和连线），没人动过的 b 被撤掉。
-	if _, err := r.UpdateRunIf(ctx, run.ID, []string{model.RunRunning}, map[string]any{"status": model.RunSucceeded}); err != nil {
+	if err := db.Model(&model.AgentRun{}).Where("id = ?", run.ID).Update("status", model.RunSucceeded).Error; err != nil {
 		t.Fatal(err)
 	}
 	undo, err := svc.Undo(ctx, 1, run.ID)
@@ -109,8 +109,8 @@ func TestAgentCanvasService_ReplayOnRealDB(t *testing.T) {
 	if err := db.Create(canvas).Error; err != nil {
 		t.Fatal(err)
 	}
-	s := newSession(t, r, 1, canvas.ID)
-	run := newRun(t, r, s, model.RunRunning)
+	s := newSession(t, db, 1, canvas.ID)
+	run := newRun(t, db, s, model.RunRunning)
 	ops := []byte(`[{"op":"create_node","tempId":"a","kind":"image","label":"关键帧"},{"op":"connect","source":"n_script","target":"a"}]`)
 
 	first, err := svc.ApplyOps(agentsvc.WithIdempotencyKey(ctx, "key_1"), run, "call_1", ops)

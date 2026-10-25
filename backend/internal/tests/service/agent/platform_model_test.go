@@ -74,7 +74,6 @@ func proxyPlatform(ctx context.Context, b *bridgeEnv, rc RunContext) (lines []st
 
 func TestProxyModelPlatform_StreamsAndSettlesWithoutTouchingRunState(t *testing.T) {
 	b := newBridgeEnv(t)
-	before := len(b.persistedTypes())
 	lines, callID, err := proxyPlatform(context.Background(), b, platformCtx(900101, "all"))
 	if err != nil {
 		t.Fatal(err)
@@ -97,9 +96,6 @@ func TestProxyModelPlatform_StreamsAndSettlesWithoutTouchingRunState(t *testing.
 	}
 	if b.bill.usageRunID != 0 {
 		t.Error("没有运行记录可更新：不能调 AddRunUsage（运行的已花积分由 Go 按调用记录累加）")
-	}
-	if got := len(b.persistedTypes()); got != before {
-		t.Errorf("上下文模式下不发事件（message.done、run.usage 都归 Agent 服务）: %d → %d", before, got)
 	}
 }
 

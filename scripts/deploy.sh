@@ -65,9 +65,16 @@ IMAGE_TAG=$TAG
 WEB_PORT=$PORT
 # 后台一键升级用的共享密钥；一键升级默认不启用，启用方法见 docker-compose.yml 里 updater 的注释
 UPDATER_TOKEN=$(rand)
+# 画布 Agent 是独立的服务，backend 和它靠这个令牌互相认；请当作密码保管
+AGENT_SERVICE_TOKEN=$(rand)
 EOF
 )
   echo "    请备份 $DIR/.env：APP_AI_SECRET_KEY 丢失后，已加密保存的密钥无法解密。"
+fi
+# 老部署的 .env 里没有 Agent 服务令牌（旧版本的 Agent 跑在 backend 容器里）：补一个，否则 backend 启用 Agent 时拒绝启动
+if ! grep -qE '^AGENT_SERVICE_TOKEN=.{32,}' .env; then
+  printf '\nAGENT_SERVICE_TOKEN=%s\n' "$(rand)" >> .env
+  echo "==> 已在 .env 里补上 AGENT_SERVICE_TOKEN"
 fi
 
 echo "==> 拉取镜像并启动"

@@ -16,67 +16,6 @@ import (
 	agentsvc "video-canvas/internal/service/agent"
 )
 
-// stubBridge 只数一数 Finish 被调用了几次：服务令牌的检查必须发生在业务之前。
-type stubBridge struct{ finishes int }
-
-func (s *stubBridge) ProxyModel(context.Context, string, []byte, func([]byte)) error { return nil }
-func (s *stubBridge) ExecuteTool(context.Context, string, string, string, json.RawMessage) (*agentsvc.ToolResult, error) {
-	return &agentsvc.ToolResult{Content: "ok"}, nil
-}
-func (s *stubBridge) ExecuteNestedTool(context.Context, string, string, string, string, json.RawMessage) (*agentsvc.ToolResult, error) {
-	return &agentsvc.ToolResult{Content: "ok"}, nil
-}
-func (s *stubBridge) ReportAgentTool(context.Context, string, agentsvc.AgentToolEvent) (*agentsvc.AgentToolEventResult, error) {
-	return &agentsvc.AgentToolEventResult{Allowed: true}, nil
-}
-func (s *stubBridge) SaveState(context.Context, string, json.RawMessage) error { return nil }
-func (s *stubBridge) Finish(context.Context, string, string, string) error     { s.finishes++; return nil }
-
-func finish(t *testing.T, srv *httptest.Server, serviceToken string) int {
-	t.Helper()
-	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/internal/agent/bridge/finish", strings.NewReader(`{"status":"done"}`))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer run-token")
-	if serviceToken != "" {
-		req.Header.Set(middleware.ServiceTokenHeader, serviceToken)
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer resp.Body.Close()
-	return resp.StatusCode
-}
-
-func TestNewBridge_ServiceToken(t *testing.T) {
-	const token = "service-token-0123456789abcdef0123456789"
-	stub := &stubBridge{}
-	srv := httptest.NewServer(router.NewBridge("test", agenthandler.NewAgentBridgeHandler(stub), nil, token))
-	defer srv.Close()
-
-	if code := finish(t, srv, ""); code != http.StatusUnauthorized {
-		t.Errorf("配了服务令牌，没带就该 401，实际 %d", code)
-	}
-	if code := finish(t, srv, "wrong-token-0123456789abcdef012345678"); code != http.StatusUnauthorized {
-		t.Errorf("令牌不对该 401，实际 %d", code)
-	}
-	if stub.finishes != 0 {
-		t.Fatalf("被拒绝的请求不能进入业务: finishes=%d", stub.finishes)
-	}
-	if code := finish(t, srv, token); code != http.StatusOK || stub.finishes != 1 {
-		t.Errorf("令牌正确应放行: code=%d finishes=%d", code, stub.finishes)
-	}
-}
-
-func TestNewBridge_NoServiceTokenKeepsOldBehaviour(t *testing.T) {
-	stub := &stubBridge{}
-	srv := httptest.NewServer(router.NewBridge("test", agenthandler.NewAgentBridgeHandler(stub), nil, ""))
-	defer srv.Close()
-	if code := finish(t, srv, ""); code != http.StatusOK || stub.finishes != 1 {
-		t.Errorf("没配服务令牌时只靠运行令牌: code=%d finishes=%d", code, stub.finishes)
-	}
-}
-
 // ---- 平台 API 的路由 ----
 
 type platformStub struct{ calls, ended int }
@@ -155,7 +94,7 @@ func platformReqBody(t *testing.T, srv *httptest.Server, method, path, serviceTo
 func TestNewBridge_PlatformRoutesNeedTheServiceToken(t *testing.T) {
 	const token = "service-token-0123456789abcdef0123456789"
 	plat := &platformStub{}
-	srv := httptest.NewServer(router.NewBridge("test", agenthandler.NewAgentBridgeHandler(&stubBridge{}), agenthandler.NewPlatformHandler(plat), token))
+	srv := httptest.NewServer(router.NewBridge("test", agenthandler.NewPlatformHandler(plat), token))
 	defer srv.Close()
 
 	// 平台接口不用桥的运行令牌（Authorization），只认服务令牌
@@ -199,7 +138,7 @@ func TestNewBridge_PlatformRoutesNeedTheServiceToken(t *testing.T) {
 func TestNewBridge_ApprovalRoutesNeedTheServiceToken(t *testing.T) {
 	const token = "service-token-0123456789abcdef0123456789"
 	plat := &platformStub{}
-	srv := httptest.NewServer(router.NewBridge("test", agenthandler.NewAgentBridgeHandler(&stubBridge{}), agenthandler.NewPlatformHandler(plat), token))
+	srv := httptest.NewServer(router.NewBridge("test", agenthandler.NewPlatformHandler(plat), token))
 	defer srv.Close()
 	for path, body := range map[string]string{
 		"/internal/platform/v1/canvases/check":    `{"user_id":"1","canvas_id":"7"}`,
@@ -223,7 +162,7 @@ func TestNewBridge_ApprovalRoutesNeedTheServiceToken(t *testing.T) {
 // 没配服务令牌时（桥只监听回环、只靠运行令牌）平台接口根本不存在：它是整个内网信任的入口，不能在没有这道门的情况下暴露
 func TestNewBridge_PlatformRoutesAreAbsentWithoutServiceToken(t *testing.T) {
 	plat := &platformStub{}
-	srv := httptest.NewServer(router.NewBridge("test", agenthandler.NewAgentBridgeHandler(&stubBridge{}), agenthandler.NewPlatformHandler(plat), ""))
+	srv := httptest.NewServer(router.NewBridge("test", agenthandler.NewPlatformHandler(plat), ""))
 	defer srv.Close()
 	for _, tok := range []string{"", "anything-0123456789abcdef0123456789abcd"} {
 		if code := platformReq(t, srv, http.MethodPost, "/internal/platform/v1/tools/canvas_get_state", tok); code != http.StatusNotFound {
@@ -237,7 +176,7 @@ func TestNewBridge_PlatformRoutesAreAbsentWithoutServiceToken(t *testing.T) {
 
 func TestNewBridge_NoPlatformHandlerMeansNoPlatformRoutes(t *testing.T) {
 	const token = "service-token-0123456789abcdef0123456789"
-	srv := httptest.NewServer(router.NewBridge("test", agenthandler.NewAgentBridgeHandler(&stubBridge{}), nil, token))
+	srv := httptest.NewServer(router.NewBridge("test", nil, token))
 	defer srv.Close()
 	if code := platformReq(t, srv, http.MethodPost, "/internal/platform/v1/tools/canvas_get_state", token); code != http.StatusNotFound {
 		t.Errorf("没有平台 handler 时应 404: %d", code)
@@ -254,7 +193,7 @@ func TestNewBridge_EventPushRouteNeedsRelayAndServiceToken(t *testing.T) {
 	const body = `{"events":[{"user_id":"1","session_id":"5","canvas_id":"7","run_id":"9","seq":1,"type":"run.status","data":{},"created_at":"2026-10-25T08:00:00Z"}]}`
 
 	relay := &relayCounter{}
-	srv := httptest.NewServer(router.NewBridge("test", agenthandler.NewAgentBridgeHandler(&stubBridge{}), agenthandler.NewPlatformHandler(&platformStub{}).WithEventRelay(relay), token))
+	srv := httptest.NewServer(router.NewBridge("test", agenthandler.NewPlatformHandler(&platformStub{}).WithEventRelay(relay), token))
 	defer srv.Close()
 	if code := platformReqBody(t, srv, http.MethodPost, "/internal/platform/v1/events", "", body); code != http.StatusUnauthorized || relay.batches != 0 {
 		t.Errorf("没带服务令牌应 401 且不能进入业务: code=%d batches=%d", code, relay.batches)
@@ -264,7 +203,7 @@ func TestNewBridge_EventPushRouteNeedsRelayAndServiceToken(t *testing.T) {
 	}
 
 	// 没配中继（http / process 模式）：路由不存在
-	plain := httptest.NewServer(router.NewBridge("test", agenthandler.NewAgentBridgeHandler(&stubBridge{}), agenthandler.NewPlatformHandler(&platformStub{}), token))
+	plain := httptest.NewServer(router.NewBridge("test", agenthandler.NewPlatformHandler(&platformStub{}), token))
 	defer plain.Close()
 	if code := platformReqBody(t, plain, http.MethodPost, "/internal/platform/v1/events", token, body); code != http.StatusNotFound {
 		t.Errorf("没配中继不应挂载事件推送: %d", code)
@@ -273,7 +212,7 @@ func TestNewBridge_EventPushRouteNeedsRelayAndServiceToken(t *testing.T) {
 
 func TestNewBridge_IDProbeNeedsTheServiceToken(t *testing.T) {
 	const token = "service-token-0123456789abcdef0123456789"
-	srv := httptest.NewServer(router.NewBridge("test", agenthandler.NewAgentBridgeHandler(&stubBridge{}), agenthandler.NewPlatformHandler(&platformStub{}), token))
+	srv := httptest.NewServer(router.NewBridge("test", agenthandler.NewPlatformHandler(&platformStub{}), token))
 	defer srv.Close()
 	if code := platformReq(t, srv, http.MethodGet, "/internal/platform/v1/ids/7", ""); code != http.StatusUnauthorized {
 		t.Errorf("没带服务令牌应 401: %d", code)

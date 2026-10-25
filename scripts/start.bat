@@ -34,8 +34,20 @@ rem 首次运行自动安装前端依赖
 set "WEB_CMD=%PM% run dev"
 if not exist "%ROOT%web\node_modules" set "WEB_CMD=%PM% install && %PM% run dev"
 
+rem 画布 Agent 是独立的服务（agent\，要求 Node >= 22.19，并在 agent\ 里 npm ci 装好依赖）；没装依赖就跳过，后端的 Agent 保持关闭
+set "AGENT_SET="
+where node >nul 2>nul
+if not errorlevel 1 if exist "%ROOT%agent\node_modules" (
+  set "AGENT_TOKEN=video-canvas-local-agent-token-0123456789abcdef"
+  echo ==^> 启动画布 Agent 服务 ^(127.0.0.1:8090^)
+  start "video-canvas agent" /d "%ROOT%agent" cmd /k "chcp 65001 >nul & set AGENT_SERVICE_TOKEN=%AGENT_TOKEN%& set AGENT_LISTEN=127.0.0.1:8090& set AGENT_DB_PATH=%ROOT%backend\data\agent\agent.sqlite& set AGENT_BRIDGE_URL=http://127.0.0.1:47001& set AGENT_ID_KEY=id_key& node --disable-warning=ExperimentalWarning src/serve.ts"
+  set "AGENT_SET=set APP_AGENT_ENABLED=true& set APP_AGENT_URL=http://127.0.0.1:8090& set APP_AGENT_BRIDGE_URL=http://127.0.0.1:47001& set APP_AGENT_SERVICE_TOKEN=%AGENT_TOKEN%& "
+) else (
+  echo [提示] 没有 agent\node_modules ^(或没有 node^)，画布 Agent 不启动。需要的话：cd agent ^&^& npm ci
+)
+
 echo ==^> 启动后端 (配置: %CONFIG%)
-start "video-canvas backend" /d "%ROOT%backend" cmd /k "chcp 65001 >nul & go run ./cmd/server -c %CONFIG%"
+start "video-canvas backend" /d "%ROOT%backend" cmd /k "chcp 65001 >nul & %AGENT_SET%go run ./cmd/server -c %CONFIG%"
 
 echo ==^> 启动前端 (%PM%)
 start "video-canvas web" /d "%ROOT%web" cmd /k "chcp 65001 >nul & %WEB_CMD%"

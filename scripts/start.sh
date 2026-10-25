@@ -43,6 +43,7 @@ fi
 
 BACKEND_PID=""
 WEB_PID=""
+AGENT_PID=""
 
 # 递归结束进程及其子进程（npm run dev 会多套几层）
 kill_tree() {
@@ -61,12 +62,27 @@ cleanup() {
   echo "==> 停止服务"
   [ -n "$BACKEND_PID" ] && kill_tree "$BACKEND_PID"
   [ -n "$WEB_PID" ] && kill_tree "$WEB_PID"
+  [ -n "$AGENT_PID" ] && kill_tree "$AGENT_PID"
   wait 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
 
+# 画布 Agent 是独立的服务（agent/，要求 Node >= 22.19，并在 agent/ 里 npm ci 装好依赖）；没装依赖就跳过，后端的 Agent 保持关闭
+AGENT_DIR="$ROOT/agent"
+AGENT_ENV=()
+if [ -d "$AGENT_DIR/node_modules" ] && command -v node >/dev/null 2>&1; then
+  AGENT_TOKEN="$(openssl rand -hex 32 2>/dev/null || head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+  echo "==> 启动画布 Agent 服务 (127.0.0.1:8090，数据在 backend/data/agent/)"
+  (cd "$AGENT_DIR" && AGENT_SERVICE_TOKEN="$AGENT_TOKEN" AGENT_LISTEN=127.0.0.1:8090 AGENT_DB_PATH="$BACKEND_DIR/data/agent/agent.sqlite" \
+    AGENT_BRIDGE_URL=http://127.0.0.1:47001 AGENT_ID_KEY="${AGENT_ID_KEY:-id_key}" exec node --disable-warning=ExperimentalWarning src/serve.ts) &
+  AGENT_PID=$!
+  AGENT_ENV=(APP_AGENT_ENABLED=true APP_AGENT_URL=http://127.0.0.1:8090 APP_AGENT_BRIDGE_URL=http://127.0.0.1:47001 "APP_AGENT_SERVICE_TOKEN=$AGENT_TOKEN")
+else
+  echo "[提示] 没有 agent/node_modules（或没有 node），画布 Agent 不启动。需要的话：cd agent && npm ci"
+fi
+
 echo "==> 启动后端 (配置: $CONFIG)"
-(cd "$BACKEND_DIR" && exec "$BIN" -c "$CONFIG") &
+(cd "$BACKEND_DIR" && exec env ${AGENT_ENV[@]+"${AGENT_ENV[@]}"} "$BIN" -c "$CONFIG") &
 BACKEND_PID=$!
 
 echo "==> 启动前端 ($PM run dev)"
@@ -75,7 +91,7 @@ WEB_PID=$!
 
 echo "==> 前端 http://localhost:5173    后端 http://localhost:8080    Ctrl+C 停止"
 
-# 任意一个退出就一起收掉（不用 wait -n，兼容 macOS 自带的 bash 3.2）
+# 后端或前端任意一个退出就一起收掉（不用 wait -n，兼容 macOS 自带的 bash 3.2）；Agent 服务单独退出不影响其他（画布里的 Agent 会提示暂不可用）
 while kill -0 "$BACKEND_PID" 2>/dev/null && kill -0 "$WEB_PID" 2>/dev/null; do
   sleep 1
 done

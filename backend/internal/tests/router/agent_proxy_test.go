@@ -105,3 +105,28 @@ func TestRouter_DurableAgentRoutesStillNeedLogin(t *testing.T) {
 		t.Error("没登录时 Agent 服务不应收到请求")
 	}
 }
+
+// 没启用 Agent（agent.enabled=false）：这些接口统一返回「Agent 暂不可用」，而不是 404，前端据此提示。
+func TestRouter_AgentRoutesWithoutAgentAreUnavailable(t *testing.T) {
+	jwt, _, err := utils.GenerateToken(42, "alice", 1, proxyJWTSecret, "test", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := router.New("test", proxyJWTSecret, router.Handlers{
+		Health: &handler.HealthHandler{},
+		UserState: func(context.Context, uint64) (*middleware.UserState, error) {
+			return &middleware.UserState{Role: "user", Status: "active", TokenVersion: 1}, nil
+		},
+	})
+	for _, rt := range []struct{ method, path string }{
+		{"GET", "/api/v1/agent/models"}, {"POST", "/api/v1/canvas/c1/agent/sessions"}, {"POST", "/api/v1/agent/sessions/s1/runs"}, {"POST", "/api/v1/agent/approvals/a1/decision"},
+	} {
+		req := httptest.NewRequest(rt.method, rt.path, strings.NewReader(`{}`))
+		req.Header.Set("Authorization", "Bearer "+jwt)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusServiceUnavailable || !strings.Contains(w.Body.String(), `"code":60005`) {
+			t.Errorf("%s %s 应返回 503/60005：%d %s", rt.method, rt.path, w.Code, w.Body.String())
+		}
+	}
+}

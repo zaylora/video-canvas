@@ -51,7 +51,7 @@ func TestAgentModels(t *testing.T) {
 
 func TestAgentModels_EmptyIsAnEmptyListNotNull(t *testing.T) {
 	e := newAgentEnv(t, defaultAgentModels...)
-	e.svc = NewAgentService(AgentDeps{Repo: e.repo, Canvas: NewAgentCanvasService(e.repo, e.bc), Models: fakeAgentModels{list: nil}, Runtime: e.rt, Broadcaster: e.bc})
+	e.svc = NewAgentService(AgentDeps{Repo: e.repo, Canvas: NewAgentCanvasService(e.repo, e.bc), Models: fakeAgentModels{list: nil}})
 	br := NewAgentBridge(BridgeDeps{Repo: e.repo, Canvas: NewAgentCanvasService(e.repo, e.bc), Agent: e.svc})
 	got, err := br.AgentModels(context.Background())
 	if err != nil || got == nil || len(got) != 0 {
@@ -59,9 +59,9 @@ func TestAgentModels_EmptyIsAnEmptyListNotNull(t *testing.T) {
 	}
 }
 
-// 消息里的引用校验：规则就是 StartRun 里用的那一份（checkRefs），这里只验证经平台接口得到同样的结果。
-func TestCheckMessage_SameRulesAsStartRun(t *testing.T) {
-	br, e := refsBridge(t)
+// 消息里的引用校验：发起运行前由 Agent 服务经平台接口问 Go（节点、模型、技能引用是否有效）。
+func TestCheckMessage_Rules(t *testing.T) {
+	br, _ := refsBridge(t)
 	ctx := context.Background()
 	ok := "把 @[剧本](node:n_script) 拆开，角色用 @[Seedream](model:seedream)"
 	if sel, err := br.CheckMessage(ctx, 1, 7, ok, []string{"n_script"}); err != nil || len(sel) != 1 || sel[0] != "n_script" {
@@ -79,15 +79,10 @@ func TestCheckMessage_SameRulesAsStartRun(t *testing.T) {
 		"附件暂不支持":   {"看 @[图](asset:1)", "附件"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			_, viaPlatform := br.CheckMessage(ctx, 1, 7, c.msg, nil)
-			wantAgentCode(t, viaPlatform, errcode.ErrInvalidParams)
-			if !strings.Contains(viaPlatform.Error(), c.want) {
-				t.Errorf("错误应点名 %q: %v", c.want, viaPlatform)
-			}
-			// 和 StartRun 报的是同一句话
-			viaStart := startWith(e, c.msg)
-			if viaStart == nil || viaStart.Error() != viaPlatform.Error() {
-				t.Errorf("两条路径的错误应一致:\n平台 %v\nStartRun %v", viaPlatform, viaStart)
+			_, err := br.CheckMessage(ctx, 1, 7, c.msg, nil)
+			wantAgentCode(t, err, errcode.ErrInvalidParams)
+			if !strings.Contains(err.Error(), c.want) {
+				t.Errorf("错误应点名 %q: %v", c.want, err)
 			}
 		})
 	}

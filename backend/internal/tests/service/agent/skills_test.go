@@ -5,7 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	"video-canvas/internal/model"
 	. "video-canvas/internal/service/agent"
 )
 
@@ -61,7 +60,7 @@ func TestAgentBridge_ImportedSkills(t *testing.T) {
 				t.Errorf("正文缺少 %q:\n%s", want, res.Content)
 			}
 		}
-		if res.IsError || !strings.Contains(b.repo.lastToolEndSummary(), "demo@v1") {
+		if res.IsError || !strings.Contains(toolEndSummary(res), "demo@v1") {
 			t.Errorf("摘要应带版本: %+v", res)
 		}
 	})
@@ -82,11 +81,11 @@ func TestAgentBridge_ImportedSkills(t *testing.T) {
 	t.Run("运行内固定版本：管理员切到 v2 后，本次运行仍读 v1，新运行读 v2", func(t *testing.T) {
 		mustConfirm(t, se, 1, standardPkg(t, "demo", "第二版正文"))
 		_, _ = se.svc.SetActiveVersion(ctx, 1, "demo", 2)
-		if res := b.tool(t, tok, "skill_read", map[string]any{"name": "demo"}); !strings.Contains(res.Content, "第一版正文") || !strings.Contains(b.repo.lastToolEndSummary(), "@v1") {
+		if res := b.tool(t, tok, "skill_read", map[string]any{"name": "demo"}); !strings.Contains(res.Content, "第一版正文") || !strings.Contains(toolEndSummary(res), "@v1") {
 			t.Errorf("已固定的运行应继续读 v1: %+v", res)
 		}
-		tok2 := b.br.IssueToken(run, model.AgentRunInput{ModelKey: "claude", Mode: "all"}) // 同一运行的新片段：令牌不同，固定的版本重新开始
-		if res := b.tool(t, tok2, "skill_read", map[string]any{"name": "demo"}); !strings.Contains(res.Content, "第二版正文") || !strings.Contains(b.repo.lastToolEndSummary(), "@v2") {
+		b.br.EndPlatformRun(run.ID) // 运行结束：固定的版本随之清掉，下一个运行重新固定
+		if res := b.tool(t, tok, "skill_read", map[string]any{"name": "demo"}); !strings.Contains(res.Content, "第二版正文") || !strings.Contains(toolEndSummary(res), "@v2") {
 			t.Errorf("新运行读 v2: %+v", res)
 		}
 	})

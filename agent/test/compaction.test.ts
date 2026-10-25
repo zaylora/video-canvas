@@ -5,8 +5,6 @@ import {
 } from "../src/compaction.ts";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { Msg } from "../src/context.ts";
-import { runAgent } from "../src/run.ts";
-import { baseInput, fakeBridge, withBridge } from "./helpers.ts";
 
 const ZERO = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
 const text = (m: Msg): string => (typeof m.content === "string" ? m.content : (m.content ?? []).map((p) => p.text ?? p.name ?? "").join(""));
@@ -139,52 +137,3 @@ test("压缩：摘要请求带上调用方的中止信号", async () => {
 });
 
 // ---- 接入运行 ----
-
-const history = () => tenMessages() as unknown as AgentMessage[]; // 交给 runAgent 的历史
-const smallWindow = { name: "C", context_window: 4000, max_tokens: 512, vision: false };
-
-test("运行：历史太长时先压缩再请求模型；摘要请求走桥、带内部标记、不带工具；保存的历史是压缩后的", async () => {
-  await withBridge({ models: [{ text: "好的" }], summaries: [{ text: "目标：拆分镜" }] }, async (b) => {
-    const r = await runAgent(baseInput(b.url, { messages: history(), model: smallWindow }));
-    assert.equal(r.status, "done");
-    assert.equal(b.rec.summaries.length, 1);
-    const purposes = b.rec.headers.map((h) => h["x-agent-purpose"]);
-    assert.deepEqual(purposes.filter(Boolean), ["summary"], "只有摘要请求带内部标记，对话请求不带");
-    assert.ok(!b.rec.summaries[0].tools?.length, "摘要请求不带工具");
-    assert.match(JSON.stringify(b.rec.summaries[0].messages), /U0/);
-    const sent = b.rec.chats[0].messages.filter((m: Msg) => m.role !== "system");
-    assert.match(text(sent[0]), /目标：拆分镜/);
-    assert.ok(!JSON.stringify(sent).includes("U0"), "旧消息不再发给模型");
-    assert.match(JSON.stringify(sent), /U8/);
-    const saved = b.rec.states.at(-1)!;
-    assert.ok(isSummaryMessage(saved[0]), "摘要写进保存的历史，下次不用重新生成");
-    assert.ok(!JSON.stringify(saved).includes("U0"));
-  });
-});
-
-test("运行：压缩过一次，后面的回合不再重复生成摘要", async () => {
-  await withBridge({
-    models: [{ tools: [{ id: "c1", name: "canvas_get_state", args: {} }] }, { text: "读完了" }],
-    summaries: [{ text: "摘要一" }, { text: "不该出现的摘要二" }],
-  }, async (b) => {
-    await runAgent(baseInput(b.url, { messages: history(), model: smallWindow }));
-    assert.equal(b.rec.chats.length, 2);
-    assert.equal(b.rec.summaries.length, 1);
-  });
-});
-
-test("运行：没超线不压缩，没有摘要请求", async () => {
-  await withBridge({ models: [{ text: "好" }] }, async (b) => {
-    await runAgent(baseInput(b.url));
-    assert.equal(b.rec.summaries.length, 0);
-  });
-});
-
-test("运行：摘要失败（桥返回 500）：运行照常，用原来的历史请求模型", async () => {
-  await withBridge({ models: [{ text: "好" }], summaries: [{ status: 500, msg: "上游挂了" }] }, async (b) => {
-    const r = await runAgent(baseInput(b.url, { messages: history(), model: smallWindow }));
-    assert.equal(r.status, "done");
-    assert.equal(b.rec.chats.length, 1);
-    assert.match(JSON.stringify(b.rec.chats[0].messages), /U0/);
-  });
-});

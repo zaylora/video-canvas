@@ -10,24 +10,6 @@ import (
 
 // 对外的视图放在 service 包而不是 model：id 用编码串（idcodec），而 model 不允许依赖内部包（depguard A1）。
 
-// AgentSessionView 是返回给前端的会话，id 与画布一样用十六进制串。
-type AgentSessionView struct {
-	ID        idcodec.ID `json:"id"`         // 会话 ID
-	CanvasID  idcodec.ID `json:"canvas_id"`  // 所属画布
-	Title     string     `json:"title"`      // 标题
-	Mode      string     `json:"mode"`       // 任务模式
-	ModelKey  string     `json:"model_key"`  // Agent 模型 key
-	LastSeq   int64      `json:"last_seq"`   // 最近一条事件的序号，前端据此判断有没有漏事件
-	CreatedAt time.Time  `json:"created_at"` // 创建时间
-	UpdatedAt time.Time  `json:"updated_at"` // 更新时间
-}
-
-// sessionView 转成返回给前端的结构。
-func sessionView(s *model.AgentSession) *AgentSessionView {
-	return &AgentSessionView{ID: idcodec.ID(s.ID), CanvasID: idcodec.ID(s.CanvasID), Title: s.Title, Mode: s.Mode,
-		ModelKey: s.ModelKey, LastSeq: s.LastSeq, CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt}
-}
-
 // AgentRunView 是返回给前端的运行。
 type AgentRunView struct {
 	ID            idcodec.ID `json:"id"`             // 运行 ID
@@ -64,12 +46,6 @@ type AgentEventView struct {
 	CreatedAt time.Time       `json:"created_at"` // 创建时间
 }
 
-// AgentHistoryView 是一页聊天记录：事件按序号升序，HasMore 表示更早还有没有。
-type AgentHistoryView struct {
-	Events  []*AgentEventView `json:"events"`   // 事件，升序
-	HasMore bool              `json:"has_more"` // 更早还有事件
-}
-
 // eventView 转成返回给前端的结构。
 func eventView(e *model.AgentEvent) *AgentEventView {
 	v := &AgentEventView{SessionID: idcodec.ID(e.SessionID), Seq: e.Seq, Type: e.Type, Data: json.RawMessage(e.PayloadJSON), CreatedAt: e.CreatedAt}
@@ -78,22 +54,4 @@ func eventView(e *model.AgentEvent) *AgentEventView {
 		v.RunID = &id
 	}
 	return v
-}
-
-// AgentApprovalView 是返回给前端的审批。
-type AgentApprovalView struct {
-	ID           idcodec.ID      `json:"id"`            // 审批 ID
-	RunID        idcodec.ID      `json:"run_id"`        // 所属运行
-	Kind         string          `json:"kind"`          // generate / delete / ask
-	Status       string          `json:"status"`        // 审批状态
-	Payload      json.RawMessage `json:"payload"`       // 待决定的内容
-	QuoteCredits int             `json:"quote_credits"` // 预估积分
-	Decision     json.RawMessage `json:"decision"`      // 用户的决定
-	ExpiresAt    time.Time       `json:"expires_at"`    // 过期时间
-}
-
-// approvalView 转成返回给前端的结构。
-func approvalView(a *model.AgentApproval) *AgentApprovalView {
-	return &AgentApprovalView{ID: idcodec.ID(a.ID), RunID: idcodec.ID(a.RunID), Kind: a.Kind, Status: a.Status,
-		Payload: json.RawMessage(a.PayloadJSON), QuoteCredits: a.QuoteCredits, Decision: json.RawMessage(a.DecisionJSON), ExpiresAt: a.ExpiresAt}
 }

@@ -145,15 +145,12 @@ func TestToolRegistry_LabelsMatchFrontend(t *testing.T) {
 	}
 }
 
-func TestAgentBridge_ToolEventsCarryLabel(t *testing.T) {
+func TestToolEnd_CarriesLabel(t *testing.T) {
 	b := newBridgeEnv(t)
 	tok, _ := b.token(t, "all")
-	b.tool(t, tok, "canvas_get_state", map[string]any{})
-	for _, typ := range []string{"tool.start", "tool.end"} {
-		ev := b.repo.lastEvent(typ)
-		if ev["label"] != "读取画布" || ev["verb"] != "读取" {
-			t.Errorf("%s 要带界面名称，前端才不用硬编码: %v", typ, ev)
-		}
+	ev := b.tool(t, tok, "canvas_get_state", map[string]any{}).ToolEnd
+	if ev["label"] != "读取画布" || ev["verb"] != "读取" {
+		t.Errorf("tool.end 要带界面名称，前端才不用硬编码: %v", ev)
 	}
 }
 

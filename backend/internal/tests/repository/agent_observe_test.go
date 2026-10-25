@@ -96,44 +96,6 @@ func TestObserve_ToolCalls(t *testing.T) {
 	})
 }
 
-func TestObserve_Feedback(t *testing.T) {
-	ctx := context.Background()
-	db := observeDB(t)
-	r := NewAgentObserveRepository(db)
-	run := seedRun(t, db, 1, model.RunSucceeded, t0)
-
-	if _, err := r.GetFeedback(ctx, run.ID, 1); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("没评价应返回 ErrNotFound：%v", err)
-	}
-	fb := &model.AgentFeedback{RunID: run.ID, UserID: 1, Rating: model.FeedbackDown, Reasons: datatypes.JSON(`["misread"]`), Comment: "不对"}
-	if err := r.UpsertFeedback(ctx, fb); err != nil {
-		t.Fatal(err)
-	}
-	// 改选：同一人同一运行覆盖
-	if err := r.UpsertFeedback(ctx, &model.AgentFeedback{RunID: run.ID, UserID: 1, Rating: model.FeedbackUp, Reasons: datatypes.JSON(`[]`)}); err != nil {
-		t.Fatal(err)
-	}
-	got, err := r.GetFeedback(ctx, run.ID, 1)
-	if err != nil || got.Rating != model.FeedbackUp || got.Comment != "" {
-		t.Fatalf("改选应覆盖：%+v %v", got, err)
-	}
-	var n int64
-	db.Model(&model.AgentFeedback{}).Where("run_id = ?", run.ID).Count(&n)
-	if n != 1 {
-		t.Errorf("每人每运行只有一条，得到 %d", n)
-	}
-	// 取消
-	if err := r.DeleteFeedback(ctx, run.ID, 1); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := r.GetFeedback(ctx, run.ID, 1); !errors.Is(err, ErrNotFound) {
-		t.Error("取消后应查不到")
-	}
-	if err := r.DeleteFeedback(ctx, run.ID, 1); err != nil {
-		t.Errorf("重复取消是幂等的：%v", err)
-	}
-}
-
 func TestObserve_RunFacts(t *testing.T) {
 	ctx := context.Background()
 	db := observeDB(t)
@@ -608,7 +570,8 @@ func TestObserve_EndToEnd(t *testing.T) {
 	db.Create(&model.AgentModelCall{RunID: run.ID, UserID: 1, ModelKey: "claude", Status: model.ModelCallSettled, InputTokens: 100, OutputTokens: 20, Purpose: "main", ChannelKey: "ch1", StopReason: "stop"})
 
 	svc := agentsvcNewObserve(repo, run)
-	if _, err := svc.SetFeedback(ctx, 1, run.ID, &model.SetAgentFeedbackReq{Rating: -1, Reasons: []string{"misread"}, Comment: "不对"}); err != nil {
+	db.Create(&model.AgentFeedback{RunID: run.ID, UserID: 1, Rating: -1, Reasons: datatypes.JSON(`["misread"]`), Comment: "不对"}) // 旧运行的评价（旧数据）
+	if err := svc.RefreshDigest(ctx, run.ID); err != nil {
 		t.Fatal(err)
 	}
 	d, err := repo.GetDigest(ctx, run.ID)

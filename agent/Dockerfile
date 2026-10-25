@@ -21,7 +21,7 @@ FROM alpine:3.22
 WORKDIR /app
 # node 二进制取自官方镜像（alpine 仓库里的版本可能低于 pi 要求的 22.19）；它动态链接 libstdc++。运行镜像里没有 npm
 RUN apk add --no-cache libstdc++ && addgroup -S app && adduser -S -G app app \
-    # durable 模式的数据目录：挂命名卷时 Docker 会按镜像里这个目录的属主初始化卷，不预先建好卷就归 root、服务（app 用户）写不进去
+    # 数据目录：挂命名卷时 Docker 会按镜像里这个目录的属主初始化卷，不预先建好卷就归 root、服务（app 用户）写不进去
     && mkdir -p /data && chown app:app /data
 COPY --from=node:22-alpine /usr/local/bin/node /usr/local/bin/node
 COPY --from=build /rt/dist ./dist

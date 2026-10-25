@@ -22,3 +22,11 @@ func canvasCall(t *testing.T, r *gin.Engine, method, path, body string) (int, ma
 	}
 	return w.Code, resp
 }
+
+// agentCall 同 canvasCall：JSON 进，JSON 出。
+func agentCall(t *testing.T, r *gin.Engine, method, path, body string) (int, map[string]any) {
+	t.Helper()
+	return canvasCall(t, r, method, path, body)
+}
+
+func codeOf(resp map[string]any) int { c, _ := resp["code"].(float64); return int(c) }

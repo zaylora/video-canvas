@@ -1,10 +1,6 @@
 package initialize_test
 
 import (
-	"net"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -13,196 +9,6 @@ import (
 	"video-canvas/internal/provider/webaccess"
 	agentsvc "video-canvas/internal/service/agent"
 )
-
-func TestParseNodeVersion(t *testing.T) {
-	cases := []struct {
-		in      string
-		wantOK  bool
-		wantErr bool
-	}{
-		{"v23.6.0\n", true, false},
-		{"v22.19.0", true, false},
-		{"v22.20.1", true, false},
-		{"v24.0.0", true, false},
-		{"v22.18.9", false, false},
-		{"v22.0.0", false, false},
-		{"v20.11.1", false, false},
-		{"garbage", false, true},
-		{"", false, true},
-		{"v22", false, true},
-	}
-	for _, tc := range cases {
-		t.Run(tc.in, func(t *testing.T) {
-			ok, err := NodeVersionOK(tc.in)
-			if (err != nil) != tc.wantErr || ok != tc.wantOK {
-				t.Errorf("NodeVersionOK(%q)=%v,%v 期望 %v,err=%v", tc.in, ok, err, tc.wantOK, tc.wantErr)
-			}
-		})
-	}
-}
-
-func TestResolveAgentRuntime_Errors(t *testing.T) {
-	t.Run("找不到 node", func(t *testing.T) {
-		_, err := ResolveAgentRuntime(config.Agent{Enabled: true, NodePath: "/nonexistent/node", RuntimeDir: t.TempDir()})
-		if err == nil || !strings.Contains(err.Error(), "node") {
-			t.Errorf("应说明找不到 node: %v", err)
-		}
-	})
-
-	node, lookErr := exec.LookPath("node")
-	if lookErr != nil {
-		t.Skip("没有 node，跳过其余用例")
-	}
-
-	t.Run("目录里没有入口脚本：两个位置都要说", func(t *testing.T) {
-		_, err := ResolveAgentRuntime(config.Agent{Enabled: true, NodePath: node, RuntimeDir: t.TempDir()})
-		if err == nil || !strings.Contains(err.Error(), "src/main.ts") || !strings.Contains(err.Error(), "dist/main.js") || !strings.Contains(err.Error(), "npm run build") {
-			t.Errorf("应指出缺 src/main.ts 或 dist/main.js，并提示构建: %v", err)
-		}
-	})
-
-	t.Run("有脚本但没装依赖：提示 npm ci", func(t *testing.T) {
-		dir := t.TempDir()
-		if err := os.MkdirAll(filepath.Join(dir, "src"), 0o750); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(dir, "src", "main.ts"), []byte("//"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		_, err := ResolveAgentRuntime(config.Agent{Enabled: true, NodePath: node, RuntimeDir: dir})
-		if err == nil || !strings.Contains(err.Error(), "npm ci") {
-			t.Errorf("应提示运行 npm ci: %v", err)
-		}
-	})
-
-	t.Run("完整的目录：解析成绝对路径", func(t *testing.T) {
-		rtDir, _ := filepath.Abs("../../../../agent")
-		if _, err := os.Stat(filepath.Join(rtDir, "node_modules")); err != nil {
-			t.Skip("agent 目录没有安装依赖")
-		}
-		p, err := ResolveAgentRuntime(config.Agent{Enabled: true, NodePath: node, RuntimeDir: rtDir})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !filepath.IsAbs(p.Node) || !filepath.IsAbs(p.Script) || !strings.HasSuffix(p.Script, filepath.Join("src", "main.ts")) {
-			t.Errorf("应是绝对路径，仓库里直接跑源码: %+v", p)
-		}
-	})
-
-	// 部署镜像里只有构建产物 dist/main.js；仓库里源码和产物可能同时存在，这时用源码，
-	// 免得开发时改了 src 却被旧的 dist 盖住
-	t.Run("入口脚本的选择：有源码用源码，只有产物用产物", func(t *testing.T) {
-		write := func(dir, rel string) {
-			t.Helper()
-			if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, rel)), 0o750); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(filepath.Join(dir, rel), []byte("//"), 0o600); err != nil {
-				t.Fatal(err)
-			}
-		}
-		deployed := t.TempDir()
-		write(deployed, "dist/main.js")
-		write(deployed, "node_modules/.keep")
-		p, err := ResolveAgentRuntime(config.Agent{Enabled: true, NodePath: node, RuntimeDir: deployed})
-		if err != nil || !strings.HasSuffix(p.Script, filepath.Join("dist", "main.js")) {
-			t.Errorf("只有 dist 时用产物: %+v %v", p, err)
-		}
-		both := t.TempDir()
-		write(both, "dist/main.js")
-		write(both, "src/main.ts")
-		write(both, "node_modules/.keep")
-		p, err = ResolveAgentRuntime(config.Agent{Enabled: true, NodePath: node, RuntimeDir: both})
-		if err != nil || !strings.HasSuffix(p.Script, filepath.Join("src", "main.ts")) {
-			t.Errorf("两者都有时用源码: %+v %v", p, err)
-		}
-	})
-}
-
-func TestListenLoopback(t *testing.T) {
-	ln, err := ListenLoopback("127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ln.Close()
-	if !strings.HasPrefix(ln.Addr().String(), "127.0.0.1:") {
-		t.Errorf("addr=%s", ln.Addr())
-	}
-	// 即使配置校验被绕过，监听这一层也不能绑到非回环地址
-	for _, bad := range []string{"0.0.0.0:0", ":0", "[::]:0", "192.168.1.1:0"} {
-		if l, err := ListenLoopback(bad); err == nil {
-			l.Close()
-			t.Errorf("%q 不是回环地址，应拒绝", bad)
-		}
-	}
-}
-
-// ListenBridge 按配置监听桥：回环地址照旧；非回环地址只有配了服务令牌才放行（配置校验之外再拦一道）。
-func TestListenBridge(t *testing.T) {
-	ln, err := ListenBridge(config.Agent{BridgeAddr: "127.0.0.1:0"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	ln.Close()
-	if l, err := ListenBridge(config.Agent{BridgeAddr: "0.0.0.0:0"}); err == nil {
-		l.Close()
-		t.Error("没配服务令牌时不能监听非回环地址")
-	}
-	if l, err := ListenBridge(config.Agent{BridgeAddr: "0.0.0.0:0", ServiceToken: "short"}); err == nil {
-		l.Close()
-		t.Error("令牌太短等于没配，不能监听非回环地址")
-	}
-	ln, err = ListenBridge(config.Agent{BridgeAddr: "0.0.0.0:0", ServiceToken: strings.Repeat("k", 32)})
-	if err != nil {
-		t.Fatalf("配了合格的服务令牌就应该能监听: %v", err)
-	}
-	ln.Close()
-}
-
-// 桥监听在 0.0.0.0 / :: 时，本机的 Node 进程不能连「未指定地址」，要换成 127.0.0.1。
-func TestBridgeLocalURL(t *testing.T) {
-	cases := []struct {
-		addr net.Addr
-		want string
-	}{
-		{&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 47001}, "http://127.0.0.1:47001"},
-		{&net.TCPAddr{IP: net.IPv4zero, Port: 47001}, "http://127.0.0.1:47001"},
-		{&net.TCPAddr{IP: net.IPv6unspecified, Port: 47001}, "http://127.0.0.1:47001"},
-		{&net.TCPAddr{Port: 47001}, "http://127.0.0.1:47001"},
-		{&net.TCPAddr{IP: net.ParseIP("10.0.0.5"), Port: 47001}, "http://10.0.0.5:47001"},
-		{&net.TCPAddr{IP: net.ParseIP("::1"), Port: 47001}, "http://[::1]:47001"},
-	}
-	for _, tc := range cases {
-		if got := BridgeLocalURL(tc.addr); got != tc.want {
-			t.Errorf("BridgeLocalURL(%v)=%q，期望 %q", tc.addr, got, tc.want)
-		}
-	}
-}
-
-// http 模式：运行时用 HTTPLauncher 连独立的 Agent 服务，不再需要本机有 Node；
-// 桥地址是配置里写的对外地址（Agent 容器要能连上），不是本机监听地址。
-func TestAgentLauncher(t *testing.T) {
-	l, ok := AgentLauncher(config.Agent{Runtime: "http", URL: "http://agent:8090", ServiceToken: "tok"}).(*agentsvc.HTTPLauncher)
-	if !ok || l.BaseURL != "http://agent:8090" || l.ServiceToken != "tok" {
-		t.Errorf("http 模式应是 HTTPLauncher: %#v", l)
-	}
-	if _, ok := AgentLauncher(config.Agent{Runtime: "process"}).(agentsvc.ExecLauncher); !ok {
-		t.Error("process 模式应是 ExecLauncher")
-	}
-	if _, ok := AgentLauncher(config.Agent{}).(agentsvc.ExecLauncher); !ok {
-		t.Error("没写 runtime 应是 ExecLauncher")
-	}
-}
-
-func TestBridgeURLFor(t *testing.T) {
-	addr := &net.TCPAddr{IP: net.IPv4zero, Port: 47001}
-	if got := BridgeURLFor(config.Agent{Runtime: "http", BridgeURL: "http://backend:47001/"}, addr); got != "http://backend:47001" {
-		t.Errorf("http 模式用配置的对外地址（去掉结尾的斜杠）: %q", got)
-	}
-	if got := BridgeURLFor(config.Agent{}, addr); got != "http://127.0.0.1:47001" {
-		t.Errorf("process 模式用本机地址: %q", got)
-	}
-}
 
 func TestAgentWebAccess(t *testing.T) {
 	web, disabled := AgentWebAccess(config.Agent{WebEnabled: false}, nil)
@@ -239,42 +45,45 @@ func TestAgentDisabledTools(t *testing.T) {
 	}
 }
 
-func TestBridgeURLFor_Durable(t *testing.T) {
-	addr := &net.TCPAddr{IP: net.IPv4zero, Port: 47001}
-	if got := BridgeURLFor(config.Agent{Runtime: "durable", BridgeURL: "http://backend:47001/"}, addr); got != "http://backend:47001" {
-		t.Errorf("durable 模式和 http 一样用配置的对外地址: %q", got)
-	}
-}
-
 // durable 模式：前端接口反向代理给 Agent 服务；别的模式或没启用 Agent 时不装配代理（路由继续走 Go 自己的实现）。
 func TestAgentProxyFor(t *testing.T) {
 	tok := strings.Repeat("a", 32)
-	for name, ac := range map[string]config.Agent{
-		"没启用":     {Enabled: false, Runtime: "durable", URL: "http://agent:8090", ServiceToken: tok},
-		"process": {Enabled: true, Runtime: "process"},
-		"http":    {Enabled: true, Runtime: "http", URL: "http://agent:8090", ServiceToken: tok},
-	} {
-		p, err := AgentProxyFor(ac)
-		if err != nil || p != nil {
-			t.Errorf("%s 不装配代理: %v %v", name, p, err)
-		}
+	p0, err0 := AgentProxyFor(config.Agent{Enabled: false, URL: "http://agent:8090", ServiceToken: tok})
+	if err0 != nil || p0 != nil {
+		t.Errorf("没启用不装配代理: %v %v", p0, err0)
 	}
-	p, err := AgentProxyFor(config.Agent{Enabled: true, Runtime: "durable", URL: "http://agent:8090", ServiceToken: tok})
+	p, err := AgentProxyFor(config.Agent{Enabled: true, URL: "http://agent:8090", ServiceToken: tok})
 	if err != nil || p == nil {
-		t.Errorf("durable 要装配代理: %v %v", p, err)
+		t.Errorf("启用要装配代理: %v %v", p, err)
 	}
-	if _, err := AgentProxyFor(config.Agent{Enabled: true, Runtime: "durable", URL: "agent:8090", ServiceToken: tok}); err == nil {
+	if _, err := AgentProxyFor(config.Agent{Enabled: true, URL: "agent:8090", ServiceToken: tok}); err == nil {
 		t.Error("地址不合法应报错")
 	}
 }
 
 func TestAgentRemoteRunsFor(t *testing.T) {
 	tok := strings.Repeat("a", 32)
-	if AgentRemoteRunsFor(config.Agent{Enabled: true, Runtime: "http", URL: "http://agent:8090", ServiceToken: tok}) != nil || AgentRemoteRunsFor(config.Agent{Runtime: "durable"}) != nil {
-		t.Error("只有启用的 durable 模式才读 Agent 服务里的运行")
+	if AgentRemoteRunsFor(config.Agent{Enabled: false, URL: "http://agent:8090", ServiceToken: tok}) != nil {
+		t.Error("没启用 Agent 就不读 Agent 服务里的运行")
 	}
-	r, ok := AgentRemoteRunsFor(config.Agent{Enabled: true, Runtime: "durable", URL: "http://agent:8090", ServiceToken: tok}).(*agentsvc.HTTPRemoteRuns)
+	r, ok := AgentRemoteRunsFor(config.Agent{Enabled: true, URL: "http://agent:8090", ServiceToken: tok}).(*agentsvc.HTTPRemoteRuns)
 	if !ok || r.BaseURL != "http://agent:8090" || r.ServiceToken != tok {
-		t.Errorf("durable: %+v", r)
+		t.Errorf("启用: %+v", r)
+	}
+}
+
+// 平台 API 是内网信任的入口：没有合格的服务令牌就不监听。
+func TestListenBridge(t *testing.T) {
+	tok := strings.Repeat("a", 32)
+	ln, err := ListenBridge(config.Agent{BridgeAddr: "127.0.0.1:0", ServiceToken: tok})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = ln.Close()
+	for _, bad := range []string{"", "short"} {
+		if l, err := ListenBridge(config.Agent{BridgeAddr: "127.0.0.1:0", ServiceToken: bad}); err == nil {
+			_ = l.Close()
+			t.Errorf("令牌 %q 不合格，不该监听", bad)
+		}
 	}
 }

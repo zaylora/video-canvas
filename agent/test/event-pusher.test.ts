@@ -5,7 +5,7 @@ import { EventPusher, toRelayEvent } from "../src/event-pusher.ts";
 import { createPlatform } from "../src/platform-client.ts";
 import { TOKEN } from "./engine-helpers.ts";
 import { fakePlatform } from "./platform-fake.ts";
-import { sleep } from "./helpers.ts";
+import { sleep } from "./durable-helpers.ts";
 
 const ev = (over: Partial<PublishedEvent> = {}): PublishedEvent => ({
   id: "1", sessionId: "7001", runId: "8003", userId: "42", canvasId: "9002", seq: 1, type: "message.done",

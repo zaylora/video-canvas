@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -55,7 +56,7 @@ type env struct {
 	bin  string
 }
 
-func newEnv(t *testing.T, runtime string) *env {
+func newEnv(t *testing.T) *env {
 	t.Helper()
 	e := &env{t: t, root: t.TempDir(), fake: t.TempDir(), bin: t.TempDir()}
 	write := func(path, content string, mode os.FileMode) {
@@ -65,10 +66,7 @@ func newEnv(t *testing.T, runtime string) *env {
 	}
 	write(filepath.Join(e.bin, "docker"), fakeDocker, 0o755)
 	write(filepath.Join(e.bin, "curl"), "#!/bin/sh\nexit 22\n", 0o755) // 取不到新版 compose 文件：沿用本地的
-	envFile := "IMAGE_TAG=1.0.0\nPOSTGRES_USER=postgres\nPOSTGRES_DB=video_canvas\n"
-	if runtime != "" {
-		envFile += "APP_AGENT_RUNTIME=" + runtime + "\n"
-	}
+	envFile := "IMAGE_TAG=1.0.0\nPOSTGRES_USER=postgres\nPOSTGRES_DB=video_canvas\nAGENT_SERVICE_TOKEN=" + strings.Repeat("a", 64) + "\n"
 	write(filepath.Join(e.root, ".env"), envFile, 0o644)
 	write(filepath.Join(e.root, "docker-compose.yml"), "services: {}\n", 0o644)
 	e.set("health", "backend healthy\nagent healthy\nweb\n")
@@ -126,8 +124,8 @@ func (e *env) envValue(key string) string {
 	return ""
 }
 
-func TestUpdate_DurableBacksUpAgentDataOnline(t *testing.T) {
-	e := newEnv(t, "durable")
+func TestUpdate_BacksUpAgentDataOnline(t *testing.T) {
+	e := newEnv(t)
 	out, code, st := e.run("--tag", "1.1.0")
 	if code != 0 || st["state"] != "succeeded" {
 		t.Fatalf("应成功：%d %v\n%s", code, st, out)
@@ -154,25 +152,60 @@ func TestUpdate_DurableBacksUpAgentDataOnline(t *testing.T) {
 	}
 }
 
-func TestUpdate_NonDurableDoesNotTouchAgentVolume(t *testing.T) {
-	for _, rt := range []string{"", "process", "http"} {
-		e := newEnv(t, rt)
-		out, code, _ := e.run("--tag", "1.1.0")
-		if code != 0 {
-			t.Fatalf("%q 应成功：%s", rt, out)
-		}
-		if strings.Contains(e.calls(), "compose run") || len(e.backups("*.agent.sqlite")) != 0 {
-			t.Errorf("runtime=%q 不该备份 Agent 数据：\n%s", rt, e.calls())
-		}
-	}
-	e := newEnv(t, "durable")
-	if _, code, _ := e.run("--tag", "1.1.0", "--no-backup"); code != 0 || strings.Contains(e.calls(), "compose run") {
+func TestUpdate_NoBackupFlagSkipsBothBackups(t *testing.T) {
+	e := newEnv(t)
+	if _, code, _ := e.run("--tag", "1.1.0", "--no-backup"); code != 0 || strings.Contains(e.calls(), "compose run") || len(e.backups("*")) != 0 {
 		t.Errorf("--no-backup 什么都不备份：\n%s", e.calls())
 	}
 }
 
+// 从没有独立 Agent 服务的旧版本升上来：.env 里还没有服务令牌，update.sh 要生成，否则 backend 启用 Agent 时拒绝启动。
+func TestUpdate_GeneratesAgentTokenWhenMissing(t *testing.T) {
+	for name, envLine := range map[string]string{"没有这一项": "", "太短": "AGENT_SERVICE_TOKEN=short\n"} {
+		t.Run(name, func(t *testing.T) {
+			e := newEnv(t)
+			raw, _ := os.ReadFile(filepath.Join(e.root, ".env"))
+			stripped := regexp.MustCompile(`(?m)^AGENT_SERVICE_TOKEN=.*\n`).ReplaceAllString(string(raw), "")
+			if err := os.WriteFile(filepath.Join(e.root, ".env"), []byte(stripped+envLine+"APP_AGENT_RUNTIME=http\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if out, code, _ := e.run("--tag", "1.1.0"); code != 0 {
+				t.Fatalf("应成功：%s", out)
+			}
+			tok := e.envValue("AGENT_SERVICE_TOKEN")
+			if len(tok) < 32 {
+				t.Errorf("应生成至少 32 个字符的令牌：%q", tok)
+			}
+			if got := strings.Count(mustRead(t, filepath.Join(e.root, ".env")), "AGENT_SERVICE_TOKEN="); got != 1 {
+				t.Errorf(".env 里只该有一行令牌：%d", got)
+			}
+		})
+	}
+}
+
+// 已有合格的令牌就不动：backend 和 agent 两边都靠它，换掉会让正在运行的服务和新配置对不上。
+func TestUpdate_KeepsExistingAgentToken(t *testing.T) {
+	e := newEnv(t)
+	before := e.envValue("AGENT_SERVICE_TOKEN")
+	if out, code, _ := e.run("--tag", "1.1.0"); code != 0 {
+		t.Fatalf("%s", out)
+	}
+	if got := e.envValue("AGENT_SERVICE_TOKEN"); got != before {
+		t.Errorf("已有的令牌不能被改：%q → %q", before, got)
+	}
+}
+
+func mustRead(t *testing.T, path string) string {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
 func TestUpdate_FirstEnableHasNoAgentDataYet(t *testing.T) {
-	e := newEnv(t, "durable")
+	e := newEnv(t)
 	e.set("agent_rc", "3") // 卷里还没有数据库
 	out, code, st := e.run("--tag", "1.1.0")
 	if code != 0 || st["state"] != "succeeded" {
@@ -193,7 +226,7 @@ func TestUpdate_AgentBackupFailureAbortsBeforeTouchingServices(t *testing.T) {
 		"备份不是 SQLite": func(e *env) { e.set("agent_dump", "<html>oops</html>") },
 	} {
 		t.Run(name, func(t *testing.T) {
-			e := newEnv(t, "durable")
+			e := newEnv(t)
 			set(e)
 			out, code, st := e.run("--tag", "1.1.0")
 			if code == 0 || st["state"] != "failed" {
@@ -216,7 +249,7 @@ func TestUpdate_AgentBackupFailureAbortsBeforeTouchingServices(t *testing.T) {
 }
 
 func TestUpdate_KeepsOnlyTheNewestBackupsOfEachKind(t *testing.T) {
-	e := newEnv(t, "durable")
+	e := newEnv(t)
 	if err := os.MkdirAll(filepath.Join(e.root, "backups"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -246,7 +279,7 @@ func TestUpdate_KeepsOnlyTheNewestBackupsOfEachKind(t *testing.T) {
 
 // 新版本起不来、退回旧版本后 agent 因为「数据已被新版本升级」拒绝启动：不能假装回退成功，要指到 Agent 的备份。
 func TestUpdate_RollbackExplainsAgentDataNewerThanOldImage(t *testing.T) {
-	e := newEnv(t, "durable")
+	e := newEnv(t)
 	e.set("health", "backend healthy\nagent starting\nweb\n") // 一直不就绪
 	e.set("logs_agent", `{"msg":"数据库的版本 4 比当前代码（最新是 3）新：可能回退了镜像。请换回新版镜像，或从升级前的备份恢复 agent_data 卷"}`)
 	out, code, st := e.run("--tag", "1.1.0", "--timeout", "1")
@@ -262,20 +295,13 @@ func TestUpdate_RollbackExplainsAgentDataNewerThanOldImage(t *testing.T) {
 	}
 }
 
-// 回退时看到的新版本日志里要带上 agent 的（durable 下 agent 起不来是最常见的原因）。
-func TestUpdate_RollbackShowsAgentLogsWhenDurable(t *testing.T) {
-	e := newEnv(t, "durable")
+// 回退时看到的新版本日志里要带上 agent 的（agent 起不来是最常见的原因之一）。
+func TestUpdate_RollbackShowsAgentLogs(t *testing.T) {
+	e := newEnv(t)
 	e.set("health", "backend healthy\nagent starting\nweb\n")
 	e.set("logs_agent", "AGENT-LOG-MARKER")
 	out, _, _ := e.run("--tag", "1.1.0", "--timeout", "1")
 	if !strings.Contains(out, "AGENT-LOG-MARKER") {
 		t.Errorf("回退时应打印 agent 的日志：\n%s", out)
-	}
-	plain := newEnv(t, "")
-	plain.set("health", "backend starting\nweb\n")
-	plain.set("logs_agent", "AGENT-LOG-MARKER")
-	out, _, _ = plain.run("--tag", "1.1.0", "--timeout", "1")
-	if strings.Contains(out, "AGENT-LOG-MARKER") {
-		t.Errorf("不是 durable 不打印 agent 的日志：\n%s", out)
 	}
 }

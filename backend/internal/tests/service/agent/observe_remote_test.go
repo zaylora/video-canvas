@@ -109,7 +109,7 @@ func newRemoteEnv(t *testing.T) *remoteEnv {
 	lf, lx := localFacts(runID)
 	e.repo.local[runID], e.repo.localExport[runID] = lf, lx
 	e.svc = NewObserveService(ObserveDeps{
-		Repo: e.repo, Runs: e.runs, Events: e.events, Audit: e.audit, Remote: remote,
+		Repo: e.repo, Audit: e.audit, Remote: remote,
 		Roles: func(_ context.Context, id uint64) (string, error) { return e.roles[id], nil },
 		Now:   func() time.Time { return e.now },
 	})

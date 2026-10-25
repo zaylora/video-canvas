@@ -167,7 +167,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 	aiCfgSvc.SetDryRunner(executor)
 	aiCfgSvc.SetTestTaskCreator(taskSvc)
 
-	// 画布 Agent：模型清单来自后台已发布的 agent 类型模型；运行时按 agent.enabled 装配，没启用时是占位（发起运行返回 60005）
+	// 画布 Agent：模型清单来自后台已发布的 agent 类型模型；会话、运行、审批在独立的 Agent 服务里，按 agent.enabled 装配平台 API 和反向代理
 	agentRepo := repository.NewAgentRepository(db)
 	// Agent 技能库：整包存在素材所用的对象存储里（key 前缀 agent-skills/，不会被 /files 公开路由读到：那里只认有素材记录的 key）
 	skillSvc := agentsvc.NewSkillService(repository.NewAgentSkillRepository(db), storeRegistry, auditRepo, agentsvc.SkillOptions{})
@@ -181,18 +181,17 @@ func NewApp(cfg *config.Config) (*App, error) {
 	agentSvc := agentsvc.NewAgentService(agentsvc.AgentDeps{
 		Harness: agentsvc.CurrentHarness(buildSHA),
 		Repo:    agentRepo, Canvas: agentCanvasSvc,
-		Models: agentsvc.NewRegistryAgentModels(aiCfgSvc), Runtime: agentsvc.NoAgentRuntime{}, Broadcaster: hub, Registry: aiCfgSvc, Skills: skillSvc,
+		Models: agentsvc.NewRegistryAgentModels(aiCfgSvc), Registry: aiCfgSvc, Skills: skillSvc,
 		Generator: agentsvc.NewAgentGenerator(taskSvc, agentCanvasSvc, aiCfgSvc), // 批准生成后创建任务并绑定到节点
 	})
-	// 上次服务退出时还停在 queued / running 的运行：它们的进程随旧服务一起没了，不会再有人推进，却占着画布。
-	// 不管有没有启用运行时都要做，否则关掉功能后画布仍被占着
+	// 切换到独立 Agent 服务之前留在 Go 库里的旧运行：没有人会再推进它们，不该一直显示成进行中。幂等
 	if n, err := agentRepo.InterruptActiveRuns(context.Background()); err != nil {
 		stopRunner(runnerStop)
 		closeRedis(rdb)
 		closeDB(db)
 		return nil, fmt.Errorf("恢复被中断的 Agent 运行失败：%w", err)
 	} else if n > 0 {
-		logger.Warn("上次退出时有 Agent 运行没有结束，已标为中断，用户可以点「继续」", zap.Int64("runs", n))
+		logger.Warn("Go 库里有旧的 Agent 运行还停在进行中，已标为中断", zap.Int64("runs", n))
 	}
 	agentRT, err := newAgentRuntime(cfg, agentDeps{tasks: taskSvc, assets: assetSvc, frames: newVideoFrames(), frameStore: assetFrameStore{assetSvc}, repo: agentRepo, agent: agentSvc, canvas: agentCanvasSvc, registry: aiCfgSvc, secrets: aiCfgSvc, skills: skillSvc, toolCalls: observeRepo, modelRequests: observeRepo, ipAllowed: outboundIPPolicy(cfg), broadcaster: hub})
 	if err != nil {
@@ -257,14 +256,10 @@ func NewApp(cfg *config.Config) (*App, error) {
 		return st.Role, nil
 	}
 
-	// 观测服务依赖角色查询（分析令牌的签发人必须仍是管理员），所以在 roleLookup 之后装配，再绑定给 AgentService 做摘要刷新
+	// 观测服务依赖角色查询（分析令牌的签发人必须仍是管理员），所以在 roleLookup 之后装配；Agent 服务里的运行经 Remote 读取并汇总
 	observeSvc := agentsvc.NewObserveService(agentsvc.ObserveDeps{
-		Repo: observeRepo, Runs: agentRepo, Events: agentSvc, Audit: auditRepo, Roles: roleLookup, Remote: AgentRemoteRunsFor(cfg.Agent),
+		Repo: observeRepo, Audit: auditRepo, Roles: roleLookup, Remote: AgentRemoteRunsFor(cfg.Agent),
 	})
-	agentSvc.SetObserver(observeSvc)
-	if agentRT != nil && agentRT.rt != nil {
-		agentRT.rt.SetTailSink(observeSvc) // 运行进程退出时把 stderr 末尾留进运行摘要
-	}
 
 	agentProxy, err := AgentProxyFor(cfg.Agent)
 	if err != nil {
@@ -280,9 +275,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 		Me:            handler.NewMeHandler(meSvc),
 		CanvasProject: handler.NewCanvasProjectHandler(canvasProjectSvc),
 		Conversation:  handler.NewConversationHandler(service.NewConversationService(repository.NewConversationRepository(db), taskSvc)),
-		Agent:         agenthandler.NewAgentHandler(agentSvc),
 		AgentSkill:    agenthandler.NewSkillHandler(skillSvc),
-		AgentFeedback: agenthandler.NewAgentFeedbackHandler(observeSvc),
 		AgentObserve:  agenthandler.NewAgentObserveHandler(observeSvc),
 		AnalysisToken: func(ctx context.Context, plain string) (uint64, uint64, error) {
 			who, err := observeSvc.AuthenticateToken(ctx, plain)

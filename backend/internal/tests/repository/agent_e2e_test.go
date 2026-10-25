@@ -1,7 +1,6 @@
 package repository_test
 
 import (
-	"bufio"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -10,10 +9,6 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -145,57 +140,7 @@ type e2eSecrets struct{}
 func (e2eSecrets) Get(context.Context, string) (string, error) { return "sk-e2e", nil }
 
 // e2eRuntime 是端到端用例的运行方式：每个用例在两种方式下各跑一遍，保证行为一致。
-type e2eRuntime string
-
-const (
-	e2eProcess e2eRuntime = "process" // 每个运行片段起一个 Node 子进程
-	// 同上，但配了服务令牌（.env 里设了 AGENT_SERVICE_TOKEN 却没切到 http 时就是这样）：桥要求服务令牌，子进程也得带上
-	e2eProcessToken e2eRuntime = "process-token"
-	e2eHTTP         e2eRuntime = "http" // 一个常驻的 Node 服务，Go 通过 HTTP 调它
-)
-
 const e2eServiceToken = "e2e-service-token-0123456789abcdef0123456789"
-
-func eachRuntime(t *testing.T, fn func(t *testing.T, rt e2eRuntime)) {
-	t.Helper()
-	for _, rt := range []e2eRuntime{e2eProcess, e2eProcessToken, e2eHTTP} {
-		t.Run(string(rt), func(t *testing.T) { fn(t, rt) })
-	}
-}
-
-// startAgentService 起一个真实的 Agent 服务（agent/src/serve.ts），返回它的地址；测试结束时关掉。
-func startAgentService(t *testing.T, node, dir string) string {
-	t.Helper()
-	cmd := exec.Command(node, "--disable-warning=ExperimentalWarning", filepath.Join(dir, "src", "serve.ts"))
-	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "AGENT_SERVICE_TOKEN=" + e2eServiceToken, "AGENT_LISTEN=127.0.0.1:0"}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = cmd.Process.Kill(); _ = cmd.Wait() })
-	addr := make(chan string, 1)
-	go func() {
-		re := regexp.MustCompile(`"addr":"([^"]+)"`)
-		sc := bufio.NewScanner(stderr)
-		for sc.Scan() {
-			if m := re.FindStringSubmatch(sc.Text()); m != nil {
-				addr <- m[1]
-				break
-			}
-		}
-		_, _ = io.Copy(io.Discard, stderr) // 之后的日志丢掉，免得管道写满卡住服务
-	}()
-	select {
-	case a := <-addr:
-		return "http://" + a
-	case <-time.After(15 * time.Second):
-		t.Fatal("Agent 服务没有在 15 秒内启动")
-		return ""
-	}
-}
 
 // ---- 环境 ----
 
@@ -203,28 +148,19 @@ type e2eEnv struct {
 	db     *gorm.DB
 	repo   *AgentRepository
 	svc    *agentsvc.AgentService
-	rt     *agentsvc.ProcessRuntime
 	bridge *agentsvc.AgentBridge
 	llm    *fakeLLM
-	sess   *model.AgentSession
 	canvas *model.CanvasProject
-	// bridgeURL 是桥的地址；serviceToken 不为空时同一个监听上还挂着平台接口
+	// bridgeURL 是平台 API 的地址（要服务令牌）
 	bridgeURL    string
 	serviceToken string
 }
 
-func newE2E(t *testing.T, mode e2eRuntime, turns ...llmTurn) *e2eEnv {
+// newE2E 搭平台 API 的真实环境：真实 PostgreSQL、Go 的平台 API（HTTP，要服务令牌）、假的 LLM 上游。
+// 没有 Agent 服务：这些测试直接以 Agent 服务的身份调用平台接口。Agent 服务本身的全栈测试见 agent_durable_e2e_test.go。
+func newE2E(t *testing.T, turns ...llmTurn) *e2eEnv {
 	t.Helper()
-	node, err := exec.LookPath("node")
-	if err != nil {
-		t.Skip("没有 node，跳过端到端测试")
-	}
-	dir, _ := filepath.Abs("../../../../agent")
-	if _, err := os.Stat(filepath.Join(dir, "node_modules")); err != nil {
-		t.Skip("agent 目录没有安装依赖（npm ci），跳过端到端测试")
-	}
-	db := isolatedDB(t, &model.CanvasProject{}, &model.AgentSession{}, &model.AgentRun{}, &model.AgentEvent{}, &model.AgentMutation{},
-		&model.AgentApproval{}, &model.AgentModelCall{}, &model.UserCredit{}, &model.CreditLedger{}, &model.GenerationTask{})
+	db := isolatedDB(t, &model.CanvasProject{}, &model.AgentRun{}, &model.AgentMutation{}, &model.AgentModelCall{}, &model.UserCredit{}, &model.CreditLedger{}, &model.GenerationTask{})
 	repo := NewAgentRepository(db)
 	llm := newFakeLLM(t, turns...)
 
@@ -235,81 +171,16 @@ func newE2E(t *testing.T, mode e2eRuntime, turns ...llmTurn) *e2eEnv {
 		t.Fatal(err)
 	}
 	openAccount(t, db, 1, 100, 0)
-	sess := newSession(t, repo, 1, canvas.ID)
 
 	canvasSvc := agentsvc.NewAgentCanvasService(repo, nil)
-	svc := agentsvc.NewAgentService(agentsvc.AgentDeps{Repo: repo, Canvas: canvasSvc, Models: e2eModels{}, Runtime: agentsvc.NoAgentRuntime{}})
+	svc := agentsvc.NewAgentService(agentsvc.AgentDeps{Repo: repo, Canvas: canvasSvc, Models: e2eModels{}})
 	bridge := agentsvc.NewAgentBridge(agentsvc.BridgeDeps{
 		Repo: repo, Canvas: canvasSvc, Agent: svc, Billing: agentsvc.NewAgentBilling(repo),
 		Registry: e2eRegistry{base: llm.srv.URL}, Secrets: e2eSecrets{}, RunUsage: repo, Streamer: llmgateway.New(llmgateway.Options{IdleTimeout: 10 * time.Second, IPAllowed: func(ip net.IP) bool { return ip.IsLoopback() }}), // 假上游在本机回环
 	})
-	// http 模式：Agent 是独立的 Node 服务，Go 和它互相靠服务令牌认；process 模式桥只靠运行令牌
-	var launcher agentsvc.Launcher = agentsvc.ExecLauncher{}
-	serviceToken := ""
-	if mode != e2eProcess {
-		serviceToken = e2eServiceToken
-	}
-	if mode == e2eHTTP {
-		launcher = &agentsvc.HTTPLauncher{BaseURL: startAgentService(t, node, dir), ServiceToken: serviceToken, HeartbeatTimeout: 30 * time.Second}
-	}
-	bridgeSrv := httptest.NewServer(router.NewBridge("test", agenthandler.NewAgentBridgeHandler(bridge), agenthandler.NewPlatformHandler(bridge), serviceToken))
+	bridgeSrv := httptest.NewServer(router.NewBridge("test", agenthandler.NewPlatformHandler(bridge), e2eServiceToken))
 	t.Cleanup(bridgeSrv.Close)
-	rt := agentsvc.NewProcessRuntime(agentsvc.RuntimeDeps{
-		Repo: repo, Bridge: bridge, Canvas: canvasSvc, Agent: svc, Registry: e2eRegistry{base: llm.srv.URL}, Launcher: launcher,
-		Config: agentsvc.RuntimeConfig{NodePath: node, ScriptPath: filepath.Join(dir, "src/main.ts"), BridgeURL: bridgeSrv.URL, ServiceToken: serviceToken, WorkRoot: t.TempDir(), CancelGrace: 3 * time.Second},
-	})
-	svc.SetRuntime(rt)
-	t.Cleanup(rt.Shutdown)
-	return &e2eEnv{db: db, repo: repo, svc: svc, rt: rt, bridge: bridge, llm: llm, sess: sess, canvas: canvas, bridgeURL: bridgeSrv.URL, serviceToken: serviceToken}
-}
-
-// waitApprovals 等运行的审批记录达到 n 条。CreateApproval 先把运行置为等待状态、再写审批（先 CAS 是为了运行已被取消时不产生审批），
-// 两步之间有一个很短的窗口：状态已经是等待审批，审批记录还没写入。只等状态就去查审批，负载高时会落在这个窗口里。
-func (e *e2eEnv) waitApprovals(t *testing.T, runID uint64, n int) []model.AgentApproval {
-	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		list, err := e.repo.ListApprovals(context.Background(), runID)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(list) >= n || time.Now().After(deadline) {
-			return list
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-}
-
-func (e *e2eEnv) waitStatus(t *testing.T, runID uint64, want ...string) *model.AgentRun {
-	t.Helper()
-	deadline := time.Now().Add(30 * time.Second)
-	var run *model.AgentRun
-	for time.Now().Before(deadline) {
-		run, _ = e.repo.GetRun(context.Background(), 1, runID)
-		if run != nil {
-			for _, w := range want {
-				if run.Status == w {
-					return run
-				}
-			}
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	status := "?"
-	if run != nil {
-		status = run.Status
-	}
-	t.Fatalf("等待运行进入 %v 超时，当前 %s（错误：%v）", want, status, run)
-	return nil
-}
-
-func (e *e2eEnv) start(t *testing.T, msg, mode string) uint64 {
-	t.Helper()
-	v, err := e.svc.StartRun(context.Background(), 1, e.sess.ID, &model.StartAgentRunReq{Message: msg, Mode: mode})
-	if err != nil {
-		t.Fatalf("StartRun: %v", err)
-	}
-	return uint64(v.ID)
+	return &e2eEnv{db: db, repo: repo, svc: svc, bridge: bridge, llm: llm, canvas: canvas, bridgeURL: bridgeSrv.URL, serviceToken: e2eServiceToken}
 }
 
 func (e *e2eEnv) graph(t *testing.T) *canvasgraph.Graph {
@@ -325,16 +196,6 @@ func (e *e2eEnv) graph(t *testing.T) *canvasgraph.Graph {
 	return g
 }
 
-func (e *e2eEnv) eventTypes(t *testing.T) []string {
-	t.Helper()
-	evs, _ := e.repo.ListEvents(context.Background(), e.sess.ID, 0, 500)
-	out := make([]string, len(evs))
-	for i, ev := range evs {
-		out[i] = ev.Type
-	}
-	return out
-}
-
 func has(list []string, s string) bool {
 	for _, x := range list {
 		if x == s {
@@ -348,202 +209,6 @@ func lastRequestText(l *fakeLLM) string {
 	reqs := l.requests()
 	b, _ := json.Marshal(reqs[len(reqs)-1]["messages"])
 	return string(b)
-}
-
-// 场景 1：用户说一句话，Agent 读目录、改画布、说完话；全程计费、记事件、存历史。
-func TestE2E_BuildsCanvasAndBills(t *testing.T) { eachRuntime(t, testTestE2EBuildsCanvasAndBills) }
-
-func testTestE2EBuildsCanvasAndBills(t *testing.T, rt e2eRuntime) {
-	e := newE2E(t, rt,
-		llmTurn{tools: []llmTool{{id: "call_1", name: "canvas_apply_ops", args: map[string]any{"ops": []any{
-			map[string]any{"op": "create_group", "tempId": "g", "label": "镜头 01"},
-			map[string]any{"op": "create_node", "tempId": "a", "kind": "image", "label": "关键帧", "prompt": "雨夜便利店门口", "parentGroup": "g"},
-			map[string]any{"op": "connect", "source": "n_script", "target": "a"},
-		}}}}},
-		llmTurn{text: "搭好了镜头 01。"},
-	)
-	runID := e.start(t, "给剧本建一个镜头组", "all")
-	run := e.waitStatus(t, runID, model.RunSucceeded, model.RunFailed, model.RunInterrupted)
-	if run.Status != model.RunSucceeded {
-		t.Fatalf("运行应成功: %+v", run)
-	}
-
-	g := e.graph(t)
-	if len(g.Nodes) != 4 || len(g.Edges) != 1 {
-		t.Fatalf("画布应新增 1 个组、1 个节点和 1 条连线（共 4 个节点）: nodes=%d edges=%d", len(g.Nodes), len(g.Edges))
-	}
-
-	types := e.eventTypes(t)
-	for _, want := range []string{"message.user", "tool.start", "tool.end", "message.done", "run.status"} {
-		if !has(types, want) {
-			t.Errorf("缺事件 %s: %v", want, types)
-		}
-	}
-
-	var calls []model.AgentModelCall
-	e.db.Order("id").Find(&calls)
-	if len(calls) != 2 || calls[0].Status != model.ModelCallSettled || calls[0].Charged != 5 {
-		t.Fatalf("两次模型调用都应结算，每次 5 积分: %+v", calls)
-	}
-	if a := account(t, e.db, 1); a.Balance != 90 {
-		t.Errorf("余额应 100→90: %d", a.Balance)
-	}
-	rec, _ := NewGenerationTaskRepository(e.db).Reconcile(context.Background(), 1)
-	if int64(rec.Balance) != rec.InitialSum+rec.AdminAdjustSum-rec.SettleSum || int64(rec.Frozen) != rec.FreezeSum-rec.SettleSum-rec.RefundSum {
-		t.Errorf("对账等式应成立: %+v", rec)
-	}
-
-	if run.SpentCredits != 10 || run.Steps != 1 {
-		t.Errorf("本轮已花 10、工具步数 1: spent=%d steps=%d", run.SpentCredits, run.Steps)
-	}
-	sess, _ := e.repo.GetSession(context.Background(), 1, e.sess.ID)
-	if !strings.Contains(sess.SessionJSONL, "搭好了镜头 01") || strings.Contains(sess.SessionJSONL, `"role":"system"`) {
-		t.Errorf("应保存对话历史（不含系统提示）: %.200s", sess.SessionJSONL)
-	}
-	// 令牌由监听进程退出的 goroutine 收回，晚于运行状态变成成功：轮询等待，不要立刻断言
-	for deadline := time.Now().Add(5 * time.Second); e.bridge.TokenCount() != 0 && time.Now().Before(deadline); {
-		time.Sleep(20 * time.Millisecond)
-	}
-	if e.bridge.TokenCount() != 0 {
-		t.Errorf("运行结束后令牌应全部收回: %d", e.bridge.TokenCount())
-	}
-
-	first := e.llm.requests()[0]
-	if first["model"] != "claude-up" || first["stream"] != true {
-		t.Errorf("上游收到的请求: model=%v stream=%v", first["model"], first["stream"])
-	}
-	if _, has := first["store"]; has {
-		t.Error("不能带 store")
-	}
-	firstMsgs := fmt.Sprint(first["messages"]) // 解码后的内容；用 json.Marshal 会把 < 转义成 \u003c
-	for _, must := range []string{"画布 Agent", "<画布目录>", "n_script", "给剧本建一个镜头组"} {
-		if !strings.Contains(firstMsgs, must) {
-			t.Errorf("第一次请求应包含 %q", must)
-		}
-	}
-}
-
-// 场景 2：删除要先审批；批准后续跑，模型看到的是真实结果。
-func TestE2E_DeleteNeedsApprovalThenContinues(t *testing.T) {
-	eachRuntime(t, testTestE2EDeleteNeedsApprovalThenContinues)
-}
-
-func testTestE2EDeleteNeedsApprovalThenContinues(t *testing.T, rt e2eRuntime) {
-	e := newE2E(t, rt,
-		llmTurn{tools: []llmTool{{id: "call_del", name: "canvas_delete", args: map[string]any{"nodeIds": []string{"n_old"}, "reason": "废稿"}}}},
-		llmTurn{text: "已清理。"},
-	)
-	runID := e.start(t, "把废稿清掉", "all")
-	e.waitStatus(t, runID, model.RunWaitingApproval)
-	if e.graph(t).Node("n_old") == nil {
-		t.Fatal("审批前不能删")
-	}
-	if len(e.llm.requests()) != 1 {
-		t.Fatal("等审批时不能再请求模型")
-	}
-
-	approvals := e.waitApprovals(t, runID, 1)
-	if len(approvals) != 1 || approvals[0].Kind != model.ApprovalDelete {
-		t.Fatalf("应有一张删除审批: %+v", approvals)
-	}
-	if _, err := e.svc.Decide(context.Background(), 1, approvals[0].ID, &model.DecideAgentApprovalReq{Decision: "approve"}); err != nil {
-		t.Fatal(err)
-	}
-	run := e.waitStatus(t, runID, model.RunSucceeded, model.RunFailed, model.RunInterrupted)
-	if run.Status != model.RunSucceeded {
-		t.Fatalf("续跑后应成功: %+v", run)
-	}
-	if e.graph(t).Node("n_old") != nil {
-		t.Error("批准后节点应被删除")
-	}
-	second := lastRequestText(e.llm)
-	if !strings.Contains(second, "已删除 1 个节点") || strings.Contains(second, "等待决定") {
-		t.Errorf("续跑时模型应看到真实结果而不是等待占位: %s", second)
-	}
-	muts, _ := e.repo.ListMutations(context.Background(), runID)
-	if len(muts) != 1 || muts[0].Kind != model.MutationDelete {
-		t.Errorf("应记一条 delete 改动: %+v", muts)
-	}
-}
-
-// 场景 3：模型流到一半用户点停止：进程被中止，已产生的部分照样计费，运行是 canceled。
-func TestE2E_CancelMidStreamStillBillsPartial(t *testing.T) {
-	eachRuntime(t, testTestE2ECancelMidStreamStillBillsPartial)
-}
-
-func testTestE2ECancelMidStreamStillBillsPartial(t *testing.T, rt e2eRuntime) {
-	e := newE2E(t, rt, llmTurn{text: strings.Repeat("很长的回答", 60), slow: 30 * time.Millisecond})
-	runID := e.start(t, "说点什么", "all")
-	deadline := time.Now().Add(15 * time.Second)
-	for len(e.llm.requests()) == 0 && time.Now().Before(deadline) {
-		time.Sleep(20 * time.Millisecond)
-	}
-	time.Sleep(300 * time.Millisecond) // 让文本流一会儿
-	if _, err := e.svc.Cancel(context.Background(), 1, runID); err != nil {
-		t.Fatal(err)
-	}
-	run := e.waitStatus(t, runID, model.RunCanceled)
-	if run.Status != model.RunCanceled {
-		t.Fatalf("status=%s", run.Status)
-	}
-	deadline = time.Now().Add(10 * time.Second)
-	var calls []model.AgentModelCall
-	for time.Now().Before(deadline) {
-		calls = nil
-		e.db.Order("id").Find(&calls)
-		if len(calls) == 1 && calls[0].Status == model.ModelCallSettled {
-			break
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	if len(calls) != 1 || calls[0].Status != model.ModelCallSettled || !calls[0].UsageEstimated || calls[0].Credits == 0 {
-		t.Fatalf("被取消的调用也要结算，用量按字数估: %+v", calls)
-	}
-	if !strings.Contains(calls[0].Error, "取消") {
-		t.Errorf("应记下取消的原因: %q", calls[0].Error)
-	}
-	e.waitStatus(t, runID, model.RunCanceled)
-	deadline = time.Now().Add(5 * time.Second)
-	for e.bridge.TokenCount() != 0 && time.Now().Before(deadline) {
-		time.Sleep(20 * time.Millisecond)
-	}
-	if e.bridge.TokenCount() != 0 {
-		t.Errorf("令牌应收回: %d", e.bridge.TokenCount())
-	}
-}
-
-// 场景 4：进程被杀（比如服务重启）：运行标为中断；点继续后新进程接着跑完。
-func TestE2E_KilledProcessCanBeResumed(t *testing.T) {
-	eachRuntime(t, testTestE2EKilledProcessCanBeResumed)
-}
-
-func testTestE2EKilledProcessCanBeResumed(t *testing.T, rt e2eRuntime) {
-	e := newE2E(t, rt,
-		llmTurn{text: strings.Repeat("很长的回答", 80), slow: 30 * time.Millisecond},
-		llmTurn{text: "接着说完了。"},
-	)
-	runID := e.start(t, "说点什么", "all")
-	deadline := time.Now().Add(15 * time.Second)
-	for len(e.llm.requests()) == 0 && time.Now().Before(deadline) {
-		time.Sleep(20 * time.Millisecond)
-	}
-	time.Sleep(300 * time.Millisecond)
-	e.rt.Shutdown() // 模拟服务重启：杀掉所有运行进程
-	run := e.waitStatus(t, runID, model.RunInterrupted)
-	if run.Status != model.RunInterrupted {
-		t.Fatalf("被杀后应标为中断: %s", run.Status)
-	}
-
-	if _, err := e.svc.Resume(context.Background(), 1, runID, 0); err != nil {
-		t.Fatal(err)
-	}
-	run = e.waitStatus(t, runID, model.RunSucceeded, model.RunFailed)
-	if run.Status != model.RunSucceeded {
-		t.Fatalf("继续后应跑完: %+v", run)
-	}
-	if !has(e.eventTypes(t), "message.done") {
-		t.Error("续跑后应有 message.done")
-	}
 }
 
 // ---- 平台 API 的上下文模式：真实 HTTP、真实 Postgres ----
@@ -576,7 +241,7 @@ func (e *e2eEnv) platformPost(t *testing.T, tool, ctxJSON, idemKey, body string)
 // Agent 服务的 ID 是雪花算法生成的，超过 2^53：必须在头部解析、bigint 列里都不丢精度；运行记录在 Go 的库里根本不存在，
 // 画布写入照常成功，并且不写任何事件（事件归 Agent 服务）。
 func TestE2E_PlatformToolOverHTTPOnRealDB(t *testing.T) {
-	e := newE2E(t, e2eProcessToken)
+	e := newE2E(t)
 	const runID, sessID uint64 = 1152921504606846977, 1152921504606846978 // 2^60 + 1、2^60 + 2：转成 float64 会变成同一个数
 	ctxJSON := fmt.Sprintf(`{"run_id":"%d","user_id":"1","session_id":"%d","canvas_id":"%d","mode":"all","model_key":"claude"}`, runID, sessID, e.canvas.ID)
 	ops := `{"args":{"ops":[{"op":"create_node","tempId":"a","kind":"image","label":"关键帧"},{"op":"connect","source":"n_script","target":"a"}]}}`
@@ -674,7 +339,7 @@ func (e *e2eEnv) platformApproval(t *testing.T, op, ctxJSON, body string) (int, 
 // 运行和审批 id 都是雪花大小（超过 2^53）；Go 的库里没有这个运行，也不会为它创建审批记录；
 // 执行的幂等键（审批 id）存进 agent_mutations.idem_key，重放不再删一次。
 func TestE2E_PlatformApprovalFlowOverHTTPOnRealDB(t *testing.T) {
-	e := newE2E(t, e2eProcessToken)
+	e := newE2E(t)
 	const runID, sessID, approvalID uint64 = 1152921504606846977, 1152921504606846978, 1152921504606846979
 	ctxJSON := fmt.Sprintf(`{"run_id":"%d","user_id":"1","session_id":"%d","canvas_id":"%d","mode":"all","model_key":"claude"}`, runID, sessID, e.canvas.ID)
 
@@ -752,7 +417,7 @@ func TestE2E_PlatformApprovalFlowOverHTTPOnRealDB(t *testing.T) {
 
 // 运行准备经真实 HTTP：画布目录读自真实 Postgres（选中的节点优先），运行和会话 id 是雪花大小；不落任何记录。
 func TestE2E_PlatformPrepareRunOverHTTPOnRealDB(t *testing.T) {
-	e := newE2E(t, e2eProcessToken)
+	e := newE2E(t)
 	const runID, sessID uint64 = 1152921504606846977, 1152921504606846978
 	ctxJSON := fmt.Sprintf(`{"run_id":"%d","user_id":"1","session_id":"%d","canvas_id":"%d","mode":"storyboard","model_key":"claude","selection":["n_old"]}`, runID, sessID, e.canvas.ID)
 	req, _ := http.NewRequest(http.MethodPost, e.bridgeURL+"/internal/platform/v1/runs/prepare", strings.NewReader(`{"message":"把剧本拆成分镜","max_steps":30}`))
@@ -823,7 +488,7 @@ func (e *e2eEnv) platformJSON(t *testing.T, method, path, ctxJSON, body string) 
 
 // 会话侧的四件事经真实 HTTP + 真实 Postgres：画布归属、模型清单、消息引用、撤销（改动记录在 agent_mutations 里）。
 func TestE2E_PlatformSessionSideOverHTTPOnRealDB(t *testing.T) {
-	e := newE2E(t, e2eProcessToken)
+	e := newE2E(t)
 	cid := strconv.FormatUint(e.canvas.ID, 10)
 
 	// 画布归属：自己的通过；别人的和不存在的一样是「画布不存在」
@@ -914,7 +579,7 @@ func (e *e2eEnv) platformUsage(t *testing.T, ctxJSON, runID, query string) map[s
 
 // 模型代理的整条链路：运行记录不在 Go 里（雪花 ID），请求头里的上下文 → 预检 → 假上游的流式响应 → 结算扣费 → 用量查询 → 预算拒绝。
 func TestE2E_PlatformModelProxyOverHTTPOnRealDB(t *testing.T) {
-	e := newE2E(t, e2eProcessToken, llmTurn{text: "好的"}, llmTurn{text: "再来一次"}, llmTurn{text: "不该走到上游"})
+	e := newE2E(t, llmTurn{text: "好的"}, llmTurn{text: "再来一次"}, llmTurn{text: "不该走到上游"})
 	const runID uint64 = 1152921504606846977
 	ctxJSON := fmt.Sprintf(`{"run_id":"%d","user_id":"1","session_id":"1152921504606846978","canvas_id":"%d","mode":"all","model_key":"claude","budget_credits":10}`, runID, e.canvas.ID)
 

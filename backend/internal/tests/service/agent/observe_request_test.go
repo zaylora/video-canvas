@@ -147,7 +147,7 @@ func TestProxyModel_RecordsRequest(t *testing.T) {
 		rr := &fakeRequestRecorder{}
 		b.br.SetModelRequestRecorder(rr)
 		tok, run := b.token(t, "all")
-		if err := b.br.ProxyModel(ctx, tok, body, func([]byte) {}); err != nil {
+		if err := b.br.ProxyModelPlatform(ctx, b.rcs[tok], body, func(uint64) {}, func([]byte) {}); err != nil {
 			t.Fatal(err)
 		}
 		rec := rr.wait(t, 1)[0]
@@ -175,7 +175,7 @@ func TestProxyModel_RecordsRequest(t *testing.T) {
 			return nil, context.DeadlineExceeded
 		}
 		tok, _ := b.token(t, "all")
-		_ = b.br.ProxyModel(ctx, tok, body, func([]byte) {})
+		_ = b.br.ProxyModelPlatform(ctx, b.rcs[tok], body, func(uint64) {}, func([]byte) {})
 		rr.wait(t, 1)
 	})
 
@@ -184,12 +184,12 @@ func TestProxyModel_RecordsRequest(t *testing.T) {
 		rr := &fakeRequestRecorder{err: context.Canceled}
 		b.br.SetModelRequestRecorder(rr)
 		tok, _ := b.token(t, "all")
-		if err := b.br.ProxyModel(ctx, tok, body, func([]byte) {}); err != nil {
+		if err := b.br.ProxyModelPlatform(ctx, b.rcs[tok], body, func(uint64) {}, func([]byte) {}); err != nil {
 			t.Fatalf("记录失败不该让调用失败: %v", err)
 		}
 		b2 := newBridgeEnv(t)
 		tok2, _ := b2.token(t, "all")
-		if err := b2.br.ProxyModel(ctx, tok2, body, func([]byte) {}); err != nil {
+		if err := b2.br.ProxyModelPlatform(ctx, b2.rcs[tok2], body, func(uint64) {}, func([]byte) {}); err != nil {
 			t.Fatal(err)
 		}
 	})

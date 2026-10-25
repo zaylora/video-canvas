@@ -3,13 +3,11 @@ package agent
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
-	"video-canvas/internal/repository"
 )
 
 // GenerateItem 是生成审批里的一项：给哪个节点、用哪个模型、生成几张、预估多少积分。
@@ -68,101 +66,6 @@ type outcome struct {
 	gen      []GenerateItem
 	nodeIDs  []string
 	edgeIDs  []string
-}
-
-var waitingStatuses = []string{model.RunWaitingApproval, model.RunWaitingInput}
-
-// CreateApproval 为一次需要用户决定的工具调用创建审批，并让运行进入等待状态。由 runtime 的桥在工具里调用。
-func (s *AgentService) CreateApproval(ctx context.Context, run *model.AgentRun, toolCallID, kind string, payload any, quote int) (*AgentApprovalView, error) {
-	// 1. 种类必须认识；只有还在跑的运行才能发起审批
-	next := model.RunWaitingApproval
-	switch kind {
-	case model.ApprovalGenerate, model.ApprovalDelete:
-	case model.ApprovalAsk:
-		next = model.RunWaitingInput
-	default:
-		return nil, errcode.ErrInvalidParams.WithMsg("审批种类不对")
-	}
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return nil, err
-	}
-	// 2. 先把运行置为等待状态（CAS）：运行已经被取消或结束时，不再产生审批
-	if _, err := s.repo.UpdateRunIf(ctx, run.ID, []string{model.RunRunning}, map[string]any{"status": next}); err != nil {
-		if errors.Is(err, repository.ErrAgentStateConflict) {
-			return nil, errcode.ErrAgentState
-		}
-		return nil, err
-	}
-	// 3. 创建审批，24 小时内有效
-	a := &model.AgentApproval{RunID: run.ID, SessionID: run.SessionID, CanvasID: run.CanvasID, UserID: run.UserID, Kind: kind,
-		ToolCallID: toolCallID, PayloadJSON: body, QuoteCredits: quote, Status: model.ApprovalPending, ExpiresAt: s.now().Add(approvalTTL)}
-	if err := s.repo.CreateApproval(ctx, a); err != nil {
-		return nil, err
-	}
-	s.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "approval.created", approvalView(a))
-	s.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "run.status", statusEvent(next))
-	return approvalView(a), nil
-}
-
-// Decide 处理用户对审批的决定：批准、拒绝或回答提问。批准后执行（删除或生成），然后让运行继续。
-func (s *AgentService) Decide(ctx context.Context, userID, approvalID uint64, req *model.DecideAgentApprovalReq) (*AgentApprovalView, error) {
-	// 1. 审批必须是自己的，并且还在等待；已处理、已过期、运行已被停止都按「审批已处理或已过期」
-	a, err := s.repo.GetApproval(ctx, userID, approvalID)
-	if errors.Is(err, repository.ErrNotFound) {
-		return nil, errcode.ErrAgentApprovalMiss
-	}
-	if err != nil {
-		return nil, err
-	}
-	run, err := s.repo.GetRun(ctx, userID, a.RunID)
-	if err != nil {
-		return nil, runErr(err)
-	}
-	if a.Status != model.ApprovalPending || !s.now().Before(a.ExpiresAt) || !contains(waitingStatuses, run.Status) {
-		return nil, errcode.ErrAgentApprovalGone
-	}
-	// 2. 按种类算出决定：校验选项、预算，得出最终批准的条目
-	out, err := s.resolveDecision(a, run, req)
-	if err != nil {
-		return nil, err
-	}
-	// 3. 审批状态迁移是 CAS：重复点击、同时在另一个标签页点，只有一次生效
-	decision, _ := json.Marshal(out.decision) // map[string]any 的内容都来自已校验的参数，序列化不会失败
-	updated, err := s.repo.UpdateApprovalIf(ctx, a.ID, []string{model.ApprovalPending}, map[string]any{
-		"status": out.status, "decision_json": decision, "quote_credits": out.quote, "decided_at": s.now(),
-	})
-	if errors.Is(err, repository.ErrAgentStateConflict) {
-		return nil, errcode.ErrAgentApprovalGone
-	}
-	if err != nil {
-		return nil, err
-	}
-	// 4. 运行回到 running（追加的预算一并生效）；被批准的生成先记入已花积分，防止同一轮反复批准超预算
-	fields := map[string]any{"status": model.RunRunning}
-	if req.AddBudget > 0 && out.status != model.ApprovalRejected {
-		fields["budget_credits"] = run.BudgetCredits + req.AddBudget
-	}
-	if _, err := s.repo.UpdateRunIf(ctx, run.ID, waitingStatuses, fields); err != nil {
-		return nil, errcode.ErrAgentApprovalGone
-	}
-	// 只靠 run.status 事件驱动的客户端，回答之后要靠它才知道运行不再等待了
-	s.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "run.status", statusEvent(model.RunRunning))
-	if out.quote > 0 {
-		if err := s.repo.AddRunUsage(ctx, run.ID, 0, out.quote); err != nil {
-			return nil, err
-		}
-		s.emitUsage(ctx, run)
-	}
-	// 5. 执行批准的内容，把结果写回审批；执行失败不让这次请求失败（决定已生效），Agent 会从结果里知道
-	final := s.execute(ctx, run, updated, out)
-	s.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "approval.decided", approvalView(final))
-	// 6. 让运行接着往下走；runtime 不在了就标为中断，用户可以稍后点「继续」
-	if err := s.runtime.Resume(ctx, run, ResumeInfo{Reason: "approval", ToolCallID: a.ToolCallID, Content: approvalOutcomeText(final, out)}); err != nil {
-		_, _ = s.repo.UpdateRunIf(ctx, run.ID, []string{model.RunRunning}, map[string]any{"status": model.RunInterrupted}) // 已经不在 running 说明别处处理过了，无需再改
-		s.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "run.status", statusEvent(model.RunInterrupted))
-	}
-	return approvalView(final), nil
 }
 
 // resolveDecision 把用户的决定按审批种类解析成 outcome。
@@ -286,21 +189,7 @@ func chosen(total int, items []model.ApprovalItemDecision) (map[int]int, error) 
 	return out, nil
 }
 
-// execute 执行批准的内容并把结果写回审批：删除直接改画布，生成交给 executor。
-func (s *AgentService) execute(ctx context.Context, run *model.AgentRun, a *model.AgentApproval, out *outcome) *model.AgentApproval {
-	result, ran, err := s.runApproved(ctx, run, a.Kind, a.ID, a.ToolCallID, out)
-	if !ran {
-		return a
-	}
-	status, body := approvalExecResult(result, err)
-	final, uerr := s.repo.UpdateApprovalIf(ctx, a.ID, []string{model.ApprovalApproved, model.ApprovalPartial}, map[string]any{"status": status, "result_json": body})
-	if uerr != nil {
-		return a
-	}
-	return final
-}
-
-// runApproved 是执行的纯逻辑部分，不碰审批记录：令牌模式（execute）和平台 API 的执行接口（ExecuteApproval）共用。
+// runApproved 是执行的纯逻辑部分，不碰审批记录：平台 API 的执行接口（ExecuteApproval）用它。
 // ran 为假表示这个决定不需要执行任何东西（拒绝、提问，或没有配置生成执行器）。
 func (s *AgentService) runApproved(ctx context.Context, run *model.AgentRun, kind string, approvalID uint64, toolCallID string, out *outcome) (result json.RawMessage, ran bool, err error) {
 	switch {

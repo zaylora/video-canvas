@@ -224,7 +224,7 @@ jobs:
           cache-from: type=gha,scope=web
           cache-to: type=gha,mode=max,scope=web
 
-      # Agent 服务（compose profile: agent），和 backend / web 同一个版本号发布：backend 和 agent 之间的协议只在同版本里保证兼容
+      # Agent 服务（compose 里的 agent 容器，默认随其它服务启动），和 backend / web 同一个版本号发布：backend 和 agent 之间的协议只在同版本里保证兼容
       - name: Build and push agent
         uses: docker/build-push-action@v6
         with:

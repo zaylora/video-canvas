@@ -1221,3 +1221,26 @@ REAL_LLM_BASE_URL=https://api.vbing.site REAL_LLM_KEY=sk-... REAL_LLM_MODEL=deep
 - **Pi 会把 `max_tokens` 压成「登记窗口 − 估算输入」**：登记窗口小于实际用量时，回答会被压得很短甚至被截断。真实模型的窗口是 128k 以上，且压缩的触发线（窗口 − 保留量）远早于此，所以生产里碰不到；但**后台登记模型时「上下文窗口」和「最大输出」要如实填，输出上限对带思考的模型要给足（建议 ≥ 8192）**。
 - **压缩触发靠上游上报的用量**：上一次回答报告的输入 token 越过触发线才压，所以会有一次请求略超线（本次 20529 对 20000 的登记窗口）。真实窗口下有 16k+ 的保留量兜着，不是问题。
 - 没有验证的：图片理解（`vision`）、`web_search` / `web_fetch`、技能读取（测试环境没有接技能库和联网）；这些工具的 Go 侧逻辑和 Agent 无关，是原来的代码。
+
+### 20.22 阶段 4：下线旧的运行方式，Agent 服务成为唯一方式（2026-10-26）
+
+**做了什么（代码）**
+- **Agent（Node）**：删掉 `main.ts`、`run.ts`、`server.ts`、`steer.ts`、`mode.ts`、`agent-tools/`、`bridge-client.ts`、旧类型和它们的测试；`tools.ts` 只留 `wrapScalarArrays`，`context.ts` 去掉只给旧路径用的 `trimContext` / `dropOldImages`；`serve.ts` 只剩 Agent 服务本身。测试 288 → 192（删的都是旧路径的）。
+- **Go**：
+  - 删：`ProcessRuntime`、`HTTPLauncher`、令牌桥（`IssueToken`、`ProxyModel`、`ExecuteTool`、`Finish`…）、旧的会话/运行/审批/事件服务和处理器（`AgentService` 缩成「会话侧平台能力」：模型清单、画布归属、引用校验、批准内容的解析和执行）、用户反馈写入、运行进程输出尾巴、`run_status.go`、仓储里 20 个没人再调的方法、不再使用的视图和请求类型。
+  - 路由：前端的 Agent 接口只有一套（反向代理），没启用 Agent 时统一返回 `503 / 60005`；`NewBridge` 只剩平台 API。
+  - 配置：`agent.runtime`、`node_path`、`runtime_dir`、`work_dir` 没有了，只剩 `enabled`、`url`、`bridge_url`、`bridge_addr`（默认 `0.0.0.0:47001`）、`service_token`、联网和停用工具。**旧 `.env` 里残留的 `APP_AGENT_RUNTIME` 等被忽略，不会让启动失败**（有测试）。
+  - 启动时把 Go 库里切换之前留下的旧运行（排队、运行中、等审批、等回答）标为 `interrupted`，免得一直显示成进行中（幂等）。
+- **测试迁移**：旧的令牌模式测试里，工具行为的测试（画布操作、看图、看视频、技能、联网、模式限制）改成经平台接口执行，保住了覆盖；审批决定的规则（22 种情形）原来是「旧 Decide 对照新 Resolve」，旧的没了，改成冻结的结果文件（`testdata/resolve-approval.golden.json`），改规则要有意地更新它；旧的 e2e（真 Node 子进程那几个）删掉，保留 5 个「以 Agent 服务身份调用平台接口、真实 PostgreSQL」的测试。
+
+**部署：Agent 服务成为默认**
+- Compose（生产和开发）：`agent` 服务没有 profile 了，随其它服务一起启动，`APP_AGENT_RUNTIME` 没有了；backend 镜像去掉 Node 和 `agent/` 的构建（只留 ffmpeg，抽帧由 backend 做）。
+- **`deploy.sh` 新部署时生成 `AGENT_SERVICE_TOKEN`；`update.sh` 从没有独立 Agent 服务的旧版本升上来时发现 `.env` 里没有（或太短）就自动生成**（已有的不动，有测试：缺失、太短、已有三种）。这是这一步最关键的一环：否则 backend 启用 Agent 时拒绝启动，升级会因此回退。
+- `update.sh` 始终备份 agent 的数据（卷里没有数据时不算失败），回退时始终打印 agent 日志。
+- 本机直接跑后端的 `start.sh` / `start.bat`：`agent/` 里装好了依赖就同时启动 Agent 服务（127.0.0.1:8090，数据在 `backend/data/agent/`），没装就跳过、画布里的 Agent 提示暂不可用。开发 Compose 有固定的开发令牌。
+
+**真实环境验证（本机 Docker）**：构建新的 backend 和 agent 镜像，用生产的 `docker-compose.yml`（`.env` 里只有令牌，没有任何运行方式的配置）起 postgres、redis、plugin-runner、backend、agent：五个服务都 healthy；agent 经令牌调 backend 平台 API 拿模型清单成功；agent 的 `/observe/runs` 可用；backend 的 Agent 路由没有 JWT 返回 401；平台 API 没有服务令牌返回 401；文档里「手动备份」和「恢复」两条命令在这个栈上跑通（备份文件是合法的 SQLite，恢复后 agent 重新 healthy）。**没有走真正的 `update.sh` 升级**（它要从镜像仓库拉镜像，本地验证用的是本地镜像）；脚本流程由假 docker 的测试覆盖。`start.bat`（Windows）没有在 Windows 上运行过。
+
+**有意没做：删除旧的 `agent_*` 数据。** 设计里写的是阶段 4 加一次删除旧表的迁移。我没有做，原因：这是不可逆的，而旧运行的数据现在仍有用——后台的运行记录、导出、统计和版本对比里，切换之前的运行还在（它们的导出要读旧的 `agent_runs`、`agent_events`、`agent_approvals`、`agent_feedback`）；而用户已经看不到旧会话了，所以保留它们对用户没有任何可见影响，只占存储。要不要删、什么时候删，等你定；删的话另起一条迁移，只删用户侧的会话表还是连同旧运行的事件一起删，也要定。
+
+**记在这里的一件事（还没处理）**：旧实现保存对话历史前会把工具结果里的图片去掉（图片是用户的素材、又很大，不写进历史，要看再重新读）。新的 Agent 服务里没有这一步：`canvas_inspect_image` / `canvas_inspect_video` 返回的图片会留在 Pi 的对话历史里，对象存储时是地址、本地存储时是 base64。要核对一下真实的体积和影响，再决定要不要在写入历史前去掉。

@@ -26,8 +26,8 @@ func TestAgentBilling_EndToEndOnRealDB(t *testing.T) {
 	b := agentsvc.NewAgentBilling(r)
 	openAccount(t, db, 1, 100, 0)
 
-	s := newSession(t, r, 1, 10)
-	run := newRun(t, r, s, model.RunRunning) // 预算 50
+	s := newSession(t, db, 1, 10)
+	run := newRun(t, db, s, model.RunRunning) // 预算 50
 	pricing := modelcfg.Pricing{Billing: modelcfg.BillingToken, Token: &modelcfg.TokenPrice{In: 3, Out: 15}}
 	caps := modelcfg.Capabilities{Context: &modelcfg.ContextSpec{Window: 200000, Output: 8192}}
 
