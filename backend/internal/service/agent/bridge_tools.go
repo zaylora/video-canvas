@@ -31,6 +31,9 @@ type ToolResult struct {
 	IsError   bool        `json:"is_error"`         // 工具没做成，模型会看到并自行处理
 	Images    []ToolImage `json:"images,omitempty"` // 随结果交给模型看的图片（看图工具）
 	Terminate bool        `json:"terminate"`        // 本批工具执行完后停下，不再请求模型（等审批、等回答、步数用尽）
+	// ToolEnd 只在平台 API（上下文模式）下给出：令牌模式下 Go 自己发的那个 tool.end 事件的内容。
+	// 事件由 Agent 服务落库和推送，但摘要、被改动的节点、界面名称只有这里知道
+	ToolEnd map[string]any `json:"tool_end,omitempty"`
 
 	summary string // 与 tool.end 事件一致的一行摘要，只给调用记录用，不下发给 Node
 }
@@ -158,15 +161,21 @@ func (b *AgentBridge) runTool(ctx context.Context, sess *bridgeSession, run *mod
 		}
 	}
 	res := b.finishTool(out, herr)
+	end := toolEndEvent(toolCallID, parentID, name, out, res)
+	b.d.Agent.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "tool.end", end)
+	res.summary, _ = end["summary"].(string)
+	return res, nil
+}
+
+// toolEndEvent 组出一次工具调用的 tool.end 事件内容。令牌模式（Go 发事件）和平台 API（把内容交给 Agent 服务发）共用这一份。
+func toolEndEvent(toolCallID, parentID, name string, out *toolOut, res *ToolResult) map[string]any {
 	end := withParent(withToolLabel(map[string]any{"id": toolCallID, "name": name, "is_error": res.IsError, "summary": firstNonEmpty(outSummary(out), summarizeError(res))}, name), parentID)
 	if out != nil {
 		for k, v := range out.extra {
 			end[k] = v
 		}
 	}
-	b.d.Agent.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "tool.end", end)
-	res.summary, _ = end["summary"].(string)
-	return res, nil
+	return end
 }
 
 // withParent 给脚本里发起的调用的事件带上父调用 id。

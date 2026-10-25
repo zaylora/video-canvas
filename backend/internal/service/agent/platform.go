@@ -103,18 +103,27 @@ func (b *AgentBridge) ExecutePlatformTool(ctx context.Context, rc RunContext, to
 	}
 	spec := findTool(name)
 	if spec == nil {
-		return &ToolResult{Content: "未知的工具：" + name, IsError: true}, nil
+		return rejectedPlatformTool(toolCallID, name, "未知的工具："+name), nil
 	}
 	if platformExcluded[name] {
 		return nil, errcode.ErrInvalidParams.WithMsg("工具 " + name + " 不能经这个接口执行")
 	}
 	sess := b.platformSession(rc)
 	if !spec.allowsMode(sess.mode) {
-		return &ToolResult{Content: "当前是「" + modeLabel(sess.mode) + "」模式，不能使用 " + name + "。", IsError: true}, nil
+		return rejectedPlatformTool(toolCallID, name, "当前是「"+modeLabel(sess.mode)+"」模式，不能使用 "+name+"。"), nil
 	}
 	if len(args) == 0 {
 		args = json.RawMessage(`{}`)
 	}
 	out, herr := spec.run(b, ctx, &toolCall{run: rc.run(), sess: sess, id: toolCallID, args: args})
-	return b.finishTool(out, herr), nil
+	res := b.finishTool(out, herr)
+	res.ToolEnd = toolEndEvent(toolCallID, "", name, out, res)
+	return res, nil
+}
+
+// rejectedPlatformTool 是被拒绝的调用（未知工具、模式不允许）的结果：和令牌模式一样，拒绝也有一条 tool.end，摘要就是原因。
+func rejectedPlatformTool(toolCallID, name, msg string) *ToolResult {
+	res := &ToolResult{Content: msg, IsError: true}
+	res.ToolEnd = withToolLabel(map[string]any{"id": toolCallID, "name": name, "is_error": true, "summary": msg}, name)
+	return res
 }

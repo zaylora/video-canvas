@@ -590,6 +590,11 @@ func TestE2E_PlatformToolOverHTTPOnRealDB(t *testing.T) {
 	if data["is_error"] == true {
 		t.Fatalf("写画布应成功: %v", data["content"])
 	}
+	// 事件内容由 Go 给出（Agent 服务落库和推送）：经真实 HTTP 也要在响应里
+	end, _ := data["tool_end"].(map[string]any)
+	if end["name"] != "canvas_apply_ops" || end["summary"] == nil || end["label"] == nil {
+		t.Errorf("响应里要有 tool_end（名称、摘要、界面名称）: %v", data["tool_end"])
+	}
 	// 同一个幂等键再来一次（崩溃后重放）：返回同样的结果，画布不再变
 	_, again := e.platformPost(t, "canvas_apply_ops", ctxJSON, "task-0192-aaaa", ops)
 	if again["data"].(map[string]any)["content"] != data["content"] {

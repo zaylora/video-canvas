@@ -3,6 +3,7 @@ package agent_test
 import (
 	"context"
 	"encoding/json"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -179,5 +180,81 @@ func TestExecutePlatformTool_ToolFailureIsAToolResultNotAnError(t *testing.T) {
 	res := execPlatform(context.Background(), t, b, platformCtx(900010, "all"), "c1", "canvas_apply_ops", map[string]any{"ops": []map[string]any{{"op": "update_node", "id": "不存在", "label": "x"}}})
 	if !res.IsError || res.Content == "" {
 		t.Errorf("校验不过是给模型看的工具错误，不是 HTTP 错误: %+v", res)
+	}
+}
+
+// ---- tool_end：事件内容由 Go 给出 ----
+//
+// 方案二里 tool.start / tool.end 事件由 Agent 服务落库和推送，但事件里的摘要、被改动的节点、界面名称这些只有 Go 知道。
+// 所以平台工具结果带一个 tool_end，内容就是令牌模式下 Go 自己发的那个 tool.end 事件，Agent 服务原样用。
+
+var nodeIDPattern = regexp.MustCompile(`n_[0-9a-f]{10}`)
+
+func TestExecutePlatformTool_ToolEndMatchesTheEventTokenModeEmits(t *testing.T) {
+	b := newBridgeEnv(t)
+	tok, _ := b.token(t, "all")
+	ops := map[string]any{"ops": []map[string]any{{"op": "create_node", "tempId": "a", "kind": "image", "label": "角色"}}}
+	for name, args := range map[string]any{
+		"canvas_get_state":     map[string]any{},
+		"canvas_apply_ops":     ops,
+		"canvas_arrange":       map[string]any{"nodeIds": []string{"n_script"}},
+		"model_list":           map[string]any{"kind": "image"},
+		"no_such_tool":         map[string]any{},
+		"canvas_apply_ops_bad": map[string]any{"ops": []map[string]any{{"op": "update_node", "id": "不存在", "label": "x"}}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			realName := strings.TrimSuffix(name, "_bad")
+			before := len(b.persistedTypes())
+			b.tool(t, tok, realName, args) // 令牌模式：Go 自己发 tool.start / tool.end
+			want := b.repo.lastEvent("tool.end")
+			if want == nil {
+				t.Fatal("令牌模式应发 tool.end")
+			}
+			if len(b.persistedTypes()) <= before {
+				t.Fatal("令牌模式应有新事件")
+			}
+			raw, _ := json.Marshal(args)
+			res, err := b.br.ExecutePlatformTool(context.Background(), platformCtx(910001, "all"), "tc-"+realName, realName, raw)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if res.ToolEnd == nil {
+				t.Fatalf("平台工具结果要带 tool_end: %+v", res)
+			}
+			// 新建节点的 id 是随机的，两边各建一个，比较前抹掉
+			mask := func(v any) string {
+				raw, _ := json.Marshal(v)
+				return nodeIDPattern.ReplaceAllString(string(raw), "n_X")
+			}
+			got, exp := mask(res.ToolEnd), mask(want)
+			if got != exp {
+				t.Errorf("tool_end 要和令牌模式的 tool.end 事件一致:\n平台 %s\n令牌 %s", got, exp)
+			}
+		})
+	}
+}
+
+func TestExecutePlatformTool_ToolEndOnRejections(t *testing.T) {
+	b := newBridgeEnv(t)
+	res := execPlatform(context.Background(), t, b, platformCtx(910002, "prompt"), "c1", "canvas_arrange", map[string]any{"nodeIds": []string{"n_script"}})
+	if res.ToolEnd["is_error"] != true || !strings.Contains(res.ToolEnd["summary"].(string), "不能使用") || res.ToolEnd["id"] != "c1" || res.ToolEnd["name"] != "canvas_arrange" {
+		t.Errorf("模式拒绝也要有 tool_end，摘要是拒绝原因: %+v", res.ToolEnd)
+	}
+	if res.ToolEnd["label"] == nil {
+		t.Errorf("已知工具带界面名称: %+v", res.ToolEnd)
+	}
+}
+
+func TestExecutePlatformTool_ToolEndIsInTheJSON(t *testing.T) {
+	b := newBridgeEnv(t)
+	res := execPlatform(context.Background(), t, b, platformCtx(910003, "all"), "c1", "canvas_apply_ops", map[string]any{"ops": []map[string]any{{"op": "create_node", "tempId": "a", "kind": "image", "label": "角色"}}})
+	raw, _ := json.Marshal(res)
+	var out map[string]any
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatal(err)
+	}
+	end, ok := out["tool_end"].(map[string]any)
+	if !ok || end["summary"] == nil || end["created"] == nil {
+		t.Errorf("响应里要有 tool_end（含 summary、created）: %s", raw)
 	}
 }
