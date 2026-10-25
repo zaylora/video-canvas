@@ -17,6 +17,7 @@ node --disable-warning=ExperimentalWarning exp1-approval.ts
 | `exp5-hook-model.ts` | 在钩子里用 `api.models` 调模型，按自己的提示词写摘要并返回 `{summary}` | 可行 |
 | `exp7-events.ts` | `watchEvents` 在一次「提问 → 模型说话并调工具 → 工具返回 → 回答」里给出的事件序列，用来和平台现有事件对照（阶段 3 的事件映射，见设计文档第 18 节） | Pi 的事件够细，能映射；但积分、画布改动、审批这些只有 Go 知道 |
 | `exp8-before-request.ts` | 模型请求前的钩子（`beforeRequest`）：能不能在里面向「Go」要数据并注入给模型；钩子出错或想拦住调用时会怎样 | 能要数据、每次请求前都调用、注入内容不进记录；**钩子抛异常拦不住调用**，只会被上报并跳过 |
+| `exp9-restart.ts` | 重启后没跑完的运行怎么办：正常停机 / 被杀后 `resume()`；对会话 `abort()` 再提交「继续」；不 `resume` 直接提交；连续崩溃触发重启上限 | 正常停机和被杀行为一致；调度是全局的，提交也会启动它；重启上限挡住后 `inspect()` 可见 `blocked/restart_limit`。结论见设计文档 20.6 |
 | `exp6-many.ts` | 一个 Harness（一个 SQLite 文件）同时托管很多会话 | 200 个会话 × 3 轮同时进行，全部完成，没有串内容 |
 
 `exp6-many.ts` 可以带参数：`node … exp6-many.ts 500`。
