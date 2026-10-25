@@ -267,3 +267,14 @@ func TestAgentProxyFor(t *testing.T) {
 		t.Error("地址不合法应报错")
 	}
 }
+
+func TestAgentRemoteRunsFor(t *testing.T) {
+	tok := strings.Repeat("a", 32)
+	if AgentRemoteRunsFor(config.Agent{Enabled: true, Runtime: "http", URL: "http://agent:8090", ServiceToken: tok}) != nil || AgentRemoteRunsFor(config.Agent{Runtime: "durable"}) != nil {
+		t.Error("只有启用的 durable 模式才读 Agent 服务里的运行")
+	}
+	r, ok := AgentRemoteRunsFor(config.Agent{Enabled: true, Runtime: "durable", URL: "http://agent:8090", ServiceToken: tok}).(*agentsvc.HTTPRemoteRuns)
+	if !ok || r.BaseURL != "http://agent:8090" || r.ServiceToken != tok {
+		t.Errorf("durable: %+v", r)
+	}
+}

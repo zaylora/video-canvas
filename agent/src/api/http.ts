@@ -18,6 +18,7 @@ export const USER_HEADER = "x-agent-user";
 const SERVICE_TOKEN_HEADER = "x-agent-service-token";
 const DEFAULT_MAX_BODY = 1 << 20;
 const MODES = ["all", "script", "storyboard", "prompt"] as const;
+const DEFAULT_OBSERVE_PAGE = 200;
 const BUDGET = { min: 0, max: 100000 };
 
 const CREATE_SESSION: FieldSpec[] = [
@@ -99,12 +100,33 @@ export function createApiApp(o: ApiOptions): FastifyInstance {
       done(new ValidationError("请求参数格式错误"));
     }
   });
+  const tokenOk = (req: FastifyRequest): boolean => {
+    const got = Buffer.from(String(req.headers[SERVICE_TOKEN_HEADER] ?? ""));
+    return got.length === want.length && timingSafeEqual(got, want);
+  };
+  // 观测接口：Go 的后台只读，只认服务令牌，没有用户（和用户的接口分开，用户头也不会让它多出权限）
+  root.register(async (app) => {
+    app.addHook("onRequest", async (req, reply) => {
+      if (!tokenOk(req)) return reply.code(401).send({ code: 10003, msg: "未登录或登录已过期" });
+    });
+    const ok = (reply: FastifyReply, data: unknown) => reply.header("cache-control", "no-store").send({ code: 0, msg: "success", data });
+    app.get("/observe/runs", async (req, reply) => {
+      const q = new URL(req.url, "http://x").searchParams;
+      const after = queryInt(q, "updated_after", "updated_after", 0);
+      const limit = queryInt(q, "limit", "limit", 0, 500) || DEFAULT_OBSERVE_PAGE;
+      return ok(reply, await service.observeRuns(after, limit));
+    });
+    app.get("/observe/runs/:rid", async (req: Req, reply) => {
+      const rid = req.params.rid;
+      if (!/^[1-9][0-9]{0,19}$/.test(rid)) throw Err.invalidParams("rid 格式错误");
+      return ok(reply, await service.observeFacts(rid));
+    });
+  });
   // 鉴权钩子和路由放在子插件里：同一个实例上还能再挂不需要令牌的路由（健康检查）
   root.register(async (app) => {
     app.addHook("onRequest", async (req, reply) => {
-      const got = Buffer.from(String(req.headers[SERVICE_TOKEN_HEADER] ?? ""));
       const user = String(req.headers[USER_HEADER] ?? "");
-      if (got.length !== want.length || !timingSafeEqual(got, want) || !/^[1-9][0-9]{0,19}$/.test(user)) {
+      if (!tokenOk(req) || !/^[1-9][0-9]{0,19}$/.test(user)) {
         return reply.code(401).send({ code: 10003, msg: "未登录或登录已过期" });
       }
     });

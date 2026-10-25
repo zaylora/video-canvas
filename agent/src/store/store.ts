@@ -261,6 +261,27 @@ export class AgentStore {
     ).map(eventOf);
   }
 
+  /** 一次运行的全部事件，按序号升序（观测导出用） */
+  listRunEvents(runId: string): AgentEventRecord[] {
+    return this.#all("SELECT * FROM agent_events WHERE run_id = ? ORDER BY seq ASC", dec(runId)).map(eventOf);
+  }
+
+  /** 同会话里比 runId 更早的 turns 轮的用户消息和最终回复，按序号升序：给读导出的人补上"这一轮是接着什么说的" */
+  listContextEvents(sessionId: string, runId: string, turns: number): AgentEventRecord[] {
+    return this.#all(
+      `SELECT * FROM agent_events WHERE type IN ('message.user', 'message.done') AND run_id IN
+         (SELECT id FROM agent_runs WHERE session_id = ? AND id < ? ORDER BY id DESC LIMIT ?)
+       ORDER BY seq ASC`,
+      dec(sessionId), dec(runId), turns,
+    ).map(eventOf);
+  }
+
+  /** 会话是否已被删除（软删除）；不存在按已删除处理。观测里这本身是个信号 */
+  isSessionDeleted(sessionId: string): boolean {
+    const row = this.#get("SELECT deleted_at FROM agent_sessions WHERE id = ?", dec(sessionId));
+    return !row || row.deleted_at !== null;
+  }
+
   /** 序号小于 beforeSeq 的最新 limit 条，升序（beforeSeq<=0 不设上界，limit<=0 取默认值）；聊天记录从最新往回翻页用 */
   listEventsBefore(sessionId: string, beforeSeq: number, limit = 0): AgentEventRecord[] {
     const n = limit > 0 ? limit : DEFAULT_LIST_LIMIT;
@@ -293,6 +314,24 @@ export class AgentStore {
     const row = this.#get("SELECT * FROM agent_runs WHERE id = ? AND user_id = ?", dec(runId), dec(userId));
     if (!row) throw new NotFoundError("运行");
     return runOf(row);
+  }
+
+  /** 按 id 读运行，不看用户（Go 的后台只读用；面向用户的读取用 getRun） */
+  getRunById(runId: string): Run {
+    const row = this.#get("SELECT * FROM agent_runs WHERE id = ?", dec(runId));
+    if (!row) throw new NotFoundError("运行");
+    return runOf(row);
+  }
+
+  /** 更新时间晚于 afterMs 的运行，按更新时间升序（同一时刻按 id），最多 limit 条；Go 的观测同步用它找出变过的运行 */
+  listRunsUpdatedAfter(afterMs: number, limit: number): Run[] {
+    return this.#all("SELECT * FROM agent_runs WHERE updated_at > ? ORDER BY updated_at ASC, id ASC LIMIT ?", afterMs, limit).map(runOf);
+  }
+
+  /** 只刷新运行的更新时间：评价、撤销这类不改运行本身、但 Go 要重新汇总摘要的变化 */
+  touchRun(runId: string): void {
+    const changed = this.#run("UPDATE agent_runs SET updated_at = ? WHERE id = ?", this.#now(), dec(runId));
+    if (changed === 0) throw new NotFoundError("运行");
   }
 
   /** 处于这些状态的所有运行（启动恢复用） */

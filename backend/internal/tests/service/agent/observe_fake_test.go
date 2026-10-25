@@ -15,27 +15,31 @@ import (
 
 // fakeObserveRepo 是 ObserveRepo 的内存实现，语义与真实仓储一致（反馈每人每运行一条、摘要整行覆盖、令牌按哈希唯一）。
 type fakeObserveRepo struct {
-	mu        sync.Mutex
-	facts     map[uint64]*model.AgentRunFacts
-	exports   map[uint64]*model.AgentExportFacts
-	requests  map[uint64][]model.AgentModelCallBody
-	digests   map[uint64]*model.AgentRunDigest
-	feedback  map[[2]uint64]*model.AgentFeedback
-	tokens    []*model.AdminAPIToken
-	touched   map[uint64]int
-	listQuery model.DigestQuery
-	total     int64
-	statsQ    model.StatsQuery
-	listErr   error
-	factsErr  error
-	upsertErr error
-	purgeAt   time.Time
-	bodiesAt  time.Time
-	nextTok   uint64
+	mu      sync.Mutex
+	facts   map[uint64]*model.AgentRunFacts
+	exports map[uint64]*model.AgentExportFacts
+	// local / localExport 是 Go 自己库里的那部分（工具、模型调用、画布改动）：运行本身在 Agent 服务里时用
+	local       map[uint64]*model.AgentRunFacts
+	localExport map[uint64]*model.AgentExportFacts
+	requests    map[uint64][]model.AgentModelCallBody
+	digests     map[uint64]*model.AgentRunDigest
+	feedback    map[[2]uint64]*model.AgentFeedback
+	tokens      []*model.AdminAPIToken
+	touched     map[uint64]int
+	listQuery   model.DigestQuery
+	total       int64
+	statsQ      model.StatsQuery
+	listErr     error
+	factsErr    error
+	upsertErr   error
+	failRun     uint64 // 不为 0 时 upsertErr 只对这个运行生效
+	purgeAt     time.Time
+	bodiesAt    time.Time
+	nextTok     uint64
 }
 
 func newFakeObserveRepo() *fakeObserveRepo {
-	return &fakeObserveRepo{facts: map[uint64]*model.AgentRunFacts{}, exports: map[uint64]*model.AgentExportFacts{}, requests: map[uint64][]model.AgentModelCallBody{}, digests: map[uint64]*model.AgentRunDigest{},
+	return &fakeObserveRepo{facts: map[uint64]*model.AgentRunFacts{}, exports: map[uint64]*model.AgentExportFacts{}, local: map[uint64]*model.AgentRunFacts{}, localExport: map[uint64]*model.AgentExportFacts{}, requests: map[uint64][]model.AgentModelCallBody{}, digests: map[uint64]*model.AgentRunDigest{},
 		feedback: map[[2]uint64]*model.AgentFeedback{}, touched: map[uint64]int{}}
 }
 
@@ -58,10 +62,30 @@ func (f *fakeObserveRepo) RunFacts(_ context.Context, runID uint64) (*model.Agen
 	return &cp, nil
 }
 
+func (f *fakeObserveRepo) LocalRunFacts(_ context.Context, runID uint64) (*model.AgentRunFacts, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if x, ok := f.local[runID]; ok {
+		cp := *x
+		return &cp, nil
+	}
+	return &model.AgentRunFacts{}, nil
+}
+
+func (f *fakeObserveRepo) LocalExportFacts(_ context.Context, runID uint64) (*model.AgentExportFacts, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if x, ok := f.localExport[runID]; ok {
+		cp := *x
+		return &cp, nil
+	}
+	return &model.AgentExportFacts{}, nil
+}
+
 func (f *fakeObserveRepo) UpsertDigest(_ context.Context, d *model.AgentRunDigest) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.upsertErr != nil {
+	if f.upsertErr != nil && (f.failRun == 0 || f.failRun == d.RunID) {
 		return f.upsertErr
 	}
 	cp := *d

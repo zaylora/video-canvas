@@ -124,6 +124,52 @@ func (r *AgentObserveRepository) RunFacts(ctx context.Context, runID uint64) (*m
 	return &f, nil
 }
 
+// LocalRunFacts 读运行本身在 Agent 服务里时 Go 自己持有的那部分摘要事实：工具调用（不含参数和结果）、模型调用、画布改动、runtime_tail。
+// 没有记录不是错误，各部分为空。
+func (r *AgentObserveRepository) LocalRunFacts(ctx context.Context, runID uint64) (*model.AgentRunFacts, error) {
+	db := r.db.WithContext(ctx)
+	var f model.AgentRunFacts
+	if err := db.Omit("args_json", "result_text").Where("run_id = ?", runID).Order("started_at, id").Find(&f.ToolCalls).Error; err != nil {
+		return nil, err
+	}
+	if err := db.Where("run_id = ?", runID).Order("id").Find(&f.ModelCalls).Error; err != nil {
+		return nil, err
+	}
+	if err := db.Omit("changes_json").Where("run_id = ?", runID).Order("seq").Find(&f.Mutations).Error; err != nil {
+		return nil, err
+	}
+	var prev model.AgentRunDigest
+	if err := db.Select("runtime_tail").First(&prev, runID).Error; err == nil && prev.RuntimeTail != nil {
+		f.RuntimeTail = *prev.RuntimeTail
+	}
+	return &f, nil
+}
+
+// LocalExportFacts 读导出时 Go 自己持有的那部分：摘要、含参数和结果的工具调用、模型调用、模型请求摘要（不含请求体）、画布改动。
+func (r *AgentObserveRepository) LocalExportFacts(ctx context.Context, runID uint64) (*model.AgentExportFacts, error) {
+	db := r.db.WithContext(ctx)
+	var f model.AgentExportFacts
+	if err := db.First(&f.Digest, runID).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+	if err := db.Where("run_id = ?", runID).Order("started_at, id").Find(&f.ToolCalls).Error; err != nil {
+		return nil, err
+	}
+	if err := db.Where("run_id = ?", runID).Order("id").Find(&f.ModelCalls).Error; err != nil {
+		return nil, err
+	}
+	if err := db.Omit("body").Where("run_id = ?", runID).Order("call_id").Find(&f.Requests).Error; err != nil {
+		return nil, err
+	}
+	if err := db.Where("run_id = ?", runID).Order("seq").Find(&f.Mutations).Error; err != nil {
+		return nil, err
+	}
+	if f.Digest.RuntimeTail != nil {
+		f.RuntimeTail = *f.Digest.RuntimeTail
+	}
+	return &f, nil
+}
+
 // UpsertDigest 写运行摘要：一次运行一行，再写就是整行覆盖（续跑后再次进入终态、反馈或撤销之后都会重写）。
 func (r *AgentObserveRepository) UpsertDigest(ctx context.Context, d *model.AgentRunDigest) error {
 	return r.db.WithContext(ctx).Clauses(clause.OnConflict{

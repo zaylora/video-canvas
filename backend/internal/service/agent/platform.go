@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"time"
 
 	"video-canvas/internal/model"
@@ -93,7 +94,7 @@ func (b *AgentBridge) EndPlatformRun(runID uint64) {
 var platformExcluded = map[string]bool{"plan_update": true, "ask_user": true, "canvas_delete": true, "generate_media": true}
 
 // ExecutePlatformTool 在上下文模式下执行一次工具调用。和令牌模式的 ExecuteTool 的区别：
-// 没有运行记录要查、不发 tool.start / tool.end（Agent 服务自己发）、不记步数和步数上限（Agent 服务自己数）、不留存工具调用记录。
+// 没有运行记录要查、不发 tool.start / tool.end（Agent 服务自己发）、不记步数和步数上限（Agent 服务自己数）；工具调用的参数、结果、耗时照常留存（后台导出和失败分析要看）。
 // 任务模式的限制仍然在这里强制，不依赖调用方自觉。
 // 工具层的失败（参数不对、校验不过、模式不允许）作为 IsError 的结果返回；只有上下文不合法、调用了不能经这个入口执行的工具、
 // 或基础设施出错才返回 error。幂等键由调用方放进 ctx（WithIdempotencyKey），带了键的画布写入重放时不会再写一遍。
@@ -102,15 +103,33 @@ func (b *AgentBridge) ExecutePlatformTool(ctx context.Context, rc RunContext, to
 		return nil, err
 	}
 	spec := findTool(name)
-	if spec == nil {
-		return rejectedPlatformTool(toolCallID, name, "未知的工具："+name), nil
-	}
-	if platformExcluded[name] {
+	if spec != nil && platformExcluded[name] {
 		return nil, errcode.ErrInvalidParams.WithMsg("工具 " + name + " 不能经这个接口执行")
+	}
+	// 和令牌模式一样逐条留存：参数、结果、耗时是后台导出和 Agent 失败分析的依据，被拒绝的调用（未知工具、模式不允许）也记
+	run := rc.run()
+	started := b.d.Now()
+	b.recordToolStart(ctx, run, toolCallID, nestedParent(toolCallID), name, args, started)
+	res := b.executePlatformTool(ctx, rc, spec, toolCallID, name, args)
+	b.recordToolEnd(ctx, run, toolCallID, res, started)
+	return res, nil
+}
+
+// nestedParent 取 codemode 脚本里嵌套调用的外层调用 id：嵌套调用的 id 是 <外层 id>/<key>，不是嵌套调用返回空。
+func nestedParent(toolCallID string) string {
+	if i := strings.LastIndex(toolCallID, "/"); i > 0 {
+		return toolCallID[:i]
+	}
+	return ""
+}
+
+func (b *AgentBridge) executePlatformTool(ctx context.Context, rc RunContext, spec *toolSpec, toolCallID, name string, args json.RawMessage) *ToolResult {
+	if spec == nil {
+		return rejectedPlatformTool(toolCallID, name, "未知的工具："+name)
 	}
 	sess := b.platformSession(rc)
 	if !spec.allowsMode(sess.mode) {
-		return rejectedPlatformTool(toolCallID, name, "当前是「"+modeLabel(sess.mode)+"」模式，不能使用 "+name+"。"), nil
+		return rejectedPlatformTool(toolCallID, name, "当前是「"+modeLabel(sess.mode)+"」模式，不能使用 "+name+"。")
 	}
 	if len(args) == 0 {
 		args = json.RawMessage(`{}`)
@@ -118,12 +137,13 @@ func (b *AgentBridge) ExecutePlatformTool(ctx context.Context, rc RunContext, to
 	out, herr := spec.run(b, ctx, &toolCall{run: rc.run(), sess: sess, id: toolCallID, args: args})
 	res := b.finishTool(out, herr)
 	res.ToolEnd = toolEndEvent(toolCallID, "", name, out, res)
-	return res, nil
+	res.summary, _ = res.ToolEnd["summary"].(string) // 留存记录里的摘要
+	return res
 }
 
 // rejectedPlatformTool 是被拒绝的调用（未知工具、模式不允许）的结果：和令牌模式一样，拒绝也有一条 tool.end，摘要就是原因。
 func rejectedPlatformTool(toolCallID, name, msg string) *ToolResult {
-	res := &ToolResult{Content: msg, IsError: true}
+	res := &ToolResult{Content: msg, IsError: true, summary: msg}
 	res.ToolEnd = withToolLabel(map[string]any{"id": toolCallID, "name": name, "is_error": true, "summary": msg}, name)
 	return res
 }

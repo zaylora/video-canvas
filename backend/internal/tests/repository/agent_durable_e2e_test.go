@@ -93,6 +93,7 @@ type durableEnv struct {
 	dir      string
 	bridge   string
 	kill     func()
+	observe  *agentsvc.ObserveService // 后台观测：读 Go 的库，durable 的运行经 Remote 读 Agent 服务
 }
 
 // startDurableAgent 起一个真实的 Agent 服务（durable 模式）：数据在 dbPath 的 SQLite 里，重启同一个路径就是恢复。
@@ -144,8 +145,10 @@ func newDurableE2E(t *testing.T, turns ...llmTurn) *durableEnv {
 		t.Skip("agent 目录没有安装依赖（npm ci），跳过端到端测试")
 	}
 	db := isolatedDB(t, &model.CanvasProject{}, &model.AgentSession{}, &model.AgentRun{}, &model.AgentEvent{}, &model.AgentMutation{},
-		&model.AgentApproval{}, &model.AgentModelCall{}, &model.UserCredit{}, &model.CreditLedger{}, &model.GenerationTask{})
+		&model.AgentApproval{}, &model.AgentModelCall{}, &model.UserCredit{}, &model.CreditLedger{}, &model.GenerationTask{},
+		&model.AgentToolCall{}, &model.AgentModelCallBody{}, &model.AgentRunDigest{}, &model.AgentFeedback{})
 	repo := NewAgentRepository(db)
+	observeRepo := NewAgentObserveRepository(db)
 	llm := newFakeLLM(t, turns...)
 	canvas := &model.CanvasProject{UserID: 1, Title: "画布", Revision: 1, PayloadJSON: []byte(
 		`{"nodes":[{"id":"n_script","type":"canvas","position":{"x":0,"y":0},"data":{"kind":"script","label":"剧本","prompt":"雨夜便利店"}},` +
@@ -163,6 +166,8 @@ func newDurableE2E(t *testing.T, turns ...llmTurn) *durableEnv {
 		Registry: e2eRegistry{base: llm.srv.URL}, Secrets: e2eSecrets{}, RunUsage: repo,
 		Streamer: llmgateway.New(llmgateway.Options{IdleTimeout: 10 * time.Second, IPAllowed: func(ip net.IP) bool { return ip.IsLoopback() }}),
 	})
+	bridge.SetToolRecorder(observeRepo)         // 工具调用的参数和结果留在 Go 的库里，后台导出要看
+	bridge.SetModelRequestRecorder(observeRepo) // 模型请求体同理
 	platform := agenthandler.NewPlatformHandler(bridge).WithEventRelay(agentsvc.NewEventRelay(relay))
 	bridgeSrv := httptest.NewServer(router.NewBridge("test", agenthandler.NewAgentBridgeHandler(bridge), platform, e2eServiceToken))
 	t.Cleanup(bridgeSrv.Close)
@@ -185,7 +190,8 @@ func newDurableE2E(t *testing.T, turns ...llmTurn) *durableEnv {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &durableEnv{db: db, repo: repo, llm: llm, canvas: canvas, api: api, agentURL: agentURL, relay: relay, jwt: jwt, dbPath: dbPath, node: node, dir: dir, bridge: bridgeSrv.URL, kill: kill}
+	observe := agentsvc.NewObserveService(agentsvc.ObserveDeps{Repo: observeRepo, Runs: repo, Remote: &agentsvc.HTTPRemoteRuns{BaseURL: agentURL, ServiceToken: e2eServiceToken}})
+	return &durableEnv{observe: observe, db: db, repo: repo, llm: llm, canvas: canvas, api: api, agentURL: agentURL, relay: relay, jwt: jwt, dbPath: dbPath, node: node, dir: dir, bridge: bridgeSrv.URL, kill: kill}
 }
 
 // call 以登录用户的身份发一次请求，返回 HTTP 状态码和解析后的信封。
@@ -410,12 +416,18 @@ func TestE2EDurable_KilledAgentResumesRun(t *testing.T) {
 		llmTurn{tools: []llmTool{{id: "call_1", name: "canvas_apply_ops", args: map[string]any{"ops": []any{
 			map[string]any{"op": "create_node", "tempId": "a", "kind": "image", "label": "关键帧", "prompt": "雨夜", "parentGroup": ""},
 		}}}}},
-		llmTurn{text: "好了", slow: 150 * time.Millisecond},
+		llmTurn{text: "好了", slow: 600 * time.Millisecond},
 	)
 	sid := e.newSession(t)
 	e.startRun(t, sid, "加一个关键帧")
 	// 第二轮回答正在慢慢流出时杀掉 Agent
 	e.waitEvent(t, sid, "第一轮工具完成", func(ev map[string]any) bool { return ev["type"] == "tool.end" })
+	// 等第二轮的请求真的到了上游再杀：否则杀在请求发出之前，续跑第一次发请求就不是「重新请求被打断的那一轮」
+	for deadline := time.Now().Add(20 * time.Second); len(e.llm.requests()) < 2; time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("第二轮请求没有到达上游")
+		}
+	}
 	for _, ev := range e.replay(t, sid) { // 杀进程前运行不能已经结束，否则这个用例什么都没验证
 		if runStatus("succeeded", "failed", "interrupted")(ev) {
 			t.Fatalf("杀进程前运行已经结束了：%v", ev)
@@ -457,6 +469,11 @@ func TestE2EDurable_KilledAgentResumesRun(t *testing.T) {
 	var all int64
 	e.db.Model(&model.AgentModelCall{}).Count(&all)
 	if settled != all || all < 2 {
+		var calls []model.AgentModelCall
+		e.db.Order("id").Find(&calls)
+		for _, c := range calls {
+			t.Logf("调用 %d：状态 %s 实扣 %d 错误 %q 估算 %v", c.ID, c.Status, c.Charged, c.Error, c.UsageEstimated)
+		}
 		t.Errorf("模型调用都应结算（被杀的那次不留下未结算的记录）：settled=%d all=%d", settled, all)
 	}
 }
@@ -476,6 +493,108 @@ func countSeqs(evs []map[string]any) int {
 func hasType(evs []map[string]any, typ string) bool {
 	for _, ev := range evs {
 		if ev["type"] == typ {
+			return true
+		}
+	}
+	return false
+}
+
+// 场景 4：后台观测。durable 的运行在 Agent 的库里，工具、模型调用、画布改动在 Go 的库里；
+// 摘要同步把两边汇总成列表里的一行，导出把两边合成一份，评价和撤销之后再同步，摘要跟着变。
+func TestE2EDurable_ObservabilityMergesAgentAndGo(t *testing.T) {
+	e := newDurableE2E(t,
+		llmTurn{tools: []llmTool{{id: "call_1", name: "canvas_apply_ops", args: map[string]any{"ops": []any{
+			map[string]any{"op": "create_node", "tempId": "a", "kind": "image", "label": "关键帧", "prompt": "雨夜便利店门口", "parentGroup": ""},
+		}}}}},
+		llmTurn{text: "加好了。"},
+	)
+	sid := e.newSession(t)
+	runID := e.startRun(t, sid, "加一个关键帧")
+	e.waitEvent(t, sid, "运行结束", runStatus("succeeded", "failed", "interrupted"))
+	id, _ := idcodec.Decode(runID)
+	ctx := context.Background()
+	who := agentsvc.ObserveActor{UserID: 1}
+
+	// 同步前：Go 的摘要表里没有这次运行
+	page, err := e.observe.ListRuns(ctx, who, &agentsvc.RunListFilter{})
+	if err != nil || len(page.Items) != 0 {
+		t.Fatalf("同步前列表应为空：%v %+v", err, page)
+	}
+	// 同步：每一轮同步到的都是幂等的，反复做不会出错
+	var n int
+	for i := 0; i < 2; i++ {
+		if n, err = e.observe.SyncRemote(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	page, err = e.observe.ListRuns(ctx, who, &agentsvc.RunListFilter{})
+	if err != nil || len(page.Items) != 1 {
+		t.Fatalf("同步后列表应有这一次运行：%v %+v", err, page)
+	}
+	d := page.Items[0]
+	if uint64(d.RunID) != id || d.Status != model.RunSucceeded || d.UserID == 0 || d.RequestHead != "加一个关键帧" {
+		t.Errorf("摘要里运行本身的字段来自 Agent：%+v", d)
+	}
+	if d.ToolCalls != 1 || d.ModelCalls != 2 || d.MutationCount != 1 || d.SpentCredits != 10 || d.ModelKey != "claude" || d.Feedback != 0 || d.Undone {
+		t.Errorf("工具、模型调用、画布改动来自 Go，积分是 Go 结算的：%+v", d)
+	}
+	_ = n
+
+	// 用户评价、撤销（都经 Go 的代理到 Agent）：再同步，摘要跟着变
+	e.data(t, "PUT", "/agent/runs/"+runID+"/feedback", `{"rating":-1,"reasons":["slow"],"comment":"太慢"}`, 200)
+	e.data(t, "POST", "/agent/runs/"+runID+"/undo", `{}`, 200)
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if _, err := e.observe.SyncRemote(ctx); err != nil {
+			t.Fatal(err)
+		}
+		page, _ = e.observe.ListRuns(ctx, who, &agentsvc.RunListFilter{})
+		if page.Items[0].Feedback == -1 && page.Items[0].Undone {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("评价和撤销之后摘要应更新：%+v", page.Items[0])
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	down, _ := e.observe.ListRuns(ctx, who, &agentsvc.RunListFilter{Feedback: "down"})
+	if len(down.Items) != 1 {
+		t.Errorf("按评价筛选：%d", len(down.Items))
+	}
+
+	// 导出：两边合成一份
+	out, err := e.observe.ExportRun(ctx, who, id, agentsvc.ExportBoth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v := out.Data
+	if !hasEventType(v.Events, "message.user") || !hasEventType(v.Events, "message.done") || !hasEventType(v.Events, "tool.end") {
+		t.Errorf("事件来自 Agent：%d 条", len(v.Events))
+	}
+	if len(v.ToolCalls) != 1 || v.ToolCalls[0].Name != "canvas_apply_ops" || !strings.Contains(string(v.ToolCalls[0].Args), "雨夜便利店门口") || v.ToolCalls[0].Result == nil {
+		t.Errorf("工具调用的完整参数和结果来自 Go：%+v", v.ToolCalls)
+	}
+	if len(v.ModelCalls) != 2 || v.ModelCalls[0].Charged != 5 || v.ModelCalls[0].Request == nil {
+		t.Errorf("模型调用（含请求摘要）来自 Go：%+v", v.ModelCalls)
+	}
+	if len(v.Mutations) < 1 || v.Feedback == nil || v.Feedback.Rating != -1 || v.Feedback.Comment != "太慢" {
+		t.Errorf("画布改动来自 Go，评价来自 Agent：%+v %+v", v.Mutations, v.Feedback)
+	}
+	if !strings.Contains(out.Content, "加一个关键帧") || !strings.Contains(out.Content, "加好了。") {
+		t.Errorf("Markdown 应有用户请求和 Agent 的最后回复：\n%s", out.Content)
+	}
+	reqs, err := e.observe.RunRequests(ctx, who, id)
+	if err != nil || len(reqs.Items) != 2 {
+		t.Errorf("模型请求体在 Go 的库里：%v %+v", err, reqs)
+	}
+	if _, err := e.observe.ExportRun(ctx, who, id+1, agentsvc.ExportMD); err == nil {
+		t.Error("不存在的运行应报错")
+	}
+}
+
+func hasEventType(evs []*agentsvc.AgentEventView, typ string) bool {
+	for _, ev := range evs {
+		if ev.Type == typ {
 			return true
 		}
 	}

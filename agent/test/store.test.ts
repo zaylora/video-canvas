@@ -511,3 +511,60 @@ test("评价：每个运行每人一条，改选覆盖（保留创建时间、�
   assert.ok(s.getFeedback(r.id, "2"));
   assert.throws(() => s.upsertFeedback({ runId: "404", userId: "1", rating: 1, reasons: [], comment: "" }), NotFoundError, "运行不存在");
 }));
+
+// ---- 观测读取（Go 的后台只读，不带用户） ----
+
+test("观测：按 id 读运行不看用户；按更新时间列出变过的运行（升序、不含游标本身、有上限）", withStore((s, c) => {
+  const a = newSession(s, { canvasId: "7" });
+  const b = newSession(s, { userId: "2", canvasId: "8" });
+  const r1 = newRun(s, a.id);
+  c.tick(10);
+  const r2 = s.createRun({ sessionId: b.id, canvasId: "8", userId: "2", status: "running", mode: "all" });
+  assert.equal(s.getRunById(r2.id).userId, "2", "不看用户");
+  assert.throws(() => s.getRunById("999"), NotFoundError);
+
+  c.tick(10);
+  s.updateRunIf(r1.id, ["running"], { status: "succeeded", endedAt: c.now() }); // r1 最后变
+  const all = s.listRunsUpdatedAfter(0, 10);
+  assert.deepEqual(all.map((r) => [r.id, r.status]), [[r2.id, "running"], [r1.id, "succeeded"]], "按更新时间升序");
+  assert.equal(all[0].updatedAt, r2.updatedAt);
+  assert.deepEqual(s.listRunsUpdatedAfter(r2.updatedAt, 10).map((r) => r.id), [r1.id], "严格大于游标");
+  assert.equal(s.listRunsUpdatedAfter(0, 1).length, 1, "有上限");
+  assert.deepEqual(s.listRunsUpdatedAfter(c.now(), 10), []);
+}));
+
+test("观测：touchRun 只刷新更新时间（评价、撤销之后让 Go 重新汇总）", withStore((s, c) => {
+  const sess = newSession(s);
+  const run = newRun(s, sess.id);
+  s.updateRunIf(run.id, ["running"], { status: "succeeded", endedAt: c.now() });
+  const before = s.getRunById(run.id);
+  c.tick(500);
+  s.touchRun(run.id);
+  const after = s.getRunById(run.id);
+  assert.equal(after.updatedAt, before.updatedAt + 500);
+  assert.deepEqual({ ...after, updatedAt: 0 }, { ...before, updatedAt: 0 }, "其他字段不变");
+  assert.throws(() => s.touchRun("999"), NotFoundError);
+}));
+
+test("观测：一次运行的事件（升序）；会话是否被删；同会话更早几轮的用户消息和最终回复", withStore((s) => {
+  const sess = newSession(s);
+  const runs = [newRun(s, sess.id, { status: "succeeded" }), newRun(s, sess.id, { status: "succeeded" }), newRun(s, sess.id, { status: "succeeded" }), newRun(s, sess.id)];
+  for (const [i, r] of runs.entries()) {
+    s.appendEvent(sess.id, r.id, "message.user", { text: `问${i}` });
+    s.appendEvent(sess.id, r.id, "tool.start", { id: `t${i}` });
+    s.appendEvent(sess.id, r.id, "message.done", { text: `答${i}` });
+  }
+  s.appendEvent(sess.id, "0", "message.user", { text: "会话级，不属于任何运行" });
+  assert.deepEqual(s.listRunEvents(runs[3].id).map((e) => [e.seq, e.type]), [[10, "message.user"], [11, "tool.start"], [12, "message.done"]]);
+  assert.deepEqual(s.listRunEvents("999"), []);
+
+  // 上下文：只取前面 2 轮（不含本轮、不含更早的），只要用户消息和最终回复
+  const ctx = s.listContextEvents(sess.id, runs[3].id, 2);
+  assert.deepEqual(ctx.map((e) => [e.runId === runs[1].id ? 1 : 2, e.type]), [[1, "message.user"], [1, "message.done"], [2, "message.user"], [2, "message.done"]]);
+  assert.deepEqual(s.listContextEvents(sess.id, runs[0].id, 2), [], "第一轮没有更早的");
+
+  assert.equal(s.isSessionDeleted(sess.id), false);
+  s.deleteSession("1", sess.id);
+  assert.equal(s.isSessionDeleted(sess.id), true);
+  assert.equal(s.isSessionDeleted("999"), true, "不存在按已删除处理");
+}));

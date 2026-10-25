@@ -748,3 +748,48 @@ func TestObserve_ModelCallBodies(t *testing.T) {
 		}
 	})
 }
+
+// 运行本身在 Agent 服务里（agent_runs 没有这一行）时，Go 自己持有的那部分：工具调用、模型调用、画布改动。
+func TestObserve_LocalFactsForRunsOwnedByAgent(t *testing.T) {
+	ctx := context.Background()
+	db := observeDB(t)
+	r := NewAgentObserveRepository(db)
+	const runID, other = uint64(281474976710657123), uint64(281474976710657124)
+	res := "完整结果"
+	db.Create(&model.AgentToolCall{RunID: runID, SessionID: 1, ToolCallID: "a", Name: "x", ArgsJSON: datatypes.JSON(`{"big":1}`), ResultText: &res, StartedAt: t0, IsError: true})
+	db.Create(&model.AgentToolCall{RunID: other, SessionID: 1, ToolCallID: "b", Name: "x", StartedAt: t0})
+	db.Create(&model.AgentModelCall{RunID: runID, UserID: 1, ModelKey: "m", Status: model.ModelCallSettled, InputTokens: 10, OutputTokens: 5})
+	db.Create(&model.AgentMutation{RunID: runID, CanvasID: 7, UserID: 1, Seq: 1, Kind: model.MutationApplyOps, ChangesJSON: datatypes.JSON(`[{"x":1}]`)})
+	tail := "stderr"
+	_ = r.UpsertDigest(ctx, &model.AgentRunDigest{RunID: runID, UserID: 1, SessionID: 1, CanvasID: 7, Skills: datatypes.JSON(`{}`), RuntimeTail: &tail, CreatedAt: t0})
+
+	f, err := r.LocalRunFacts(ctx, runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(f.ToolCalls) != 1 || len(f.ModelCalls) != 1 || len(f.Mutations) != 1 || f.RuntimeTail != "stderr" {
+		t.Errorf("事实不全或串了别的运行：%+v", f)
+	}
+	if len(f.ToolCalls[0].ArgsJSON) != 0 || f.ToolCalls[0].ResultText != nil || len(f.Mutations[0].ChangesJSON) != 0 {
+		t.Errorf("摘要用不到大字段，不该读：%s %v %s", f.ToolCalls[0].ArgsJSON, f.ToolCalls[0].ResultText, f.Mutations[0].ChangesJSON)
+	}
+	empty, err := r.LocalRunFacts(ctx, 999)
+	if err != nil || len(empty.ToolCalls)+len(empty.ModelCalls)+len(empty.Mutations) != 0 {
+		t.Errorf("没有记录不是错误：%v %+v", err, empty)
+	}
+
+	x, err := r.LocalExportFacts(ctx, runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if x.Digest.RunID != runID || len(x.ToolCalls) != 1 || x.ToolCalls[0].ResultText == nil || *x.ToolCalls[0].ResultText != "完整结果" || len(x.ModelCalls) != 1 || len(x.Mutations) != 1 || string(x.Mutations[0].ChangesJSON) == "" {
+		t.Errorf("导出要带参数、结果和改动明细：%+v", x)
+	}
+	if x.RuntimeTail != "stderr" {
+		t.Errorf("runtime_tail：%q", x.RuntimeTail)
+	}
+	none, err := r.LocalExportFacts(ctx, 999)
+	if err != nil || none.Digest.RunID != 0 {
+		t.Errorf("没有摘要也不是错误：%v %+v", err, none.Digest)
+	}
+}

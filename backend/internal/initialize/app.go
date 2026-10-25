@@ -259,7 +259,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 
 	// 观测服务依赖角色查询（分析令牌的签发人必须仍是管理员），所以在 roleLookup 之后装配，再绑定给 AgentService 做摘要刷新
 	observeSvc := agentsvc.NewObserveService(agentsvc.ObserveDeps{
-		Repo: observeRepo, Runs: agentRepo, Events: agentSvc, Audit: auditRepo, Roles: roleLookup,
+		Repo: observeRepo, Runs: agentRepo, Events: agentSvc, Audit: auditRepo, Roles: roleLookup, Remote: AgentRemoteRunsFor(cfg.Agent),
 	})
 	agentSvc.SetObserver(observeSvc)
 	if agentRT != nil && agentRT.rt != nil {
@@ -511,6 +511,18 @@ func (a *App) Run(ctx context.Context) error {
 		<-observeDone
 	}()
 
+	// durable 模式：把 Agent 服务里变过的运行汇总进摘要表（没有配置 Agent 服务时立即返回）：先于关库停止
+	syncCtx, syncCancel := context.WithCancel(context.Background())
+	syncDone := make(chan struct{})
+	go func() {
+		defer close(syncDone)
+		a.observe.RunRemoteSync(syncCtx, observeSyncInterval)
+	}()
+	defer func() {
+		syncCancel()
+		<-syncDone
+	}()
+
 	// 技能库清理：先于关库停止
 	skillCtx, skillCancel := context.WithCancel(context.Background())
 	skillDone := make(chan struct{})
@@ -628,6 +640,9 @@ func (a *App) cleanupLoginLogsOnce(ctx context.Context) {
 		logger.Info("已清理过期登录记录", zap.Int64("count", n))
 	}
 }
+
+// observeSyncInterval 是汇总 Agent 服务里变过的运行的间隔：后台运行记录比运行结束晚几秒出现，可以接受。
+const observeSyncInterval = 10 * time.Second
 
 // observeCleanupInterval 是清理过期观测大字段的间隔：按天保留，每天扫一次足够。
 const observeCleanupInterval = 24 * time.Hour

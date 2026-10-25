@@ -42,6 +42,11 @@ const (
 type ObserveRepo interface {
 	// RunFacts 读生成运行摘要需要的事实，运行不存在返回 repository.ErrNotFound。
 	RunFacts(ctx context.Context, runID uint64) (*model.AgentRunFacts, error)
+	// LocalRunFacts 读运行本身不在 Go 库里（在 Agent 服务里）时 Go 自己持有的那部分事实：工具调用（不含参数和结果）、
+	// 模型调用、画布改动和 runtime_tail。没有记录时返回空的事实，不是错误。
+	LocalRunFacts(ctx context.Context, runID uint64) (*model.AgentRunFacts, error)
+	// LocalExportFacts 同上，用于导出：摘要、含参数和结果的工具调用、模型调用、模型请求摘要、画布改动。
+	LocalExportFacts(ctx context.Context, runID uint64) (*model.AgentExportFacts, error)
 	// UpsertDigest 写运行摘要，一次运行一行，整行覆盖。
 	UpsertDigest(ctx context.Context, d *model.AgentRunDigest) error
 	// GetDigest 读一条运行摘要，没有返回 repository.ErrNotFound。
@@ -106,6 +111,7 @@ type ObserveDeps struct {
 	Events EventEmitter     // 发反馈事件；为 nil 时不发
 	Audit  AuditWriter      // 审计；为 nil 时不写
 	Roles  RoleLookup       // 令牌签发人的角色查询
+	Remote RemoteRuns       // agent.runtime=durable 时读 Agent 服务里的运行；为 nil 表示运行都在 Go 的库里
 	Now    func() time.Time // 为 nil 取系统时间
 }
 
@@ -113,6 +119,10 @@ type ObserveDeps struct {
 // 它记录和读取的都是观测数据，出错时不能影响用户正在进行的运行。
 type ObserveService struct {
 	d ObserveDeps
+
+	// 同步 Agent 服务里的运行：游标是已处理到的更新时间（毫秒），只在内存里
+	syncMu     sync.Mutex
+	syncCursor int64
 
 	mu      sync.Mutex
 	windows map[uint64]*rateWindow // 令牌 id → 当前分钟的请求计数
@@ -254,7 +264,7 @@ func mustJSON(v any, fallback string) datatypes.JSON {
 // RefreshDigest 重新汇总一次运行并写入摘要。运行进入非活跃状态、用户评价或撤销之后调用。
 // 返回错误由调用方决定怎么处理：事件钩子里只记日志，不能让用户的运行因观测数据失败。
 func (s *ObserveService) RefreshDigest(ctx context.Context, runID uint64) error {
-	f, err := s.d.Repo.RunFacts(ctx, runID)
+	f, err := s.runFacts(ctx, runID)
 	if err != nil {
 		return err
 	}

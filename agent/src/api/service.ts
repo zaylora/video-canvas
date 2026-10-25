@@ -14,7 +14,10 @@ import type { AgentModel, ApprovalDecision, Platform, UndoResult } from "../plat
 import { NotFoundError } from "../store/errors.ts";
 import type { AgentStore } from "../store/store.ts";
 import type { AgentEventRecord, Run, Session } from "../store/types.ts";
-import { eventView, runView, sessionView, type EventView, type HistoryView, type RunView, type SessionView } from "./views.ts";
+import {
+  eventView, observeEvent, runView, sessionView,
+  type EventView, type HistoryView, type ObserveFacts, type ObserveRunRef, type RunView, type SessionView,
+} from "./views.ts";
 
 const DEFAULT_TITLE = "新对话";
 const MAX_SESSIONS_PER_CANVAS = 50;
@@ -22,6 +25,8 @@ const MAX_EVENT_PAGE = 200;
 const DEFAULT_HISTORY_PAGE = 100;
 const MAX_HISTORY_CHUNKS = 20;
 const MAX_TITLE = 40;
+const MAX_OBSERVE_PAGE = 500;
+const CONTEXT_TURNS = 2;
 
 export interface ApiOptions {
   store: AgentStore;
@@ -180,7 +185,10 @@ export class AgentApiService {
     const res = await this.#platform(() =>
       this.#o.platform.undo({ run_id: run.id, user_id: userId, session_id: run.sessionId, canvas_id: run.canvasId, mode: run.mode, model_key: sess.modelKey }),
     );
-    if (res.revision !== 0) this.#o.engine.recordEvent(run, "run.undone", { reverted: res.reverted, skipped: res.skipped.length });
+    if (res.revision !== 0) {
+      this.#o.engine.recordEvent(run, "run.undone", { reverted: res.reverted, skipped: res.skipped.length });
+      this.#o.store.touchRun(run.id); // Go 的摘要要把"被撤销过"汇总进去
+    }
     return res;
   }
 
@@ -195,6 +203,7 @@ export class AgentApiService {
     const run = this.#run(userId, runId);
     if (isActive(run.status)) throw new AgentError(60014, 409, "运行还没结束，结束后才能评价");
     this.#o.store.upsertFeedback({ runId, userId, rating: req.rating, reasons, comment });
+    this.#o.store.touchRun(runId);
     const view = { rating: req.rating, reasons, comment };
     // 载荷里不放运行 id：前端按事件自带的编码后的 run_id 对账
     this.#o.engine.recordEvent(run, "feedback.set", view);
@@ -204,7 +213,48 @@ export class AgentApiService {
   /** 取消评价。本来就没有评价是幂等的，不发事件 */
   async clearFeedback(userId: string, runId: string): Promise<void> {
     const run = this.#run(userId, runId);
-    if (this.#o.store.deleteFeedback(runId, userId)) this.#o.engine.recordEvent(run, "feedback.cleared", {});
+    if (this.#o.store.deleteFeedback(runId, userId)) {
+      this.#o.store.touchRun(runId);
+      this.#o.engine.recordEvent(run, "feedback.cleared", {});
+    }
+  }
+
+  // ---- 观测（Go 的后台只读；不带用户，由 HTTP 层用服务令牌把关）----
+
+  /** 更新时间晚于 afterMs 的运行（升序，最多 limit 条）：Go 的摘要同步靠它找出变过的运行 */
+  async observeRuns(afterMs: number, limit: number): Promise<ObserveRunRef[]> {
+    if (!Number.isInteger(limit) || limit < 1 || limit > MAX_OBSERVE_PAGE) throw Err.invalidParams(`limit 必须是 1 到 ${MAX_OBSERVE_PAGE}`);
+    return this.#o.store.listRunsUpdatedAfter(afterMs, limit).map((r) => ({ id: r.id, status: r.status, updated_at: r.updatedAt }));
+  }
+
+  /** 一次运行的事实：Agent 自己持有的那部分（运行、事件、审批、评价、上下文）；工具、模型调用、画布改动在 Go */
+  async observeFacts(runId: string): Promise<ObserveFacts> {
+    const store = this.#o.store;
+    let run: Run;
+    try {
+      run = store.getRunById(runId);
+    } catch (e) {
+      if (e instanceof NotFoundError) throw Err.runMissing();
+      throw e;
+    }
+    const fb = store.getFeedback(run.id, run.userId);
+    const at = (ms: number | null) => (ms === null ? null : new Date(ms).toISOString());
+    return {
+      run: {
+        id: run.id, session_id: run.sessionId, canvas_id: run.canvasId, user_id: run.userId, status: run.status, mode: run.mode,
+        budget_credits: run.budgetCredits, spent_credits: run.spentCredits, context_tokens: run.contextTokens, steps: run.steps, max_steps: run.maxSteps,
+        error_code: run.errorCode, error_message: run.errorMessage, prompt_version: run.promptVersion, tools_hash: run.toolsHash, build_sha: run.buildSha,
+        harness_key: run.harnessKey, created_at: at(run.createdAt)!, ended_at: at(run.endedAt),
+      },
+      session_deleted: store.isSessionDeleted(run.sessionId),
+      events: store.listRunEvents(run.id).map(observeEvent),
+      approvals: store.listApprovals(run.id).map((a) => ({
+        id: a.id, kind: a.kind, tool_call_id: a.toolCallId, status: a.status, quote_credits: a.quoteCredits, payload: a.payload,
+        decision: a.decision, result: a.result, decided_at: at(a.decidedAt), created_at: at(a.createdAt)!,
+      })),
+      feedback: fb ? { rating: fb.rating, reasons: fb.reasons, comment: fb.comment, created_at: at(fb.createdAt)! } : null,
+      context: store.listContextEvents(run.sessionId, run.id, CONTEXT_TURNS).map(observeEvent),
+    };
   }
 
   // ---- 内部 ----

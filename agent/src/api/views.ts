@@ -72,3 +72,54 @@ export interface HistoryView {
   events: EventView[];
   has_more: boolean;
 }
+
+// ---- 观测（给 Go 的后台读，内部接口）----
+// 和面向前端的视图不同：id 一律是十进制字符串（编码串只在 Go 手里），事件带 run_id 好区分上下文属于哪一轮。
+
+export interface ObserveRunRef {
+  id: string;
+  status: string;
+  /** 毫秒时间戳；Go 用它做同步游标 */
+  updated_at: number;
+}
+
+export interface ObserveEvent {
+  run_id: string;
+  seq: number;
+  type: string;
+  data: unknown;
+  created_at: string;
+}
+
+export interface ObserveApproval {
+  id: string;
+  kind: string;
+  tool_call_id: string;
+  status: string;
+  quote_credits: number;
+  payload: unknown;
+  decision: unknown;
+  result: unknown;
+  decided_at: string | null;
+  created_at: string;
+}
+
+export interface ObserveFacts {
+  run: {
+    id: string; session_id: string; canvas_id: string; user_id: string; status: string; mode: string;
+    budget_credits: number; spent_credits: number; context_tokens: number; steps: number; max_steps: number;
+    error_code: string; error_message: string; prompt_version: number; tools_hash: string; build_sha: string; harness_key: string;
+    created_at: string; ended_at: string | null;
+  };
+  session_deleted: boolean;
+  /** 本轮的全部落库事件，按序号升序 */
+  events: ObserveEvent[];
+  approvals: ObserveApproval[];
+  feedback: { rating: number; reasons: string[]; comment: string; created_at: string } | null;
+  /** 同会话更早两轮的用户消息和最终回复，按序号升序 */
+  context: ObserveEvent[];
+}
+
+export function observeEvent(e: AgentEventRecord): ObserveEvent {
+  return { run_id: e.runId, seq: e.seq, type: e.type, data: e.payload, created_at: iso(e.createdAt) };
+}

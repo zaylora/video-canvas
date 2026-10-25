@@ -182,7 +182,7 @@ func (s *ObserveService) ExportRun(ctx context.Context, who ObserveActor, runID 
 	if !slices.Contains([]string{ExportMD, ExportJSON, ExportBoth}, format) {
 		return nil, errcode.ErrInvalidParams.WithMsg("format 只能是 md、json 或 both")
 	}
-	f, err := s.d.Repo.ExportFacts(ctx, runID)
+	f, err := s.exportFacts(ctx, runID)
 	if err != nil {
 		return nil, runErr(err)
 	}
@@ -213,7 +213,7 @@ type RunRequestsExport struct {
 // RunRequests 导出一次运行里各次模型调用实际发给上游的完整请求体（图片地址和数据已脱敏）。
 // 体量大，所以不放进 ExportRun，要用时单独取。运行不存在返回 60012；令牌访问每次写一条审计。
 func (s *ObserveService) RunRequests(ctx context.Context, who ObserveActor, runID uint64) (*RunRequestsExport, error) {
-	if _, err := s.d.Repo.RunFacts(ctx, runID); err != nil {
+	if _, err := s.runFacts(ctx, runID); err != nil {
 		return nil, runErr(err)
 	}
 	rows, err := s.d.Repo.ModelCallRequests(ctx, runID, true)

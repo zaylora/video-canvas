@@ -118,6 +118,14 @@ func AgentProxyFor(ac config.Agent) (*agenthandler.AgentProxyHandler, error) {
 	return agenthandler.NewAgentProxy(ac.URL, ac.ServiceToken)
 }
 
+// AgentRemoteRunsFor 在 durable 模式下创建读 Agent 服务里运行的客户端（后台运行记录、导出、摘要同步用）；其他模式返回 nil（运行都在 Go 的库里）。
+func AgentRemoteRunsFor(ac config.Agent) agentsvc.RemoteRuns {
+	if !ac.Enabled || ac.Runtime != config.AgentRuntimeDurable {
+		return nil
+	}
+	return &agentsvc.HTTPRemoteRuns{BaseURL: ac.URL, ServiceToken: ac.ServiceToken}
+}
+
 // agentEntryScript 选入口脚本。仓库里有源码就直接跑源码（Node 22.19+ 自带类型剥离，不用先构建），
 // 部署镜像里只有 npm run build 的产物。两者同时存在时用源码：开发时改了 src，不能被旧的 dist 盖住。
 func agentEntryScript(dir string) (string, error) {

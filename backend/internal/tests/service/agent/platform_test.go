@@ -258,3 +258,43 @@ func TestExecutePlatformTool_ToolEndIsInTheJSON(t *testing.T) {
 		t.Errorf("响应里要有 tool_end（含 summary、created）: %s", raw)
 	}
 }
+
+// 上下文模式下工具调用也要留存（参数、结果、耗时）：后台导出、技能读取统计、Agent 失败分析都靠它，和令牌模式一致。
+func TestExecutePlatformTool_RecordsToolCalls(t *testing.T) {
+	b, rec := newToolBridge(t)
+	rc := platformCtx(900001, "all")
+	execPlatform(context.Background(), t, b, rc, "call_1", "canvas_get_state", map[string]any{})
+
+	c := rec.get(t, "call_1")
+	if c.RunID != 900001 || c.SessionID != 5 || c.Name != "canvas_get_state" || c.ParentID != "" {
+		t.Errorf("记录里的运行、会话、工具名不对: %+v", c)
+	}
+	if c.ResultText == nil || !strings.Contains(*c.ResultText, "n_script") || c.EndedAt == nil || c.IsError {
+		t.Errorf("结果和结束时间要补记: %+v", c)
+	}
+	if c.Summary == "" {
+		t.Error("摘要要记（导出和统计读它）")
+	}
+
+	// 被拒绝的调用（模式不允许、未知工具）同样要记：它们正是分析 Agent 失败要看的
+	execPlatform(context.Background(), t, b, platformCtx(900001, "prompt"), "call_2", "canvas_arrange", map[string]any{"nodeIds": []string{"n_script"}})
+	if r := rec.get(t, "call_2"); !r.IsError || r.ResultText == nil || !strings.Contains(*r.ResultText, "不能使用") {
+		t.Errorf("被拒绝的调用也要记: %+v", r)
+	}
+	execPlatform(context.Background(), t, b, rc, "call_3", "no_such_tool", map[string]any{})
+	if r := rec.get(t, "call_3"); !r.IsError {
+		t.Errorf("未知工具也要记: %+v", r)
+	}
+
+	// codemode 脚本里的嵌套调用：调用 id 是 <外层 id>/<key>，记录里要指向外层
+	execPlatform(context.Background(), t, b, rc, "call_9/2", "canvas_get_state", map[string]any{})
+	if r := rec.get(t, "call_9/2"); r.ParentID != "call_9" {
+		t.Errorf("嵌套调用要记下外层调用: %q", r.ParentID)
+	}
+
+	// 重放（同一个调用再来一次）不重复记
+	execPlatform(context.Background(), t, b, rc, "call_1", "canvas_get_state", map[string]any{})
+	if len(rec.order) != 4 {
+		t.Errorf("同一个调用只记一条: %v", rec.order)
+	}
+}
