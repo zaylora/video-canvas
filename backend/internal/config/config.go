@@ -121,6 +121,10 @@ const (
 	AgentRuntimeHTTP    = "http"
 )
 
+// DefaultHTTPBridgeAddr 是 http 模式下桥的默认监听地址：Agent 服务在别的容器里，要连得上就得是内网可达的固定端口。
+// 它不是回环地址，所以这个模式必须配服务令牌（Validate 已保证）。
+const DefaultHTTPBridgeAddr = "0.0.0.0:47001"
+
 // MinServiceTokenLen 是服务令牌的最短长度：它在非回环监听时是唯一的屏障，太短的令牌等于没配。
 const MinServiceTokenLen = 32
 
@@ -146,6 +150,9 @@ func (a Agent) WithDefaults() Agent {
 	}
 	if a.BridgeAddr == "" {
 		a.BridgeAddr = "127.0.0.1:0"
+		if a.Runtime == AgentRuntimeHTTP {
+			a.BridgeAddr = DefaultHTTPBridgeAddr
+		}
 	}
 	if a.Runtime == "" {
 		a.Runtime = AgentRuntimeProcess

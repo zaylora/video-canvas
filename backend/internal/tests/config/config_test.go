@@ -162,6 +162,25 @@ func TestAgentConfig_RuntimeMode(t *testing.T) {
 	}
 }
 
+// http 模式下 Agent 在别的容器里，要连桥就得有个固定端口：不写 bridge_addr 时默认监听内网的 47001；
+// process 模式仍是本机随机端口。显式写了的不被默认值覆盖。
+func TestAgentConfig_BridgeAddrDefaultFollowsRuntime(t *testing.T) {
+	if got := (Agent{}).WithDefaults().BridgeAddr; got != "127.0.0.1:0" {
+		t.Errorf("process 模式: %q", got)
+	}
+	if got := (Agent{Runtime: "http"}).WithDefaults().BridgeAddr; got != "0.0.0.0:47001" {
+		t.Errorf("http 模式: %q", got)
+	}
+	if got := (Agent{Runtime: "http", BridgeAddr: "10.0.0.5:9000"}).WithDefaults().BridgeAddr; got != "10.0.0.5:9000" {
+		t.Errorf("显式配置不能被覆盖: %q", got)
+	}
+	// 默认地址不是回环，所以 http 模式照样要求服务令牌（上面的校验已经保证）：完整配置不写 bridge_addr 也能通过
+	ok := Agent{Enabled: true, Runtime: "http", URL: "http://agent:8090", BridgeURL: "http://backend:47001", ServiceToken: strings.Repeat("a", 32)}
+	if err := ok.Validate(); err != nil {
+		t.Errorf("不写 bridge_addr 的完整 http 配置应通过: %v", err)
+	}
+}
+
 func TestLoad_AgentRuntimeFromEnv(t *testing.T) {
 	t.Setenv("APP_AGENT_RUNTIME", "http")
 	t.Setenv("APP_AGENT_URL", "http://agent:8090")
@@ -172,6 +191,19 @@ func TestLoad_AgentRuntimeFromEnv(t *testing.T) {
 	}
 	if cfg.Agent.Runtime != "http" || cfg.Agent.URL != "http://agent:8090" || cfg.Agent.BridgeURL != "http://backend:47001" {
 		t.Errorf("环境变量应能覆盖: %+v", cfg.Agent)
+	}
+	// 要经过真实的默认配置文件：默认文件里如果显式写了 bridge_addr，会盖住「http 模式默认监听 47001」，
+	// Agent 容器就连不上桥。整栈验证时发现过一次，单元测试直接构造 Agent{} 看不出来
+	if got := cfg.Agent.WithDefaults().BridgeAddr; got != "0.0.0.0:47001" {
+		t.Errorf("默认配置 + http 模式，桥应监听内网 47001，实际 %q", got)
+	}
+	t.Setenv("APP_AGENT_RUNTIME", "process")
+	cfg, err = Load("../../../configs/config.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Agent.WithDefaults().BridgeAddr; got != "127.0.0.1:0" {
+		t.Errorf("默认配置 + process 模式仍是本机随机端口，实际 %q", got)
 	}
 }
 

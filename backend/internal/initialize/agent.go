@@ -162,6 +162,7 @@ func BridgeLocalURL(addr net.Addr) string {
 
 // agentRuntime 是装配好的画布 Agent 运行时：桥的监听服务和进程运行时。
 type agentRuntime struct {
+	mode   string // 运行方式：process 或 http，写进启动日志，运维一眼能看出
 	rt     *agentsvc.ProcessRuntime
 	server *http.Server
 	ln     net.Listener
@@ -246,7 +247,7 @@ func newAgentRuntime(cfg *config.Config, d agentDeps) (*agentRuntime, error) {
 	})
 	d.agent.SetRuntime(rt)
 	return &agentRuntime{
-		rt: rt, ln: ln,
+		mode: ac.WithDefaults().Runtime, rt: rt, ln: ln,
 		// 没有读写超时：对话是长连接的流式响应，可能持续几分钟；防慢速攻击靠只监听回环地址或内网（配了服务令牌）
 		server: &http.Server{Handler: router.NewBridge(cfg.Server.Mode, agenthandler.NewAgentBridgeHandler(bridge), ac.ServiceToken), ReadHeaderTimeout: 10 * time.Second},
 	}, nil
@@ -254,7 +255,7 @@ func newAgentRuntime(cfg *config.Config, d agentDeps) (*agentRuntime, error) {
 
 // serve 开始提供桥服务，阻塞到服务关闭。
 func (a *agentRuntime) serve() {
-	logger.Info("画布 Agent 桥已启动", zap.String("addr", a.ln.Addr().String()))
+	logger.Info("画布 Agent 桥已启动", zap.String("addr", a.ln.Addr().String()), zap.String("runtime", a.mode))
 	if err := a.server.Serve(a.ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		logger.Error("画布 Agent 桥异常退出", zap.Error(err))
 	}

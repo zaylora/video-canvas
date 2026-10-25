@@ -50,6 +50,12 @@ services:
       # 搜索源默认依次试 Exa（免 Key 的公开接口）、Bing、DuckDuckGo 网页搜索，后两个对数据中心的出口常给降级结果或要求人机验证；生产环境建议启用下方的 searxng，并设置它的地址
       APP_AGENT_WEB_ENABLED: ${APP_AGENT_WEB_ENABLED:-true}
       APP_AGENT_SEARXNG_URL: ${APP_AGENT_SEARXNG_URL:-}
+      # Agent 的运行方式：process（默认）在 backend 容器里为每个运行片段起一个 Node 子进程；
+      # http 连下方独立的 agent 服务（可选，见 agent 服务的说明）。http 模式下桥默认监听 0.0.0.0:47001，只在 compose 内网可达，靠服务令牌鉴权
+      APP_AGENT_RUNTIME: ${APP_AGENT_RUNTIME:-process}
+      APP_AGENT_URL: http://agent:8090
+      APP_AGENT_BRIDGE_URL: http://backend:47001
+      APP_AGENT_SERVICE_TOKEN: ${AGENT_SERVICE_TOKEN:-}
       # 一键升级（可选，见下方 updater）：与 updater 共用的 token，为空表示没启用
       APP_UPDATE_UPDATER_TOKEN: ${UPDATER_TOKEN:-}
     volumes:
@@ -113,6 +119,36 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+
+  # Agent 服务（可选，默认不启动）：把画布 Agent 从 backend 里拆出来，作为独立的常驻 HTTP 服务。好处是 Agent 可以单独发版、
+  # 升级 pi，backend 重启也不会打断正在跑的运行。只在 compose 内网提供服务，不对外开放端口。启用：
+  #   1. 在 .env 里加两行：AGENT_SERVICE_TOKEN=<随机字符串>（至少 32 个字符，openssl rand -hex 32）和 APP_AGENT_RUNTIME=http
+  #   2. 同样在 .env 里加 COMPOSE_PROFILES=agent（不要每次手敲 --profile：一键升级和 update.sh 用的是不带 --profile 的 docker compose，
+  #      靠它才会连 agent 一起升级，否则升级后 backend 是新版、agent 还是旧版）
+  #   3. docker compose up -d
+  # 回到旧方式：.env 里去掉 APP_AGENT_RUNTIME=http（和 COMPOSE_PROFILES=agent），docker compose up -d --remove-orphans。
+  # 服务令牌是 backend 和 agent 互相认的唯一凭据；没配时 agent 容器会拒绝启动并说明原因。
+  agent:
+    image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_OWNER:-zaylora}/video-canvas-agent:${IMAGE_TAG:-latest}
+    profiles: ["agent"]
+    restart: unless-stopped
+    environment:
+      AGENT_SERVICE_TOKEN: ${AGENT_SERVICE_TOKEN:-}
+      AGENT_LISTEN: 0.0.0.0:8090
+      # 一个进程里并发跑多个运行；上限和内存按需调整，上线后看运行观测里的并发数
+      AGENT_MAX_SEGMENTS: ${AGENT_MAX_SEGMENTS:-64}
+      NODE_OPTIONS: --max-old-space-size=1536
+    mem_limit: ${AGENT_MEM_LIMIT:-2g}
+    expose:
+      - "8090"
+    # 收到停止信号时服务放弃所有运行并在 25 秒内退出，留 5 秒余量
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://127.0.0.1:8090/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   # 联网搜索（可选，默认不启动）：自己部署的元搜索，聚合多个搜索引擎，免费、不需要 API Key。
   #   1. 在 .env 里加一行 APP_AGENT_SEARXNG_URL=http://searxng:8080

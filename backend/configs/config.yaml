@@ -62,12 +62,13 @@ agent:
   enabled: false
   node_path: node # node 可执行文件；不在 PATH 里时写绝对路径
   runtime_dir: ../agent # 含 src/main.ts（部署镜像里是构建产物 dist/main.js）和 node_modules 的目录
-  bridge_addr: 127.0.0.1:0 # 桥的监听地址，默认必须是回环地址；0 表示随机端口。Node 进程通过它回调 Go（模型、工具、状态）。监听内网地址（Agent 拆成独立服务）时必须配服务令牌，见下一行
+  # bridge_addr: 桥的监听地址。不写时按 runtime 取默认：process 是 127.0.0.1:0（本机随机端口，Node 子进程通过它回调 Go），http 是 0.0.0.0:47001（Agent 服务从内网连）。
+  # 不能在这里写死默认值：写了就会盖住按 runtime 推导的默认。监听非回环地址时必须配服务令牌，见下一行
   # service_token: 服务令牌，至少 32 个字符；配了以后桥的每个请求都要带请求头 X-Agent-Service-Token，非回环地址才允许监听。
   # 只用环境变量 APP_AGENT_SERVICE_TOKEN 提供，不要写进这个文件（openssl rand -hex 32 可以生成）
   # runtime: process # process（默认）每个运行片段起一个 Node 子进程；http 连独立部署的 Agent 服务（agent/src/serve.ts），此时下面三项必填
   # url: http://agent:8090 # Agent 服务的地址（runtime=http）
-  # bridge_url: http://backend:47001 # Agent 服务访问桥用的地址，要能从 Agent 容器连上（runtime=http）；bridge_addr 要监听内网地址，并配置 service_token
+  # bridge_url: http://backend:47001 # Agent 服务访问桥用的地址，要能从 Agent 容器连上（runtime=http）。runtime=http 时 bridge_addr 默认 0.0.0.0:47001，并且必须配置 service_token
   work_dir: "" # 每个运行片段的临时目录建在这里，为空用系统临时目录
   web_enabled: true # 联网工具（搜索、读网页）。请求由 Go 发出，内网和本机地址一律拒绝；关闭后模型看不到这两个工具
   searxng_url: "" # 自己部署的 SearXNG 地址（如 http://searxng:8080），可选；没配就依次用免配置的 Exa、Bing、DuckDuckGo，后两个对数据中心的出口常给降级结果或要求人机验证，生产环境建议部署 SearXNG

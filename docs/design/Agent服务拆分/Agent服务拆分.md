@@ -245,6 +245,7 @@ Agent 服务 ──模型 / 工具 / 技能 / 计费──▶ Go 平台能力 AP
 - **阶段 3**：
   - 新增命名卷 `agent_data` 存放 SQLite。要用本地卷，不要放在 NFS 这类网络盘上。
   - **`scripts/update.sh` 必须同时备份 `agent_data`，回退时一起恢复。** Pi Durable 的 schema 迁移不可逆：只退回镜像、不恢复数据，旧版本会打不开新版本迁移过的库。
+- **实现时的修正（2b-3）**：`agent` 服务放在 **compose profile `agent`** 里，默认不启动，用 `.env` 的 `COMPOSE_PROFILES=agent` 启用，而不是上面写的"直接加进默认服务"。原因：（1）现有部署升级后不能因为多了一个必填的令牌就起不来；（2）用户要明确选择 `APP_AGENT_RUNTIME=http` 才切换，随时能退回 process；（3）backend 镜像先保留 Node，等 http 模式在线上稳定后再去掉，两步合并才是"默认拆分"。必须用 `COMPOSE_PROFILES` 而不是 `--profile`：`update.sh` 和一键升级用的 `docker compose pull/up` 不带 `--profile`，只有前者才会让 agent 跟着升级，否则升级后 backend 和 agent 版本错位。
 - **单副本**：Pi Durable 没有跨进程锁。以后要扩容，就按会话做粘性路由和分片（每个分片一个 SQLite），现在不做。
 
 ## 10. 技能（已确认）
@@ -413,3 +414,20 @@ Agent 服务 ──模型 / 工具 / 技能 / 计费──▶ Go 平台能力 AP
 - `agent/`：`npm run typecheck` 零错误；`npm test` 104 个全过（原 87，新增服务 13 个、入口 4 个）；构建产物 `dist/serve.js` 在 Alpine 容器里启动正常，健康检查通过、无令牌 401、收到停止信号 0 秒内以退出码 0 结束。
 - `backend/`：`go vet ./...` 无输出；`go test -count=1 -race ./...` 全过；4 个端到端用例（建画布并计费、审批后续跑、流式中途取消仍按已产生的用量计费、杀掉后续跑）**在 process 和 http 两种模式下各跑一遍**，http 模式起真实的 Node 服务；`golangci-lint` 0 问题。
 - 没做：Compose 里还没有 `agent` 服务、backend 镜像还带着 Node，这是 2b-3。
+
+### 16.8 阶段 2b-3：Agent 镜像与 Compose 服务（2026-10-25，单独提交）
+
+- **镜像**：`agent/Dockerfile`，构建上下文只是 `agent/` 目录，可以脱离整个仓库单独构建。结构和 backend 镜像一致（Alpine 加官方镜像里的 node 二进制，运行镜像里没有 npm，非 root 用户，`HEALTHCHECK`），209MB。
+- **Compose**：生产和开发的 compose 都新增 `agent` 服务（profile `agent`）。生产版：单副本、只 `expose` 不发布端口、`stop_grace_period: 30s`、内存上限 2g、健康检查。backend 增加 `APP_AGENT_RUNTIME`（默认 `process`）、`APP_AGENT_URL`、`APP_AGENT_BRIDGE_URL`、`APP_AGENT_SERVICE_TOKEN`。令牌用 `AGENT_SERVICE_TOKEN` 一个变量同时给两边。
+- **默认配置**：`runtime=http` 时 `bridge_addr` 默认 `0.0.0.0:47001`（`process` 仍是本机随机端口）。默认的 `config.yaml` 里不能再写死 `bridge_addr`，否则会盖住这个默认值。
+- **发布**：`release-docker.yml` 多发一个 `video-canvas-agent` 镜像，和 backend、web 同一个版本号；发布前的质量检查也跑 agent 的类型检查和测试。
+- **日志**：backend 启动日志「画布 Agent 桥已启动」带上 `runtime` 字段，运维一眼能看出现在是哪种模式。
+- **backend 镜像先保留 Node**（已确认）：http 模式下它不用，但回到 `process` 模式要用。等 http 模式在线上稳定后再单独去掉。
+
+**整栈验证中发现并修好的 bug**：第一次起整栈时，backend 日志里桥监听的是 `127.0.0.1:36225`，不是 `0.0.0.0:47001`，agent 容器连不上。原因是默认 `config.yaml` 里显式写了 `bridge_addr: 127.0.0.1:0`，盖住了「http 模式默认监听 47001」。单元测试看不出来，因为它们直接构造 `Agent{}`，没有经过默认配置文件。已补一个从默认配置文件加载的测试，并把 `config.yaml` 里的默认值改成注释。
+
+**验证**
+- 用生产 compose、本地构建的两个镜像，起 postgres、redis、plugin-runner、backend、agent（`COMPOSE_PROFILES=agent`、`APP_AGENT_RUNTIME=http`）：全部 healthy；桥监听 `[::]:47001`，日志里 `runtime=http`；agent 容器访问桥：不带服务令牌 401，带了服务令牌后按运行令牌校验（假令牌 401）；backend 容器访问 agent：带令牌 `GET /segments` 返回空列表，不带 401，`/health` 不要令牌；宿主机没有发布任何端口；`docker compose stop agent` 1 秒、退出码 0，backend 不受影响，`start` 后恢复 healthy。
+- 不带 `COMPOSE_PROFILES` 时 `docker compose config --services` 里没有 `agent`；带上后 `update.sh` 用的 `docker compose pull/up` 会处理它。
+- Go 端到端用例现在在 `process`、`process-token`（配了服务令牌但仍是 process，`.env` 里只设了令牌没切到 http 时就是这样）、`http` 三种方式下各跑一遍。
+- **没做**：没有跑通「真实用户发起一次完整的 Agent 对话」。那需要后台配好渠道和模型，整栈验证只确认了网络、令牌、监听和停机。端到端逻辑由上面的 Go 端到端用例（http 模式起真实 Node 服务）覆盖。

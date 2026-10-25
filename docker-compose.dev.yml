@@ -49,6 +49,12 @@ services:
       # 否则启动自检会失败、后端会一直重启。不想装依赖：APP_AGENT_ENABLED=false docker compose -f docker-compose.dev.yml up -d
       APP_AGENT_ENABLED: ${APP_AGENT_ENABLED:-true}
       APP_AGENT_RUNTIME_DIR: /agent
+      # Agent 作为独立服务（可选）：AGENT_SERVICE_TOKEN=$(openssl rand -hex 32) APP_AGENT_RUNTIME=http docker compose -f docker-compose.dev.yml --profile agent up -d
+      # 默认 process：在 backend 容器里为每个运行片段起 Node 子进程
+      APP_AGENT_RUNTIME: ${APP_AGENT_RUNTIME:-process}
+      APP_AGENT_URL: http://agent:8090
+      APP_AGENT_BRIDGE_URL: http://backend:47001
+      APP_AGENT_SERVICE_TOKEN: ${AGENT_SERVICE_TOKEN:-}
     ports:
       - "8080:8080"
     healthcheck:
@@ -68,6 +74,27 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+
+  # Agent 服务（可选，默认不启动）：直接跑仓库里的 TypeScript 源码（Node 22.19+ 的类型剥离），不用构建；
+  # 和 backend 一样用宿主机上 agent/ 里 npm ci 装好的依赖。改了 agent/src 后 docker compose -f docker-compose.dev.yml restart agent
+  agent:
+    image: node:22-alpine
+    profiles: ["agent"]
+    working_dir: /agent
+    command: ["npm", "run", "serve"]
+    environment:
+      AGENT_SERVICE_TOKEN: ${AGENT_SERVICE_TOKEN:-}
+      AGENT_LISTEN: 0.0.0.0:8090
+    expose:
+      - "8090"
+    volumes:
+      - ./agent:/agent
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://127.0.0.1:8090/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
 
   web:
     build:

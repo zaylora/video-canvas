@@ -78,6 +78,32 @@ docker compose --profile updater up -d    # 启动 updater
 - 升级时 updater 自己不会被重建；要升级 updater 本身，在部署目录再执行一次 `docker compose --profile updater up -d`。
 - 停用：`docker compose --profile updater rm -sf updater`。
 
+### Agent 独立服务（可选）
+
+默认情况下画布 Agent 跑在 backend 容器里：每个运行片段起一个 Node 子进程，跑完退出。可以改成把 Agent 拆成独立的常驻服务（`agent` 容器，镜像 `video-canvas-agent`），好处是：
+
+- Agent 可以单独发版、单独升级 pi，不用重新发 backend；
+- backend 重启（比如一键升级）时，正在跑的运行不会被打断：它们由 agent 容器继续跑，backend 起来后桥地址不变，调用照常；
+- backend 镜像以后可以不再带 Node。
+
+只在 compose 内网提供服务，不对外开放任何端口。backend 和 agent 之间用同一个服务令牌互相认，令牌是唯一的凭据，请当作密码保管。
+
+```bash
+# 在部署目录执行，三行都要
+echo "AGENT_SERVICE_TOKEN=$(openssl rand -hex 32)" >> .env   # 至少 32 个字符
+echo "APP_AGENT_RUNTIME=http" >> .env
+echo "COMPOSE_PROFILES=agent" >> .env
+docker compose pull && docker compose up -d
+```
+
+- **一定要用 `COMPOSE_PROFILES=agent` 启用，不要每次手敲 `--profile agent`。** `update.sh` 和后台一键升级用的是不带 `--profile` 的 `docker compose pull/up`，只有这样 agent 才会跟着一起升级；否则升级后 backend 是新版、agent 还是旧版，两边的协议只在同一个版本里保证兼容。
+- 确认生效：`docker compose ps` 里有 `agent` 且状态是 healthy；backend 启动日志里「画布 Agent 桥已启动」那一行带 `"runtime": "http"`。
+- 回到旧方式：从 `.env` 里删掉 `APP_AGENT_RUNTIME=http` 和 `COMPOSE_PROFILES=agent`，再执行 `docker compose up -d --remove-orphans`。令牌可以留着。
+- **重启 agent 容器会中断正在跑的运行**（它们会显示「已中断」，用户可以点「继续」）。停止时服务有最多 30 秒收尾；backend 重启则不影响。
+- 并发和内存：一个 agent 进程里同时跑多个运行，默认最多 64 个（`AGENT_MAX_SEGMENTS`），容器内存上限 2g（`AGENT_MEM_LIMIT`）。这两个值是按经验定的，上线后看后台运行记录里的并发数再调。
+- 现在只支持**一个** agent 容器：不要把它扩成多副本。
+- agent 容器不访问数据库、不持有任何渠道密钥；模型调用、画布读写、计费、素材都经 backend。
+
 ### 联网工具与搜索（可选）
 
 画布 Agent 可以联网查资料、读网页（`web_search`、`web_fetch`）。请求都由 backend 发出，Agent 进程自己不联网；目标是本机或内网地址时一律拒绝，每个运行片段最多联网 20 次。

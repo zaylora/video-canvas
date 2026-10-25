@@ -146,14 +146,16 @@ type e2eRuntime string
 
 const (
 	e2eProcess e2eRuntime = "process" // 每个运行片段起一个 Node 子进程
-	e2eHTTP    e2eRuntime = "http"    // 一个常驻的 Node 服务，Go 通过 HTTP 调它
+	// 同上，但配了服务令牌（.env 里设了 AGENT_SERVICE_TOKEN 却没切到 http 时就是这样）：桥要求服务令牌，子进程也得带上
+	e2eProcessToken e2eRuntime = "process-token"
+	e2eHTTP         e2eRuntime = "http" // 一个常驻的 Node 服务，Go 通过 HTTP 调它
 )
 
 const e2eServiceToken = "e2e-service-token-0123456789abcdef0123456789"
 
 func eachRuntime(t *testing.T, fn func(t *testing.T, rt e2eRuntime)) {
 	t.Helper()
-	for _, rt := range []e2eRuntime{e2eProcess, e2eHTTP} {
+	for _, rt := range []e2eRuntime{e2eProcess, e2eProcessToken, e2eHTTP} {
 		t.Run(string(rt), func(t *testing.T) { fn(t, rt) })
 	}
 }
@@ -238,8 +240,10 @@ func newE2E(t *testing.T, mode e2eRuntime, turns ...llmTurn) *e2eEnv {
 	// http 模式：Agent 是独立的 Node 服务，Go 和它互相靠服务令牌认；process 模式桥只靠运行令牌
 	var launcher agentsvc.Launcher = agentsvc.ExecLauncher{}
 	serviceToken := ""
-	if mode == e2eHTTP {
+	if mode != e2eProcess {
 		serviceToken = e2eServiceToken
+	}
+	if mode == e2eHTTP {
 		launcher = &agentsvc.HTTPLauncher{BaseURL: startAgentService(t, node, dir), ServiceToken: serviceToken, HeartbeatTimeout: 30 * time.Second}
 	}
 	bridgeSrv := httptest.NewServer(router.NewBridge("test", agenthandler.NewAgentBridgeHandler(bridge), serviceToken))
@@ -251,6 +255,23 @@ func newE2E(t *testing.T, mode e2eRuntime, turns ...llmTurn) *e2eEnv {
 	svc.SetRuntime(rt)
 	t.Cleanup(rt.Shutdown)
 	return &e2eEnv{db: db, repo: repo, svc: svc, rt: rt, bridge: bridge, llm: llm, sess: sess, canvas: canvas}
+}
+
+// waitApprovals 等运行的审批记录达到 n 条。CreateApproval 先把运行置为等待状态、再写审批（先 CAS 是为了运行已被取消时不产生审批），
+// 两步之间有一个很短的窗口：状态已经是等待审批，审批记录还没写入。只等状态就去查审批，负载高时会落在这个窗口里。
+func (e *e2eEnv) waitApprovals(t *testing.T, runID uint64, n int) []model.AgentApproval {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		list, err := e.repo.ListApprovals(context.Background(), runID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(list) >= n || time.Now().After(deadline) {
+			return list
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 }
 
 func (e *e2eEnv) waitStatus(t *testing.T, runID uint64, want ...string) *model.AgentRun {
@@ -411,7 +432,7 @@ func testTestE2EDeleteNeedsApprovalThenContinues(t *testing.T, rt e2eRuntime) {
 		t.Fatal("等审批时不能再请求模型")
 	}
 
-	approvals, _ := e.repo.ListApprovals(context.Background(), runID)
+	approvals := e.waitApprovals(t, runID, 1)
 	if len(approvals) != 1 || approvals[0].Kind != model.ApprovalDelete {
 		t.Fatalf("应有一张删除审批: %+v", approvals)
 	}
