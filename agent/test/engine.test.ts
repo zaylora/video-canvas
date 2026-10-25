@@ -249,3 +249,27 @@ test("校验：别人的会话、空消息、没有模型、平台准备失败",
     assert.equal(e.statuses().at(-1), "failed");
   });
 });
+
+// 真实模型验证里发现：输出达到上限（finish_reason=length）时，运行照样标成功，回答是空的或半截的，用户什么提示都没有。
+test("输出被截断（达到单次输出上限）：运行失败并说清楚原因，已经写出的部分照样留在 message.done（partial）里", () =>
+  withEngine({ turns: [{ text: "雨夜便利店的第一个镜头是……", finishReason: "length" }] }, async (e) => {
+    const r = await e.start();
+    await e.engine.idle();
+    const run = e.run(r.id);
+    assert.equal(run.status, "failed");
+    assert.match(run.errorMessage, /截断|输出上限/);
+    const done = e.persisted("message.done");
+    assert.equal(done.length, 1);
+    assert.equal(done[0].text, "雨夜便利店的第一个镜头是……");
+    assert.equal(done[0].partial, true, "被截断的回答标成未写完");
+    assert.ok(e.persisted("run.usage").length >= 1, "这次调用照常计费");
+  }));
+
+test("输出被截断时一个字都没有（模型把额度都花在思考上）：同样失败并说清楚，不是静默成功", () =>
+  withEngine({ turns: [{ thinking: "想了很久", finishReason: "length" }] }, async (e) => {
+    const r = await e.start();
+    await e.engine.idle();
+    const run = e.run(r.id);
+    assert.equal(run.status, "failed");
+    assert.match(run.errorMessage, /截断|输出上限/);
+  }));

@@ -28,6 +28,7 @@ const DEFAULT_TITLE = "新对话";
 const DEFAULT_MAX_STEPS = 40;
 const APPROVAL_TTL_MS = 24 * 3600 * 1000;
 const DELTA_FLUSH_MS = 50;
+const OUTPUT_TRUNCATED = "模型的回答被截断：达到了单次输出的上限（思考内容也占用这部分额度）。请把任务拆小一点再试，或请管理员调大这个模型的输出上限。";
 /** Pi 提交流式中间状态的最小间隔。每次提交是一次存储写入，所以不要太密；前端的增量就是按它出现的 */
 const PARTIAL_INTERVAL_MS = 100;
 const MAX_ERROR_CHARS = 200;
@@ -826,12 +827,14 @@ export class AgentEngine {
       }
     }
     if (msg.stopReason === "error") a.modelError = { ...a.modelError, message: msg.errorMessage ?? "模型调用失败" };
+    // 输出达到单次上限（思考内容也占额度）：回答是空的或半截的，工具调用的参数也可能被截断。不能当成功，否则用户什么提示都没有
+    if (msg.stopReason === "length") a.modelError = { ...a.modelError, message: OUTPUT_TRUNCATED };
     const text = msg.content.filter((p) => p.type === "text").map((p) => (p as { text: string }).text).join("");
     const thinking = msg.content.filter((p) => p.type === "thinking").map((p) => (p as { thinking: string }).thinking).join("");
     const calls = msg.content.filter((p) => p.type === "toolCall").map((p) => ({ id: (p as { id: string }).id, name: (p as { name: string }).name }));
     if (!text && calls.length === 0) return;
     this.#emit(this.#ev(a), "message.done", {
-      text, tool_calls: calls, partial: msg.stopReason === "aborted" || msg.stopReason === "error",
+      text, tool_calls: calls, partial: msg.stopReason === "aborted" || msg.stopReason === "error" || msg.stopReason === "length",
       ...(thinking && { thinking }), ...(credits && { credits: credits.charged, estimated: credits.estimated }),
     });
   }

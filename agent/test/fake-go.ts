@@ -17,6 +17,8 @@ export interface Turn {
   charDelayMs?: number;
   /** 发完文字后停住不结束，直到请求被关闭（模拟慢模型，用来测取消） */
   hang?: boolean;
+  /** 结束原因，默认按有没有工具调用给 stop / tool_calls；"length" 表示输出被截断 */
+  finishReason?: string;
   /** 直接回错误 */
   error?: { status: number; message: string; type?: string; errorCode?: number };
 }
@@ -205,7 +207,7 @@ export async function fakeGo(opts: FakeGoOptions) {
     }
     if (turn.hang) return; // 不结束：等调用方断开
     (turn.tools ?? []).forEach((t, i) => res.write(chunk({ tool_calls: [{ index: i, id: t.id, type: "function", function: { name: t.name, arguments: JSON.stringify(t.args ?? {}) } }] })));
-    res.write(chunk({}, turn.tools?.length ? "tool_calls" : "stop"));
+    res.write(chunk({}, turn.finishReason ?? (turn.tools?.length ? "tool_calls" : "stop")));
     res.write(`data: ${JSON.stringify({ id: "x", object: "chat.completion.chunk", choices: [], usage: { prompt_tokens: promptTokens(body), completion_tokens: 20, total_tokens: promptTokens(body) + 20 } })}\n\n`);
     res.end("data: [DONE]\n\n");
   }

@@ -27,6 +27,7 @@ import (
 	"video-canvas/internal/pkg/idcodec"
 	"video-canvas/internal/pkg/utils"
 	"video-canvas/internal/pkg/ws"
+	"video-canvas/internal/provider"
 	. "video-canvas/internal/repository"
 	"video-canvas/internal/router"
 	agentsvc "video-canvas/internal/service/agent"
@@ -134,7 +135,16 @@ func startDurableAgent(t *testing.T, node, dir, bridgeURL, dbPath string, idKey 
 	}
 }
 
-func newDurableE2E(t *testing.T, turns ...llmTurn) *durableEnv {
+func newDurableE2E(t *testing.T, turns ...llmTurn) *durableEnv { return newDurableEnv(t, turns, nil) }
+
+// realUpstream 让全栈环境用真实的模型渠道代替假的 LLM（真实模型验证用，见 agent_realmodel_test.go）。
+type realUpstream struct {
+	registry  provider.Registry
+	secrets   provider.SecretResolver
+	ipAllowed func(net.IP) bool
+}
+
+func newDurableEnv(t *testing.T, turns []llmTurn, up *realUpstream) *durableEnv {
 	t.Helper()
 	node, err := exec.LookPath("node")
 	if err != nil {
@@ -149,7 +159,16 @@ func newDurableE2E(t *testing.T, turns ...llmTurn) *durableEnv {
 		&model.AgentToolCall{}, &model.AgentModelCallBody{}, &model.AgentRunDigest{}, &model.AgentFeedback{})
 	repo := NewAgentRepository(db)
 	observeRepo := NewAgentObserveRepository(db)
-	llm := newFakeLLM(t, turns...)
+	var llm *fakeLLM
+	var registry provider.Registry
+	var secrets provider.SecretResolver = e2eSecrets{}
+	ipAllowed := func(ip net.IP) bool { return ip.IsLoopback() }
+	if up != nil {
+		registry, secrets, ipAllowed = up.registry, up.secrets, up.ipAllowed
+	} else {
+		llm = newFakeLLM(t, turns...)
+		registry = e2eRegistry{base: llm.srv.URL}
+	}
 	canvas := &model.CanvasProject{UserID: 1, Title: "画布", Revision: 1, PayloadJSON: []byte(
 		`{"nodes":[{"id":"n_script","type":"canvas","position":{"x":0,"y":0},"data":{"kind":"script","label":"剧本","prompt":"雨夜便利店"}},` +
 			`{"id":"n_old","type":"canvas","position":{"x":0,"y":300},"data":{"kind":"image","label":"废稿"}}],"edges":[]}`)}
@@ -163,8 +182,8 @@ func newDurableE2E(t *testing.T, turns ...llmTurn) *durableEnv {
 	svc := agentsvc.NewAgentService(agentsvc.AgentDeps{Repo: repo, Canvas: canvasSvc, Models: e2eModels{}, Runtime: agentsvc.NoAgentRuntime{}})
 	bridge := agentsvc.NewAgentBridge(agentsvc.BridgeDeps{
 		Repo: repo, Canvas: canvasSvc, Agent: svc, Billing: agentsvc.NewAgentBilling(repo),
-		Registry: e2eRegistry{base: llm.srv.URL}, Secrets: e2eSecrets{}, RunUsage: repo,
-		Streamer: llmgateway.New(llmgateway.Options{IdleTimeout: 10 * time.Second, IPAllowed: func(ip net.IP) bool { return ip.IsLoopback() }}),
+		Registry: registry, Secrets: secrets, RunUsage: repo,
+		Streamer: llmgateway.New(llmgateway.Options{IdleTimeout: 10 * time.Second, IPAllowed: ipAllowed}),
 	})
 	bridge.SetToolRecorder(observeRepo)         // 工具调用的参数和结果留在 Go 的库里，后台导出要看
 	bridge.SetModelRequestRecorder(observeRepo) // 模型请求体同理
