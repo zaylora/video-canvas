@@ -28,6 +28,8 @@ import {
 } from "@tiptap/react";
 import Suggestion, { type SuggestionProps } from "@tiptap/suggestion";
 
+import { toast } from "sonner";
+
 import type { NodeKind } from "@/constants/canvas/node-library";
 import { cn } from "@/lib/utils";
 import type { Chip, ChipType } from "@/utils/agent/chips";
@@ -35,6 +37,7 @@ import { chipNode, docToMessage, messageToDoc, type DocNode } from "@/utils/agen
 import type { AgentSkillDto } from "@/api/agent/type.d";
 import { ghostContent, nextDismissed, pendingRefs } from "@/utils/agent/selection-ghost";
 import type { RefNode, SelectionRef } from "@/utils/agent/selection-refs";
+import { MAX_ATTACH_IMAGES, pickImageFiles } from "@/utils/agent/image-files";
 import { filterSkills, skillMenuNotice } from "@/utils/agent/skills";
 
 import { SuggestionMenu } from "./suggestion-menu";
@@ -299,6 +302,7 @@ export function AgentEditor({
   placeholder,
   onChange,
   onSubmit,
+  onImages,
 }: {
   handleRef: Ref<AgentEditorHandle>;
   /** 画布上能 @ 引用的节点 */
@@ -312,8 +316,23 @@ export function AgentEditor({
   onChange: (text: string) => void;
   /** 按了 Enter */
   onSubmit: () => void;
+  /** 粘贴或拖入了图片：调用方把它们落到画布并作为 chip 插回来；不传则走默认行为 */
+  onImages?: (files: File[]) => void;
 }) {
   const [menu, setMenu] = useState<MenuState | null>(null);
+  const onImagesRef = useRef(onImages);
+  onImagesRef.current = onImages;
+  /** 编辑器的 paste / drop 钩子只在创建时绑一次，经 ref 拿最新的回调；返回 true 表示已处理 */
+  const attachImages = (files: FileList | null | undefined) => {
+    const handler = onImagesRef.current;
+    const { images, skipped, clipped } = pickImageFiles(files);
+    if (!handler || images.length === 0) return false;
+    if (clipped > 0)
+      toast.info(`一次最多附 ${MAX_ATTACH_IMAGES} 张图，多出的 ${clipped} 张没放进来`);
+    else if (skipped > 0) toast.info(`只能附图片，忽略了 ${skipped} 个其他文件`);
+    handler(images);
+    return true;
+  };
   const [active, setActive] = useState(0);
   const [skillMenu, setSkillMenu] = useState<SkillMenuState | null>(null);
   const [skillActive, setSkillActive] = useState(0);
@@ -447,6 +466,9 @@ export function AgentEditor({
         }
         return false;
       },
+      // 粘贴 / 拖入图片：交给 onImages 走「上传图片」同一条路；没有图片时放行，文字照常粘进来
+      handlePaste: (_view, event) => attachImages(event.clipboardData?.files),
+      handleDrop: (_view, event) => attachImages((event as DragEvent).dataTransfer?.files),
     },
     onUpdate: ({ editor: e }) => {
       setEmpty(e.isEmpty);

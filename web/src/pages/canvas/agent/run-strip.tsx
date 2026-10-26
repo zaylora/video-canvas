@@ -1,15 +1,17 @@
 import { useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { ChevronUp, X } from "lucide-react";
+import { Check, ChevronUp, X } from "lucide-react";
 
 import { DURATION, EASE_OUT } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import type { RunStrip as RunStripModel } from "@/utils/agent/timeline";
 
+import { ProgressRing } from "./progress-ring";
+
 /**
- * 计划条：输入框上方的一行，没有外框。左边是当前这一步，中间每一步一小格（做完绿、在做蓝），右边是 done/total。
- * 只管计划（运行状态由消息流末尾的状态行负责）；计划没做完而运行已结束时显示「未完成」，并给 ✕ 隐藏。
- * 点击在原地向上展开完整步骤，把消息流往上顶，不盖住任何内容。
+ * 计划条（设计稿 6.12）：并进输入框顶部的一行，用发丝线和编辑区隔开。
+ * 左边进度环（没做完琥珀、做完绿），然后是「未完成」徽标和当前这一步，右边 done/total、展开、隐藏。
+ * 只管计划（运行状态由消息流里的活动行负责）；点开时步骤列表在输入框内部向上长出。
  */
 export function RunStrip({
   strip,
@@ -25,72 +27,80 @@ export function RunStrip({
 
   return (
     <motion.div
-      initial={reduce ? { opacity: 0 } : { opacity: 0, y: 6 }}
+      initial={reduce ? { opacity: 0 } : { opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, transition: { duration: DURATION.exit } }}
       transition={{ duration: DURATION.base, ease: EASE_OUT }}
-      className="mx-4 mb-1.5 shrink-0"
+      className="border-foreground/8 border-b"
     >
       <AnimatePresence initial={false}>
         {open && (
           <motion.ul
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0, transition: { duration: DURATION.exit } }}
+            initial={reduce ? { opacity: 0 } : { opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, transition: { duration: DURATION.exit } }}
             transition={{ duration: DURATION.base, ease: EASE_OUT }}
-            className="max-h-48 overflow-y-auto text-xs"
+            className="flex max-h-48 flex-col overflow-y-auto px-3 pt-2 text-xs"
           >
             {strip.steps.map((s, i) => (
               <li
                 key={i}
                 className={cn(
-                  "flex h-6 items-center gap-2.5",
+                  "flex h-6.5 items-center gap-2.5",
                   s.status === "todo" && "text-muted-foreground",
-                  s.status === "done" && "text-muted-foreground/70",
+                  s.status === "done" &&
+                    "text-muted-foreground line-through decoration-foreground/20",
+                  s.status === "doing" && "font-medium",
                 )}
               >
-                <span
-                  className={cn(
-                    "mx-1 size-1.5 shrink-0 rounded-full border-[1.5px]",
-                    s.status === "done" && "bg-status-success border-status-success",
-                    s.status === "doing" &&
-                      "bg-status-running border-status-running motion-safe:animate-pulse",
-                    s.status === "todo" && "border-current",
+                <span className="grid size-3.5 shrink-0 place-items-center">
+                  {s.status === "done" ? (
+                    <Check className="text-status-success size-3.5" />
+                  ) : (
+                    <span
+                      className={cn(
+                        "size-[7px] rounded-full border-[1.5px]",
+                        s.status === "doing"
+                          ? "bg-status-warning border-status-warning"
+                          : "border-current opacity-70",
+                      )}
+                    />
                   )}
-                />
+                </span>
                 <span className="truncate">{s.title}</span>
               </li>
             ))}
           </motion.ul>
         )}
       </AnimatePresence>
-      <div className="flex h-6.5 items-center gap-2.5 text-xs">
+      <div className="flex h-9.5 items-center gap-2 pr-1.5 pl-3 text-xs">
         <button
           type="button"
           aria-expanded={open}
-          aria-label="展开计划"
+          aria-label={open ? "收起计划" : "展开计划"}
           onClick={() => setOpen((v) => !v)}
-          className="focus-visible:ring-node-ring/60 flex min-w-0 flex-1 items-center gap-2.5 rounded-md text-left outline-none focus-visible:ring-2"
+          className="focus-visible:ring-node-ring/60 flex min-w-0 flex-1 items-center gap-2 rounded-md text-left whitespace-nowrap outline-none focus-visible:ring-2"
         >
-          <span className={cn("max-w-[45%] truncate", finished && "text-status-success")}>
-            {strip.unfinished && "未完成 · "}
-            {finished ? "完成" : strip.current}
+          <ProgressRing
+            value={done}
+            total={total}
+            className={finished ? "stroke-status-success" : "stroke-status-warning"}
+          />
+          {finished ? (
+            <span className="bg-status-success/16 text-status-success shrink-0 rounded-[5px] px-1.5 py-px text-[11px] font-medium">
+              完成
+            </span>
+          ) : (
+            strip.unfinished && (
+              <span className="bg-status-warning/16 text-status-warning shrink-0 rounded-[5px] px-1.5 py-px text-[11px] font-medium">
+                未完成
+              </span>
+            )
+          )}
+          <span className="min-w-0 flex-1 truncate">
+            {finished ? "全部步骤已完成" : strip.current}
           </span>
-          <span className="flex min-w-10 flex-1 gap-[3px]" aria-hidden>
-            {strip.steps.map((s, i) => (
-              <i
-                key={i}
-                className={cn(
-                  "h-[3px] flex-1 rounded-full transition-colors duration-300",
-                  s.status === "done" && "bg-status-success",
-                  s.status === "doing" &&
-                    cn("bg-status-running", strip.active && "motion-safe:animate-pulse"),
-                  s.status === "todo" && "bg-foreground/12",
-                )}
-              />
-            ))}
-          </span>
-          <span className="text-muted-foreground tabular-nums">
+          <span className="text-muted-foreground shrink-0 tabular-nums">
             {done}/{total}
           </span>
           <ChevronUp
@@ -104,8 +114,9 @@ export function RunStrip({
           <button
             type="button"
             aria-label="隐藏这个计划"
+            title="隐藏这个计划"
             onClick={() => onHide(strip.runId)}
-            className="text-muted-foreground hover:text-foreground focus-visible:ring-node-ring/60 rounded-md p-0.5 outline-none focus-visible:ring-2"
+            className="text-muted-foreground hover:bg-chrome-hover hover:text-foreground focus-visible:ring-node-ring/60 grid size-6.5 shrink-0 place-items-center rounded-md outline-none transition-colors duration-120 focus-visible:ring-2"
           >
             <X className="size-3.5" />
           </button>

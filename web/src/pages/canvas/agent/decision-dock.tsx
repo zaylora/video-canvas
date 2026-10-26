@@ -35,11 +35,11 @@ type Option = {
   decide: (text?: string) => DecideAgentApprovalReq;
 };
 
-/** 不同种类的色调：生成琥珀、删除红、提问蓝 */
+/** 不同种类的色调（设计稿 6.12）：琥珀只用来标「需要你行动」，生成和提问都用它；删除是红 */
 const TONE = {
   generate: "var(--status-warning)",
   delete: "var(--destructive)",
-  ask: "var(--status-running)",
+  ask: "var(--status-warning)",
 } as const;
 
 const ICON = { generate: Sparkles, delete: Trash2, ask: MessageCircleQuestion } as const;

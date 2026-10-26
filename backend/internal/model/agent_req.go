@@ -4,6 +4,7 @@ package model
 type AgentModelView struct {
 	Key           string `json:"key"`            // 模型 key
 	Name          string `json:"name"`           // 显示名
+	Vendor        string `json:"vendor"`         // 厂商 slug，画布据此显示 logo；没配是空串
 	Vision        bool   `json:"vision"`         // 是否支持看图
 	ContextWindow int    `json:"context_window"` // 上下文窗口（Token），没配置是 0；画布据此显示上下文用量
 }

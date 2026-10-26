@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils";
 import { parseMessage } from "@/utils/agent/chips";
 import { contextUsage, formatTokens } from "@/utils/agent/context-usage";
 import { anchoredScrollTop, trackHistoryKeys } from "@/utils/agent/message-scroll";
+import { withRunFooters, type FlowEntry } from "@/utils/agent/run-footer";
 import type { TimelineItem } from "@/utils/agent/timeline";
 
 /** 还在排队、没被读到的插话 */
@@ -34,7 +35,7 @@ import { SelectionRefs } from "./selection-refs";
 import { ApprovalRow } from "./approval-row";
 import { Markdown } from "./markdown";
 import { RunFeedback } from "./run-feedback";
-import { RunSummary } from "./run-summary";
+import { ChangesPanel, ChangesPill, useRunChanges } from "./run-summary";
 import { ShimmerText } from "./shimmer-text";
 import { StatusLine } from "./status-line";
 
@@ -108,6 +109,10 @@ export function MessageList({
   const reduce = useReducedMotion();
   /** 排队中的插话在输入框顶部的托盘里（steer-tray），消息流只画其余的 */
   const body = ctl.timeline.filter((item) => !isQueued(item));
+  /** 每轮的改动摘要和反馈合成回答下面的一行底栏 */
+  const entries = withRunFooters(body);
+  /** 最后一轮的底栏常显复制和评价，历史轮悬停才出现 */
+  const lastFooterKey = entries.findLast((e) => e.kind === "footer")?.key;
 
   /** 上次看到的内容高度：只有内容真的变高了，才算「有新内容」 */
   const lastHeight = useRef(0);
@@ -176,29 +181,42 @@ export function MessageList({
         }}
       >
         <div ref={content} className="flex flex-col gap-3 px-4 pt-3 pb-2">
-          {body.map((item) =>
-            item.type === "assistant" && item.streaming && !item.text ? null : (
+          {entries.map((entry) => {
+            if (entry.kind === "item") {
+              const { item } = entry;
+              if (item.type === "assistant" && item.streaming && !item.text) return null;
+            }
+            const fresh =
+              !historyKeys.has(entry.key) &&
+              !reduce &&
+              // 插话是从下面的队列飞进时间线的（共享 layoutId），不再叠一层淡入
+              !(entry.kind === "item" && entry.item.type === "user" && entry.item.steerId);
+            return (
               <motion.div
-                key={item.key}
-                // 插话是从下面的队列飞进时间线的（共享 layoutId），不再叠一层淡入
-                initial={
-                  !historyKeys.has(item.key) && !reduce && !(item.type === "user" && item.steerId)
-                    ? { opacity: 0, y: 6 }
-                    : false
-                }
+                key={entry.key}
+                initial={fresh ? { opacity: 0, y: 6 } : false}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: DURATION.base, ease: EASE_OUT }}
               >
-                <Item
-                  item={item}
-                  ctl={ctl}
-                  showThinking={showThinking}
-                  nodes={nodes}
-                  refNodes={refNodes}
-                />
+                {entry.kind === "footer" ? (
+                  <RunFooter
+                    entry={entry}
+                    ctl={ctl}
+                    nodes={nodes}
+                    quiet={entry.key !== lastFooterKey}
+                  />
+                ) : (
+                  <Item
+                    item={entry.item}
+                    copied={entry.copied}
+                    ctl={ctl}
+                    showThinking={showThinking}
+                    refNodes={refNodes}
+                  />
+                )}
               </motion.div>
-            ),
-          )}
+            );
+          })}
           <AnimatePresence>
             {ctl.statusLine && <StatusLine key={ctl.statusLine.runId} line={ctl.statusLine} />}
           </AnimatePresence>
@@ -255,17 +273,69 @@ export function MessageList({
   );
 }
 
+/** 一轮回答下面的底栏：改动胶囊 + 复制 + 评价，改动明细在下方展开 */
+function RunFooter({
+  entry,
+  ctl,
+  nodes,
+  quiet,
+}: {
+  entry: Extract<FlowEntry, { kind: "footer" }>;
+  ctl: AgentController;
+  nodes: NodeOption[];
+  quiet: boolean;
+}) {
+  if (!entry.summary)
+    return <RunFeedback runId={entry.runId} ctl={ctl} copyText={entry.copyText} quiet={quiet} />;
+  return (
+    <RunFooterWithChanges
+      entry={entry}
+      summary={entry.summary}
+      ctl={ctl}
+      nodes={nodes}
+      quiet={quiet}
+    />
+  );
+}
+
+function RunFooterWithChanges({
+  entry,
+  summary,
+  ctl,
+  nodes,
+  quiet,
+}: {
+  entry: Extract<FlowEntry, { kind: "footer" }>;
+  summary: Extract<TimelineItem, { type: "run-summary" }>;
+  ctl: AgentController;
+  nodes: NodeOption[];
+  quiet: boolean;
+}) {
+  const changes = useRunChanges(summary, ctl, nodes);
+  return (
+    <RunFeedback
+      runId={entry.runId}
+      ctl={ctl}
+      copyText={entry.copyText}
+      quiet={quiet}
+      leading={<ChangesPill changes={changes} />}
+      below={<ChangesPanel changes={changes} />}
+    />
+  );
+}
+
 function Item({
   item,
+  copied,
   ctl,
   showThinking,
-  nodes,
   refNodes,
 }: {
   item: TimelineItem;
+  /** 这段回答的复制在底栏上 */
+  copied: boolean;
   ctl: AgentController;
   showThinking: boolean;
-  nodes: NodeOption[];
   refNodes: RefNode[];
 }) {
   switch (item.type) {
@@ -281,7 +351,7 @@ function Item({
         </div>
       );
     case "assistant":
-      return <Assistant item={item} showThinking={showThinking} />;
+      return <Assistant item={item} showThinking={showThinking} copied={copied} />;
     case "activity":
       return <ActivityGroup item={item} />;
     case "approval":
@@ -297,10 +367,10 @@ function Item({
           计划已完成（{item.total} 步）
         </p>
       );
+    // 改动摘要和反馈由 withRunFooters 合成底栏（RunFooter），不会单独走到这里
     case "run-summary":
-      return <RunSummary item={item} ctl={ctl} nodes={nodes} />;
     case "run-feedback":
-      return <RunFeedback runId={item.runId} ctl={ctl} />;
+      return null;
   }
 }
 
@@ -424,9 +494,12 @@ function Steer({
 function Assistant({
   item,
   showThinking,
+  copied,
 }: {
   item: Extract<TimelineItem, { type: "assistant" }>;
   showThinking: boolean;
+  /** 复制按钮在这一轮的底栏上，这里不再重复 */
+  copied: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const reduce = useReducedMotion();
@@ -460,7 +533,7 @@ function Assistant({
           )}
         </div>
       )}
-      {item.text && !item.streaming && (
+      {item.text && !item.streaming && !copied && (
         <div className="flex h-6 opacity-0 transition-opacity duration-120 group-focus-within/msg:opacity-100 group-hover/msg:opacity-100">
           <ChromeTooltip label="复制">
             <button

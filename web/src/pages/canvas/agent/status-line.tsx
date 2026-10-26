@@ -48,7 +48,7 @@ export function StatusLine({ line }: { line: StatusLineModel }) {
         <>
           <span
             aria-hidden
-            className="agent-orb size-2 shrink-0 rounded-full shadow-[0_0_8px_color-mix(in_oklab,var(--preset)_60%,transparent)]"
+            className="agent-orb size-2 shrink-0 rounded-full shadow-[0_0_8px_color-mix(in_oklab,var(--beam)_60%,transparent)]"
           />
           <ShimmerText>{line.text}</ShimmerText>
           {seconds !== null && <span className="tabular-nums">{seconds}s</span>}

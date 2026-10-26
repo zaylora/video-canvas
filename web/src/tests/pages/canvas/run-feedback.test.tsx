@@ -97,11 +97,26 @@ describe("反馈条：点踩表单", () => {
     expect(out).not.toContain('data-slot="run-feedback-note"');
   });
 
-  test("位置：靠左、紧贴上方的回复正文；按钮在前，评价小字在按钮右侧", () => {
-    const out = html({ feedback: { rating: 1, reasons: [], comment: "" } });
-    expect(out).toContain("justify-start");
-    expect(out).not.toContain("justify-end");
-    expect(out).toContain("-mt-1");
-    expect(out.indexOf('data-rating="-1"')).toBeLessThan(out.indexOf("感谢反馈"));
+  test("位置（设计稿 6.12）：和改动胶囊同一行，胶囊靠左、复制和评价靠右；评价小字在按钮左边", () => {
+    const out = html({
+      feedback: { rating: 1, reasons: [], comment: "" },
+      leading: <span data-test="pill">画布改动</span>,
+      copyText: "回答",
+    });
+    expect(out.indexOf('data-test="pill"')).toBeLessThan(out.indexOf('aria-label="复制"'));
+    expect(out.indexOf("感谢反馈")).toBeLessThan(out.indexOf('data-rating="1"'));
+    expect(out.indexOf('aria-label="复制"')).toBeLessThan(out.indexOf('data-rating="1"'));
+  });
+
+  test("没有回答文字时不显示复制", () => {
+    expect(html()).not.toContain('aria-label="复制"');
+  });
+
+  test("历史轮：按钮组悬停才出现；已评价的常显", () => {
+    expect(html({ quiet: true })).toContain("opacity-0");
+    expect(html({ quiet: true, feedback: { rating: 1, reasons: [], comment: "" } })).not.toContain(
+      "opacity-0",
+    );
+    expect(html()).not.toContain("opacity-0");
   });
 });

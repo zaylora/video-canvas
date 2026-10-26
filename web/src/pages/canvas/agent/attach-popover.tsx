@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { ChromeTooltip } from "@/components/canvas/chrome/chrome";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { MAX_ATTACH_IMAGES, pickImageFiles } from "@/utils/agent/image-files";
 
 import { AGENT_ICON_BTN, AGENT_POP } from "./styles";
 
@@ -66,15 +67,21 @@ export function AttachPopover({
         sideOffset={8}
         className={cn(
           AGENT_POP,
-          "w-[min(230px,calc(100vw-24px))] origin-bottom-left gap-0.5 p-1.5",
+          "w-[min(250px,calc(100vw-24px))] origin-bottom-left gap-0.5 p-1.5",
         )}
       >
         <button
           type="button"
           onClick={() => image.current?.click()}
-          className="hover:bg-chrome-hover focus-visible:ring-node-ring/60 flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] outline-none focus-visible:ring-2"
+          className="hover:bg-chrome-hover focus-visible:ring-node-ring/60 flex items-start gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] outline-none focus-visible:ring-2"
         >
-          <ImageIcon className="size-4" /> 上传图片
+          <ImageIcon className="mt-0.5 size-4 shrink-0" />
+          <span className="min-w-0">
+            <span className="block">上传图片</span>
+            <span className="text-muted-foreground block text-xs leading-snug">
+              放到画布并引用，也可以直接粘贴或拖进输入框
+            </span>
+          </span>
         </button>
         <button
           type="button"
@@ -106,10 +113,12 @@ export function AttachPopover({
           tabIndex={-1}
           aria-hidden
           onChange={(e) => {
-            const files = Array.from(e.target.files ?? []);
+            const { images, clipped } = pickImageFiles(e.target.files);
             e.target.value = "";
             setOpen(false);
-            if (files.length) void onAttachImages(files);
+            if (clipped > 0)
+              toast.info(`一次最多附 ${MAX_ATTACH_IMAGES} 张图，多出的 ${clipped} 张没放进来`);
+            if (images.length) void onAttachImages(images);
           }}
         />
       </PopoverContent>

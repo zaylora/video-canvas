@@ -1007,25 +1007,18 @@ html:has([data-shell="home"]) {
    不加颜色 token：层次靠 1px 顶部内高光（--sheen）、近 + 远两层投影（--elevation-*）、极淡的品牌渐变。
    这几样组合写成工具类，各组件复用，不在组件里拼长串 shadow-[…]。 */
 
-/* 品牌光球的渐变：空状态光球、顶栏标识、状态行小圆点共用 */
+/* 品牌光球的渐变（设计稿 6.12）：「连镜」的琥珀光，空状态光球、顶栏标识、状态行小圆点共用 */
 @utility agent-orb {
-  background:
-    radial-gradient(
-      circle at 32% 28%,
-      color-mix(in oklab, var(--status-running) 85%, white),
-      transparent 55%
-    ),
-    radial-gradient(
-      circle at 70% 75%,
-      var(--preset),
-      color-mix(in oklab, var(--status-running) 55%, black) 85%
-    );
+  background: radial-gradient(
+    circle at 35% 30%,
+    var(--beam-bright),
+    var(--beam) 60%,
+    color-mix(in oklab, var(--beam) 40%, black)
+  );
 }
-/* 浮窗本体：顶部 160px 铺一层 preset 5% 的渐变往下渐隐 */
+/* 浮窗本体：黑白克制，不铺彩色渐变（设计稿 6.12） */
 @utility agent-panel {
-  background:
-    linear-gradient(180deg, color-mix(in oklab, var(--preset) 5%, transparent), transparent 160px),
-    color-mix(in oklab, var(--popover) 94%, transparent);
+  background: color-mix(in oklab, var(--popover) 94%, transparent);
   box-shadow:
     inset 0 1px 0 var(--sheen),
     0 0 0 1px var(--chrome-border),
@@ -1034,9 +1027,7 @@ html:has([data-shell="home"]) {
 }
 /* 停靠侧栏：不透明，左边缘一道向左的软影 */
 @utility agent-docked {
-  background:
-    linear-gradient(180deg, color-mix(in oklab, var(--preset) 5%, transparent), transparent 160px),
-    var(--popover);
+  background: var(--popover);
   box-shadow:
     -1px 0 0 var(--chrome-border),
     -16px 0 48px -24px var(--elevation-far);
@@ -1055,7 +1046,7 @@ html:has([data-shell="home"]) {
     inset 0 1px 0 var(--sheen),
     0 0 0 1px var(--chrome-border);
 }
-/* 输入框容器；聚焦时描边泛 preset，外加一圈 4px 光晕 */
+/* 输入框容器；聚焦时描边加深一档（黑白克制，不泛彩色光晕） */
 @utility agent-composer {
   background: color-mix(in oklab, var(--foreground) 4%, var(--popover));
   box-shadow:
@@ -1065,19 +1056,11 @@ html:has([data-shell="home"]) {
   &:focus-within {
     box-shadow:
       inset 0 1px 0 var(--sheen),
-      0 0 0 1px color-mix(in oklab, var(--preset) 50%, transparent),
-      0 0 0 4px color-mix(in oklab, var(--preset) 14%, transparent),
+      0 0 0 1px color-mix(in oklab, var(--foreground) 24%, transparent),
       0 10px 28px -12px var(--elevation-far);
   }
 }
 /* 可发送时的发送键：蓝紫渐变 */
-@utility agent-send {
-  background: linear-gradient(135deg, var(--status-running), var(--preset));
-  color: var(--on-stage);
-  box-shadow:
-    inset 0 1px 0 color-mix(in oklab, var(--on-stage) 35%, transparent),
-    0 4px 14px -4px color-mix(in oklab, var(--preset) 70%, transparent);
-}
 /* 常驻可见的细滚动条：空状态内容放不下时让人知道下面还有。
    用 ::-webkit-scrollbar 而不是 scrollbar-color，macOS 上后者会变成自动隐藏的覆盖式滚动条；
    右侧用 scrollbar-gutter 预留位置，出现滚动条时内容不横向跳动。 */

@@ -1,4 +1,12 @@
-import { Check, Hand, MessageCircleQuestion, Sparkles, Trash2, X } from "lucide-react";
+import {
+  Check,
+  CornerDownRight,
+  Hand,
+  MessageCircleQuestion,
+  Sparkles,
+  Trash2,
+  X,
+} from "lucide-react";
 
 import type {
   AgentApprovalDto,
@@ -58,7 +66,7 @@ export function ApprovalRow({ approvalId, ctl }: { approvalId: string; ctl: Agen
     ) : approval.kind === "delete" ? (
       <Trash2 className="text-destructive" />
     ) : (
-      <MessageCircleQuestion className="text-status-running" />
+      <MessageCircleQuestion className="text-status-warning" />
     )
   ) : (
     <Check />
@@ -89,6 +97,19 @@ export function ApprovalRow({ approvalId, ctl }: { approvalId: string; ctl: Agen
   }
   const quote =
     approval.kind === "generate" && approval.quote_credits > 0 ? approval.quote_credits : null;
+
+  // 答过的提问（设计稿 6.12）：「↳ 问题  答案」挂在过程轨上，问题淡、答案实
+  if (ask && !pending && answer)
+    return (
+      <div
+        aria-label={`你的回答：${answer}`}
+        className="text-muted-foreground flex h-7 min-w-0 items-center gap-2 text-[12.5px] whitespace-nowrap [&_svg]:size-3.5 [&_svg]:shrink-0"
+      >
+        <CornerDownRight />
+        <span className="max-w-[55%] truncate">{title}</span>
+        <span className="text-foreground min-w-0 truncate font-medium">{answer}</span>
+      </div>
+    );
 
   return (
     <div
