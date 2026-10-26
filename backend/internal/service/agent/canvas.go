@@ -181,15 +181,20 @@ func touchedNodeIDs(changes []canvasgraph.Change) []string {
 	return ids
 }
 
-// Arrange 整理布局：排列一个组的成员或一组节点。
+// Arrange 整理布局：排列一个组的成员或一组节点，扩组时自动推开邻居，保留未消解的重叠提醒。
 func (s *AgentCanvasService) Arrange(ctx context.Context, run *model.AgentRun, toolCallID string, target canvasgraph.ArrangeTarget, layout canvasgraph.Layout) (*WriteResult, error) {
-	res, _, err := s.mutate(ctx, run, toolCallID, model.MutationArrange, 0, func(g *canvasgraph.Graph) (*edit, error) {
+	// 1. 在最新画布上排列、贴合并避让；位置差异统一记入改动日志和前端 patch。
+	res, extra, err := s.mutate(ctx, run, toolCallID, model.MutationArrange, 0, func(g *canvasgraph.Graph) (*edit, error) {
 		r, err := canvasgraph.Arrange(g, target, layout, nil)
 		if err != nil {
 			return nil, err
 		}
-		return &edit{graph: r.Graph, changes: r.Changes}, nil
+		return &edit{graph: r.Graph, changes: r.Changes, extra: r.Warnings}, nil
 	})
+	// 2. 显式位置或上游原布局可能仍然重叠，首次调用和幂等重放都返回同一份提醒。
+	if w, ok := extra.([]string); ok && res != nil {
+		res.Warnings = w
+	}
 	return res, err
 }
 

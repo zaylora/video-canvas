@@ -56,13 +56,12 @@ func Apply(g *Graph, ops []Op, opt Options) (*Result, error) {
 	if len(a.issues) > 0 {
 		return nil, &ValidationError{Issues: a.issues}
 	}
-	// 先让所有组框贴合成员、定型，再放置新节点和新组：先放的节点不会被后撑大的组框压住，结果与 ops 顺序无关。
-	for gid := range a.refit {
-		a.g.fitGroup(gid)
-	}
+	// 先贴合本批组框、放置新对象，再消解分批扩组压住已有邻居的碰撞；在 finish 前完成，推动也进入撤销和 patch。
+	a.g.refitGroups(a.refit)
 	a.g.placeDeferred(a.pending)
+	moved := a.g.pushGroupOverlaps(a.g.grownGroups(g, a.refit), a.explicit)
 	res := finish(g, a.g, a.idMap)
-	res.Warnings = a.overlapWarnings()
+	res.Warnings = a.g.overlapWarnings(a.explicit, a.refit, moved)
 	return res, nil
 }
 

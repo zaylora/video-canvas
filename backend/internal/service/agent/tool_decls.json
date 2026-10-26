@@ -190,7 +190,7 @@
   },
   {
     "name": "canvas_arrange",
-    "description": "整理布局：把一个组的成员或一组节点排成一行、一列或网格。",
+    "description": "整理布局：把一个组的成员或一组节点排成一行、一列或网格。只排列节点或组内成员，不会移动组本身；要挪组用 canvas_apply_ops 的 move。",
     "parameters": {
       "type": "object",
       "required": [

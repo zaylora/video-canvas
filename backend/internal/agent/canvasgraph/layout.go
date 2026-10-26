@@ -204,8 +204,8 @@ func (g *Graph) placeFreeSkipping(skip map[string]bool) Point {
 }
 
 // placeDeferred 依次放置还没有位置的新节点和新组（延后放置）：每个都放在已定位内容的右侧、与最上沿对齐，
-// 放完就算已定位，后面的接着往右排。调用时所有组框都已定型，所以放下的位置不会被之后撑大的组框压住，
-// 结果也与 ops 的先后顺序无关。组连成员作为一整块放置（成员存的是相对坐标，随组移动）。
+// 放完就算已定位，后面的接着往右排。本批组框已贴合；后续批次扩组的碰撞由 pushGroupOverlaps 消解。
+// 组连成员作为一整块放置（成员存的是相对坐标，随组移动）。
 func (g *Graph) placeDeferred(ids []string) {
 	waiting := make(map[string]bool, len(ids))
 	for _, id := range ids {
@@ -220,7 +220,7 @@ func (g *Graph) placeDeferred(ids []string) {
 }
 
 // Arrange 整理布局：以所选节点的左上角为起点排成一行、一列或网格，保留原来的大致先后。
-// 目标是组时，只排成员，排完后组框贴合成员。返回的 Result 带位置变化的差异。
+// 目标是组时，只排成员，排完后组框贴合成员；扩组会推开后序邻居，所有位置变化进入差异。
 func Arrange(g *Graph, t ArrangeTarget, layout Layout, gap *Gap) (*Result, error) {
 	if layout != LayoutRow && layout != LayoutColumn && layout != LayoutGrid {
 		return nil, fmt.Errorf("%w: 排列方式 %q 不认识，可选 row / column / grid", ErrInvalid, layout)
@@ -248,10 +248,11 @@ func Arrange(g *Graph, t ArrangeTarget, layout Layout, gap *Gap) (*Result, error
 		}
 		n.SetPosition(p)
 	}
-	for pid := range parents {
-		work.fitGroup(pid)
-	}
-	return finish(g, work, nil), nil
+	work.refitGroups(parents)
+	moved := work.pushGroupOverlaps(work.grownGroups(g, parents), nil)
+	res := finish(g, work, nil)
+	res.Warnings = work.overlapWarnings(nil, parents, moved)
+	return res, nil
 }
 
 // arrangeTargets 解析排列目标，返回要排列的普通节点（在 work 里的引用）。

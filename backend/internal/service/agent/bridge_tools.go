@@ -270,7 +270,11 @@ func (b *AgentBridge) toolArrange(ctx context.Context, tc *toolCall) (*toolOut, 
 	if err != nil {
 		return nil, err
 	}
-	content, err := jsonOut(map[string]any{"ok": true, "changes": res.Changes})
+	out := map[string]any{"ok": true, "changes": res.Changes}
+	if len(res.Warnings) > 0 {
+		out["warnings"] = res.Warnings
+	}
+	content, err := jsonOut(out)
 	return &toolOut{content: content, summary: "整理布局（" + a.Layout + "）", extra: map[string]any{"node_ids": a.NodeIDs}}, err
 }
 
