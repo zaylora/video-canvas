@@ -513,8 +513,11 @@ func writeModelCalls(sb *strings.Builder, f *model.AgentExportFacts) {
 	for i := range f.ModelCalls {
 		m := &f.ModelCalls[i]
 		purpose := "对话"
-		if m.Purpose == "summary" {
+		switch m.Purpose {
+		case ModelPurposeSummary:
 			purpose = "摘要"
+		case ModelPurposeTitle:
+			purpose = "命名"
 		}
 		fmt.Fprintf(sb, "- 第 %d 次（%s）· %s · 输入 %d / 输出 %d token", i+1, purpose, firstNonEmpty(m.UpstreamModel, m.ModelKey), m.InputTokens, m.OutputTokens)
 		if m.StopReason != "" {

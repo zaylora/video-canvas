@@ -1228,3 +1228,13 @@ MVP 按下面 6 个切片自底向上实现，每片先写测试、通过 lint �
 - **样式**：`index.css` 新增 `agent-orb / agent-panel / agent-docked / agent-raised / agent-inset / agent-composer / agent-send / agent-fade-y / agent-shimmer` 工具类和投影 token；`lib/motion.ts` 新增 `SHIMMER`；`store/agent-settings.ts` 新增 `docked`、`dockWidth`。
 - **与原型的差别**：决定框和输入框互换时，容器用 motion `layout` + `SPRING`（原型里直接动 height）；停靠切换没有旧形态的「幽灵」淡出，只做新形态从右侧 / 入口方向进入。
 - **验证**：`bun test` 1097 个全过；`tsc -b --noEmit`、`oxlint`（本次文件无新增警告）、`oxfmt --check` 通过；后端 `go vet ./...`、`go test ./...` 通过。
+
+### 13.14 会话自动命名（已完成，未在浏览器里看过）
+
+- **要解决的问题**：标题原来由前端在发出首条消息时取前 14 个字，会把消息里的 `@[剧本](node:..)` 引用语法原样截进标题；服务端也有一份 40 字的草稿，两处重复。
+- **标题来源 `title_source`**（Agent 服务 SQLite 迁移 v4，默认 `draft`）：`draft` 草稿（首条消息截出来的）、`llm` 模型命名、`user` 用户手动起的。创建会话时带了标题、或手动改名都算 `user`；只有 `draft` 才会被模型命名覆盖，写入是一条带条件的 UPDATE（`store.setLlmTitle`），命名期间用户改名不会被冲掉。接口返回的会话字段不变，不暴露来源。
+- **草稿**：开始运行时标题还是「新对话」就用首条消息，`@` 引用只留名字（`@剧本`），空白压成一个空格，最多 40 字（`src/title.ts` 的 `draftTitle`）。
+- **模型命名**：首轮运行**成功**后（失败、被取消的不命名），用**用户当前选的模型**异步起一个不超过 24 字的标题（提示词要求 16 字内、与用户同语言，清洗掉引号、「标题：」前缀、结尾标点）。输入是首条用户消息前 800 字加首条助手回答前 400 字。请求走平台的模型代理，请求头 `X-Agent-Purpose: title`：Go 照常预检预算、计费，调用记成 `title`（观测里叫「命名」），不是助手的话，也不算对话的上下文大小。每个会话每个进程只试一次，失败保留草稿；20 秒超时；任何失败都不影响运行。
+- **事件**：`session.titled`（临时事件，`seq: 0`，不落库），草稿和模型命名各推一条，`data.title` 是新标题；前端 `store/agent.ts` 直接改会话列表里的标题，不进会话事件流。前端不再自己改名。
+- **文件**：`agent/src/title.ts`（纯函数）、`agent/src/engine/engine.ts` 的 `#autoTitle`、`agent/src/store/`、`backend/internal/service/agent/bridge.go`（`ModelPurposeTitle`、`ModelPurposeOf`）；测试在 `agent/test/engine-title.test.ts`、`title.test.ts`、`web/src/tests/store/agent-title.test.ts`。
+- **没做 / 已知**：命名多一次模型调用，会按所选模型计费；没有「重新生成标题」入口，要换名用标题上的双击改名。

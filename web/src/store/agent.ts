@@ -96,12 +96,29 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
       };
     }),
 
-  handleEvent: (event) =>
+  handleEvent: (event) => {
+    // 会话标题变了（开始运行时的草稿、首轮结束后模型命名的结果）：改会话列表里的标题，不属于会话的事件流
+    if (event.type === "session.titled") {
+      const title = typeof event.data?.title === "string" ? event.data.title.trim() : "";
+      if (title)
+        set((s) => {
+          const list = s.sessionsByCanvas[event.canvas_id];
+          if (!list?.some((x) => x.id === event.session_id)) return s;
+          return {
+            sessionsByCanvas: {
+              ...s.sessionsByCanvas,
+              [event.canvas_id]: list.map((x) => (x.id === event.session_id ? { ...x, title } : x)),
+            },
+          };
+        });
+      return;
+    }
     set((s) => {
       const current = s.sessions[event.session_id] ?? emptySession();
       const next = applyAgentEvent(current, event);
       return next === current ? s : { sessions: { ...s.sessions, [event.session_id]: next } };
-    }),
+    });
+  },
 
   replay: async (sessionId) => {
     for (let page = 0; page < MAX_REPLAY_PAGES; page++) {

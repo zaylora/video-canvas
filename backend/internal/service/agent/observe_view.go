@@ -43,7 +43,7 @@ type ToolCallView struct {
 type ModelCallView struct {
 	ID             idcodec.ID        `json:"id"`              // 调用 id（编码后）：与 /requests 接口返回的 id 对应
 	Request        *ModelRequestView `json:"request"`         // 实际发给上游的请求摘要；过了保留期或没留存为 null
-	Purpose        string            `json:"purpose"`         // main 对话调用，summary 摘要调用
+	Purpose        string            `json:"purpose"`         // main 对话调用，summary 摘要调用，title 会话命名调用
 	ModelKey       string            `json:"model_key"`       // Agent 模型
 	ChannelKey     string            `json:"channel_key"`     // 实际走的渠道
 	UpstreamModel  string            `json:"upstream_model"`  // 实际调用的上游模型

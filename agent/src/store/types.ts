@@ -2,11 +2,15 @@
  * Agent 服务的领域对象。ID 一律是十进制字符串（雪花 ID 超过 2^53），时间一律是毫秒时间戳。
  * 字段含义和 Go 的 model.AgentSession / AgentRun / AgentEvent / AgentApproval 对应；会话历史不在这里，归 Pi Durable。
  */
+export type TitleSource = "draft" | "llm" | "user";
+
 export interface Session {
   id: string;
   userId: string;
   canvasId: string;
   title: string;
+  /** 标题是谁起的：draft 草稿（首条消息截出来的）、llm 模型命名、user 用户手动起的 */
+  titleSource: TitleSource;
   mode: string;
   modelKey: string;
   /** 最近一条事件的序号 */
@@ -75,6 +79,8 @@ export interface NewSession {
   userId: string;
   canvasId: string;
   title: string;
+  /** 不传是草稿 */
+  titleSource?: TitleSource;
   mode: string;
   modelKey: string;
 }
@@ -109,6 +115,7 @@ export interface NewApproval {
 
 export interface SessionPatch {
   title?: string;
+  titleSource?: TitleSource;
   mode?: string;
   modelKey?: string;
 }

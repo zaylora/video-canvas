@@ -29,7 +29,7 @@ const json = (v: unknown): string => JSON.stringify(v === undefined ? {} : v);
 
 function sessionOf(r: Row): Session {
   return {
-    id: id(r.id), userId: id(r.user_id), canvasId: id(r.canvas_id), title: String(r.title), mode: String(r.mode),
+    id: id(r.id), userId: id(r.user_id), canvasId: id(r.canvas_id), title: String(r.title), titleSource: String(r.title_source) as Session["titleSource"], mode: String(r.mode),
     modelKey: String(r.model_key), lastSeq: num(r.last_seq), conversationId: String(r.conversation_id), createdAt: num(r.created_at), updatedAt: num(r.updated_at),
   };
 }
@@ -95,7 +95,7 @@ function setClause(patch: object, columns: Record<string, string>, encode: (key:
   return { sql: sets.join(", "), values };
 }
 
-const SESSION_COLUMNS = { title: "title", mode: "mode", modelKey: "model_key" };
+const SESSION_COLUMNS = { title: "title", titleSource: "title_source", mode: "mode", modelKey: "model_key" };
 const RUN_COLUMNS = {
   status: "status", errorCode: "error_code", errorMessage: "error_message", endedAt: "ended_at", leaseUntil: "lease_until",
   mode: "mode", budgetCredits: "budget_credits", spentCredits: "spent_credits", steps: "steps", contextTokens: "context_tokens",
@@ -181,9 +181,9 @@ export class AgentStore {
   createSession(in_: NewSession): Session {
     const t = this.#now();
     const row = this.#get(
-      `INSERT INTO agent_sessions (id, user_id, canvas_id, title, mode, model_key, last_seq, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?) RETURNING *`,
-      this.#newId(), dec(in_.userId), dec(in_.canvasId), in_.title, in_.mode, in_.modelKey, t, t,
+      `INSERT INTO agent_sessions (id, user_id, canvas_id, title, title_source, mode, model_key, last_seq, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?) RETURNING *`,
+      this.#newId(), dec(in_.userId), dec(in_.canvasId), in_.title, in_.titleSource ?? "draft", in_.mode, in_.modelKey, t, t,
     );
     return sessionOf(row!);
   }
@@ -215,6 +215,18 @@ export class AgentStore {
       ...values, this.#now(), dec(sessionId), dec(userId),
     );
     if (changed === 0) throw new NotFoundError("会话");
+  }
+
+  /**
+   * 模型给会话起的标题：只有标题还是草稿时才写（用户改过名、或已经命名过就不覆盖），判断和写入是一条语句，不会和手动改名竞争。
+   * 不改更新时间：命名不该让会话在列表里跳到最前。
+   * @returns 是否写入了
+   */
+  setLlmTitle(userId: string, sessionId: string, title: string): boolean {
+    return this.#run(
+      "UPDATE agent_sessions SET title = ?, title_source = 'llm' WHERE id = ? AND user_id = ? AND title_source = 'draft' AND deleted_at IS NULL",
+      title, dec(sessionId), dec(userId),
+    ) > 0;
   }
 
   /** 记下会话在 Pi 里的会话 id。内部动作，不改更新时间 */

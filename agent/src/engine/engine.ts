@@ -15,6 +15,7 @@ import {
 } from "@earendil-works/pi-durable";
 import { SUMMARY_SYSTEM_PROMPT, buildPrompt, compactionLimits, serializeMessages, summaryMaxTokens } from "../compaction.ts";
 import { createCodemode } from "../codemode.ts";
+import { TITLE_SYSTEM_PROMPT, buildTitlePrompt, draftTitle, parseTitle, stripMentions } from "../title.ts";
 import { createToolsExtension, type ToolHost, type ToolRun } from "../durable-tools.ts";
 import type { IdCodec } from "../ids.ts";
 import { PROVIDER_ID, createModelRegistry, createRunContexts, runContextExtension, type RunContexts } from "../model-provider.ts";
@@ -49,6 +50,12 @@ const DEFAULT_LEASE_TTL_MS = 30_000;
 const DEFAULT_RESUME_WINDOW_MS = 5 * 60_000;
 const EXECUTE_ATTEMPTS = 3;
 const EXECUTE_RETRY_MS = 100;
+/** 命名请求的超时：它是锦上添花，不能拖着运行的收尾 */
+const TITLE_TIMEOUT_MS = 20_000;
+/** 命名请求的最大输出：标题很短，留出余量给带思考的模型 */
+const TITLE_MAX_TOKENS = 512;
+/** 命名只看开头的几条事件：第一轮的用户消息和助手回答都在里面 */
+const TITLE_EVENT_SCAN = 60;
 
 /** 引擎发出的事件。seq 为 0 表示临时事件（文字增量），不落库、不参与回放 */
 export interface PublishedEvent {
@@ -83,6 +90,8 @@ export interface EngineOptions {
   leaseTtlMs?: number;
   /** 启动时没跑完的运行，停机不超过这个时间就自动续跑，超过就标为中断（默认 5 分钟） */
   resumeWindowMs?: number;
+  /** 首轮运行成功后，用用户当前选的模型给会话起标题（默认开）；false 关闭，标题就是首条消息截出来的草稿 */
+  autoTitle?: boolean;
 }
 
 export interface StartRunRequest {
@@ -171,6 +180,8 @@ export class AgentEngine {
   /** 会话 → 丢掉 watcher 里攒着的增量 */
   readonly #dropDeltas = new Map<string, () => void>();
   readonly #stops: Array<() => Promise<unknown>> = [];
+  /** 已经试过自动命名的会话：每个会话每个进程只试一次，失败了也不再重试（每次都要花积分） */
+  readonly #titleTried = new Set<string>();
   #models!: ReturnType<typeof createModelRegistry>;
   #toolsKey = "";
   #closing = false;
@@ -192,8 +203,8 @@ export class AgentEngine {
       baseUrl: this.#o.baseUrl, serviceToken: this.#o.serviceToken, contexts: this.#contexts,
       onCall: ({ sessionId, callId, purpose }) => {
         const a = this.#active.get(this.#contexts.conversationOf(sessionId ?? "") ?? "");
-        // 摘要不是助手的话，没有对应的 message.done：它的调用 id 单独放，免得错配到下一条对话消息上
-        if (a) (purpose === "summary" ? a.summaryCallIds : a.callIds).push(callId);
+        // 摘要、命名不是助手的话，没有对应的 message.done：它们的调用 id 单独放，免得错配到下一条对话消息上
+        if (a) (purpose === "main" ? a.callIds : a.summaryCallIds).push(callId);
       },
       onError: ({ sessionId, status, code, purpose }) => {
         const a = this.#active.get(this.#contexts.conversationOf(sessionId ?? "") ?? "");
@@ -382,8 +393,11 @@ export class AgentEngine {
       throw e;
     }
     const selection = req.selection ?? [];
-    store.updateSession(req.userId, sess.id, { mode, modelKey: req.modelKey, ...(sess.title === DEFAULT_TITLE && { title: cleanTitle(message) }) });
+    // 标题还是默认的「新对话」时，先用首条消息当草稿；首轮成功后再由模型命名（见 #autoTitle）
+    const draft = sess.title === DEFAULT_TITLE && sess.titleSource === "draft" ? draftTitle(message, DEFAULT_TITLE) : "";
+    store.updateSession(req.userId, sess.id, { mode, modelKey: req.modelKey, ...(draft && { title: draft }) });
     const ev = { id: run.id, userId: req.userId, sessionId: sess.id, canvasId: sess.canvasId };
+    if (draft) this.#push(ev, "session.titled", { title: draft }); // 面板标题马上跟上，不用等刷新会话列表
     this.#emit(ev, "message.user", { text: message, mode, selection });
     this.#emit(ev, "run.status", statusEvent("queued"));
 
@@ -504,11 +518,51 @@ export class AgentEngine {
       await this.#untilQuiet(a);
       const rec = sub ? await sub.wait(context) : undefined;
       await this.#finalize(a, rec?.status === "unanswered" ? `运行中断：${rec.reason}` : undefined);
+      await this.#autoTitle(a);
     } catch (e) {
       if (this.#closing) return; // 正常停机：运行留在原状态，下次启动按窗口判断
       await this.#finalize(a, String((e as Error)?.message ?? e));
     } finally {
       if (!this.#closing) await this.#release(a);
+    }
+  }
+
+  /**
+   * 首轮运行成功后，用用户当前选的模型给会话起一个短标题（失败就保留草稿，运行不受影响）。
+   * 只命名标题还是草稿的会话（用户起过名、或已经命名过的不动），每个会话每个进程只试一次。
+   * 命名请求走平台的模型代理（带运行上下文和命名用途，Go 计费、检查额度）：它不是助手的话，也不算对话的上下文大小。
+   * 写入由存储保证「只有草稿才写」，所以命名期间用户手动改名不会被覆盖。
+   */
+  async #autoTitle(a: Active): Promise<void> {
+    if (this.#o.autoTitle === false || this.#closing) return;
+    const store = this.#o.store;
+    try {
+      if (store.getRun(a.run.userId, a.run.id).status !== "succeeded") return;
+      const sess = store.getSession(a.run.userId, a.run.sessionId);
+      if (sess.titleSource !== "draft" || this.#titleTried.has(sess.id)) return;
+      this.#titleTried.add(sess.id);
+      const events = store.listEvents(sess.id, 0, TITLE_EVENT_SCAN);
+      const textOf = (type: string, skip?: (p: { text?: string; steer?: boolean }) => boolean) => {
+        const hit = events.find((e) => e.type === type && !skip?.(e.payload as { text?: string; steer?: boolean }) && String((e.payload as { text?: string }).text ?? "").trim());
+        return String((hit?.payload as { text?: string } | undefined)?.text ?? "");
+      };
+      const question = stripMentions(textOf("message.user", (p) => !!p.steer)).trim();
+      if (!question) return;
+      const model = this.#models.models.getModel(PROVIDER_ID, a.rc.model_key!);
+      if (!model) return;
+      const sessionId = `title:${sess.id}`;
+      this.#contexts.bindSession(sessionId, a.convId);
+      const msg = await this.#models.models.completeSimple(
+        model,
+        { systemPrompt: TITLE_SYSTEM_PROMPT, messages: [{ role: "user", content: [{ type: "text", text: buildTitlePrompt(question, stripMentions(textOf("message.done"))) }], timestamp: Date.now() }] },
+        { signal: AbortSignal.timeout(TITLE_TIMEOUT_MS), maxTokens: TITLE_MAX_TOKENS, sessionId, headers: { "X-Agent-Purpose": "title" } },
+      );
+      await this.#settleSummaries(a); // 命名也要计费：结算出来有扣费就推一条 run.usage
+      if (msg.stopReason === "error" || msg.stopReason === "aborted") return;
+      const title = parseTitle(msg.content.map((p) => (p.type === "text" ? p.text : "")).join(""));
+      if (title && store.setLlmTitle(sess.userId, sess.id, title)) this.#push(this.#ev(a), "session.titled", { title });
+    } catch {
+      // 命名只是锦上添花：任何失败都保留草稿标题，不影响运行
     }
   }
 

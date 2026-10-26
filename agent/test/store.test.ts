@@ -568,3 +568,24 @@ test("观测：一次运行的事件（升序）；会话是否被删；同会�
   assert.equal(s.isSessionDeleted(sess.id), true);
   assert.equal(s.isSessionDeleted("999"), true, "不存在按已删除处理");
 }));
+
+test("会话标题来源：新会话默认是草稿，可以显式指定；只有草稿才能被模型命名覆盖", withStore((s) => {
+  const a = newSession(s);
+  assert.equal(a.titleSource, "draft");
+  assert.equal(newSession(s, { titleSource: "user" }).titleSource, "user");
+
+  assert.equal(s.setLlmTitle("1", a.id, "雨夜便利店"), true);
+  assert.deepEqual([s.getSession("1", a.id).title, s.getSession("1", a.id).titleSource], ["雨夜便利店", "llm"]);
+
+  // 已经不是草稿（模型命名过、或用户改过名）就不再覆盖
+  assert.equal(s.setLlmTitle("1", a.id, "又一个"), false);
+  s.updateSession("1", a.id, { title: "用户改的", titleSource: "user" });
+  assert.equal(s.setLlmTitle("1", a.id, "模型想改"), false);
+  assert.equal(s.getSession("1", a.id).title, "用户改的");
+
+  // 别人的、已删除的会话不能命名
+  const b = newSession(s);
+  assert.equal(s.setLlmTitle("2", b.id, "x"), false);
+  s.deleteSession("1", b.id);
+  assert.equal(s.setLlmTitle("1", b.id, "x"), false);
+}));

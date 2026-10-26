@@ -21,6 +21,21 @@ import (
 // 但它不是助手对用户说的话。
 const ModelPurposeSummary = "summary"
 
+// ModelPurposeTitle 是 Agent 给会话起标题发起的调用：用用户当前选的模型，照常预检预算、计费，
+// 同样不是助手对用户说的话，也不算对话的上下文大小。
+const ModelPurposeTitle = "title"
+
+// ModelPurposeOf 把请求头 X-Agent-Purpose 的值转成已知的用途；只认已知的，别的值一律当普通对话（返回空串），
+// 免得被用来藏起助手的回复。
+func ModelPurposeOf(header string) string {
+	switch header {
+	case ModelPurposeSummary, ModelPurposeTitle:
+		return header
+	default:
+		return ""
+	}
+}
+
 type modelPurposeKey struct{}
 
 // WithModelPurpose 标明这次模型调用的用途；没标明就是普通的对话调用。

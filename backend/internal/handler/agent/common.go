@@ -56,8 +56,8 @@ func serveModelStream(c *gin.Context, call func(ctx context.Context, body []byte
 		c.Writer.Flush()
 	}
 	ctx := c.Request.Context()
-	if c.GetHeader("X-Agent-Purpose") == agentsvc.ModelPurposeSummary { // 只认已知的用途：别的值一律当普通对话，免得被用来藏起助手的回复
-		ctx = agentsvc.WithModelPurpose(ctx, agentsvc.ModelPurposeSummary)
+	if purpose := agentsvc.ModelPurposeOf(c.GetHeader("X-Agent-Purpose")); purpose != "" { // 只认已知的用途：别的值一律当普通对话
+		ctx = agentsvc.WithModelPurpose(ctx, purpose)
 	}
 	err = call(ctx, body, extra, write)
 	if err != nil && !started {

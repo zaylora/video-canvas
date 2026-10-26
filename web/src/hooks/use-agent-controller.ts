@@ -25,9 +25,6 @@ import { useCreditsStore } from "@/store/credits";
 import { activeRunId, emptySession } from "@/utils/agent/session-state";
 import { buildRunStrip, buildStatusLine, buildTimeline } from "@/utils/agent/timeline";
 
-/** 会话标题自动取首条消息的前几个字 */
-const AUTO_TITLE_LEN = 14;
-
 /** 没有会话时共用的空数组，免得每次渲染都是新引用 */
 const NO_SESSIONS: AgentSessionDto[] = [];
 
@@ -176,13 +173,6 @@ export function useAgentController({
           agent_model_key: modelKey || undefined,
         });
         useAgentStore.getState().ingestRun(run);
-        // 首条消息后标题自动取前几个字
-        if (target.title === "新对话" && target.last_seq === 0) {
-          const title = [...message].slice(0, AUTO_TITLE_LEN).join("");
-          void renameAgentSession(target.id, title)
-            .then(() => useAgentStore.getState().upsertSession({ ...target, title }))
-            .catch(() => undefined);
-        }
         void useCreditsStore.getState().refresh();
         return true;
       } catch {
