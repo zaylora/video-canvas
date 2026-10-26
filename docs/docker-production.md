@@ -86,7 +86,16 @@ docker compose --profile updater up -d    # 启动 updater
 - 服务重启后没跑完的运行，停机时间不超过 `AGENT_RESUME_WINDOW_SECONDS`（默认 300 秒）会自动续跑，界面显示「恢复中」，超过就标为「已中断」由用户点「继续」。backend 重启不影响运行；
 - 可以单独发版、跟上 Pi 的更新；backend 镜像里没有 Node。
 
-只在 compose 内网提供服务，不对外开放任何端口。backend 和 agent 之间用同一个服务令牌（`.env` 里的 `AGENT_SERVICE_TOKEN`）互相认，令牌是唯一的凭据，请当作密码保管。**`deploy.sh` 新部署时会生成它；`update.sh`（包括后台一键升级）从没有独立 Agent 服务的旧版本升上来时，发现 `.env` 里没有就自动生成一个**（已有的不会动）。
+只在 compose 内网提供服务，不对外开放任何端口。backend 和 agent 之间用同一个服务令牌（`.env` 里的 `AGENT_SERVICE_TOKEN`）互相认，令牌是唯一的凭据，请当作密码保管。**`deploy.sh` 新部署时会生成它；命令行运行新版 `update.sh` 从没有独立 Agent 服务的旧版本升上来时，发现 `.env` 里没有就自动生成一个**（已有的不会动）。
+
+> **后台「一键升级」不会自动生成它。** 一键升级执行的是 updater 容器里自带的 `update.sh`，而 updater 不会随升级重建，所以从 `0.4.x` 经一键升级升到 `0.5.x` 时跑的是旧脚本，不会补令牌。缺令牌时 compose 在拉取镜像之前就会报错并中止升级，运行中的服务不受影响。升级前请先在部署目录做一次：
+>
+> ```bash
+> printf '\nAGENT_SERVICE_TOKEN=%s\n' "$(openssl rand -hex 32)" >> .env   # .env 里已有则跳过
+> docker compose --profile updater up -d                                     # 让 updater 换成新版本里的脚本（只需做一次）
+> ```
+>
+> 然后再点一键升级，或运行 `update.sh`。
 
 - **确认生效**：`docker compose ps` 里有 `agent` 且状态是 healthy；backend 启动日志里有「画布 Agent 平台 API 已启动」。agent 的健康检查还包含一项自检：它启动后会向 backend 核对「对外 ID 的编码密钥」是否一致，**不一致时报 unhealthy**（一键升级会因此自动回退），日志里会说明怎么改。backend 默认使用镜像里配置文件的 `id_key`，agent 的 `AGENT_ID_KEY` 默认也是 `id_key`；只有你改过 backend 的密钥才需要在 `.env` 里同步设 `AGENT_ID_KEY`。
 - **不用 Agent**：`.env` 里设 `APP_AGENT_ENABLED=false`，画布里的 Agent 会提示「暂不可用」（agent 容器仍会启动，空闲时几乎不占资源）。还要在后台「AI 配置」里发布 agent 类型的模型才有可用模型。

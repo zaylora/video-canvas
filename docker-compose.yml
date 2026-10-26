@@ -54,7 +54,7 @@ services:
       # 平台 API（agent 服务来调用）监听 0.0.0.0:47001，只在 compose 内网可达、不对外开放端口，靠服务令牌鉴权
       APP_AGENT_URL: http://agent:8090
       APP_AGENT_BRIDGE_URL: http://backend:47001
-      APP_AGENT_SERVICE_TOKEN: ${AGENT_SERVICE_TOKEN:-}
+      APP_AGENT_SERVICE_TOKEN: ${AGENT_SERVICE_TOKEN:?.env 里缺少 AGENT_SERVICE_TOKEN（至少 32 个字符）：加一行 AGENT_SERVICE_TOKEN=openssl rand -hex 32 的输出，再重新升级}
       # 一键升级（可选，见下方 updater）：与 updater 共用的 token，为空表示没启用
       APP_UPDATE_UPDATER_TOKEN: ${UPDATER_TOKEN:-}
     volumes:
@@ -123,14 +123,15 @@ services:
   # backend 负责登录校验、反向代理前端的接口，并提供平台能力（画布读写、模型代理和计费、生成任务、素材）。
   # 服务重启后没跑完的运行在窗口内自动续跑（AGENT_RESUME_WINDOW_SECONDS，默认 5 分钟），界面显示「恢复中」；backend 重启不影响运行。
   # 只在 compose 内网提供服务，不对外开放端口。
-  # AGENT_SERVICE_TOKEN 是 backend 和 agent 互相认的唯一凭据（deploy.sh 和 update.sh 会在 .env 里生成），没配时 agent 容器拒绝启动并说明原因。
+  # AGENT_SERVICE_TOKEN 是 backend 和 agent 互相认的唯一凭据（deploy.sh 新部署和命令行运行的新版 update.sh 会在 .env 里生成；后台一键升级跑的是 updater 里的旧脚本，不会生成，见 docs/docker-production.md「Agent 服务」），
+  # 没配时这里在解析阶段就报错，升级停在拉取镜像之前，运行中的服务不受影响。
   # AGENT_ID_KEY 必须和 backend 对外 ID 的编码密钥一致（backend 用配置文件里的 id_key，镜像里默认就是 id_key；
   # 改过 backend 的密钥才需要在 .env 里设 AGENT_ID_KEY）。不一致时 agent 启动后自检会发现，/health 报不健康。
   agent:
     image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_OWNER:-zaylora}/video-canvas-agent:${IMAGE_TAG:-latest}
     restart: unless-stopped
     environment:
-      AGENT_SERVICE_TOKEN: ${AGENT_SERVICE_TOKEN:-}
+      AGENT_SERVICE_TOKEN: ${AGENT_SERVICE_TOKEN:?.env 里缺少 AGENT_SERVICE_TOKEN（至少 32 个字符）：加一行 AGENT_SERVICE_TOKEN=openssl rand -hex 32 的输出，再重新升级}
       AGENT_LISTEN: 0.0.0.0:8090
       # 数据文件、backend 的平台 API 地址、对外 ID 的编码密钥、重启后自动续跑的窗口（秒）
       AGENT_DB_PATH: /data/agent.sqlite
