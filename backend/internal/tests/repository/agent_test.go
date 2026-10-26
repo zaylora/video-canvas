@@ -15,7 +15,7 @@ import (
 )
 
 func agentDB(t *testing.T) *gorm.DB {
-	return isolatedDB(t, &model.CanvasProject{}, &model.AgentSession{}, &model.AgentRun{}, &model.AgentEvent{}, &model.AgentMutation{}, &model.AgentApproval{})
+	return isolatedDB(t, &model.CanvasProject{}, &model.AgentSession{}, &model.AgentRun{}, &model.AgentEvent{}, &model.AgentMutation{}, &model.AgentApproval{}, &model.AgentCanvasRead{})
 }
 
 func newCanvas(t *testing.T, db *gorm.DB, userID uint64) *model.CanvasProject {

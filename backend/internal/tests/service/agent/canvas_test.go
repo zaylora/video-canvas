@@ -23,12 +23,15 @@ import (
 // fakeAgentCanvasRepo 是内存版 AgentCanvasRepo：画布带 revision，提交时按乐观锁校验，
 // beforeCommit 钩子用来在两次读写之间模拟「用户同时保存了画布」。
 type fakeAgentCanvasRepo struct {
-	mu           sync.Mutex
-	canvas       *model.CanvasProject
-	runs         map[uint64]*model.AgentRun
-	muts         []model.AgentMutation
-	commits      int
-	beforeCommit func(r *fakeAgentCanvasRepo)
+	mu            sync.Mutex
+	canvas        *model.CanvasProject
+	runs          map[uint64]*model.AgentRun
+	muts          []model.AgentMutation
+	reads         map[model.AgentCanvasRead]bool
+	readErr       error
+	recordReadErr error
+	commits       int
+	beforeCommit  func(r *fakeAgentCanvasRepo)
 }
 
 func newFakeAgentCanvasRepo(payload string) *fakeAgentCanvasRepo {
@@ -107,6 +110,7 @@ func (f *fakeAgentCanvasRepo) CommitCanvasMutation(_ context.Context, in reposit
 		}
 	}
 	f.muts = append(f.muts, *m)
+	f.addReadRows(in.CreatedReads)
 	return nil
 }
 
@@ -161,6 +165,9 @@ func TestAgentApplyOps_ReportsCreatedAndUpdatedNodes(t *testing.T) {
 	}
 	if len(res.Created) != 1 || res.Created[0] != res.IDMap["a"] || len(res.Updated) != 0 {
 		t.Fatalf("新建一个节点、连一条线：created 只有新节点，连线不算: %+v", res)
+	}
+	if _, err := e.svc.ReadDetail(context.Background(), e.run, []string{"n_script"}); err != nil {
+		t.Fatal(err)
 	}
 	res, err = e.svc.ApplyOps(context.Background(), e.run, "tc2", []byte(`[{"op":"update_node","id":"n_script","prompt":"黄昏"}]`))
 	if err != nil {

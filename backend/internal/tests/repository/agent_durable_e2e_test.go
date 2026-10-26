@@ -154,7 +154,7 @@ func newDurableEnv(t *testing.T, turns []llmTurn, up *realUpstream) *durableEnv 
 	if _, err := os.Stat(filepath.Join(dir, "node_modules")); err != nil {
 		t.Skip("agent 目录没有安装依赖（npm ci），跳过端到端测试")
 	}
-	db := isolatedDB(t, &model.CanvasProject{}, &model.AgentSession{}, &model.AgentRun{}, &model.AgentEvent{}, &model.AgentMutation{},
+	db := isolatedDB(t, &model.CanvasProject{}, &model.AgentSession{}, &model.AgentRun{}, &model.AgentEvent{}, &model.AgentMutation{}, &model.AgentCanvasRead{},
 		&model.AgentApproval{}, &model.AgentModelCall{}, &model.UserCredit{}, &model.CreditLedger{}, &model.GenerationTask{},
 		&model.AgentToolCall{}, &model.AgentModelCallBody{}, &model.AgentRunDigest{}, &model.AgentFeedback{})
 	repo := NewAgentRepository(db)

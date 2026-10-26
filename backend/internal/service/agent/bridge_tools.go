@@ -215,7 +215,7 @@ func (b *AgentBridge) toolGetState(ctx context.Context, tc *toolCall) (*toolOut,
 		content, err := jsonOut(cat)
 		return &toolOut{content: content, summary: fmt.Sprintf("读取画布目录（%d 个节点）", cat.Total)}, err
 	}
-	d, err := b.d.Canvas.Detail(ctx, tc.run, ids)
+	d, err := b.d.Canvas.ReadDetail(ctx, tc.run, ids)
 	if err != nil {
 		return nil, err
 	}
