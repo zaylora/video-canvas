@@ -44,12 +44,17 @@ services:
       APP_AI_PLUGIN_RUNNER_ADDRESS: /run/plugin-runner/runner.sock
       APP_STORAGE_LOCAL_DIR: /app/data/assets
       APP_SERVER_ALLOWED_ORIGINS: ${APP_SERVER_ALLOWED_ORIGINS:-http://localhost:38080}
-      # 画布 Agent：镜像里带了 Node 和运行时，compose 默认开启（覆盖 config.yaml 里的默认关闭），设为 false 关闭；还要在后台 AI 配置里发布 agent 类型的模型
+      # 画布 Agent：会话、运行、审批在下方独立的 agent 服务里，backend 负责登录校验、反向代理和平台能力（画布读写、模型代理和计费、生成任务、素材）。
+      # 默认开启，设为 false 关闭（关闭后画布里的 Agent 提示「暂不可用」）；还要在后台 AI 配置里发布 agent 类型的模型
       APP_AGENT_ENABLED: ${APP_AGENT_ENABLED:-true}
       # 联网工具（搜索、读网页）：默认开启，设为 false 关闭。请求由 backend 发出，内网和本机地址一律拒绝。
       # 搜索源默认依次试 Exa（免 Key 的公开接口）、Bing、DuckDuckGo 网页搜索，后两个对数据中心的出口常给降级结果或要求人机验证；生产环境建议启用下方的 searxng，并设置它的地址
       APP_AGENT_WEB_ENABLED: ${APP_AGENT_WEB_ENABLED:-true}
       APP_AGENT_SEARXNG_URL: ${APP_AGENT_SEARXNG_URL:-}
+      # 平台 API（agent 服务来调用）监听 0.0.0.0:47001，只在 compose 内网可达、不对外开放端口，靠服务令牌鉴权
+      APP_AGENT_URL: http://agent:8090
+      APP_AGENT_BRIDGE_URL: http://backend:47001
+      APP_AGENT_SERVICE_TOKEN: ${AGENT_SERVICE_TOKEN:-}
       # 一键升级（可选，见下方 updater）：与 updater 共用的 token，为空表示没启用
       APP_UPDATE_UPDATER_TOKEN: ${UPDATER_TOKEN:-}
     volumes:
@@ -114,6 +119,40 @@ services:
       backend:
         condition: service_healthy
 
+  # Agent 服务：画布 Agent 的会话、运行、审批、事件都在这里（Pi Durable + SQLite，数据在 agent_data 卷）。
+  # backend 负责登录校验、反向代理前端的接口，并提供平台能力（画布读写、模型代理和计费、生成任务、素材）。
+  # 服务重启后没跑完的运行在窗口内自动续跑（AGENT_RESUME_WINDOW_SECONDS，默认 5 分钟），界面显示「恢复中」；backend 重启不影响运行。
+  # 只在 compose 内网提供服务，不对外开放端口。
+  # AGENT_SERVICE_TOKEN 是 backend 和 agent 互相认的唯一凭据（deploy.sh 和 update.sh 会在 .env 里生成），没配时 agent 容器拒绝启动并说明原因。
+  # AGENT_ID_KEY 必须和 backend 对外 ID 的编码密钥一致（backend 用配置文件里的 id_key，镜像里默认就是 id_key；
+  # 改过 backend 的密钥才需要在 .env 里设 AGENT_ID_KEY）。不一致时 agent 启动后自检会发现，/health 报不健康。
+  agent:
+    image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_OWNER:-zaylora}/video-canvas-agent:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      AGENT_SERVICE_TOKEN: ${AGENT_SERVICE_TOKEN:-}
+      AGENT_LISTEN: 0.0.0.0:8090
+      # 数据文件、backend 的平台 API 地址、对外 ID 的编码密钥、重启后自动续跑的窗口（秒）
+      AGENT_DB_PATH: /data/agent.sqlite
+      AGENT_BRIDGE_URL: http://backend:47001
+      AGENT_ID_KEY: ${AGENT_ID_KEY:-id_key}
+      AGENT_RESUME_WINDOW_SECONDS: ${AGENT_RESUME_WINDOW_SECONDS:-300}
+      NODE_OPTIONS: --max-old-space-size=1536
+    mem_limit: ${AGENT_MEM_LIMIT:-2g}
+    volumes:
+      # 会话、运行、审批、事件和对话历史：升级前 update.sh 会在线备份它，不要放网络盘
+      - agent_data:/data
+    expose:
+      - "8090"
+    # 收到停止信号时只关闭服务和数据库、不中止运行（下次启动按窗口续跑），25 秒内退出，留 5 秒余量
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://127.0.0.1:8090/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   # 联网搜索（可选，默认不启动）：自己部署的元搜索，聚合多个搜索引擎，免费、不需要 API Key。
   #   1. 在 .env 里加一行 APP_AGENT_SEARXNG_URL=http://searxng:8080
   #   2. 在本目录执行 docker compose --profile search up -d
@@ -162,5 +201,6 @@ volumes:
   postgres_data:
   redis_data:
   backend_assets:
+  agent_data:
   plugin_runner_sock:
   updater_sock:

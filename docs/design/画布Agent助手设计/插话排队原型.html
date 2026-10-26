@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>插话排队原型</title>
+<!--
+  画布 Agent 浮窗：插话排队（设计文档 6.10）。只改消息流里「插话」的显示，别的都不动。
+  颜色抄自 web/src/index.css，时长和曲线与 web/src/lib/motion.ts 一致（base 180ms / 退出 126ms / slow 240ms / EASE_OUT）。
+  原型里「排队中 → 进入时间线」的位移用 FLIP 手写；代码里用 motion 的 layoutId + SPRING，视觉一致。
+  操作：右上角切「现状 / 新方案」对比；先在输入框里发一条插话，再点「让 Agent 往下走一步」看它进入时间线。
+-->
+<style>
+  :root {
+    --background: oklch(1 0 0);
+    --foreground: oklch(0.145 0 0);
+    --popover: oklch(1 0 0);
+    --primary: oklch(0.205 0 0);
+    --primary-foreground: oklch(0.985 0 0);
+    --muted-foreground: oklch(0.556 0 0);
+    --canvas-bg: oklch(0.975 0 0);
+    --canvas-dot: oklch(0 0 0 / 0.14);
+    --chrome: oklch(1 0 0 / 0.82);
+    --chrome-border: oklch(0 0 0 / 0.08);
+    --chrome-hover: oklch(0 0 0 / 0.05);
+    --node-ring: oklch(0.2 0 0 / 0.85);
+    --preset: oklch(0.55 0.2 295);
+    --status-running: oklch(0.58 0.15 250);
+    --status-success: oklch(0.6 0.15 155);
+    --status-warning: oklch(0.7 0.16 70);
+    --destructive: oklch(0.577 0.245 27.325);
+    --sheen: oklch(1 0 0 / 0.5);
+    --radius: 0.625rem;
+    --ease: cubic-bezier(0.2, 0, 0, 1);
+  }
+  [data-theme="dark"] {
+    --background: oklch(0.145 0 0);
+    --foreground: oklch(0.985 0 0);
+    --popover: oklch(0.205 0 0);
+    --primary: oklch(0.922 0 0);
+    --primary-foreground: oklch(0.205 0 0);
+    --muted-foreground: oklch(0.708 0 0);
+    --canvas-bg: oklch(0.13 0 0);
+    --canvas-dot: oklch(1 0 0 / 0.08);
+    --chrome: oklch(0.2 0 0 / 0.78);
+    --chrome-border: oklch(1 0 0 / 0.08);
+    --chrome-hover: oklch(1 0 0 / 0.07);
+    --node-ring: oklch(1 0 0 / 0.72);
+    --preset: oklch(0.6 0.19 295);
+    --status-running: oklch(0.75 0.12 240);
+    --status-success: oklch(0.75 0.15 155);
+    --status-warning: oklch(0.8 0.15 75);
+    --destructive: oklch(0.704 0.191 22.216);
+    --sheen: oklch(1 0 0 / 0.06);
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--canvas-bg); color: var(--foreground);
+    font: 13px/1.5 "Geist", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, sans-serif;
+    background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px); background-size: 20px 20px;
+  }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+  button:disabled { cursor: not-allowed; }
+  :focus-visible { outline: 2px solid color-mix(in oklab, var(--node-ring) 60%, transparent); outline-offset: 1px; }
+  svg.i { width: 14px; height: 14px; flex: none; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+  .layout { display: flex; gap: 24px; justify-content: center; align-items: flex-start; padding: 24px; min-height: 100svh; flex-wrap: wrap; }
+
+  /* ---------- 控制台（只在原型里有） ---------- */
+  .console { width: 300px; display: flex; flex-direction: column; gap: 14px; }
+  .console h1 { margin: 0; font-size: 16px; font-weight: 600; }
+  .console p { margin: 0; color: var(--muted-foreground); font-size: 12.5px; line-height: 1.7; }
+  .group { display: flex; flex-direction: column; gap: 6px; }
+  .group > label { font-size: 11px; color: var(--muted-foreground); letter-spacing: .04em; }
+  .seg { display: flex; padding: 3px; border-radius: 999px; background: var(--chrome); box-shadow: 0 0 0 1px var(--chrome-border); }
+  .seg button { flex: 1; height: 28px; border-radius: 999px; font-size: 12.5px; color: var(--muted-foreground); transition: background-color 120ms var(--ease), color 120ms var(--ease); }
+  .seg button[aria-pressed="true"] { background: color-mix(in oklab, var(--foreground) 12%, transparent); color: var(--foreground); }
+  .btn { display: flex; align-items: center; justify-content: center; gap: 6px; height: 34px; border-radius: var(--radius); background: var(--primary); color: var(--primary-foreground); font-weight: 500; transition: transform 120ms var(--ease), opacity 120ms var(--ease); }
+  .btn:active:not(:disabled) { transform: scale(0.96); }
+  .btn:disabled { opacity: .35; }
+  .btn.ghost { background: var(--chrome); color: var(--foreground); box-shadow: 0 0 0 1px var(--chrome-border); }
+  .note { padding: 10px 12px; border-radius: var(--radius); background: var(--chrome); box-shadow: 0 0 0 1px var(--chrome-border); font-size: 12px; line-height: 1.7; color: var(--muted-foreground); }
+  .note b { color: var(--foreground); font-weight: 600; }
+  .annot { color: var(--destructive); font-size: 11.5px; padding-left: 4px; }
+
+  /* ---------- 浮窗 ---------- */
+  .panel {
+    width: 400px; height: 660px; display: flex; flex-direction: column; overflow: hidden;
+    background: var(--popover); border-radius: calc(var(--radius) * 2.2);
+    box-shadow: 0 0 0 1px var(--chrome-border), 0 24px 48px oklch(0 0 0 / 0.28);
+  }
+  .head { display: flex; align-items: center; height: 48px; padding: 0 16px; flex: none; font-size: 14.5px; font-weight: 600; }
+  .head small { margin-left: auto; font-weight: 400; font-size: 11.5px; color: var(--muted-foreground); display: flex; align-items: center; gap: 6px; }
+  .stream { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 16px; display: flex; flex-direction: column; gap: 12px; scroll-behavior: smooth; }
+  .stream::-webkit-scrollbar { width: 6px; } .stream::-webkit-scrollbar-thumb { background: var(--chrome-border); border-radius: 3px; }
+
+  .msg-user { align-self: flex-end; max-width: 88%; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+  .msg-user .bubble {
+    background: color-mix(in oklab, var(--foreground) 7%, transparent); border-radius: 18px 18px 4px 18px;
+    padding: 8px 12px; font-size: 13.5px; line-height: 1.7; white-space: pre-wrap; word-break: break-word;
+    box-shadow: inset 0 0 0 1px var(--chrome-border), inset 0 1px 0 var(--sheen);
+    transition: background-color 180ms var(--ease), box-shadow 180ms var(--ease), color 180ms var(--ease);
+  }
+  .tag { font-size: 11px; color: var(--muted-foreground); display: flex; align-items: center; gap: 4px; min-height: 16px; }
+  .tag .ok { color: var(--status-success); }
+
+  /* 排队中：虚线描边、更淡的底，一眼看出「还没送到」 */
+  .msg-user.queued .bubble {
+    background: color-mix(in oklab, var(--foreground) 3%, transparent); color: color-mix(in oklab, var(--foreground) 82%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 22%, transparent); border: 1px dashed color-mix(in oklab, var(--foreground) 30%, transparent);
+    padding: 7px 11px;
+  }
+  .msg-user.missed .bubble { border: 1px dashed color-mix(in oklab, var(--status-warning) 70%, transparent); background: color-mix(in oklab, var(--status-warning) 8%, transparent); box-shadow: none; padding: 7px 11px; }
+  .msg-user.missed .tag { color: var(--status-warning); }
+  .qtag { color: var(--muted-foreground); }
+  .qtag .i { color: var(--status-running); }
+  .linkbtn { color: var(--foreground); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: color-mix(in oklab, var(--foreground) 35%, transparent); border-radius: 4px; }
+  .linkbtn:hover { text-decoration-color: currentColor; }
+
+  .msg-ai { font-size: 13.5px; line-height: 1.7; }
+  .msg-ai p { margin: 0 0 6px; }
+  .act-head { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; margin-left: -8px; border-radius: 6px; color: var(--muted-foreground); font-size: 13px; }
+  .act-head .chev { width: 14px; height: 14px; }
+  .act-rows { margin: 4px 0 0 6px; padding-left: 12px; border-left: 1px solid color-mix(in oklab, var(--foreground) 10%, transparent); display: flex; flex-direction: column; gap: 2px; color: var(--muted-foreground); font-size: 12.5px; }
+  .act-rows .row { display: flex; gap: 6px; align-items: center; }
+  .act-rows .row .i { color: var(--status-success); }
+  .answer { display: flex; align-items: center; gap: 8px; color: var(--muted-foreground); font-size: 13px; }
+  .answer .i { color: var(--status-success); width: 15px; height: 15px; }
+
+  /* 流光状态行（同代码里的 StatusLine） */
+  .status-line { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted-foreground); min-height: 20px; }
+  .status-line::before { content: ""; width: 8px; height: 8px; border-radius: 99px; flex: none; background: radial-gradient(circle at 35% 30%, color-mix(in oklab, var(--status-running) 85%, white), var(--preset)); box-shadow: 0 0 8px color-mix(in oklab, var(--preset) 60%, transparent); }
+  .status-line[data-waiting="1"]::before { display: none; }
+  .shimmer { background: linear-gradient(90deg, var(--muted-foreground) 30%, var(--foreground) 50%, var(--muted-foreground) 70%); background-size: 250% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: shimmer 1.6s linear infinite; }
+  @keyframes shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+
+  .queue { display: flex; flex-direction: column; gap: 8px; }
+  .queue .cap { align-self: flex-end; font-size: 11.5px; color: var(--muted-foreground); display: flex; align-items: center; gap: 5px; }
+  .queue .cap .i { color: var(--status-running); }
+
+  /* 入场：淡入上浮（同代码里新消息的入场） */
+  .enter { animation: rise 180ms var(--ease) both; }
+  @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  .leave { animation: fade 126ms var(--ease) both; }
+  @keyframes fade { to { opacity: 0; } }
+
+  /* 提问卡片 + 决定框（等你回答时顶替输入框，同代码里的决定区） */
+  .askcard { border-radius: 12px; padding: 10px 12px; box-shadow: inset 0 0 0 1px var(--chrome-border); background: color-mix(in oklab, var(--foreground) 4%, transparent); font-size: 13px; }
+  .askcard b { font-weight: 600; }
+  .askcard .opts { color: var(--muted-foreground); margin-top: 2px; }
+  .dock { padding: 10px 12px 12px; flex: none; display: flex; flex-direction: column; gap: 8px; }
+  .dock .q { font-size: 13px; font-weight: 600; }
+  .dock .opt { height: 34px; border-radius: 10px; text-align: left; padding: 0 12px; box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 14%, transparent); transition: background-color 120ms var(--ease), transform 120ms var(--ease); }
+  .dock .opt:hover { background: var(--chrome-hover); }
+  .dock .opt:active { transform: scale(0.98); }
+  .dock .qn { font-size: 11.5px; color: var(--muted-foreground); display: flex; align-items: center; gap: 5px; min-height: 17px; }
+  .dock .qn .i { color: var(--status-running); }
+
+  /* 输入区 */
+  .composer { padding: 10px 12px 12px; flex: none; }
+  .box { display: flex; align-items: flex-end; gap: 8px; padding: 8px 8px 8px 12px; border-radius: 18px; box-shadow: 0 0 0 1px color-mix(in oklab, var(--foreground) 12%, transparent); transition: box-shadow 120ms var(--ease); }
+  .box:focus-within { box-shadow: 0 0 0 1px color-mix(in oklab, var(--preset) 60%, transparent), 0 0 0 4px color-mix(in oklab, var(--preset) 14%, transparent); }
+  .box textarea { flex: 1; resize: none; border: 0; outline: 0; background: transparent; color: inherit; font: inherit; font-size: 13.5px; line-height: 1.6; min-height: 24px; max-height: 96px; padding: 4px 0; }
+  .send { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 99px; background: var(--primary); color: var(--primary-foreground); transition: background-color 120ms var(--ease), color 120ms var(--ease), transform 120ms var(--ease); }
+  .send:active:not(:disabled) { transform: scale(0.96); }
+  .send:disabled { background: color-mix(in oklab, var(--foreground) 10%, transparent); color: var(--muted-foreground); }
+  .send .i { width: 18px; height: 18px; }
+  .hint { margin: 6px 4px 0; font-size: 11.5px; color: var(--muted-foreground); min-height: 17px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .enter { animation: fadein 126ms linear both; }
+    @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+    .shimmer { animation: none; color: var(--muted-foreground); background: none; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <!-- 控制台 -->
+  <aside class="console">
+    <h1>插话排队</h1>
+    <p>插话不是「发出就送到」：Agent 要等当前这一步做完、下一次请求模型之前才会读到它。所以它该先<b>排队</b>，被读到的那一刻再进入时间线。</p>
+
+    <div class="group">
+      <label>方案</label>
+      <div class="seg" role="group" aria-label="方案">
+        <button id="m-old" aria-pressed="false">现状</button>
+        <button id="m-new" aria-pressed="true">新方案</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <label>场景（先发一条插话，再点「推进」）</label>
+      <div class="seg" role="group" aria-label="场景">
+        <button data-sc="run" aria-pressed="true">运行中</button>
+        <button data-sc="ask" aria-pressed="false">要你回答</button>
+        <button data-sc="end" aria-pressed="false">失败/中断</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <label>推进（模拟 Agent）</label>
+      <button class="btn" id="step"></button>
+      <button class="btn ghost" id="reset">重置</button>
+    </div>
+
+    <div class="group">
+      <label>主题</label>
+      <div class="seg"><button id="t-dark" aria-pressed="true">深色</button><button id="t-light" aria-pressed="false">浅色</button></div>
+    </div>
+
+    <div class="note" id="note"></div>
+  </aside>
+
+  <!-- 浮窗 -->
+  <section class="panel" aria-label="Agent 浮窗">
+    <div class="head">创建角色卡<small id="runstate"></small></div>
+    <div class="stream" id="stream"></div>
+    <div class="composer">
+      <div class="box">
+        <textarea id="input" rows="1" placeholder="给 Agent 发消息…（运行中是插话）"></textarea>
+        <button class="send" id="send" disabled aria-label="插话"><svg class="i" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
+      </div>
+      <div class="hint" id="hint"></div>
+    </div>
+    <div class="dock" id="dock" hidden>
+      <div class="q">想要几张图？</div>
+      <button class="opt" data-ans="1 张">1 张</button>
+      <button class="opt" data-ans="3 张">3 张</button>
+      <div class="qn" id="qn"></div>
+    </div>
+  </section>
+</div>
+
+<script>
+(() => {
+  const $ = (s, r = document) => r.querySelector(s);
+  const dock = $("#dock"), qn = $("#qn"), composer = $(".composer");
+  const stream = $("#stream"), input = $("#input"), sendBtn = $("#send"), stepBtn = $("#step"), note = $("#note"), hint = $("#hint"), runstate = $("#runstate");
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const ICON = {
+    clock: '<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+    check: '<svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>',
+    alert: '<svg class="i" viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>',
+    chev: '<svg class="i chev" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg>',
+  };
+
+  let answerText = "3 张";
+  const S = { mode: "new", sc: "run", phase: "running", queue: [], uid: 0 };
+  /* phase: running 运行中 | waiting 等你回答 | ended 已结束（中途失败/停止） */
+
+  const el = (html) => { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content.firstElementChild; };
+  const esc = (s) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  const toBottom = () => { stream.scrollTop = stream.scrollHeight; };
+
+  /* ---------- 渲染件 ---------- */
+  const userMsg = (text, extra = "") => el(`<div class="msg-user enter ${extra}"><div class="bubble">${esc(text)}</div></div>`);
+  const steerMsg = (text, tag) => el(`<div class="msg-user enter"><div class="tag">${tag}</div><div class="bubble">${esc(text)}</div></div>`);
+  const actDone = (title, rows) => el(`<div class="msg-ai enter"><div class="act-head">${ICON.chev}${title}</div><div class="act-rows">${rows.map((r) => `<div class="row">${ICON.check}${r}</div>`).join("")}</div></div>`);
+  const answer = (t) => el(`<div class="answer enter">${ICON.check}${t}</div>`);
+  const ai = (html) => el(`<div class="msg-ai enter">${html}</div>`);
+  const status = (html, waiting) => el(`<div class="status-line enter" data-waiting="${waiting ? 1 : 0}" id="live">${html}</div>`);
+
+  /* ---------- 场景脚本 ---------- */
+  function reset() {
+    stream.innerHTML = "";
+    S.queue = []; S.phase = "running"; S.uid = 0; S.oldSteers = 0;
+    stream.append(userMsg("帮我创建一个角色卡吧。"));
+    stream.append(actDone("已处理 1s · 提问 1", ["向你提问  角色卡想做哪种版式？"]));
+    stream.append(answer("你的回答：9:16 竖版角色确认卡（全身立绘）"));
+    stream.append(status('<span class="shimmer">正在读取画布…</span>'));
+    render();
+    toBottom();
+  }
+
+  /* ---------- 排队区 ---------- */
+  function caption() {
+    const n = S.queue.length;
+    if (S.phase === "ended") return "";
+    const where = S.phase === "waiting" ? "你回答之后" : "Agent 完成当前这一步之后";
+    return `${ICON.clock}${where}会读取${n > 1 ? ` · 共 ${n} 条，一起读` : ""}`;
+  }
+
+  function renderQueue() {
+    let q = $(".queue", stream);
+    if (S.mode === "old" || S.queue.length === 0) { q?.remove(); return; }
+    if (!q) { q = el('<div class="queue"></div>'); stream.append(q); }
+    // 按 id 对齐，已有的不重建，新的淡入上浮
+    const have = new Map([...q.querySelectorAll("[data-id]")].map((n) => [n.dataset.id, n]));
+    for (const item of S.queue) {
+      if (!have.has(String(item.id))) {
+        const missed = S.phase === "ended";
+        const n = el(`<div class="msg-user enter ${missed ? "missed" : "queued"}" data-id="${item.id}"><div class="tag"></div><div class="bubble">${esc(item.text)}</div></div>`);
+        q.append(n);
+      }
+    }
+    for (const n of q.querySelectorAll("[data-id]")) {
+      const item = S.queue.find((i) => String(i.id) === n.dataset.id);
+      n.className = `msg-user ${S.phase === "ended" ? "missed" : "queued"}`;
+      const tag = $(".tag", n);
+      if (S.phase === "ended") {
+        tag.innerHTML = `${ICON.alert}运行已结束，这条没有被读取 · <button class="linkbtn" data-resend="${item.id}">作为新消息发送</button>`;
+      } else {
+        tag.innerHTML = `<span class="qtag">插话 · 排队中</span>`;
+      }
+    }
+    let cap = $(".cap", q);
+    const text = caption();
+    if (!text) cap?.remove();
+    else { if (!cap) { cap = el('<div class="cap"></div>'); q.append(cap); } cap.innerHTML = text; }
+    if (cap && text) q.append(cap); // 说明文字始终在队列最后
+  }
+
+  function render() {
+    renderQueue();
+    const live = $("#live");
+    // 有排队时，活动状态行仍在队列上方：运行中的事实先于你说的话
+    if (live && $(".queue", stream)) stream.insertBefore(live, $(".queue", stream));
+    runstate.innerHTML = S.phase === "running" ? `<span class="shimmer">运行中</span>` : S.phase === "waiting" ? "等你回答" : "已结束";
+    const waiting = S.phase === "waiting";
+    composer.hidden = waiting; dock.hidden = !waiting;
+    qn.innerHTML = waiting && S.mode === "new" && S.queue.length ? `${ICON.clock}你有 ${S.queue.length} 条插话在排队，回答之后 Agent 会一起读取` : "";
+    const busy = S.phase !== "ended";
+    sendBtn.setAttribute("aria-label", busy ? "插话" : "发送");
+    sendBtn.disabled = !input.value.trim();
+    input.placeholder = busy ? "给 Agent 发消息…（运行中是插话）" : "给 Agent 发消息…";
+    hint.textContent = busy && S.mode === "new" ? "插话会排队，Agent 下一步读到时才进入对话。" : "";
+    stepBtn.textContent = S.phase === "waiting" ? "回答问题（Agent 继续）" : S.phase === "running" && S.sc === "ask" ? "让 Agent 提问（要你决定）" : S.phase === "ended" ? "已结束" : S.sc === "end" ? "让运行失败（中途结束）" : "让 Agent 往下走一步";
+    stepBtn.disabled = S.phase === "ended";
+    note.innerHTML = noteText();
+    toBottom();
+  }
+
+  function noteText() {
+    if (S.mode === "old")
+      return `<b>现状</b>：插话一发就按事件顺序塞进时间线，看上去像是 Agent 已经收到并在回应；而它其实要等下一次请求才读到。「要你回答」场景里还有后端的问题：Agent 提问后本该停下，却因为收件箱里有插话又说了话（见你截图）。`;
+    if (S.phase === "ended") return `<b>停止 / 失败 / 中断</b>：运行没来得及读取就结束了（后端发 <b>steer.dropped</b>）。这条不能悄悄消失，也不能假装已送达：标成「没有被读取」，给一个「作为新消息发送」。正常结束不会走到这里：Pi 会自动再开一轮去读它。`;
+    if (S.phase === "waiting") return `<b>等你回答</b>：输入框被决定框顶替，但排队的插话还在消息流末尾，说明换成「你回答之后会读取」。后端把这种插话扣在引擎里，回答之后才交给模型（读到的那一刻发 <b>steer.read</b>，插话落在你的回答之后）。`;
+    return `<b>新方案</b>：插话先停在消息流<b>末尾</b>（输入框正上方）排队；后端发出 <b>steer.read</b> 事件的那一刻，它才<b>移进时间线、放在 Agent 的回应之前</b>。可以连发多条，会一起被读。`;
+  }
+
+  /* ---------- 发送插话 ---------- */
+  function sendInterject(text) {
+    const id = ++S.uid;
+    if (S.mode === "old") {
+      // 现状：立刻按事件顺序放进时间线
+      const live = $("#live");
+      const m = steerMsg(text, "插话");
+      stream.insertBefore(m, live); S.oldSteers++;
+      if (!$(".annot", stream) && S.phase === "running") stream.insertBefore(el('<div class="annot">↑ 现状：此刻 Agent 还没读到，却已显示成送达</div>'), live);
+    } else {
+      S.queue.push({ id, text });
+    }
+    render();
+  }
+
+  /* ---------- Agent 往下走 ---------- */
+  function flip(nodes, mutate) {
+    // FLIP：记下旧位置 → 改 DOM → 从旧位置位移回来。代码里是 motion 的 layoutId + SPRING。
+    const before = new Map(nodes.map((n) => [n.dataset.id, n.getBoundingClientRect()]));
+    mutate();
+    if (reduce) return;
+    for (const n of nodes) {
+      const a = before.get(n.dataset.id), b = n.getBoundingClientRect();
+      const dy = a.top - b.top;
+      if (!dy) continue;
+      n.animate([{ transform: `translateY(${dy}px)` }, { transform: "none" }], { duration: 240, easing: "cubic-bezier(0.2, 0, 0, 1)" });
+    }
+  }
+
+  function flushQueue(beforeNode) {
+    // 排队的插话被读到：移进时间线，放在 Agent 回应之前，虚线变实线，标签短暂显示「已读取」
+    const q = $(".queue", stream);
+    if (!q) return;
+    const nodes = [...q.querySelectorAll("[data-id]")];
+    flip(nodes, () => {
+      for (const n of nodes) {
+        n.classList.remove("queued", "enter");
+        $(".tag", n).innerHTML = `<span class="ok">${ICON.check}</span>插话 · 已读取`;
+        stream.insertBefore(n, beforeNode);
+      }
+      q.remove();
+    });
+    S.queue = [];
+    setTimeout(() => nodes.forEach((n) => { const t = $(".tag", n); t.style.transition = "opacity 126ms var(--ease)"; t.style.opacity = 0; setTimeout(() => { t.textContent = "插话"; t.style.opacity = 1; }, 130); }), 1600);
+  }
+
+  function step() {
+    const live = $("#live");
+    if (S.phase === "waiting") {
+      // 你回答了问题 → 扣着的插话和你的回答一起交给模型：steer.read 发在这一刻，插话落在回答之后
+      const a = answer(`你的回答：${answerText}`);
+      live.replaceWith(a);
+      S.phase = "running";
+      const st = status('<span class="shimmer">思考中…</span>');
+      stream.append(st);
+      if (S.mode === "new") flushQueue(st);
+      render();
+      return;
+    }
+    if (S.sc === "ask") {
+      // Agent 提问，本该停下等你
+      live.replaceWith(actDone("已处理 2s · 读取 1 · 提问 1", ["读取画布目录（3 个节点）", "向你提问  想要几张图？"]));
+      stream.append(el('<div class="askcard enter"><b>向你提问</b>　想要几张图？<div class="opts">1 张　/　3 张</div></div>'));
+      if (S.mode === "old" && S.oldSteers) {
+        stream.append(ai("<p>收到，按你补充的要求来。那就先出 3 张吧。</p>"));
+        stream.append(el('<div class="annot">↑ 现状（后端问题）：问题还没回答，模型就读了插话继续说话</div>'));
+      }
+      stream.append(status('<span>等你回答：想要几张图？</span>', true));
+      S.phase = "waiting";
+      render();
+      return;
+    }
+    if (S.sc === "end") {
+      // 运行失败：排队的变成「没有被读取」
+      S.phase = "ended";
+      live.replaceWith(el(`<div class="msg-ai enter"><p style="color:var(--destructive)">运行失败：上游模型暂时不可用，可以换个说法重试。</p></div>`));
+      render();
+      return;
+    }
+    // 正常：当前步骤做完 → 读到插话 → 模型回应
+    live.replaceWith(actDone("已处理 3s · 读取 1", ["读取 3 个节点"]));
+    const reply = ai(`<p>${S.queue.length || S.mode === "old" ? "收到，按你补充的要求来。" : "好的。"}还需要确定版式：</p><p>1. 9:16 竖版（全身立绘）　2. 16:9 横版（信息板）　3. 两种都要</p>`);
+    stream.append(reply);
+    if (S.mode === "new") flushQueue(reply);
+    S.phase = "running";
+    stream.append(status('<span class="shimmer">等待回答…</span>'));
+    render();
+  }
+
+  /* ---------- 事件 ---------- */
+  input.addEventListener("input", () => {
+    input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 96) + "px";
+    sendBtn.disabled = !input.value.trim();
+  });
+  function submit() {
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = ""; input.style.height = "auto";
+    if (S.phase === "ended") { stream.append(userMsg(text)); render(); return; }
+    sendInterject(text);
+  }
+  sendBtn.onclick = submit;
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); submit(); } });
+  stepBtn.onclick = step;
+  dock.addEventListener("click", (e) => { const b = e.target.closest("[data-ans]"); if (b && S.phase === "waiting") { answerText = b.dataset.ans; step(); } });
+  $("#reset").onclick = reset;
+  stream.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-resend]");
+    if (!b) return;
+    const item = S.queue.find((i) => String(i.id) === b.dataset.resend);
+    if (!item) return;
+    S.queue = S.queue.filter((i) => i !== item);
+    const node = b.closest("[data-id]");
+    node.classList.add("leave");
+    setTimeout(() => { node.remove(); stream.append(userMsg(item.text)); render(); }, 126);
+  });
+  const seg = (ids, on) => ids.forEach((id) => { const b = $(id); b.onclick = () => { on(id); ids.forEach((x) => $(x).setAttribute("aria-pressed", String(x === id))); }; });
+  seg(["#m-old", "#m-new"], (id) => { S.mode = id === "#m-old" ? "old" : "new"; reset(); });
+  document.querySelectorAll("[data-sc]").forEach((b) => (b.onclick = () => {
+    S.sc = b.dataset.sc;
+    document.querySelectorAll("[data-sc]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    reset();
+  }));
+  seg(["#t-dark", "#t-light"], (id) => { document.documentElement.dataset.theme = id === "#t-dark" ? "dark" : "light"; });
+
+  reset();
+})();
+</script>
+</body>
+</html>

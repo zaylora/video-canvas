@@ -41,6 +41,17 @@ export type TimelineItem =
       steer: boolean;
       /** 发送这条消息时画布上选中的节点 id（后端校验过、确实在画布上）；没选、插话、旧事件都是空数组 */
       selection: string[];
+      /** 插话的 id（后端收下它时给的）；旧事件的插话没有，也不排队 */
+      steerId?: string;
+      /** 插话属于哪一轮运行 */
+      runId?: string;
+      /**
+       * 插话还没被 Agent 读到：waiting 排在消息流末尾等它读；missed 是运行结束了也没读到（停止、失败、中断）。
+       * 已经读到的、普通消息没有这个字段
+       */
+      queued?: "waiting" | "missed";
+      /** missed 的插话还能不能「作为新消息发送」：用户还没发过新消息时才能 */
+      resendable?: boolean;
     }
   | {
       /** 助手的回复 */
@@ -105,6 +116,17 @@ export type TimelineItem =
       runId: string;
     }
   | {
+      /** 自动压缩：较早的对话被整理成了摘要（聊天记录不变，变的是 Agent 读到的上下文） */
+      type: "compaction";
+      key: string;
+      /** 整理失败：这一轮不再自动整理 */
+      failed: boolean;
+      /** 整理前的上下文大小（Token） */
+      before: number;
+      /** 整理后的上下文大小：要等压缩后第一次模型调用的用量到了才知道，之前、以及失败时为 null */
+      after: number | null;
+    }
+  | {
       /** 计划全部完成 */
       type: "plan-done";
       key: string;
@@ -113,6 +135,11 @@ export type TimelineItem =
     };
 
 type ActivityItem = Extract<TimelineItem, { type: "activity" }>;
+type UserItem = Extract<TimelineItem, { type: "user" }>;
+type CompactionItem = Extract<TimelineItem, { type: "compaction" }>;
+
+/** 还会读插话的运行状态：进行中的，加上步数用尽暂停（点「继续」时会读） */
+const READING_STATUSES: readonly AgentRunStatus[] = [...ACTIVE_RUN_STATUSES, "step_limit"];
 
 /** 值得在消息流里留一张卡片的运行状态：用户需要知道发生了什么、能做什么 */
 const NOTABLE_STATUSES: readonly AgentRunStatus[] = [
@@ -173,6 +200,23 @@ export function buildTimeline(state: AgentSessionState): TimelineItem[] {
   const lastAt = new Map<string, number>();
   const wrote = new Set<string>();
   const changes = new Map<string, RunChanges>();
+  /** 收下了、还没读到也没丢掉的插话（id → 内容），按收下的顺序 */
+  const pending = new Map<string, { seq: number; text: string; runId: string }>();
+  /** 没读到的插话，和「之后有没有发过新消息」要比的序号：丢掉它的事件的序号，没有就取它自己的 */
+  const missed: Array<{ item: UserItem; after: number }> = [];
+  /** 最后一条用户自己发的（不是插话）消息的序号 */
+  let lastUserSeq = 0;
+  /** 还在等压缩后第一条用量的分隔行（按运行分开） */
+  const awaitingUsage = new Map<string, CompactionItem[]>();
+  const steerItem = (id: string, p: { seq: number; text: string; runId: string }): UserItem => ({
+    type: "user",
+    key: `e${p.seq}`,
+    text: p.text,
+    steer: true,
+    selection: [],
+    steerId: id,
+    runId: p.runId,
+  });
 
   for (const ev of state.events) {
     const d = ev.data ?? {};
@@ -180,6 +224,12 @@ export function buildTimeline(state: AgentSessionState): TimelineItem[] {
     const before = items.length;
     switch (ev.type) {
       case "message.user":
+        // 带 id 的插话先排队，等 steer.read 才进入时间线（Agent 实际读到它的时候），steer.dropped 变成没读到
+        if (d.steer === true && str(d.id)) {
+          pending.set(str(d.id), { seq: ev.seq, text: str(d.text), runId });
+          break;
+        }
+        if (d.steer !== true) lastUserSeq = ev.seq;
         items.push({
           type: "user",
           key: `e${ev.seq}`,
@@ -187,6 +237,24 @@ export function buildTimeline(state: AgentSessionState): TimelineItem[] {
           steer: d.steer === true,
           selection: strs(d.selection).filter(Boolean),
         });
+        break;
+      case "steer.read":
+        for (const id of strs(d.ids)) {
+          const p = pending.get(id);
+          if (!p) continue;
+          pending.delete(id);
+          items.push(steerItem(id, p));
+        }
+        break;
+      case "steer.dropped":
+        for (const id of strs(d.ids)) {
+          const p = pending.get(id);
+          if (!p) continue;
+          pending.delete(id);
+          const item: UserItem = { ...steerItem(id, p), queued: "missed", resendable: false };
+          missed.push({ item, after: ev.seq });
+          items.push(item);
+        }
         break;
       case "message.done":
         if (str(d.text) || str(d.thinking)) {
@@ -239,6 +307,27 @@ export function buildTimeline(state: AgentSessionState): TimelineItem[] {
             endedAt: time(ev),
           });
         if (status === "done" && runId) recordChanges(changes, runId, d);
+        break;
+      }
+      case "context.compacted": {
+        const item: CompactionItem = {
+          type: "compaction",
+          key: `e${ev.seq}`,
+          failed: d.failed === true,
+          before: typeof d.before === "number" ? d.before : 0,
+          after: null,
+        };
+        items.push(item);
+        // 失败的没有「压缩后」；成功的等之后第一条用量
+        if (!item.failed) awaitingUsage.set(runId, [...(awaitingUsage.get(runId) ?? []), item]);
+        break;
+      }
+      case "run.usage": {
+        const waiting = awaitingUsage.get(runId);
+        if (waiting && typeof d.context_tokens === "number") {
+          for (const item of waiting) item.after = d.context_tokens;
+          awaitingUsage.delete(runId);
+        }
         break;
       }
       case "approval.created": {
@@ -312,6 +401,18 @@ export function buildTimeline(state: AgentSessionState): TimelineItem[] {
       streaming: true,
     });
   }
+  // 还排着的插话放在最后。它的那一轮已经结束又没收到任何交代（事件丢了）：不能一直排队，按没读到处理
+  for (const [id, p] of pending) {
+    const live: AgentRunLive | undefined = state.runs[p.runId];
+    if (live && !READING_STATUSES.includes(live.status)) {
+      const item: UserItem = { ...steerItem(id, p), queued: "missed", resendable: false };
+      missed.push({ item, after: p.seq });
+      out.push(item);
+    } else {
+      out.push({ ...steerItem(id, p), queued: "waiting" });
+    }
+  }
+  for (const m of missed) m.item.resendable = m.after >= lastUserSeq;
   return out;
 }
 
@@ -512,12 +613,21 @@ export function buildStatusLine(state: AgentSessionState): StatusLine | null {
       // 等待的几小时不算在内，所以从恢复运行那一刻起算；一轮的头一条状态没有别的可依据，就用它
       const resumed =
         status === "running" && (prev === "waiting_approval" || prev === "waiting_input");
-      if (status === "queued" || resumed || since === null) since = time(ev);
+      if (status === "queued" || status === "recovering" || resumed || since === null)
+        since = time(ev);
       prev = status;
     }
   }
   const running = [...open.values()].at(-1);
-  const text = running ? `正在${running}…` : "思考中…";
+  // 服务重启后自动续跑中：重启前正在做的那一步已经不在了，先说正在恢复，接上后服务补一条 running
+  const text =
+    status === "recovering"
+      ? "正在恢复…"
+      : state.compacting === runId
+        ? "正在整理较早的对话…"
+        : running
+          ? `正在${running}…`
+          : "思考中…";
   return { runId, text, waiting: false, since };
 }
 

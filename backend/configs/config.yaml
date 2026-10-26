@@ -57,13 +57,16 @@ ai:
     max_concurrency: 64 # 同时处理的任务数；一个任务从提交到转存完成占一个
 
 agent:
-  # 画布 Agent。pi 的 agent 循环在独立的 Node 进程里跑（要求 Node >= 22.19，并在仓库根目录 agent/ 里 npm ci 装好依赖），
-  # 所以默认关闭，显式开启（docker compose 部署时由 APP_AGENT_ENABLED 环境变量开启）。渠道、模型、凭证和计费在后台的 AI 配置里（模型种类选 agent），不在这里。
+  # 画布 Agent：独立的常驻服务（仓库根目录 agent/，Pi Durable + SQLite，会话、运行、审批都在它里面）。Go 负责登录校验、反向代理前端的接口，
+  # 并提供平台能力（画布读写、模型代理和计费、生成任务、素材）。docker compose 部署时由 APP_AGENT_ENABLED 开启（默认开）；
+  # 本机直接跑后端时需要另外启动 agent 服务（见 docs/development.md），所以这里默认关闭。
+  # 渠道、模型、凭证和计费在后台的 AI 配置里（模型种类选 agent），不在这里。
   enabled: false
-  node_path: node # node 可执行文件；不在 PATH 里时写绝对路径
-  runtime_dir: ../agent # 含 src/main.mjs 和 node_modules 的目录
-  bridge_addr: 127.0.0.1:0 # 桥的监听地址，必须是回环地址；0 表示随机端口。Node 进程通过它回调 Go（模型、工具、状态）
-  work_dir: "" # 每个运行片段的临时目录建在这里，为空用系统临时目录
+  # url: http://agent:8090 # Agent 服务的地址（启用时必填）
+  # bridge_url: http://backend:47001 # Agent 服务访问平台 API 用的地址，要能从 Agent 容器连上（启用时必填）
+  # bridge_addr: 平台 API 的监听地址，默认 0.0.0.0:47001（只在内网可达，靠服务令牌鉴权）
+  # service_token: 服务令牌，至少 32 个字符，Go 和 Agent 服务互相认的唯一凭据；只用环境变量 APP_AGENT_SERVICE_TOKEN 提供，
+  # 不要写进这个文件（openssl rand -hex 32 可以生成）
   web_enabled: true # 联网工具（搜索、读网页）。请求由 Go 发出，内网和本机地址一律拒绝；关闭后模型看不到这两个工具
   searxng_url: "" # 自己部署的 SearXNG 地址（如 http://searxng:8080），可选；没配就依次用免配置的 Exa、Bing、DuckDuckGo，后两个对数据中心的出口常给降级结果或要求人机验证，生产环境建议部署 SearXNG
   disabled_tools: [] # 停用的工具名，不下发给模型；Go 的工具和 Agent 自己的工具（如 codemode）都可以停用，环境变量用逗号分隔

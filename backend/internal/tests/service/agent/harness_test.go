@@ -1,7 +1,6 @@
 package agent_test
 
 import (
-	"context"
 	"testing"
 
 	"video-canvas/internal/agent/prompts"
@@ -48,18 +47,5 @@ func TestCurrentHarness(t *testing.T) {
 	long := CurrentHarness("0123456789012345678901234567890123456789ABC")
 	if len(long.BuildSHA) != 40 {
 		t.Errorf("构建号最长 40 位（列宽），得到 %d 位", len(long.BuildSHA))
-	}
-}
-
-func TestAgentStartRun_RecordsHarness(t *testing.T) {
-	ctx := context.Background()
-	e := newAgentEnvWith(t, func(d *AgentDeps) { d.Harness = Harness{PromptVersion: 12, ToolsHash: "3be9aa", BuildSHA: "7baa1a3"} })
-	e.start(t, "拆分镜")
-	run, err := e.repo.GetRun(ctx, 1, uint64(e.rt.started[0]))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if run.PromptVersion != 12 || run.ToolsHash != "3be9aa" || run.BuildSHA != "7baa1a3" || run.HarnessKey != (Harness{PromptVersion: 12, ToolsHash: "3be9aa", BuildSHA: "7baa1a3"}).Key() {
-		t.Errorf("运行应记下创建时的 Harness 版本：%+v", run)
 	}
 }

@@ -1,54 +1,11 @@
 package model
 
-import "encoding/json"
-
 // AgentModelView 是面向画布的 Agent 模型清单项。
 type AgentModelView struct {
 	Key           string `json:"key"`            // 模型 key
 	Name          string `json:"name"`           // 显示名
 	Vision        bool   `json:"vision"`         // 是否支持看图
 	ContextWindow int    `json:"context_window"` // 上下文窗口（Token），没配置是 0；画布据此显示上下文用量
-}
-
-// AgentRunInput 是启动运行时交给 runtime 的输入。
-type AgentRunInput struct {
-	Message   string          `json:"message"`   // 用户的消息，行内 chip 已序列化为 @[名字](类型:id)
-	Mode      string          `json:"mode"`      // 任务模式
-	Selection []string        `json:"selection"` // 选中的节点 id
-	Viewport  json.RawMessage `json:"viewport"`  // 视口，可为空
-	ModelKey  string          `json:"model_key"` // 本轮使用的 Agent 模型
-}
-
-// CreateAgentSessionReq 是新建会话的请求。
-type CreateAgentSessionReq struct {
-	Title    string `json:"title" binding:"max=40" label:"标题"`                                        // 标题，不传默认「新对话」
-	Mode     string `json:"mode" binding:"omitempty,oneof=all script storyboard prompt" label:"任务模式"` // 任务模式，不传默认 all
-	ModelKey string `json:"model_key" binding:"max=128" label:"模型"`                                   // Agent 模型，不传取第一个可用的
-}
-
-// RenameAgentSessionReq 是重命名会话的请求。
-type RenameAgentSessionReq struct {
-	Title string `json:"title" binding:"required,max=40" label:"标题"` // 新标题
-}
-
-// StartAgentRunReq 是发起一轮运行的请求。
-type StartAgentRunReq struct {
-	Message       string          `json:"message" binding:"required,max=20000" label:"消息"`                          // 用户的消息
-	Mode          string          `json:"mode" binding:"omitempty,oneof=all script storyboard prompt" label:"任务模式"` // 任务模式，不传沿用会话的
-	Selection     []string        `json:"selection" binding:"max=200,dive,max=64" label:"选中节点"`                     // 选中的节点 id
-	Viewport      json.RawMessage `json:"viewport" label:"视口"`                                                      // 视口
-	BudgetCredits *int            `json:"budget_credits" binding:"omitempty,min=0,max=100000" label:"本轮预算"`         // 本轮积分预算，不传默认 50
-	AgentModelKey string          `json:"agent_model_key" binding:"max=128" label:"Agent 模型"`                       // Agent 模型，不传沿用会话的
-}
-
-// InterjectAgentReq 是运行中插话的请求。
-type InterjectAgentReq struct {
-	Message string `json:"message" binding:"required,max=20000" label:"消息"` // 补充的要求
-}
-
-// ResumeAgentReq 是继续运行的请求。
-type ResumeAgentReq struct {
-	AddBudget int `json:"add_budget" binding:"min=0,max=100000" label:"追加预算"` // 追加的积分预算，预算用尽时用
 }
 
 // ApprovalItemDecision 是对审批里某一项的决定。
@@ -64,13 +21,6 @@ type DecideAgentApprovalReq struct {
 	Items     []ApprovalItemDecision `json:"items" binding:"max=50,dive" label:"条目"`                      // 逐项决定，不传表示整体按 decision 处理
 	Answer    string                 `json:"answer" binding:"max=2000" label:"回答"`                        // 提问的回答
 	AddBudget int                    `json:"add_budget" binding:"min=0,max=100000" label:"追加预算"`          // 批准时追加的积分预算
-}
-
-// SetAgentFeedbackReq 是对一次运行打 👍/👎 的请求。
-type SetAgentFeedbackReq struct {
-	Rating  int      `json:"rating" binding:"required,oneof=1 -1" label:"评价"` // 1 有帮助，-1 没帮上忙
-	Reasons []string `json:"reasons" binding:"max=5,dive,max=32" label:"原因"`  // 点踩原因标签，可不选；点赞时忽略
-	Comment string   `json:"comment" binding:"max=2000" label:"说明"`           // 补充说明，最多 500 字（按字数在 service 里校验）
 }
 
 // IssueAnalysisTokenReq 是签发分析令牌的请求。

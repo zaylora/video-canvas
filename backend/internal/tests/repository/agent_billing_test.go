@@ -220,3 +220,82 @@ func TestAvailableCredits(t *testing.T) {
 		t.Errorf("没有账户应 ErrNotFound: %v", err)
 	}
 }
+
+// ---- 上下文模式要用的汇总：运行记录不在 Go 里，本轮已花的积分按调用记录算 ----
+
+func settledCall(t *testing.T, r *AgentRepository, runID, userID uint64, purpose string, inputTokens, credits int) *model.AgentModelCall {
+	t.Helper()
+	c := &model.AgentModelCall{RunID: runID, UserID: userID, ModelKey: "claude", Status: model.ModelCallPending}
+	if err := r.CreateModelCall(context.Background(), c); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.SettleModelCall(context.Background(), SettleCallInput{CallID: c.ID, UserID: userID, InputTokens: inputTokens, OutputTokens: 10, Credits: credits, Purpose: purpose}); err != nil {
+		t.Fatal(err)
+	}
+	return c
+}
+
+func TestRunModelUsage_SumsChargedAndTracksContextOfTheLatestMainCall(t *testing.T) {
+	ctx := context.Background()
+	db := billingDB(t)
+	r := NewAgentRepository(db)
+	openAccount(t, db, 1, 1000, 0)
+	openAccount(t, db, 2, 1000, 0)
+
+	const run uint64 = 1152921504606846977 // 超过 2^53：bigint 列里不能丢精度
+	settledCall(t, r, run, 1, "main", 1000, 5)
+	settledCall(t, r, run, 1, "main", 3000, 7)
+	settledCall(t, r, run, 1, "summary", 90000, 2) // 摘要调用要计费，但它的输入是被压缩的那段历史，不代表对话现在多大
+	settledCall(t, r, run+1, 1, "main", 500, 100)  // 相邻的另一个运行
+	settledCall(t, r, run, 2, "main", 800, 50)     // 别的用户（运行 id 相同也不能混）
+	pending := &model.AgentModelCall{RunID: run, UserID: 1, ModelKey: "claude", Status: model.ModelCallPending}
+	if err := r.CreateModelCall(ctx, pending); err != nil { // 还没结算的不算
+		t.Fatal(err)
+	}
+
+	u, err := r.RunModelUsage(ctx, 1, run)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.Credits != 14 || u.ContextTokens != 3000 {
+		t.Errorf("实扣 5+7+2；上下文是最近一次对话调用的输入 3000，不是摘要的 90000: %+v", u)
+	}
+	if other, _ := r.RunModelUsage(ctx, 2, run); other.Credits != 50 || other.ContextTokens != 800 {
+		t.Errorf("别的用户只看到自己的: %+v", other)
+	}
+	if adj, _ := r.RunModelUsage(ctx, 1, run+1); adj.Credits != 100 {
+		t.Errorf("相邻的两个大 ID 不能混成一个: %+v", adj)
+	}
+	if none, err := r.RunModelUsage(ctx, 1, 424242); err != nil || none.Credits != 0 || none.ContextTokens != 0 {
+		t.Errorf("没有调用的运行全为 0，不是错误: %+v %v", none, err)
+	}
+}
+
+func TestRunModelUsage_UsesChargedNotCreditsWhenBalanceIsShort(t *testing.T) {
+	ctx := context.Background()
+	db := billingDB(t)
+	r := NewAgentRepository(db)
+	openAccount(t, db, 1, 3, 0) // 只有 3 积分，应收 10 实扣 3
+	settledCall(t, r, 9, 1, "main", 100, 10)
+	if u, _ := r.RunModelUsage(ctx, 1, 9); u.Credits != 3 {
+		t.Errorf("本轮已花按实扣算，不是应收: %+v", u)
+	}
+}
+
+func TestModelCall_ScopedByUserAndRun(t *testing.T) {
+	ctx := context.Background()
+	db := billingDB(t)
+	r := NewAgentRepository(db)
+	openAccount(t, db, 1, 100, 0)
+	c := settledCall(t, r, 9, 1, "main", 100, 4)
+
+	got, err := r.ModelCall(ctx, 1, 9, c.ID)
+	if err != nil || got.Charged != 4 || got.Status != model.ModelCallSettled {
+		t.Fatalf("got=%+v err=%v", got, err)
+	}
+	for name, args := range map[string][3]uint64{"别的用户": {2, 9, c.ID}, "别的运行": {1, 10, c.ID}, "不存在": {1, 9, 99999}} {
+		if _, err := r.ModelCall(ctx, args[0], args[1], args[2]); !errors.Is(err, ErrNotFound) {
+			t.Errorf("%s应返回 ErrNotFound: %v", name, err)
+		}
+	}
+}

@@ -6,6 +6,7 @@ import (
 	"errors"
 
 	"go.uber.org/zap"
+	"gorm.io/datatypes"
 
 	"video-canvas/internal/agent/canvasgraph"
 	"video-canvas/internal/model"
@@ -126,6 +127,8 @@ type edit struct {
 	changes []canvasgraph.Change
 	idMap   map[string]string
 	extra   any
+	// result 是调用方自己的结果（比如生成任务的提交结果）：随改动记录一起存，重放时原样取回
+	result json.RawMessage
 }
 
 // ApplyOps 应用一批编辑操作（建改节点和组、连线、移动）。整批原子：任何一项不合法都不会写入。
@@ -207,6 +210,13 @@ func (s *AgentCanvasService) Undo(ctx context.Context, userID, runID uint64) (*U
 	if model.IsActiveRun(run.Status) {
 		return nil, errcode.ErrAgentState
 	}
+	return s.UndoRun(ctx, run)
+}
+
+// UndoRun 撤销某运行对画布的全部改动，不看运行记录：运行是不是自己的、是不是已经结束，由持有运行记录的一方校验
+// （令牌模式下是上面的 Undo，独立的 Agent 服务下是 Agent 服务自己）。这里只按运行的用户、画布、id 做画布上的事。
+func (s *AgentCanvasService) UndoRun(ctx context.Context, run *model.AgentRun) (*UndoResult, error) {
+	runID := run.ID
 	// 3. 取出还没被撤销的改动。生成绑定（bind）不参与：撤销不会取消已批准的生成任务，
 	//    也就不能把节点上的 taskId 抹掉
 	changes, err := s.undoableChanges(ctx, runID)
@@ -316,10 +326,22 @@ func (s *AgentCanvasService) load(ctx context.Context, run *model.AgentRun) (*ca
 // 写入时版本冲突（用户刚好保存了）就重读最新画布、重新执行 fn，最多 maxWriteAttempts 次，
 // 这样 Agent 的改动总是叠在用户最新的内容上，不会覆盖用户的保存。fn 没有产生任何变化时不写入。
 func (s *AgentCanvasService) mutate(ctx context.Context, run *model.AgentRun, toolCallID, kind string, undoRunID uint64, fn func(*canvasgraph.Graph) (*edit, error)) (*WriteResult, any, error) {
+	idemKey := IdempotencyKeyFrom(ctx)
 	for attempt := 0; attempt < maxWriteAttempts; attempt++ {
 		g, revision, err := s.load(ctx, run)
 		if err != nil {
 			return nil, nil, err
+		}
+		// 带了幂等键，并且同一个 (运行, 键, 种类) 已经写过：这是崩溃后的重放，原样返回当初的结果，不再写画布、不再推送。
+		// 必须放在读画布之后：另一个相同的调用在两者之间提交时，要么这里看得到它的记录，要么下面提交会因 revision 变了而冲突、
+		// 重试时再走到这里；放在读之前，就会在新 revision 上再写一遍
+		prior, err := s.priorWrite(ctx, run.ID, idemKey, kind)
+		if err != nil {
+			return nil, nil, err
+		}
+		if prior != nil {
+			res, extra := replayResult(prior)
+			return res, extra, nil
 		}
 		ed, err := fn(g)
 		if err != nil {
@@ -336,7 +358,7 @@ func (s *AgentCanvasService) mutate(ctx context.Context, run *model.AgentRun, to
 		if err != nil {
 			return nil, nil, err
 		}
-		mut := &model.AgentMutation{RunID: run.ID, ToolCallID: toolCallID, Kind: kind, ChangesJSON: changesJSON}
+		mut := &model.AgentMutation{RunID: run.ID, ToolCallID: toolCallID, Kind: kind, ChangesJSON: changesJSON, IdemKey: idemKey, ResultJSON: resultJSON(ed)}
 		err = s.repo.CommitCanvasMutation(ctx, repository.CommitInput{
 			UserID: run.UserID, CanvasID: run.CanvasID, BaseRevision: revision, Payload: payload, Mutation: mut, UndoRunID: undoRunID,
 		})
@@ -355,6 +377,73 @@ func (s *AgentCanvasService) mutate(ctx context.Context, run *model.AgentRun, to
 		}, ed.extra, nil
 	}
 	return nil, nil, errcode.ErrAgentWriteConflict
+}
+
+type idemKeyCtx struct{}
+
+// WithIdempotencyKey 给这次调用带上幂等键：同一个运行里，同一个键的同一种写入只会发生一次，重复到达时返回当初的结果。
+// 键必须由调用方保证「每次真实的调用唯一、同一次调用重放时不变」；不要用模型给的 tool_call_id，它在不同回合里可能重复。
+func WithIdempotencyKey(ctx context.Context, key string) context.Context {
+	return context.WithValue(ctx, idemKeyCtx{}, key)
+}
+
+// IdempotencyKeyFrom 取出调用方带的幂等键，没带返回空串。
+func IdempotencyKeyFrom(ctx context.Context) string {
+	key, _ := ctx.Value(idemKeyCtx{}).(string)
+	return key
+}
+
+// writeOutcome 是存进改动记录的调用结果：重放时据此还原当初返回给模型的内容。
+type writeOutcome struct {
+	IDMap    map[string]string `json:"id_map,omitempty"`
+	Warnings []string          `json:"warnings,omitempty"`
+	Result   json.RawMessage   `json:"result,omitempty"`
+}
+
+// resultJSON 序列化这次写入返回给调用方的结果；序列化不出来时留空对象，只是重放时少了映射，不影响写入本身。
+func resultJSON(ed *edit) datatypes.JSON {
+	out := writeOutcome{IDMap: ed.idMap, Result: ed.result}
+	if w, ok := ed.extra.([]string); ok {
+		out.Warnings = w
+	}
+	b, err := json.Marshal(out)
+	if err != nil {
+		return datatypes.JSON("{}")
+	}
+	return b
+}
+
+// priorWrite 找这个运行里同一个幂等键、同一种写入已经产生的改动记录；没有幂等键（判断不了是不是重放）或是撤销时不去重。
+func (s *AgentCanvasService) priorWrite(ctx context.Context, runID uint64, idemKey, kind string) (*model.AgentMutation, error) {
+	if idemKey == "" || kind == model.MutationUndo {
+		return nil, nil
+	}
+	muts, err := s.repo.ListMutations(ctx, runID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range muts {
+		if muts[i].IdemKey == idemKey && muts[i].Kind == kind {
+			return &muts[i], nil
+		}
+	}
+	return nil, nil
+}
+
+// replayResult 用已有的改动记录还原当初的写入结果。
+func replayResult(m *model.AgentMutation) (*WriteResult, any) {
+	var changes []canvasgraph.Change
+	_ = json.Unmarshal(m.ChangesJSON, &changes) // 记录坏了就当没有改动项，不影响返回
+	var out writeOutcome
+	_ = json.Unmarshal(m.ResultJSON, &out)
+	res := &WriteResult{
+		IDMap: out.IDMap, MutationID: m.ID, Revision: m.RevisionAfter, Changes: len(changes),
+		Created: nodeIDsByOp(changes, "create"), Updated: nodeIDsByOp(changes, "update"),
+	}
+	if len(out.Warnings) > 0 {
+		return res, out.Warnings
+	}
+	return res, nil
 }
 
 // publishPatch 在写入提交之后向用户推送改动，前端据此做三方合并。推送可以丢，前端会按 revision 对账。
@@ -394,11 +483,29 @@ func (s *AgentCanvasService) Generations(ctx context.Context, run *model.AgentRu
 // BindTasks 把批准后创建的生成任务绑定到节点（节点 id → 任务 id 的十进制字符串）。
 // 绑定只写 taskId 和状态，记为 bind 改动：撤销本轮不会碰它，因为已提交的任务撤销不了。
 func (s *AgentCanvasService) BindTasks(ctx context.Context, run *model.AgentRun, toolCallID string, tasks map[string]string) (*WriteResult, error) {
+	return s.bindTasks(ctx, run, toolCallID, tasks, nil)
+}
+
+// bindTasks 同 BindTasks，并把调用方的提交结果随这条 bind 改动一起存下来（带幂等键的重放用 priorBindResult 取回）。
+func (s *AgentCanvasService) bindTasks(ctx context.Context, run *model.AgentRun, toolCallID string, tasks map[string]string, result json.RawMessage) (*WriteResult, error) {
 	res, _, err := s.mutate(ctx, run, toolCallID, model.MutationBind, 0, func(g *canvasgraph.Graph) (*edit, error) {
 		r := canvasgraph.BindTasks(g, tasks)
-		return &edit{graph: r.Graph, changes: r.Changes}, nil
+		return &edit{graph: r.Graph, changes: r.Changes, result: result}, nil
 	})
 	return res, err
+}
+
+// priorBindResult 取同一个幂等键下已经完成的绑定带着的提交结果：有就说明这个批准已经执行过，不用再提交任务。
+func (s *AgentCanvasService) priorBindResult(ctx context.Context, run *model.AgentRun, idemKey string) (json.RawMessage, bool, error) {
+	prior, err := s.priorWrite(ctx, run.ID, idemKey, model.MutationBind)
+	if err != nil || prior == nil {
+		return nil, false, err
+	}
+	var out writeOutcome
+	if json.Unmarshal(prior.ResultJSON, &out) != nil || len(out.Result) == 0 {
+		return nil, false, nil // 记录里没有结果（旧数据）：按没执行过处理，由任务服务的幂等键兜底不重复扣费
+	}
+	return out.Result, true, nil
 }
 
 // VideoRef 取一个视频节点当前的视频素材，给 Agent「看视频」和截帧用。

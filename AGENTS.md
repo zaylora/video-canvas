@@ -33,7 +33,7 @@
 
 ## 关键架构记忆
 
-- 仓库根目录 `agent/` 是画布 Agent 的 Node 运行时（pi agent 循环，零密钥，经桥回调 Go）；Go 侧的 Agent 逻辑在 `backend/internal/agent/`、`backend/internal/service/agent/` 和 `backend/internal/handler/agent/`。运行时改动在 `agent/` 下跑 `npm test`。
+- 仓库根目录 `agent/` 是画布 Agent 服务（TypeScript，Pi Durable + SQLite，独立常驻，零渠道密钥）：会话、运行、审批、事件都在它里面，前端的 Agent 接口由 Go 校验登录态后反向代理过去（`backend/internal/handler/agent/proxy.go`），Go 通过平台 API（`/internal/platform/v1/*`，服务令牌鉴权）提供画布读写、模型代理和计费、生成任务、素材；Go 侧的 Agent 逻辑在 `backend/internal/agent/`、`backend/internal/service/agent/` 和 `backend/internal/handler/agent/`。改动在 `agent/` 下依次跑 `npm run typecheck`、`npm test`、`npm run build`；开发时用 `npm run serve`（Node 22.19+ 的类型剥离，不用先构建，环境变量见 `src/serve.ts` 头部注释），部署镜像里只有 `npm run build` 生成的 `dist/`（`agent/Dockerfile`）。设计与进度见 `docs/design/Agent服务拆分/`，部署、升级备份和恢复见 `docs/docker-production.md`「Agent 服务」。源码只能用「可擦除」的 TS 语法（不用 enum、namespace、参数属性），`tsc` 已通过 `erasableSyntaxOnly` 检查。
 
 - 产品是 React 无限画布 + Go API 的 AI 视频创作应用。
 - 后端链路为 `router → middleware → handler → service → repository/cache`，异步生成经 worker 和 JS plugin-runner 调用模型供应商。

@@ -107,7 +107,7 @@ func (b *AgentBridge) toolGenerate(ctx context.Context, tc *toolCall) (*toolOut,
 		p.Items = append(p.Items, it)
 		total += it.Price
 	}
-	if _, err := b.d.Agent.CreateApproval(ctx, tc.run, tc.id, model.ApprovalGenerate, p, total); err != nil {
+	if err := b.requestApproval(ctx, tc, model.ApprovalGenerate, p, total); err != nil {
 		return nil, err
 	}
 	return &toolOut{content: "已提交给用户批准，等待决定。用户决定后你会收到结果；批准后任务才会创建并开始生成。", terminate: true,
@@ -208,7 +208,17 @@ type failedItem struct {
 // Execute 为批准的条目逐个创建任务：以审批 id + 序号作幂等键，续跑或重试不会重复扣积分；
 // 每个条目都在最新的画布上重新读节点（批准期间用户可能改过），按当时的内容提交。
 // 全部失败返回 error（审批记为失败）；部分成功时失败的条目写在结果里。成功的任务统一绑定到节点。
+//
+// 带了幂等键（平台 API 的执行接口以审批 id 为键）时，同一个批准重复到达会原样返回第一次的结果：绑定之后节点已经在生成，
+// 再走一遍提交只会得到「节点正在生成」而误报失败。
 func (g *AgentGenerator) Execute(ctx context.Context, run *model.AgentRun, approvalID uint64, items []GenerateItem) (json.RawMessage, error) {
+	if key := IdempotencyKeyFrom(ctx); key != "" {
+		if prior, ok, err := g.canvas.priorBindResult(ctx, run, key); err != nil {
+			return nil, err
+		} else if ok {
+			return prior, nil
+		}
+	}
 	var res generateResult
 	bind := map[string]string{}
 	for i, it := range items {
@@ -224,10 +234,14 @@ func (g *AgentGenerator) Execute(ctx context.Context, run *model.AgentRun, appro
 	if len(res.Tasks) == 0 {
 		return nil, errors.New(res.Failed[0].Error)
 	}
-	if _, err := g.canvas.BindTasks(ctx, run, "approval-"+strconv.FormatUint(approvalID, 10), bind); err != nil {
+	body, err := json.Marshal(res)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := g.canvas.bindTasks(ctx, run, "approval-"+strconv.FormatUint(approvalID, 10), bind, body); err != nil {
 		return nil, fmt.Errorf("任务已创建但绑定到节点失败：%w", err)
 	}
-	return json.Marshal(res)
+	return body, nil
 }
 
 // submit 提交一个条目。

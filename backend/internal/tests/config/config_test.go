@@ -26,69 +26,27 @@ func TestDefaultConfig_NoRemovedKeys(t *testing.T) {
 	}
 }
 
-func TestAgentConfig_Defaults(t *testing.T) {
-	a := Agent{Enabled: true}.WithDefaults()
-	if a.NodePath != "node" || a.RuntimeDir != "../agent" || a.BridgeAddr != "127.0.0.1:0" {
-		t.Errorf("默认值不对: %+v", a)
+func TestLoad_AgentServiceTokenFromEnv(t *testing.T) {
+	cfg, err := Load("../../../configs/config.yaml")
+	if err != nil {
+		t.Fatal(err)
 	}
-	custom := Agent{Enabled: true, NodePath: "/opt/node", RuntimeDir: "/srv/rt", BridgeAddr: "127.0.0.1:9001", WorkDir: "/tmp/x"}.WithDefaults()
-	if custom.NodePath != "/opt/node" || custom.RuntimeDir != "/srv/rt" || custom.BridgeAddr != "127.0.0.1:9001" || custom.WorkDir != "/tmp/x" {
-		t.Errorf("已有的值不能被默认值覆盖: %+v", custom)
+	if cfg.Agent.ServiceToken != "" {
+		t.Errorf("默认不配服务令牌: %q", cfg.Agent.ServiceToken)
 	}
-}
-
-// 桥的端点用一次性令牌鉴权，但它只该被本机的 Node 进程访问：监听地址必须是回环地址，
-// 配成 0.0.0.0 或外网地址会让令牌之外没有任何屏障，所以直接拒绝启动。
-func TestAgentConfig_BridgeAddrMustBeLoopback(t *testing.T) {
-	cases := []struct {
-		addr    string
-		wantErr bool
-	}{
-		{"127.0.0.1:0", false},
-		{"127.0.0.1:47001", false},
-		{"[::1]:47001", false},
-		{"localhost:47001", false},
-		{"0.0.0.0:47001", true},
-		{":47001", true},
-		{"[::]:47001", true},
-		{"192.168.1.10:47001", true},
-		{"10.0.0.5:47001", true},
-		{"example.com:47001", true},
-		{"not-an-address", true},
-		{"127.0.0.1", true},
+	t.Setenv("APP_AGENT_SERVICE_TOKEN", strings.Repeat("t", 40))
+	cfg, err = Load("../../../configs/config.yaml")
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, tc := range cases {
-		t.Run(tc.addr, func(t *testing.T) {
-			err := Agent{Enabled: true, BridgeAddr: tc.addr}.Validate()
-			if (err != nil) != tc.wantErr {
-				t.Errorf("Validate(%q) err=%v，期望出错=%v", tc.addr, err, tc.wantErr)
-			}
-		})
+	if cfg.Agent.ServiceToken != strings.Repeat("t", 40) {
+		t.Error("服务令牌应能用环境变量 APP_AGENT_SERVICE_TOKEN 提供（不写进 YAML）")
 	}
 }
 
 func TestAgentConfig_DisabledSkipsValidation(t *testing.T) {
 	if err := (Agent{Enabled: false, BridgeAddr: "0.0.0.0:1"}).Validate(); err != nil {
 		t.Errorf("没启用就不校验（配置里留着无效值也不该挡住启动）: %v", err)
-	}
-}
-
-func TestLoad_AgentSectionAndEnvOverride(t *testing.T) {
-	cfg, err := Load("../../../configs/config.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.Agent.Enabled {
-		t.Error("默认配置里画布 Agent 应是关闭的：它依赖 Node，要显式开启")
-	}
-	t.Setenv("APP_AGENT_ENABLED", "true")
-	t.Setenv("APP_AGENT_NODE_PATH", "/opt/node")
-	cfg, err = Load("../../../configs/config.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !cfg.Agent.Enabled || cfg.Agent.NodePath != "/opt/node" {
-		t.Errorf("环境变量应能覆盖: %+v", cfg.Agent)
 	}
 }
 
@@ -183,12 +141,16 @@ func TestAgentConfig_SearXNGURLMustBeHTTP(t *testing.T) {
 		{"", false}, {"http://searxng:8080", false}, {"https://search.example.com", false},
 		{"searxng:8080", true}, {"ftp://searxng", true}, {"file:///etc/passwd", true}, {"http://", true},
 	} {
-		err := Agent{Enabled: true, WebEnabled: true, SearXNGURL: tc.url}.Validate()
+		a := validAgent()
+		a.WebEnabled, a.SearXNGURL = true, tc.url
+		err := a.Validate()
 		if (err != nil) != tc.wantErr {
 			t.Errorf("searxng_url=%q: err=%v, wantErr=%v", tc.url, err, tc.wantErr)
 		}
 	}
-	if err := (Agent{Enabled: true, WebEnabled: false, SearXNGURL: "bad"}).Validate(); err != nil {
+	a := validAgent()
+	a.WebEnabled, a.SearXNGURL = false, "bad"
+	if err := a.Validate(); err != nil {
 		t.Errorf("联网关闭时不校验 SearXNG 地址: %v", err)
 	}
 }
@@ -209,5 +171,93 @@ func TestLoad_AgentDisabledTools(t *testing.T) {
 	}
 	if got := cfg.Agent.DisabledTools; len(got) != 2 || got[0] != "codemode" || got[1] != "web_fetch" {
 		t.Errorf("环境变量应能覆盖（逗号分隔）: %v", got)
+	}
+}
+
+// validAgent 是一份完整、合法的 Agent 配置。
+func validAgent() Agent {
+	return Agent{Enabled: true, URL: "http://agent:8090", BridgeURL: "http://backend:47001", ServiceToken: strings.Repeat("a", 32)}
+}
+
+// 画布 Agent 是独立的常驻服务：启用时要知道服务地址、平台 API 对外的地址，并且两边靠服务令牌互相认。
+func TestAgentConfig_Validate(t *testing.T) {
+	if err := validAgent().Validate(); err != nil {
+		t.Fatalf("完整的配置应通过: %v", err)
+	}
+	cases := []struct {
+		name string
+		mut  func(a *Agent)
+		want string
+	}{
+		{"没有服务地址", func(a *Agent) { a.URL = "" }, "agent.url"},
+		{"服务地址不是 http(s)", func(a *Agent) { a.URL = "agent:8090" }, "agent.url"},
+		{"服务地址带路径", func(a *Agent) { a.URL = "http://agent:8090/x" }, "agent.url"},
+		{"没有桥地址", func(a *Agent) { a.BridgeURL = "" }, "agent.bridge_url"},
+		{"桥地址格式不对", func(a *Agent) { a.BridgeURL = "backend:47001" }, "agent.bridge_url"},
+		{"没有服务令牌", func(a *Agent) { a.ServiceToken = "" }, "agent.service_token"},
+		{"服务令牌太短", func(a *Agent) { a.ServiceToken = "short" }, "agent.service_token"},
+		{"监听地址格式不对", func(a *Agent) { a.BridgeAddr = "47001" }, "agent.bridge_addr"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			a := validAgent()
+			tc.mut(&a)
+			if err := a.Validate(); err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("应报含 %q 的错误: %v", tc.want, err)
+			}
+		})
+	}
+	// 缺令牌的提示要告诉人怎么办：生成一个，或者关掉 Agent
+	err := Agent{Enabled: true, URL: "http://agent:8090", BridgeURL: "http://backend:47001"}.Validate()
+	if err == nil || !strings.Contains(err.Error(), "APP_AGENT_ENABLED=false") {
+		t.Errorf("提示里要说明不用 Agent 怎么关: %v", err)
+	}
+}
+
+// 平台 API 监听的是内网地址，Agent 服务在别的容器里要连得上就得是固定端口；显式写了的不被默认值覆盖。
+func TestAgentConfig_BridgeAddrDefault(t *testing.T) {
+	if got := (Agent{}).WithDefaults().BridgeAddr; got != "0.0.0.0:47001" {
+		t.Errorf("默认监听内网的 47001: %q", got)
+	}
+	if got := (Agent{BridgeAddr: "10.0.0.5:9000"}).WithDefaults().BridgeAddr; got != "10.0.0.5:9000" {
+		t.Errorf("显式配置不能被覆盖: %q", got)
+	}
+}
+
+// 默认配置文件里 Agent 默认关闭（本机直接跑后端时没有 Agent 服务）；环境变量能开启并配齐。
+// 默认文件里如果显式写了 bridge_addr 会盖住默认的 47001，Agent 容器就连不上，所以要经过真实的默认配置文件验证。
+func TestLoad_AgentSectionAndEnvOverride(t *testing.T) {
+	cfg, err := Load("../../../configs/config.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Agent.Enabled {
+		t.Error("默认配置里画布 Agent 应是关闭的：本机直接跑后端时没有 Agent 服务，要显式开启")
+	}
+	t.Setenv("APP_AGENT_ENABLED", "true")
+	t.Setenv("APP_AGENT_URL", "http://agent:8090")
+	t.Setenv("APP_AGENT_BRIDGE_URL", "http://backend:47001")
+	t.Setenv("APP_AGENT_SERVICE_TOKEN", strings.Repeat("t", 40))
+	cfg, err = Load("../../../configs/config.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Agent.Enabled || cfg.Agent.URL != "http://agent:8090" || cfg.Agent.BridgeURL != "http://backend:47001" || cfg.Agent.ServiceToken != strings.Repeat("t", 40) {
+		t.Errorf("环境变量应能覆盖: %+v", cfg.Agent)
+	}
+	if got := cfg.Agent.WithDefaults().BridgeAddr; got != "0.0.0.0:47001" {
+		t.Errorf("默认配置下平台 API 应监听内网 47001，实际 %q", got)
+	}
+}
+
+// 升级时旧的 .env 里可能还留着 APP_AGENT_RUNTIME=process/http 和 node 相关的项：旧运行方式已经没有了，这些项被忽略，不能让启动失败。
+func TestLoad_RemovedAgentSettingsAreIgnored(t *testing.T) {
+	for _, rt := range []string{"process", "http", "durable"} {
+		t.Setenv("APP_AGENT_RUNTIME", rt)
+		t.Setenv("APP_AGENT_NODE_PATH", "/opt/node")
+		t.Setenv("APP_AGENT_RUNTIME_DIR", "/agent")
+		if _, err := Load("../../../configs/config.yaml"); err != nil {
+			t.Errorf("APP_AGENT_RUNTIME=%s 不该让启动失败: %v", rt, err)
+		}
 	}
 }

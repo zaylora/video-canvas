@@ -34,6 +34,7 @@ import { AgentHeader } from "./agent-header";
 import { DecisionDock } from "./decision-dock";
 import { MessageList } from "./message-list";
 import { RunStrip } from "./run-strip";
+import { SteerTray } from "./steer-tray";
 
 /** 停靠后画布至少留这么宽，放不下就临时退回浮窗 */
 const MIN_CANVAS_WIDTH = 480;
@@ -154,6 +155,10 @@ export function AgentPanel({
 
   const loading = ctl.opening || ctl.openFailed;
   const empty = ctl.timeline.length === 0 && !ctl.busy && !loading;
+  /** 还没被 Agent 读到的插话，排在输入框顶部 */
+  const steerQueue = ctl.timeline.flatMap((item) =>
+    item.type === "user" && item.queued === "waiting" ? [{ key: item.key, text: item.text }] : [],
+  );
   const enter = reduce
     ? { opacity: 0 }
     : docked
@@ -223,6 +228,7 @@ export function AgentPanel({
         </AnimatePresence>
         {/* 等你决定时输入框只是藏起来，不卸载：里面写了一半的话还在 */}
         <div hidden={ctl.pending !== null}>
+          <SteerTray items={steerQueue} />
           <AgentComposer
             text={text}
             onTextChange={setText}

@@ -2,7 +2,7 @@
 # 生产环境更新脚本（Linux / macOS），无需克隆仓库，可直接通过管道运行：
 #   curl -fsSL https://raw.githubusercontent.com/zaylora/video-canvas/master/scripts/update.sh | bash
 #
-# 流程：改 IMAGE_TAG → 取目标版本的 compose 文件 → 拉镜像 → 备份数据库 → 重建 → 等新版本健康
+# 流程：改 IMAGE_TAG → 取目标版本的 compose 文件 → 确保有 Agent 服务令牌 → 拉镜像 → 备份数据库和 Agent 的数据（在线）→ 重建 → 等新版本健康
 # 任何一步失败都会退回更新前的 IMAGE_TAG 和 compose 文件。后台「一键升级」（updater 容器）调用的也是这个脚本。
 set -euo pipefail
 
@@ -40,7 +40,8 @@ usage() {
   --prune              完成后清理悬空镜像（会清掉本机所有项目的悬空镜像，默认不清）
   -h, --help           显示帮助
 
-备份位置：部署目录下的 backups/，恢复方法见 docs/docker-production.md「升级与数据库迁移」。
+备份位置：部署目录下的 backups/（pre-<版本>-<时间>.dump 是数据库；pre-<版本>-<时间>.agent.sqlite 是 Agent 服务的数据，
+没有数据时不备份），恢复方法见 docs/docker-production.md「升级与数据库迁移」和「Agent 服务」。
 EOF
 }
 
@@ -70,6 +71,7 @@ case "$TIMEOUT" in ''|*[!0-9]*) echo "[错误] --timeout 应为秒数" >&2; exit
 OLD_TAG=""
 NEW_TAG=""
 BACKUP_FILE=""
+AGENT_BACKUP_FILE=""
 PHASE="prepare"
 
 json_escape() {
@@ -210,6 +212,7 @@ wait_ready() {
 rollback() {
   local reason="$1" logs
   logs="$(docker compose logs --tail=100 backend 2>&1 || true)"
+  logs="$logs"$'\n'"----- agent 最后 50 行日志 -----"$'\n'"$(docker compose logs --tail=50 agent 2>&1 || true)"
   echo "[错误] $reason" >&2
   echo "----- 新版本 backend 最后 100 行日志 -----" >&2
   echo "$logs" >&2
@@ -226,7 +229,10 @@ rollback() {
   if docker compose logs --tail=50 backend 2>&1 | grep -q "数据库已执行过本程序没有的迁移"; then
     fail failed_needs_attention "$reason；退回 $OLD_TAG 后它拒绝启动：数据库已被 $NEW_TAG 迁移过。确认那些迁移只新增表或列后，在 .env 加 APP_DATABASE_ALLOW_NEWER_SCHEMA=true 再 docker compose up -d；否则用备份 ${BACKUP_FILE:-（无）} 恢复"
   fi
-  fail failed_needs_attention "$reason；退回 $OLD_TAG 后服务仍未就绪，请查看 docker compose logs backend 手动排查"
+  if docker compose logs --tail=50 agent 2>&1 | grep -q "比当前代码"; then
+    fail failed_needs_attention "$reason；退回 $OLD_TAG 后 agent 拒绝启动：它的数据已被 $NEW_TAG 升级过。换回 $NEW_TAG，或停掉 agent、用备份 ${AGENT_BACKUP_FILE:-（无）} 恢复数据（见 docs/docker-production.md「Agent 服务」）"
+  fi
+  fail failed_needs_attention "$reason；退回 $OLD_TAG 后服务仍未就绪，请查看 docker compose logs backend agent 手动排查"
 }
 
 # ---------- 1. 改 tag、取目标版本的 compose 文件 ----------
@@ -246,6 +252,27 @@ if command -v curl >/dev/null 2>&1 && curl -fsSL --max-time 30 "$RAW/$ref/docker
 else
   echo "[提示] 无法获取 $ref 的 compose 文件，沿用本地版本。" >&2
 fi
+
+# ---------- 1b. 确保有 Agent 服务令牌 ----------
+
+# 画布 Agent 是独立的服务，backend 和它靠这个令牌互相认；没有它 backend 启用 Agent 时拒绝启动、agent 容器也起不来。
+# 从没有独立 Agent 服务的旧版本升上来时 .env 里还没有，这里生成一个（只增不改：已有的不动，回退也不用删）
+ensure_agent_token() {
+  local tok
+  tok="$(env_value AGENT_SERVICE_TOKEN)"
+  if [ "${#tok}" -ge 32 ]; then
+    return 0
+  fi
+  tok="$(openssl rand -hex 32 2>/dev/null || head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+  [ "${#tok}" -ge 32 ] || fail failed "无法生成 Agent 服务令牌，请在 .env 里手动加一行 AGENT_SERVICE_TOKEN=<至少 32 个字符>"
+  if grep -qE '^AGENT_SERVICE_TOKEN=' "$ENV_FILE"; then
+    sed -i.bak "s|^AGENT_SERVICE_TOKEN=.*|AGENT_SERVICE_TOKEN=$tok|" "$ENV_FILE" && rm -f "$ENV_FILE.bak"
+  else
+    printf '\nAGENT_SERVICE_TOKEN=%s\n' "$tok" >> "$ENV_FILE"
+  fi
+  echo "    已在 .env 里生成 AGENT_SERVICE_TOKEN（Agent 服务和 backend 互相认的凭据）"
+}
+ensure_agent_token
 
 # ---------- 2. 拉镜像（失败时服务一直没动） ----------
 
@@ -273,6 +300,41 @@ if [ "$BACKUP" = true ]; then
   done
 else
   echo "[提示] 已跳过数据库备份（--no-backup）。" >&2
+fi
+
+# ---------- 3b. 在线备份 Agent 的数据 ----------
+
+# 会话、运行、审批、事件和对话历史都在 agent_data 卷的 SQLite 里，Postgres 的备份里没有。用目标版本的镜像起一个一次性容器读卷：
+# agent 正在运行也行（SQLite 在线备份，不用停机），没在运行也行；备份先写到容器里的临时文件，再从标准输出流到宿主机，
+# 日志和结果 JSON 走标准错误。卷里还没有数据（第一次启用）退出码 3，不算失败。
+backup_agent() {
+  local tmp="$ROOT/backups/.agent-backup.tmp" rc=0
+  mkdir -p "$ROOT/backups"
+  AGENT_BACKUP_FILE="$ROOT/backups/pre-$NEW_TAG-$(date +%Y%m%d%H%M%S).agent.sqlite"
+  status backup running "在线备份 Agent 数据到 $AGENT_BACKUP_FILE"
+  docker compose run --rm --no-deps -T --entrypoint sh agent -c \
+    '[ -f /data/agent.sqlite ] || exit 3; AGENT_DB_PATH=/data/agent.sqlite node dist/backup-cli.js /tmp/agent-backup.sqlite 1>&2 && cat /tmp/agent-backup.sqlite' \
+    > "$tmp" || rc=$?
+  if [ "$rc" -eq 3 ]; then
+    rm -f "$tmp"
+    AGENT_BACKUP_FILE=""
+    echo "[提示] Agent 还没有数据（第一次启用），无需备份。"
+    return 0
+  fi
+  if [ "$rc" -ne 0 ] || [ ! -s "$tmp" ] || ! head -c 15 "$tmp" | grep -q "SQLite format 3"; then
+    rm -f "$tmp"
+    AGENT_BACKUP_FILE=""
+    restore_files
+    fail failed "备份 Agent 数据失败，已中止更新（服务未改动）；目标版本的镜像里需要有备份命令（dist/backup-cli.js），或用 --no-backup 跳过备份"
+  fi
+  mv -f "$tmp" "$AGENT_BACKUP_FILE"
+  ls -1 "$ROOT"/backups/pre-*.agent.sqlite 2>/dev/null | sort -r | tail -n +"$((KEEP_BACKUPS + 1))" | while IFS= read -r old; do
+    rm -f "$old"
+  done
+}
+
+if [ "$BACKUP" = true ]; then
+  backup_agent
 fi
 
 # ---------- 4. 重建并等新版本就绪 ----------

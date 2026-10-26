@@ -51,6 +51,11 @@ docker compose -f docker-compose.dev.yml exec backend go test ./...
 # 执行前端检查
 docker compose -f docker-compose.dev.yml exec web bun run typecheck
 
+# 画布 Agent 是独立的服务（compose 里的 agent 容器），默认随其它服务一起启动，不用额外参数。
+# 它直接跑 agent/ 里的 TypeScript 源码，需要先在宿主机 agent/ 下 npm ci；改了 agent/src 后重启它即可：
+docker compose -f docker-compose.dev.yml restart agent
+# 不用 Agent：APP_AGENT_ENABLED=false docker compose -f docker-compose.dev.yml up -d
+
 # 停止容器，保留数据库、Redis 和上传素材
 docker compose -f docker-compose.dev.yml down
 
@@ -63,5 +68,6 @@ docker compose -f docker-compose.dev.yml down -v
 - `backend/` 和 `web/` 以 bind mount 挂载，代码修改会立即进入容器。
 - 前端使用 Vite HMR。
 - 后端使用 Air 监听 Go 和 YAML 文件，修改后自动重新编译并重启。
+- `agent/` 也是 bind mount：`agent` 容器常驻运行里面的 TypeScript 源码（Node 22.19+ 的类型剥离，不用构建），backend 通过 HTTP 调它；会话、运行、审批的数据在命名卷 `agent_data` 里。开发环境的服务令牌有固定的默认值，不用配置。
 - 上传素材保存在命名卷 `backend_assets` 中，容器重启不会丢失。
 - Compose 中的 JWT 和 AI 主密钥只用于本地开发；生产环境应通过密钥管理系统或部署平台注入。

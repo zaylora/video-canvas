@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"regexp"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -25,8 +24,6 @@ import (
 
 // 观测的固定参数。
 const (
-	maxFeedbackComment   = 500                 // 反馈说明最多多少字
-	maxFeedbackReasons   = 5                   // 反馈原因标签最多几个
 	maxTokenNameRunes    = 64                  // 令牌用途最多多少字
 	maxTokenDays         = 90                  // 令牌最长有效天数
 	tokenRatePerMinute   = 120                 // 每个令牌每分钟最多请求数：pull 一条运行要两次请求（md 和 json 合并成一次后是一次），留足余量
@@ -42,6 +39,11 @@ const (
 type ObserveRepo interface {
 	// RunFacts 读生成运行摘要需要的事实，运行不存在返回 repository.ErrNotFound。
 	RunFacts(ctx context.Context, runID uint64) (*model.AgentRunFacts, error)
+	// LocalRunFacts 读运行本身不在 Go 库里（在 Agent 服务里）时 Go 自己持有的那部分事实：工具调用（不含参数和结果）、
+	// 模型调用、画布改动和 runtime_tail。没有记录时返回空的事实，不是错误。
+	LocalRunFacts(ctx context.Context, runID uint64) (*model.AgentRunFacts, error)
+	// LocalExportFacts 同上，用于导出：摘要、含参数和结果的工具调用、模型调用、模型请求摘要、画布改动。
+	LocalExportFacts(ctx context.Context, runID uint64) (*model.AgentExportFacts, error)
 	// UpsertDigest 写运行摘要，一次运行一行，整行覆盖。
 	UpsertDigest(ctx context.Context, d *model.AgentRunDigest) error
 	// GetDigest 读一条运行摘要，没有返回 repository.ErrNotFound。
@@ -54,12 +56,6 @@ type ObserveRepo interface {
 	ExportFacts(ctx context.Context, runID uint64) (*model.AgentExportFacts, error)
 	// Stats 按版本或模型分组聚合指标；分组字段不在白名单返回 repository.ErrInvalidGroupBy。
 	Stats(ctx context.Context, q model.StatsQuery) ([]model.AgentStatsRow, error)
-	// GetFeedback 读某人对某运行的评价，没有返回 repository.ErrNotFound。
-	GetFeedback(ctx context.Context, runID, userID uint64) (*model.AgentFeedback, error)
-	// UpsertFeedback 写评价，同一人对同一运行只有一条。
-	UpsertFeedback(ctx context.Context, fb *model.AgentFeedback) error
-	// DeleteFeedback 取消评价，本来就没有不是错误。
-	DeleteFeedback(ctx context.Context, runID, userID uint64) error
 	// PurgeObserveBefore 清空早于 cutoff 的工具参数、结果和 runtime_tail，返回两类各清了多少行。
 	PurgeObserveBefore(ctx context.Context, cutoff, now time.Time) (toolCalls, digests int64, err error)
 	// ModelCallRequests 读一次运行各次模型调用的请求记录；withBody 为 false 时不读请求体。
@@ -78,18 +74,6 @@ type ObserveRepo interface {
 	RevokeToken(ctx context.Context, id uint64, at time.Time) error
 }
 
-// ObserveRuns 按用户读运行：反馈只能对自己的运行打。
-type ObserveRuns interface {
-	// GetRun 按 id + user_id 读运行，不存在或不属于该用户返回 repository.ErrNotFound。
-	GetRun(ctx context.Context, userID, id uint64) (*model.AgentRun, error)
-}
-
-// EventEmitter 给会话追加一条事件并推送给用户（*AgentService 实现它）。
-type EventEmitter interface {
-	// Emit 追加一条落库的事件并推送。
-	Emit(ctx context.Context, userID, sessionID, runID, canvasID uint64, typ string, data any)
-}
-
 // AuditWriter 写后台运营审计（只增不改不删），由 repository.AdminAuditRepository 实现。
 type AuditWriter interface {
 	// Insert 写一条审计日志。
@@ -102,10 +86,9 @@ type RoleLookup func(ctx context.Context, userID uint64) (string, error)
 // ObserveDeps 是创建 ObserveService 需要的依赖。
 type ObserveDeps struct {
 	Repo   ObserveRepo      // 观测数据访问
-	Runs   ObserveRuns      // 按用户读运行
-	Events EventEmitter     // 发反馈事件；为 nil 时不发
 	Audit  AuditWriter      // 审计；为 nil 时不写
 	Roles  RoleLookup       // 令牌签发人的角色查询
+	Remote RemoteRuns       // agent.runtime=durable 时读 Agent 服务里的运行；为 nil 表示运行都在 Go 的库里
 	Now    func() time.Time // 为 nil 取系统时间
 }
 
@@ -113,6 +96,10 @@ type ObserveDeps struct {
 // 它记录和读取的都是观测数据，出错时不能影响用户正在进行的运行。
 type ObserveService struct {
 	d ObserveDeps
+
+	// 同步 Agent 服务里的运行：游标是已处理到的更新时间（毫秒），只在内存里
+	syncMu     sync.Mutex
+	syncCursor int64
 
 	mu      sync.Mutex
 	windows map[uint64]*rateWindow // 令牌 id → 当前分钟的请求计数
@@ -254,42 +241,11 @@ func mustJSON(v any, fallback string) datatypes.JSON {
 // RefreshDigest 重新汇总一次运行并写入摘要。运行进入非活跃状态、用户评价或撤销之后调用。
 // 返回错误由调用方决定怎么处理：事件钩子里只记日志，不能让用户的运行因观测数据失败。
 func (s *ObserveService) RefreshDigest(ctx context.Context, runID uint64) error {
-	f, err := s.d.Repo.RunFacts(ctx, runID)
+	f, err := s.runFacts(ctx, runID)
 	if err != nil {
 		return err
 	}
 	return s.d.Repo.UpsertDigest(ctx, BuildDigest(f, s.d.Now()))
-}
-
-// maxRuntimeTailBytes 是 runtime_tail 的最大长度，与进程里保留的 stderr 末尾一致。
-const maxRuntimeTailBytes = 4 << 10
-
-// RecordRuntimeTail 把 Node 进程 stderr 的末尾写进运行摘要（最多 4KB，不切坏字符）。空串不写。
-// 摘要不存在时顺带创建：进程退出可能早于运行进入终态的那次刷新；之后的刷新会沿用这段文字。
-func (s *ObserveService) RecordRuntimeTail(ctx context.Context, runID uint64, tail string) error {
-	if tail == "" {
-		return nil
-	}
-	f, err := s.d.Repo.RunFacts(ctx, runID)
-	if err != nil {
-		return err
-	}
-	if len(tail) > maxRuntimeTailBytes {
-		// 保留末尾：诊断信息最要紧的是最后几行
-		tail = tail[len(tail)-maxRuntimeTailBytes:]
-		for len(tail) > 0 && !utf8.RuneStart(tail[0]) {
-			tail = tail[1:]
-		}
-	}
-	f.RuntimeTail = tail
-	return s.d.Repo.UpsertDigest(ctx, BuildDigest(f, s.d.Now()))
-}
-
-// refreshQuietly 刷新摘要，失败只记日志。用不会被取消的上下文：用户停止运行时请求的上下文已取消，摘要照样要写。
-func (s *ObserveService) refreshQuietly(ctx context.Context, runID uint64) {
-	if err := s.RefreshDigest(context.WithoutCancel(ctx), runID); err != nil {
-		logger.Warn("刷新 Agent 运行摘要失败", zap.Error(err), zap.Uint64("run_id", runID))
-	}
 }
 
 // FeedbackView 是返回给前端的评价。
@@ -297,87 +253,6 @@ type FeedbackView struct {
 	Rating  int      `json:"rating"`  // 1 有帮助，-1 没帮上忙
 	Reasons []string `json:"reasons"` // 点踩原因标签
 	Comment string   `json:"comment"` // 补充说明
-}
-
-// SetFeedback 记下用户对一次运行的评价（👍/👎），再次调用就是改选。
-func (s *ObserveService) SetFeedback(ctx context.Context, userID, runID uint64, req *model.SetAgentFeedbackReq) (*FeedbackView, error) {
-	// 1. 参数：评分只能是 1/-1；原因必须是已知标签，去重，点赞时忽略；说明最多 500 字
-	if req.Rating != model.FeedbackUp && req.Rating != model.FeedbackDown {
-		return nil, errcode.ErrInvalidParams.WithMsg("评价只能是 1 或 -1")
-	}
-	reasons, err := normalizeReasons(req.Rating, req.Reasons)
-	if err != nil {
-		return nil, err
-	}
-	comment := strings.TrimSpace(req.Comment)
-	if utf8.RuneCountInString(comment) > maxFeedbackComment {
-		return nil, errcode.ErrInvalidParams.WithMsg("补充说明最多 500 字")
-	}
-	// 2. 运行必须是自己的，别人的和不存在的统一返回「运行不存在」；还在跑或在等用户时不能评价，评价的是一整轮的结果
-	run, err := s.d.Runs.GetRun(ctx, userID, runID)
-	if err != nil {
-		return nil, runErr(err)
-	}
-	if model.IsActiveRun(run.Status) {
-		return nil, errcode.ErrAgentRunNotEnded
-	}
-	// 3. 写评价（同一人对同一运行覆盖），发事件让其他标签页和刷新后的页面看到，再同步摘要
-	fb := &model.AgentFeedback{RunID: runID, UserID: userID, Rating: req.Rating, Reasons: mustJSON(reasons, "[]"), Comment: comment}
-	if err := s.d.Repo.UpsertFeedback(ctx, fb); err != nil {
-		return nil, err
-	}
-	view := &FeedbackView{Rating: req.Rating, Reasons: reasons, Comment: comment}
-	// 载荷里不放原始 run_id：前端按事件自带的编码后的 run_id 对账，放原始数字反而会对不上
-	s.emit(ctx, run, "feedback.set", view)
-	s.refreshQuietly(ctx, runID)
-	return view, nil
-}
-
-// ClearFeedback 取消评价。本来就没有评价是幂等的，不发事件。
-func (s *ObserveService) ClearFeedback(ctx context.Context, userID, runID uint64) error {
-	run, err := s.d.Runs.GetRun(ctx, userID, runID)
-	if err != nil {
-		return runErr(err)
-	}
-	if _, err := s.d.Repo.GetFeedback(ctx, runID, userID); err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return nil
-		}
-		return err
-	}
-	if err := s.d.Repo.DeleteFeedback(ctx, runID, userID); err != nil {
-		return err
-	}
-	s.emit(ctx, run, "feedback.cleared", map[string]any{})
-	s.refreshQuietly(ctx, runID)
-	return nil
-}
-
-// emit 给运行所在会话发一条事件；没有配置发射器时不发。
-func (s *ObserveService) emit(ctx context.Context, run *model.AgentRun, typ string, data any) {
-	if s.d.Events != nil {
-		s.d.Events.Emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, typ, data)
-	}
-}
-
-// normalizeReasons 校验并整理点踩原因：未知标签报参数错误，重复的去掉，点赞时一律忽略。
-func normalizeReasons(rating int, in []string) ([]string, error) {
-	out := []string{}
-	if rating != model.FeedbackDown {
-		return out, nil
-	}
-	if len(in) > maxFeedbackReasons {
-		return nil, errcode.ErrInvalidParams.WithMsg("原因标签太多")
-	}
-	for _, r := range in {
-		if !model.ValidFeedbackReason(r) {
-			return nil, errcode.ErrInvalidParams.WithMsg("未知的原因标签：" + truncateRunes(r, 32))
-		}
-		if !slices.Contains(out, r) {
-			out = append(out, r)
-		}
-	}
-	return out, nil
 }
 
 // PurgeExpired 清理过期的观测大字段：工具调用的参数和结果、摘要里的 runtime_tail，保留 30 天；摘要和反馈长期保留。

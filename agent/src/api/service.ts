@@ -1,0 +1,324 @@
+/**
+ * 前端用的 REST 接口背后的业务：会话、事件回放、聊天记录、运行的发起和控制、撤销、审批决定。
+ * 对应 Go 的 AgentService 里这些方法，规则一一照搬；运行和审批的状态机在引擎里，这里是它的「入口」：
+ * 校验归属和参数、向 Go 要它才有的东西（画布归属、模型清单、消息里引用的有效性、撤销）、把结果变成对外的视图。
+ *
+ * 所有 id 参数都是十进制字符串；路径里的编码串由 HTTP 层先解码。
+ */
+import type { AgentEngine, ApprovalView } from "../engine/engine.ts";
+import { fromPlatform } from "../engine/engine.ts";
+import { AgentError, Err } from "../engine/errors.ts";
+import { isActive } from "../engine/status.ts";
+import type { IdCodec } from "../ids.ts";
+import type { AgentModel, ApprovalDecision, Platform, UndoResult } from "../platform-client.ts";
+import { NotFoundError } from "../store/errors.ts";
+import type { AgentStore } from "../store/store.ts";
+import type { AgentEventRecord, Run, Session } from "../store/types.ts";
+import {
+  eventView, observeEvent, runView, sessionView,
+  type EventView, type HistoryView, type ObserveFacts, type ObserveRunRef, type RunView, type SessionView,
+} from "./views.ts";
+
+const DEFAULT_TITLE = "新对话";
+const MAX_SESSIONS_PER_CANVAS = 50;
+const MAX_EVENT_PAGE = 200;
+const DEFAULT_HISTORY_PAGE = 100;
+const MAX_HISTORY_CHUNKS = 20;
+const MAX_TITLE = 40;
+const MAX_OBSERVE_PAGE = 500;
+const CONTEXT_TURNS = 2;
+
+export interface ApiOptions {
+  store: AgentStore;
+  engine: AgentEngine;
+  platform: Platform;
+  codec: IdCodec;
+  now?: () => number;
+}
+
+export interface CreateSessionRequest {
+  title?: string;
+  mode?: string;
+  model_key?: string;
+}
+
+export interface StartRunRequest {
+  message: string;
+  mode?: string;
+  selection?: string[];
+  viewport?: unknown;
+  budget_credits?: number | null;
+  agent_model_key?: string;
+}
+
+/** 首条消息 / 标题：空白压成一个空格，最多 40 字；清空后返回 def */
+export function cleanTitle(raw: string, def: string): string {
+  const t = Array.from(raw.split(/\s+/).filter(Boolean).join(" ")).slice(0, MAX_TITLE).join("");
+  return t || def;
+}
+
+export class AgentApiService {
+  readonly #o: ApiOptions;
+
+  constructor(o: ApiOptions) {
+    this.#o = o;
+  }
+
+  // ---- 会话 ----
+
+  async models(): Promise<AgentModel[]> {
+    return (await this.#platform(() => this.#o.platform.models())) ?? [];
+  }
+
+  async listSessions(userId: string, canvasId: string): Promise<SessionView[]> {
+    await this.#platform(() => this.#o.platform.checkCanvas(userId, canvasId));
+    return this.#o.store.listSessions(userId, canvasId).map((s) => sessionView(this.#o.codec, s));
+  }
+
+  async createSession(userId: string, canvasId: string, req: CreateSessionRequest): Promise<SessionView> {
+    await this.#platform(() => this.#o.platform.checkCanvas(userId, canvasId));
+    // 每个画布最多 50 个会话，避免历史无限增长
+    if (this.#o.store.countSessions(userId, canvasId) >= MAX_SESSIONS_PER_CANVAS) throw new AgentError(60010, 409, "这个画布的会话数量已达上限");
+    const s = this.#o.store.createSession({ userId, canvasId, title: cleanTitle(req.title ?? "", DEFAULT_TITLE), mode: req.mode || "all", modelKey: req.model_key ?? "" });
+    return sessionView(this.#o.codec, s);
+  }
+
+  async renameSession(userId: string, sessionId: string, title: string): Promise<SessionView> {
+    const t = cleanTitle(title, "");
+    if (!t) throw Err.invalidParams("标题不能为空");
+    const store = this.#o.store;
+    this.#session(userId, sessionId);
+    store.updateSession(userId, sessionId, { title: t });
+    return sessionView(this.#o.codec, store.getSession(userId, sessionId));
+  }
+
+  /** 删除会话（软删除）。这个会话正占着画布时不允许，免得 Agent 往一个看不见的会话里继续写 */
+  async deleteSession(userId: string, sessionId: string): Promise<void> {
+    const sess = this.#session(userId, sessionId);
+    const active = this.#o.store.activeRun(sess.canvasId);
+    if (active && active.sessionId === sessionId) throw Err.runActive();
+    this.#o.store.deleteSession(userId, sessionId);
+  }
+
+  // ---- 事件和历史 ----
+
+  async events(userId: string, sessionId: string, after: number, limit: number): Promise<EventView[]> {
+    this.#session(userId, sessionId);
+    const n = limit <= 0 || limit > MAX_EVENT_PAGE ? MAX_EVENT_PAGE : limit;
+    return this.#o.store.listEvents(sessionId, after, n).map((e) => eventView(this.#o.codec, e));
+  }
+
+  /**
+   * 聊天记录，从最新往回翻页：before 是已有的最小序号（0 取最新一页）。一页的起点对齐到一轮的开头
+   * （用户发起的 message.user，插话不算），不把一轮拦腰截断：前端按一轮的事件折叠运行状态，拦腰截断会让最旧那轮缺开头。
+   * 所以一页可能比 limit 多（一轮比 limit 长时）。has_more 说明更早还有没有。
+   */
+  async history(userId: string, sessionId: string, before: number, limit: number): Promise<HistoryView> {
+    this.#session(userId, sessionId);
+    const n = limit <= 0 || limit > MAX_EVENT_PAGE ? DEFAULT_HISTORY_PAGE : limit;
+    let [events, older] = this.#historyChunk(sessionId, before, n);
+    for (let i = 0; i < MAX_HISTORY_CHUNKS; i++) {
+      const at = firstTurnStart(events);
+      if (at >= 0) {
+        older = older || at > 0; // 起点之前的残余留给下一页（它们是更早一轮的结尾）
+        events = events.slice(at);
+        break;
+      }
+      if (!older || events.length === 0) break;
+      const [more, moreOlder] = this.#historyChunk(sessionId, events[0].seq, n);
+      events = [...more, ...events];
+      older = moreOlder;
+    }
+    return { events: events.map((e) => eventView(this.#o.codec, e)), has_more: older };
+  }
+
+  /** 读 before 之前最新的 limit 条事件，并说明更早的还有没有（多读一条来判断） */
+  #historyChunk(sessionId: string, before: number, limit: number): [AgentEventRecord[], boolean] {
+    const items = this.#o.store.listEventsBefore(sessionId, before, limit + 1);
+    return items.length > limit ? [items.slice(1), true] : [items, false];
+  }
+
+  // ---- 运行 ----
+
+  async startRun(userId: string, sessionId: string, req: StartRunRequest): Promise<RunView> {
+    const sess = this.#session(userId, sessionId);
+    const message = req.message.trim();
+    if (!message) throw Err.invalidParams("消息不能为空");
+    // 消息里的引用（节点、模型、技能）必须有效；选中的节点里已不存在的去掉
+    const selection = await this.#platform(() => this.#o.platform.checkMessage(userId, sess.canvasId, message, req.selection ?? []));
+    const modelKey = await this.#pickModel(req.agent_model_key || sess.modelKey);
+    const run = await this.#o.engine.startRun({
+      userId, sessionId, message, mode: req.mode || undefined, modelKey, selection, budgetCredits: req.budget_credits ?? 0,
+    });
+    return runView(this.#o.codec, run);
+  }
+
+  async interject(userId: string, runId: string, message: string): Promise<void> {
+    const run = this.#run(userId, runId);
+    const msg = message.trim();
+    if (!msg) throw Err.invalidParams("消息不能为空");
+    if (run.status !== "running") throw Err.state();
+    await this.#platform(() => this.#o.platform.checkMessage(userId, run.canvasId, msg, []));
+    await this.#o.engine.interject(userId, runId, msg);
+  }
+
+  async cancel(userId: string, runId: string): Promise<RunView> {
+    return runView(this.#o.codec, await this.#o.engine.cancel(userId, runId));
+  }
+
+  async resume(userId: string, runId: string, addBudget: number): Promise<RunView> {
+    return runView(this.#o.codec, await this.#o.engine.resume(userId, runId, addBudget));
+  }
+
+  async decide(userId: string, approvalId: string, req: ApprovalDecision): Promise<ApprovalView> {
+    return this.#o.engine.decide(userId, approvalId, req);
+  }
+
+  /**
+   * 撤销本轮对画布的改动。运行得是自己的、已经结束（还在跑或在等用户时撤销，Agent 马上又会写进来）；
+   * 改动记录在 Go，经平台撤销。真的写了撤销（revision 非零）才算用户撤销，记 run.undone：它是用户不满意的强信号。
+   */
+  async undo(userId: string, runId: string): Promise<UndoResult> {
+    const run = this.#run(userId, runId);
+    if (isActive(run.status)) throw Err.state();
+    const sess = this.#session(userId, run.sessionId);
+    const res = await this.#platform(() =>
+      this.#o.platform.undo({ run_id: run.id, user_id: userId, session_id: run.sessionId, canvas_id: run.canvasId, mode: run.mode, model_key: sess.modelKey }),
+    );
+    if (res.revision !== 0) {
+      this.#o.engine.recordEvent(run, "run.undone", { reverted: res.reverted, skipped: res.skipped.length });
+      this.#o.store.touchRun(run.id); // Go 的摘要要把"被撤销过"汇总进去
+    }
+    return res;
+  }
+
+  // ---- 评价 ----
+
+  /** 记下用户对一次运行的评价（👍/👎），再次调用就是改选。评价的是一整轮的结果，所以运行得是自己的、已经结束 */
+  async setFeedback(userId: string, runId: string, req: { rating: number; reasons: string[]; comment: string }): Promise<FeedbackView> {
+    if (req.rating !== 1 && req.rating !== -1) throw Err.invalidParams("评价只能是 1 或 -1");
+    const reasons = normalizeReasons(req.rating, req.reasons);
+    const comment = req.comment.trim();
+    if (Array.from(comment).length > MAX_FEEDBACK_COMMENT) throw Err.invalidParams(`补充说明最多 ${MAX_FEEDBACK_COMMENT} 字`);
+    const run = this.#run(userId, runId);
+    if (isActive(run.status)) throw new AgentError(60014, 409, "运行还没结束，结束后才能评价");
+    this.#o.store.upsertFeedback({ runId, userId, rating: req.rating, reasons, comment });
+    this.#o.store.touchRun(runId);
+    const view = { rating: req.rating, reasons, comment };
+    // 载荷里不放运行 id：前端按事件自带的编码后的 run_id 对账
+    this.#o.engine.recordEvent(run, "feedback.set", view);
+    return view;
+  }
+
+  /** 取消评价。本来就没有评价是幂等的，不发事件 */
+  async clearFeedback(userId: string, runId: string): Promise<void> {
+    const run = this.#run(userId, runId);
+    if (this.#o.store.deleteFeedback(runId, userId)) {
+      this.#o.store.touchRun(runId);
+      this.#o.engine.recordEvent(run, "feedback.cleared", {});
+    }
+  }
+
+  // ---- 观测（Go 的后台只读；不带用户，由 HTTP 层用服务令牌把关）----
+
+  /** 更新时间晚于 afterMs 的运行（升序，最多 limit 条）：Go 的摘要同步靠它找出变过的运行 */
+  async observeRuns(afterMs: number, limit: number): Promise<ObserveRunRef[]> {
+    if (!Number.isInteger(limit) || limit < 1 || limit > MAX_OBSERVE_PAGE) throw Err.invalidParams(`limit 必须是 1 到 ${MAX_OBSERVE_PAGE}`);
+    return this.#o.store.listRunsUpdatedAfter(afterMs, limit).map((r) => ({ id: r.id, status: r.status, updated_at: r.updatedAt }));
+  }
+
+  /** 一次运行的事实：Agent 自己持有的那部分（运行、事件、审批、评价、上下文）；工具、模型调用、画布改动在 Go */
+  async observeFacts(runId: string): Promise<ObserveFacts> {
+    const store = this.#o.store;
+    let run: Run;
+    try {
+      run = store.getRunById(runId);
+    } catch (e) {
+      if (e instanceof NotFoundError) throw Err.runMissing();
+      throw e;
+    }
+    const fb = store.getFeedback(run.id, run.userId);
+    const at = (ms: number | null) => (ms === null ? null : new Date(ms).toISOString());
+    return {
+      run: {
+        id: run.id, session_id: run.sessionId, canvas_id: run.canvasId, user_id: run.userId, status: run.status, mode: run.mode,
+        budget_credits: run.budgetCredits, spent_credits: run.spentCredits, context_tokens: run.contextTokens, steps: run.steps, max_steps: run.maxSteps,
+        error_code: run.errorCode, error_message: run.errorMessage, prompt_version: run.promptVersion, tools_hash: run.toolsHash, build_sha: run.buildSha,
+        harness_key: run.harnessKey, created_at: at(run.createdAt)!, ended_at: at(run.endedAt),
+      },
+      session_deleted: store.isSessionDeleted(run.sessionId),
+      events: store.listRunEvents(run.id).map(observeEvent),
+      approvals: store.listApprovals(run.id).map((a) => ({
+        id: a.id, kind: a.kind, tool_call_id: a.toolCallId, status: a.status, quote_credits: a.quoteCredits, payload: a.payload,
+        decision: a.decision, result: a.result, decided_at: at(a.decidedAt), created_at: at(a.createdAt)!,
+      })),
+      feedback: fb ? { rating: fb.rating, reasons: fb.reasons, comment: fb.comment, created_at: at(fb.createdAt)! } : null,
+      context: store.listContextEvents(run.sessionId, run.id, CONTEXT_TURNS).map(observeEvent),
+    };
+  }
+
+  // ---- 内部 ----
+
+  /** 选本轮用的 Agent 模型：优先 want，其次清单第一个；want 不在已发布清单里是 60002 */
+  async #pickModel(want: string): Promise<string> {
+    const list = await this.models();
+    if (list.length === 0) throw Err.modelNA();
+    if (!want) return list[0].key;
+    if (!list.some((m) => m.key === want)) throw Err.modelNA();
+    return want;
+  }
+
+  #session(userId: string, sessionId: string): Session {
+    try {
+      return this.#o.store.getSession(userId, sessionId);
+    } catch (e) {
+      if (e instanceof NotFoundError) throw Err.sessionMissing();
+      throw e;
+    }
+  }
+
+  #run(userId: string, runId: string): Run {
+    try {
+      return this.#o.store.getRun(userId, runId);
+    } catch (e) {
+      if (e instanceof NotFoundError) throw Err.runMissing();
+      throw e;
+    }
+  }
+
+  /** 调平台：Go 的业务错误（画布不存在、引用不合法……）原样变成业务错误，连不上是「Agent 暂不可用」 */
+  async #platform<T>(fn: () => Promise<T>): Promise<T> {
+    try {
+      return await fn();
+    } catch (e) {
+      throw fromPlatform(e);
+    }
+  }
+}
+
+export interface FeedbackView {
+  rating: number;
+  reasons: string[];
+  comment: string;
+}
+
+const MAX_FEEDBACK_COMMENT = 500;
+const MAX_FEEDBACK_REASONS = 5;
+const FEEDBACK_REASONS = ["misread", "wrong_edit", "slow", "bad_output", "other"];
+
+/** 校验并整理点踩原因：未知标签报参数错误，重复的去掉，点赞时一律忽略 */
+function normalizeReasons(rating: number, input: string[]): string[] {
+  if (rating !== -1) return [];
+  if (input.length > MAX_FEEDBACK_REASONS) throw Err.invalidParams("原因标签太多");
+  const out: string[] = [];
+  for (const r of input) {
+    if (!FEEDBACK_REASONS.includes(r)) throw Err.invalidParams("未知的原因标签：" + Array.from(r).slice(0, 32).join(""));
+    if (!out.includes(r)) out.push(r);
+  }
+  return out;
+}
+
+/** 第一个「一轮开头」事件的下标，没有返回 -1：用户发起的 message.user，运行中的插话（steer）不算 */
+function firstTurnStart(events: AgentEventRecord[]): number {
+  return events.findIndex((e) => e.type === "message.user" && !(e.payload as { steer?: boolean } | null)?.steer);
+}

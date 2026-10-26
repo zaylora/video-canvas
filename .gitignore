@@ -9,8 +9,9 @@
 /backend/logs/
 /backend/configs/*.local.yaml
 
-# Agent 运行时（Node）依赖
+# Agent 运行时（Node）依赖和构建产物
 /agent/node_modules/
+/agent/dist/
 
 # 前端依赖与构建产物
 /web/node_modules/

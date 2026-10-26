@@ -3,7 +3,6 @@ package repository_test
 import (
 	"context"
 	"errors"
-	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -28,212 +27,22 @@ func newCanvas(t *testing.T, db *gorm.DB, userID uint64) *model.CanvasProject {
 	return c
 }
 
-func newSession(t *testing.T, r *AgentRepository, userID, canvasID uint64) *model.AgentSession {
+func newSession(t *testing.T, db *gorm.DB, userID, canvasID uint64) *model.AgentSession {
 	t.Helper()
 	s := &model.AgentSession{UserID: userID, CanvasID: canvasID, Title: "新对话", Mode: model.AgentModeAll}
-	if err := r.CreateSession(context.Background(), s); err != nil {
+	if err := db.Create(s).Error; err != nil {
 		t.Fatal(err)
 	}
 	return s
 }
 
-func newRun(t *testing.T, r *AgentRepository, s *model.AgentSession, status string) *model.AgentRun {
+func newRun(t *testing.T, db *gorm.DB, s *model.AgentSession, status string) *model.AgentRun {
 	t.Helper()
 	run := &model.AgentRun{SessionID: s.ID, CanvasID: s.CanvasID, UserID: s.UserID, Status: status, Mode: "all", MaxSteps: 40, BudgetCredits: 50}
-	if err := r.CreateRun(context.Background(), run); err != nil {
+	if err := db.Create(run).Error; err != nil {
 		t.Fatal(err)
 	}
 	return run
-}
-
-func TestAgentSessions(t *testing.T) {
-	ctx := context.Background()
-	db := agentDB(t)
-	r := NewAgentRepository(db)
-	s1 := newSession(t, r, 1, 10)
-	s2 := newSession(t, r, 1, 10)
-	newSession(t, r, 1, 11) // 别的画布
-	newSession(t, r, 2, 10) // 别的用户
-
-	t.Run("列表只含本人本画布，最近更新的在前，不带大字段", func(t *testing.T) {
-		if err := r.UpdateSession(ctx, 1, s1.ID, map[string]any{"session_jsonl": "大段会话", "title": "改名了"}); err != nil {
-			t.Fatal(err)
-		}
-		got, err := r.ListSessions(ctx, 1, 10)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(got) != 2 || got[0].ID != s1.ID || got[1].ID != s2.ID {
-			t.Fatalf("应为 [s1, s2]（s1 刚更新）: %+v", got)
-		}
-		if got[0].SessionJSONL != "" {
-			t.Errorf("列表不应带 session_jsonl")
-		}
-		if n, _ := r.CountSessions(ctx, 1, 10); n != 2 {
-			t.Errorf("CountSessions=%d", n)
-		}
-	})
-
-	t.Run("别人的会话统一返回不存在", func(t *testing.T) {
-		if _, err := r.GetSession(ctx, 2, s1.ID); !errors.Is(err, ErrNotFound) {
-			t.Errorf("GetSession 应 ErrNotFound: %v", err)
-		}
-		if err := r.UpdateSession(ctx, 2, s1.ID, map[string]any{"title": "x"}); !errors.Is(err, ErrNotFound) {
-			t.Errorf("UpdateSession 应 ErrNotFound: %v", err)
-		}
-		if err := r.DeleteSession(ctx, 2, s1.ID); !errors.Is(err, ErrNotFound) {
-			t.Errorf("DeleteSession 应 ErrNotFound: %v", err)
-		}
-	})
-
-	t.Run("软删除后查不到也不计数", func(t *testing.T) {
-		if err := r.DeleteSession(ctx, 1, s2.ID); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := r.GetSession(ctx, 1, s2.ID); !errors.Is(err, ErrNotFound) {
-			t.Errorf("已删除应 ErrNotFound: %v", err)
-		}
-		if n, _ := r.CountSessions(ctx, 1, 10); n != 1 {
-			t.Errorf("CountSessions=%d", n)
-		}
-	})
-}
-
-func TestAgentRuns(t *testing.T) {
-	ctx := context.Background()
-	db := agentDB(t)
-	r := NewAgentRepository(db)
-	s := newSession(t, r, 1, 10)
-
-	run := newRun(t, r, s, model.RunRunning)
-
-	t.Run("同一画布第二个活跃运行返回 ErrDuplicate", func(t *testing.T) {
-		dup := &model.AgentRun{SessionID: s.ID, CanvasID: 10, UserID: 1, Status: model.RunQueued, MaxSteps: 40}
-		if err := r.CreateRun(ctx, dup); !errors.Is(err, ErrDuplicate) {
-			t.Fatalf("应 ErrDuplicate: %v", err)
-		}
-		active, err := r.ActiveRun(ctx, 10)
-		if err != nil || active.ID != run.ID {
-			t.Fatalf("ActiveRun=%+v err=%v", active, err)
-		}
-		if _, err := r.ActiveRun(ctx, 99); !errors.Is(err, ErrNotFound) {
-			t.Errorf("没有活跃运行应 ErrNotFound: %v", err)
-		}
-	})
-
-	t.Run("状态迁移是 CAS：只有当前状态在 from 里才成功", func(t *testing.T) {
-		got, err := r.UpdateRunIf(ctx, run.ID, []string{model.RunRunning}, map[string]any{"status": model.RunWaitingApproval})
-		if err != nil || got.Status != model.RunWaitingApproval {
-			t.Fatalf("got=%+v err=%v", got, err)
-		}
-		// 状态已变，用旧状态再迁移应冲突。
-		_, err = r.UpdateRunIf(ctx, run.ID, []string{model.RunRunning}, map[string]any{"status": model.RunSucceeded})
-		if !errors.Is(err, ErrAgentStateConflict) {
-			t.Errorf("应 ErrAgentStateConflict: %v", err)
-		}
-		if _, err := r.UpdateRunIf(ctx, 9999, []string{model.RunRunning}, map[string]any{"status": "x"}); !errors.Is(err, ErrAgentStateConflict) {
-			t.Errorf("不存在的运行也是冲突: %v", err)
-		}
-	})
-
-	t.Run("别人的运行查不到", func(t *testing.T) {
-		if _, err := r.GetRun(ctx, 2, run.ID); !errors.Is(err, ErrNotFound) {
-			t.Errorf("应 ErrNotFound: %v", err)
-		}
-	})
-
-	t.Run("累加用量", func(t *testing.T) {
-		if err := r.AddRunUsage(ctx, run.ID, 2, 5); err != nil {
-			t.Fatal(err)
-		}
-		if err := r.AddRunUsage(ctx, run.ID, 1, 3); err != nil {
-			t.Fatal(err)
-		}
-		got, _ := r.GetRun(ctx, 1, run.ID)
-		if got.Steps != 3 || got.SpentCredits != 8 {
-			t.Errorf("steps=%d spent=%d", got.Steps, got.SpentCredits)
-		}
-		if err := r.AddRunUsage(ctx, 9999, 1, 1); !errors.Is(err, ErrNotFound) {
-			t.Errorf("不存在应 ErrNotFound: %v", err)
-		}
-	})
-
-	t.Run("记上下文用量：覆盖旧值，不是累加；运行不存在返回 ErrNotFound", func(t *testing.T) {
-		if err := r.SetRunContextTokens(ctx, run.ID, 120000); err != nil {
-			t.Fatal(err)
-		}
-		if err := r.SetRunContextTokens(ctx, run.ID, 35000); err != nil { // 压缩之后变小
-			t.Fatal(err)
-		}
-		got, _ := r.GetRun(ctx, 1, run.ID)
-		if got.ContextTokens != 35000 {
-			t.Errorf("应是最近一次的值，不是累加: %d", got.ContextTokens)
-		}
-		if err := r.SetRunContextTokens(ctx, 9999, 1); !errors.Is(err, ErrNotFound) {
-			t.Errorf("不存在应 ErrNotFound: %v", err)
-		}
-	})
-
-	t.Run("运行结束后画布空出来，可以开下一个", func(t *testing.T) {
-		if _, err := r.UpdateRunIf(ctx, run.ID, []string{model.RunWaitingApproval}, map[string]any{"status": model.RunSucceeded}); err != nil {
-			t.Fatal(err)
-		}
-		newRun(t, r, s, model.RunQueued)
-	})
-}
-
-func TestAgentEventsSeqIsAtomic(t *testing.T) {
-	ctx := context.Background()
-	db := agentDB(t)
-	r := NewAgentRepository(db)
-	s := newSession(t, r, 1, 10)
-
-	const n = 20
-	var wg sync.WaitGroup
-	for i := 0; i < n; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			if _, err := r.AppendEvent(ctx, s.ID, 1, "message.delta", nil); err != nil {
-				t.Errorf("AppendEvent: %v", err)
-			}
-		}()
-	}
-	wg.Wait()
-
-	evs, err := r.ListEvents(ctx, s.ID, 0, 100)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(evs) != n {
-		t.Fatalf("应有 %d 条事件，实际 %d", n, len(evs))
-	}
-	for i, e := range evs {
-		if e.Seq != int64(i+1) {
-			t.Fatalf("并发追加后序号必须连续无重复：第 %d 条 seq=%d", i, e.Seq)
-		}
-	}
-	if string(evs[0].PayloadJSON) != "{}" {
-		t.Errorf("空 payload 应补成 {}: %s", evs[0].PayloadJSON)
-	}
-
-	t.Run("按 after 增量读取并限制条数", func(t *testing.T) {
-		got, _ := r.ListEvents(ctx, s.ID, 15, 3)
-		if len(got) != 3 || got[0].Seq != 16 || got[2].Seq != 18 {
-			t.Errorf("after=15 limit=3 应为 16..18: %+v", got)
-		}
-	})
-	t.Run("会话的 last_seq 同步", func(t *testing.T) {
-		got, _ := r.GetSession(ctx, 1, s.ID)
-		if got.LastSeq != n {
-			t.Errorf("last_seq=%d", got.LastSeq)
-		}
-	})
-	t.Run("会话不存在返回 ErrNotFound", func(t *testing.T) {
-		if _, err := r.AppendEvent(ctx, 9999, 1, "x", nil); !errors.Is(err, ErrNotFound) {
-			t.Errorf("应 ErrNotFound: %v", err)
-		}
-	})
 }
 
 func TestCommitCanvasMutation(t *testing.T) {
@@ -241,8 +50,8 @@ func TestCommitCanvasMutation(t *testing.T) {
 	db := agentDB(t)
 	r := NewAgentRepository(db)
 	canvas := newCanvas(t, db, 1)
-	s := newSession(t, r, 1, canvas.ID)
-	run := newRun(t, r, s, model.RunRunning)
+	s := newSession(t, db, 1, canvas.ID)
+	run := newRun(t, db, s, model.RunRunning)
 
 	commit := func(base uint64, payload string, kind string, undoRun uint64) (*model.AgentMutation, error) {
 		m := &model.AgentMutation{RunID: run.ID, Kind: kind, ToolCallID: "tc1", ChangesJSON: []byte(`[{"id":"n1"}]`)}
@@ -327,60 +136,6 @@ func TestCommitCanvasMutation(t *testing.T) {
 	})
 }
 
-func TestAgentApprovals(t *testing.T) {
-	ctx := context.Background()
-	db := agentDB(t)
-	r := NewAgentRepository(db)
-	s := newSession(t, r, 1, 10)
-	run := newRun(t, r, s, model.RunWaitingApproval)
-
-	mk := func() *model.AgentApproval {
-		a := &model.AgentApproval{RunID: run.ID, SessionID: s.ID, CanvasID: 10, UserID: 1, Kind: model.ApprovalGenerate, Status: model.ApprovalPending, QuoteCredits: 16}
-		if err := r.CreateApproval(ctx, a); err != nil {
-			t.Fatal(err)
-		}
-		return a
-	}
-	a := mk()
-	if string(a.PayloadJSON) != "{}" {
-		t.Errorf("空 JSON 应补成 {}: %s", a.PayloadJSON)
-	}
-
-	t.Run("决定是 CAS：只有待处理才能决定，重复点击返回冲突", func(t *testing.T) {
-		got, err := r.UpdateApprovalIf(ctx, a.ID, []string{model.ApprovalPending}, map[string]any{"status": model.ApprovalApproved})
-		if err != nil || got.Status != model.ApprovalApproved {
-			t.Fatalf("got=%+v err=%v", got, err)
-		}
-		_, err = r.UpdateApprovalIf(ctx, a.ID, []string{model.ApprovalPending}, map[string]any{"status": model.ApprovalRejected})
-		if !errors.Is(err, ErrAgentStateConflict) {
-			t.Errorf("第二次应冲突: %v", err)
-		}
-	})
-
-	t.Run("别人的审批查不到", func(t *testing.T) {
-		if _, err := r.GetApproval(ctx, 2, a.ID); !errors.Is(err, ErrNotFound) {
-			t.Errorf("应 ErrNotFound: %v", err)
-		}
-	})
-
-	t.Run("停止运行时只让待处理的失效", func(t *testing.T) {
-		pending := mk()
-		n, err := r.ExpirePendingApprovals(ctx, run.ID)
-		if err != nil || n != 1 {
-			t.Fatalf("n=%d err=%v", n, err)
-		}
-		got, _ := r.GetApproval(ctx, 1, pending.ID)
-		old, _ := r.GetApproval(ctx, 1, a.ID)
-		if got.Status != model.ApprovalExpired || old.Status != model.ApprovalApproved {
-			t.Errorf("pending=%s old=%s", got.Status, old.Status)
-		}
-		list, _ := r.ListApprovals(ctx, run.ID)
-		if len(list) != 2 {
-			t.Errorf("ListApprovals=%d", len(list))
-		}
-	})
-}
-
 // 服务重启时，运行进程随旧服务一起没了：还停在 queued / running 的运行要标为中断，
 // 否则那个画布会被一个永远不会结束的运行占住；等审批、等回答的运行状态在库里，不受影响。
 func TestInterruptActiveRuns(t *testing.T) {
@@ -388,34 +143,33 @@ func TestInterruptActiveRuns(t *testing.T) {
 	db := agentDB(t)
 	r := NewAgentRepository(db)
 	mk := func(canvas uint64, status string) *model.AgentRun {
-		s := newSession(t, r, 1, canvas)
-		return newRun(t, r, s, status)
+		s := newSession(t, db, 1, canvas)
+		return newRun(t, db, s, status)
 	}
 	queued, running := mk(1, model.RunQueued), mk(2, model.RunRunning)
 	waitingA, waitingI := mk(3, model.RunWaitingApproval), mk(4, model.RunWaitingInput)
 	done := mk(5, model.RunSucceeded)
 
 	n, err := r.InterruptActiveRuns(ctx)
-	if err != nil || n != 2 {
-		t.Fatalf("应只处理 queued 和 running 两个: n=%d err=%v", n, err)
+	if err != nil || n != 4 {
+		t.Fatalf("应处理排队、运行中、等审批、等回答四个（切换到独立 Agent 服务之前留下的旧运行，没有人会再推进）: n=%d err=%v", n, err)
 	}
 	status := func(id uint64) string {
 		var run model.AgentRun
 		db.First(&run, id)
 		return run.Status
 	}
-	if status(queued.ID) != model.RunInterrupted || status(running.ID) != model.RunInterrupted {
-		t.Error("queued 和 running 应变为 interrupted")
+	for _, id := range []uint64{queued.ID, running.ID, waitingA.ID, waitingI.ID} {
+		if status(id) != model.RunInterrupted {
+			t.Errorf("活跃的旧运行应变为 interrupted: %d 是 %s", id, status(id))
+		}
 	}
-	if status(waitingA.ID) != model.RunWaitingApproval || status(waitingI.ID) != model.RunWaitingInput || status(done.ID) != model.RunSucceeded {
-		t.Error("等审批、等回答和已结束的运行不能动")
+	if status(done.ID) != model.RunSucceeded {
+		t.Error("已结束的运行不能动")
 	}
 	if n, _ := r.InterruptActiveRuns(ctx); n != 0 {
 		t.Errorf("重复执行是幂等的: %d", n)
 	}
-	// 中断之后画布空出来了，可以开新的运行
-	s := newSession(t, r, 1, 1)
-	newRun(t, r, s, model.RunQueued)
 }
 
 // errTraceLogger 记录 GORM 当作错误打出来的语句，用来确认预期内的冲突没有被记成 ERROR。
@@ -438,68 +192,4 @@ func (l errTraceLogger) Trace(_ context.Context, _ time.Time, _ func() (string, 
 		*l.errs = append(*l.errs, err)
 		l.mu.Unlock()
 	}
-}
-
-func TestAgentRuns_DuplicateIsNotLoggedAsError(t *testing.T) {
-	// 用户双击或多标签页重复发起运行：业务上返回 409，不该在日志里留一条 ERROR 和整条 INSERT
-	db := agentDB(t)
-	var errs []error
-	rec := errTraceLogger{level: gormlogger.Error, mu: &sync.Mutex{}, errs: &errs}
-	r := NewAgentRepository(db.Session(&gorm.Session{Logger: rec}))
-	s := newSession(t, r, 1, 10)
-	newRun(t, r, s, model.RunRunning)
-	dup := &model.AgentRun{SessionID: s.ID, CanvasID: 10, UserID: 1, Status: model.RunQueued, MaxSteps: 40}
-	if err := r.CreateRun(context.Background(), dup); !errors.Is(err, ErrDuplicate) {
-		t.Fatalf("应 ErrDuplicate: %v", err)
-	}
-	if len(errs) != 0 {
-		t.Errorf("预期内的冲突不该被记成错误日志: %v", errs)
-	}
-}
-
-func TestAgentListEventsBefore(t *testing.T) {
-	ctx := context.Background()
-	r := NewAgentRepository(agentDB(t))
-	s := newSession(t, r, 1, 10)
-	other := newSession(t, r, 1, 11)
-	for i := 0; i < 10; i++ {
-		if _, err := r.AppendEvent(ctx, s.ID, 1, "message.done", nil); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if _, err := r.AppendEvent(ctx, other.ID, 1, "message.done", nil); err != nil {
-		t.Fatal(err)
-	}
-	seqs := func(evs []model.AgentEvent) []int64 {
-		out := make([]int64, len(evs))
-		for i, e := range evs {
-			out[i] = e.Seq
-		}
-		return out
-	}
-
-	t.Run("before 为 0 取最新的 limit 条，按序号升序", func(t *testing.T) {
-		got, err := r.ListEventsBefore(ctx, s.ID, 0, 3)
-		if err != nil || !reflect.DeepEqual(seqs(got), []int64{8, 9, 10}) {
-			t.Errorf("应为 8..10: %v err=%v", seqs(got), err)
-		}
-	})
-	t.Run("before 之前的最新 limit 条，不含 before 本身", func(t *testing.T) {
-		got, _ := r.ListEventsBefore(ctx, s.ID, 6, 3)
-		if !reflect.DeepEqual(seqs(got), []int64{3, 4, 5}) {
-			t.Errorf("before=6 limit=3 应为 3..5: %v", seqs(got))
-		}
-	})
-	t.Run("不够 limit 条时有多少给多少", func(t *testing.T) {
-		got, _ := r.ListEventsBefore(ctx, s.ID, 3, 5)
-		if !reflect.DeepEqual(seqs(got), []int64{1, 2}) {
-			t.Errorf("before=3 应只剩 1..2: %v", seqs(got))
-		}
-	})
-	t.Run("只读本会话的事件", func(t *testing.T) {
-		got, _ := r.ListEventsBefore(ctx, other.ID, 0, 10)
-		if len(got) != 1 || got[0].SessionID != other.ID {
-			t.Errorf("别的会话的事件不该混进来: %+v", got)
-		}
-	})
 }

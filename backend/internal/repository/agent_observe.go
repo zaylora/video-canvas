@@ -58,28 +58,6 @@ func (r *AgentObserveRepository) FinishToolCall(ctx context.Context, runID uint6
 	return r.db.WithContext(ctx).Model(&model.AgentToolCall{}).Where("run_id = ? AND tool_call_id = ?", runID, toolCallID).Updates(fields).Error
 }
 
-// GetFeedback 读某人对某运行的评价，没有返回 ErrNotFound。
-func (r *AgentObserveRepository) GetFeedback(ctx context.Context, runID, userID uint64) (*model.AgentFeedback, error) {
-	var fb model.AgentFeedback
-	if err := r.db.WithContext(ctx).Where("run_id = ? AND user_id = ?", runID, userID).First(&fb).Error; err != nil {
-		return nil, translate(err)
-	}
-	return &fb, nil
-}
-
-// UpsertFeedback 写评价：同一人对同一运行只有一条，再写就是改选（评分、原因、说明全部覆盖）。
-func (r *AgentObserveRepository) UpsertFeedback(ctx context.Context, fb *model.AgentFeedback) error {
-	return r.db.WithContext(ctx).Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "run_id"}, {Name: "user_id"}},
-		DoUpdates: clause.AssignmentColumns([]string{"rating", "reasons", "comment", "updated_at"}),
-	}).Create(fb).Error
-}
-
-// DeleteFeedback 取消评价；本来就没有也不是错误（取消是幂等的）。
-func (r *AgentObserveRepository) DeleteFeedback(ctx context.Context, runID, userID uint64) error {
-	return r.db.WithContext(ctx).Where("run_id = ? AND user_id = ?", runID, userID).Delete(&model.AgentFeedback{}).Error
-}
-
 // RunFacts 读生成运行摘要需要的事实，不按用户过滤（后台和事件钩子用）。运行不存在返回 ErrNotFound。
 // 工具调用不读参数和结果、审批和改动不读内容：摘要只数数，大字段留给导出。
 func (r *AgentObserveRepository) RunFacts(ctx context.Context, runID uint64) (*model.AgentRunFacts, error) {
@@ -120,6 +98,52 @@ func (r *AgentObserveRepository) RunFacts(ctx context.Context, runID uint64) (*m
 	var prev model.AgentRunDigest
 	if err := db.Select("runtime_tail").First(&prev, runID).Error; err == nil && prev.RuntimeTail != nil {
 		f.RuntimeTail = *prev.RuntimeTail
+	}
+	return &f, nil
+}
+
+// LocalRunFacts 读运行本身在 Agent 服务里时 Go 自己持有的那部分摘要事实：工具调用（不含参数和结果）、模型调用、画布改动、runtime_tail。
+// 没有记录不是错误，各部分为空。
+func (r *AgentObserveRepository) LocalRunFacts(ctx context.Context, runID uint64) (*model.AgentRunFacts, error) {
+	db := r.db.WithContext(ctx)
+	var f model.AgentRunFacts
+	if err := db.Omit("args_json", "result_text").Where("run_id = ?", runID).Order("started_at, id").Find(&f.ToolCalls).Error; err != nil {
+		return nil, err
+	}
+	if err := db.Where("run_id = ?", runID).Order("id").Find(&f.ModelCalls).Error; err != nil {
+		return nil, err
+	}
+	if err := db.Omit("changes_json").Where("run_id = ?", runID).Order("seq").Find(&f.Mutations).Error; err != nil {
+		return nil, err
+	}
+	var prev model.AgentRunDigest
+	if err := db.Select("runtime_tail").First(&prev, runID).Error; err == nil && prev.RuntimeTail != nil {
+		f.RuntimeTail = *prev.RuntimeTail
+	}
+	return &f, nil
+}
+
+// LocalExportFacts 读导出时 Go 自己持有的那部分：摘要、含参数和结果的工具调用、模型调用、模型请求摘要（不含请求体）、画布改动。
+func (r *AgentObserveRepository) LocalExportFacts(ctx context.Context, runID uint64) (*model.AgentExportFacts, error) {
+	db := r.db.WithContext(ctx)
+	var f model.AgentExportFacts
+	if err := db.First(&f.Digest, runID).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+	if err := db.Where("run_id = ?", runID).Order("started_at, id").Find(&f.ToolCalls).Error; err != nil {
+		return nil, err
+	}
+	if err := db.Where("run_id = ?", runID).Order("id").Find(&f.ModelCalls).Error; err != nil {
+		return nil, err
+	}
+	if err := db.Omit("body").Where("run_id = ?", runID).Order("call_id").Find(&f.Requests).Error; err != nil {
+		return nil, err
+	}
+	if err := db.Where("run_id = ?", runID).Order("seq").Find(&f.Mutations).Error; err != nil {
+		return nil, err
+	}
+	if f.Digest.RuntimeTail != nil {
+		f.RuntimeTail = *f.Digest.RuntimeTail
 	}
 	return &f, nil
 }

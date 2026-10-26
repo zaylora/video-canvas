@@ -54,7 +54,7 @@ flowchart LR
   S -->|generation tasks| K[worker]
   K --> PR[plugin-runner<br/>JS protocol plugins]
   PR --> M[Model providers]
-  S <-->|bridge| A[agent runtime<br/>Node]
+  S <-->|reverse proxy / platform API| A[agent service<br/>Node + SQLite]
   A -. web search .-> SX[SearXNG]
   K -. task status .-> S
   S -. WebSocket push .-> B
@@ -63,7 +63,7 @@ flowchart LR
 - **Request path**: The backend is layered as `router → middleware → handler → service → repository / cache`.
 - **Asynchronous generation**: Submitting a task returns immediately. The worker calls model providers through the plugin-runner, and status updates are pushed to the frontend over WebSocket. After a reconnect, the frontend reconciles tasks to pick up updates it missed.
 - **Protocol plugins**: Each provider protocol is a JS plugin running in an isolated plugin-runner process. See [plugin-contract.md](../backend/docs/plugin-contract.md).
-- **Canvas Agent**: The Agent loop runs in a separate Node process (`agent/`) that holds no secrets. Model calls, tool execution and state access all go back to the Go backend through a bridge.
+- **Canvas Agent**: The Agent is a standalone long-running service (`agent/`, Pi Durable + SQLite) that owns sessions, runs, approvals and events and holds no channel secrets. The Go backend checks the login and reverse-proxies the frontend's Agent APIs to it, and exposes a platform API (canvas read/write, model proxy and billing, generation tasks, assets); the Agent's events are pushed through Go to the WebSocket.
 - **Canvas saving**: Canvases are saved with `revision`-based optimistic locking; a version conflict returns 409.
 - **Production**: Besides the services above, the production Compose file includes an `updater` service for in-app upgrades and rollbacks.
 

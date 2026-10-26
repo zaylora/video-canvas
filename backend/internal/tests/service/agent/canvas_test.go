@@ -475,3 +475,203 @@ func TestAgentCatalogAndDetail(t *testing.T) {
 		t.Error("不存在的节点应报错")
 	}
 }
+
+// ---- 写入幂等：调用方带幂等键（阶段 3 里是 Pi 的工具任务 id）时，同一个 (运行, 键, 种类) 重复到达不再写画布 ----
+//
+// 不能用模型给的 tool_call_id 去重：有些兼容网关每个回答都从 call_0 开始编号，同一个运行的不同回合会出现相同的 id，
+// 那样会悄悄丢掉真实的写入。所以幂等是显式的、可选的，旧路径不带键，行为不变。
+
+func keyed(key string) context.Context { return WithIdempotencyKey(context.Background(), key) }
+
+func TestAgentApplyOps_ReplayWithSameKeyReturnsOriginalResult(t *testing.T) {
+	e := newAgentCanvasEnv(t)
+	first, err := e.svc.ApplyOps(keyed("k1"), e.run, "tc1", []byte(buildOps))
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := e.svc.ApplyOps(keyed("k1"), e.run, "tc1", []byte(buildOps))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e.repo.commits != 1 || len(e.repo.muts) != 1 {
+		t.Fatalf("重放不能再写一次：commits=%d muts=%d", e.repo.commits, len(e.repo.muts))
+	}
+	if len(e.payload(t).Nodes) != 2 || e.repo.canvas.Revision != 2 {
+		t.Fatalf("画布只该多一个节点、revision 只加一次: nodes=%d rev=%d", len(e.payload(t).Nodes), e.repo.canvas.Revision)
+	}
+	// 模型靠 tempId→真实 id 的映射去引用刚建的节点，重放必须原样还原，否则它拿到的 id 是错的
+	if first.IDMap["a"] == "" || again.IDMap["a"] != first.IDMap["a"] {
+		t.Errorf("id_map 要原样还原: %v / %v", first.IDMap, again.IDMap)
+	}
+	if again.MutationID != first.MutationID || again.Revision != first.Revision || again.Changes != first.Changes {
+		t.Errorf("重放的结果要和第一次一致: %+v / %+v", first, again)
+	}
+	if len(again.Created) != 1 || again.Created[0] != first.Created[0] {
+		t.Errorf("新建的节点列表要还原: %v / %v", first.Created, again.Created)
+	}
+	if len(e.bc.msgs) != 1 {
+		t.Errorf("重放不能再推一次 canvas.patch: %d", len(e.bc.msgs))
+	}
+}
+
+func TestAgentApplyOps_ReplayKeepsWarnings(t *testing.T) {
+	e := newAgentCanvasEnv(t)
+	e.svc.SetModelOps(func(context.Context) (map[string][]string, error) {
+		return map[string][]string{"veo": {"t2v", "i2v"}}, nil
+	})
+	// 文生视频却连了参考图：写入照常成功，但结果里带一条提醒（同 mode_test.go）。提醒文字里带着节点 id，所以必须原样存下来还原
+	ops := `[{"op":"create_node","tempId":"i","kind":"image","label":"角色"},` +
+		`{"op":"create_node","tempId":"v","kind":"video","label":"镜头","model":"veo","mode":"t2v"},` +
+		`{"op":"connect","source":"i","target":"v"}]`
+	first, err := e.svc.ApplyOps(keyed("kw"), e.run, "tcw", []byte(ops))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(first.Warnings) != 1 {
+		t.Fatalf("这个构造应当产生一条提醒: %v", first.Warnings)
+	}
+	again, err := e.svc.ApplyOps(keyed("kw"), e.run, "tcw", []byte(ops))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(again.Warnings) != 1 || again.Warnings[0] != first.Warnings[0] {
+		t.Errorf("提醒要原样还原: %v / %v", first.Warnings, again.Warnings)
+	}
+	if len(e.repo.muts) != 1 {
+		t.Errorf("重放不能再写: %d", len(e.repo.muts))
+	}
+}
+
+func TestAgentApplyOps_ReplayAfterUserSavedStillReturnsOriginal(t *testing.T) {
+	e := newAgentCanvasEnv(t)
+	first, err := e.svc.ApplyOps(keyed("k1"), e.run, "tc1", []byte(buildOps))
+	if err != nil {
+		t.Fatal(err)
+	}
+	userSaves("n_user")(e.repo) // 用户在两次到达之间保存了画布：revision 变成 3
+	again, err := e.svc.ApplyOps(keyed("k1"), e.run, "tc1", []byte(buildOps))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.MutationID != first.MutationID || again.Revision != first.Revision {
+		t.Errorf("返回的是当初那次写入，不是现在的 revision: %+v / %+v", first, again)
+	}
+	if e.repo.commits != 1 || len(e.payload(t).Nodes) != 3 {
+		t.Errorf("不能再改画布: commits=%d nodes=%d", e.repo.commits, len(e.payload(t).Nodes))
+	}
+}
+
+// 这是不能用模型的 tool_call_id 去重的原因：同一个运行里，不同回合的工具调用可能拿到相同的 id，它们是两次真实的写入
+func TestAgentApplyOps_ReusedModelToolCallIDWithDistinctKeysWritesBoth(t *testing.T) {
+	e := newAgentCanvasEnv(t)
+	for _, key := range []string{"task-aaa", "task-bbb"} {
+		if _, err := e.svc.ApplyOps(keyed(key), e.run, "call_0", []byte(`[{"op":"create_node","tempId":"x","kind":"image","label":"图"}]`)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(e.repo.muts) != 2 || len(e.payload(t).Nodes) != 3 {
+		t.Fatalf("模型复用了 call_0 但幂等键不同，两次都是真实的写入: muts=%d nodes=%d", len(e.repo.muts), len(e.payload(t).Nodes))
+	}
+}
+
+// 旧路径（进程模式、http 模式）不带幂等键：行为必须和以前完全一样，即使模型的 id 重复也照常写
+func TestAgentApplyOps_WithoutKeyNeverDeduplicates(t *testing.T) {
+	e := newAgentCanvasEnv(t)
+	for i := 0; i < 2; i++ {
+		if _, err := e.svc.ApplyOps(context.Background(), e.run, "call_0", []byte(`[{"op":"create_node","tempId":"x","kind":"image","label":"图"}]`)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(e.repo.muts) != 2 || len(e.payload(t).Nodes) != 3 {
+		t.Fatalf("没有幂等键就不去重: muts=%d nodes=%d", len(e.repo.muts), len(e.payload(t).Nodes))
+	}
+}
+
+func TestAgentApplyOps_SameKeyInAnotherRunIsIndependent(t *testing.T) {
+	e := newAgentCanvasEnv(t)
+	other := &model.AgentRun{ID: 2, SessionID: 1, CanvasID: 7, UserID: 1, Status: model.RunRunning}
+	e.repo.runs[2] = other
+	for _, run := range []*model.AgentRun{e.run, other} {
+		if _, err := e.svc.ApplyOps(keyed("k1"), run, "call_1", []byte(`[{"op":"create_node","tempId":"x","kind":"image","label":"图"}]`)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(e.repo.muts) != 2 {
+		t.Fatalf("幂等键只在一个运行内唯一，不同运行不能互相去重: %d", len(e.repo.muts))
+	}
+}
+
+func TestAgentMutate_DeduplicatesPerKind(t *testing.T) {
+	e := newAgentCanvasEnv(t)
+	if _, err := e.svc.ApplyOps(keyed("k1"), e.run, "tc1", []byte(buildOps)); err != nil {
+		t.Fatal(err)
+	}
+	// 同一个键做另一种写入（例如生成后绑定任务）是另一件事，不能被当成重放
+	node := e.payload(t).Nodes[1]["id"].(string)
+	if _, err := e.svc.BindTasks(keyed("k1"), e.run, "tc1", map[string]string{node: "99"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(e.repo.muts) != 2 || e.repo.muts[0].Kind == e.repo.muts[1].Kind {
+		t.Fatalf("同一个键、不同种类要各写一条: %+v", e.repo.muts)
+	}
+	// 同种类再来一次才是重放
+	if _, err := e.svc.BindTasks(keyed("k1"), e.run, "tc1", map[string]string{node: "99"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(e.repo.muts) != 2 {
+		t.Fatalf("同种类重复是重放: %d", len(e.repo.muts))
+	}
+}
+
+func TestAgentDeleteApproved_ReplayDoesNotDeleteTwiceOrFail(t *testing.T) {
+	e := newAgentCanvasEnv(t)
+	res, err := e.svc.ApplyOps(keyed("k1"), e.run, "tc1", []byte(buildOps))
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := res.IDMap["a"]
+	first, err := e.svc.DeleteApproved(keyed("kd"), e.run, "tcd", []string{id}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 重放时节点已经没了：不去重的话这里会因为「节点不存在」报错
+	again, err := e.svc.DeleteApproved(keyed("kd"), e.run, "tcd", []string{id}, nil)
+	if err != nil {
+		t.Fatalf("重放一个已完成的删除不该报错: %v", err)
+	}
+	if again.MutationID != first.MutationID || again.Revision != first.Revision || again.Changes != first.Changes {
+		t.Errorf("重放结果要一致: %+v / %+v", first, again)
+	}
+}
+
+func TestAgentApplyOps_ConcurrentDuplicatesWriteOnce(t *testing.T) {
+	e := newAgentCanvasEnv(t)
+	const n = 8
+	results := make([]*WriteResult, n)
+	errs := make([]error, n)
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			results[i], errs[i] = e.svc.ApplyOps(keyed("k1"), e.run, "tc1", []byte(buildOps))
+		}()
+	}
+	close(start)
+	wg.Wait()
+	for i := range errs {
+		if errs[i] != nil {
+			t.Fatalf("第 %d 个调用出错: %v", i, errs[i])
+		}
+	}
+	if len(e.repo.muts) != 1 || e.repo.commits != 1 || len(e.payload(t).Nodes) != 2 {
+		t.Fatalf("并发的重复调用只能写一次: muts=%d commits=%d nodes=%d", len(e.repo.muts), e.repo.commits, len(e.payload(t).Nodes))
+	}
+	for i, r := range results {
+		if r.IDMap["a"] == "" || r.IDMap["a"] != results[0].IDMap["a"] || r.MutationID != results[0].MutationID {
+			t.Errorf("第 %d 个调用的结果和别的不一致: %+v / %+v", i, r, results[0])
+		}
+	}
+}

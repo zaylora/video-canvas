@@ -85,15 +85,22 @@ type JWT struct {
 	ExpireHours int    `mapstructure:"expire_hours"`
 }
 
-// Agent 是画布 Agent 的运行时配置。它依赖 Node（pi 的 agent 循环在独立的 Node 进程里跑），所以默认关闭，要显式开启。
+// Agent 是画布 Agent 的配置。Agent 是独立的常驻服务（agent/，Pi Durable + SQLite，会话、运行、审批都在它里面），
+// Go 负责登录校验、反向代理前端的接口，并提供平台能力（画布读写、模型代理和计费、生成任务、素材）。
 // 渠道、模型、凭证和计费都在后台的 AI 配置里，不在这里。
 type Agent struct {
-	Enabled    bool   `mapstructure:"enabled"`     // 是否启用；关闭时发起运行会返回「Agent 暂不可用」
-	NodePath   string `mapstructure:"node_path"`   // node 可执行文件，默认 node（在 PATH 里找），要求 >= 22.19
-	RuntimeDir string `mapstructure:"runtime_dir"` // 仓库根目录 agent/ 目录（含 src/main.mjs 和已安装的 node_modules），默认 ../agent
-	BridgeAddr string `mapstructure:"bridge_addr"` // 桥的监听地址，必须是回环地址，默认 127.0.0.1:0（随机端口）
-	WorkDir    string `mapstructure:"work_dir"`    // 每个运行片段的临时目录建在这里，默认系统临时目录
-	// WebEnabled 是否开放联网工具（搜索、读网页），默认开启。联网请求由 Go 发出（Agent 进程不联网），
+	Enabled bool `mapstructure:"enabled"` // 是否启用；关闭时 Agent 的接口统一返回「Agent 暂不可用」
+	// URL 是 Agent 服务的地址，如 http://agent:8090，只写协议、主机和端口
+	URL string `mapstructure:"url"`
+	// BridgeURL 是 Agent 服务访问平台 API 用的地址，如 http://backend:47001：它要能从 Agent 容器连上，
+	// 和 BridgeAddr（本进程监听在哪）不是一回事
+	BridgeURL string `mapstructure:"bridge_url"`
+	// BridgeAddr 是平台 API 的监听地址，默认 0.0.0.0:47001（只在 compose 内网可达，不对外开放端口），靠服务令牌鉴权
+	BridgeAddr string `mapstructure:"bridge_addr"`
+	// ServiceToken 是 Go 与 Agent 服务互相认的唯一凭据：平台 API 的每个请求都要带请求头 X-Agent-Service-Token，
+	// Go 转发前端请求时也用它。至少 MinServiceTokenLen 个字符。只通过环境变量 APP_AGENT_SERVICE_TOKEN 提供，不写进 YAML。
+	ServiceToken string `mapstructure:"service_token"`
+	// WebEnabled 是否开放联网工具（搜索、读网页），默认开启。联网请求由 Go 发出（Agent 服务不联网），
 	// 内网和本机地址一律拒绝；关闭后模型看不到这两个工具。
 	WebEnabled bool `mapstructure:"web_enabled"`
 	// SearXNGURL 是自己部署的 SearXNG 地址（如 http://searxng:8080），可选：配了它排在搜索源的第一位，
@@ -104,22 +111,26 @@ type Agent struct {
 	DisabledTools []string `mapstructure:"disabled_tools"`
 }
 
+// DefaultBridgeAddr 是平台 API 的默认监听地址：Agent 服务在别的容器里，要连得上就得是内网可达的固定端口。
+// 它不是回环地址，所以必须配服务令牌（Validate 已保证）。
+const DefaultBridgeAddr = "0.0.0.0:47001"
+
+// MinServiceTokenLen 是服务令牌的最短长度：它在非回环监听时是唯一的屏障，太短的令牌等于没配。
+const MinServiceTokenLen = 32
+
+// ValidServiceToken 报告令牌是否够长。
+func ValidServiceToken(token string) bool { return len(token) >= MinServiceTokenLen }
+
 // WithDefaults 补上没配置的项。
 func (a Agent) WithDefaults() Agent {
-	if a.NodePath == "" {
-		a.NodePath = "node"
-	}
-	if a.RuntimeDir == "" {
-		a.RuntimeDir = "../agent"
-	}
 	if a.BridgeAddr == "" {
-		a.BridgeAddr = "127.0.0.1:0"
+		a.BridgeAddr = DefaultBridgeAddr
 	}
 	return a
 }
 
-// Validate 校验启用时的配置。桥的端点用一次性令牌鉴权，但它只该被本机的 Node 进程访问，
-// 所以监听地址必须是回环地址：配成 0.0.0.0 或外网地址，令牌之外就没有任何屏障了，直接拒绝启动。
+// Validate 校验启用时的配置：Agent 服务地址、平台 API 的对外地址、两边共用的服务令牌都必填。
+// 平台 API 监听的是内网地址，服务令牌是唯一的屏障，所以不够长直接拒绝启动。
 func (a Agent) Validate() error {
 	if !a.Enabled {
 		return nil
@@ -129,14 +140,26 @@ func (a Agent) Validate() error {
 			return fmt.Errorf("agent.searxng_url 必须是 http(s)://host[:port] 形式，当前是 %q", a.SearXNGURL)
 		}
 	}
-	host, _, err := net.SplitHostPort(a.WithDefaults().BridgeAddr)
-	if err != nil {
+	if err := checkOrigin("agent.url", a.URL); err != nil {
+		return err
+	}
+	if err := checkOrigin("agent.bridge_url", a.BridgeURL); err != nil {
+		return err
+	}
+	if !ValidServiceToken(a.ServiceToken) {
+		return fmt.Errorf("画布 Agent 需要 agent.service_token（APP_AGENT_SERVICE_TOKEN），至少 %d 个字符：它是 Go 与 Agent 服务互相认的唯一凭据（openssl rand -hex 32 可以生成）；不用 Agent 请设 APP_AGENT_ENABLED=false", MinServiceTokenLen)
+	}
+	if _, _, err := net.SplitHostPort(a.WithDefaults().BridgeAddr); err != nil {
 		return fmt.Errorf("agent.bridge_addr 必须是 host:port 形式: %w", err)
 	}
-	if host != "localhost" {
-		if ip := net.ParseIP(host); ip == nil || !ip.IsLoopback() {
-			return fmt.Errorf("agent.bridge_addr 必须是回环地址（127.0.0.1、::1 或 localhost），当前是 %q：桥只该被本机的 Node 进程访问", host)
-		}
+	return nil
+}
+
+// checkOrigin 要求值是 http(s)://host[:port]，不带路径、查询和用户信息。
+func checkOrigin(name, raw string) error {
+	u, err := url.Parse(raw)
+	if raw == "" || err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.User != nil {
+		return fmt.Errorf("%s 必须是 http(s)://host[:port] 形式，当前是 %q", name, raw)
 	}
 	return nil
 }
@@ -230,7 +253,7 @@ func Load(path string) (*Config, error) {
 	// 否则升级时无法把它们导入为后台存储
 	for _, key := range []string{
 		"server.id_key", "database.allow_newer_schema", "update.updater_token", "ai.secret_key", "ai.allow_fake_ip", "storage.driver",
-		"agent.enabled", "agent.node_path", "agent.runtime_dir", "agent.bridge_addr", "agent.work_dir", "agent.web_enabled", "agent.searxng_url", "agent.disabled_tools",
+		"agent.enabled", "agent.url", "agent.bridge_url", "agent.bridge_addr", "agent.service_token", "agent.web_enabled", "agent.searxng_url", "agent.disabled_tools",
 		"storage.s3.endpoint", "storage.s3.region", "storage.s3.bucket", "storage.s3.access_key", "storage.s3.secret_key",
 		"storage.s3.use_ssl", "storage.s3.public_base_url", "storage.s3.path_prefix",
 	} {

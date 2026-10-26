@@ -22,9 +22,14 @@ type fakeGenTasks struct {
 	errAt map[int]error // 第 i 次提交失败
 	next  uint64
 	task  *model.GenerationTaskView
+	// onCreate 在每次提交开始时调用，用来模拟提交过程中请求被取消
+	onCreate func()
 }
 
 func (f *fakeGenTasks) Create(_ context.Context, _ uint64, key string, req *model.CreateGenerationTaskReq) (*model.CreateGenerationTaskResp, error) {
+	if f.onCreate != nil {
+		f.onCreate()
+	}
 	i := len(f.reqs)
 	f.reqs, f.keys = append(f.reqs, req), append(f.keys, key)
 	if err := f.errAt[i]; err != nil {
@@ -95,99 +100,6 @@ func (e *genEnv) generate(t *testing.T, ids ...string) *ToolResult {
 	}
 	return e.tool(t, e.tok, "generate_media", map[string]any{"items": items, "reason": "出角色图"})
 }
-
-func TestAgentBridge_GenerateMedia(t *testing.T) {
-	t.Run("预检通过：建生成审批、按模型价格算预估、本轮停下等批准", func(t *testing.T) {
-		e := newGenEnv(t, "all")
-		res := e.generate(t, e.imgID(t))
-		if res.IsError || !res.Terminate {
-			t.Fatalf("res=%+v", res)
-		}
-		var a *model.AgentApproval
-		for _, v := range e.repo.st().approvals {
-			a = v
-		}
-		if a == nil || a.Kind != model.ApprovalGenerate || a.QuoteCredits != 5 {
-			t.Fatalf("approval=%+v", a)
-		}
-		var p GeneratePayload
-		_ = json.Unmarshal(a.PayloadJSON, &p)
-		if len(p.Items) != 1 || p.Items[0].ModelKey != "seedream" || p.Items[0].Price != 5 || p.Items[0].Count != 1 || p.Items[0].Label != "角色" {
-			t.Errorf("payload=%+v", p)
-		}
-		if e.run.ID == 0 || e.run1(e.run.ID).Status != model.RunWaitingApproval {
-			t.Errorf("运行应等待批准")
-		}
-	})
-
-	t.Run("预检不过都是写给模型的工具错误，不建审批", func(t *testing.T) {
-		cases := map[string]struct {
-			setup func(e *genEnv, id string) []string
-			want  string
-		}{
-			"节点没有选模型": {func(e *genEnv, id string) []string {
-				e.tool(t, e.tok, "canvas_apply_ops", map[string]any{"ops": []map[string]any{{"op": "update_node", "id": id, "model": ""}}})
-				return []string{id}
-			}, "还没有选模型"},
-			"节点是组或不存在": {func(*genEnv, string) []string { return []string{"ghost"} }, "ghost"},
-			"节点重复":     {func(_ *genEnv, id string) []string { return []string{id, id} }, "重复"},
-			"一个都没有":    {func(*genEnv, string) []string { return nil }, "1 到 8"},
-			"提示词为空": {func(e *genEnv, id string) []string {
-				e.tool(t, e.tok, "canvas_apply_ops", map[string]any{"ops": []map[string]any{{"op": "update_node", "id": id, "prompt": " "}}})
-				return []string{id}
-			}, "参数不合法"},
-			"模型种类对不上": {func(e *genEnv, id string) []string {
-				e.reg.snap = &provider.Snapshot{Model: provider.ModelSnapshot{Key: "seedream", Kind: "video", Capabilities: imageSnap.Model.Capabilities}, Channel: imageSnap.Channel}
-				return []string{id}
-			}, "种类对不上"},
-			"模型已下线": {func(e *genEnv, id string) []string { e.reg.snapEr = provider.ErrModelUnavailable; return []string{id} }, "不可用"},
-		}
-		for name, c := range cases {
-			t.Run(name, func(t *testing.T) {
-				e := newGenEnv(t, "all")
-				ids := c.setup(e, e.imgID(t))
-				res := e.generate(t, ids...)
-				if !res.IsError || res.Terminate || !strings.Contains(res.Content, c.want) {
-					t.Fatalf("应是含 %q 的工具错误: %+v", c.want, res)
-				}
-				if len(e.repo.st().approvals) != 0 {
-					t.Error("预检不过不能建审批")
-				}
-			})
-		}
-	})
-
-	t.Run("已有产物或正在生成的节点不能生成，不覆盖", func(t *testing.T) {
-		for name, patch := range map[string]string{"已有产物": `"src":"/files/1"`, "正在生成": `"status":"running"`} {
-			e := newGenEnv(t, "all")
-			id := e.imgID(t)
-			e.repo.canvas.PayloadJSON = []byte(strings.Replace(string(e.repo.canvas.PayloadJSON), `"kind":"image"`, `"kind":"image",`+patch, 1))
-			res := e.generate(t, id)
-			if !res.IsError || !strings.Contains(res.Content, "角色") {
-				t.Errorf("%s: %+v", name, res)
-			}
-		}
-	})
-
-	t.Run("剧本创编和提示词优化模式没有这个工具", func(t *testing.T) {
-		b := newBridgeEnv(t)
-		tok, _ := b.token(t, "script")
-		if res := b.tool(t, tok, "generate_media", map[string]any{"items": []map[string]string{{"nodeId": "n_script"}}}); !res.IsError || !strings.Contains(res.Content, "剧本创编") {
-			t.Errorf("Go 端也要拒绝: %+v", res)
-		}
-		if got := AgentToolsForMode("script"); hasTool(got, "generate_media") {
-			t.Errorf("script 模式不该有 generate_media: %v", got)
-		}
-		if !hasTool(AgentToolsForMode("storyboard"), "generate_media") || !hasTool(AgentToolsForMode("all"), "generate_media") {
-			t.Error("全能创作和分镜搭建应有 generate_media")
-		}
-		if !hasTool(AgentToolsForMode("prompt"), "task_get") {
-			t.Error("task_get 所有模式都能用")
-		}
-	})
-}
-
-func (b *bridgeEnv) run1(id uint64) model.AgentRun { return b.run(id) }
 
 func TestAgentBridge_TaskGet(t *testing.T) {
 	e := newGenEnv(t, "all")

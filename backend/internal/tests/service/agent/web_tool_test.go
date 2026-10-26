@@ -65,7 +65,7 @@ func TestWebSearchTool(t *testing.T) {
 	if len(w.searches) != 1 || w.searches[0] != "港口 纪录片" || w.searchLimit != 3 {
 		t.Errorf("searches=%v limit=%d", w.searches, w.searchLimit)
 	}
-	if got := b.repo.lastEvent("tool.end")["summary"]; got != "搜索「港口 纪录片」：2 条结果" {
+	if got := res.ToolEnd["summary"]; got != "搜索「港口 纪录片」：2 条结果" {
 		t.Errorf("时间线摘要: %v", got)
 	}
 }
@@ -124,7 +124,7 @@ func TestWebFetchTool(t *testing.T) {
 	if b.web().fetchChars != 3000 {
 		t.Errorf("maxChars 传给实现: %d", b.web().fetchChars)
 	}
-	if got := b.repo.lastEvent("tool.end")["summary"]; got != "读取 https://site.example/a" {
+	if got := res.ToolEnd["summary"]; got != "读取 https://site.example/a" {
 		t.Errorf("时间线摘要: %v", got)
 	}
 	b.tool(t, tok, "web_fetch", map[string]any{"url": "https://site.example/a"})
@@ -182,7 +182,7 @@ func TestWebTools_DisabledWithoutWebAccess(t *testing.T) {
 	tok, _ := b.token(t, "all")
 	for _, name := range []string{"web_search", "web_fetch"} {
 		raw, _ := json.Marshal(map[string]any{"query": "x", "url": "https://s.example"})
-		res, err := b.br.ExecuteTool(context.Background(), tok, "tc-"+name, name, raw)
+		res, err := b.br.ExecutePlatformTool(context.Background(), b.rcs[tok], "tc-"+name, name, raw)
 		if err != nil {
 			t.Fatal(err)
 		}
