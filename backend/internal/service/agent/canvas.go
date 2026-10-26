@@ -145,7 +145,8 @@ func (s *AgentCanvasService) ApplyOps(ctx context.Context, run *model.AgentRun, 
 		if err != nil {
 			return nil, err
 		}
-		warnings := canvasgraph.ModeWarnings(r.Graph, touchedNodeIDs(r.Changes), lookup)
+		// 先放位置重叠的提醒，再放生成方式的提醒
+		warnings := append(append([]string(nil), r.Warnings...), canvasgraph.ModeWarnings(r.Graph, touchedNodeIDs(r.Changes), lookup)...)
 		return &edit{graph: r.Graph, changes: r.Changes, idMap: r.IDMap, extra: warnings}, nil
 	})
 	if w, ok := extra.([]string); ok && res != nil {

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { canConnectKinds } from "@/utils/canvas/canvas";
 import { arrangeNodes, type ArrangeMode } from "@/utils/canvas/arrange";
 import { createGroup, fitGroupToMembers, ungroup } from "@/utils/canvas/group";
+import { nodeFrameSize, parseAspect, resolveNodeAspect } from "@/utils/canvas/node-frame";
 import type { CanvasNode, FlowNode, NodeKind } from "@/types";
 
 /**
@@ -21,6 +22,32 @@ describe("与后端共用的连线规则", () => {
   for (const c of cases) {
     test(`${c.from} → ${c.to}：${c.ok ? "允许" : "拒绝"}`, () => {
       expect(canConnectKinds(c.from, "source", c.to)).toBe(c.ok);
+    });
+  }
+});
+
+type NodeFrameCase = {
+  name: string;
+  kind: NodeKind;
+  mediaAspect?: number;
+  params?: Record<string, unknown>;
+  w: number;
+  h: number;
+};
+
+describe("与后端共用的节点框尺寸", () => {
+  const { cases } = load<{ cases: NodeFrameCase[] }>("node-frame-cases.json");
+  for (const c of cases) {
+    test(c.name, () => {
+      // 比例参数：aspect_ratio 优先于 ratio；Auto 或写法不认识就是没有
+      const selected = parseAspect(c.params?.aspect_ratio) ?? parseAspect(c.params?.ratio) ?? null;
+      const aspect = resolveNodeAspect({
+        measured: null,
+        declared: c.mediaAspect && c.mediaAspect > 0 ? c.mediaAspect : null,
+        selected,
+        mediaType: c.kind === "audio" ? "audio" : undefined,
+      });
+      expect(nodeFrameSize(aspect)).toEqual({ width: c.w, height: c.h });
     });
   }
 });

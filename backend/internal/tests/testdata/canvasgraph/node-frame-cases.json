@@ -1,0 +1,15 @@
+{
+  "说明": "节点框尺寸的输入与期望宽高（像素）。规则对应前端 node-frame.ts 的 resolveNodeAspect + nodeFrameSize：音频固定 1:1；否则 data.mediaAspect 优先，其次比例参数（params.aspect_ratio / params.ratio，Auto 或写法不认识视为没有），都没有按 16:9；短边固定 324。后端 canvasgraph 与前端各读这一份，任何一边改了规则而另一边没改，测试会立刻失败。",
+  "cases": [
+    { "name": "没有任何画幅信息：16:9", "kind": "image", "w": 576, "h": 324 },
+    { "name": "文本节点：16:9", "kind": "script", "w": 576, "h": 324 },
+    { "name": "视频记下了竖屏画幅", "kind": "video", "mediaAspect": 0.5625, "w": 324, "h": 576 },
+    { "name": "图片选了 3:4", "kind": "image", "params": { "aspect_ratio": "3:4" }, "w": 324, "h": 432 },
+    { "name": "比例参数叫 ratio，21:9", "kind": "video", "params": { "ratio": "21:9" }, "w": 756, "h": 324 },
+    { "name": "比例是 Auto：回落 16:9", "kind": "image", "params": { "aspect_ratio": "Auto" }, "w": 576, "h": 324 },
+    { "name": "比例写法不认识：回落 16:9", "kind": "image", "params": { "aspect_ratio": "宽屏" }, "w": 576, "h": 324 },
+    { "name": "mediaAspect 优先于比例参数", "kind": "image", "mediaAspect": 1, "params": { "aspect_ratio": "16:9" }, "w": 324, "h": 324 },
+    { "name": "mediaAspect 为 0（无效）：看比例参数", "kind": "image", "mediaAspect": 0, "params": { "aspect_ratio": "9:16" }, "w": 324, "h": 576 },
+    { "name": "音频固定 1:1，不看其他画幅", "kind": "audio", "mediaAspect": 1.7778, "params": { "aspect_ratio": "16:9" }, "w": 324, "h": 324 }
+  ]
+}

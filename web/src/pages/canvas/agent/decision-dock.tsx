@@ -316,7 +316,7 @@ export function DecisionDock({
                 onMouseEnter={() => !option.disabled && setIdx(i)}
                 onFocus={() => setIdx(i)}
                 className={cn(
-                  "relative flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] outline-none disabled:opacity-45",
+                  "relative flex min-h-9 w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] outline-none disabled:opacity-45",
                   option.danger && "text-destructive",
                 )}
               >
@@ -328,15 +328,15 @@ export function DecisionDock({
                     className="agent-inset bg-foreground/7 absolute inset-0 rounded-lg"
                   />
                 )}
-                <Num n={i + 1} />
-                <span className="relative min-w-0 truncate">{option.label}</span>
+                <Num n={i + 1} className="relative mt-px" />
+                <span className="relative min-w-0 leading-5 wrap-anywhere">{option.label}</span>
                 {option.sub && (
-                  <span className="text-muted-foreground relative min-w-0 truncate text-xs">
+                  <span className="text-muted-foreground relative min-w-0 text-xs leading-5 wrap-anywhere">
                     {option.sub}
                   </span>
                 )}
                 {option.meta && (
-                  <span className="text-credit relative ml-auto shrink-0 text-xs tabular-nums">
+                  <span className="text-credit relative ml-auto shrink-0 text-xs leading-5 tabular-nums">
                     {option.meta}
                   </span>
                 )}
@@ -368,9 +368,14 @@ export function DecisionDock({
 }
 
 /** 选项的序号 */
-function Num({ n }: { n: number }) {
+function Num({ n, className }: { n: number; className?: string }) {
   return (
-    <span className="text-muted-foreground ring-chrome-border relative grid size-[18px] shrink-0 place-items-center rounded-[5px] text-[11px] tabular-nums ring-1">
+    <span
+      className={cn(
+        "text-muted-foreground ring-chrome-border relative grid size-[18px] shrink-0 place-items-center rounded-[5px] text-[11px] tabular-nums ring-1",
+        className,
+      )}
+    >
       {n}
     </span>
   );

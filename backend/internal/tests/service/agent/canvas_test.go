@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -539,6 +540,29 @@ func TestAgentApplyOps_ReplayKeepsWarnings(t *testing.T) {
 	}
 	if len(e.repo.muts) != 1 {
 		t.Errorf("重放不能再写: %d", len(e.repo.muts))
+	}
+}
+
+func TestAgentApplyOps_ReportsOverlapOfExplicitPosition(t *testing.T) {
+	e := newAgentCanvasEnv(t)
+	// 模型显式把新节点放在已有的 n_script 上：位置原样保留，结果里带一条重叠提醒，重放时原样还原
+	ops := `[{"op":"create_node","tempId":"x","kind":"image","label":"叠上去","position":{"x":100,"y":50}}]`
+	first, err := e.svc.ApplyOps(keyed("kov"), e.run, "tco", []byte(ops))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(first.Warnings) != 1 || !strings.Contains(first.Warnings[0], "重叠") || !strings.Contains(first.Warnings[0], "n_script") {
+		t.Fatalf("应提醒与 n_script 重叠: %v", first.Warnings)
+	}
+	if p := e.payload(t).Node(first.IDMap["x"]).Position(); p.X != 100 || p.Y != 50 {
+		t.Errorf("显式位置要原样写入，实际 %+v", p)
+	}
+	again, err := e.svc.ApplyOps(keyed("kov"), e.run, "tco", []byte(ops))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(again.Warnings) != 1 || again.Warnings[0] != first.Warnings[0] {
+		t.Errorf("提醒要原样还原: %v / %v", first.Warnings, again.Warnings)
 	}
 }
 

@@ -61,9 +61,15 @@ func (a *applier) createGroup(op Op) error {
 	grp := Node{"id": id, "type": "group", "data": map[string]any{"label": a.uniqueLabel(op.Label, "组")}}
 	setHue(grp.Data(), "color", op.Color)
 	setHue(grp.Data(), "labelColor", op.LabelColor)
-	pos, w, h := a.g.placeFree(), groupMinW, groupMinH
-	if op.Position != nil {
+	pos, w, h := Point{}, groupMinW, groupMinH
+	switch {
+	case len(members) > 0:
+		// 位置由成员决定，下面按成员的包围盒算
+	case op.Position != nil:
 		pos = *op.Position
+		a.explicit[id] = true
+	default:
+		a.pending = append(a.pending, id) // 没有成员也没指定位置：延后放置
 	}
 	if len(members) > 0 {
 		rs := make([]rect, len(members))
@@ -114,6 +120,9 @@ func (a *applier) setGroup(op Op) error {
 	}
 	setHue(grp.Data(), "color", op.Color)
 	setHue(grp.Data(), "labelColor", op.LabelColor)
+	if len(add)+len(remove) > 0 {
+		a.settle(grp) // 组还没放置的话先定下来，成员入组、出组才有稳定的绝对坐标可以保持
+	}
 	for _, m := range add {
 		a.g.reparent(m, grp)
 	}
