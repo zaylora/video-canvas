@@ -28,6 +28,7 @@
  *   PUT    /admin/ai/channels/:key/models/sort         渠道内模型顺序，body = {keys: 该渠道全部模型的新顺序}
  *   GET    /admin/ai/models                            模型分页列表（?q=&kind=&channel=&status=&page=&page_size=）
  *   GET    /admin/ai/models/options                    全部模型的列表项（不分页）
+ *   GET    /admin/ai/models/limits                     按上游模型名识别上下文窗口 / 最大输出（?name=&channel=）
  *   POST   /admin/ai/models                            新建（保存，默认未启用）
  *   GET|PUT  /admin/ai/models/:key                     详情 / 更新（已启用的保存即生效）
  *   POST   /admin/ai/models/:key/{validate|dry-run|test-run}
@@ -68,6 +69,7 @@ export const adminAiEndpoints = {
 
   models: () => `${P}/models`,
   modelOptions: () => `${P}/models/options`,
+  modelLimits: () => `${P}/models/limits`,
   model,
   modelValidate: (key: string) => `${model(key)}/validate`,
   modelEnabled: (key: string) => `${model(key)}/enabled`,

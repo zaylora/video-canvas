@@ -13,11 +13,13 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   checkDeadline,
   checkIdleTimeout,
+  readModelChannel,
   readModelKind,
   readModelString,
   withModelField,
 } from "@/utils/admin/model-body";
 
+import { ContextLimitsAssist } from "./context-limits-assist";
 import {
   ContextEditor,
   LIMITS,
@@ -105,6 +107,7 @@ export function ModelParamsForm({
     caps.prompt.max_length > LIMITS.promptLength[1];
 
   const isAgent = kind === "agent";
+  const upstream = readModelChannel(body);
 
   return (
     <>
@@ -206,6 +209,12 @@ export function ModelParamsForm({
             )}
           </FormSectionHeader>
           <ContextEditor value={caps.context} onChange={(context) => patch({ context })} />
+          <ContextLimitsAssist
+            channel={upstream.channel}
+            upstreamModel={upstream.upstreamModel}
+            current={caps.context}
+            onApply={(context) => patch({ context })}
+          />
           {isAgent && (
             <FormField
               size="default"

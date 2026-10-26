@@ -272,8 +272,9 @@ func (p *Prechecker) Precheck(_ context.Context, code string) (*provider.Prechec
 
 // ModelLister 是 provider.ModelLister 的替身：返回预设的上游模型 id 或预设的错误，并记录最近一次调用收到的渠道与 Key。
 type ModelLister struct {
-	IDs []string
-	Err error
+	IDs    []string
+	Limits map[string]provider.UpstreamLimits // 上游随模型给出的规格
+	Err    error
 
 	Calls   int
 	Channel provider.ChannelSnapshot // 最近一次调用收到的渠道（地址、请求头、限流）
@@ -288,6 +289,20 @@ func (l *ModelLister) ListUpstreamModels(_ context.Context, ch provider.ChannelS
 		return nil, l.Err
 	}
 	return append([]string(nil), l.IDs...), nil
+}
+
+// ListUpstreamLimits 记录调用并返回预设的规格。
+func (l *ModelLister) ListUpstreamLimits(_ context.Context, ch provider.ChannelSnapshot, apiKey string) (map[string]provider.UpstreamLimits, error) {
+	l.Calls++
+	l.Channel, l.APIKey = ch, apiKey
+	if l.Err != nil {
+		return nil, l.Err
+	}
+	out := make(map[string]provider.UpstreamLimits, len(l.Limits))
+	for k, v := range l.Limits {
+		out[k] = v
+	}
+	return out, nil
 }
 
 // Notifier 记录 Registry 刷新通知。

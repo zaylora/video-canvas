@@ -346,4 +346,13 @@ func (e *PullError) Error() string { return e.Message }
 type ModelLister interface {
 	// ListUpstreamModels 返回上游模型 id（去重、保持上游顺序）；失败返回 *PullError。
 	ListUpstreamModels(ctx context.Context, ch ChannelSnapshot, apiKey string) ([]string, error)
+	// ListUpstreamLimits 返回上游随模型一并给出的上下文规格（模型 id → 规格）；上游没给规格的模型不在结果里。
+	// 请求和失败分类与 ListUpstreamModels 相同。
+	ListUpstreamLimits(ctx context.Context, ch ChannelSnapshot, apiKey string) (map[string]UpstreamLimits, error)
+}
+
+// UpstreamLimits 是上游 /v1/models 随模型返回的上下文规格（Token）；某一项为 0 表示上游没给。
+type UpstreamLimits struct {
+	Window int // 上下文窗口
+	Output int // 最大输出
 }

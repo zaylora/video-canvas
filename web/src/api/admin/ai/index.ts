@@ -21,6 +21,7 @@ import type {
   ListChannelsParams,
   ListModelsParams,
   ListPluginsParams,
+  ModelLimits,
   ModelListItem,
   PluginListItem,
   PluginUploadResult,
@@ -334,6 +335,18 @@ export const listModels = async (
  */
 export const listModelOptions = async (): Promise<ConfigListItem[]> =>
   (await service.get<ConfigListItem[] | null>(ep.modelOptions(), undefined)) ?? [];
+
+/**
+ * 按上游模型名识别上下文窗口和最大输出：带渠道时先问该渠道的上游，退回内置模型库；都查不到 found 为 false（不是错误）
+ * @param name 上游模型名
+ * @param channel 模型所在渠道的 key，可选
+ * @returns 识别出的规格，只是建议
+ */
+export const getModelLimits = async (name: string, channel?: string): Promise<ModelLimits> =>
+  (await service.get<ModelLimits | null>(ep.modelLimits(), {
+    name,
+    ...(channel ? { channel } : {}),
+  })) ?? { found: false, context_window: 0, max_output: 0 };
 
 /**
  * 模型详情（配置正文 + 启用状态）

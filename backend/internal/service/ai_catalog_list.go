@@ -6,12 +6,16 @@ import (
 
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
+	"video-canvas/internal/provider"
+	"video-canvas/internal/provider/modelmeta"
 	"video-canvas/pkg/pagination"
 )
 
 // AICatalogChannels 是目录服务对渠道服务的依赖，由 *AIChannelService 实现。
 type AICatalogChannels interface {
 	List(ctx context.Context) ([]ChannelView, error)
+	// UpstreamLimits 向渠道上游问某个模型的上下文规格，上游没给 ok 为 false。
+	UpstreamLimits(ctx context.Context, key, modelID string) (provider.UpstreamLimits, bool, error)
 }
 
 // AICatalogPlugins 是目录服务对插件服务的依赖，由 *AIPluginService 实现。
@@ -347,6 +351,24 @@ func (s *AICatalogService) ListModels(ctx context.Context, req *model.ListModelR
 		return req.Status == "" || it.Health.Status == req.Status
 	})
 	return &CatalogModelPage{Result: found}, nil
+}
+
+// ModelLimits 识别上游模型的上下文窗口和最大输出，给新建 Agent / 文本模型时自动填写。
+// 带 channel 时先问该渠道的上游（/v1/models 随模型给了规格就用，最准）；上游没给、不合法或请求失败，
+// 退回内置快照（models.dev）。只是建议：都查不到不算错误，返回 Found=false，由运营手填。
+func (s *AICatalogService) ModelLimits(ctx context.Context, name, channel string) model.ModelLimitsView {
+	if channel != "" {
+		if up, ok, err := s.channels.UpstreamLimits(ctx, channel, name); err == nil && ok && up.Window > 0 && up.Output > 0 && up.Output < up.Window {
+			if l, ok := modelmeta.Clamp(up.Window, up.Output); ok {
+				return model.ModelLimitsView{Found: true, ContextWindow: l.Window, MaxOutput: l.Output, Source: model.ModelLimitsSourceUpstream}
+			}
+		}
+	}
+	l, ok := modelmeta.Lookup(name)
+	if !ok {
+		return model.ModelLimitsView{}
+	}
+	return model.ModelLimitsView{Found: true, ContextWindow: l.Window, MaxOutput: l.Output, Source: model.ModelLimitsSourceBuiltin}
 }
 
 // ModelOptions 返回全部模型的列表项（不含状态），不分页：概览等需要“有哪些模型、绑在哪个渠道”的页面用。
