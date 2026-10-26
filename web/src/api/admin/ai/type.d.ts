@@ -233,6 +233,18 @@ export interface DeleteCheckResult {
   blockers: DeleteBlocker[];
 }
 
+/** GET /admin/ai/models/limits 的结果：按上游模型名识别出的上下文规格，只是建议，可以改 */
+export interface ModelLimits {
+  /** 是否认识这个模型 */
+  found: boolean;
+  /** 上下文窗口（Token），没认出来是 0 */
+  context_window: number;
+  /** 最大输出（Token），没认出来是 0 */
+  max_output: number;
+  /** 来源：upstream = 渠道上游的 /v1/models 返回；builtin = 内置模型库；没认出来时没有 */
+  source?: "upstream" | "builtin";
+}
+
 /** 拉取到的一个上游模型 */
 export interface PulledModel {
   /** 上游模型 id */

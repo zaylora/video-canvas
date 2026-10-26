@@ -32,6 +32,8 @@ type Result struct {
 	Graph   *Graph            // 应用后的新图，入参不变
 	IDMap   map[string]string // tempId → 真实 id
 	Changes []Change          // 与入参相比的差异
+	// Warnings 是写入后发现的、不拦截的提醒，比如模型显式指定的位置压住了别的节点
+	Warnings []string
 }
 
 // finish 把前后两张图的差异打包成 Result。

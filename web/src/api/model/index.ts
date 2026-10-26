@@ -17,7 +17,7 @@ export const getModels = async (kind: string): Promise<ModelInfo[]> => {
         video: { on: false, max: 0, max_mb: 0 },
         audio: { on: false, max: 0, max_mb: 0 },
       },
-      prompt: item.capabilities?.prompt ?? { max_length: 2000 },
+      prompt: item.capabilities?.prompt ?? { max_length: 20000 },
     },
   }));
 };

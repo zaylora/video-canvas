@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -22,12 +23,15 @@ import (
 // fakeAgentCanvasRepo 是内存版 AgentCanvasRepo：画布带 revision，提交时按乐观锁校验，
 // beforeCommit 钩子用来在两次读写之间模拟「用户同时保存了画布」。
 type fakeAgentCanvasRepo struct {
-	mu           sync.Mutex
-	canvas       *model.CanvasProject
-	runs         map[uint64]*model.AgentRun
-	muts         []model.AgentMutation
-	commits      int
-	beforeCommit func(r *fakeAgentCanvasRepo)
+	mu            sync.Mutex
+	canvas        *model.CanvasProject
+	runs          map[uint64]*model.AgentRun
+	muts          []model.AgentMutation
+	reads         map[model.AgentCanvasRead]bool
+	readErr       error
+	recordReadErr error
+	commits       int
+	beforeCommit  func(r *fakeAgentCanvasRepo)
 }
 
 func newFakeAgentCanvasRepo(payload string) *fakeAgentCanvasRepo {
@@ -106,6 +110,7 @@ func (f *fakeAgentCanvasRepo) CommitCanvasMutation(_ context.Context, in reposit
 		}
 	}
 	f.muts = append(f.muts, *m)
+	f.addReadRows(in.CreatedReads)
 	return nil
 }
 
@@ -160,6 +165,9 @@ func TestAgentApplyOps_ReportsCreatedAndUpdatedNodes(t *testing.T) {
 	}
 	if len(res.Created) != 1 || res.Created[0] != res.IDMap["a"] || len(res.Updated) != 0 {
 		t.Fatalf("新建一个节点、连一条线：created 只有新节点，连线不算: %+v", res)
+	}
+	if _, err := e.svc.ReadDetail(context.Background(), e.run, []string{"n_script"}); err != nil {
+		t.Fatal(err)
 	}
 	res, err = e.svc.ApplyOps(context.Background(), e.run, "tc2", []byte(`[{"op":"update_node","id":"n_script","prompt":"黄昏"}]`))
 	if err != nil {
@@ -539,6 +547,29 @@ func TestAgentApplyOps_ReplayKeepsWarnings(t *testing.T) {
 	}
 	if len(e.repo.muts) != 1 {
 		t.Errorf("重放不能再写: %d", len(e.repo.muts))
+	}
+}
+
+func TestAgentApplyOps_ReportsOverlapOfExplicitPosition(t *testing.T) {
+	e := newAgentCanvasEnv(t)
+	// 模型显式把新节点放在已有的 n_script 上：位置原样保留，结果里带一条重叠提醒，重放时原样还原
+	ops := `[{"op":"create_node","tempId":"x","kind":"image","label":"叠上去","position":{"x":100,"y":50}}]`
+	first, err := e.svc.ApplyOps(keyed("kov"), e.run, "tco", []byte(ops))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(first.Warnings) != 1 || !strings.Contains(first.Warnings[0], "重叠") || !strings.Contains(first.Warnings[0], "n_script") {
+		t.Fatalf("应提醒与 n_script 重叠: %v", first.Warnings)
+	}
+	if p := e.payload(t).Node(first.IDMap["x"]).Position(); p.X != 100 || p.Y != 50 {
+		t.Errorf("显式位置要原样写入，实际 %+v", p)
+	}
+	again, err := e.svc.ApplyOps(keyed("kov"), e.run, "tco", []byte(ops))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(again.Warnings) != 1 || again.Warnings[0] != first.Warnings[0] {
+		t.Errorf("提醒要原样还原: %v / %v", first.Warnings, again.Warnings)
 	}
 }
 

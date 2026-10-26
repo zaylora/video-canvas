@@ -60,6 +60,20 @@ func TestRegistryAgentModels_List(t *testing.T) {
 		}
 	})
 
+	t.Run("带厂商 slug：画布据此显示厂商 logo；没配是空串", func(t *testing.T) {
+		reg := &fakeAgentRegistry{models: []provider.ModelInfo{
+			{Key: "claude", Kind: "agent", Label: "Claude", Vendor: "claude"},
+			{Key: "custom", Kind: "agent", Label: "自建"},
+		}}
+		got, err := NewRegistryAgentModels(reg).List(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got[0].Vendor != "claude" || got[1].Vendor != "" {
+			t.Errorf("got=%+v", got)
+		}
+	})
+
 	t.Run("没有已发布的模型：返回空清单而不是 nil", func(t *testing.T) {
 		got, err := NewRegistryAgentModels(&fakeAgentRegistry{}).List(ctx)
 		if err != nil || got == nil || len(got) != 0 {

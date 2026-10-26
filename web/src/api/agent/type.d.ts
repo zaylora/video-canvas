@@ -38,6 +38,8 @@ export interface AgentModelDto {
   key: string;
   /** 显示名 */
   name: string;
+  /** 厂商 slug（如 claude），对应内置 logo；空串表示没有 */
+  vendor?: string;
   /** 是否支持看图 */
   vision: boolean;
   /** 上下文窗口（Token），没配置是 0 */

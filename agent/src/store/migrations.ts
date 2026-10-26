@@ -123,6 +123,12 @@ CREATE TABLE agent_feedback (
 );
 `,
   },
+  {
+    version: 4,
+    name: "session-title-source",
+    // 标题是谁起的：draft 草稿（首条消息截出来的）、llm 模型命名、user 用户手动起的。只有草稿才会被模型命名覆盖
+    sql: `ALTER TABLE agent_sessions ADD COLUMN title_source TEXT NOT NULL DEFAULT 'draft';`,
+  },
 ];
 
 const checksum = (sql: string): string => createHash("sha256").update(sql).digest("hex");

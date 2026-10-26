@@ -189,6 +189,24 @@ func TestProxyModelPlatform_CancelledCallerIsStillCharged(t *testing.T) {
 	}
 }
 
+func TestProxyModelPlatform_TitlePurposeIsRecordedAndDoesNotCountAsContext(t *testing.T) {
+	b := newBridgeEnv(t)
+	rc := platformCtx(900111, "all")
+	if _, _, err := proxyPlatform(WithModelPurpose(context.Background(), ModelPurposeTitle), b, rc); err != nil {
+		t.Fatal(err)
+	}
+	if b.bill.settled[0].Purpose != "title" {
+		t.Errorf("会话命名调用要记成 title: %q", b.bill.settled[0].Purpose)
+	}
+	u, err := b.br.PlatformRunUsage(context.Background(), rc, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.SpentCredits == 0 || u.ContextTokens != 0 {
+		t.Errorf("命名调用照常计费，但不算对话的上下文大小: %+v", u)
+	}
+}
+
 func TestProxyModelPlatform_SummaryPurposeIsRecordedAndDoesNotCountAsContext(t *testing.T) {
 	b := newBridgeEnv(t)
 	rc := platformCtx(900110, "all")

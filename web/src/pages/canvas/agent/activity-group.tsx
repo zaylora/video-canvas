@@ -1,36 +1,67 @@
 import { useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { Check, ChevronRight, CircleStop, Loader2, TriangleAlert } from "lucide-react";
+import {
+  BookOpen,
+  Check,
+  CheckCircle2,
+  ChevronRight,
+  CircleStop,
+  Clapperboard,
+  Film,
+  Globe,
+  LayoutGrid,
+  Lightbulb,
+  ListChecks,
+  ListTodo,
+  Loader2,
+  MessageCircleQuestion,
+  PencilLine,
+  ScanEye,
+  Search,
+  Terminal,
+  Trash2,
+  TriangleAlert,
+  WandSparkles,
+  Wrench,
+  type LucideIcon,
+} from "lucide-react";
 
-import { toolLabel, toolVerb } from "@/constants/agent";
+import { toolLabel } from "@/constants/agent";
 import { DURATION, EASE_OUT } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { useAgentHighlight } from "@/store/agent-highlight";
+import { activitySummary, type VerbIcon } from "@/utils/agent/activity";
 import type { TimelineItem, ToolCall } from "@/utils/agent/timeline";
 
 import { useFocusNode } from "../chrome/use-focus-node";
 
 type Activity = Extract<TimelineItem, { type: "activity" }>;
 
-/** 收起后的摘要：「已处理 32s · 读取 2 · 修改 3」，按动词首次出现的顺序计数 */
-function summarize(item: Activity) {
-  const counts = new Map<string, number>();
-  for (const t of item.tools) {
-    const verb = toolVerb(t.name, t.verb, t.label);
-    counts.set(verb, (counts.get(verb) ?? 0) + 1);
-  }
-  const parts = [...counts].map(([verb, n]) => `${verb} ${n}`);
-  const seconds =
-    item.startedAt !== null && item.endedAt !== null
-      ? Math.max(1, Math.round((item.endedAt - item.startedAt) / 1000))
-      : null;
-  const head = item.status === "aborted" ? "已中止" : seconds ? `已处理 ${seconds}s` : "已处理";
-  return [head, ...parts].join(" · ");
-}
+/** 动作图标（设计稿 6.12）：同一种动作在摘要和时间线里用同一个图标 */
+const VERB_ICON: Record<VerbIcon, LucideIcon> = {
+  read: BookOpen,
+  edit: PencilLine,
+  arrange: LayoutGrid,
+  delete: Trash2,
+  look: ScanEye,
+  plan: ListChecks,
+  ask: MessageCircleQuestion,
+  models: Clapperboard,
+  generate: WandSparkles,
+  task: ListTodo,
+  skill: Lightbulb,
+  script: Terminal,
+  video: Film,
+  frame: Film,
+  search: Search,
+  web: Globe,
+  other: Wrench,
+};
 
 /**
- * 活动块：同一轮里连续的工具调用合成一块。
- * 进行中自动展开、头部是静态的「处理中」（实时状态只在状态行，避免重复）；结束后自动收成一行摘要。
+ * 活动行：同一轮里连续的工具调用合成一行。
+ * 收起时是「✓ 69s ☰2 ▢1 ✎1」的图标摘要（hover 看中文动词），点开是左侧发丝线的竖向时间线。
+ * 进行中自动展开、头部是静态的「处理中」（实时状态在状态行）；结束后自动收起。
  * 用户手动开合过之后就不再自动开合，以用户的意图为准。
  */
 export function ActivityGroup({ item }: { item: Activity }) {
@@ -39,20 +70,54 @@ export function ActivityGroup({ item }: { item: Activity }) {
   const [manual, setManual] = useState<boolean | null>(null);
   const open = manual ?? item.status === "running";
   const running = item.status === "running";
+  const summary = activitySummary(item);
+  const HeadIcon = running ? Loader2 : item.status === "aborted" ? CircleStop : CheckCircle2;
 
   return (
     <div className="flex flex-col">
       <button
         type="button"
         aria-expanded={open}
+        aria-label={running ? "处理中" : summary.text}
+        title={running ? undefined : summary.text}
         onClick={() => setManual(!open)}
-        className="text-muted-foreground hover:bg-chrome-hover hover:text-foreground focus-visible:ring-node-ring/60 -ml-2 inline-flex items-center gap-1.5 self-start rounded-lg px-2 py-0.5 text-[13px] outline-none transition-colors duration-120 focus-visible:ring-2"
+        className="text-muted-foreground hover:bg-chrome-hover hover:text-foreground focus-visible:ring-node-ring/60 -ml-2 inline-flex h-7 max-w-full items-center gap-2.5 self-start rounded-lg px-2 text-[12.5px] whitespace-nowrap tabular-nums outline-none transition-colors duration-120 focus-visible:ring-2"
       >
-        <ChevronRight
-          className={cn("size-3.5 transition-transform duration-120", open && "rotate-90")}
+        <HeadIcon
+          aria-hidden
+          className={cn(
+            "size-3.5 shrink-0 stroke-[1.75]",
+            running && "animate-spin motion-reduce:animate-none",
+          )}
         />
-        <span>{running ? "处理中" : summarize(item)}</span>
-        {item.errors > 0 && <span className="text-status-warning">· {item.errors} 项失败</span>}
+        {running ? (
+          <span>处理中</span>
+        ) : (
+          <>
+            {summary.seconds !== null && <span aria-hidden>{summary.seconds}s</span>}
+            <span aria-hidden className="flex min-w-0 items-center gap-2 overflow-hidden">
+              {summary.verbs.map(({ verb, icon, count }) => {
+                const Icon = VERB_ICON[icon];
+                return (
+                  <span key={verb} title={`${verb} ${count}`} className="flex items-center gap-0.5">
+                    <Icon className="size-3.5 shrink-0 stroke-[1.75]" />
+                    {count}
+                  </span>
+                );
+              })}
+            </span>
+          </>
+        )}
+        {item.errors > 0 && (
+          <span className="text-status-warning shrink-0">· {item.errors} 项失败</span>
+        )}
+        <ChevronRight
+          aria-hidden
+          className={cn(
+            "size-3.5 shrink-0 opacity-70 transition-transform duration-120",
+            open && "rotate-90",
+          )}
+        />
       </button>
       <AnimatePresence initial={false}>
         {open && (

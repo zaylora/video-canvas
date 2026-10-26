@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { Loader2, ThumbsDown, ThumbsUp } from "lucide-react";
+import { Copy, Loader2, ThumbsDown, ThumbsUp } from "lucide-react";
+import { toast } from "sonner";
 
 import type { AgentFeedbackRating, AgentFeedbackReason } from "@/api/agent/type";
 import type { AgentController } from "@/hooks/use-agent-controller";
@@ -37,10 +38,39 @@ export type FeedbackBarProps = {
   onComment: (text: string) => void;
   onCancelForm: () => void;
   onSubmitForm: () => void;
+  /** 同一行左边的内容：改动胶囊 */
+  leading?: ReactNode;
+  /** 行下方的展开内容：改动明细 */
+  below?: ReactNode;
+  /** 复制按钮复制的回答；空串不显示复制 */
+  copyText?: string;
+  /** 历史轮：复制和评价悬停或聚焦才出现（已评价的常显）；最后一轮常显 */
+  quiet?: boolean;
 };
 
 const THUMB_BASE =
   "text-muted-foreground hover:bg-chrome-hover hover:text-foreground focus-visible:ring-node-ring/60 grid size-7 place-items-center rounded-lg outline-none transition-colors duration-120 focus-visible:ring-2 disabled:pointer-events-none disabled:opacity-40 aria-pressed:text-foreground aria-pressed:bg-foreground/10 [&_svg]:size-3.5";
+
+/** 复制这一轮的回答 */
+function CopyButton({ text }: { text: string }) {
+  return (
+    <motion.button
+      type="button"
+      aria-label="复制"
+      title="复制"
+      whileTap={TAP}
+      onClick={() =>
+        void navigator.clipboard
+          .writeText(text)
+          .then(() => toast.success("已复制"))
+          .catch(() => toast.error("复制失败"))
+      }
+      className={THUMB_BASE}
+    >
+      <Copy />
+    </motion.button>
+  );
+}
 
 /** 一个 👍/👎 按钮：选中态用 aria-pressed，保存中禁用 */
 function Thumb({
@@ -76,8 +106,8 @@ function Thumb({
 }
 
 /**
- * 每轮运行末尾的反馈条：紧贴在这一轮最后一项内容下方、靠左，两个图标按钮；只在运行结束后出现，进行中不显示；
- * 点踩展开原因标签（多选，可不选）和可选的说明；评价后在按钮右侧留一行小字。
+ * 每轮运行末尾的底栏（设计稿 6.12）：一行里左边是改动胶囊，右边是复制、👍、👎；只在运行结束后出现，进行中不显示。
+ * 点踩在下方展开原因标签（多选，可不选）和可选的说明；评价后在按钮左边留一行小字。
  */
 export function FeedbackBar({
   feedback,
@@ -89,33 +119,47 @@ export function FeedbackBar({
   onComment,
   onCancelForm,
   onSubmitForm,
+  leading,
+  below,
+  copyText = "",
+  quiet = false,
 }: FeedbackBarProps) {
   const reduce = useReducedMotion();
   const rating = feedback?.rating;
+  const hidden = quiet && !feedback && !formOpen;
   return (
-    // -mt-1 -ml-1.5：和上面的回复正文贴近，图标的视觉左边缘与正文对齐
-    <div data-slot="run-feedback" className="-mt-1 -ml-1.5 flex flex-col gap-1.5 text-xs">
-      <div className="flex min-h-7 items-center justify-start gap-1">
-        <Thumb
-          rating={1}
-          pressed={rating === 1}
-          disabled={saving}
-          title="有帮助"
-          onClick={() => onThumb(1)}
-        />
-        <Thumb
-          rating={-1}
-          pressed={rating === -1}
-          disabled={saving}
-          title="没帮上忙"
-          onClick={() => onThumb(-1)}
-        />
-        {feedback && !formOpen && (
-          <span data-slot="run-feedback-note" className="text-muted-foreground ml-1">
-            {feedbackNote(feedback)}
-          </span>
-        )}
+    <div data-slot="run-feedback" className="group/foot flex flex-col gap-2 text-xs">
+      <div className="flex min-h-7 items-center gap-1">
+        {leading}
+        <div
+          className={cn(
+            "ml-auto flex items-center gap-0.5 transition-opacity duration-120",
+            hidden && "opacity-0 group-focus-within/foot:opacity-100 group-hover/foot:opacity-100",
+          )}
+        >
+          {feedback && !formOpen && (
+            <span data-slot="run-feedback-note" className="text-muted-foreground mr-1">
+              {feedbackNote(feedback)}
+            </span>
+          )}
+          {copyText && <CopyButton text={copyText} />}
+          <Thumb
+            rating={1}
+            pressed={rating === 1}
+            disabled={saving}
+            title="有帮助"
+            onClick={() => onThumb(1)}
+          />
+          <Thumb
+            rating={-1}
+            pressed={rating === -1}
+            disabled={saving}
+            title="没帮上忙"
+            onClick={() => onThumb(-1)}
+          />
+        </div>
       </div>
+      {below}
       <AnimatePresence initial={false}>
         {formOpen && (
           <motion.div
@@ -186,7 +230,14 @@ const EMPTY_DRAFT: FeedbackDraft = { reasons: [], comment: "" };
  * 一轮运行的反馈位：评价来自会话状态（事件回放 + 本地乐观更新），表单草稿和保存中是本地状态。
  * 👍 直接提交；👎 先展开原因再提交；再点已选中的按钮取消。保存失败的提示和回滚由 store 处理。
  */
-export function RunFeedback({ runId, ctl }: { runId: string; ctl: AgentController }) {
+export function RunFeedback({
+  runId,
+  ctl,
+  ...slots
+}: { runId: string; ctl: AgentController } & Pick<
+  FeedbackBarProps,
+  "leading" | "below" | "copyText" | "quiet"
+>) {
   const feedback = ctl.state.feedback[runId];
   const [saving, setSaving] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
@@ -232,6 +283,7 @@ export function RunFeedback({ runId, ctl }: { runId: string; ctl: AgentControlle
 
   return (
     <FeedbackBar
+      {...slots}
       feedback={feedback}
       saving={saving}
       formOpen={formOpen}

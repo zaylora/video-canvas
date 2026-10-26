@@ -148,14 +148,17 @@ func TestSystem_Codemode(t *testing.T) {
 	}
 }
 
-// 目录里的 selected 是用户发消息时选中的节点和组：「这个」「这组」指的就是它们；选中的组里有哪些成员写在 memberIds 里。
+// 消息引用是当前交互入口，selected 仍兼容旧客户端；概要不能替代修改前读取详情。
 func TestSystem_ExplainsSelectedInCatalog(t *testing.T) {
 	for _, mode := range []string{"all", "script", "storyboard", "prompt"} {
 		got := prompts.System(mode)
-		for _, must := range []string{"selected", "memberIds", "这个"} {
+		for _, must := range []string{"@[名字](node:id)", "旧客户端", "selected", "memberIds", "这个", "必须先", "nodeIds", "groupId", "组本身", "拒绝"} {
 			if !strings.Contains(got, must) {
 				t.Errorf("模式 %s 的提示词应说明目录里的 selected，缺少 %q", mode, must)
 			}
+		}
+		if strings.Contains(got, "没有 selected 说明用户没选") {
+			t.Error("不能从没有 selected 推断用户没有引用节点")
 		}
 	}
 }

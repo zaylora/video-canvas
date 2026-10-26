@@ -231,6 +231,7 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		models := adminAI.Group("/models")
 		models.GET("", h.AdminCatalog.ListModels)
 		models.GET("/options", h.AdminCatalog.ModelOptions)
+		models.GET("/limits", h.AdminCatalog.ModelLimits) // 静态段，与 /:key 同层，Gin 优先匹配静态段
 		models.POST("", h.AdminAI.Create)
 		models.GET("/:key", h.AdminAI.Get)
 		models.PUT("/:key", h.AdminAI.Update)

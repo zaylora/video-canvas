@@ -44,6 +44,8 @@ export interface FakeGoOptions {
   execute?: (body: any) => Record<string, unknown> | { error: { status: number; code: number; msg: string } } | "down";
   /** 摘要请求（X-Agent-Purpose: summary）的回答；函数形式可以按请求变化或出错。不消耗 turns */
   summary?: string | ((body: any, n: number) => string | { error: { status: number; message: string } });
+  /** 会话命名请求（X-Agent-Purpose: title）的回答；函数形式可以按请求变化或出错。不消耗 turns */
+  title?: string | ((body: any, n: number) => string | { error: { status: number; message: string } });
   /** 会话侧：模型清单、画布归属、消息引用、撤销 */
   models?: unknown[];
   checkCanvas?: (body: any) => { error: { status: number; code: number; msg: string } } | void;
@@ -72,7 +74,7 @@ export const DECLS: ToolDecl[] = Object.keys(LABELS).map((name) => ({
 
 export async function fakeGo(opts: FakeGoOptions) {
   const seen: GoSeen[] = [];
-  const callLog: Array<{ callId: string; purpose: "main" | "summary" }> = [];
+  const callLog: Array<{ callId: string; purpose: "main" | "summary" | "title" }> = [];
   let prepareError = opts.prepareError;
   const turns = [...opts.turns];
   let nextCallId = 7_000_000_000_000_000_001n;
@@ -154,7 +156,7 @@ export async function fakeGo(opts: FakeGoOptions) {
           return ok(res, u);
         }
         if (req.method === "DELETE" && path.startsWith(`${base}/runs/`)) return ok(res, null);
-        if (path === `${base}/model/chat/completions`) return await (req.headers["x-agent-purpose"] === "summary" ? summarize(res, body) : model(res, body));
+        if (path === `${base}/model/chat/completions`) return await (req.headers["x-agent-purpose"] === "summary" ? summarize(res, body) : req.headers["x-agent-purpose"] === "title" ? nameSession(res, body) : model(res, body));
         json(res, 404, { code: 10002, msg: "资源不存在：" + path });
       } catch (e) {
         json(res, 500, { code: 50000, msg: String(e) });
@@ -163,15 +165,22 @@ export async function fakeGo(opts: FakeGoOptions) {
   });
 
   let summaries = 0;
+  let titles = 0;
   async function summarize(res: ServerResponse, body: any) {
-    const r = typeof opts.summary === "function" ? opts.summary(body, ++summaries) : (opts.summary ?? "## 目标\n摘要正文");
+    return sideCall(res, "summary", typeof opts.summary === "function" ? opts.summary(body, ++summaries) : (opts.summary ?? "## 目标\n摘要正文"));
+  }
+  async function nameSession(res: ServerResponse, body: any) {
+    return sideCall(res, "title", typeof opts.title === "function" ? opts.title(body, ++titles) : (opts.title ?? "默认标题"));
+  }
+  /** 摘要、命名这类不是助手说的话的调用：不消耗 turns，照常计费 */
+  function sideCall(res: ServerResponse, purpose: "summary" | "title", r: string | { error: { status: number; message: string } }) {
     if (typeof r !== "string") {
       res.writeHead(r.error.status, { "content-type": "application/json" });
       return void res.end(JSON.stringify({ error: { message: r.error.message, type: "upstream_error" } }));
     }
     calls++;
     const callId = nextCallId++;
-    callLog.push({ callId: String(callId), purpose: "summary" });
+    callLog.push({ callId: String(callId), purpose });
     res.writeHead(200, { "content-type": "text/event-stream", "x-agent-call-id": String(callId) });
     const chunk = (delta: object, finish: string | null = null) => `data: ${JSON.stringify({ id: "x", object: "chat.completion.chunk", choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
     res.write(chunk({ role: "assistant", content: r }));
@@ -221,7 +230,9 @@ export async function fakeGo(opts: FakeGoOptions) {
     /** 之后的运行准备都失败（null 恢复） */
     setPrepareError: (e: FakeGoOptions["prepareError"] | null) => { prepareError = e ?? undefined; },
     /** 模型请求（按顺序） */
-    get modelRequests() { return seen.filter((s) => s.path.endsWith("/model/chat/completions") && s.headers["x-agent-purpose"] !== "summary"); },
+    get modelRequests() { return seen.filter((s) => s.path.endsWith("/model/chat/completions") && s.headers["x-agent-purpose"] !== "summary" && s.headers["x-agent-purpose"] !== "title"); },
+    /** 会话命名请求（按顺序） */
+    get titleRequests() { return seen.filter((s) => s.path.endsWith("/model/chat/completions") && s.headers["x-agent-purpose"] === "title"); },
     /** 摘要请求（按顺序） */
     get summaryRequests() { return seen.filter((s) => s.path.endsWith("/model/chat/completions") && s.headers["x-agent-purpose"] === "summary"); },
     paths: () => seen.map((s) => `${s.method} ${s.path.replace("/internal/platform/v1", "")}`),

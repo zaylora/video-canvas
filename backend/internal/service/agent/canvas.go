@@ -29,7 +29,11 @@ type AgentCanvasRepo interface {
 	GetRun(ctx context.Context, userID, id uint64) (*model.AgentRun, error)
 	// ListMutations 列出某运行的全部改动，按序号升序。
 	ListMutations(ctx context.Context, runID uint64) ([]model.AgentMutation, error)
-	// CommitCanvasMutation 在一个事务里按乐观锁更新画布、记录改动、标记被撤销的改动；
+	// RecordCanvasReads 持久化实际返回过详情的节点，重复记录忽略。
+	RecordCanvasReads(ctx context.Context, rows []model.AgentCanvasRead) error
+	// ListCanvasReads 只返回这个用户、画布、会话、运行中的已读节点。
+	ListCanvasReads(ctx context.Context, run *model.AgentRun) ([]string, error)
+	// CommitCanvasMutation 在一个事务里按乐观锁更新画布、记录改动与自建节点已读、标记被撤销的改动；
 	// 版本不一致返回 repository.ErrRevisionConflict，画布不存在返回 repository.ErrNotFound。
 	CommitCanvasMutation(ctx context.Context, in repository.CommitInput) error
 }
@@ -131,21 +135,26 @@ type edit struct {
 	result json.RawMessage
 }
 
-// ApplyOps 应用一批编辑操作（建改节点和组、连线、移动）。整批原子：任何一项不合法都不会写入。
+// ApplyOps 应用一批编辑操作（建改节点和组、连线、移动）。修改已有节点内容前必须读过详情，任何一项不合法或未读都不会写入。
 func (s *AgentCanvasService) ApplyOps(ctx context.Context, run *model.AgentRun, toolCallID string, raw []byte) (*WriteResult, error) {
 	// 1. 先解析操作：格式不对、超过 30 项、带了产物字段，都在读画布之前挡掉
 	ops, err := canvasgraph.ParseOps(raw)
 	if err != nil {
 		return nil, err
 	}
-	// 2. 在最新画布上应用并写入；版本冲突时重读重试。模型的生成方式在重试之前取一次：mode 要按它校验，写入后还要据它检查提醒
+	// 2. 在最新画布上校验操作、检查已读，再整批写入；版本冲突时重读重试并重新检查。
+	//    模型的生成方式在重试之前取一次：mode 要按它校验，写入后还要据它检查提醒
 	lookup := s.modelOpsLookup(ctx)
 	res, extra, err := s.mutate(ctx, run, toolCallID, model.MutationApplyOps, 0, func(g *canvasgraph.Graph) (*edit, error) {
 		r, err := canvasgraph.Apply(g, ops, canvasgraph.Options{ModelOps: lookup})
 		if err != nil {
 			return nil, err
 		}
-		warnings := canvasgraph.ModeWarnings(r.Graph, touchedNodeIDs(r.Changes), lookup)
+		if err := s.requireReadNodes(ctx, run, g, ops); err != nil {
+			return nil, err
+		}
+		// 先放位置重叠的提醒，再放生成方式的提醒
+		warnings := append(append([]string(nil), r.Warnings...), canvasgraph.ModeWarnings(r.Graph, touchedNodeIDs(r.Changes), lookup)...)
 		return &edit{graph: r.Graph, changes: r.Changes, idMap: r.IDMap, extra: warnings}, nil
 	})
 	if w, ok := extra.([]string); ok && res != nil {
@@ -172,15 +181,20 @@ func touchedNodeIDs(changes []canvasgraph.Change) []string {
 	return ids
 }
 
-// Arrange 整理布局：排列一个组的成员或一组节点。
+// Arrange 整理布局：排列一个组的成员或一组节点，扩组时自动推开邻居，保留未消解的重叠提醒。
 func (s *AgentCanvasService) Arrange(ctx context.Context, run *model.AgentRun, toolCallID string, target canvasgraph.ArrangeTarget, layout canvasgraph.Layout) (*WriteResult, error) {
-	res, _, err := s.mutate(ctx, run, toolCallID, model.MutationArrange, 0, func(g *canvasgraph.Graph) (*edit, error) {
+	// 1. 在最新画布上排列、贴合并避让；位置差异统一记入改动日志和前端 patch。
+	res, extra, err := s.mutate(ctx, run, toolCallID, model.MutationArrange, 0, func(g *canvasgraph.Graph) (*edit, error) {
 		r, err := canvasgraph.Arrange(g, target, layout, nil)
 		if err != nil {
 			return nil, err
 		}
-		return &edit{graph: r.Graph, changes: r.Changes}, nil
+		return &edit{graph: r.Graph, changes: r.Changes, extra: r.Warnings}, nil
 	})
+	// 2. 显式位置或上游原布局可能仍然重叠，首次调用和幂等重放都返回同一份提醒。
+	if w, ok := extra.([]string); ok && res != nil {
+		res.Warnings = w
+	}
 	return res, err
 }
 
@@ -322,7 +336,7 @@ func (s *AgentCanvasService) load(ctx context.Context, run *model.AgentRun) (*ca
 	return g, cv.Revision, nil
 }
 
-// mutate 是所有写画布操作的公共流程：读最新画布 → fn 修改 → 带乐观锁写入并记日志 → 推送 patch。
+// mutate 是所有写画布操作的公共流程：读最新画布 → fn 修改 → 带乐观锁写入并记录改动、自建节点已读 → 推送 patch。
 // 写入时版本冲突（用户刚好保存了）就重读最新画布、重新执行 fn，最多 maxWriteAttempts 次，
 // 这样 Agent 的改动总是叠在用户最新的内容上，不会覆盖用户的保存。fn 没有产生任何变化时不写入。
 func (s *AgentCanvasService) mutate(ctx context.Context, run *model.AgentRun, toolCallID, kind string, undoRunID uint64, fn func(*canvasgraph.Graph) (*edit, error)) (*WriteResult, any, error) {
@@ -361,6 +375,7 @@ func (s *AgentCanvasService) mutate(ctx context.Context, run *model.AgentRun, to
 		mut := &model.AgentMutation{RunID: run.ID, ToolCallID: toolCallID, Kind: kind, ChangesJSON: changesJSON, IdemKey: idemKey, ResultJSON: resultJSON(ed)}
 		err = s.repo.CommitCanvasMutation(ctx, repository.CommitInput{
 			UserID: run.UserID, CanvasID: run.CanvasID, BaseRevision: revision, Payload: payload, Mutation: mut, UndoRunID: undoRunID,
+			CreatedReads: canvasReadRows(run, nodeIDsByOp(ed.changes, canvasgraph.ChangeCreate)),
 		})
 		switch {
 		case errors.Is(err, repository.ErrRevisionConflict):

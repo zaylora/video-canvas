@@ -25,6 +25,40 @@ const pullErrSnippetLen = 200
 // 与其他出站请求一样走 SSRF 防护的客户端和渠道限流；渠道自定义请求头照常带上（目标就是 base_url 本身）。
 // 失败都返回 *provider.PullError，信息里不含 Key 明文。
 func (e *Executor) ListUpstreamModels(ctx context.Context, ch provider.ChannelSnapshot, apiKey string) ([]string, error) {
+	docs, err := e.fetchModelDocs(ctx, ch, apiKey)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, len(docs))
+	for i, d := range docs {
+		ids[i] = d.id
+	}
+	return ids, nil
+}
+
+// ListUpstreamLimits 实现 provider.ModelLister：同一个请求，读上游随模型给出的上下文规格。
+func (e *Executor) ListUpstreamLimits(ctx context.Context, ch provider.ChannelSnapshot, apiKey string) (map[string]provider.UpstreamLimits, error) {
+	docs, err := e.fetchModelDocs(ctx, ch, apiKey)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]provider.UpstreamLimits{}
+	for _, d := range docs {
+		if d.limits.Window > 0 || d.limits.Output > 0 {
+			out[d.id] = d.limits
+		}
+	}
+	return out, nil
+}
+
+// pulledModel 是上游模型清单里的一项：id，以及上游随它给的上下文规格（没给为零值）。
+type pulledModel struct {
+	id     string
+	limits provider.UpstreamLimits
+}
+
+// fetchModelDocs 请求上游模型清单并解析。
+func (e *Executor) fetchModelDocs(ctx context.Context, ch provider.ChannelSnapshot, apiKey string) ([]pulledModel, error) {
 	// 1. 目标地址：base_url 已以 /v1 结尾时不重复拼接
 	target, err := pullModelsURL(ch.BaseURL)
 	if err != nil {
@@ -73,20 +107,31 @@ func (e *Executor) ListUpstreamModels(ctx context.Context, ch provider.ChannelSn
 	}
 
 	// 4. 解析 OpenAI 形状：{"data":[{"id":"..."}]}；去重保序，没有 id 的项忽略
-	ids, err := parsePulledModels(body)
+	docs, err := parsePulledModels(body)
 	var pe *provider.PullError
 	if errors.As(err, &pe) && pe.Reason == provider.PullFormat {
 		// 格式不符时带上 Content-Type 和响应开头，方便判断上游返回的是 HTML 页面还是别的 JSON
 		pe.Message += fmt.Sprintf("（Content-Type：%s，响应开头：%s）", resp.Header.Get("Content-Type"), redact(snippet(body)))
 	}
-	return ids, err
+	return docs, err
 }
 
 // parsePulledModels 解析 OpenAI 形状的模型列表，去重保序；不是该形状返回 PullFormat，超过上限返回 PullTooLarge。
-func parsePulledModels(body []byte) ([]string, error) {
+// 同时读各家随模型给出的上下文规格：Anthropic 的 max_input_tokens / max_tokens，OpenRouter 的 context_length /
+// top_provider.max_completion_tokens，以及常见的 context_window / max_completion_tokens / max_output_tokens。
+func parsePulledModels(body []byte) ([]pulledModel, error) {
 	var doc struct {
 		Data []struct {
-			ID string `json:"id"`
+			ID                  string `json:"id"`
+			MaxInputTokens      int    `json:"max_input_tokens"`
+			ContextLength       int    `json:"context_length"`
+			ContextWindow       int    `json:"context_window"`
+			MaxTokens           int    `json:"max_tokens"`
+			MaxCompletionTokens int    `json:"max_completion_tokens"`
+			MaxOutputTokens     int    `json:"max_output_tokens"`
+			TopProvider         struct {
+				MaxCompletionTokens int `json:"max_completion_tokens"`
+			} `json:"top_provider"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(body, &doc); err != nil || doc.Data == nil {
@@ -96,16 +141,29 @@ func parsePulledModels(body []byte) ([]string, error) {
 		return nil, &provider.PullError{Reason: provider.PullTooLarge, Message: fmt.Sprintf("上游返回了 %d 个模型，超过上限 %d", len(doc.Data), provider.MaxPullModels)}
 	}
 	seen := make(map[string]bool, len(doc.Data))
-	out := make([]string, 0, len(doc.Data))
+	out := make([]pulledModel, 0, len(doc.Data))
 	for _, m := range doc.Data {
 		id := strings.TrimSpace(m.ID)
 		if id == "" || seen[id] {
 			continue
 		}
 		seen[id] = true
-		out = append(out, id)
+		out = append(out, pulledModel{id: id, limits: provider.UpstreamLimits{
+			Window: firstPositive(m.MaxInputTokens, m.ContextLength, m.ContextWindow),
+			Output: firstPositive(m.TopProvider.MaxCompletionTokens, m.MaxCompletionTokens, m.MaxOutputTokens, m.MaxTokens),
+		}})
 	}
 	return out, nil
+}
+
+// firstPositive 返回第一个大于 0 的数；都不是返回 0。
+func firstPositive(vs ...int) int {
+	for _, v := range vs {
+		if v > 0 {
+			return v
+		}
+	}
+	return 0
 }
 
 // pullModelsURL 由 base_url 拼出模型清单地址：路径已以 /v1 结尾就只补 /models，否则补 /v1/models。

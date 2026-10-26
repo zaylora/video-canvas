@@ -105,6 +105,16 @@ func (h *AdminCatalogHandler) ModelOptions(c *gin.Context) {
 	response.OK(c, list)
 }
 
+// ModelLimits 按上游模型名识别上下文窗口和最大输出（GET /admin/ai/models/limits?name=&channel=）：新建 Agent / 文本模型时自动填写；
+// 不认识的模型也返回 200，found 为 false。
+func (h *AdminCatalogHandler) ModelLimits(c *gin.Context) {
+	var req model.ModelLimitsReq
+	if !BindQuery(c, &req) {
+		return
+	}
+	response.OK(c, h.svc.ModelLimits(c.Request.Context(), req.Name, req.Channel))
+}
+
 // Overview 返回总览页的汇总（GET /admin/ai/overview）：数量、可用数、待处理清单、精简渠道。
 func (h *AdminCatalogHandler) Overview(c *gin.Context) {
 	ov, err := h.svc.Overview(c.Request.Context())

@@ -249,3 +249,17 @@ test("取消评价：删掉并发 feedback.cleared；本来就没有是幂等的
     assert.equal(e.store.getFeedback(run.id, "1"), undefined);
     await assert.rejects(api.clearFeedback("2", run.id), code(60012));
   }));
+
+test("标题来源：创建时没给标题是草稿，给了就是用户起的；手动改名算用户起的，之后模型不会再覆盖", () =>
+  withApi({ turns: [] }, async (api, e) => {
+    const draft = await api.createSession("1", "7", {});
+    const named = await api.createSession("1", "7", { title: "角色设计" });
+    assert.equal(e.store.getSession("1", dec(draft.id)).titleSource, "draft");
+    assert.equal(e.store.getSession("1", dec(named.id)).titleSource, "user");
+
+    await api.renameSession("1", dec(draft.id), "我的名字");
+    assert.equal(e.store.getSession("1", dec(draft.id)).titleSource, "user");
+    assert.equal(e.store.setLlmTitle("1", dec(draft.id), "模型的名字"), false);
+    assert.deepEqual(Object.keys(await api.renameSession("1", dec(draft.id), "再改")).sort(),
+      ["canvas_id", "created_at", "id", "last_seq", "mode", "model_key", "title", "updated_at"], "接口返回的字段不变，不暴露标题来源");
+  }));

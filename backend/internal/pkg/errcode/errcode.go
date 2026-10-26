@@ -175,6 +175,7 @@ var (
 	ErrAgentRunMissing     = New(60012, "运行不存在", http.StatusNotFound)
 	ErrAgentApprovalMiss   = New(60013, "审批不存在", http.StatusNotFound)
 	ErrAgentRunNotEnded    = New(60014, "运行还没结束，结束后才能评价", http.StatusConflict)
+	ErrAgentNodeUnread     = New(60015, "修改已有节点前必须先读取详情", http.StatusConflict)
 )
 
 // Agent 技能管理 61xxx

@@ -31,18 +31,22 @@ func (o Options) newID(prefix string) string {
 
 // applier 在一份拷贝上依次执行操作，收集问题。
 type applier struct {
-	g       *Graph
-	opt     Options
-	idMap   map[string]string
-	refit   map[string]bool // 成员有变动、结束时要贴合的组
-	issues  []Issue
-	current int
+	g     *Graph
+	opt   Options
+	idMap map[string]string
+	refit map[string]bool // 成员有变动、结束时要贴合的组
+	// pending 是还没有位置的新节点和新组，按创建顺序排；所有 ops 执行完、组框定型后才统一放置（延后放置）
+	pending []string
+	// explicit 是 ops 里显式指定了位置的节点：位置原样保留，但放完后要检查是否压住了别的节点
+	explicit map[string]bool
+	issues   []Issue
+	current  int
 }
 
 // Apply 在 g 的拷贝上依次执行 ops。有任何一项不合法就整体不生效，返回 *ValidationError，
 // 其中列出全部问题，让模型一次改对。成功时返回新图、tempId 映射和改动差异，g 本身不变。
 func Apply(g *Graph, ops []Op, opt Options) (*Result, error) {
-	a := &applier{g: g.Clone(), opt: opt, idMap: map[string]string{}, refit: map[string]bool{}}
+	a := &applier{g: g.Clone(), opt: opt, idMap: map[string]string{}, refit: map[string]bool{}, explicit: map[string]bool{}}
 	for i, op := range ops {
 		a.current = i
 		if err := a.run(op); err != nil {
@@ -52,10 +56,44 @@ func Apply(g *Graph, ops []Op, opt Options) (*Result, error) {
 	if len(a.issues) > 0 {
 		return nil, &ValidationError{Issues: a.issues}
 	}
-	for gid := range a.refit {
-		a.g.fitGroup(gid)
+	// 先贴合本批组框、放置新对象，再消解分批扩组压住已有邻居的碰撞；在 finish 前完成，推动也进入撤销和 patch。
+	a.g.refitGroups(a.refit)
+	a.g.placeDeferred(a.pending)
+	moved := a.g.pushGroupOverlaps(a.g.grownGroups(g, a.refit), a.explicit)
+	res := finish(g, a.g, a.idMap)
+	res.Warnings = a.g.overlapWarnings(a.explicit, a.refit, moved)
+	return res, nil
+}
+
+// unpend 把节点从待放置列表里去掉（它已经有了位置）。
+func (a *applier) unpend(id string) {
+	for i, p := range a.pending {
+		if p == id {
+			a.pending = append(a.pending[:i], a.pending[i+1:]...)
+			return
+		}
 	}
-	return finish(g, a.g, a.idMap), nil
+}
+
+// settle 在要改动一个还没放置的组的成员关系之前，先把它定下来：有新成员的组按当前大小立刻放置；
+// 还是空的就不用放了，组框之后由加进来的成员决定。
+func (a *applier) settle(grp Node) {
+	pending := false
+	for _, p := range a.pending {
+		pending = pending || p == grp.ID()
+	}
+	if !pending {
+		return
+	}
+	if len(a.g.members(grp.ID())) > 0 {
+		a.g.fitGroup(grp.ID())
+		skip := make(map[string]bool, len(a.pending))
+		for _, p := range a.pending {
+			skip[p] = true
+		}
+		grp.SetPosition(a.g.placeFreeSkipping(skip))
+	}
+	a.unpend(grp.ID())
 }
 
 // run 执行一项操作。
@@ -229,10 +267,13 @@ func (a *applier) createNode(op Op) error {
 	switch {
 	case op.Position != nil:
 		n.SetPosition(*op.Position)
+		a.explicit[id] = true
 	case parent != nil:
 		n.SetPosition(a.g.placeInGroup(parent.ID()))
 	default:
-		n.SetPosition(a.g.placeFree())
+		// 位置先留空，所有 ops 执行完、组框定型后再统一放置
+		n.SetPosition(Point{})
+		a.pending = append(a.pending, id)
 	}
 	if parent != nil {
 		n["parentId"] = parent.ID()
@@ -296,6 +337,8 @@ func (a *applier) move(op Op) error {
 		return errors.New("move 需要 position")
 	}
 	n.SetPosition(*op.Position)
+	a.explicit[n.ID()] = true
+	a.unpend(n.ID())
 	if pid := n.ParentID(); pid != "" {
 		a.refit[pid] = true
 	}

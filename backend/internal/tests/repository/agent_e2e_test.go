@@ -160,7 +160,7 @@ type e2eEnv struct {
 // 没有 Agent 服务：这些测试直接以 Agent 服务的身份调用平台接口。Agent 服务本身的全栈测试见 agent_durable_e2e_test.go。
 func newE2E(t *testing.T, turns ...llmTurn) *e2eEnv {
 	t.Helper()
-	db := isolatedDB(t, &model.CanvasProject{}, &model.AgentRun{}, &model.AgentMutation{}, &model.AgentModelCall{}, &model.UserCredit{}, &model.CreditLedger{}, &model.GenerationTask{})
+	db := isolatedDB(t, &model.CanvasProject{}, &model.AgentRun{}, &model.AgentMutation{}, &model.AgentCanvasRead{}, &model.AgentModelCall{}, &model.UserCredit{}, &model.CreditLedger{}, &model.GenerationTask{})
 	repo := NewAgentRepository(db)
 	llm := newFakeLLM(t, turns...)
 

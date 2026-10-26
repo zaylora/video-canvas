@@ -67,6 +67,21 @@ func TestToolRegistry_DeclsMatchBaseline(t *testing.T) {
 	}
 }
 
+func TestToolRegistry_ArrangeExplainsGroupMovement(t *testing.T) {
+	for _, d := range AgentToolDecls("all", true) {
+		if d.Name != "canvas_arrange" {
+			continue
+		}
+		for _, want := range []string{"不会移动组本身", "canvas_apply_ops", "move"} {
+			if !strings.Contains(d.Description, want) {
+				t.Errorf("排列说明缺少 %q：%s", want, d.Description)
+			}
+		}
+		return
+	}
+	t.Fatal("没有 canvas_arrange")
+}
+
 func TestToolRegistry_FilterByModeAndVision(t *testing.T) {
 	has := func(ds []ToolDecl, name string) bool {
 		for _, d := range ds {

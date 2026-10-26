@@ -5,7 +5,9 @@ import { ArrowUp, Bot, Check, ChevronDown, Square } from "lucide-react";
 import type { AgentMode, AgentModelDto } from "@/api/agent/type";
 import { ChromeTooltip } from "@/components/canvas/chrome/chrome";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { VendorAvatar } from "@/components/admin-ui/vendor-avatar";
 import { AGENT_MODES } from "@/constants/agent";
+import { vendorOf } from "@/constants/vendors";
 import { TAP } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { useAgentSettings } from "@/store/agent-settings";
@@ -32,9 +34,9 @@ function ModeMenu({
   const current = AGENT_MODES.find((m) => m.value === mode) ?? AGENT_MODES[0];
   return (
     <Popover>
-      <PopoverTrigger disabled={disabled} className={AGENT_BAR_BTN}>
-        {current.label}
-        <ChevronDown className="size-3.5" />
+      <PopoverTrigger disabled={disabled} className={cn(AGENT_BAR_BTN, "min-w-0 shrink")}>
+        <span className="min-w-0 truncate">{current.label}</span>
+        <ChevronDown className="size-3.5 shrink-0" />
       </PopoverTrigger>
       <PopoverContent
         side="top"
@@ -64,7 +66,19 @@ function ModeMenu({
   );
 }
 
-/** Agent 大语言模型：底栏右侧，向上弹出单选；运行中不能换。浮窗太窄时只显示图标 */
+/** Agent 模型的厂商 logo：配了厂商用 VendorAvatar，没配回退 Bot 图标（不用首字头像，底栏里太抢眼） */
+function ModelLogo({ model, className }: { model?: AgentModelDto; className?: string }) {
+  if (!vendorOf(model?.vendor)) return <Bot className="size-4 shrink-0" />;
+  return (
+    <VendorAvatar
+      vendor={model?.vendor}
+      name={model?.name ?? ""}
+      className={cn("border-0 shadow-none", className)}
+    />
+  );
+}
+
+/** Agent 大语言模型：底栏右侧，向上弹出单选；运行中不能换。浮窗太窄时只显示 logo */
 function AgentModelMenu({
   models,
   modelKey,
@@ -84,8 +98,10 @@ function AgentModelMenu({
           aria-label="Agent 模型"
           className={cn(AGENT_BAR_BTN, "min-w-0 shrink")}
         >
-          <Bot className="size-4 shrink-0" />
-          <span className="max-w-24 truncate @max-[360px]:hidden">{current?.name ?? "未选"}</span>
+          <ModelLogo model={current} className="size-4 rounded-[5px]" />
+          <span className="max-w-28 min-w-0 truncate @max-[360px]:hidden">
+            {current?.name ?? "未选"}
+          </span>
           <ChevronDown className="size-3.5 shrink-0" />
         </PopoverTrigger>
       </ChromeTooltip>
@@ -109,7 +125,15 @@ function AgentModelMenu({
               onClick={() => patch({ modelKey: m.key })}
               className="hover:bg-chrome-hover focus-visible:ring-node-ring/60 flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] outline-none focus-visible:ring-2"
             >
-              <span className="flex-1 truncate">{m.name}</span>
+              <ModelLogo model={m} className="size-7" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate">{m.name}</span>
+                {vendorOf(m.vendor) && (
+                  <span className="text-muted-foreground block truncate text-[11px]">
+                    {vendorOf(m.vendor)?.name}
+                  </span>
+                )}
+              </span>
               {!m.vision && <span className="text-muted-foreground text-[11px]">不能看图</span>}
               {m.key === modelKey && <Check className="size-4" />}
             </button>
@@ -176,6 +200,10 @@ export function AgentComposer({
   const ready = !stopMode && !empty;
 
   const sendLabel = stopMode ? "停止" : busy ? "插话" : "发送";
+  /** ＋ 菜单、粘贴、拖入三处共用：图片先落到画布成为节点，再作为 chip 插进输入框 */
+  const attachImages = async (files: File[]) => {
+    for (const chip of await onAttachImages(files)) handle.current?.insertChip(chip);
+  };
   return (
     <div className="flex flex-col gap-1.5 p-2.5">
       <AgentEditor
@@ -188,15 +216,16 @@ export function AgentComposer({
         }
         onChange={onTextChange}
         onSubmit={() => !empty && !sending && onSend()}
+        onImages={(files) => void attachImages(files)}
       />
-      <div className="flex min-w-0 items-center gap-0.5">
+      {/* 底栏永远一行：放不下时先截断模型名、再截断模式名，窄到 360px 以下只留模型 logo */}
+      <div className="flex min-w-0 flex-nowrap items-center gap-0.5">
         <AttachPopover
           onInsertText={(t) => handle.current?.insertText(t)}
-          onAttachImages={async (files) => {
-            for (const chip of await onAttachImages(files)) handle.current?.insertChip(chip);
-          }}
+          onAttachImages={attachImages}
         />
         <ModeMenu mode={mode} onChange={onModeChange} disabled={busy} />
+        <span aria-hidden className="bg-foreground/8 mx-1 h-3.5 w-px shrink-0" />
         <ModelPopover onPick={(chip) => handle.current?.insertChip(chip)} />
         <SkillPopover onPick={(chip) => handle.current?.insertChip(chip)} />
         <span className="min-w-1 flex-1" />
@@ -212,7 +241,7 @@ export function AgentComposer({
             className={cn(
               "focus-visible:ring-node-ring/60 ml-0.5 grid size-9 shrink-0 place-items-center rounded-full outline-none transition-[background-color,color,box-shadow] duration-120 focus-visible:ring-2",
               ready
-                ? "agent-send"
+                ? "bg-foreground text-background hover:bg-foreground/90"
                 : stopMode
                   ? "bg-foreground/12 text-foreground hover:bg-foreground/16"
                   : "bg-foreground/10 text-muted-foreground cursor-not-allowed",

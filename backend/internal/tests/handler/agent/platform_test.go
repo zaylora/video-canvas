@@ -341,6 +341,15 @@ func TestPlatformHandler_ChatCompletions_SummaryPurpose(t *testing.T) {
 	}
 }
 
+func TestPlatformHandler_ChatCompletions_TitlePurpose(t *testing.T) {
+	api := &fakePlatform{lines: []string{"data: [DONE]\n\n"}}
+	r := newPlatformRouter(api)
+	platformCall(r, http.MethodPost, chatPath, chatBody, map[string]string{"X-Agent-Context": ctxHeader(goodCtx), "X-Agent-Purpose": "title"})
+	if api.purpose != agentsvc.ModelPurposeTitle {
+		t.Errorf("会话命名用途要传下去: %q", api.purpose)
+	}
+}
+
 // 流开始之前出错：返回 OpenAI 格式的 JSON 错误和对应的 HTTP 状态，调用方（pi 的 OpenAI 客户端）靠它显示报错、判断是否可重试。
 func TestPlatformHandler_ChatCompletions_ErrorsAreOpenAIShaped(t *testing.T) {
 	cases := []struct {

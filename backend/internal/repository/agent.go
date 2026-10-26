@@ -84,15 +84,16 @@ func (r *AgentRepository) GetCanvas(ctx context.Context, userID, id uint64) (*mo
 
 // CommitInput 是一次画布写入的全部内容。
 type CommitInput struct {
-	UserID       uint64               // 画布所有者
-	CanvasID     uint64               // 画布 id
-	BaseRevision uint64               // 写入所基于的 revision，乐观锁
-	Payload      []byte               // 新的 payload_json
-	Mutation     *model.AgentMutation // 要记录的改动（RunID、Kind、ChangesJSON 等由调用方填好）
-	UndoRunID    uint64               // 非 0 表示这是对该运行的撤销，同一事务里把它的改动标记为已撤销
+	UserID       uint64                  // 画布所有者
+	CanvasID     uint64                  // 画布 id
+	BaseRevision uint64                  // 写入所基于的 revision，乐观锁
+	Payload      []byte                  // 新的 payload_json
+	Mutation     *model.AgentMutation    // 要记录的改动（RunID、Kind、ChangesJSON 等由调用方填好）
+	UndoRunID    uint64                  // 非 0 表示这是对该运行的撤销，同一事务里把它的改动标记为已撤销
+	CreatedReads []model.AgentCanvasRead // 自建节点同时计为已读，和画布写入一起提交，避免崩溃后丢失
 }
 
-// CommitCanvasMutation 在一个事务里完成「按乐观锁更新画布」「记录改动」「标记被撤销的改动」，三者要么都成要么都不成：
+// CommitCanvasMutation 在一个事务里完成「按乐观锁更新画布」「记录改动」「记录自建节点已读」「标记被撤销的改动」，要么都成要么都不成：
 // 画布写进去了但日志没记，撤销就找不到依据；日志记了画布没写，撤销会改坏用户的画布。
 // 画布不存在或不属于该用户返回 ErrNotFound，revision 与库里不一致返回 ErrRevisionConflict。
 // 成功时 Mutation 的 seq、revision_before、revision_after 被回填。
@@ -127,6 +128,9 @@ func (r *AgentRepository) CommitCanvasMutation(ctx context.Context, in CommitInp
 		m.RevisionBefore, m.RevisionAfter = in.BaseRevision, in.BaseRevision+1
 		m.ChangesJSON = emptyJSON(m.ChangesJSON, "[]")
 		if err := tx.Create(m).Error; err != nil {
+			return err
+		}
+		if err := insertCanvasReads(tx, in.CreatedReads); err != nil {
 			return err
 		}
 		if in.UndoRunID == 0 {

@@ -3,7 +3,9 @@ package canvasgraph
 import (
 	"fmt"
 	"math"
+	"regexp"
 	"sort"
+	"strconv"
 )
 
 // 以下常量与前端 web/src/utils/canvas 的 group.ts / arrange.ts / placement.ts 保持一致。
@@ -15,7 +17,13 @@ const (
 	groupMinH      = 140.0 // 组框最小高度
 	defaultGapX    = 120.0 // 排列时的横向间距
 	defaultGapY    = 80.0  // 排列时的纵向间距
+
+	nodeShortSide = 324.0      // 节点框的短边：任何画幅的短边都一样
+	defaultAspect = 16.0 / 9.0 // 不知道画幅时节点用的宽高比
 )
+
+// aspectRe 匹配比例参数值，如 16:9、2.39:1；Auto 和别的写法都不认识。
+var aspectRe = regexp.MustCompile(`^(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)$`)
 
 // Layout 是排列方式。
 type Layout string
@@ -42,12 +50,59 @@ type ArrangeTarget struct {
 // rect 是画布绝对坐标下的矩形。
 type rect struct{ x, y, w, h float64 }
 
-// nodeSize 返回节点尺寸。前端不保存普通节点的尺寸，这里按默认尺寸算：所有种类都是 576×324。
+// parseAspect 把比例参数值（如「16:9」）读成宽高比；Auto、空值或写法不认识返回 0。与前端 parseAspect 一致。
+func parseAspect(v any) float64 {
+	s, _ := v.(string)
+	m := aspectRe.FindStringSubmatch(s)
+	if m == nil {
+		return 0
+	}
+	w, errW := strconv.ParseFloat(m[1], 64)
+	h, errH := strconv.ParseFloat(m[2], 64)
+	if errW != nil || errH != nil || w <= 0 || h <= 0 {
+		return 0
+	}
+	return w / h
+}
+
+// nodeAspect 返回普通节点此刻的宽高比，优先级与前端 resolveNodeAspect 一致：音频固定 1:1；
+// 否则成片画幅 data.mediaAspect 优先，其次比例参数（aspect_ratio / ratio），都没有按 16:9。
+// 前端还会读模型能力里比例参数的默认值，这里拿不到，按 16:9 算。
+func nodeAspect(n Node) float64 {
+	d, _ := n["data"].(map[string]any)
+	if str(d["kind"]) == KindAudio {
+		return 1
+	}
+	if a := num(d["mediaAspect"]); a > 0 && !math.IsInf(a, 0) {
+		return a
+	}
+	if params, ok := d["params"].(map[string]any); ok {
+		for _, key := range []string{"aspect_ratio", "ratio"} {
+			if a := parseAspect(params[key]); a > 0 {
+				return a
+			}
+		}
+	}
+	return defaultAspect
+}
+
+// nodeFrame 返回普通节点的框：短边固定 324，横图定高、竖图定宽。规则对应前端 node-frame.ts 的 nodeFrameSize，
+// 两边读同一份 testdata/canvasgraph/node-frame-cases.json 保证一致。
+func nodeFrame(n Node) (w, h float64) {
+	ratio := nodeAspect(n)
+	if ratio >= 1 {
+		return math.Round(nodeShortSide * ratio), nodeShortSide
+	}
+	return nodeShortSide, math.Round(nodeShortSide / ratio)
+}
+
+// nodeSize 返回节点尺寸：组用自己的宽高（不小于最小尺寸），普通节点按画幅算。
+// 前端不保存普通节点的尺寸，真实尺寸是渲染后测出来的；这里按同一套规则还原。
 func nodeSize(n Node) (w, h float64) {
 	if n.IsGroup() {
 		return math.Max(groupMinW, n.Width()), math.Max(groupMinH, n.Height())
 	}
-	return 576, 324
+	return nodeFrame(n)
 }
 
 // absPos 返回节点的画布绝对坐标：成员的 position 是相对组左上角的。
@@ -114,24 +169,28 @@ func (g *Graph) fitGroup(groupID string) {
 	grp["width"], grp["height"] = w, h
 }
 
-// placeInGroup 返回新成员在组内的相对位置：紧挨着最后一个成员的右侧、同一行；组是空的就放在左上角留白处。
+// placeInGroup 返回新成员在组内的相对位置：放在所有现有成员的右侧、与最后一个成员同一行（这样不会压住位置乱的老成员）；
+// 组是空的就放在左上角留白处。
 func (g *Graph) placeInGroup(groupID string) Point {
 	members := g.members(groupID)
 	if len(members) == 0 {
 		return Point{X: groupPadX, Y: groupPadTop}
 	}
-	last := members[len(members)-1]
-	w, _ := nodeSize(last)
-	p := last.Position()
-	return Point{X: p.X + w + defaultGapX, Y: p.Y}
+	right := math.Inf(-1)
+	for _, m := range members {
+		w, _ := nodeSize(m)
+		right = math.Max(right, m.Position().X+w)
+	}
+	return Point{X: right + defaultGapX, Y: members[len(members)-1].Position().Y}
 }
 
-// placeFree 返回不属于任何组的新节点的位置：放在现有内容的右侧、与最上沿对齐；画布为空时放在原点。
-func (g *Graph) placeFree() Point {
+// placeFreeSkipping 返回不属于任何组的新节点的位置：放在现有内容的右侧、与最上沿对齐；画布为空时放在原点。
+// skip 里的节点还没定位，不算作现有内容。
+func (g *Graph) placeFreeSkipping(skip map[string]bool) Point {
 	found := false
 	right, top := math.Inf(-1), math.Inf(1)
 	for _, n := range g.Nodes {
-		if n.ParentID() != "" {
+		if n.ParentID() != "" || skip[n.ID()] {
 			continue
 		}
 		r := g.absRect(n)
@@ -144,8 +203,24 @@ func (g *Graph) placeFree() Point {
 	return Point{X: right + defaultGapX, Y: top}
 }
 
+// placeDeferred 依次放置还没有位置的新节点和新组（延后放置）：每个都放在已定位内容的右侧、与最上沿对齐，
+// 放完就算已定位，后面的接着往右排。本批组框已贴合；后续批次扩组的碰撞由 pushGroupOverlaps 消解。
+// 组连成员作为一整块放置（成员存的是相对坐标，随组移动）。
+func (g *Graph) placeDeferred(ids []string) {
+	waiting := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		waiting[id] = true
+	}
+	for _, id := range ids {
+		if n := g.Node(id); n != nil {
+			n.SetPosition(g.placeFreeSkipping(waiting))
+		}
+		delete(waiting, id)
+	}
+}
+
 // Arrange 整理布局：以所选节点的左上角为起点排成一行、一列或网格，保留原来的大致先后。
-// 目标是组时，只排成员，排完后组框贴合成员。返回的 Result 带位置变化的差异。
+// 目标是组时，只排成员，排完后组框贴合成员；扩组会推开后序邻居，所有位置变化进入差异。
 func Arrange(g *Graph, t ArrangeTarget, layout Layout, gap *Gap) (*Result, error) {
 	if layout != LayoutRow && layout != LayoutColumn && layout != LayoutGrid {
 		return nil, fmt.Errorf("%w: 排列方式 %q 不认识，可选 row / column / grid", ErrInvalid, layout)
@@ -173,10 +248,11 @@ func Arrange(g *Graph, t ArrangeTarget, layout Layout, gap *Gap) (*Result, error
 		}
 		n.SetPosition(p)
 	}
-	for pid := range parents {
-		work.fitGroup(pid)
-	}
-	return finish(g, work, nil), nil
+	work.refitGroups(parents)
+	moved := work.pushGroupOverlaps(work.grownGroups(g, parents), nil)
+	res := finish(g, work, nil)
+	res.Warnings = work.overlapWarnings(nil, parents, moved)
+	return res, nil
 }
 
 // arrangeTargets 解析排列目标，返回要排列的普通节点（在 work 里的引用）。

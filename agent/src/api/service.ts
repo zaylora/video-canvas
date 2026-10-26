@@ -79,7 +79,9 @@ export class AgentApiService {
     await this.#platform(() => this.#o.platform.checkCanvas(userId, canvasId));
     // 每个画布最多 50 个会话，避免历史无限增长
     if (this.#o.store.countSessions(userId, canvasId) >= MAX_SESSIONS_PER_CANVAS) throw new AgentError(60010, 409, "这个画布的会话数量已达上限");
-    const s = this.#o.store.createSession({ userId, canvasId, title: cleanTitle(req.title ?? "", DEFAULT_TITLE), mode: req.mode || "all", modelKey: req.model_key ?? "" });
+    const title = cleanTitle(req.title ?? "", "");
+    // 创建时就给了标题是用户起的，不会被自动命名覆盖；没给才是草稿，等首轮结束后由模型命名
+    const s = this.#o.store.createSession({ userId, canvasId, title: title || DEFAULT_TITLE, titleSource: title ? "user" : "draft", mode: req.mode || "all", modelKey: req.model_key ?? "" });
     return sessionView(this.#o.codec, s);
   }
 
@@ -88,7 +90,7 @@ export class AgentApiService {
     if (!t) throw Err.invalidParams("标题不能为空");
     const store = this.#o.store;
     this.#session(userId, sessionId);
-    store.updateSession(userId, sessionId, { title: t });
+    store.updateSession(userId, sessionId, { title: t, titleSource: "user" });
     return sessionView(this.#o.codec, store.getSession(userId, sessionId));
   }
 

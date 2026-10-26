@@ -84,37 +84,14 @@ type PullResult struct {
 // 只读：不落库，也不改渠道。渠道不存在返回 ErrChannelNotFound；API Key 没设置返回 ErrChannelSecretUnset；
 // 上游不通、401/403、返回格式不符、超时、过大都返回 ErrChannelPullFailed（原因写进 msg，已脱敏）。
 func (s *AIChannelService) PullModels(ctx context.Context, key string) (*PullResult, error) {
-	// 1. 渠道与 Key：Key 没设置时直接给出明确的下一步，而不是发一个必然 401 的请求
-	ch, err := s.load(ctx, key)
+	// 1-2. 渠道、Key、请求上游
+	snap, apiKey, err := s.upstreamAccess(ctx, key)
 	if err != nil {
 		return nil, err
 	}
-	if s.lister == nil {
-		return nil, errcode.ErrInternal.WithMsg("拉取模型功能未启用")
-	}
-	set, err := s.secrets.SecretIsSet(ctx, model.ChannelSecretName(key))
+	ids, err := s.lister.ListUpstreamModels(ctx, snap, apiKey)
 	if err != nil {
-		return nil, err
-	}
-	if !set {
-		return nil, errcode.ErrChannelSecretUnset.WithMsg(fmt.Sprintf("渠道 %q 的 API Key 尚未设置，请先设置 Key", key))
-	}
-	apiKey, err := s.secrets.Get(ctx, model.ChannelSecretName(key))
-	if err != nil {
-		return nil, err
-	}
-	// 2. 请求上游；失败翻译成业务错误，消息里不含 Key 明文（宿主已脱敏，这里再兜一次）
-	rt, err := provider.AgentRuntimeOf(ch) // 只要渠道部分：地址、请求头、限流
-	if err != nil {
-		return nil, errcode.ErrChannelInvalid.WithMsg("渠道配置无法解析：" + err.Error())
-	}
-	ids, err := s.lister.ListUpstreamModels(ctx, rt.Channel, apiKey)
-	var pe *provider.PullError
-	if errors.As(err, &pe) {
-		return nil, errcode.ErrChannelPullFailed.WithMsg(aiRedactString(pe.Message, []string{apiKey}))
-	}
-	if err != nil {
-		return nil, errcode.ErrChannelPullFailed.WithMsg(aiRedactString(err.Error(), []string{apiKey}))
+		return nil, pullFailure(err, apiKey)
 	}
 	// 3. 标记已存在的模型（同渠道、同上游模型名）
 	have, err := s.models.ChannelUpstreamModels(ctx, key)
@@ -126,6 +103,58 @@ func (s *AIChannelService) PullModels(ctx context.Context, key string) (*PullRes
 		out = append(out, PulledModel{ID: id, Exists: have[id]})
 	}
 	return &PullResult{Models: out, Total: len(out)}, nil
+}
+
+// upstreamAccess 取出向渠道上游发请求所需的连接信息：渠道地址、请求头、限流，和 API Key 明文。
+// 渠道不存在返回 ErrChannelNotFound；功能未启用返回内部错误；Key 没设置返回 ErrChannelSecretUnset（不发请求）。
+func (s *AIChannelService) upstreamAccess(ctx context.Context, key string) (provider.ChannelSnapshot, string, error) {
+	ch, err := s.load(ctx, key)
+	if err != nil {
+		return provider.ChannelSnapshot{}, "", err
+	}
+	if s.lister == nil {
+		return provider.ChannelSnapshot{}, "", errcode.ErrInternal.WithMsg("拉取模型功能未启用")
+	}
+	set, err := s.secrets.SecretIsSet(ctx, model.ChannelSecretName(key))
+	if err != nil {
+		return provider.ChannelSnapshot{}, "", err
+	}
+	if !set {
+		return provider.ChannelSnapshot{}, "", errcode.ErrChannelSecretUnset.WithMsg(fmt.Sprintf("渠道 %q 的 API Key 尚未设置，请先设置 Key", key))
+	}
+	apiKey, err := s.secrets.Get(ctx, model.ChannelSecretName(key))
+	if err != nil {
+		return provider.ChannelSnapshot{}, "", err
+	}
+	rt, err := provider.AgentRuntimeOf(ch) // 只要渠道部分：地址、请求头、限流
+	if err != nil {
+		return provider.ChannelSnapshot{}, "", errcode.ErrChannelInvalid.WithMsg("渠道配置无法解析：" + err.Error())
+	}
+	return rt.Channel, apiKey, nil
+}
+
+// pullFailure 把请求上游的失败翻译成业务错误，消息里不含 Key 明文（宿主已脱敏，这里再兜一次）。
+func pullFailure(err error, apiKey string) error {
+	var pe *provider.PullError
+	if errors.As(err, &pe) {
+		return errcode.ErrChannelPullFailed.WithMsg(aiRedactString(pe.Message, []string{apiKey}))
+	}
+	return errcode.ErrChannelPullFailed.WithMsg(aiRedactString(err.Error(), []string{apiKey}))
+}
+
+// UpstreamLimits 向渠道上游问某个模型的上下文规格：上游 /v1/models 随模型给了就返回，没给 ok 为 false。
+// 只读；错误同 PullModels。
+func (s *AIChannelService) UpstreamLimits(ctx context.Context, key, modelID string) (provider.UpstreamLimits, bool, error) {
+	snap, apiKey, err := s.upstreamAccess(ctx, key)
+	if err != nil {
+		return provider.UpstreamLimits{}, false, err
+	}
+	limits, err := s.lister.ListUpstreamLimits(ctx, snap, apiKey)
+	if err != nil {
+		return provider.UpstreamLimits{}, false, pullFailure(err, apiKey)
+	}
+	l, ok := limits[modelID]
+	return l, ok, nil
 }
 
 // ImportModels 把所选的上游模型导入成“待配置”模型：未启用、没有选协议，能力和协议由运营之后在模型里选。

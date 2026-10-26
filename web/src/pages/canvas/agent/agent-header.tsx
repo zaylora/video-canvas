@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import {
   Check,
-  History,
+  ChevronDown,
   Minus,
   PanelRight,
   PictureInPicture2,
@@ -21,8 +21,14 @@ import { useAgentSettings } from "@/store/agent-settings";
 
 import { AGENT_ICON_BTN as ICON_BTN, AGENT_POP } from "./styles";
 
-/** 会话标题：双击原地改名，Enter 或失焦提交，Esc 取消 */
-function Title({ title, onRename }: { title: string; onRename: (t: string) => void }) {
+/**
+ * 会话标题即历史入口（设计稿 6.12，原为单独的「历史会话」图标）：
+ * 单击向下弹出历史会话；双击原地改名，Enter 或失焦提交，Esc 取消。
+ * 历史里当前会话打勾；运行中不能切换到别的会话；删除要点两次。
+ */
+function TitleHistory({ ctl, title }: { ctl: AgentController; title: string }) {
+  const [open, setOpen] = useState(false);
+  const [confirming, setConfirming] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(title);
   const input = useRef<HTMLInputElement>(null);
@@ -31,7 +37,7 @@ function Title({ title, onRename }: { title: string; onRename: (t: string) => vo
   }, [editing]);
   const commit = () => {
     setEditing(false);
-    if (draft.trim() && draft.trim() !== title) onRename(draft.trim());
+    if (draft.trim() && draft.trim() !== title) void ctl.rename(draft.trim());
   };
   if (editing) {
     return (
@@ -51,34 +57,33 @@ function Title({ title, onRename }: { title: string; onRename: (t: string) => vo
     );
   }
   return (
-    <h2
-      className="min-w-0 flex-1 truncate text-sm font-semibold tracking-[-0.01em]"
-      title="双击改名"
-      onDoubleClick={() => {
-        setDraft(title);
-        setEditing(true);
+    <Popover
+      open={open}
+      onOpenChange={(v) => {
+        setOpen(v);
+        setConfirming(null);
       }}
     >
-      {title}
-    </h2>
-  );
-}
-
-/** 历史：当前会话打勾；运行中不能切换到别的会话；删除要点两次 */
-function HistoryPopover({ ctl }: { ctl: AgentController }) {
-  const [confirming, setConfirming] = useState<string | null>(null);
-  return (
-    <Popover onOpenChange={() => setConfirming(null)}>
-      <ChromeTooltip label="历史会话" side="bottom">
-        <PopoverTrigger aria-label="历史会话" className={ICON_BTN}>
-          <History />
+      <ChromeTooltip label="历史会话 · 双击改名" side="bottom">
+        <PopoverTrigger
+          aria-label={`历史会话，当前：${title}`}
+          onDoubleClick={() => {
+            setOpen(false);
+            setDraft(title);
+            setEditing(true);
+          }}
+          className="hover:bg-chrome-hover data-popup-open:bg-chrome-hover focus-visible:ring-node-ring/60 -ml-1.5 flex h-8 max-w-full min-w-0 items-center gap-1 rounded-lg px-1.5 outline-none transition-colors duration-120 focus-visible:ring-2"
+        >
+          <h2 className="min-w-0 truncate text-sm font-semibold tracking-[-0.01em]">{title}</h2>
+          <ChevronDown className="text-muted-foreground size-3.5 shrink-0" />
         </PopoverTrigger>
       </ChromeTooltip>
       <PopoverContent
         side="bottom"
-        align="end"
-        className={cn(AGENT_POP, "w-[min(290px,calc(100vw-24px))] origin-top-right gap-0.5 p-1.5")}
+        align="start"
+        className={cn(AGENT_POP, "w-[min(290px,calc(100vw-24px))] origin-top-left gap-0.5 p-1.5")}
       >
+        <p className="text-muted-foreground px-2.5 pt-1 pb-0.5 text-xs">历史会话</p>
         {ctl.sessions.length === 0 && (
           <p className="text-muted-foreground px-2.5 py-3 text-center text-xs">还没有会话</p>
         )}
@@ -91,7 +96,10 @@ function HistoryPopover({ ctl }: { ctl: AgentController }) {
                 type="button"
                 disabled={locked}
                 title={locked ? "运行中不能切换会话" : undefined}
-                onClick={() => ctl.openSession(s)}
+                onClick={() => {
+                  setOpen(false);
+                  ctl.openSession(s);
+                }}
                 className="hover:bg-chrome-hover focus-visible:ring-node-ring/60 flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] outline-none focus-visible:ring-2 disabled:opacity-40"
               >
                 <span className="min-w-0 flex-1 truncate">{s.title}</span>
@@ -159,7 +167,7 @@ function SettingsPopover() {
 }
 
 /**
- * 顶栏：品牌标识 + 标题 + 停靠 / 新对话 / 历史 / 设置 / 收起。
+ * 顶栏：品牌标识 + 标题（即历史入口）+ 新对话 / 停靠 / 设置 / 收起。
  * 浮窗时拖顶栏移动（按在按钮或输入框上不触发拖动）；消息流滚离顶部后，下方出现一条两端渐隐的分隔线。
  */
 export function AgentHeader({
@@ -198,9 +206,22 @@ export function AgentHeader({
     >
       <span
         aria-hidden
-        className="agent-orb mr-2 size-5 shrink-0 rounded-[7px] shadow-[inset_0_1px_0_var(--sheen),0_0_0_1px_var(--chrome-border),0_2px_8px_color-mix(in_oklab,var(--preset)_35%,transparent)]"
+        className="agent-orb mr-2 size-5 shrink-0 rounded-[7px] shadow-[inset_0_1px_0_var(--sheen),0_0_0_1px_var(--chrome-border),0_2px_8px_color-mix(in_oklab,var(--beam)_35%,transparent)]"
       />
-      <Title title={title} onRename={(t) => void ctl.rename(t)} />
+      <div className="flex min-w-0 flex-1">
+        <TitleHistory ctl={ctl} title={title} />
+      </div>
+      <ChromeTooltip label={ctl.busy ? "运行中不能新建对话" : "新对话"} side="bottom">
+        <button
+          type="button"
+          aria-label="新对话"
+          disabled={ctl.busy}
+          onClick={ctl.newSession}
+          className={ICON_BTN}
+        >
+          <SquarePen />
+        </button>
+      </ChromeTooltip>
       {canDock !== null && (
         <ChromeTooltip label={dockLabel} side="bottom">
           <button
@@ -216,18 +237,6 @@ export function AgentHeader({
           </button>
         </ChromeTooltip>
       )}
-      <ChromeTooltip label={ctl.busy ? "运行中不能新建对话" : "新对话"} side="bottom">
-        <button
-          type="button"
-          aria-label="新对话"
-          disabled={ctl.busy}
-          onClick={ctl.newSession}
-          className={ICON_BTN}
-        >
-          <SquarePen />
-        </button>
-      </ChromeTooltip>
-      <HistoryPopover ctl={ctl} />
       <SettingsPopover />
       <ChromeTooltip label="收起" shortcut="⌘/" side="bottom">
         <button type="button" aria-label="收起 Agent" onClick={onClose} className={ICON_BTN}>

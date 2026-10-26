@@ -17,7 +17,7 @@ export function defaultCapabilities(kind: string): Capabilities {
           audio: { on: true, max: 1, max_mb: 15 },
           video: { on: true, max: 1, max_mb: 100 },
         },
-        prompt: { max_length: 2000 },
+        prompt: { max_length: 20000 },
         params: {
           aspect_ratio: {
             type: "enum",
@@ -66,7 +66,7 @@ export function defaultCapabilities(kind: string): Capabilities {
       return {
         ops: ["t2i", "i2i"],
         refs: { image: { on: true, max: 4, max_mb: 10 }, audio: REF_OFF, video: REF_OFF },
-        prompt: { max_length: 1500 },
+        prompt: { max_length: 20000 },
         params: {
           aspect_ratio: {
             type: "enum",
@@ -97,7 +97,7 @@ export function defaultCapabilities(kind: string): Capabilities {
     case "audio":
       return {
         refs: { image: REF_OFF, audio: REF_OFF, video: REF_OFF },
-        prompt: { max_length: 4096 },
+        prompt: { max_length: 20000 },
         params: {},
       };
     case "agent":

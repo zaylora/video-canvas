@@ -142,8 +142,8 @@ func (h *PlatformHandler) ChatCompletions(c *gin.Context) {
 		return
 	}
 	serveModelStream(c, func(ctx context.Context, body []byte, headers http.Header, write func([]byte)) error {
-		if c.GetHeader("X-Agent-Purpose") == agentsvc.ModelPurposeSummary { // 只认已知的用途：别的值一律当普通对话
-			ctx = agentsvc.WithModelPurpose(ctx, agentsvc.ModelPurposeSummary)
+		if purpose := agentsvc.ModelPurposeOf(c.GetHeader("X-Agent-Purpose")); purpose != "" { // 只认已知的用途：别的值一律当普通对话
+			ctx = agentsvc.WithModelPurpose(ctx, purpose)
 		}
 		return h.svc.ProxyModelPlatform(ctx, rc, body, func(id uint64) { headers.Set(CallIDHeader, strconv.FormatUint(id, 10)) }, write)
 	})

@@ -189,7 +189,12 @@ export function AgentPanel({
       {loading ? (
         <AgentLoading failed={ctl.openFailed} onRetry={ctl.reload} />
       ) : empty ? (
-        <AgentEmpty />
+        <AgentEmpty
+          onStarter={(t) => {
+            editor.current?.setText(t);
+            editor.current?.focus();
+          }}
+        />
       ) : (
         <MessageList
           key={ctl.session?.id ?? "new"}
@@ -200,9 +205,6 @@ export function AgentPanel({
           onScrolled={setScrolled}
         />
       )}
-      <AnimatePresence>
-        {ctl.strip && <RunStrip key={ctl.strip.runId} strip={ctl.strip} onHide={ctl.hidePlan} />}
-      </AnimatePresence>
       {/* 决定框和输入框共用一个容器：互换时容器用 layout 过渡高度，只在互换时触发（打字换行不做动画） */}
       <motion.div
         layout
@@ -228,6 +230,12 @@ export function AgentPanel({
         </AnimatePresence>
         {/* 等你决定时输入框只是藏起来，不卸载：里面写了一半的话还在 */}
         <div hidden={ctl.pending !== null}>
+          {/* 计划条并进输入框顶部（设计稿 6.12），不再悬在输入框上方 */}
+          <AnimatePresence initial={false}>
+            {ctl.strip && (
+              <RunStrip key={ctl.strip.runId} strip={ctl.strip} onHide={ctl.hidePlan} />
+            )}
+          </AnimatePresence>
           <SteerTray items={steerQueue} />
           <AgentComposer
             text={text}

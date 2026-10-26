@@ -781,3 +781,57 @@ func aiKeyOK(key string) bool {
 	}
 	return true
 }
+
+func TestAIChannelService_UpstreamLimits(t *testing.T) {
+	ctx := context.Background()
+	seed := func(t *testing.T, withKey bool) *achEnv {
+		t.Helper()
+		e := newAchEnv(t)
+		if _, err := e.svc.Create(ctx, createInput()); err != nil {
+			t.Fatal(err)
+		}
+		if withKey {
+			if err := e.svc.SetSecret(ctx, 1, "main", "sk-live-123"); err != nil {
+				t.Fatal(err)
+			}
+		}
+		e.lister.Limits = map[string]provider.UpstreamLimits{"claude-x": {Window: 200000, Output: 64000}}
+		return e
+	}
+
+	t.Run("上游给了规格：返回它，并用渠道的 Key 请求", func(t *testing.T) {
+		e := seed(t, true)
+		got, ok, err := e.svc.UpstreamLimits(ctx, "main", "claude-x")
+		if err != nil || !ok || got.Window != 200000 || got.Output != 64000 {
+			t.Fatalf("实际 %+v ok=%v err=%v", got, ok, err)
+		}
+		if e.lister.APIKey != "sk-live-123" {
+			t.Fatalf("应带渠道的 Key：%q", e.lister.APIKey)
+		}
+	})
+	t.Run("上游没给这个模型的规格：ok=false，不是错误", func(t *testing.T) {
+		e := seed(t, true)
+		if _, ok, err := e.svc.UpstreamLimits(ctx, "main", "other"); ok || err != nil {
+			t.Fatalf("ok=%v err=%v", ok, err)
+		}
+	})
+	t.Run("Key 没设置：409，不发请求", func(t *testing.T) {
+		e := seed(t, false)
+		_, _, err := e.svc.UpstreamLimits(ctx, "main", "claude-x")
+		adminWantCode(t, err, errcode.ErrChannelSecretUnset.Code)
+		if e.lister.Calls != 0 {
+			t.Fatal("没有 Key 不该请求上游")
+		}
+	})
+	t.Run("渠道不存在", func(t *testing.T) {
+		e := seed(t, true)
+		_, _, err := e.svc.UpstreamLimits(ctx, "nope", "claude-x")
+		adminWantCode(t, err, errcode.ErrChannelNotFound.Code)
+	})
+	t.Run("上游失败：返回拉取失败的业务错误", func(t *testing.T) {
+		e := seed(t, true)
+		e.lister.Err = &provider.PullError{Reason: provider.PullStatus, Status: 502, Message: "上游返回 HTTP 502"}
+		_, _, err := e.svc.UpstreamLimits(ctx, "main", "claude-x")
+		adminWantCode(t, err, errcode.ErrChannelPullFailed.Code)
+	})
+}
