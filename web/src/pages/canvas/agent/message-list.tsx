@@ -5,7 +5,6 @@ import {
   Check,
   ChevronRight,
   CircleStop,
-  Clock,
   Copy,
   Layers,
   Play,
@@ -107,8 +106,7 @@ export function MessageList({
   const historyKeys = trackHistoryKeys(history, keys);
   if (historyKeys.size !== history.size) setHistory(historyKeys);
   const reduce = useReducedMotion();
-  /** 插话排队：还没读到的在状态行下面，其余按时间线顺序 */
-  const queue = ctl.timeline.filter(isQueued);
+  /** 排队中的插话在输入框顶部的托盘里（steer-tray），消息流只画其余的 */
   const body = ctl.timeline.filter((item) => !isQueued(item));
 
   /** 上次看到的内容高度：只有内容真的变高了，才算「有新内容」 */
@@ -204,7 +202,6 @@ export function MessageList({
           <AnimatePresence>
             {ctl.statusLine && <StatusLine key={ctl.statusLine.runId} line={ctl.statusLine} />}
           </AnimatePresence>
-          {queue.length > 0 && <SteerQueue queue={queue} ctl={ctl} />}
         </div>
       </div>
       {/* 顶部的加载提示悬浮在列表上，不占文档流：出现和消失都不会让内容位移 */}
@@ -371,44 +368,9 @@ function CompactionDivider({
   );
 }
 
-/** 排队说明：按运行现在的状态说什么时候会被读到 */
-function queueCaption(status: string | undefined, count: number) {
-  const when =
-    status === "waiting_input" || status === "waiting_approval"
-      ? "你回答之后"
-      : status === "step_limit"
-        ? "你点「继续」之后"
-        : "Agent 完成当前这一步之后";
-  return `${when}会读取${count > 1 ? ` · 共 ${count} 条，一起读` : ""}`;
-}
-
-/** 还没被 Agent 读到的插话：排在消息流末尾，下面一行说明什么时候会读 */
-function SteerQueue({ queue, ctl }: { queue: TimelineItem[]; ctl: AgentController }) {
-  const reduce = useReducedMotion();
-  const status = ctl.state.runs[queue[0]?.type === "user" ? (queue[0].runId ?? "") : ""]?.status;
-  return (
-    <div className="flex flex-col gap-2">
-      {queue.map((item) => (
-        <motion.div
-          key={item.key}
-          initial={reduce ? false : { opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: DURATION.base, ease: EASE_OUT }}
-        >
-          <Item item={item} ctl={ctl} showThinking={false} nodes={[]} refNodes={[]} />
-        </motion.div>
-      ))}
-      <p className="text-muted-foreground flex items-center justify-end gap-1.5 text-[11.5px]">
-        <Clock className="text-status-running size-3" />
-        {queueCaption(status, queue.length)}
-      </p>
-    </div>
-  );
-}
-
 /**
- * 运行中的插话（后端给了 id 的）：排队中是虚线气泡，读到之后变成实线并飞进时间线（共享 layoutId）；
- * 运行结束也没读到的是琥珀色虚线，用户还没发新消息时给「作为新消息发送」。
+ * 读到之后的插话就是一个普通的实线气泡，不再单独标「插话」；
+ * 运行结束也没读到的是琥珀色虚线，用户还没发新消息时给「作为新消息发送」。排队中的在输入框顶部（steer-tray）。
  */
 function Steer({
   item,
@@ -418,52 +380,35 @@ function Steer({
   ctl: AgentController;
 }) {
   const reduce = useReducedMotion();
-  const waiting = item.queued === "waiting";
   const missed = item.queued === "missed";
   return (
     <div className="flex flex-col items-end gap-1">
-      <span
-        className={cn(
-          "text-muted-foreground flex min-h-4 items-center gap-1 text-[11px]",
-          missed && "text-status-warning",
-        )}
-      >
-        {waiting && (
-          <>
-            <Clock className="text-status-running size-3" />
-            插话 · 排队中
-          </>
-        )}
-        {missed && (
-          <>
-            <TriangleAlert className="size-3" />
-            运行已结束，这条没有被读取
-            {item.resendable && !ctl.busy && (
-              <>
-                {" · "}
-                <button
-                  type="button"
-                  onClick={() => void ctl.send(item.text)}
-                  className="text-foreground decoration-foreground/35 hover:decoration-foreground focus-visible:ring-node-ring/60 rounded-sm underline underline-offset-3 outline-none focus-visible:ring-2"
-                >
-                  作为新消息发送
-                </button>
-              </>
-            )}
-          </>
-        )}
-        {!waiting && !missed && "插话"}
-      </span>
+      {missed && (
+        <span className="text-status-warning flex min-h-4 items-center gap-1 text-[11px]">
+          <TriangleAlert className="size-3" />
+          运行已结束，这条没有被读取
+          {item.resendable && !ctl.busy && (
+            <>
+              {" · "}
+              <button
+                type="button"
+                onClick={() => void ctl.send(item.text)}
+                className="text-foreground decoration-foreground/35 hover:decoration-foreground focus-visible:ring-node-ring/60 rounded-sm underline underline-offset-3 outline-none focus-visible:ring-2"
+              >
+                作为新消息发送
+              </button>
+            </>
+          )}
+        </span>
+      )}
       <motion.div
         layoutId={reduce ? undefined : `steer-${item.key}`}
         transition={SPRING}
         className={cn(
           "max-w-[88%] rounded-2xl rounded-br-sm px-3 py-2 text-[13.5px] leading-[1.7] break-words whitespace-pre-wrap",
-          waiting &&
-            "text-foreground/80 border-foreground/30 bg-foreground/3 border border-dashed px-[11px] py-[7px]",
           missed &&
             "border-status-warning/70 bg-status-warning/8 border border-dashed px-[11px] py-[7px]",
-          !waiting && !missed && "agent-inset bg-foreground/7",
+          !missed && "agent-inset bg-foreground/7",
         )}
       >
         <MessageText text={item.text} />
