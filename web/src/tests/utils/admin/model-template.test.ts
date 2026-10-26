@@ -17,6 +17,11 @@ describe("按种类预填的能力与定价", () => {
     });
   }
 
+  test("提示词字数上限：各种类新建时都预填 20000", () => {
+    for (const kind of ["video", "image", "audio", "text", "agent"])
+      expect(defaultCapabilities(kind).prompt?.max_length).toBe(20000);
+  });
+
   test("按秒计费的模板有 duration 数字参数；文本按 Token、没有生成方式", () => {
     expect(defaultPricing("video").billing).toBe("per_second");
     expect(defaultCapabilities("video").params?.duration?.type).toBe("number");

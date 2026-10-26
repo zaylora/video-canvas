@@ -125,7 +125,10 @@ describe("evaluateSend：能不能发、为什么、花多少积分", () => {
   });
 
   test("提示词超过模型上限：给出模型自己的说法", () => {
-    const state = evaluateSend({ ...base, text: "字".repeat(1600) });
+    // 上限写明在模型自己的配置里，不依赖新建模型时的预填值
+    const limited = model("image");
+    limited.capabilities = { ...limited.capabilities, prompt: { max_length: 1500 } };
+    const state = evaluateSend({ ...base, model: limited, text: "字".repeat(1600) });
     expect(state.canSend).toBe(false);
     expect(state.hint).toContain("1500");
   });
