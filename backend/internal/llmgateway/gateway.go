@@ -184,7 +184,13 @@ func (g *Gateway) do(ctx context.Context, tg Target, base *url.URL, body []byte,
 	defer resp.Body.Close()
 	touch()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		if tg.Format == FormatGemini {
+			return nil, geminiHTTPError(resp, tg.APIKey, body)
+		}
 		return nil, classifyHTTPError(resp, tg.APIKey)
+	}
+	if tg.Format == FormatGemini {
+		return readGeminiResponse(resp, emit, touch, raw)
 	}
 	if strings.Contains(resp.Header.Get("Content-Type"), "application/json") {
 		return readWhole(resp.Body, emit, raw)
