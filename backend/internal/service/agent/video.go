@@ -183,7 +183,7 @@ type frameReq struct {
 	connectTo []string
 }
 
-// parseFrameAt 读出 at：first、last 或非负的秒数。
+// parseFrameAt 读出 at：first、last 或非负的秒数（数字或数字字符串）。
 func parseFrameAt(raw json.RawMessage) (kind string, sec float64, err error) {
 	var v any
 	if json.Unmarshal(raw, &v) != nil {
@@ -194,16 +194,22 @@ func parseFrameAt(raw json.RawMessage) (kind string, sec float64, err error) {
 		if x == "first" || x == "last" {
 			return x, 0, nil
 		}
+		sec, err = strconv.ParseFloat(strings.TrimSpace(x), 64)
+		if err != nil {
+			return "", 0, fail(`at 只能是 "first"、"last" 或秒数`)
+		}
 	case float64:
-		if math.IsNaN(x) || math.IsInf(x, 0) {
-			break
-		}
-		if x < 0 {
-			return "", 0, fail("at 不能为负数")
-		}
-		return "", x, nil
+		sec = x
+	default:
+		return "", 0, fail(`at 只能是 "first"、"last" 或秒数`)
 	}
-	return "", 0, fail(`at 只能是 "first"、"last" 或秒数`)
+	if math.IsNaN(sec) || math.IsInf(sec, 0) {
+		return "", 0, fail(`at 只能是 "first"、"last" 或秒数`)
+	}
+	if sec < 0 {
+		return "", 0, fail("at 不能为负数")
+	}
+	return "", sec, nil
 }
 
 // toolCaptureFrame 截帧：把视频里的指定画面存成用户素材，在画布上建成图片节点。

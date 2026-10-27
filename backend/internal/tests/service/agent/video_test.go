@@ -227,6 +227,58 @@ func TestAgentBridge_InspectVideo(t *testing.T) {
 	})
 }
 
+func TestParseFrameAt_NumericString(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		at   any
+		sec  float64
+		want string
+	}{
+		{name: "数字字符串", at: "3.5", sec: 3.5},
+		{name: "零秒字符串", at: "0", sec: 0},
+		{name: "带空白的秒数", at: " 3.5 ", sec: 3.5},
+		{name: "负数字符串", at: "-1", want: "at 不能为负数"},
+		{name: "非数字字符串", at: "abc", want: `at 只能是 "first"、"last" 或秒数`},
+		{name: "非有限数", at: "NaN", want: `at 只能是 "first"、"last" 或秒数`},
+		{name: "正无穷", at: "+Inf", want: `at 只能是 "first"、"last" 或秒数`},
+		{name: "负无穷", at: "-Inf", want: `at 只能是 "first"、"last" 或秒数`},
+		{name: "数值溢出", at: "1e999", want: `at 只能是 "first"、"last" 或秒数`},
+		{name: "首帧", at: "first", sec: 0},
+		{name: "尾帧", at: "last", sec: 9.9},
+		{name: "数字秒数", at: 3.5, sec: 3.5},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			e := newVideoEnv(t, model.AgentModeAll, true)
+			res := e.tool(t, e.tok, "canvas_capture_frame", map[string]any{
+				"nodeId": "v1", "frames": []map[string]any{{"at": c.at}},
+			})
+			if c.want != "" {
+				if !res.IsError || !strings.Contains(res.Content, c.want) {
+					t.Fatalf("应拒绝 at=%v 并提示 %q，实际 %+v", c.at, c.want, res)
+				}
+				if len(e.frames.frameAts) != 0 || len(e.store.saved) != 0 {
+					t.Fatal("无效时刻不应截帧或保存素材")
+				}
+				return
+			}
+			if res.IsError {
+				t.Fatalf("at=%v 截帧失败：%s", c.at, res.Content)
+			}
+			if len(e.frames.frameAts) != 1 || e.frames.frameAts[0] != c.sec {
+				t.Fatalf("截帧时刻 = %v，应为 [%v]", e.frames.frameAts, c.sec)
+			}
+			var out struct {
+				Frames []struct {
+					At float64 `json:"at"`
+				} `json:"frames"`
+			}
+			if err := json.Unmarshal([]byte(res.Content), &out); err != nil || len(out.Frames) != 1 || out.Frames[0].At != c.sec {
+				t.Fatalf("结果应返回 %v 秒，实际 %s（%v）", c.sec, res.Content, err)
+			}
+		})
+	}
+}
+
 func TestAgentBridge_CaptureFrame(t *testing.T) {
 	type frameArg = map[string]any
 
@@ -446,5 +498,15 @@ func TestAgentBridge_VideoWithRealFFmpeg(t *testing.T) {
 	cfg, err := png.DecodeConfig(strings.NewReader(data))
 	if err != nil || cfg.Width != 320 || cfg.Height != 240 {
 		t.Errorf("尾帧应是 320x240 的 PNG: %+v err=%v", cfg, err)
+	}
+
+	res = b.tool(t, tok, "canvas_capture_frame", map[string]any{"nodeId": "v1", "frames": []map[string]any{{"at": "1.5"}}})
+	if res.IsError || len(store.saved) != 2 {
+		t.Fatalf("数字字符串截帧: %+v saved=%d", res, len(store.saved))
+	}
+	_, data, _ = strings.Cut(store.saved[1], "|")
+	cfg, err = png.DecodeConfig(strings.NewReader(data))
+	if err != nil || cfg.Width != 320 || cfg.Height != 240 {
+		t.Errorf("1.5 秒应截出 320x240 的 PNG: %+v err=%v", cfg, err)
 	}
 }
