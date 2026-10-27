@@ -1,6 +1,11 @@
 import type { PluginMeta, PluginView, SettingSchema } from "@/api/admin/ai/type";
 
-import { MODEL_KIND_LABEL, readModelString, withModelField } from "./model-body";
+import {
+  MODEL_KIND_LABEL,
+  readModelString,
+  withModelApiFormat,
+  withModelField,
+} from "./model-body";
 import { defaultCapabilities, defaultDeadline, defaultPricing } from "./model-template";
 import { compareSemver, findPluginVersion, latestVersion, metaSupportsKind } from "./plugin";
 import { initialSettingValues, settingFields, validateSettingValues } from "./settings-form";
@@ -257,7 +262,7 @@ export function switchModelKind(
 
 /**
  * 改正文里的模型能力：能力与定价重置成新种类的默认值（生成方式、素材、参数、计费方式都不通用），
- * 正文没有时限就补该种类的默认时限，协议按 switchModelKind 处理。正文不是对象返回 null。
+ * 正文没有时限就补该种类的默认时限，协议按 switchModelKind 处理，非 Agent 清除接口格式。正文不是对象返回 null。
  */
 export function withModelKind(
   body: unknown,
@@ -272,6 +277,7 @@ export function withModelKind(
   if (next && !readModelString(next, "deadline"))
     next = withModelField(next, "deadline", defaultDeadline(kind));
   next = next && withModelProtocol(next, protocol);
+  if (next && kind !== "agent") next = withModelApiFormat(next, "openai");
   return next ? { body: next, notice } : null;
 }
 

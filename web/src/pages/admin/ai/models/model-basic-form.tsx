@@ -14,6 +14,13 @@ import { Notice } from "@/components/admin-ui/notice";
 import { TagInput } from "@/components/admin-ui/tag-input";
 import { VendorPicker } from "@/components/admin-ui/vendor-picker";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useRetained } from "@/hooks/use-retained";
 import { cn } from "@/lib/utils";
@@ -22,11 +29,13 @@ import {
   MODEL_KIND_LABEL,
   MODEL_TAG_MAX_LENGTH,
   MODEL_TAGS_MAX,
+  readModelApiFormat,
   readModelChannel,
   readModelKind,
   readModelNumber,
   readModelString,
   readModelStrings,
+  withModelApiFormat,
   withModelField,
   withModelUpstream,
 } from "@/utils/admin/model-body";
@@ -66,6 +75,7 @@ export function ModelBasicForm({
   const { plugins, pluginsStatus } = catalog;
   const kind = readModelKind(body);
   const protocol = readModelProtocol(body);
+  const apiFormat = readModelApiFormat(body);
   const { upstreamModel } = readModelChannel(body);
   // 换能力会把能力与参数、定价重置成新种类的默认值；已有能力的模型先确认，免得误点清掉配置
   const [pendingKind, setPendingKind] = useState<string | null>(null);
@@ -156,6 +166,41 @@ export function ModelBasicForm({
               onChange={(slug) => setField("vendor", slug || undefined)}
             />
           </FormField>
+          {kind === "agent" && (
+            <FormField
+              size="default"
+              label="接口格式"
+              htmlFor="model-api-format"
+              error={issueFor(issues, "channels[0].api_format")}
+              hint={
+                apiFormat === "gemini"
+                  ? "请求 {base}/v1beta/models/{上游模型}:streamGenerateContent?alt=sse，鉴权 x-goog-api-key 与 Authorization: Bearer。渠道地址要指向 Gemini 原生接口的根路径（可能带专用前缀）。"
+                  : "请求 {base}/v1/chat/completions，鉴权 Authorization: Bearer。"
+              }
+            >
+              <Select
+                value={apiFormat}
+                onValueChange={(value) => {
+                  if (value === "openai" || value === "gemini")
+                    onChange((current) => withModelApiFormat(current, value));
+                }}
+              >
+                <SelectTrigger
+                  id="model-api-format"
+                  className="w-full"
+                  aria-invalid={!!issueFor(issues, "channels[0].api_format")}
+                >
+                  <SelectValue>
+                    {apiFormat === "gemini" ? "Gemini 原生" : "OpenAI 兼容"}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="openai">OpenAI 兼容</SelectItem>
+                  <SelectItem value="gemini">Gemini 原生</SelectItem>
+                </SelectContent>
+              </Select>
+            </FormField>
+          )}
         </div>
       </FormSection>
 

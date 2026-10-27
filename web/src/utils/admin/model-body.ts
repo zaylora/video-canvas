@@ -29,6 +29,27 @@ export function readModelChannel(body: unknown): {
   };
 }
 
+/** Agent 模型接口格式；旧配置与非法值按 OpenAI 兼容读取 */
+export function readModelApiFormat(body: unknown): "openai" | "gemini" {
+  const first = isRecord(body) && Array.isArray(body.channels) ? body.channels[0] : undefined;
+  return isRecord(first) && first.api_format === "gemini" ? "gemini" : "openai";
+}
+
+/** 只改首渠道的接口格式；OpenAI 删除字段，缺少正文时从空对象开始 */
+export function withModelApiFormat(
+  body: unknown,
+  format: "openai" | "gemini",
+): Record<string, unknown> {
+  const current = isRecord(body) ? body : {};
+  const channels = Array.isArray(current.channels) ? [...current.channels] : [];
+  if (format === "openai" && !isRecord(channels[0])) return current;
+  const first = isRecord(channels[0]) ? { ...channels[0] } : {};
+  if (format === "openai") delete first.api_format;
+  else first.api_format = format;
+  channels[0] = first;
+  return { ...current, channels };
+}
+
 /**
  * 把 channels[0].channel 改成指定渠道，其余字段和键顺序不动。
  * 正文没有 channels 时追加一项（upstream_model 留空待填）。正文不是对象时返回 null。

@@ -30,12 +30,13 @@ const FIELD_OF: Record<string, { tab: ModelTabId; id: string }> = {
 };
 
 /**
- * 校验问题的路径 → 页签与控件。channels[0] 下有三种问题：
- * upstream_model 是上游模型标识，protocol（含 protocol.plugin / version / settings）落在“能力与协议”区块，
- * channel 是所属渠道；协议问题不能落到渠道的控件上。
+ * 校验问题的路径 → 页签与控件。channels[0] 下的问题分别定位：
+ * upstream_model 是上游模型标识，api_format 是接口格式，protocol（含 plugin / version / settings）落在“能力与协议”区块，
+ * channel 是所属渠道。
  */
 export function fieldOfPath(path: string): { tab: ModelTabId; id: string } | null {
   if (path.startsWith("channels[0].upstream_model")) return { tab: "basic", id: "model-upstream" };
+  if (path.startsWith("channels[0].api_format")) return { tab: "basic", id: "model-api-format" };
   if (path.startsWith("channels[0].protocol")) return { tab: "basic", id: "model-protocol" };
   if (path.startsWith("channels[0].channel")) return { tab: "basic", id: "model-channel" };
   if (path.startsWith("capabilities.prompt")) return { tab: "params", id: "model-prompt-length" };
