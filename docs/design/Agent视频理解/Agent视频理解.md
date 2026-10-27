@@ -332,3 +332,65 @@ canvas_inspect_video(nodeId, count?)
 - Claude 接口格式、Gemini 思考预算 / 上下文缓存 / 搜索接地、按格式拉取模型。
 - 长视频分段、字幕导出、分析结果缓存、可配置的体积 / 时长 / 超时 / 并发。
 - 同一份飞书文档里的其他 v0.5.3 条目：「能自行推进内容、后台监控」「聊天框允许加图片（去掉上传到画布的逻辑）」「去除水印」。
+
+## 13. 实现记录（PR1）
+
+2026-10-27：PR1 的配置、网关翻译、代理留存与后台表单已实现；PR2 仍按 §6 待实现。本节更新 PR1 的实际状态，前文「未实现」保留为设计稿形成时的状态。生产 Gemini 服务尚未完成真机验收。
+
+### 13.1 实现范围与提交
+
+下表路径相对仓库根目录；同一文件在多个任务中逐步完成，表内包含新增文件及修改文件。
+
+| 提交 | 实现 | 新增 / 修改文件 |
+| --- | --- | --- |
+| `65cc93f` | `api_format` 校验、JSON Schema 与模型快照；空格式等同 OpenAI，老快照不增加字段 | `backend/internal/provider/modelcfg/{types,validate,jsonschema}.go`、`backend/internal/provider/snapshot.go`；测试 `backend/internal/tests/provider/modelcfg/{agent_model,jsonschema}_test.go` |
+| `064c932` | `Target.Format`、保留渠道前缀的 Gemini 端点、双鉴权头与协议头优先级 | `backend/internal/llmgateway/{types,gateway,gemini_request}.go`；测试 `backend/internal/tests/llmgateway/gemini_wire_test.go` |
+| `63a181f` | OpenAI 请求翻译与工具 schema 清洗 | `backend/internal/llmgateway/{gateway,gemini_request,gemini_schema}.go`；测试 `backend/internal/tests/llmgateway/{gemini_request,gemini_schema,gemini_wire}_test.go` |
+| `3487b85` | Gemini SSE / JSON 响应、工具 id 与签名、用量与安全错误处理 | `backend/internal/llmgateway/{gateway,gemini_response}.go`；测试 `backend/internal/tests/llmgateway/gemini_response_test.go` |
+| `faf0b2c` | 截帧 `at` 同时接受有限非负数字字符串与原有数字、first / last | `backend/internal/service/agent/video.go`；测试 `backend/internal/tests/service/agent/video_test.go` |
+| `dfd15e6` | Agent 模型接口格式下拉、正文读写、切换能力删键、错误字段定位 | `web/src/pages/admin/ai/models/{model-basic-form.tsx,model-fields.ts}`、`web/src/utils/admin/{model-body,model-protocol}.ts`；测试 `web/src/tests/pages/admin/ai/models/{model-basic-form.test.tsx,model-fields.test.ts}`、`web/src/tests/utils/admin/model-body.test.ts` |
+| `f72fd78` | 快照格式传入网关，留存摘要记录非空 `api_format`，留存体保持脱敏 OpenAI 形状 | `backend/internal/service/agent/{platform_model,observe_request,bridge}.go`；测试 `backend/internal/tests/service/agent/{bridge,observe_request}_test.go` |
+
+`f72fd78` 按 TDD 完成：先观察到 `openai` / `gemini` 的目标格式为空、摘要缺少格式，再实现通过。已有留存测试只在四个调用处补空字符串参数，所有原断言保留；生产调用链的两个调用处补上传递的格式。时间仍由 `recordModelRequest` 使用 `b.d.Now()` 设置。
+
+### 13.2 翻译覆盖与留存边界
+
+- **请求**：system → `systemInstruction`；user 文本、https 图片与 data URL 图片 → `contents` / `fileData` / `inlineData`；assistant → model，工具调用的 JSON arguments → `functionCall.args`（空串视为空对象）；工具结果按历史 id 查函数名，找不到返回 `ErrInvalidRequest`。连续工具结果、紧随的工具附图以及相邻同角色内容合并；生成参数和 `tool_choice` 转为 Gemini 对应字段。`Stream` 与 `StreamRaw` 共用 `ToGemini`。
+- **schema**：同类型 const / enum 的 anyOf 合并为 enum；混合类型 anyOf 降为 string，并补充数字字符串说明。递归去掉不支持的关键字，把数值与数组范围写进 description，保留与关键字同名的参数。测试覆盖现有 Agent 工具声明的整体清洗，工具声明原文件不变。
+- **响应**：文本与 thought 分别产出 content / reasoning_content；functionCall 生成逐次递增的工具索引和不含 `|` 的 `gc_` id，thoughtSignature 以无填充 base64url 编入对应 id，并能在下一轮解回。覆盖并行调用首项带签名、结束原因、拦截、非流 JSON；输出 Token 为 candidates + thoughts，cached 单列。有效块后的正常 EOF 补结束与 `[DONE]`，空流报断流；缺 usage 保留 `UsageMissing`。取消、空闲重试、底层心跳、SSRF、禁止重定向与错误脱敏均有假上游覆盖。
+- **观测**：`ProxyModelPlatform` 使用 `snap.Model.APIFormat`；摘要只在格式非空时增加 `api_format`。留存入口仍取 `SanitizeRaw` 的输出，只在网关出站时翻译 Gemini；留存不调用 `ToGemini`，`Body` 不加格式元数据，签名 URL 与 base64 仍由现有 OpenAI 图片分段脱敏处理。未改变计费口径、限流或 Node / pi。
+
+### 13.3 与设计 / 计划的差异
+
+- §5.3 提议的格式接口未另行抽象；网关按 `Target.Format` 选择 Gemini 分支，继续复用现有 accumulator、raw 与 SSE 读取链路。
+- 后台下拉按配套原型置于「模型 Logo」之后；OpenAI 用删除 `api_format` 表示默认值，没有修改 `model-template.ts`。这与 §5.2 的位置和模板文件提议不同，默认格式的产品行为一致。
+- Task 5 的接口示例含 `now time.Time`，现有函数实际没有该参数；只增加 `apiFormat string`，保留现有时间来源，未扩展时间接口。
+- Gemini 收到 `finishReason` 就完成流，避免等待已完成但不关闭的连接；用量取完成前最后一份 `usageMetadata`。生产若在结束块之后另发用量，其兼容性仍待验证。HTTP 错误额外脱敏请求中的媒体地址，流内错误使用通用人话提示，避免上游回显签名 URL。
+- 前端全量按本次任务要求使用 `bun test --preload ...`，未使用计划示例的 Vitest。检查最终通过仓库外 `.ps1` 脚本在 PowerShell 中执行，先设 `$env:BUN_OPTIONS=''`，三项退出码依次为 0 / 0 / 2；未修改依赖或锁文件。
+
+### 13.4 验证结果与限制
+
+| 范围 | 命令 / 场景 | 结果 |
+| --- | --- | --- |
+| Task 5 定向 | `go test ./internal/tests/service/agent/ -run 'PassesGeminiFormat\|IncludesAPIFormat' -v` | 先失败后通过；空串、openai、gemini 均覆盖 |
+| 提交前格式 | `gofmt -l ./internal` | 通过，无输出 |
+| 后端静态检查 | `go vet ./...` | Task 5 提交前与 Task 8 均通过 |
+| Task 5 回归 | `go test -count=1 ./internal/tests/service/agent/... ./internal/tests/llmgateway/... ./internal/tests/provider/...` | 所有列出的包通过 |
+| 实际代理烟测 | 真实 `Gateway` 连接本地 httptest Gemini 服务 | 端点、双鉴权、图片请求翻译、OpenAI SSE 回传、10 / 4 Token 结算与异步脱敏留存通过；临时烟测文件已删除 |
+| 后端全量 | `go test -race ./...` | 只有 `internal/tests/scripts` 失败：WSL 找不到 `/bin/bash`；在 `e8a1ea7` 临时 detached 检出执行 `go test -race ./internal/tests/scripts/...` 同样失败，属于既有环境问题。其他测试包通过，含 `internal/tests/initialize`；本次执行器的 `node --version` 为 v22.22.1，未出现预告的 Node v16 失败 |
+| 前端全量 | `bun test --preload C:/Users/Administrator/.claude/_skillsec/skillsec_bun_hook.js` | 273 个文件，3340 pass / 0 fail，12676 次断言；失败场景测试会输出预期的网络 / 解码告警 |
+| 前端 lint | `bun node_modules/oxlint/bin/oxlint src` | 退出 0，无错误；react set-state-in-effect、eqeqeq 告警在 `e8a1ea7` 同样存在 |
+| 前端类型 | `bun node_modules/typescript/bin/tsc -b --noEmit` | 退出 2：仅 `src/components/canvas/text-editor-dialog.tsx:196` TS2769；根 `@tiptap/core` 3.31.4 与 starter-kit 内嵌 3.32.0 冲突。任务提供的基线结论已确认 `e8a1ea7` 同样存在，本次不改依赖 |
+
+后端命令工作目录为 `backend/`，前端为 `web/`（PowerShell，清空 `BUN_OPTIONS`）。全量运行不代表外部服务集成已验证，具体缺口如下：
+
+| 包 / 场景 | 未执行部分与原因 | 是否由 PR1 引起 |
+| --- | --- | --- |
+| `internal/tests/repository` | 未设置 `TEST_DATABASE_DSN`，PostgreSQL 仓储及依赖数据库的 Agent E2E 跳过；未设置 `REAL_LLM_BASE_URL / KEY / MODEL`，真实模型测试跳过 | 否，环境前置条件缺失 |
+| `internal/tests/migration` | 未设置 `TEST_DATABASE_DSN`，迁移集成测试跳过 | 否 |
+| `internal/tests/provider/queue` | 未设置 `TEST_DATABASE_DSN`，数据库队列测试跳过 | 否 |
+| `internal/tests/service` | 未设置 `TEST_DATABASE_DSN` / `TEST_REDIS_ADDR`，生成、支付、用户安全等相应集成测试跳过 | 否 |
+| `internal/tests/cache` | 未设置 `TEST_REDIS_ADDR`，只执行内存实现，未加入 Redis 分支 | 否 |
+| `internal/tests/storage` | 未设置 `STORAGE_IT_PROVIDER`，真实对象存储桶测试跳过 | 否 |
+
+仍需完成 PR1 生产验收：Gemini 真机对话、多轮工具调用与看图；thought signature 经真实 pi / 服务往返（含长 id）；生产接受双鉴权头与清洗后的 schema；生产结束块与用量的时序。Tiptap 类型冲突仍未解决。PR2 的视频理解、对白样本、视频计费预检与降级不属于本次交付。基线对比的临时检出目录已删除，没有推送。
