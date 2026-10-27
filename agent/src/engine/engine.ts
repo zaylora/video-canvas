@@ -19,7 +19,7 @@ import { TITLE_SYSTEM_PROMPT, buildTitlePrompt, draftTitle, parseTitle, stripMen
 import { createToolsExtension, type ToolHost, type ToolRun } from "../durable-tools.ts";
 import type { IdCodec } from "../ids.ts";
 import { PROVIDER_ID, createModelRegistry, createRunContexts, runContextExtension, type RunContexts } from "../model-provider.ts";
-import { PlatformError, type ApprovalDecision, type ApprovalExecution, type ApprovalKind, type ApprovalOutcome, type Platform, type PlatformUsage, type RunContext, type RunSetup, type ToolDecl } from "../platform-client.ts";
+import { PlatformError, platformToolCallId, type ApprovalDecision, type ApprovalExecution, type ApprovalKind, type ApprovalOutcome, type Platform, type PlatformUsage, type RunContext, type RunSetup, type ToolDecl } from "../platform-client.ts";
 import { DuplicateError, NotFoundError, StateConflictError } from "../store/errors.ts";
 import type { AgentStore } from "../store/store.ts";
 import type { Approval, Run, Session } from "../store/types.ts";
@@ -273,7 +273,13 @@ export class AgentEngine {
           a.recovering = true;
           // 重启前交给 Pi 的插话：用插话 id 当请求 id 找回它们的提交（已知的请求 id 返回原来的提交，不会重复提交），读到时才发得出 steer.read
           for (const [id, text] of a.unread) a.steers.set(id, await a.conv.submit({ type: "input", content: text, whenBusy: "steer", requestId: id }, context));
-          for (const e of store.listEvents(run.sessionId, 0, 100_000)) if (e.runId === run.id && e.type === "tool.start") a.startedBefore.add(String((e.payload as { id: string }).id));
+          for (const e of store.listEvents(run.sessionId, 0, 100_000)) {
+            if (e.runId !== run.id || e.type !== "tool.start" || !e.payload || typeof e.payload !== "object" || !("id" in e.payload) || typeof e.payload.id !== "string") continue;
+            const id = e.payload.id;
+            a.startedBefore.add(id);
+            // 兼容升级前落下的原始长 id；新事件已经是短 id，不能再次散列脚本子调用。
+            if (id.length > 43) a.startedBefore.add(platformToolCallId(id));
+          }
           this.#emit(this.#ev(a), "run.status", statusEvent("recovering"));
           resumed.push(a);
           continue;

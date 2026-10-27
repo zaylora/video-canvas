@@ -10,7 +10,7 @@ import { fromPlatform } from "../engine/engine.ts";
 import { AgentError, Err } from "../engine/errors.ts";
 import { isActive } from "../engine/status.ts";
 import type { IdCodec } from "../ids.ts";
-import type { AgentModel, ApprovalDecision, Platform, UndoResult } from "../platform-client.ts";
+import { platformToolCallId, type AgentModel, type ApprovalDecision, type Platform, type UndoResult } from "../platform-client.ts";
 import { NotFoundError } from "../store/errors.ts";
 import type { AgentStore } from "../store/store.ts";
 import type { AgentEventRecord, Run, Session } from "../store/types.ts";
@@ -251,7 +251,7 @@ export class AgentApiService {
       session_deleted: store.isSessionDeleted(run.sessionId),
       events: store.listRunEvents(run.id).map(observeEvent),
       approvals: store.listApprovals(run.id).map((a) => ({
-        id: a.id, kind: a.kind, tool_call_id: a.toolCallId, status: a.status, quote_credits: a.quoteCredits, payload: a.payload,
+        id: a.id, kind: a.kind, tool_call_id: platformToolCallId(a.toolCallId), status: a.status, quote_credits: a.quoteCredits, payload: a.payload,
         decision: a.decision, result: a.result, decided_at: at(a.decidedAt), created_at: at(a.createdAt)!,
       })),
       feedback: fb ? { rating: fb.rating, reasons: fb.reasons, comment: fb.comment, created_at: at(fb.createdAt)! } : null,

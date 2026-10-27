@@ -17,7 +17,7 @@ const run: ToolRun = { id: rc.run_id, rc };
 const decl = (name: string, verb = "动词", parameters: Record<string, unknown> = { type: "object", properties: {} }): ToolDecl => ({ name, label: "标签-" + name, verb, description: "说明 " + name, parameters, executor: "server", scriptable: false });
 const DECLS: ToolDecl[] = [
   decl("canvas_get_state", "读取", { type: "object", properties: { nodeIds: { type: "array", items: { type: "string" } } } }),
-  decl("canvas_apply_ops"), decl("canvas_capture_frame"), decl("canvas_inspect_image"), decl("web_search"),
+  decl("canvas_apply_ops"), decl("canvas_capture_frame"), decl("canvas_inspect_image"), decl("canvas_inspect_video"), decl("web_search"),
   decl("plan_update", "计划", { type: "object", properties: { steps: { type: "array", items: { type: "object" } } } }),
   decl("generate_media"), decl("canvas_delete", "删除", { type: "object", properties: { nodeIds: { type: "array", items: { type: "string" } } } }), decl("ask_user"),
 ];
@@ -86,6 +86,22 @@ test("服务端工具：调用平台，幂等键是 Pi 的工具任务 id，结�
     const result = e.m.seen[1].find((m) => m.role === "toolResult")!;
     assert.equal(textOf(result), "画布里有 3 个节点");
   }));
+
+test("Gemini 长签名：看视频成功执行，平台和时间线用同一短 ID，模型上下文保留原始 ID", () => {
+  const id = "gc_abcdefgh_" + Buffer.from("s".repeat(1732)).toString("base64url");
+  return withEnv([callTools({ id, name: "canvas_inspect_video", args: { nodeId: "n1" } }), fauxAssistantMessage("已观看")], {}, async (e) => {
+    e.f.reply("POST /internal/platform/v1/tools/canvas_inspect_video", toolReply("视频画面及声音分析", {}, { id: "short", name: "canvas_inspect_video" }));
+    assert.equal((await e.ask()).status, "done");
+    const body = e.f.seen[0].body;
+    assert.ok(body && typeof body === "object" && "tool_call_id" in body && typeof body.tool_call_id === "string");
+    const sentId = body.tool_call_id;
+    assert.ok(sentId.length <= 64 && sentId !== id, "发给 Go 的 ID 必须能写入 64 字符列");
+    assert.equal(e.h.begun[0].id, sentId);
+    assert.equal(e.h.ended[0].call.id, sentId);
+    assert.ok(JSON.stringify(e.m.seen[1]).includes(id), "下一轮模型请求仍带原始 ID，保留 Gemini 签名");
+    assert.equal(textOf(e.m.seen[1].find((m) => m.role === "toolResult")!), "视频画面及声音分析");
+  });
+});
 
 test("平台说工具失败（is_error）：模型看到的是错误结果，宿主收到的 tool.end 也是错误", () =>
   withEnv([callTools({ id: "c1", name: "canvas_apply_ops" }), fauxAssistantMessage("我改一下")], {}, async (e) => {
@@ -302,6 +318,26 @@ test("codemode：脚本里调工具各自走平台（幂等键各不相同），
     assert.equal(e.h.ended.filter((x) => !x.call.parentId).length, 1);
     for (const x of e.h.ended.filter((x) => x.call.parentId)) assert.equal(x.event.parent_id, "call_s", "tool.end 也带 parent_id");
   }));
+
+test("Gemini 长签名的脚本：子调用 ID 与外层短 ID 关联，读画布正常返回", () => {
+  const id = "gc_abcdefgh_" + Buffer.from("s".repeat(828)).toString("base64url");
+  return withCodemode([callTools({ id, name: "codemode", args: { code: "return (await tools.canvas_get_state({})).slice(0, 2);" } }), fauxAssistantMessage("完成")], async (e) => {
+    e.f.reply("POST /internal/platform/v1/tools/canvas_get_state", toolReply("画布内容"));
+    assert.equal((await e.ask()).status, "done");
+    const parent = e.h.begun.find((b) => b.name === "codemode")!;
+    const child = e.h.begun.find((b) => b.name === "canvas_get_state")!;
+    const body = e.f.seen[0].body;
+    assert.ok(body && typeof body === "object" && "tool_call_id" in body && typeof body.tool_call_id === "string");
+    const sentId = body.tool_call_id;
+    assert.ok(parent.id.length <= 64 && parent.id !== id);
+    assert.equal(child.id, sentId);
+    assert.equal(child.parentId, parent.id);
+    assert.ok(child.id.length <= 64 && child.id.startsWith(parent.id + "/"));
+    assert.equal(e.h.ended.find((x) => x.call.name === "canvas_get_state")?.event.parent_id, parent.id);
+    assert.equal(e.h.ended.find((x) => x.call.name === "codemode")?.event.is_error, false);
+    assert.ok(JSON.stringify(e.m.seen[1]).includes(id), "Gemini 下一轮仍收到原始签名");
+  });
+});
 
 test("codemode：只有标为可被脚本调用的工具在 tools 里；需要用户决定的、看图的不行", () =>
   withCodemode([callTools({ id: "c1", name: "codemode", args: { code: "return Object.keys(tools).sort().join(',');" } }), fauxAssistantMessage("好")], async (e) => {

@@ -33,13 +33,13 @@ export function createCodemode(host: ToolHost, limits: Partial<typeof CODEMODE_L
       return {
         ...t,
         execute: (args: never, api: ToolExecutionApi, context: Context) =>
-          trackedCall(host, info, args, api, context, async () => {
+          trackedCall(host, info, args, api, context, async (_run, call) => {
             const res = await t.execute(args, api, context);
             const output = (res.output ?? []) as Array<{ type: string; text?: string }>;
             const message = output.filter((o) => o.type === "text").map((o) => o.text).join(" ");
             const calls = ((res.details as CodemodeToolDetails | undefined)?.calls ?? []).length;
             const summary = res.isError ? `脚本失败：${clip(oneLine(message), 80)}` : `脚本调用了 ${calls} 次工具`;
-            return { result: res as never, end: endEvent({ id: api.callId, ...info }, !!res.isError, summary) };
+            return { result: res as never, end: endEvent(call, !!res.isError, summary) };
           }),
       };
     }),
