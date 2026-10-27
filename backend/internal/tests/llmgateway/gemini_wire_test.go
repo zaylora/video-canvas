@@ -48,6 +48,9 @@ func TestGemini_EndpointAndAuthHeaders(t *testing.T) {
 			if len(reqs) != 1 {
 				t.Fatalf("应向上游发送一次请求，实际 %d 次", len(reqs))
 			}
+			if reqs[0].Body["contents"] == nil || reqs[0].Body["messages"] != nil {
+				t.Errorf("Gemini 请求必须翻译为 contents: %v", reqs[0].Body)
+			}
 			for name, want := range map[string]string{
 				"x-goog-api-key": "k-123",
 				"Authorization":  "Bearer k-123",

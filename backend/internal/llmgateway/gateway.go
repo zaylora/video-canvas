@@ -71,6 +71,12 @@ func (g *Gateway) Stream(ctx context.Context, tg Target, req Request, emit func(
 	if err != nil {
 		return nil, err
 	}
+	if tg.Format == FormatGemini {
+		body, err = ToGemini(body)
+		if err != nil {
+			return nil, err
+		}
+	}
 	return g.run(ctx, tg, base, body, emit, nil)
 }
 
@@ -86,6 +92,12 @@ func (g *Gateway) StreamRaw(ctx context.Context, tg Target, body []byte, lim Raw
 	clean, err := SanitizeRaw(body, tg, lim)
 	if err != nil {
 		return nil, err
+	}
+	if tg.Format == FormatGemini {
+		clean, err = ToGemini(clean)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return g.run(ctx, tg, base, clean, emit, raw)
 }
