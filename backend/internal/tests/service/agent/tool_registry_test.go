@@ -1,6 +1,7 @@
 package agent_test
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"reflect"
@@ -39,9 +40,43 @@ func declNames(ds []ToolDecl) []string {
 	return out
 }
 
+func TestToolRegistry_VideoAndVisionAreIndependent(t *testing.T) {
+	for _, vision := range []bool{false, true} {
+		for _, video := range []bool{false, true} {
+			names := declNames(AgentToolDecls("all", vision, video))
+			has := func(name string) bool {
+				for _, n := range names {
+					if n == name {
+						return true
+					}
+				}
+				return false
+			}
+			if has("canvas_inspect_video") != (vision || video) || has("canvas_inspect_image") != vision {
+				t.Fatalf("vision=%v video=%v 工具不匹配: %v", vision, video, names)
+			}
+		}
+	}
+}
+
+func TestPrepareRun_VideoOnlyModel(t *testing.T) {
+	b := newBridgeEnv(t)
+	b.reg.snap.Model.Capabilities.Vision = false
+	b.reg.snap.Model.Capabilities.Video = true
+	b.reg.snap.Model.APIFormat = "gemini"
+	setup, err := b.br.PrepareRun(context.Background(), platformCtx(900301, "all"), PrepareRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := declNames(setup.Tools)
+	if !hasTool(names, "canvas_inspect_video") || hasTool(names, "canvas_inspect_image") || setup.Model.Vision {
+		t.Fatalf("视频能力应独立下发: %+v", setup)
+	}
+}
+
 func TestToolRegistry_DeclsMatchBaseline(t *testing.T) {
 	base := loadBaseline(t)
-	got := AgentToolDecls("all", true)
+	got := AgentToolDecls("all", true, false)
 	if len(got) < len(base) {
 		t.Fatalf("工具数 %d，基准 %d: %v", len(got), len(base), declNames(got))
 	}
@@ -68,7 +103,7 @@ func TestToolRegistry_DeclsMatchBaseline(t *testing.T) {
 }
 
 func TestToolRegistry_ArrangeExplainsGroupMovement(t *testing.T) {
-	for _, d := range AgentToolDecls("all", true) {
+	for _, d := range AgentToolDecls("all", true, false) {
 		if d.Name != "canvas_arrange" {
 			continue
 		}
@@ -92,7 +127,7 @@ func TestToolRegistry_FilterByModeAndVision(t *testing.T) {
 		return false
 	}
 	for _, mode := range []string{"script", "prompt"} {
-		ds := AgentToolDecls(mode, true)
+		ds := AgentToolDecls(mode, true, false)
 		for _, n := range []string{"canvas_arrange", "canvas_delete", "generate_media"} {
 			if has(ds, n) {
 				t.Errorf("%s 模式不该有 %s", mode, n)
@@ -103,18 +138,18 @@ func TestToolRegistry_FilterByModeAndVision(t *testing.T) {
 		}
 	}
 	for _, mode := range []string{"", "all", "storyboard"} {
-		if !has(AgentToolDecls(mode, true), "canvas_delete") {
+		if !has(AgentToolDecls(mode, true, false), "canvas_delete") {
 			t.Errorf("模式 %q 应有 canvas_delete", mode)
 		}
 	}
-	if has(AgentToolDecls("all", false), "canvas_inspect_image") {
+	if has(AgentToolDecls("all", false, false), "canvas_inspect_image") {
 		t.Error("不能看图的模型拿不到 canvas_inspect_image")
 	}
-	if !has(AgentToolDecls("all", true), "canvas_inspect_image") {
+	if !has(AgentToolDecls("all", true, false), "canvas_inspect_image") {
 		t.Error("能看图的模型要有 canvas_inspect_image")
 	}
 	// 顺序：过滤后保持登记的相对顺序
-	names := declNames(AgentToolDecls("prompt", false))
+	names := declNames(AgentToolDecls("prompt", false, false))
 	want := []string{"canvas_get_state", "canvas_apply_ops", "plan_update", "ask_user", "model_list", "task_get", "skill_search", "skill_read", "web_search", "web_fetch"}
 	if !reflect.DeepEqual(names, want) {
 		t.Errorf("过滤后的顺序 %v，应为 %v", names, want)
@@ -123,7 +158,7 @@ func TestToolRegistry_FilterByModeAndVision(t *testing.T) {
 
 func TestToolRegistry_Scriptable(t *testing.T) {
 	notScriptable := map[string]bool{"canvas_delete": true, "ask_user": true, "generate_media": true, "canvas_inspect_image": true, "canvas_inspect_video": true, "canvas_capture_frame": true}
-	for _, d := range AgentToolDecls("all", true) {
+	for _, d := range AgentToolDecls("all", true, false) {
 		if d.Scriptable == notScriptable[d.Name] {
 			t.Errorf("%s 的 scriptable=%v：会创建审批或返回图片的工具不能给脚本调用，其余都可以", d.Name, d.Scriptable)
 		}
@@ -140,7 +175,7 @@ func TestToolRegistry_LabelsMatchFrontend(t *testing.T) {
 		"web_search": {"搜索网页", "搜索"}, "web_fetch": {"读取网页", "读网页"},
 		"canvas_inspect_video": {"查看视频", "看视频"}, "canvas_capture_frame": {"截取视频帧", "截帧"},
 	}
-	for _, d := range AgentToolDecls("all", true) {
+	for _, d := range AgentToolDecls("all", true, false) {
 		w, ok := want[d.Name]
 		if !ok {
 			t.Fatalf("多出未知工具 %s", d.Name)
@@ -170,14 +205,14 @@ func TestToolEnd_CarriesLabel(t *testing.T) {
 }
 
 func TestToolRegistry_WebToolsAreAppended(t *testing.T) {
-	names := declNames(AgentToolDecls("all", true))
+	names := declNames(AgentToolDecls("all", true, false))
 	n := len(names)
 	if n < 14 || names[n-2] != "web_search" || names[n-1] != "web_fetch" {
 		t.Errorf("联网工具追加在末尾，不动原有的顺序（提示词缓存）: %v", names)
 	}
 	// 所有任务模式都能用联网工具；它们的结果是资料，可以被脚本调用
 	for _, mode := range []string{"", "all", "script", "storyboard", "prompt"} {
-		got := declNames(AgentToolDecls(mode, false))
+		got := declNames(AgentToolDecls(mode, false, false))
 		has := func(s string) bool {
 			for _, g := range got {
 				if g == s {
@@ -190,7 +225,7 @@ func TestToolRegistry_WebToolsAreAppended(t *testing.T) {
 			t.Errorf("模式 %q 应有联网工具: %v", mode, got)
 		}
 	}
-	for _, d := range AgentToolDecls("all", true) {
+	for _, d := range AgentToolDecls("all", true, false) {
 		if (d.Name == "web_search" || d.Name == "web_fetch") && (!d.Scriptable || d.Executor != "server") {
 			t.Errorf("%s 由 Go 执行、可被脚本调用: %+v", d.Name, d)
 		}
@@ -199,7 +234,7 @@ func TestToolRegistry_WebToolsAreAppended(t *testing.T) {
 
 // canvas_apply_ops 的说明要告诉模型：写提示词引用素材用 @[素材名](节点id)，且素材要先连线。
 func TestToolRegistry_ApplyOpsExplainsAssetRefs(t *testing.T) {
-	for _, d := range AgentToolDecls("all", true) {
+	for _, d := range AgentToolDecls("all", true, false) {
 		if d.Name != "canvas_apply_ops" {
 			continue
 		}

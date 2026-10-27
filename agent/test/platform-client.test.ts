@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { PlatformError, createPlatform, decodeRunContext, encodeRunContext, type RunContext } from "../src/platform-client.ts";
+import { PlatformError, createPlatform, decodeRunContext, encodeRunContext, platformToolCallId, type RunContext } from "../src/platform-client.ts";
 import { fakePlatform } from "./platform-fake.ts";
 
 const TOKEN = "service-token-0123456789abcdef0123456789";
@@ -34,6 +34,21 @@ test("运行上下文：身份字段必须是规范的十进制字符串（数�
 
 test("运行上下文头太大（选中的节点太多）要在本地报错，而不是等 Go 返回 400", () => {
   assert.throws(() => encodeRunContext({ ...rc, selection: Array.from({ length: 2000 }, (_, i) => "n_" + "x".repeat(20) + i) }), /太大/);
+});
+
+test("工具关联 ID：长签名稳定缩短、相邻调用不混淆；脚本父子关系和列宽保持不变", () => {
+  const raw = "gc_abcdefgh_" + Buffer.from("s".repeat(1732)).toString("base64url");
+  const parent = platformToolCallId(raw);
+  assert.ok(parent.length <= 43 && parent !== raw);
+  assert.equal(platformToolCallId(raw), parent);
+  assert.notEqual(platformToolCallId(raw + "x"), parent);
+  const child = platformToolCallId(raw + "/a");
+  assert.ok(child.startsWith(parent + "/") && child.length <= 64);
+  assert.notEqual(platformToolCallId(raw + "/b"), child);
+  assert.equal(platformToolCallId(child), child, "Agent 再发平台请求时不能二次映射");
+  assert.equal(platformToolCallId("call_s/a"), "call_s/a", "短的原始调用保持兼容");
+  assert.equal(platformToolCallId("x".repeat(43)), "x".repeat(43));
+  assert.ok(platformToolCallId("x".repeat(44)).length <= 43);
 });
 
 test("tool：路径、请求头（服务令牌、运行上下文、幂等键）、请求体；返回 data（含 tool_end）", () =>

@@ -92,6 +92,7 @@ func capabilitiesSchema() obj {
 		}, "window", "output"),
 		"system": str("固定系统提示（仅 text）：每次请求都会带上，用户看不到"),
 		"vision": obj{"type": "boolean", "description": "能不能看图（仅 agent）：不能看图的模型不会收到「看图」工具"},
+		"video":  obj{"type": "boolean", "description": "能不能理解视频画面和声音（仅 Gemini 格式的 agent）"},
 	}, "prompt")
 }
 
@@ -158,7 +159,8 @@ func channelRefSchema() obj {
 			"type": "string", "minLength": 1, "maxLength": maxUpstreamModelLen,
 			"description": "这个渠道上的上游模型名（工作流型插件里是工作流 id），由模型选的协议插件解释",
 		},
-		"protocol": protocolSchema(),
+		"protocol":   protocolSchema(),
+		"api_format": enum("接口格式（仅 agent），不填等于 openai", APIFormatOpenAI, APIFormatGemini),
 	}, "channel", "upstream_model")
 }
 

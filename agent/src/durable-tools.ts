@@ -12,7 +12,7 @@
 import type { Context } from "@earendil-works/chord";
 import { defineExtension, type Extension, type ToolExecutionApi, type ToolRegistration } from "@earendil-works/pi-durable";
 import { wrapScalarArrays } from "./tools.ts";
-import { PlatformError, type ApprovalKind, type Platform, type PlatformToolResult, type RunContext, type ToolDecl, type ToolEndEvent } from "./platform-client.ts";
+import { PlatformError, platformToolCallId, type ApprovalKind, type Platform, type PlatformToolResult, type RunContext, type ToolDecl, type ToolEndEvent } from "./platform-client.ts";
 
 /** 工具所在的运行 */
 export interface ToolRun {
@@ -116,11 +116,10 @@ export function createToolsExtension({ platform, decls, host, name = "canvas-too
   });
 
   async function execute(d: ToolDecl, args: unknown, api: ToolExecutionApi, context: Context): Promise<Result> {
-    return trackedCall(host, d, args, api, context, (run) => dispatch(d, args, run, api, context));
+    return trackedCall(host, d, args, api, context, (run, call) => dispatch(d, args, run, api, context, call));
   }
 
-  async function dispatch(d: ToolDecl, args: unknown, run: ToolRun, api: ToolExecutionApi, context: Context): Promise<{ result: Result; end: ToolEndEvent }> {
-    const call = { id: api.callId, name: d.name, label: d.label, verb: d.verb };
+  async function dispatch(d: ToolDecl, args: unknown, run: ToolRun, api: ToolExecutionApi, context: Context, call: ToolCallInfo): Promise<{ result: Result; end: ToolEndEvent }> {
     const kind = APPROVAL_KIND[d.name];
     if (kind) {
       const p = await platform.propose(run.rc, kind, args, context.abortSignal);
@@ -129,7 +128,7 @@ export function createToolsExtension({ platform, decls, host, name = "canvas-too
       return { result: text(p.content, false, p.terminate), end: endEvent(call, false, p.summary ?? "") };
     }
     if (d.name === "plan_update") return plan(call, run, args);
-    const r = await platform.tool(run.rc, d.name, args, { toolCallId: api.callId, idemKey: String(api.taskId), signal: context.abortSignal });
+    const r = await platform.tool(run.rc, d.name, args, { toolCallId: call.id, idemKey: String(api.taskId), signal: context.abortSignal });
     return { result: toResult(r), end: r.tool_end ?? endEvent(call, r.is_error, r.is_error ? clip(r.content, MAX_SUMMARY) : "") };
   }
 
@@ -163,21 +162,21 @@ export async function trackedCall(
   args: unknown,
   api: ToolExecutionApi,
   context: Context,
-  body: (run: ToolRun) => Promise<{ result: Result; end: ToolEndEvent }>,
+  body: (run: ToolRun, call: ToolCallInfo) => Promise<{ result: Result; end: ToolEndEvent }>,
 ): Promise<Result> {
   const run = host.runOf(String(api.conversationId));
   if (!run) return text("这次运行已经结束，调用没有执行。", true);
   const parentId = parentOf(api.callId);
   // 本轮已暂停：后面的调用不执行，连 tool.start 都不发（嵌套调用属于已经开始的脚本，不受这个限制）
   if (!parentId && host.isPaused(run)) return text(SKIPPED_TEXT, true, true);
-  const call: ToolCallInfo = { id: api.callId, name: info.name, label: info.label, verb: info.verb, parentId, args };
+  const call: ToolCallInfo = { id: platformToolCallId(api.callId), name: info.name, label: info.label, verb: info.verb, parentId: parentId && platformToolCallId(parentId), args };
   const blocked = await host.begin(run, call);
   if (blocked) return text(blocked.content, true, blocked.terminate);
 
   let result: Result;
   let end: ToolEndEvent;
   try {
-    ({ result, end } = await body(run));
+    ({ result, end } = await body(run, call));
   } catch (e) {
     if (context.abortSignal?.aborted) throw e; // 被中止：不是工具出错，让 pi 按中止处理
     // 平台调用本身失败（HTTP 500、连不上）：模型看到错误结果自己决定怎么办，时间线上这一步要收尾
@@ -185,7 +184,7 @@ export async function trackedCall(
     result = text(msg, true);
     end = endEvent(call, true, clip(msg, MAX_SUMMARY));
   }
-  await host.end(run, call, parentId ? { ...end, parent_id: parentId } : end);
+  await host.end(run, call, { ...end, id: call.id, ...(call.parentId && { parent_id: call.parentId }) });
   return result;
 }
 

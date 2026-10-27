@@ -15,6 +15,31 @@ const render = (kind: string) =>
   );
 
 describe("ModelParamsForm", () => {
+  test("按原型提供看视频开关；OpenAI 禁用，Gemini 可用，其他种类不显示", () => {
+    const view = (format: string) =>
+      renderToStaticMarkup(
+        <ModelParamsForm
+          body={{
+            kind: "agent",
+            channels: [{ api_format: format }],
+            capabilities: defaultCapabilities("agent"),
+          }}
+          issues={[]}
+          warnings={[]}
+          onChange={() => {}}
+        />,
+      );
+    expect(view("openai")).toContain("能看视频");
+    expect(view("openai")).toContain("只有 Gemini");
+    expect(view("openai").match(/<button[^>]*id="model-video"[^>]*>/)?.[0]).toContain(
+      'disabled=""',
+    );
+    expect(view("gemini").match(/<button[^>]*id="model-video"[^>]*>/)?.[0]).not.toContain(
+      'disabled=""',
+    );
+    for (const kind of ["image", "video", "text", "audio"])
+      expect(render(kind)).not.toContain("能看视频");
+  });
   test.each(["video", "image", "audio", "text", "agent"])(
     "%s 模型的能力与参数页完全由面板控制，没有固定参数和 JSON 编辑入口",
     (kind) => {

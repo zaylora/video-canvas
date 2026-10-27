@@ -61,15 +61,15 @@ func (b *AgentBridge) ProxyModelPlatform(ctx context.Context, rc RunContext, bod
 		onCall(call.ID)
 	}
 	tg := llmgateway.Target{ChannelKey: snap.Channel.Key, BaseURL: snap.Channel.BaseURL, APIKey: key, Headers: snap.Channel.Headers, UpstreamModel: snap.Model.UpstreamModel,
-		RPS: snap.Channel.RateLimit.RPS, MaxConcurrency: snap.Channel.RateLimit.MaxConcurrency, IdleTimeout: snap.Model.IdleTimeout.D()}
+		Format: snap.Model.APIFormat, RPS: snap.Channel.RateLimit.RPS, MaxConcurrency: snap.Channel.RateLimit.MaxConcurrency, IdleTimeout: snap.Model.IdleTimeout.D()}
 	lim := llmgateway.RawLimits{}
 	if c := snap.Model.Capabilities.Context; c != nil {
 		lim.MaxTokens = c.Output
 	}
-	// 模型请求体的留存是 Go 的观测数据（Go 代理时产生的），上下文模式下照旧
+	// 留存 SanitizeRaw 后的 OpenAI 形状；Gemini 的 fileUri 不在媒体脱敏字段中，不能留存翻译后的请求体。
 	if b.reqRec != nil {
 		if sent, err := llmgateway.SanitizeRaw(body, tg, lim); err == nil {
-			go b.recordModelRequest(ctx, rc.RunID, call.ID, sent)
+			go b.recordModelRequest(ctx, rc.RunID, call.ID, sent, tg.Format)
 		}
 	}
 

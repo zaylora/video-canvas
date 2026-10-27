@@ -25,6 +25,9 @@ const ModelPurposeSummary = "summary"
 // 同样不是助手对用户说的话，也不算对话的上下文大小。
 const ModelPurposeTitle = "title"
 
+// ModelPurposeVideo 标记视频理解子请求：照常计费，不计入主对话的上下文大小。
+const ModelPurposeVideo = "video"
+
 // ModelPurposeOf 把请求头 X-Agent-Purpose 的值转成已知的用途；只认已知的，别的值一律当普通对话（返回空串），
 // 免得被用来藏起助手的回复。
 func ModelPurposeOf(header string) string {
@@ -51,6 +54,8 @@ func ModelPurposeFrom(ctx context.Context) string {
 
 // ModelStreamer 是网关的透传入口（*llmgateway.Gateway 实现它）。
 type ModelStreamer interface {
+	// Stream 发送宿主组装的多模态请求，返回完整文本与用量。
+	Stream(ctx context.Context, tg llmgateway.Target, req llmgateway.Request, emit func(llmgateway.Event)) (*llmgateway.Result, error)
 	// StreamRaw 把调用方拼好的 OpenAI 请求体收紧后发往渠道，响应的 SSE 行原样回调给 raw。
 	StreamRaw(ctx context.Context, tg llmgateway.Target, body []byte, lim llmgateway.RawLimits, emit func(llmgateway.Event), raw func([]byte)) (*llmgateway.Result, error)
 }
@@ -64,7 +69,7 @@ type BridgeDeps struct {
 	Registry   provider.Registry       // 模型注册表
 	Tasks      AgentGenTasks           // 生成任务（task_get 查进度）
 	Assets     provider.AssetStore     // 素材（看图、看视频）
-	Frames     VideoFrames             // 抽帧（看视频、截帧）；为 nil 表示没有视频处理能力，两个视频工具返回「不能处理视频」
+	Frames     VideoFrames             // 抽帧、截帧；为 nil 时不能抽帧，原视频理解不依赖它
 	FrameStore FrameStore              // 把截出的帧存成用户素材；为 nil 时截帧返回「不能处理视频」
 	Secrets    provider.SecretResolver // 渠道 Key
 	Streamer   ModelStreamer           // 大模型网关
@@ -93,7 +98,7 @@ type AgentBridge struct {
 	platformRuns map[uint64]*platformRun
 	// toolRec 逐条留存工具调用；为 nil 时不记。装配阶段用 SetToolRecorder 绑定
 	toolRec ToolCallRecorder
-	// reqRec 留存模型调用实际发给上游的请求体；为 nil 时不记。装配阶段用 SetModelRequestRecorder 绑定
+	// reqRec 留存收紧后的 OpenAI 形状请求体（Gemini 翻译前）；为 nil 时不记。装配阶段用 SetModelRequestRecorder 绑定
 	reqRec ModelRequestRecorder
 	// disabledTools 是配置里停用的工具名，下发工具声明时去掉；装配阶段用 SetDisabledTools 绑定
 	disabledTools []string

@@ -241,6 +241,10 @@ export interface ModelLimits {
   context_window: number;
   /** 最大输出（Token），没认出来是 0 */
   max_output: number;
+  /** 内置模型库的看图建议；未识别时省略，保留运营配置 */
+  vision?: boolean;
+  /** 内置模型库的看视频建议；仅 Gemini 格式可应用 */
+  video?: boolean;
   /** 来源：upstream = 渠道上游的 /v1/models 返回；builtin = 内置模型库；没认出来时没有 */
   source?: "upstream" | "builtin";
 }

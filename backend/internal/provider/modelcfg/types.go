@@ -43,7 +43,7 @@ const (
 	KindAudio = "audio"
 	KindText  = "text"
 	// KindAgent 是画布 Agent 用的对话大模型：流式输出 + 工具调用。它不走插件（插件钩子是同步的、不能联网），
-	// 由 Go 里的 LLM 网关直接请求渠道的 OpenAI 兼容接口，所以没有生成方式和生成参数，只按 Token 计费。
+	// 由 Go 里的 LLM 网关按接口格式直接请求渠道，所以没有生成方式和生成参数，只按 Token 计费。
 	KindAgent = "agent"
 )
 
@@ -53,12 +53,27 @@ var Kinds = []string{KindVideo, KindImage, KindAudio, KindText, KindAgent}
 // DefaultModelDeadline 是模型没配置 deadline 时的默认任务超时。
 const DefaultModelDeadline = 30 * time.Minute
 
-// ChannelRef 是模型绑定的一个渠道：渠道 key + 这个渠道上的上游模型名 + 调用这个上游模型用的协议。
-// 首期 channels 只允许一个元素，数据结构预留多渠道（多渠道时每条路由可以有自己的协议）。
+// Agent 模型调用上游时使用的接口格式。
+const (
+	APIFormatOpenAI = "openai"
+	APIFormatGemini = "gemini"
+)
+
+// ChannelRef 是模型绑定的一个渠道：渠道 key、上游模型名，以及插件协议或 Agent 接口格式。
+// 首期 channels 只允许一个元素，数据结构预留多渠道（多渠道时每条路由可以有自己的协议与接口格式）。
 type ChannelRef struct {
-	Channel       string    `json:"channel"`            // 渠道 key（ai_channels.key）
-	UpstreamModel string    `json:"upstream_model"`     // 上游模型名 / 工作流 id，由插件解释
-	Protocol      *Protocol `json:"protocol,omitempty"` // 调用协议；非 Agent 模型必填，Agent 模型不能有（Agent 由宿主 LLM 网关直接请求渠道）
+	Channel       string    `json:"channel"`              // 渠道 key（ai_channels.key）
+	UpstreamModel string    `json:"upstream_model"`       // 上游模型名 / 工作流 id，由插件解释
+	Protocol      *Protocol `json:"protocol,omitempty"`   // 调用协议；非 Agent 模型必填，Agent 模型不能有（Agent 由宿主 LLM 网关直接请求渠道）
+	APIFormat     string    `json:"api_format,omitempty"` // 仅 Agent：接口格式，不填等于 openai
+}
+
+// Format 返回接口格式；旧配置没有该字段，继续使用 OpenAI 兼容接口。
+func (c ChannelRef) Format() string {
+	if c.APIFormat == "" {
+		return APIFormatOpenAI
+	}
+	return c.APIFormat
 }
 
 // Protocol 是模型选的调用协议：协议插件 + 固定的插件版本 + 插件声明的“协议设置项”取值。

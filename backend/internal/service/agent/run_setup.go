@@ -67,7 +67,7 @@ func (b *AgentBridge) runSetup(ctx context.Context, run *model.AgentRun, modelKe
 			catalog = append(catalog, prompts.SkillItem{Name: sk.Name, Description: sk.Description})
 		}
 	}
-	tools := AgentToolDecls(mode, caps.Vision)
+	tools := AgentToolDecls(mode, caps.Vision, caps.Video)
 	if len(disabled) > 0 {
 		tools = slices.DeleteFunc(tools, func(d ToolDecl) bool { return slices.Contains(disabled, d.Name) })
 	}

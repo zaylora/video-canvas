@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"video-canvas/internal/model"
 )
@@ -66,29 +67,30 @@ func (r *CanvasProjectRepository) SetCoverIfEmpty(ctx context.Context, userID, i
 		assetID, id, userID).Error
 }
 
-// Update 带乐观锁更新：只有 revision 与数据库一致时才更新，并把 revision +1。
-// 记录不存在返回 ErrNotFound，版本号不一致返回 ErrRevisionConflict。
-func (r *CanvasProjectRepository) Update(ctx context.Context, userID, id, revision uint64, fields map[string]any) error {
+// Update 按 id + user_id + revision 更新并返回本次写入的完整快照，revision +1。
+// 使用 RETURNING 避免更新后重查混入其它写入；记录不存在返回 ErrNotFound，版本不一致返回 ErrRevisionConflict。
+func (r *CanvasProjectRepository) Update(ctx context.Context, userID, id, revision uint64, fields map[string]any) (*model.CanvasProject, error) {
 	fields["revision"] = gorm.Expr("revision + 1")
-	res := r.db.WithContext(ctx).Model(&model.CanvasProject{}).
+	var saved model.CanvasProject
+	res := r.db.WithContext(ctx).Model(&saved).Clauses(clause.Returning{}).
 		Where("id = ? AND user_id = ? AND revision = ?", id, userID, revision).
 		Updates(fields)
 	if res.Error != nil {
-		return res.Error
+		return nil, res.Error
 	}
 	if res.RowsAffected > 0 {
-		return nil
+		return &saved, nil
 	}
 	// 没有更新到任何行：区分是记录不存在还是版本冲突
 	var count int64
 	if err := r.db.WithContext(ctx).Model(&model.CanvasProject{}).
 		Where("id = ? AND user_id = ?", id, userID).Count(&count).Error; err != nil {
-		return err
+		return nil, err
 	}
 	if count == 0 {
-		return ErrNotFound
+		return nil, ErrNotFound
 	}
-	return ErrRevisionConflict
+	return nil, ErrRevisionConflict
 }
 
 // Delete 按 id + user_id 软删除画布；不存在或不属于该用户返回 ErrNotFound。

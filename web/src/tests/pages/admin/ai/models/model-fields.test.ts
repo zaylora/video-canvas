@@ -5,6 +5,13 @@ import { fieldOfPath, modelChecks } from "@/pages/admin/ai/models/model-fields";
 import { resolveModelChannel } from "@/utils/admin/model-channel";
 
 describe("fieldOfPath：校验问题定位到字段", () => {
+  test("接口格式校验定位到基本信息的格式下拉", () => {
+    expect(fieldOfPath("channels[0].api_format")).toEqual({
+      tab: "basic",
+      id: "model-api-format",
+    });
+  });
+
   test("协议问题定位到“能力与协议”区块，渠道问题仍定位到所属渠道", () => {
     expect(fieldOfPath("channels[0].protocol")).toEqual({ tab: "basic", id: "model-protocol" });
     expect(fieldOfPath("channels[0].protocol.settings.region")).toEqual({

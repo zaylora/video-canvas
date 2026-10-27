@@ -12,6 +12,18 @@ import (
 func TestAdminCatalogHandler_ModelLimits(t *testing.T) {
 	env := aicNewEnv(t)
 
+	t.Run("识别建议通过接口返回视频和图片输入能力", func(t *testing.T) {
+		r := env.admin(http.MethodGet, aicBase+"/models/limits?name=google/gemini-2.5-flash", nil)
+		aicWant(t, r, http.StatusOK, 0)
+		var got struct {
+			Vision bool `json:"vision"`
+			Video  bool `json:"video"`
+		}
+		if err := json.Unmarshal(r.Data, &got); err != nil || !got.Vision || !got.Video {
+			t.Fatalf("输入能力建议丢失: %s err=%v", r.Raw, err)
+		}
+	})
+
 	t.Run("认识的模型", func(t *testing.T) {
 		r := env.admin(http.MethodGet, aicBase+"/models/limits?name=openai/gpt-4o", nil)
 		aicWant(t, r, http.StatusOK, 0)

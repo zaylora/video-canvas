@@ -60,6 +60,25 @@ test("批准生成：解析 → 登记已花积分 → 执行 → 结果交给�
     assert.equal(e.go.modelRequests.length, 2);
   }));
 
+test("Gemini 长签名审批：执行时 Go 收短 ID，续跑按原始 ID 找回工具结果", () =>
+  withEngine({
+    turns: [{ tools: [{ id: "gc_abcdefgh_" + Buffer.from("s".repeat(1424)).toString("base64url"), name: "generate_media", args: { items: [{ nodeId: "n1" }] } }] }, { text: "已开始生成" }],
+    propose: GEN,
+  }, async (e) => {
+    const { run, approval } = await waitingApproval(e);
+    const started = e.persisted("tool.start")[0];
+    assert.ok(approval.toolCallId.length > 128 && started.id.length <= 64);
+    await e.engine.decide("1", approval.id, { decision: "approve" });
+    await e.engine.idle();
+    const exec = e.go.seen.find((s) => s.path.endsWith("/approvals/execute"))!;
+    assert.equal(exec.body.tool_call_id, started.id);
+    assert.equal(e.run(run.id).status, "succeeded");
+    const second = JSON.stringify(e.go.modelRequests[1].body.messages);
+    assert.ok(second.includes(approval.toolCallId), "Gemini 签名仍在模型请求中");
+    assert.match(second, /用户批准了generate，已执行/);
+    assert.doesNotMatch(second, /已提交给用户批准，等待决定/);
+  }));
+
 test("拒绝：附上理由转告模型，不登记积分，审批保持已拒绝，运行继续", () =>
   withEngine({ turns: [{ tools: [{ id: "c1", name: "generate_media" }] }, { text: "好的，不生成了" }], propose: GEN }, async (e) => {
     const { run, approval } = await waitingApproval(e, { budgetCredits: 20 });

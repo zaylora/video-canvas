@@ -4,6 +4,7 @@ import {
   checkDeadline,
   checkIdleTimeout,
   describeDefaultPrice,
+  readModelApiFormat,
   readModelBool,
   readModelChannel,
   readModelKind,
@@ -11,9 +12,12 @@ import {
   readModelString,
   withDefaultPrice,
   withModelChannel,
+  withModelApiFormat,
   withModelField,
   withModelUpstream,
 } from "@/utils/admin/model-body";
+import { withModelKind } from "@/utils/admin/model-protocol";
+import { blankModelBody } from "@/utils/admin/model-template";
 
 const body = {
   key: "kling-i2v",
@@ -161,5 +165,76 @@ describe("换渠道不动协议", () => {
       "new",
     );
     expect(next?.channels).toEqual([{ channel: "new", upstream_model: "v1", protocol }]);
+  });
+});
+
+describe("Agent 模型接口格式", () => {
+  test("旧配置、缺失字段与非法格式按 OpenAI 兼容读取", () => {
+    for (const value of [
+      null,
+      {},
+      { channels: [] },
+      { channels: [null] },
+      { channels: [{}] },
+      { channels: [{ api_format: "" }] },
+      { channels: [{ api_format: "openai" }] },
+      { channels: [{ api_format: "claude" }] },
+    ])
+      expect(readModelApiFormat(value)).toBe("openai");
+    expect(readModelApiFormat({ channels: [{ api_format: "gemini" }] })).toBe("gemini");
+  });
+
+  test("选择 Gemini 写入首渠道，改回 OpenAI 删除字段并保留其他配置", () => {
+    const original = {
+      ...body,
+      kind: "agent",
+      channels: [
+        { channel: "c", upstream_model: "m", extra: "保留" },
+        { channel: "backup", upstream_model: "other" },
+      ],
+    };
+    const copy = structuredClone(original);
+    const gemini = withModelApiFormat(original, "gemini");
+    expect(gemini).toEqual({
+      ...original,
+      channels: [{ ...original.channels[0], api_format: "gemini" }, original.channels[1]],
+    });
+    expect(withModelApiFormat(gemini, "openai")).toEqual(original);
+    expect(original).toEqual(copy);
+    expect(readModelApiFormat(gemini)).toBe("gemini");
+  });
+
+  test("未配置渠道时可写 Gemini，清除默认格式不凭空新增渠道", () => {
+    expect(withModelApiFormat({ key: "m" }, "gemini")).toEqual({
+      key: "m",
+      channels: [{ api_format: "gemini" }],
+    });
+    expect(withModelApiFormat({ key: "m" }, "openai")).toEqual({ key: "m" });
+  });
+
+  test("新建 Agent 默认 OpenAI，切换其他能力后移除 Gemini 格式", () => {
+    const agent = withModelKind(blankModelBody("c", "m"), "agent", [])!.body;
+    expect(readModelApiFormat(agent)).toBe("openai");
+    expect(agent.channels).toEqual([{ channel: "c", upstream_model: "m" }]);
+    const gemini = withModelApiFormat(agent, "gemini");
+    for (const kind of ["text", "video", "image", "audio", ""]) {
+      const next = withModelKind(gemini, kind, [])!.body;
+      expect(next.channels).toEqual([{ channel: "c", upstream_model: "m" }]);
+    }
+    expect(withModelKind(gemini, "agent", [])!.body.channels).toEqual([
+      { channel: "c", upstream_model: "m", api_format: "gemini" },
+    ]);
+    expect(readModelApiFormat(gemini)).toBe("gemini");
+  });
+
+  test("改回 OpenAI 时关闭看视频，保留看图和其他能力，且不修改原对象", () => {
+    const original = {
+      kind: "agent",
+      channels: [{ api_format: "gemini" }],
+      capabilities: { vision: true, video: true },
+    };
+    const next = withModelApiFormat(original, "openai");
+    expect(next.capabilities).toEqual({ vision: true });
+    expect(original.capabilities.video).toBe(true);
   });
 });

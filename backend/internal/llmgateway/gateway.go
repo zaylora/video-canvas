@@ -67,9 +67,15 @@ func (g *Gateway) Stream(ctx context.Context, tg Target, req Request, emit func(
 	if len(req.Messages) == 0 {
 		return nil, fmt.Errorf("%w: 没有消息", ErrInvalidRequest)
 	}
-	body, err := buildBody(tg, req)
+	body, err := BuildBody(tg, req)
 	if err != nil {
 		return nil, err
+	}
+	if tg.Format == FormatGemini {
+		body, err = ToGemini(body)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return g.run(ctx, tg, base, body, emit, nil)
 }
@@ -86,6 +92,12 @@ func (g *Gateway) StreamRaw(ctx context.Context, tg Target, body []byte, lim Raw
 	clean, err := SanitizeRaw(body, tg, lim)
 	if err != nil {
 		return nil, err
+	}
+	if tg.Format == FormatGemini {
+		clean, err = ToGemini(clean)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return g.run(ctx, tg, base, clean, emit, raw)
 }
@@ -142,7 +154,12 @@ func (g *Gateway) attempt(ctx context.Context, tg Target, base *url.URL, body []
 
 // do 发请求并读响应。
 func (g *Gateway) do(ctx context.Context, tg Target, base *url.URL, body []byte, emit func(Event), touch func(), raw func([]byte)) (*Result, error) {
-	endpoint := strings.TrimRight(base.String(), "/") + chatEndpoint
+	var endpoint string
+	if tg.Format == FormatGemini {
+		endpoint = geminiEndpoint(base, tg.UpstreamModel)
+	} else {
+		endpoint = strings.TrimRight(base.String(), "/") + chatEndpoint
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrInvalidTarget, err)
@@ -154,6 +171,9 @@ func (g *Gateway) do(ctx context.Context, tg Target, base *url.URL, body []byte,
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("Authorization", "Bearer "+tg.APIKey)
+	if tg.Format == FormatGemini {
+		req.Header.Set("x-goog-api-key", tg.APIKey)
+	}
 
 	// 白名单只有渠道自己的域名；重定向一律不跟随，否则带着 Key 的请求会被转到别处
 	client := netguard.NewClient(g.transport(), []string{strings.ToLower(base.Hostname())}, 0)
@@ -164,7 +184,13 @@ func (g *Gateway) do(ctx context.Context, tg Target, base *url.URL, body []byte,
 	defer resp.Body.Close()
 	touch()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		if tg.Format == FormatGemini {
+			return nil, geminiHTTPError(resp, tg.APIKey, body)
+		}
 		return nil, classifyHTTPError(resp, tg.APIKey)
+	}
+	if tg.Format == FormatGemini {
+		return readGeminiResponse(resp, emit, touch, raw)
 	}
 	if strings.Contains(resp.Header.Get("Content-Type"), "application/json") {
 		return readWhole(resp.Body, emit, raw)

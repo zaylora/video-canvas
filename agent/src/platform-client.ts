@@ -6,6 +6,7 @@
  * 响应约定：Go 的标准信封 {code, msg, data}。code 不为 0、HTTP 非 2xx、连不上，都是 PlatformError；
  * 请求被 signal 中止时抛出的是原来的中止错误，不包装：调用方要分得清「被取消」和「出错」。
  */
+import { createHash } from "node:crypto";
 import type { RelayEvent } from "./event-pusher.ts";
 import { parseDecimal } from "./ids.ts";
 
@@ -44,6 +45,20 @@ export class PlatformError extends Error {
 const MAX_CONTEXT_HEADER = 16 << 10; // 和 Go 的 maxRunContextHeader 一致
 const IDEM_KEY = /^[A-Za-z0-9._:-]{1,64}$/;
 const ID_FIELDS = ["run_id", "user_id", "session_id", "canvas_id"] as const;
+
+/** Go 的工具记录只容纳 64 字符。Pi 内部必须保留完整 id（Gemini 在其中编码 thoughtSignature）；这里只缩短发给 Go 和时间线的关联 id。脚本子调用仍以短父 id 为前缀，Go 据此还原父子关系。 */
+export function platformToolCallId(id: string): string {
+  const i = id.lastIndexOf("/");
+  if (i < 0 && id.length <= 43) return id;
+  if (i > 0) {
+    const parentRaw = id.slice(0, i);
+    const parent = platformToolCallId(parentRaw);
+    if (parent === parentRaw && id.length <= 64) return id; // 已经足够短：保留旧调用 ID，也避免二次散列
+    const hash = createHash("sha256").update(id).digest("base64url");
+    return `${parent}/${hash.slice(0, 20)}`;
+  }
+  return `tc_${createHash("sha256").update(id).digest("base64url").slice(0, 27)}`;
+}
 
 /** 运行上下文 → 请求头的值：JSON 再做 base64url（无填充）。一个头装下所有字段，也不用操心非 ASCII 字符。 */
 export function encodeRunContext(rc: RunContext): string {
@@ -156,6 +171,8 @@ export interface AgentModel {
   key: string;
   name: string;
   vision: boolean;
+  /** 是否支持理解视频画面和声音；旧平台未返回时视为不支持。 */
+  video?: boolean;
   /** 上下文窗口（Token），没配置是 0；画布据此显示上下文用量 */
   context_window: number;
 }
@@ -176,7 +193,7 @@ export interface PlatformOptions {
 }
 
 export interface ToolCallOptions {
-  /** 模型给这次调用的 id，Go 只用于记录和展示；不是幂等键（它在不同回合里可能重复） */
+  /** Pi 的原始或已映射的工具 id；发给 Go 前统一为不超过 64 字符的关联 id，不能用来做幂等键 */
   toolCallId: string;
   /** 幂等键：同一个运行里同一个键的同一种写入只会发生一次。用 Pi 的工具任务 id：每次调用唯一、同一次调用重放时不变 */
   idemKey?: string;
@@ -235,7 +252,7 @@ export function createPlatform({ baseUrl, serviceToken, fetchImpl = fetch }: Pla
     undo: (rc: RunContext, signal?: AbortSignal) => call<UndoResult>("POST", `/runs/${rc.run_id}/undo`, rc, undefined, { signal }),
     /** 执行一次工具调用。工具层的失败是 is_error 的普通结果；调用本身出错才抛 PlatformError */
     tool: (rc: RunContext, name: string, args: unknown, o: ToolCallOptions) =>
-      call<PlatformToolResult>("POST", `/tools/${encodeURIComponent(name)}`, rc, { tool_call_id: o.toolCallId, args: args ?? {} }, { idemKey: o.idemKey, signal: o.signal }),
+      call<PlatformToolResult>("POST", `/tools/${encodeURIComponent(name)}`, rc, { tool_call_id: platformToolCallId(o.toolCallId), args: args ?? {} }, { idemKey: o.idemKey, signal: o.signal }),
     /** 运行准备：模型规格、系统提示词、工具声明、版本；带 message 时还有第一条用户消息。不带 message 是续跑 */
     prepare: (rc: RunContext, req: { message?: string; max_steps?: number } = {}, signal?: AbortSignal) => call<RunSetup>("POST", "/runs/prepare", rc, req, { signal }),
     /** 审批预估：工具参数 → 审批内容和预估积分，不落库 */
@@ -250,7 +267,7 @@ export function createPlatform({ baseUrl, serviceToken, fetchImpl = fetch }: Pla
       } catch {
         throw new Error(`审批 id 必须是正整数的十进制字符串，当前是 ${JSON.stringify(approvalId)}`);
       }
-      return call<ApprovalExecution>("POST", "/approvals/execute", rc, { kind, approval_id: approvalId, tool_call_id: toolCallId, outcome }, { signal });
+      return call<ApprovalExecution>("POST", "/approvals/execute", rc, { kind, approval_id: approvalId, tool_call_id: platformToolCallId(toolCallId), outcome }, { signal });
     },
     /** 运行的用量；带 callId（模型调用的 id，十进制字符串）时一并给出这次调用的结算情况 */
     usage: (rc: RunContext, callId?: string, signal?: AbortSignal) =>

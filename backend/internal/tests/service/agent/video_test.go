@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"image/jpeg"
 	"image/png"
@@ -15,8 +16,11 @@ import (
 	"testing"
 
 	"video-canvas/internal/agent/canvasgraph"
+	"video-canvas/internal/llmgateway"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/videoframe"
+	"video-canvas/internal/provider/modelcfg"
+	"video-canvas/internal/repository"
 	. "video-canvas/internal/service/agent"
 )
 
@@ -88,6 +92,7 @@ type videoEnv struct {
 	*bridgeEnv
 	frames *fakeFrames
 	store  *fakeFrameStore
+	assets *fakeAssets
 	tok    string
 }
 
@@ -97,7 +102,7 @@ func newVideoEnv(t *testing.T, mode string, vision bool, remote ...bool) *videoE
 	b.repo.canvas.PayloadJSON = []byte(videoCanvas)
 	b.reg.snap.Model.Capabilities.Vision = vision
 	assets := &fakeAssets{owner: 1, remote: len(remote) > 0 && remote[0], files: map[uint64]*model.Asset{
-		100: {ID: 100, Kind: "video", MimeType: "video/mp4", ByteSize: 5},
+		100: {ID: 100, Kind: "video", MimeType: "video/mp4", ByteSize: 5, DurationMs: 10000},
 		101: {ID: 101, Kind: "image", MimeType: "image/png", ByteSize: 3}, // 节点说是视频，素材其实是图片
 	}, data: map[uint64][]byte{100: []byte("VIDEO"), 101: []byte("PNG")}}
 	frames := &fakeFrames{dur: 10}
@@ -105,10 +110,125 @@ func newVideoEnv(t *testing.T, mode string, vision bool, remote ...bool) *videoE
 	b.br = NewAgentBridge(BridgeDeps{
 		Repo: b.repo, Canvas: NewAgentCanvasService(b.repo, b.bc), Agent: b.svc, Billing: NewAgentBilling(b.bill),
 		Registry: b.reg, Secrets: fakeSecrets{"channel:ch1": "sk-test"}, Streamer: b.str, Assets: assets,
-		Frames: frames, FrameStore: store,
+		Frames: frames, FrameStore: store, RunUsage: &fakeRunUsage{bill: b.bill},
 	})
 	tok, _ := b.token(t, mode)
-	return &videoEnv{bridgeEnv: b, frames: frames, store: store, tok: tok}
+	return &videoEnv{bridgeEnv: b, frames: frames, store: store, assets: assets, tok: tok}
+}
+
+func TestAgentBridge_UnderstandVideo(t *testing.T) {
+	for _, remote := range []bool{false, true} {
+		t.Run(fmt.Sprintf("对象存储=%v", remote), func(t *testing.T) {
+			e := newVideoEnv(t, model.AgentModeAll, false, remote)
+			e.reg.snap.Model.Capabilities.Video = true
+			e.reg.snap.Model.APIFormat = "gemini"
+			e.frames.unavailable = true // 理解原视频不依赖 ffmpeg。
+			e.str.script = okStream("对白：少年说，今天出发。环境音：鸟鸣。", llmgateway.Usage{InputTokens: 3000, OutputTokens: 40})
+			res := e.tool(t, e.tok, "canvas_inspect_video", map[string]any{"nodeId": "v1"})
+			if res.IsError || len(res.Images) != 0 || !strings.Contains(res.Content, "少年说") || toolEndSummary(res) != "分析视频" {
+				t.Fatalf("应直接返回画面和声音的分析: %+v", res)
+			}
+			video := e.str.req.Messages[0].Parts[1].Video
+			if video == nil || video.MimeType != "video/mp4" || (remote && video.URL == "") || (!remote && video.Data != base64.StdEncoding.EncodeToString([]byte("VIDEO"))) {
+				t.Fatalf("视频输入方式不对: %+v", video)
+			}
+			if e.str.tg.Format != "gemini" || len(e.bill.settled) != 1 || e.bill.settled[0].Purpose != "video" || e.bill.settled[0].InputTokens != 3000 {
+				t.Fatalf("子请求应使用当前模型并按实际用量结算: tg=%+v calls=%+v", e.str.tg, e.bill.settled)
+			}
+		})
+	}
+}
+
+func TestAgentBridge_UnderstandVideoFallback(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		result *llmgateway.Result
+		err    error
+	}{
+		{"上游失败", nil, errors.New("upstream failed")},
+		{"空分析", &llmgateway.Result{}, nil},
+		{"安全拦截", &llmgateway.Result{Text: "被拦截", FinishReason: "content_filter"}, nil},
+		{"上下文取消", nil, context.Canceled},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newVideoEnv(t, model.AgentModeAll, true)
+			e.reg.snap.Model.Capabilities.Video = true
+			e.reg.snap.Model.APIFormat = "gemini"
+			e.str.script = func(context.Context, func(llmgateway.Event), func([]byte)) (*llmgateway.Result, error) {
+				return tc.result, tc.err
+			}
+			res := e.tool(t, e.tok, "canvas_inspect_video", map[string]any{"nodeId": "v1"})
+			if errors.Is(tc.err, context.Canceled) {
+				if !res.IsError || e.frames.sampleN != 0 {
+					t.Fatalf("取消时不能再抽帧: %+v", res)
+				}
+			} else if res.IsError || len(res.Images) != 6 || !strings.Contains(res.Content, "音频未分析") {
+				t.Fatalf("失败应退回抽帧并说明音频未分析: %+v", res)
+			}
+		})
+	}
+}
+
+func TestAgentBridge_UnderstandVideoBoundaries(t *testing.T) {
+	t.Run("大视频降级，越权素材不出站也不抽帧", func(t *testing.T) {
+		e := newVideoEnv(t, model.AgentModeAll, true)
+		e.reg.snap.Model.Capabilities.Video, e.reg.snap.Model.APIFormat = true, "gemini"
+		e.assets.files[100].ByteSize = 21 << 20
+		res := e.tool(t, e.tok, "canvas_inspect_video", map[string]any{"nodeId": "v1"})
+		if res.IsError || !strings.Contains(res.Content, "音频未分析") || !strings.Contains(res.Content, "20 MB") || e.str.calls != 0 {
+			t.Fatalf("超限应退回抽帧: %+v", res)
+		}
+		e.assets.owner = 2
+		e.frames.sampleN = 0
+		res = e.tool(t, e.tok, "canvas_inspect_video", map[string]any{"nodeId": "v1"})
+		if !res.IsError || e.str.calls != 0 || e.frames.sampleN != 0 {
+			t.Fatalf("越权素材不得出站: %+v", res)
+		}
+	})
+	t.Run("视频专用模型理解失败时不能把帧当成可见图片", func(t *testing.T) {
+		e := newVideoEnv(t, model.AgentModeAll, false)
+		e.reg.snap.Model.Capabilities.Video, e.reg.snap.Model.APIFormat = true, "gemini"
+		e.str.script = okStream("", llmgateway.Usage{})
+		res := e.tool(t, e.tok, "canvas_inspect_video", map[string]any{"nodeId": "v1"})
+		if !res.IsError || !strings.Contains(res.Content, "截取帧") || e.frames.sampleN != 0 {
+			t.Fatalf("不能降级: %+v", res)
+		}
+	})
+	t.Run("预算同时包含视频估算和本轮已花积分", func(t *testing.T) {
+		e := newVideoEnv(t, model.AgentModeAll, false)
+		e.reg.snap.Model.Capabilities.Video, e.reg.snap.Model.APIFormat = true, "gemini"
+		e.reg.snap.Model.Pricing.Token = &modelcfg.TokenPrice{In: 1000, Out: 1000}
+		rc := e.rcs[e.tok]
+		rc.BudgetCredits = 20
+		e.rcs[e.tok] = rc
+		e.bill.calls = append(e.bill.calls, &model.AgentModelCall{ID: 99, UserID: rc.UserID, RunID: rc.RunID})
+		e.bill.settled = append(e.bill.settled, repository.SettleCallInput{CallID: 99, Credits: 18, Purpose: "main"})
+		res := e.tool(t, e.tok, "canvas_inspect_video", map[string]any{"nodeId": "v1"})
+		if !res.IsError || e.str.calls != 0 || len(e.bill.calls) != 1 {
+			t.Fatalf("超出剩余预算不能发模型请求: %+v", res)
+		}
+	})
+	t.Run("请求留存脱敏且视频费用不改变主对话上下文大小", func(t *testing.T) {
+		for _, remote := range []bool{false, true} {
+			e := newVideoEnv(t, model.AgentModeAll, false, remote)
+			e.reg.snap.Model.Capabilities.Video, e.reg.snap.Model.APIFormat = true, "gemini"
+			rr := &fakeRequestRecorder{}
+			e.br.SetModelRequestRecorder(rr)
+			res := e.tool(t, e.tok, "canvas_inspect_video", map[string]any{"nodeId": "v1"})
+			if res.IsError {
+				t.Fatal(res.Content)
+			}
+			rec := rr.wait(t, 1)[0]
+			saved := gunzip(t, rec.Body)
+			if strings.Contains(saved, "sig=x") || strings.Contains(saved, "VklERU8=") || !strings.Contains(saved, "已省略") || !strings.Contains(string(rec.Params), `"purpose":"video"`) {
+				t.Fatalf("媒体不能进入留存: %s params=%s", saved, rec.Params)
+			}
+			usage, err := e.br.PlatformRunUsage(context.Background(), e.rcs[e.tok], 0)
+			if err != nil || usage.ContextTokens != 0 || usage.SpentCredits <= 0 {
+				t.Fatalf("视频应计费但不计入上下文: %+v err=%v", usage, err)
+			}
+		}
+	})
 }
 
 func (e *videoEnv) graph(t *testing.T) *canvasgraph.Graph {
@@ -178,7 +298,7 @@ func TestAgentBridge_InspectVideo(t *testing.T) {
 
 	t.Run("模型不能看图：不下发这个工具，直接调用也被拒绝", func(t *testing.T) {
 		e := newVideoEnv(t, model.AgentModeAll, false)
-		if hasTool(AgentToolsFor(model.AgentModeAll, false), "canvas_inspect_video") {
+		if hasTool(AgentToolsFor(model.AgentModeAll, false, false), "canvas_inspect_video") {
 			t.Error("不能看图的模型不该拿到看视频工具")
 		}
 		res := e.tool(t, e.tok, "canvas_inspect_video", map[string]any{"nodeId": "v1"})
@@ -225,6 +345,58 @@ func TestAgentBridge_InspectVideo(t *testing.T) {
 			t.Errorf("解码失败不该把 ffmpeg 原始输出透给模型: %+v", res)
 		}
 	})
+}
+
+func TestParseFrameAt_NumericString(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		at   any
+		sec  float64
+		want string
+	}{
+		{name: "数字字符串", at: "3.5", sec: 3.5},
+		{name: "零秒字符串", at: "0", sec: 0},
+		{name: "带空白的秒数", at: " 3.5 ", sec: 3.5},
+		{name: "负数字符串", at: "-1", want: "at 不能为负数"},
+		{name: "非数字字符串", at: "abc", want: `at 只能是 "first"、"last" 或秒数`},
+		{name: "非有限数", at: "NaN", want: `at 只能是 "first"、"last" 或秒数`},
+		{name: "正无穷", at: "+Inf", want: `at 只能是 "first"、"last" 或秒数`},
+		{name: "负无穷", at: "-Inf", want: `at 只能是 "first"、"last" 或秒数`},
+		{name: "数值溢出", at: "1e999", want: `at 只能是 "first"、"last" 或秒数`},
+		{name: "首帧", at: "first", sec: 0},
+		{name: "尾帧", at: "last", sec: 9.9},
+		{name: "数字秒数", at: 3.5, sec: 3.5},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			e := newVideoEnv(t, model.AgentModeAll, true)
+			res := e.tool(t, e.tok, "canvas_capture_frame", map[string]any{
+				"nodeId": "v1", "frames": []map[string]any{{"at": c.at}},
+			})
+			if c.want != "" {
+				if !res.IsError || !strings.Contains(res.Content, c.want) {
+					t.Fatalf("应拒绝 at=%v 并提示 %q，实际 %+v", c.at, c.want, res)
+				}
+				if len(e.frames.frameAts) != 0 || len(e.store.saved) != 0 {
+					t.Fatal("无效时刻不应截帧或保存素材")
+				}
+				return
+			}
+			if res.IsError {
+				t.Fatalf("at=%v 截帧失败：%s", c.at, res.Content)
+			}
+			if len(e.frames.frameAts) != 1 || e.frames.frameAts[0] != c.sec {
+				t.Fatalf("截帧时刻 = %v，应为 [%v]", e.frames.frameAts, c.sec)
+			}
+			var out struct {
+				Frames []struct {
+					At float64 `json:"at"`
+				} `json:"frames"`
+			}
+			if err := json.Unmarshal([]byte(res.Content), &out); err != nil || len(out.Frames) != 1 || out.Frames[0].At != c.sec {
+				t.Fatalf("结果应返回 %v 秒，实际 %s（%v）", c.sec, res.Content, err)
+			}
+		})
+	}
 }
 
 func TestAgentBridge_CaptureFrame(t *testing.T) {
@@ -370,7 +542,7 @@ func TestAgentBridge_CaptureFrame(t *testing.T) {
 
 	t.Run("不看图的模型也能截帧", func(t *testing.T) {
 		e := newVideoEnv(t, model.AgentModeAll, false)
-		if !hasTool(AgentToolsFor(model.AgentModeAll, false), "canvas_capture_frame") {
+		if !hasTool(AgentToolsFor(model.AgentModeAll, false, false), "canvas_capture_frame") {
 			t.Error("截帧不需要模型能看图")
 		}
 		res := e.tool(t, e.tok, "canvas_capture_frame", map[string]any{"nodeId": "v1", "frames": []frameArg{{"at": "last"}}})
@@ -446,5 +618,15 @@ func TestAgentBridge_VideoWithRealFFmpeg(t *testing.T) {
 	cfg, err := png.DecodeConfig(strings.NewReader(data))
 	if err != nil || cfg.Width != 320 || cfg.Height != 240 {
 		t.Errorf("尾帧应是 320x240 的 PNG: %+v err=%v", cfg, err)
+	}
+
+	res = b.tool(t, tok, "canvas_capture_frame", map[string]any{"nodeId": "v1", "frames": []map[string]any{{"at": "1.5"}}})
+	if res.IsError || len(store.saved) != 2 {
+		t.Fatalf("数字字符串截帧: %+v saved=%d", res, len(store.saved))
+	}
+	_, data, _ = strings.Cut(store.saved[1], "|")
+	cfg, err = png.DecodeConfig(strings.NewReader(data))
+	if err != nil || cfg.Width != 320 || cfg.Height != 240 {
+		t.Errorf("1.5 秒应截出 320x240 的 PNG: %+v err=%v", cfg, err)
 	}
 }

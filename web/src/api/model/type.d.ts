@@ -59,6 +59,8 @@ export interface Capabilities {
   system?: string;
   /** 能不能看图，仅 agent；不能看图的模型拿不到「看图」工具 */
   vision?: boolean;
+  /** 能不能理解视频画面和声音，仅 Gemini 格式的 agent */
+  video?: boolean;
 }
 
 /** 计费方式：按次 / 按秒（× 时长参数 duration）/ 按 Token（仅文本） */

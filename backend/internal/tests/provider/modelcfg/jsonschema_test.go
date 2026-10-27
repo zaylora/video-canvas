@@ -97,3 +97,26 @@ func TestJSONSchema_与ParseModel一致(t *testing.T) {
 		}
 	}
 }
+
+func TestJSONSchema_APIFormat(t *testing.T) {
+	var schema map[string]any
+	if err := json.Unmarshal(modelcfg.JSONSchema(), &schema); err != nil {
+		t.Fatal(err)
+	}
+	props := schema["properties"].(map[string]any)
+	item := props["channels"].(map[string]any)["items"].(map[string]any)
+	fields := item["properties"].(map[string]any)
+	format, ok := fields["api_format"].(map[string]any)
+	if !ok || format["type"] != "string" {
+		t.Fatalf("api_format 应声明为字符串: %v", fields["api_format"])
+	}
+	values, _ := format["enum"].([]any)
+	if len(values) != 2 || values[0] != "openai" || values[1] != "gemini" {
+		t.Errorf("api_format 枚举=%v，期望 [openai gemini]", values)
+	}
+	for _, required := range item["required"].([]any) {
+		if required == "api_format" {
+			t.Error("api_format 应允许省略")
+		}
+	}
+}

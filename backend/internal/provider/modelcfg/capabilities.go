@@ -57,6 +57,7 @@ type Capabilities struct {
 	Context *ContextSpec `json:"context,omitempty"` // 上下文能力，仅 text / agent
 	System  string       `json:"system,omitempty"`  // 固定系统提示，仅 text，用户看不到
 	Vision  bool         `json:"vision,omitempty"`  // 能不能看图，仅 agent；不能看图的模型不会收到「看图」工具
+	Video   bool         `json:"video,omitempty"`   // 能不能理解视频画面和声音，仅 Gemini 格式的 agent
 }
 
 // Refs 是三种参考素材的配置。
