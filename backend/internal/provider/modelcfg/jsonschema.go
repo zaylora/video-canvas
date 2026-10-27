@@ -158,7 +158,8 @@ func channelRefSchema() obj {
 			"type": "string", "minLength": 1, "maxLength": maxUpstreamModelLen,
 			"description": "这个渠道上的上游模型名（工作流型插件里是工作流 id），由模型选的协议插件解释",
 		},
-		"protocol": protocolSchema(),
+		"protocol":   protocolSchema(),
+		"api_format": enum("接口格式（仅 agent），不填等于 openai", APIFormatOpenAI, APIFormatGemini),
 	}, "channel", "upstream_model")
 }
 

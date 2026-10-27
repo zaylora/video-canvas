@@ -169,7 +169,7 @@ func validateTags(tags []string, add func(path, msg string)) {
 	}
 }
 
-// validateChannels 校验 channels：首期恰好一个元素，每个元素的渠道 key、上游模型名与协议合法。
+// validateChannels 校验 channels：首期恰好一个元素，每个元素的渠道 key、上游模型名、协议与接口格式合法。
 // 不检查渠道是否存在、插件是否存在或支持该 kind：那是 service 层的跨对象检查。
 func validateChannels(kind string, list []ChannelRef, add func(path, msg string)) {
 	switch {
@@ -190,6 +190,12 @@ func validateChannels(kind string, list []ChannelRef, add func(path, msg string)
 			add(base+".upstream_model", fmt.Sprintf("不能超过 %d 个字符（当前 %d 个）", maxUpstreamModelLen, n))
 		}
 		validateProtocol(kind, c.Protocol, base+".protocol", add)
+		switch {
+		case kind != KindAgent && c.APIFormat != "":
+			add(base+".api_format", "只有 Agent 模型可以选择接口格式")
+		case kind == KindAgent && c.Format() != APIFormatOpenAI && c.Format() != APIFormatGemini:
+			add(base+".api_format", "接口格式只能是 openai 或 gemini")
+		}
 	}
 }
 

@@ -1,9 +1,11 @@
 package modelcfg_test
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
+	"video-canvas/internal/provider"
 	"video-canvas/internal/provider/modelcfg"
 )
 
@@ -132,4 +134,85 @@ func TestParseModel_Agent上游响应超时(t *testing.T) {
 		{"视频模型不能配：它走插件，没有这条链路", func(m map[string]any) { m["idle_timeout"] = "2m" }, "idle_timeout", "Agent"},
 		{"文本模型也不能配", func(m map[string]any) { mcAsText(m); m["idle_timeout"] = "2m" }, "idle_timeout", "Agent"},
 	})
+}
+
+func TestAgentModel_APIFormat(t *testing.T) {
+	cases := []struct {
+		name, kind, format string
+		wantErrPath        string
+	}{
+		{"agent 默认", "agent", "", ""},
+		{"agent openai", "agent", "openai", ""},
+		{"agent gemini", "agent", "gemini", ""},
+		{"agent 非法值", "agent", "claude", "channels[0].api_format"},
+		{"agent 大小写不合法", "agent", "Gemini", "channels[0].api_format"},
+		{"非 agent 默认", "text", "", ""},
+		{"非 agent 不能写 gemini", "text", "gemini", "channels[0].api_format"},
+		{"非 agent 不能写 openai", "text", "openai", "channels[0].api_format"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := mcLoadFixture(t, "model_video.json")
+			if tc.kind == "agent" {
+				mcAsAgent(m)
+			} else {
+				mcAsText(m)
+			}
+			mcChannel0(m)["api_format"] = tc.format
+			got, issues := modelcfg.ParseModel(mcMarshal(t, m))
+			if tc.wantErrPath != "" {
+				for _, issue := range issues {
+					if issue.Path == tc.wantErrPath {
+						return
+					}
+				}
+				t.Fatalf("应拒绝 %s: %v", tc.wantErrPath, mcIssueList(issues))
+			}
+			if got == nil || len(issues) != 0 {
+				t.Fatalf("合法配置应通过: %v", mcIssueList(issues))
+			}
+			if got.Channels[0].APIFormat != tc.format {
+				t.Errorf("APIFormat=%q，期望 %q", got.Channels[0].APIFormat, tc.format)
+			}
+
+			// 默认格式不写入快照 JSON，确保旧配置的快照形状保持不变。
+			snap := provider.NewSnapshot(got, &provider.ChannelRuntime{}, 1)
+			wantFormat := tc.format
+			if wantFormat == "openai" {
+				wantFormat = ""
+			}
+			if snap.Model.APIFormat != wantFormat {
+				t.Errorf("快照 APIFormat=%q，期望 %q", snap.Model.APIFormat, wantFormat)
+			}
+			body, err := json.Marshal(snap.Model)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var saved map[string]any
+			if err := json.Unmarshal(body, &saved); err != nil {
+				t.Fatal(err)
+			}
+			value, exists := saved["api_format"]
+			if wantFormat == "" {
+				if exists {
+					t.Errorf("默认快照不应写 api_format: %s", body)
+				}
+			} else if value != wantFormat {
+				t.Errorf("快照 api_format=%v，期望 %q", value, wantFormat)
+			}
+		})
+	}
+}
+
+func TestChannelRef_FormatDefaultsToOpenAI(t *testing.T) {
+	for _, tc := range []struct{ format, want string }{
+		{"", modelcfg.APIFormatOpenAI},
+		{modelcfg.APIFormatOpenAI, modelcfg.APIFormatOpenAI},
+		{modelcfg.APIFormatGemini, modelcfg.APIFormatGemini},
+		{"claude", "claude"},
+	} {
+		if got := (modelcfg.ChannelRef{APIFormat: tc.format}).Format(); got != tc.want {
+			t.Errorf("Format(%q)=%q，期望 %q", tc.format, got, tc.want)
+		}
+	}
 }
