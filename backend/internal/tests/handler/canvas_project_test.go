@@ -26,6 +26,8 @@ type fakeCanvasRepo struct {
 	next  uint64
 	// covers 是画布 id 对应的封面素材 key，没有表示没封面
 	covers map[uint64]string
+	// afterUpdate 模拟本次保存后、响应返回前发生的另一次写入。
+	afterUpdate func(*model.CanvasProject)
 }
 
 func (r *fakeCanvasRepo) Create(_ context.Context, p *model.CanvasProject) error {
@@ -55,13 +57,13 @@ func (r *fakeCanvasRepo) List(_ context.Context, userID uint64, _ string, _, _ i
 	return out, int64(len(out)), nil
 }
 
-func (r *fakeCanvasRepo) Update(_ context.Context, userID, id, revision uint64, fields map[string]any) error {
+func (r *fakeCanvasRepo) Update(_ context.Context, userID, id, revision uint64, fields map[string]any) (*model.CanvasProject, error) {
 	p, ok := r.items[id]
 	if !ok || p.UserID != userID {
-		return repository.ErrNotFound
+		return nil, repository.ErrNotFound
 	}
 	if p.Revision != revision {
-		return repository.ErrRevisionConflict
+		return nil, repository.ErrRevisionConflict
 	}
 	if t, ok := fields["title"].(string); ok {
 		p.Title = t
@@ -70,7 +72,11 @@ func (r *fakeCanvasRepo) Update(_ context.Context, userID, id, revision uint64, 
 		p.PayloadJSON = j
 	}
 	p.Revision++
-	return nil
+	saved := *p
+	if r.afterUpdate != nil {
+		r.afterUpdate(p)
+	}
+	return &saved, nil
 }
 
 func (r *fakeCanvasRepo) Delete(_ context.Context, userID, id uint64) error {
@@ -107,6 +113,57 @@ func canvasCall(t *testing.T, r *gin.Engine, method, path, body string) (int, ma
 		t.Fatalf("响应不是 JSON：%v %s", err, w.Body.String())
 	}
 	return w.Code, resp
+}
+
+// 保存响应必须对应本次写入，不能把随后 Agent 的版本认成本地内容的版本。
+func TestCanvasProjectHandler_UpdateSnapshot(t *testing.T) {
+	r, repo := newCanvasRouter()
+	repo.items[1] = &model.CanvasProject{
+		BaseModel: model.BaseModel{ID: 1}, UserID: 1, Title: "画布",
+		PayloadJSON: datatypes.JSON(`{"writer":"initial"}`), Revision: 10,
+	}
+	repo.afterUpdate = func(p *model.CanvasProject) {
+		p.PayloadJSON = datatypes.JSON(`{"writer":"agent"}`)
+		p.Revision++
+	}
+	status, resp := canvasCall(t, r, http.MethodPut, "/api/v1/canvas/"+idcodec.Encode(1),
+		`{"revision":10,"payload_json":{"writer":"browser"}}`)
+	if status != http.StatusOK {
+		t.Fatalf("保存失败：%d %v", status, resp)
+	}
+	data := resp["data"].(map[string]any)
+	if data["revision"] != float64(11) || data["payload_json"].(map[string]any)["writer"] != "browser" {
+		t.Fatalf("应返回本次保存的版本 11 和 browser 内容，不能混入随后 Agent 的写入：%v", data)
+	}
+	if repo.items[1].Revision != 12 {
+		t.Fatal("测试未制造随后发生的 Agent 写入")
+	}
+}
+
+func TestCanvasProjectHandler_UpdateErrors(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		body   string
+		userID uint64
+		status int
+		code   int
+	}{
+		{"缺少版本号", `{"title":"新标题"}`, 1, http.StatusBadRequest, errcode.ErrInvalidParams.Code},
+		{"版本过期", `{"revision":9,"title":"新标题"}`, 1, http.StatusConflict, errcode.ErrCanvasConflict.Code},
+		{"不属于当前用户", `{"revision":10,"title":"新标题"}`, 2, http.StatusNotFound, errcode.ErrCanvasNotFound.Code},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			r, repo := newCanvasRouter()
+			repo.items[1] = &model.CanvasProject{BaseModel: model.BaseModel{ID: 1}, UserID: tt.userID, Title: "画布", Revision: 10}
+			status, resp := canvasCall(t, r, http.MethodPut, "/api/v1/canvas/"+idcodec.Encode(1), tt.body)
+			if status != tt.status || resp["code"] != float64(tt.code) {
+				t.Fatalf("期望 %d + %d，实际 %d %v", tt.status, tt.code, status, resp)
+			}
+			if repo.items[1].Revision != 10 || repo.items[1].Title != "画布" {
+				t.Fatal("失败请求不能修改画布")
+			}
+		})
+	}
 }
 
 // 画布 ID 对外是十六进制串：创建、列表、详情、更新、删除都用它，数字 ID 和乱串一律拒绝。
