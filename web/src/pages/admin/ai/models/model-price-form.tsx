@@ -10,6 +10,7 @@ import {
   FormSectionTitle,
 } from "@/components/admin-ui/form-section";
 import { MarginBadge } from "@/components/admin-ui/margin-badge";
+import { Notice } from "@/components/admin-ui/notice";
 import { Segmented, SegmentedItem } from "@/components/admin-ui/segmented";
 import { Tag } from "@/components/admin-ui/tag";
 import { Switch } from "@/components/ui/switch";
@@ -105,6 +106,11 @@ export function ModelPriceForm({
       </FormSectionHeader>
 
       <div className="flex flex-col gap-4" id="model-pricing">
+        {kind === "agent" && caps?.video && (
+          <Notice tone="info">
+            看视频的子请求按这里的 Token 价照常扣费、计入本轮已花积分，不算进上下文大小。
+          </Notice>
+        )}
         <div className="flex flex-wrap items-start gap-x-8 gap-y-3 rounded-xl border p-4">
           <FormField
             size="default"

@@ -120,7 +120,7 @@ func (b *AgentBridge) openVideo(ctx context.Context, userID uint64, assetID stri
 	return tmp.Name(), remove, nil
 }
 
-// toolInspectVideo 看视频：均匀抽几帧随结果交给模型。只读，帧只在这一轮的上下文里出现，不保存、不写进历史。
+// toolInspectVideo 优先理解视频画面和声音；仅支持看图或理解失败时抽帧，并明确音频未分析。
 func (b *AgentBridge) toolInspectVideo(ctx context.Context, tc *toolCall) (*toolOut, error) {
 	var a struct {
 		NodeID string `json:"nodeId"`
@@ -136,19 +136,33 @@ func (b *AgentBridge) toolInspectVideo(ctx context.Context, tc *toolCall) (*tool
 	if count < 1 || count > maxVideoFrames {
 		return nil, fail("count 需要 1 到 %d", maxVideoFrames)
 	}
-	snap, _, err := b.resolveModel(ctx, tc.sess.modelKey)
+	snap, key, err := b.resolveModel(ctx, tc.sess.modelKey)
 	if err != nil {
 		return nil, err
 	}
-	if !snap.Model.Capabilities.Vision {
+	if !snap.Model.Capabilities.Vision && !snap.Model.Capabilities.Video {
 		return nil, fail("当前模型不能看图，也就看不了视频内容。可以用 canvas_get_state 读提示词来判断，或请用户换一个支持看图的模型。")
-	}
-	if err := b.requireFrames(); err != nil {
-		return nil, err
 	}
 	ref, err := b.d.Canvas.VideoRef(ctx, tc.run, a.NodeID)
 	if err != nil {
 		return nil, err
+	}
+	reason := "当前模型未开启看视频能力"
+	if snap.Model.Capabilities.Video {
+		out, err := b.understandVideo(ctx, tc, ref, snap, key)
+		if err == nil {
+			return out, nil
+		}
+		if ctx.Err() != nil || errors.Is(err, context.Canceled) {
+			return nil, err
+		}
+		reason = err.Error()
+		if !snap.Model.Capabilities.Vision {
+			return nil, fail("音频未分析：%s。当前模型不能看图，无法退回抽帧。%s", reason, manualHint)
+		}
+	}
+	if err := b.requireFrames(); err != nil {
+		return nil, fail("音频未分析：%s。%v", reason, err)
 	}
 	src, cleanup, err := b.openVideo(ctx, tc.run.UserID, ref.AssetID)
 	defer cleanup()
@@ -161,6 +175,7 @@ func (b *AgentBridge) toolInspectVideo(ctx context.Context, tc *toolCall) (*tool
 	}
 	out := &toolOut{summary: fmt.Sprintf("查看视频（%d 帧）", len(frames)), extra: map[string]any{"node_ids": []string{ref.NodeID}}}
 	var text strings.Builder
+	fmt.Fprintf(&text, "注意：音频未分析（原因：%s）。以下帧只能用于判断画面。\n", reason)
 	fmt.Fprintf(&text, "视频节点 %s「%s」，时长 %.1f 秒。已附上 %d 帧，按顺序是：", ref.NodeID, ref.Label, dur, len(frames))
 	for i, f := range frames {
 		out.images = append(out.images, ToolImage{MimeType: "image/jpeg", Data: base64.StdEncoding.EncodeToString(f.Data)})

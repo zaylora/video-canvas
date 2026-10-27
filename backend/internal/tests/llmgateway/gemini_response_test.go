@@ -188,6 +188,20 @@ func TestFromGemini_UsageMapping(t *testing.T) {
 	}
 }
 
+func TestFromGemini_UsageAfterFinishReason(t *testing.T) {
+	res, raw, _ := fromGemini(t,
+		`{"usageMetadata":{"promptTokenCount":1}}`,
+		`{"candidates":[{"content":{"parts":[{"text":"分析完成"}]},"finishReason":"STOP"}]}`,
+		`{"usageMetadata":{"promptTokenCount":3000,"candidatesTokenCount":40,"thoughtsTokenCount":5}}`,
+	)
+	if res.UsageMissing || res.Usage.InputTokens != 3000 || res.Usage.OutputTokens != 45 {
+		t.Fatalf("结束块之后的实际用量不能丢失: %+v", res)
+	}
+	if strings.Count(raw, "data: [DONE]") != 1 || !strings.Contains(raw, `"prompt_tokens":3000`) {
+		t.Fatalf("应在最终用量之后结束: %s", raw)
+	}
+}
+
 func TestFromGemini_EOFWithoutFinishReason(t *testing.T) {
 	res, raw, _ := fromGemini(t, `{"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":4}}`, `{"candidates":[{"content":{"parts":[{"text":"正常结束"}]}}]}`)
 	if res.FinishReason != "stop" || res.UsageMissing || res.Usage.OutputTokens != 4 || !strings.Contains(raw, `"finish_reason":"stop"`) || !strings.Contains(raw, "data: [DONE]") {

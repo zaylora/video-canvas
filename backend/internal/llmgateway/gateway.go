@@ -67,7 +67,7 @@ func (g *Gateway) Stream(ctx context.Context, tg Target, req Request, emit func(
 	if len(req.Messages) == 0 {
 		return nil, fmt.Errorf("%w: 没有消息", ErrInvalidRequest)
 	}
-	body, err := buildBody(tg, req)
+	body, err := BuildBody(tg, req)
 	if err != nil {
 		return nil, err
 	}

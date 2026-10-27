@@ -54,6 +54,13 @@ type fakeStreamer struct {
 	tg     llmgateway.Target
 	body   []byte
 	lim    llmgateway.RawLimits
+	req    llmgateway.Request
+}
+
+func (s *fakeStreamer) Stream(ctx context.Context, tg llmgateway.Target, req llmgateway.Request, emit func(llmgateway.Event)) (*llmgateway.Result, error) {
+	s.calls++
+	s.tg, s.req = tg, req
+	return s.script(ctx, emit, func([]byte) {})
 }
 
 func (s *fakeStreamer) StreamRaw(ctx context.Context, tg llmgateway.Target, body []byte, lim llmgateway.RawLimits, emit func(llmgateway.Event), raw func([]byte)) (*llmgateway.Result, error) {

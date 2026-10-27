@@ -214,7 +214,8 @@ func (r *geminiSSEReader) translateLine(line []byte) {
 	for _, delta := range deltas {
 		r.writeSSE(map[string]any{"choices": []any{map[string]any{"index": 0, "delta": delta}}})
 	}
-	if r.state.finish != "" {
+	// 结束原因可能先于最终用量到达；只在拿到结束后的用量时提前完成，否则继续读到 EOF。
+	if r.state.finish != "" && c.Usage != nil {
 		r.complete()
 	}
 }

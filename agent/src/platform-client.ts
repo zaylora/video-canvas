@@ -171,6 +171,8 @@ export interface AgentModel {
   key: string;
   name: string;
   vision: boolean;
+  /** 是否支持理解视频画面和声音；旧平台未返回时视为不支持。 */
+  video?: boolean;
   /** 上下文窗口（Token），没配置是 0；画布据此显示上下文用量 */
   context_window: number;
 }

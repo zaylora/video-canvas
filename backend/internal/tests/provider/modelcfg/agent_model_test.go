@@ -21,6 +21,45 @@ func mcAsAgent(m map[string]any) {
 	m["pricing"] = map[string]any{"billing": "token", "token": map[string]any{"in": 3, "out": 15}}
 }
 
+func TestParseModel_VideoCapability(t *testing.T) {
+	for _, tc := range []struct {
+		name, kind, format string
+		vision, valid      bool
+	}{
+		{"Gemini 无须看图也能看视频", "agent", "gemini", false, true},
+		{"Gemini 同时看图和视频", "agent", "gemini", true, true},
+		{"OpenAI 不能开启", "agent", "openai", true, false},
+		{"默认格式不能开启", "agent", "", true, false},
+		{"非 Agent 不能开启", "text", "", false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := mcLoadFixture(t, "model_video.json")
+			mcAsAgent(m)
+			if tc.kind == "text" {
+				mcAsText(m)
+			}
+			mcChannel0(m)["api_format"] = tc.format
+			mcCaps(m)["video"], mcCaps(m)["vision"] = true, tc.vision
+			got, issues := modelcfg.ParseModel(mcMarshal(t, m))
+			if tc.valid {
+				if got == nil || !got.Capabilities.Video || !got.Capabilities.Public().Video {
+					t.Fatalf("看视频能力应保留: got=%+v issues=%v", got, issues)
+				}
+			} else {
+				found := false
+				for _, issue := range issues {
+					if issue.Path == "capabilities.video" {
+						found = true
+					}
+				}
+				if !found {
+					t.Fatalf("应该在看视频字段报告错误: %v", issues)
+				}
+			}
+		})
+	}
+}
+
 func TestParseModel_Agent合法配置(t *testing.T) {
 	m := mcLoadFixture(t, "model_video.json")
 	mcAsAgent(m)

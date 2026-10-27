@@ -39,6 +39,7 @@ type toolSpec struct {
 	scriptable  bool     // 见 ToolDecl.Scriptable
 	modes       []string // 能用的任务模式，nil 表示所有模式
 	needsVision bool     // 只有能看图的模型才有
+	needsVisual bool     // 能看图或能看视频的模型才有
 	run         func(b *AgentBridge, ctx context.Context, tc *toolCall) (*toolOut, error)
 }
 
@@ -57,8 +58,8 @@ var toolSpecs = []toolSpec{
 	{name: "skill_search", label: "搜索技能", verb: "技能", scriptable: true, run: (*AgentBridge).toolSkillSearch},
 	{name: "skill_read", label: "读取技能", verb: "技能", scriptable: true, run: (*AgentBridge).toolSkillRead},
 	{name: "canvas_inspect_image", label: "查看图片", verb: "看图", needsVision: true, run: (*AgentBridge).toolInspectImage},
-	// 视频：看视频只读、要模型能看图；截帧会写素材和画布，和生成一样只在能改画布的模式里。两者都会返回图片或写素材，不能被脚本调用
-	{name: "canvas_inspect_video", label: "查看视频", verb: "看视频", needsVision: true, run: (*AgentBridge).toolInspectVideo},
+	// 视频：看视频只读、要模型能看图或看视频；截帧会写素材和画布，只在能改画布的模式里。两者都不能被脚本调用。
+	{name: "canvas_inspect_video", label: "查看视频", verb: "看视频", needsVisual: true, run: (*AgentBridge).toolInspectVideo},
 	{name: "canvas_capture_frame", label: "截取视频帧", verb: "截帧", modes: layoutModes, run: (*AgentBridge).toolCaptureFrame},
 	// 联网：所有模式都能用；结果只是资料，可以被脚本调用。是否真的下发由运行时的停用清单决定（RuntimeConfig.DisabledTools）
 	{name: "web_search", label: "搜索网页", verb: "搜索", scriptable: true, run: (*AgentBridge).toolWebSearch},
@@ -131,12 +132,12 @@ var baseDecls = sync.OnceValue(func() map[string]baseDecl {
 
 // AgentToolDecls 返回某个任务模式、某个模型能用的工具声明，运行时只把这些交给模型：
 // 不能用的工具连看都看不到，比调用后被拒绝更省事，也更不容易被诱导。Go 端在执行时仍会再校验一次。
-func AgentToolDecls(mode string, vision bool) []ToolDecl {
+func AgentToolDecls(mode string, vision, video bool) []ToolDecl {
 	decls := baseDecls()
 	var out []ToolDecl
 	for i := range toolSpecs {
 		s := &toolSpecs[i]
-		if !s.allowsMode(mode) || (s.needsVision && !vision) {
+		if !s.allowsMode(mode) || (s.needsVision && !vision) || (s.needsVisual && !vision && !video) {
 			continue
 		}
 		d := decls[s.name]
@@ -157,9 +158,9 @@ func AgentToolsForMode(mode string) []string {
 }
 
 // AgentToolsFor 返回某个任务模式、某个模型能用的工具名：不能看图的模型拿不到 canvas_inspect_image。
-func AgentToolsFor(mode string, vision bool) []string {
+func AgentToolsFor(mode string, vision, video bool) []string {
 	var out []string
-	for _, d := range AgentToolDecls(mode, vision) {
+	for _, d := range AgentToolDecls(mode, vision, video) {
 		out = append(out, d.Name)
 	}
 	return out

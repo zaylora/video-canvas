@@ -109,7 +109,7 @@ func TestAgentBridge_InspectImage(t *testing.T) {
 		if !res.IsError || len(res.Images) != 0 || !strings.Contains(res.Content, "不能看图") {
 			t.Errorf("res=%+v", res)
 		}
-		if hasTool(AgentToolsFor("all", false), "canvas_inspect_image") || !hasTool(AgentToolsFor("all", true), "canvas_inspect_image") {
+		if hasTool(AgentToolsFor("all", false, false), "canvas_inspect_image") || !hasTool(AgentToolsFor("all", true, false), "canvas_inspect_image") {
 			t.Error("只有支持看图的模型才拿到这个工具")
 		}
 	})

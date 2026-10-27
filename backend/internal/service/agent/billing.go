@@ -49,7 +49,7 @@ type CallOutcome struct {
 
 // CallMeta 是一次模型调用的观测信息。
 type CallMeta struct {
-	Purpose       string        // main 对话调用，summary 摘要调用；为空按 main
+	Purpose       string        // main 对话、summary 摘要、title 命名、video 视频理解；为空按 main
 	ChannelKey    string        // 实际走的渠道
 	UpstreamModel string        // 实际调用的上游模型
 	Latency       time.Duration // 从发出到收完

@@ -1,6 +1,6 @@
-// Package modelmeta 按模型名查上下文规格（上下文窗口和最大输出），给管理端新建 Agent / 文本模型时自动填写。
+// Package modelmeta 按模型名识别上下文规格与输入能力，供管理端预填上下文、手动应用看图和看视频建议。
 //
-// 数据是内置快照 limits.json，由 scripts/update-model-limits.mjs 从 models.dev（MIT）生成，不会在运行时联网。
+// 数据是内置快照 limits.json 与 modalities.json，由 scripts/update-model-limits.mjs 从 models.dev（MIT）生成，不会在运行时联网。
 // 它只是「识别建议」：渠道上游自己返回的规格更准，运营也可以手改；查不到就由运营手填。
 package modelmeta
 

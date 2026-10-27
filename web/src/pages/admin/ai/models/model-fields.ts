@@ -40,6 +40,7 @@ export function fieldOfPath(path: string): { tab: ModelTabId; id: string } | nul
   if (path.startsWith("channels[0].protocol")) return { tab: "basic", id: "model-protocol" };
   if (path.startsWith("channels[0].channel")) return { tab: "basic", id: "model-channel" };
   if (path.startsWith("capabilities.prompt")) return { tab: "params", id: "model-prompt-length" };
+  if (path === "capabilities.video") return { tab: "params", id: "model-video" };
   return FIELD_OF[path.split(/[.[]/)[0]] ?? null;
 }
 

@@ -7,6 +7,28 @@ const render = (props: Parameters<typeof ContextLimitsHintView>[0]) =>
   renderToStaticMarkup(<ContextLimitsHintView {...props} />);
 
 describe("上下文规格的识别提示", () => {
+  test("原型里的识别建议包含输入能力，OpenAI 下提示看视频不会被应用", () => {
+    const html = render({
+      state: {
+        kind: "ready",
+        limits: {
+          found: true,
+          context_window: 128000,
+          max_output: 16384,
+          vision: true,
+          video: true,
+        },
+      },
+      current: { window: 128000, output: 16384 },
+      media: { vision: false, video: false },
+      gemini: false,
+      onApply: () => {},
+    });
+    expect(html).toContain("能看图");
+    expect(html).toContain("能看视频");
+    expect(html).toContain("应用识别值");
+    expect(html).toContain("不会被应用");
+  });
   test("还没选上游模型：提示先选好渠道和上游模型", () => {
     const html = render({ state: { kind: "idle" }, current: undefined, onApply: () => {} });
     expect(html).toContain("上游模型");

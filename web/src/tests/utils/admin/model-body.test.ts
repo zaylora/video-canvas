@@ -226,4 +226,15 @@ describe("Agent 模型接口格式", () => {
     ]);
     expect(readModelApiFormat(gemini)).toBe("gemini");
   });
+
+  test("改回 OpenAI 时关闭看视频，保留看图和其他能力，且不修改原对象", () => {
+    const original = {
+      kind: "agent",
+      channels: [{ api_format: "gemini" }],
+      capabilities: { vision: true, video: true },
+    };
+    const next = withModelApiFormat(original, "openai");
+    expect(next.capabilities).toEqual({ vision: true });
+    expect(original.capabilities.video).toBe(true);
+  });
 });

@@ -394,3 +394,36 @@ canvas_inspect_video(nodeId, count?)
 | `internal/tests/storage` | 未设置 `STORAGE_IT_PROVIDER`，真实对象存储桶测试跳过 | 否 |
 
 仍需完成 PR1 生产验收：Gemini 真机对话、多轮工具调用与看图；thought signature 经真实 pi / 服务往返（含长 id）；生产接受双鉴权头与清洗后的 schema；生产结束块与用量的时序。Tiptap 类型冲突仍未解决。PR2 的视频理解、对白样本、视频计费预检与降级不属于本次交付。基线对比的临时检出目录已删除，没有推送。
+
+## 14. 续接实现记录（PR2）
+
+2026-10-27：PR2 代码已实现，前端沿用已确认的《后台模型配置-原型.html》，没有另做原型。以下为本次代码验证结果；生产 Gemini 的真实视频与对白识别仍未验收，不能把本地假上游通过等同于生产完成。
+
+### 14.1 已实现的行为
+
+- 后台 Agent 能力新增 `capabilities.video`，只允许 Gemini 格式开启，与 `vision` 独立；JSON Schema 与用户侧模型清单同步增加字段。
+- 表单按原型在「看图」下方显示「看视频」；非 Gemini 禁用。切回 OpenAI 自动关闭看视频并提示。识别结果显示图片、视频能力，点击「应用识别值」时才改能力；自动预填仍只填写上下文规格。定价页显示视频子请求的计费说明。
+- 输入能力快照来自 models.dev 的 `modalities.input`，包含 2,310 个规整后的模型名；没有识别结果时省略建议字段，保留运营手填值。生成脚本同时支持上下文与输入模态，本次没有更新原有 `limits.json`。
+- `canvas_inspect_video` 优先调用当前模型分析原视频：对象存储传 `fileData`，本地传 `inlineData`，本地原文件最大 20 MB；原视频理解不依赖 ffmpeg。成功只返回分析文字，不将视频放入主对话历史。
+- 失败、空分析或安全拦截时，仅支持看图且 ffmpeg 可用才退回抽帧，明确说明「音频未分析」；用户取消时不再降级。不支持看图的模型失败后提示用户手动截帧。
+- 子请求独立执行预算预检、建记录和结算，用途为 `video`；预算包含此前已结算的模型费用，视频按时长每秒约 300 Token 预估，时长缺失时按模型窗口上限保守预检。实扣使用上游用量；费用计入本轮积分，视频输入不改变主对话上下文大小。
+- 子请求留存继续使用翻译前的宿主形状，视频 URL 与 Base64 经现有媒体脱敏；留存摘要包含 `purpose` 和 `api_format`。
+- 工具按 `vision || video` 下发，执行时再次校验；系统提示词从实际版本 16 升至 17，说明声音分析、降级边界及视频内容仅作资料。
+- PR1 追加修复：结束块未带用量时，继续读取后续用量或 EOF，避免丢失稍后到达的实际 Token。已有「结束块带用量但连接不关闭」行为保持不变。
+
+### 14.2 验证结果
+
+| 范围 | 命令 / 场景 | 结果 |
+| --- | --- | --- |
+| 失败测试 | 结束后的用量、视频能力校验、原视频理解及降级、表单禁用及切格式 | 先观察到失败，再实现通过 |
+| 后端定向 | 网关原生视频序列化；Agent 工具成功、降级、取消、预算、素材归属、留存；模型配置、识别接口及模型列表 | 通过；视频专用模型的工具下发额外验证通过 |
+| 后端竞态 | `go test -race ./internal/tests/service/agent ./internal/tests/llmgateway ./internal/tests/provider/modelmeta -count=1` | 通过 |
+| 后端静态 | `go vet ./...`；`golangci-lint run --new-from-merge-base=master ./...` | 通过，lint 为 0 issues |
+| 后端全量 | `go test ./...` | 只有 `internal/tests/scripts` 失败：Windows 的 WSL 无 `/bin/bash`；其他包通过，外部服务集成仍按环境条件跳过 |
+| 前端单元测试 | `bun test` | 273 个文件，3344 pass / 0 fail |
+| 前端 lint / 格式 | 仓库自带 oxlint / oxfmt | 无 lint 错误，修改文件格式通过；保留仓库已有警告 |
+| 前端类型 | `bun node_modules/typescript/bin/tsc -b --noEmit` | 仍只有 `text-editor-dialog.tsx:196` 的既有 Tiptap 双版本冲突 |
+| 前端打包 | `bun node_modules/vite/bin/vite.js build` | 通过；此项独立检查打包，不能替代未通过的类型检查 |
+| Agent 服务 | `npm run typecheck`、`npm test`、`npm run build` | 类型与构建通过；测试 219 / 222，通过视频能力原样透传用例。其余 3 项因原有测试用 URL.pathname 得到 Windows 重复盘符路径失败，两个相关测试文件的内容哈希与改动前一致 |
+
+仍需生产验收：真实 Gemini 对话、多轮工具签名、看图、对象存储视频、本地视频，以及含人声对白的样本；核实实际耗时、用量和对白内容。本次未配置生产渠道密钥，没有执行真实供应商调用，也未回填飞书完成状态。未提交或推送本次续接改动。

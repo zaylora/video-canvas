@@ -140,6 +140,12 @@ func (b *AgentBridge) recordModelRequest(ctx context.Context, runID, callID uint
 	if rec == nil {
 		return
 	}
+	if purpose := ModelPurposeFrom(ctx); purpose != "" {
+		var params map[string]any
+		_ = json.Unmarshal(rec.Params, &params)
+		params["purpose"] = purpose
+		rec.Params, _ = json.Marshal(params)
+	}
 	rec.CreatedAt = b.d.Now()
 	if err := b.reqRec.SaveModelCallBody(context.WithoutCancel(ctx), rec); err != nil {
 		logger.Warn("记录模型请求失败", zap.Error(err), zap.Uint64("run_id", runID), zap.Uint64("call_id", callID))

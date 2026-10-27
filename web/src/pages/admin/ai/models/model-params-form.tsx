@@ -13,11 +13,13 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   checkDeadline,
   checkIdleTimeout,
+  readModelApiFormat,
   readModelChannel,
   readModelKind,
   readModelString,
   withModelField,
 } from "@/utils/admin/model-body";
+import { suggestedMediaCapabilities } from "@/utils/admin/model-limits";
 
 import { ContextLimitsAssist } from "./context-limits-assist";
 import {
@@ -107,6 +109,7 @@ export function ModelParamsForm({
     caps.prompt.max_length > LIMITS.promptLength[1];
 
   const isAgent = kind === "agent";
+  const gemini = readModelApiFormat(body) === "gemini";
   const upstream = readModelChannel(body);
 
   return (
@@ -213,7 +216,14 @@ export function ModelParamsForm({
             channel={upstream.channel}
             upstreamModel={upstream.upstreamModel}
             current={caps.context}
-            onApply={(context) => patch({ context })}
+            media={isAgent ? caps : undefined}
+            gemini={gemini}
+            onApply={(context, limits) =>
+              patch({
+                context,
+                ...(isAgent && limits ? suggestedMediaCapabilities(limits, gemini) : {}),
+              })
+            }
           />
           {isAgent && (
             <FormField
@@ -226,6 +236,31 @@ export function ModelParamsForm({
               <div className="flex">
                 <ToggleChip pressed={!!caps.vision} onClick={() => patch({ vision: !caps.vision })}>
                   能看图
+                </ToggleChip>
+              </div>
+            </FormField>
+          )}
+          {isAgent && (
+            <FormField
+              size="default"
+              className="mt-4"
+              label="看视频"
+              htmlFor="model-video"
+              error={issueFor(issues, "capabilities.video")}
+              hint={
+                gemini
+                  ? "上游模型支持视频输入时打开：Agent 才能理解画布视频里的画面和声音（对白、旁白、音乐、环境音、画面文字）。不能看视频的模型只能抽帧看画面。"
+                  : "只有 Gemini 接口格式的模型能看视频。要开，先在「基本信息」把接口格式改成 Gemini 原生。"
+              }
+            >
+              <div className="flex">
+                <ToggleChip
+                  id="model-video"
+                  pressed={!!caps.video}
+                  disabled={!gemini && !caps.video}
+                  onClick={() => patch({ video: !caps.video })}
+                >
+                  能看视频
                 </ToggleChip>
               </div>
             </FormField>

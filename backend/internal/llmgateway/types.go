@@ -43,10 +43,18 @@ func (e *UpstreamError) Error() string {
 	return fmt.Sprintf("上游错误 %d: %s", e.Status, e.Message)
 }
 
-// Part 是多模态消息的一段：文字或图片（二选一）。
+// Part 是多模态消息的一段：文字、图片或视频（三选一）。
 type Part struct {
 	Text     string // 文字
 	ImageURL string // 图片地址，可以是 data URL
+	Video    *Video // 视频，仅 Gemini 支持
+}
+
+// Video 是视频输入：对象存储传 URL，本地存储传 Base64 数据。
+type Video struct {
+	MimeType string `json:"mime_type"`      // 实际视频 MIME 类型
+	URL      string `json:"url,omitempty"`  // 上游能访问的签名地址
+	Data     string `json:"data,omitempty"` // Base64 内容，与 URL 二选一
 }
 
 // ToolCall 是模型发起的一次工具调用。

@@ -132,6 +132,9 @@ func validateModel(m *ModelConfig, issues *[]Issue) {
 	validateIdleTimeout(m, add)
 	validateChannels(m.Kind, m.Channels, add)
 	validateCapabilities(m.Kind, &m.Capabilities, issues)
+	if m.Kind == KindAgent && m.Capabilities.Video && (len(m.Channels) != 1 || m.Channels[0].Format() != APIFormatGemini) {
+		*issues = append(*issues, Issue{Path: "capabilities.video", Message: "只有 Gemini 接口格式的模型能看视频"})
+	}
 	validatePricing(m.Kind, &m.Capabilities, &m.Pricing, issues)
 }
 

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import type { ConfigIssue } from "@/api/admin/ai/type.d";
+import type { Capabilities } from "@/api/model/type.d";
 import { ConfirmDialog } from "@/components/admin-ui/confirm-dialog";
 import { FormField } from "@/components/admin-ui/form-field";
 import {
@@ -181,8 +182,14 @@ export function ModelBasicForm({
               <Select
                 value={apiFormat}
                 onValueChange={(value) => {
-                  if (value === "openai" || value === "gemini")
+                  if (value === "openai" || value === "gemini") {
+                    if (
+                      value === "openai" &&
+                      (body.capabilities as Capabilities | undefined)?.video
+                    )
+                      toast.info("接口格式改成 OpenAI 兼容后，「看视频」已关闭");
                     onChange((current) => withModelApiFormat(current, value));
+                  }
                 }}
               >
                 <SelectTrigger
@@ -194,7 +201,7 @@ export function ModelBasicForm({
                     {apiFormat === "gemini" ? "Gemini 原生" : "OpenAI 兼容"}
                   </SelectValue>
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent align="start" alignItemWithTrigger={false}>
                   <SelectItem value="openai">OpenAI 兼容</SelectItem>
                   <SelectItem value="gemini">Gemini 原生</SelectItem>
                 </SelectContent>

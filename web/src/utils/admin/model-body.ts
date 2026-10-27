@@ -35,12 +35,17 @@ export function readModelApiFormat(body: unknown): "openai" | "gemini" {
   return isRecord(first) && first.api_format === "gemini" ? "gemini" : "openai";
 }
 
-/** 只改首渠道的接口格式；OpenAI 删除字段，缺少正文时从空对象开始 */
+/** 改首渠道的接口格式；切回 OpenAI 同时关闭看视频，避免保存不兼容的能力组合。 */
 export function withModelApiFormat(
   body: unknown,
   format: "openai" | "gemini",
 ): Record<string, unknown> {
-  const current = isRecord(body) ? body : {};
+  let current = isRecord(body) ? body : {};
+  if (format === "openai" && isRecord(current.capabilities) && "video" in current.capabilities) {
+    const capabilities = { ...current.capabilities };
+    delete capabilities.video;
+    current = { ...current, capabilities };
+  }
   const channels = Array.isArray(current.channels) ? [...current.channels] : [];
   if (format === "openai" && !isRecord(channels[0])) return current;
   const first = isRecord(channels[0]) ? { ...channels[0] } : {};

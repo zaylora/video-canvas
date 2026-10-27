@@ -236,6 +236,7 @@ func geminiMessageParts(content json.RawMessage, toolImages bool) ([]map[string]
 		ImageURL struct {
 			URL string `json:"url"`
 		} `json:"image_url"`
+		Video *Video `json:"video"`
 	}
 	if json.Unmarshal(content, &in) != nil {
 		return nil, fmt.Errorf("%w: 消息内容必须是文字或分段数组", ErrInvalidRequest)
@@ -254,11 +255,35 @@ func geminiMessageParts(content json.RawMessage, toolImages bool) ([]map[string]
 				return nil, err
 			}
 			parts = append(parts, part)
+		case "video":
+			part, err := geminiVideoPart(p.Video)
+			if err != nil {
+				return nil, err
+			}
+			parts = append(parts, part)
 		default:
 			return nil, fmt.Errorf("%w: 不支持的消息分段", ErrInvalidRequest)
 		}
 	}
 	return parts, nil
+}
+
+// geminiVideoPart 只序列化一个有效的视频输入，错误信息不回显签名地址或视频内容。
+func geminiVideoPart(v *Video) (map[string]any, error) {
+	if v == nil || !strings.HasPrefix(v.MimeType, "video/") || (v.URL == "") == (v.Data == "") {
+		return nil, fmt.Errorf("%w: 视频需要 MIME 类型及地址或 Base64 数据", ErrInvalidRequest)
+	}
+	if v.URL != "" {
+		u, err := url.Parse(v.URL)
+		if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil {
+			return nil, fmt.Errorf("%w: 视频地址必须是 HTTPS", ErrInvalidRequest)
+		}
+		return map[string]any{"fileData": map[string]any{"mimeType": v.MimeType, "fileUri": v.URL}}, nil
+	}
+	if _, err := base64.StdEncoding.DecodeString(v.Data); err != nil {
+		return nil, fmt.Errorf("%w: 视频 Base64 数据格式不正确", ErrInvalidRequest)
+	}
+	return map[string]any{"inlineData": map[string]any{"mimeType": v.MimeType, "data": v.Data}}, nil
 }
 
 func geminiImagePart(address string) (map[string]any, error) {
