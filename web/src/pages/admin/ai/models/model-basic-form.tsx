@@ -175,7 +175,7 @@ export function ModelBasicForm({
               error={issueFor(issues, "channels[0].api_format")}
               hint={
                 apiFormat === "gemini"
-                  ? "请求 {base}/v1beta/models/{上游模型}:streamGenerateContent?alt=sse，鉴权 x-goog-api-key 与 Authorization: Bearer。渠道地址要指向 Gemini 原生接口的根路径（可能带专用前缀）。"
+                  ? "请求 {base}/antigravity/v1beta/models/{上游模型}:streamGenerateContent?alt=sse；渠道地址已有 /antigravity 路径段时不重复添加。鉴权 x-goog-api-key 与 Authorization: Bearer。"
                   : "请求 {base}/v1/chat/completions，鉴权 Authorization: Bearer。"
               }
             >

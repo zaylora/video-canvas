@@ -107,14 +107,14 @@
 - 校验（`validate.go`）：非 Agent 模型不能写；取值只能是 `openai` / `gemini`。
 - `jsonschema.go` 的 `channelRefSchema()` 加 `api_format` 枚举。
 - 后台表单：`web/src/pages/admin/ai/models/model-basic-form.tsx` 的「上游模型标识」（`model-upstream`，约 126-144 行）下面，`kind === "agent"` 时显示「接口格式」下拉（OpenAI 兼容 / Gemini），每项一行说明请求路径与鉴权头；`model-fields.ts` 增加 `channels[0].api_format` 的错误路径映射；`model-template.ts` 新建 Agent 默认 `openai`；`model-body.ts` 加读写辅助。
-- **渠道地址约束**：base_url 是渠道级的，格式是模型级的。Gemini 原生接口常有专用前缀（测试中转是 `/antigravity`），同一主机的 OpenAI 接口不一定在这个前缀下，所以**一个渠道通常只服务一种格式**；要用 Gemini 就建一个 base_url 指向 Gemini 原生根路径的渠道。表单在选 Gemini 时提示这一点。
+- **渠道地址约束（更新）**：base_url 是渠道级的，格式是模型级的。Gemini 格式请求若渠道路径里没有完整的 `/antigravity` 路径段，网关会自动补在现有路径后；已有时不重复添加。OpenAI 格式沿用原地址、不加前缀。这个规则也作用于不需要 `/antigravity` 的原生 Gemini 服务，配置这类服务时需注意其路径要求。
 
 ### 5.3 网关翻译层
 
 **原则**：Gemini 的响应先翻译成 OpenAI 的 SSE 行，再交给**现有**的 `accumulator` 和 `raw` 回调。这样用量解析、`Result`、取消、断流、空闲重试、`synthesizeSSE` 全部复用，pi 看到的和 OpenAI 渠道完全一样。
 
 ```
-pi ──OpenAI 体──▶ ProxyModelPlatform ──SanitizeRaw──▶ [gemini] toGemini(body) ──▶ {base}/v1beta/models/{m}:streamGenerateContent?alt=sse
+pi ──OpenAI 体──▶ ProxyModelPlatform ──SanitizeRaw──▶ [gemini] toGemini(body) ──▶ {base}[自动补 /antigravity]/v1beta/models/{m}:streamGenerateContent?alt=sse
 pi ◀──OpenAI 行── raw / accumulator ◀── [gemini] fromGeminiSSE 逐块翻译 ◀── data: {candidates, usageMetadata}
 ```
 
@@ -125,7 +125,7 @@ pi ◀──OpenAI 行── raw / accumulator ◀── [gemini] fromGeminiSSE 
 
 | | OpenAI（现状） | Gemini |
 | --- | --- | --- |
-| 路径 | `{base}/v1/chat/completions` | `{base}/v1beta/models/{上游模型}:streamGenerateContent?alt=sse` |
+| 路径 | `{base}/v1/chat/completions` | `{base}[缺失时补 /antigravity]/v1beta/models/{上游模型}:streamGenerateContent?alt=sse` |
 | 鉴权 | `Authorization: Bearer` | `x-goog-api-key` **加** `Authorization: Bearer`（我的决定：测试中转用 Bearer 跑通，官方用 `x-goog-api-key`，两者都发；渠道自定义头仍先写、覆盖不了这两个） |
 
 **请求翻译（OpenAI → Gemini）**

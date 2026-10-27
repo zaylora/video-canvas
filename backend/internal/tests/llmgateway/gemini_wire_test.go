@@ -14,7 +14,10 @@ func TestGemini_EndpointAndAuthHeaders(t *testing.T) {
 	}{
 		{"渠道前缀", "/antigravity", "gemini-3.8-flash", "/antigravity/v1beta/models/gemini-3.8-flash:streamGenerateContent"},
 		{"前缀末尾斜线", "/antigravity///", "gemini-3.8-flash", "/antigravity/v1beta/models/gemini-3.8-flash:streamGenerateContent"},
-		{"无前缀", "", "gemini-3.8-flash", "/v1beta/models/gemini-3.8-flash:streamGenerateContent"},
+		{"无前缀", "", "gemini-3.8-flash", "/antigravity/v1beta/models/gemini-3.8-flash:streamGenerateContent"},
+		{"已有其他前缀", "/proxy", "gemini-3.8-flash", "/proxy/antigravity/v1beta/models/gemini-3.8-flash:streamGenerateContent"},
+		{"已有其他前缀且包含 antigravity", "/proxy/antigravity", "gemini-3.8-flash", "/proxy/antigravity/v1beta/models/gemini-3.8-flash:streamGenerateContent"},
+		{"不是完整路径段", "/antigravity-proxy", "gemini-3.8-flash", "/antigravity-proxy/antigravity/v1beta/models/gemini-3.8-flash:streamGenerateContent"},
 		{"模型名转义", "/antigravity", "team/gemini flash?#", "/antigravity/v1beta/models/team%2Fgemini%20flash%3F%23:streamGenerateContent"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -67,8 +70,12 @@ func TestGemini_EndpointAndAuthHeaders(t *testing.T) {
 }
 
 func TestOpenAI_EndpointUnchanged(t *testing.T) {
-	for _, format := range []string{"", llmgateway.FormatOpenAI} {
-		t.Run("format="+format, func(t *testing.T) {
+	for _, tc := range []struct{ format, prefix, wantPath string }{
+		{"", "", "/v1/chat/completions"},
+		{llmgateway.FormatOpenAI, "", "/v1/chat/completions"},
+		{llmgateway.FormatOpenAI, "/antigravity", "/antigravity/v1/chat/completions"},
+	} {
+		t.Run("format="+tc.format+" prefix="+tc.prefix, func(t *testing.T) {
 			up := newUpstream(t, func(w http.ResponseWriter, r *http.Request, _ []byte) {
 				if r.URL.RawQuery != "" {
 					t.Errorf("OpenAI 请求不应新增查询参数: %s", r.URL.RawQuery)
@@ -76,7 +83,8 @@ func TestOpenAI_EndpointUnchanged(t *testing.T) {
 				sse(w, chunk(`{"content":"好"}`, "stop"), "[DONE]")
 			})
 			tg := target(up)
-			tg.Format = format
+			tg.Format = tc.format
+			tg.BaseURL += tc.prefix
 			if _, _, err := streamRaw(t, gateway(), tg, `{"messages":[{"role":"user","content":"hi"}]}`, 0); err != nil {
 				t.Fatal(err)
 			}
@@ -85,7 +93,7 @@ func TestOpenAI_EndpointUnchanged(t *testing.T) {
 				t.Fatalf("应向上游发送一次请求，实际 %d 次", len(reqs))
 			}
 			got := reqs[0]
-			if got.Path != "/v1/chat/completions" || got.Auth != "Bearer sk-secret-key" {
+			if got.Path != tc.wantPath || got.Auth != "Bearer sk-secret-key" {
 				t.Errorf("OpenAI 路径或鉴权改变: %+v", got)
 			}
 			if _, exists := got.Header[http.CanonicalHeaderKey("x-goog-api-key")]; exists {

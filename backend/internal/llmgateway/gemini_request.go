@@ -10,9 +10,13 @@ import (
 	"strings"
 )
 
-// geminiEndpoint 保留渠道前缀，并把上游模型名转义为单个路径段。
+// geminiEndpoint 保留渠道路径；未配置 antigravity 路径段时补上中转需要的前缀。
 func geminiEndpoint(base *url.URL, model string) string {
-	return strings.TrimRight(base.String(), "/") + "/v1beta/models/" + url.PathEscape(model) + ":streamGenerateContent?alt=sse"
+	prefix := strings.TrimRight(base.String(), "/")
+	if !strings.Contains(base.Path+"/", "/antigravity/") {
+		prefix += "/antigravity"
+	}
+	return prefix + "/v1beta/models/" + url.PathEscape(model) + ":streamGenerateContent?alt=sse"
 }
 
 type geminiContent struct {

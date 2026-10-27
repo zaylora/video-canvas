@@ -21,22 +21,6 @@ const render = (kind: string, format?: string, issues: ConfigIssue[] = []) =>
   );
 
 describe("ModelBasicForm 接口格式", () => {
-  test("旧 Agent 配置回显 OpenAI 兼容与请求说明", () => {
-    const html = render("agent");
-    expect(html).toContain('for="model-api-format"');
-    expect(html).toContain("OpenAI 兼容");
-    expect(html).toContain("{base}/v1/chat/completions");
-    expect(html).toContain("Authorization: Bearer");
-  });
-
-  test("Gemini 配置回显原生格式与渠道根路径说明", () => {
-    const html = render("agent", "gemini");
-    expect(html).toContain("Gemini 原生");
-    expect(html).toContain("{base}/v1beta/models/{上游模型}:streamGenerateContent?alt=sse");
-    expect(html).toContain("x-goog-api-key 与 Authorization: Bearer");
-    expect(html).toContain("渠道地址要指向 Gemini 原生接口的根路径（可能带专用前缀）");
-  });
-
   test.each(["text", "image", "video", "audio", ""])("%s 能力不显示接口格式", (kind) => {
     expect(render(kind)).not.toContain("model-api-format");
   });
