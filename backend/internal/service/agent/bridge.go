@@ -93,7 +93,7 @@ type AgentBridge struct {
 	platformRuns map[uint64]*platformRun
 	// toolRec 逐条留存工具调用；为 nil 时不记。装配阶段用 SetToolRecorder 绑定
 	toolRec ToolCallRecorder
-	// reqRec 留存模型调用实际发给上游的请求体；为 nil 时不记。装配阶段用 SetModelRequestRecorder 绑定
+	// reqRec 留存收紧后的 OpenAI 形状请求体（Gemini 翻译前）；为 nil 时不记。装配阶段用 SetModelRequestRecorder 绑定
 	reqRec ModelRequestRecorder
 	// disabledTools 是配置里停用的工具名，下发工具声明时去掉；装配阶段用 SetDisabledTools 绑定
 	disabledTools []string

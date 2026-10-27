@@ -48,7 +48,7 @@ const requestBody = `{
 
 func TestBuildModelRequestRecord(t *testing.T) {
 	t.Run("摘要：消息数、工具数、除消息和工具外的参数", func(t *testing.T) {
-		rec := BuildModelRequestRecord(7, 3, []byte(requestBody))
+		rec := BuildModelRequestRecord(7, 3, []byte(requestBody), "")
 		if rec.CallID != 7 || rec.RunID != 3 || rec.MessageCount != 2 || rec.ToolCount != 2 {
 			t.Errorf("基本信息不对: %+v", rec)
 		}
@@ -68,7 +68,7 @@ func TestBuildModelRequestRecord(t *testing.T) {
 	})
 
 	t.Run("完整请求体压缩留存，图片地址和图片数据一律脱敏，文字原样保留", func(t *testing.T) {
-		rec := BuildModelRequestRecord(1, 1, []byte(requestBody))
+		rec := BuildModelRequestRecord(1, 1, []byte(requestBody), "")
 		if len(rec.Body) == 0 {
 			t.Fatal("应留存请求体")
 		}
@@ -90,17 +90,54 @@ func TestBuildModelRequestRecord(t *testing.T) {
 
 	t.Run("超过上限：只留摘要，不留请求体", func(t *testing.T) {
 		big := `{"model":"m","messages":[{"role":"user","content":"` + strings.Repeat("a", MaxModelRequestBytes) + `"}]}`
-		rec := BuildModelRequestRecord(1, 1, []byte(big))
+		rec := BuildModelRequestRecord(1, 1, []byte(big), "")
 		if rec.Body != nil || rec.MessageCount != 1 || rec.RawBytes <= MaxModelRequestBytes {
 			t.Errorf("超限应只留摘要: body=%d count=%d raw=%d", len(rec.Body), rec.MessageCount, rec.RawBytes)
 		}
 	})
 
 	t.Run("不是 JSON 对象：什么也不留", func(t *testing.T) {
-		if rec := BuildModelRequestRecord(1, 1, []byte(`[1,2]`)); rec != nil {
+		if rec := BuildModelRequestRecord(1, 1, []byte(`[1,2]`), ""); rec != nil {
 			t.Errorf("应返回 nil: %+v", rec)
 		}
 	})
+}
+
+func TestBuildModelRequestRecord_IncludesAPIFormat(t *testing.T) {
+	for _, format := range []string{"", "openai", "gemini"} {
+		t.Run("接口格式="+format, func(t *testing.T) {
+			rec := BuildModelRequestRecord(7, 3, []byte(requestBody), format)
+			if rec == nil {
+				t.Fatal("合法请求应有留存记录")
+			}
+			var params map[string]any
+			if err := json.Unmarshal(rec.Params, &params); err != nil {
+				t.Fatal(err)
+			}
+			if got, has := params["api_format"]; has != (format != "") || has && got != format {
+				t.Errorf("摘要接口格式=%v，存在=%v，传入=%q", got, has, format)
+			}
+			got := gunzip(t, rec.Body)
+			var body map[string]any
+			if err := json.Unmarshal([]byte(got), &body); err != nil {
+				t.Fatal(err)
+			}
+			messages, ok := body["messages"].([]any)
+			if !ok || len(messages) != 2 || rec.MessageCount != 2 || rec.ToolCount != 2 {
+				t.Errorf("应保留 OpenAI 形状和消息、工具摘要: %v", body)
+			}
+			for _, key := range []string{"contents", "systemInstruction", "api_format"} {
+				if _, has := body[key]; has {
+					t.Errorf("留存体不应含 %s", key)
+				}
+			}
+			for _, leak := range []string{"AAAABBBBCCCC", "oss.example.com", "X-Amz-Signature", "secret"} {
+				if strings.Contains(got, leak) {
+					t.Errorf("留存体不应含媒体原文 %q: %s", leak, got)
+				}
+			}
+		})
+	}
 }
 
 // fakeRequestRecorder 在内存里收模型请求记录；异步写入，测试里用 wait 轮询。
