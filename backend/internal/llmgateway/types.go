@@ -81,13 +81,20 @@ type Request struct {
 	Temperature *float64  // 采样温度，nil 表示用上游默认
 }
 
+// 上游接口格式；空值沿用 OpenAI 兼容接口。
+const (
+	FormatOpenAI = "openai"
+	FormatGemini = "gemini"
+)
+
 // Target 是请求发往的渠道。
 type Target struct {
 	ChannelKey     string            // 渠道 key，限流按它分组
-	BaseURL        string            // 渠道地址，请求发往 BaseURL + /v1/chat/completions
-	APIKey         string            // 渠道 Key，用 Bearer 鉴权
-	Headers        map[string]string // 渠道自定义请求头；先于协议头与鉴权头写入，所以覆盖不了 Content-Type / Accept / Authorization
+	BaseURL        string            // 渠道地址，可带上游接口的专用前缀
+	APIKey         string            // 渠道 Key：两种格式都用 Bearer，Gemini 还用 x-goog-api-key
+	Headers        map[string]string // 渠道自定义请求头；先于协议头与鉴权头写入，覆盖不了 Content-Type / Accept / Authorization；Gemini 还保护 x-goog-api-key
 	UpstreamModel  string            // 上游模型名
+	Format         string            // 上游接口格式：openai / gemini，空等于 openai
 	RPS            float64           // 每秒最多发起几次请求，0 不限
 	MaxConcurrency int               // 同时在途的请求数上限，0 不限
 	IdleTimeout    time.Duration     // 上游多久没发数据就判定超时（含等首字节）；0 用网关默认值。来自模型配置，不同模型的首字耗时差别很大
