@@ -1,0 +1,661 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agent 视频理解 演示</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+    <style>
+      /* 颜色全走变量，明暗主题只换变量。仓库已有演示或前端令牌时，改用同一套。 */
+      :root {
+        --radius: 0.625rem;
+        --background: 0 0% 100%;
+        --foreground: 240 10% 3.9%;
+        --card: 0 0% 100%;
+        --muted: 240 4.8% 95.9%;
+        --muted-foreground: 240 3.8% 46.1%;
+        --primary: 240 5.9% 10%;
+        --primary-foreground: 0 0% 98%;
+        --accent: 240 4.8% 95.9%;
+        --border: 240 5.9% 90%;
+        --ok: 5 150 105;
+        --bad: 220 38 38;
+        --warn: 180 83 9;
+        --info: 2 132 199;
+        --violet: 124 58 237;
+        color-scheme: light;
+      }
+      .dark {
+        --background: 240 10% 3.9%;
+        --foreground: 0 0% 98%;
+        --card: 240 10% 5.5%;
+        --muted: 240 3.7% 15.9%;
+        --muted-foreground: 240 5% 64.9%;
+        --primary: 0 0% 98%;
+        --primary-foreground: 240 5.9% 10%;
+        --accent: 240 3.7% 15.9%;
+        --border: 240 3.7% 17%;
+        --ok: 52 211 153;
+        --bad: 248 113 113;
+        --warn: 251 191 36;
+        --info: 56 189 248;
+        --violet: 167 139 250;
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        font-family: Geist, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        background: hsl(var(--background));
+        color: hsl(var(--foreground));
+        -webkit-font-smoothing: antialiased;
+        line-height: 1.55;
+      }
+      code, .mono { font-family: "Geist Mono", "SF Mono", Consolas, monospace; }
+      code { font-size: 0.92em; background: hsl(var(--muted)); padding: 1px 5px; border-radius: 5px; }
+      [data-lucide] { width: 1em; height: 1em; flex: none; }
+      h1, h2, h3, h4, p { margin: 0; }
+      button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+      table { border-collapse: collapse; width: 100%; }
+      th { font-weight: 500; text-align: left; }
+      [hidden] { display: none !important; }
+      .muted { color: hsl(var(--muted-foreground)); }
+      .row { display: flex; align-items: center; gap: 8px; }
+      .wrapflex { flex-wrap: wrap; }
+      .spacer { margin-left: auto; }
+
+      /* ---- 顶栏与标签页 ---- */
+      .top {
+        position: sticky; top: 0; z-index: 30;
+        background: hsl(var(--background) / 0.92);
+        backdrop-filter: blur(8px);
+        border-bottom: 1px solid hsl(var(--border));
+      }
+      .top-in { max-width: 1160px; margin: 0 auto; padding: 0 20px; display: flex; align-items: center; gap: 16px; height: 56px; }
+      .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; white-space: nowrap; }
+      .logo { width: 28px; height: 28px; border-radius: 8px; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; }
+      .tabs { display: flex; gap: 2px; margin-left: 8px; overflow-x: auto; }
+      .tab {
+        height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13px; font-weight: 500;
+        color: hsl(var(--muted-foreground)); white-space: nowrap; display: inline-flex; align-items: center; gap: 6px;
+        transition: background 0.15s, color 0.15s;
+      }
+      .tab:hover { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+      .tab[aria-selected="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn { height: 32px; padding: 0 10px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; }
+      .btn:hover { background: hsl(var(--accent)); }
+      .btn-primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn-primary:hover { background: hsl(var(--primary) / 0.9); }
+      .btn-outline { border: 1px solid hsl(var(--border)); }
+      .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+      .switch { width: 34px; height: 20px; border-radius: 999px; background: hsl(var(--border)); position: relative; transition: background 0.15s; }
+      .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+      .switch[aria-checked="true"] { background: rgb(var(--violet)); }
+      .switch[aria-checked="true"]::after { transform: translateX(14px); }
+
+      /* ---- 页面内容 ---- */
+      .wrap { max-width: 1160px; margin: 0 auto; padding: 32px 20px 80px; }
+      .h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+      .lead { margin-top: 10px; max-width: 820px; font-size: 15px; color: hsl(var(--muted-foreground)); }
+      .lead b { color: hsl(var(--foreground)); }
+      .sec { margin-top: 36px; }
+      .sec > h2 { font-size: 18px; font-weight: 600; }
+      .sec > .sub { margin: 4px 0 14px; max-width: 820px; font-size: 13.5px; color: hsl(var(--muted-foreground)); }
+      .card { border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: var(--radius); padding: 16px; }
+      .grid { display: grid; gap: 12px; }
+      .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      @media (max-width: 820px) { .g2, .g3 { grid-template-columns: 1fr; } .top-in { padding: 0 12px; } .wrap { padding: 24px 16px 64px; } }
+      ul.list { margin: 0; padding-left: 18px; font-size: 13.5px; }
+
+      /* ---- 标签：核实度、状态 ---- */
+      .tag { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 999px; font-size: 11.5px; font-weight: 500; }
+      .t-ok { background: rgb(var(--ok) / 0.12); color: rgb(var(--ok)); }
+      .t-bad { background: rgb(var(--bad) / 0.12); color: rgb(var(--bad)); }
+      .t-warn { background: rgb(var(--warn) / 0.12); color: rgb(var(--warn)); }
+      .t-info { background: rgb(var(--info) / 0.12); color: rgb(var(--info)); }
+      .t-mute { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
+
+      /* ---- 提示框 ---- */
+      .callout { display: flex; gap: 10px; padding: 12px 14px; border-radius: var(--radius); font-size: 13.5px; border: 1px solid; }
+      .callout > i { margin-top: 3px; }
+      .c-info { background: rgb(var(--info) / 0.07); border-color: rgb(var(--info) / 0.3); }
+      .c-info > i { color: rgb(var(--info)); }
+      .c-warn { background: rgb(var(--warn) / 0.07); border-color: rgb(var(--warn) / 0.3); }
+      .c-warn > i { color: rgb(var(--warn)); }
+      .c-bad { background: rgb(var(--bad) / 0.07); border-color: rgb(var(--bad) / 0.3); }
+      .c-bad > i { color: rgb(var(--bad)); }
+      .c-ok { background: rgb(var(--ok) / 0.07); border-color: rgb(var(--ok) / 0.3); }
+      .c-ok > i { color: rgb(var(--ok)); }
+
+      /* ---- 主线流程图 ---- */
+      .flow { display: flex; align-items: stretch; gap: 6px; flex-wrap: wrap; padding: 14px; border-radius: var(--radius); }
+      .flow .node { flex: 1 1 140px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 12px; font-size: 12.5px; }
+      .flow .node b { display: block; font-size: 13px; margin-bottom: 2px; }
+      .flow .node.hl { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+      .flow .arrow { display: grid; place-items: center; color: hsl(var(--muted-foreground)); }
+
+      /* ---- 对比表 ---- */
+      .cmp-wrap { overflow-x: auto; border: 1px solid hsl(var(--border)); border-radius: var(--radius); }
+      .cmp th, .cmp td { padding: 9px 12px; font-size: 13px; vertical-align: top; border-bottom: 1px solid hsl(var(--border)); }
+      .cmp tr:last-child th, .cmp tr:last-child td { border-bottom: 0; }
+      .cmp thead th { background: hsl(var(--muted)); font-size: 12.5px; white-space: nowrap; }
+      .cmp tbody th { width: 120px; color: hsl(var(--muted-foreground)); font-weight: 500; }
+      .cmp .y { color: rgb(var(--ok)); }
+      .cmp .m { color: rgb(var(--warn)); }
+      .cmp .m b, .cmp .m { font-weight: 500; }
+
+      /* ---- 有序步骤 ---- */
+      .steps { list-style: none; counter-reset: s; display: grid; gap: 12px; }
+      .steps li { counter-increment: s; position: relative; padding-left: 32px; font-size: 13.5px; }
+      .steps li::before {
+        content: counter(s); position: absolute; left: 0; top: 0; width: 22px; height: 22px; border-radius: 50%;
+        background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; font-size: 12px; font-weight: 600;
+      }
+      .steps li small { display: block; color: hsl(var(--muted-foreground)); font-size: 12.5px; }
+
+      /* ---- 代码块（提案伪代码） ---- */
+      .codeblock { background: hsl(var(--muted)); border-radius: var(--radius); padding: 14px; font-family: "Geist Mono", "SF Mono", Consolas, monospace; font-size: 12.5px; overflow-x: auto; }
+
+      /* ---- 假浏览器框（原型） ---- */
+      .frame { border: 1px solid hsl(var(--border)); border-radius: 12px; overflow: hidden; background: hsl(var(--background)); }
+      .frame-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: hsl(var(--muted)); font-size: 12px; color: hsl(var(--muted-foreground)); }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: hsl(var(--border)); }
+      .proto { min-height: 360px; position: relative; }
+
+      /* ---- 设计标注层：顶栏开关控制显隐 ---- */
+      .note { outline: 1.5px dashed rgb(var(--violet)); outline-offset: 3px; position: relative; }
+      .note-txt { display: none; margin-top: 6px; font-size: 11.5px; line-height: 1.5; color: rgb(var(--violet)); }
+      .show-notes .note-txt { display: block; }
+      body:not(.show-notes) .note { outline: none; }
+
+      /* ---- 轻提示 ---- */
+      .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 60; pointer-events: none; }
+      .toast > div { display: flex; align-items: center; gap: 8px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 14px; font-size: 13px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); }
+    </style>
+  </head>
+
+  <body class="show-notes">
+<style>
+  .two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  @media (max-width: 820px) { .two { grid-template-columns: 1fr; } }
+  .pane { padding: 16px; min-width: 0; }
+  .pane + .pane { border-left: 1px solid hsl(var(--border)); }
+  @media (max-width: 820px) { .pane + .pane { border-left: 0; border-top: 1px solid hsl(var(--border)); } }
+  .fld { display: grid; gap: 4px; margin-bottom: 14px; font-size: 13px; }
+  .fld > label, .fld > .lb { font-weight: 500; }
+  .fld .hint { font-size: 12px; color: hsl(var(--muted-foreground)); }
+  .inp { height: 32px; border: 1px solid hsl(var(--border)); border-radius: 8px; padding: 0 10px; background: hsl(var(--background)); color: inherit; font: inherit; font-size: 13px; width: 100%; min-width: 0; }
+  .chip { height: 28px; padding: 0 12px; border-radius: 999px; border: 1px solid hsl(var(--border)); font-size: 12.5px; font-weight: 500; }
+  .chip[aria-pressed="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); border-color: transparent; }
+  .chip:disabled { opacity: 0.45; cursor: not-allowed; }
+  .sugg { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 10px; border: 1px dashed hsl(var(--border)); border-radius: 8px; font-size: 12.5px; }
+  .log { display: grid; gap: 8px; font-size: 13px; }
+  .bub { padding: 8px 10px; border-radius: 10px; border: 1px solid hsl(var(--border)); white-space: pre-wrap; word-break: break-word; }
+  .bub.tool { font-family: "Geist Mono", Consolas, monospace; font-size: 12px; background: hsl(var(--muted)); }
+  .bub.bad { border-color: rgb(var(--bad) / 0.4); background: rgb(var(--bad) / 0.06); }
+  .bub.warn { border-color: rgb(var(--warn) / 0.4); background: rgb(var(--warn) / 0.06); }
+  .bub.ok { border-color: rgb(var(--ok) / 0.4); background: rgb(var(--ok) / 0.06); }
+  .opt { display: flex; gap: 6px; flex-wrap: wrap; }
+  .sim { font-size: 11.5px; color: rgb(var(--warn)); }
+  .codeblock { white-space: pre; }
+  .pr { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 6px; font-size: 11.5px; font-weight: 600; background: rgb(var(--violet) / 0.12); color: rgb(var(--violet)); }
+</style>
+
+<header class="top">
+  <div class="top-in">
+    <div class="brand"><span class="logo"><i data-lucide="audio-lines"></i></span>Agent 视频理解</div>
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" data-tab="overview" aria-selected="true"><i data-lucide="map"></i>总览</button>
+      <button class="tab" role="tab" data-tab="tests" aria-selected="false"><i data-lucide="flask-conical"></i>实测</button>
+      <button class="tab" role="tab" data-tab="fmt" aria-selected="false"><i data-lucide="arrow-left-right"></i>Gemini 格式</button>
+      <button class="tab" role="tab" data-tab="video" aria-selected="false"><i data-lucide="clapperboard"></i>看视频</button>
+      <button class="tab" role="tab" data-tab="impl" aria-selected="false"><i data-lucide="database"></i>数据与接口</button>
+    </div>
+    <div class="spacer row">
+      <label class="row muted" style="font-size: 12px">
+        设计标注
+        <button class="switch" id="notesSw" role="switch" aria-checked="true" onclick="toggleNotes()"></button>
+      </label>
+      <button class="btn" onclick="document.documentElement.classList.toggle('dark')" aria-label="切换明暗主题"><i data-lucide="sun-moon"></i></button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <!-- ============ 总览 ============ -->
+  <section id="tab-overview">
+    <h1 class="h1">让 Agent 看视频时也听懂声音</h1>
+    <p class="lead">现在 <code>canvas_inspect_video</code> 只抽 6 帧，<b>没有音轨</b>。实测里唯一能把视频连同声音交给模型的路径是 <b>Gemini 原生接口</b>，而 Agent 只会说 OpenAI 格式。所以分两步：先让 Agent 模型能选 <b>Gemini 接口格式</b>，再给 Gemini 格式的模型加 <b>「看视频」</b>能力。<span class="tag t-warn">设计稿 v3 · 未实现 · 2026-10-27</span></p>
+
+    <div class="sec">
+      <h2>两个 PR</h2>
+      <div class="grid g2">
+        <div class="card"><div class="row"><span class="pr">PR1</span><b>Gemini 接口格式</b></div>
+          <ul class="list" style="margin-top:8px">
+            <li>后台 Agent 模型选「接口格式」：OpenAI（默认）/ Gemini</li>
+            <li>Go 网关翻译：pi 的 OpenAI 请求 → Gemini <code>streamGenerateContent</code>，响应翻译回 OpenAI 行</li>
+            <li><b>pi（Node）不动</b>；计费、限流、SSRF、留存沿用</li>
+            <li>独立可用：Gemini 模型可以直接当 Agent 用</li></ul></div>
+        <div class="card"><div class="row"><span class="pr">PR2</span><b>看视频</b>（依赖 PR1）</div>
+          <ul class="list" style="margin-top:8px">
+            <li>能力新增「看视频」，<b>只有 Gemini 格式能开</b></li>
+            <li><code>canvas_inspect_video</code> 用当前模型发一次带视频的子请求，拿回画面 + 声音的中文分析</li>
+            <li>失败退回抽帧，注明「音频未分析」</li>
+            <li>后台识别建议 + 用户侧模型列表带 <code>video</code></li></ul></div>
+      </div>
+    </div>
+
+    <div class="sec">
+      <h2>已确认的决定</h2>
+      <div class="cmp-wrap"><table class="cmp">
+        <thead><tr><th>问题</th><th>决定</th></tr></thead>
+        <tbody>
+          <tr><th>谁能看视频</th><td>开了「看视频」的模型；不能看视频的不能用</td></tr>
+          <tr><th>在哪配</th><td>后台模型配置统一管理，不加环境变量、不另起服务</td></tr>
+          <tr><th>视频怎么传</th><td>对象存储传 URL（<code>fileData</code>），本地存储传 Base64（<code>inlineData</code>）</td></tr>
+          <tr><th>接口格式</th><td>加 Gemini；<b>不做成协议插件</b>（Agent 不能用插件）；Claude 本期不做</td></tr>
+          <tr><th>看视频与格式</th><td>只给 Gemini 格式（OpenAI 的 <code>video_url</code> 实测收不到视频）</td></tr>
+          <tr><th>可配置项与缓存</th><td>先不加（只留一个 20MB 的内存保护常量）</td></tr>
+          <tr><th>生产</th><td>有 Gemini 原生服务</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+
+    <div class="sec">
+      <h2>仍需你确认</h2>
+      <ul class="list">
+        <li><b>生产 Gemini 服务的接入方式</b>：base_url 形态（有没有 <code>/antigravity</code> 这类前缀）、鉴权认 <code>x-goog-api-key</code> 还是 Bearer（设计是两个都发）。</li>
+        <li><b>子请求计费</b>：按当前模型 Token 价照常扣、计入本轮已花积分（默认）。</li>
+        <li><b>含人声对白的样本</b>：测试视频很可能没有对白，需要再给一个。</li>
+        <li>画布模型菜单要不要给能看视频的模型加标记（默认不加）。</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ============ 实测 ============ -->
+  <section id="tab-tests" hidden>
+    <h1 class="h1">实测：哪些行，哪些不行</h1>
+    <p class="lead">来自你分享的 ChatGPT 对话（2026-10-27）。测试中转 <code>api.vbing.site</code>，模型 <code>gemini-3.8-flash</code>，样本 9,353,686 字节（「少年闰土月下刺猹」）。</p>
+    <div class="sec">
+      <div class="cmp-wrap"><table class="cmp">
+        <thead><tr><th>调用方式</th><th>结果</th><th>结论</th></tr></thead>
+        <tbody>
+          <tr><td><code>/antigravity/v1beta/…:generateContent</code> + <code>fileData</code>（URL）</td><td>17.5 秒，2,466 tokens，画面描述与分段时间戳</td><td><span class="tag t-ok">能</span></td></tr>
+          <tr><td>同一路径 + <code>inlineData</code>（Base64）</td><td>25.7 秒，2,677 tokens；模型自述「轻柔背景音乐、无对白、无字幕」（未独立核对）</td><td><span class="tag t-ok">能</span></td></tr>
+          <tr><td>普通 <code>/v1beta/…</code></td><td>400 <code>API key group platform is not gemini</code></td><td><span class="tag t-bad">路径不对</span></td></tr>
+          <tr><td>OpenAI 兼容 <code>chat/completions</code> + <code>video_url</code></td><td>200，但模型说没收到视频（590 tokens）</td><td><span class="tag t-bad">不能</span></td></tr>
+          <tr><td>其他早期尝试（非 <code>/antigravity</code> 路径）</td><td>200 但没收到视频，或返回未声明的 <code>workspace:listFiles</code> 工具调用</td><td><span class="tag t-bad">不能</span></td></tr>
+        </tbody>
+      </table></div>
+      <div class="grid g2" style="margin-top:12px">
+        <div class="callout c-warn"><i data-lucide="triangle-alert"></i><div><b>HTTP 200 不代表视频被转发</b>。判断成功要看返回里有没有视频内容；真机测试必须照这个标准。</div></div>
+        <div class="callout c-info"><i data-lucide="info"></i><div>Sub2API #7859（丢音频）、#7583（丢 PDF）说明兼容接口会静默丢多媒体，但<b>不能断定</b>视频丢失的根因。样本很可能没有人声，<b>对白识别还没测过</b>。</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ Gemini 格式 ============ -->
+  <section id="tab-fmt" hidden>
+    <h1 class="h1"><span class="pr">PR1</span> Gemini 接口格式</h1>
+    <p class="lead">Gemini 的响应先翻译成 OpenAI 的 SSE 行，再交给<b>现有</b>的解析和透传。用量、取消、断流、重试全部复用，pi 看到的和 OpenAI 渠道一模一样。</p>
+    <div class="sec">
+      <div class="flow card">
+        <div class="node"><b>pi（Node）</b>OpenAI 请求，不改</div>
+        <div class="arrow"><i data-lucide="chevron-right"></i></div>
+        <div class="node"><b>SanitizeRaw</b>白名单、强制用量、封顶输出（沿用）</div>
+        <div class="arrow"><i data-lucide="chevron-right"></i></div>
+        <div class="node hl"><b>toGemini（新）</b>消息、图片、工具、schema 清洗</div>
+        <div class="arrow"><i data-lucide="chevron-right"></i></div>
+        <div class="node"><b>Gemini 渠道</b><code>streamGenerateContent?alt=sse</code></div>
+        <div class="arrow"><i data-lucide="chevron-right"></i></div>
+        <div class="node hl"><b>fromGemini（新）</b>逐块翻回 OpenAI 行 → 现有 accumulator / raw</div>
+      </div>
+    </div>
+
+    <div class="sec">
+      <h2>后台：选接口格式</h2>
+      <p class="sub">在「上游模型标识」下面，仅 Agent 模型显示。<span class="sim">示意界面。</span></p>
+      <div class="frame"><div class="frame-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span>&nbsp;后台 / AI 配置 / 模型 / 基本信息（Agent）</div>
+        <div class="two">
+          <div class="pane">
+            <div class="fld"><label for="fUp">上游模型标识（现有）</label><input class="inp" id="fUp" value="gemini-3.8-flash" /></div>
+            <div class="fld note"><label for="fFmt">接口格式 <span class="tag t-info">新增</span></label>
+              <select class="inp" id="fFmt"><option value="openai">OpenAI 兼容（默认）</option><option value="gemini">Gemini 原生</option></select>
+              <span class="hint" id="fFmtHint"></span>
+              <div class="note-txt">存在 channels[0].api_format；只有 Agent 模型能填；老配置没有这个字段，按 openai。</div></div>
+          </div>
+          <div class="pane">
+            <b style="font-size:13px">实际发出的请求</b>
+            <div class="codeblock" style="margin-top:8px" id="fReq"></div>
+            <div class="callout c-info" style="margin-top:12px" id="fNote"><i data-lucide="info"></i><div></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sec">
+      <h2>翻译预览</h2>
+      <p class="sub">选一种消息看它怎么变成 Gemini 请求、Gemini 的响应又怎么翻回给 pi。<span class="sim">按官方接口通行写法写的示意，未对生产服务实测。</span></p>
+      <div class="opt" id="trTabs" style="margin-bottom:10px">
+        <button class="chip" data-t="text" aria-pressed="true">普通对话</button>
+        <button class="chip" data-t="tool" aria-pressed="false">工具调用 + 签名</button>
+        <button class="chip" data-t="img" aria-pressed="false">工具结果带图</button>
+        <button class="chip" data-t="schema" aria-pressed="false">schema 清洗</button>
+      </div>
+      <div class="grid g2">
+        <div class="card"><b id="trL">pi 发来的（OpenAI）</b><div class="codeblock" style="margin-top:8px" id="trIn"></div></div>
+        <div class="card"><b id="trR">发给 Gemini 的</b><div class="codeblock" style="margin-top:8px" id="trOut"></div></div>
+      </div>
+      <div class="callout c-warn" style="margin-top:12px"><i data-lucide="triangle-alert"></i><div id="trRisk"></div></div>
+    </div>
+  </section>
+
+  <!-- ============ 看视频 ============ -->
+  <section id="tab-video" hidden>
+    <h1 class="h1"><span class="pr">PR2</span> 看视频</h1>
+    <p class="lead">能力在后台配；只有 Gemini 格式的模型能开。开了的模型，工具发一次带视频的子请求拿回中文分析；否则和现在一样抽帧。</p>
+
+    <div class="sec">
+      <h2>后台：能力与识别建议</h2>
+      <p class="sub">「看视频」放在「看图」下面。「识别」按 models.dev 的 <code>modalities.input</code> 给建议，只是建议，查不到不预开。<span class="sim">示意数据。</span></p>
+      <div class="frame"><div class="frame-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span>&nbsp;后台 / AI 配置 / 模型 / 能力（Agent）</div>
+        <div class="two">
+          <div class="pane">
+            <div class="fld"><label for="aName">上游模型标识</label>
+              <select class="inp" id="aName">
+                <option value="gemini-3.1-pro">gemini-3.1-pro（示意：输入含 image、video）</option>
+                <option value="some-text-model">some-text-model（示意：只有 text、image）</option>
+                <option value="private-model-x">private-model-x（示意：查不到）</option>
+              </select></div>
+            <div class="fld"><label for="aFmt">接口格式</label>
+              <select class="inp" id="aFmt"><option value="gemini">Gemini 原生</option><option value="openai">OpenAI 兼容</option></select></div>
+            <div class="fld"><span class="lb">看图</span><div class="row"><button class="chip" id="cVision" aria-pressed="false">能看图</button></div></div>
+            <div class="fld note"><span class="lb">看视频 <span class="tag t-info">新增</span></span>
+              <div class="row"><button class="chip" id="cVideo" aria-pressed="false">能看视频</button></div>
+              <span class="hint" id="cVideoHint"></span>
+              <div class="note-txt">只给 Agent 模型、只给 Gemini 格式；和「看图」相互独立。</div></div>
+            <div class="sugg note"><i data-lucide="sparkles"></i><span id="suggTxt" class="muted">点「识别」查看建议</span><span class="spacer"></span><button class="btn btn-outline" id="bRec"><i data-lucide="scan-search"></i>识别</button><button class="btn btn-primary" id="bApply" hidden>应用建议</button>
+              <div class="note-txt" style="flex-basis:100%">扩展现有 GET /admin/ai/models/limits 的响应：加 video、vision 建议。数据来自 models.dev 的 modalities.input（约 1,636 个模型条目含 video），脚本生成 modalities.json。</div></div>
+          </div>
+          <div class="pane">
+            <b style="font-size:13px">保存前校验（示意）</b>
+            <ul class="list" style="margin-top:8px" id="vl"></ul>
+            <div class="callout c-info" style="margin-top:14px"><i data-lucide="info"></i><div>用户侧 <code>GET /api/v1/agent/models</code> 带上 <code>video</code>，就是「查哪些模型能看视频」的接口。</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sec">
+      <h2>工具流程（可操作的模拟）</h2>
+      <p class="sub">调左边的条件，右边按设计规则给出过程与结果。<span class="sim">分析文本是示意。</span></p>
+      <div class="frame"><div class="frame-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span>&nbsp;canvas_inspect_video { nodeId: n3 }</div>
+        <div class="two">
+          <div class="pane">
+            <div class="fld"><span class="lb">模型能力：看视频</span><div class="opt"><button class="chip" data-k="video" aria-pressed="true">开</button></div></div>
+            <div class="fld"><span class="lb">模型能力：看图</span><div class="opt"><button class="chip" data-k="vision" aria-pressed="true">开</button></div></div>
+            <div class="fld"><span class="lb">服务器有 ffmpeg</span><div class="opt"><button class="chip" data-k="ffmpeg" aria-pressed="true">有</button></div></div>
+            <div class="fld"><label for="rLoc">素材存储</label>
+              <select class="inp" id="rLoc"><option value="remote">对象存储</option><option value="local">本地磁盘</option></select></div>
+            <div class="fld"><label for="rSize">视频大小（本地存储时有意义）</label>
+              <select class="inp" id="rSize"><option value="small">9.4 MB</option><option value="big">35 MB（超过 20MB 内存保护）</option></select></div>
+            <div class="fld"><label for="rUp">上游结果</label>
+              <select class="inp" id="rUp"><option value="ok">成功</option><option value="err">上游报错（4xx / 5xx）</option><option value="timeout">超时</option><option value="block">被安全策略拦截</option><option value="empty">返回空文本</option></select></div>
+            <p class="muted" style="font-size:12px">「看视频」开着就意味着接口格式是 Gemini（后台不允许别的格式开）。</p>
+          </div>
+          <div class="pane"><div class="log" id="runLog"></div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 数据与接口 ============ -->
+  <section id="tab-impl" hidden>
+    <h1 class="h1">数据与接口（提案）</h1>
+    <div class="sec">
+      <h2>配置字段（不需要数据库迁移，要同步 JSON Schema）</h2>
+      <div class="grid g2">
+        <div class="card"><b>模型配置正文</b><div class="codeblock" style="margin-top:8px">{
+  "kind": "agent",
+  "channels": [{
+    "channel": "gemini-prod",
+    "upstream_model": "gemini-3.8-flash",
+    "api_format": "gemini"      // 新增，PR1
+  }],
+  "capabilities": {
+    "context": { "window": 1048576, "output": 65536 },
+    "vision": true,
+    "video": true               // 新增，PR2
+  }
+}</div><p class="muted" style="font-size:12px;margin-top:6px">存在 <code>ai_config_revisions.body_json</code>（json 列）；<code>jsonschema.go</code> 的 <code>additionalProperties:false</code> 与一致性测试要求同步加字段。</p></div>
+        <div class="card"><b>识别建议 GET /admin/ai/models/limits</b><div class="codeblock" style="margin-top:8px">{
+  "found": true,
+  "context_window": 1048576,
+  "max_output": 65536,
+  "source": "builtin",
+  "video": true,     // 新增：建议
+  "vision": true     // 新增：建议
+}</div><b style="display:block;margin-top:12px">用户侧 GET /api/v1/agent/models</b><div class="codeblock" style="margin-top:8px">[{ "key": "…", "name": "…", "vendor": "google",
+   "vision": true, "video": true,   // 新增
+   "context_window": 1048576 }]</div></div>
+      </div>
+    </div>
+
+    <div class="sec">
+      <h2>子请求的计费与留存</h2>
+      <div class="cmp-wrap"><table class="cmp">
+        <tbody>
+          <tr><th>流程</th><td>复用 <code>Preflight → Begin → SettleExternal</code>，用途记为 <code>video</code></td></tr>
+          <tr><th>扣费</th><td>按当前模型 Token 价照常扣，计入本轮已花积分；不算进上下文大小（<code>RunModelUsage</code> 只看 <code>main</code>）</td></tr>
+          <tr><th>预检</th><td>提示词字数 + 视频时长 × 约 300 token/秒 的估算 <span class="tag t-warn">未验证</span>；实扣以上游用量为准</td></tr>
+          <tr><th>留存</th><td>记 OpenAI 形状的请求体，媒体字段被现有脱敏替换成「[已省略 N 字符]」；<b>不记</b>翻译后的 Gemini 体（<code>fileUri</code> 不在脱敏键名里）</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+
+    <div class="sec">
+      <h2>风险与未验证</h2>
+      <div class="cmp-wrap"><table class="cmp">
+        <thead><tr><th>项</th><th>状态</th></tr></thead>
+        <tbody>
+          <tr><td>Gemini 原生传视频（fileData / inlineData）</td><td><span class="tag t-ok">已验证</span>（测试中转）</td></tr>
+          <tr><td>OpenAI 兼容 <code>video_url</code></td><td><span class="tag t-bad">实测无效</span>，不启用</td></tr>
+          <tr><td>thought signature 编进 tool_call id 往返</td><td><span class="tag t-warn">未验证</span> pi 只原样保留 id、丢弃扩展字段（已核对源码）</td></tr>
+          <tr><td>清洗后的工具 schema 被生产服务接受</td><td><span class="tag t-warn">未验证</span></td></tr>
+          <tr><td>对白 / 旁白识别</td><td><span class="tag t-warn">未验证</span> 需含人声样本</td></tr>
+          <tr><td>视频 token 预检估算</td><td><span class="tag t-warn">未验证</span> 只影响预检</td></tr>
+          <tr><td>Agent 服务转发模型列表是否透传新字段</td><td><span class="tag t-mute">需核对</span></td></tr>
+        </tbody>
+      </table></div>
+      <p class="muted" style="font-size:12.5px;margin-top:8px">测试视频：<code>https://img.vbing.site/g1/202610/5369dfcb-c21b-47c0-92e0-28136fc03be4.mp4</code></p>
+    </div>
+  </section>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  const $ = (s, r = document) => r.querySelector(s);
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  const icons = () => { if (window.lucide) lucide.createIcons(); };
+
+  function toggleNotes() {
+    const on = document.body.classList.toggle("show-notes");
+    $("#notesSw").setAttribute("aria-checked", String(on));
+  }
+  function showTab(id) {
+    document.querySelectorAll("main > section").forEach((s) => (s.hidden = s.id !== "tab-" + id));
+    document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === id)));
+    window.scrollTo(0, 0);
+  }
+  document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab)));
+
+  /* ---- PR1：接口格式下拉 ---- */
+  const FMT = {
+    openai: {
+      hint: "请求 {base}/v1/chat/completions，Authorization: Bearer。和现在完全一样。",
+      req: "POST {base}/v1/chat/completions\nAuthorization: Bearer ***\nAccept: text/event-stream\n\n{ \"model\": \"<上游模型>\",\n  \"messages\": […], \"tools\": […],\n  \"stream\": true,\n  \"stream_options\": {\"include_usage\": true} }",
+      note: "现状格式，原样转发，不翻译。老配置没有 api_format，按这个处理。",
+    },
+    gemini: {
+      hint: "请求 {base}/v1beta/models/{模型}:streamGenerateContent?alt=sse，同时带 x-goog-api-key 和 Bearer。base_url 填 Gemini 原生根路径（可能带专用前缀）。",
+      req: "POST {base}/v1beta/models/<上游模型>:streamGenerateContent?alt=sse\nx-goog-api-key: ***\nAuthorization: Bearer ***\n\n{ \"systemInstruction\": {…},\n  \"contents\": […],\n  \"tools\": [{\"functionDeclarations\": […]}],\n  \"generationConfig\": {\"maxOutputTokens\": …} }",
+      note: "一个渠道通常只服务一种格式：Gemini 原生接口常有专用前缀（测试中转是 /antigravity），要用 Gemini 就建一个 base_url 指向它的渠道。",
+    },
+  };
+  function fmtRender() {
+    const f = FMT[$("#fFmt").value];
+    $("#fFmtHint").textContent = f.hint;
+    $("#fReq").textContent = f.req;
+    $("#fNote > div").textContent = f.note;
+  }
+  $("#fFmt").addEventListener("change", fmtRender);
+
+  /* ---- PR1：翻译预览 ---- */
+  const TR = {
+    text: {
+      l: "pi 发来的（OpenAI）", r: "发给 Gemini 的 → 响应翻回",
+      in: "{ \"messages\": [\n  {\"role\":\"system\",\"content\":\"你是小镜…\"},\n  {\"role\":\"user\",\"content\":\"帮我加一个镜头\"}\n], \"max_tokens\": 8192, \"temperature\": 0.3 }",
+      out: "{ \"systemInstruction\": {\"parts\":[{\"text\":\"你是小镜…\"}]},\n  \"contents\": [{\"role\":\"user\",\"parts\":[{\"text\":\"帮我加一个镜头\"}]}],\n  \"generationConfig\": {\"maxOutputTokens\": 8192, \"temperature\": 0.3} }\n\n← data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"好的\"}]}}]}\n→ data: {\"choices\":[{\"delta\":{\"content\":\"好的\"}}]}\n← 最后一块 usageMetadata\n→ data: {\"choices\":[],\"usage\":{\"prompt_tokens\":…}}\n→ data: [DONE]",
+      risk: "思考内容（part.thought = true）翻成 delta.reasoning_content；usage 必须在 [DONE] 前给出，否则计费会按估算。",
+    },
+    tool: {
+      l: "Gemini 返回 functionCall → 翻给 pi", r: "下一轮 pi 带回 → 发给 Gemini",
+      in: "← {\"functionCall\":{\"name\":\"canvas_get_state\",\"args\":{}},\n    \"thoughtSignature\":\"CiQB…\"}\n\n→ data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\n     \"index\":0,\n     \"id\":\"gc_k3f9a2b1_CiQB…\",   // 签名编进 id\n     \"function\":{\"name\":\"canvas_get_state\",\"arguments\":\"{}\"}}]}}]}\n→ finish_reason: \"tool_calls\"",
+      out: "pi 历史：assistant.tool_calls[0].id = \"gc_k3f9a2b1_CiQB…\"\n        tool.tool_call_id = 同上\n\n{ \"contents\": [\n  {\"role\":\"model\",\"parts\":[{\"functionCall\":{\"name\":\"canvas_get_state\",\"args\":{}},\n                            \"thoughtSignature\":\"CiQB…\"}]},   // 从 id 解出\n  {\"role\":\"user\",\"parts\":[{\"functionResponse\":{\"name\":\"canvas_get_state\",\n                            \"response\":{\"content\":\"…\"}}}]}   // name 按 id 反查\n] }",
+      risk: "pi 会丢掉 tool_call 上的扩展字段，只原样保留 id（已核对源码），所以签名只能编进 id；id 只用 [A-Za-z0-9_-]，绝不能含「|」（含了会被 pi 截到 40 字符）。生产服务是否强制要求签名未验证，真机多轮工具调用必测。",
+    },
+    img: {
+      l: "pi 发来的（OpenAI）", r: "发给 Gemini 的",
+      in: "[ {\"role\":\"assistant\",\"tool_calls\":[{\"id\":\"gc_a1\",…canvas_inspect_image}]},\n  {\"role\":\"tool\",\"tool_call_id\":\"gc_a1\",\"content\":\"(see attached image)\"},\n  {\"role\":\"user\",\"content\":[\n    {\"type\":\"text\",\"text\":\"Attached image(s) from tool result:\"},\n    {\"type\":\"image_url\",\"image_url\":{\"url\":\"https://…signed\"}},\n    {\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,…\"}}]} ]",
+      out: "[ {\"role\":\"model\",\"parts\":[{\"functionCall\":{…}}]},\n  {\"role\":\"user\",\"parts\":[\n    {\"functionResponse\":{\"name\":\"canvas_inspect_image\",\n                          \"response\":{\"content\":\"(see attached image)\"}}},\n    {\"fileData\":{\"mimeType\":\"image/jpeg\",\"fileUri\":\"https://…signed\"}},\n    {\"inlineData\":{\"mimeType\":\"image/png\",\"data\":\"…\"}} ]} ]",
+      risk: "pi 不把图片放进 tool 消息，而是紧跟一条 user 消息（已核对源码）。翻译时把图片并入 functionResponse 所在的同一条 user 内容，避免出现连续两条 user。https 图片转 fileData，data: 转 inlineData。",
+    },
+    schema: {
+      l: "tool_decls.json 里的写法", r: "清洗后发给 Gemini 的",
+      in: "\"status\": {\"anyOf\":[\n  {\"type\":\"string\",\"const\":\"todo\"},\n  {\"type\":\"string\",\"const\":\"doing\"},\n  {\"type\":\"string\",\"const\":\"done\"}]}\n\n\"at\": {\"anyOf\":[\n  {\"type\":\"string\",\"enum\":[\"first\",\"last\"]},\n  {\"type\":\"number\",\"minimum\":0}]}\n\n\"params\": {\"type\":\"object\",\"patternProperties\":{\"^.*$\":{}}}\n\"frames\": {\"type\":\"array\",\"minItems\":1,\"maxItems\":6,…}",
+      out: "\"status\": {\"type\":\"string\",\"enum\":[\"todo\",\"doing\",\"done\"]}\n\n\"at\": {\"type\":\"string\",\n       \"description\":\"… \\\"first\\\"、\\\"last\\\" 或秒数（如 \\\"3.5\\\"）\"}\n       // Go 端 parseFrameAt 要同时接受数字字符串\n\n\"params\": {\"type\":\"object\"}\n\"frames\": {\"type\":\"array\",\n           \"description\":\"… 1 到 6 项\"}",
+      risk: "只在 Gemini 格式下清洗，不改 tool_decls.json，OpenAI 格式不受影响。要处理的：anyOf+const、混合类型 anyOf、patternProperties、additionalProperties、minItems/maxItems/minimum/maximum（16 个工具里共 5 类）。生产服务是否全部接受未验证。",
+    },
+  };
+  function trRender(t) {
+    document.querySelectorAll("#trTabs .chip").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.t === t)));
+    const x = TR[t];
+    $("#trL").textContent = x.l; $("#trR").textContent = x.r;
+    $("#trIn").textContent = x.in; $("#trOut").textContent = x.out; $("#trRisk").textContent = x.risk;
+  }
+  document.querySelectorAll("#trTabs .chip").forEach((b) => b.addEventListener("click", () => trRender(b.dataset.t)));
+
+  /* ---- PR2：能力与识别建议 ---- */
+  const SUGG = {
+    "gemini-3.1-pro": { video: true, vision: true, src: "内置快照（models.dev）" },
+    "some-text-model": { video: false, vision: true, src: "内置快照（models.dev）" },
+    "private-model-x": null,
+  };
+  const caps = { vision: false, video: false };
+  let pending = null;
+  function adminRender() {
+    const gem = $("#aFmt").value === "gemini";
+    if (!gem) caps.video = false;
+    $("#cVision").setAttribute("aria-pressed", String(caps.vision));
+    $("#cVideo").setAttribute("aria-pressed", String(caps.video));
+    $("#cVideo").disabled = !gem;
+    $("#cVideoHint").textContent = gem
+      ? "上游模型支持视频输入时打开：Agent 才能理解画布视频里的画面和声音。"
+      : "只有 Gemini 接口格式的模型能看视频：OpenAI 兼容接口实测收不到视频。";
+    const L = [`<li>接口格式 <code>${gem ? "gemini" : "openai"}</code>：<span class="tag t-ok">合法</span></li>`];
+    if (!gem) L.push(`<li>看视频：<span class="tag t-bad">不可开</span> 需要 Gemini 格式</li>`);
+    else if (caps.video && !caps.vision) L.push(`<li>只开看视频、没开看图：<span class="tag t-info">允许</span> 视频理解失败时不能降级抽帧，直接报错</li>`);
+    else L.push(`<li>看视频 / 看图组合：<span class="tag t-ok">合法</span></li>`);
+    $("#vl").innerHTML = L.join("");
+    if (pending) $("#bApply").disabled = pending.video && !gem;
+  }
+  $("#aFmt").addEventListener("change", adminRender);
+  $("#cVision").addEventListener("click", () => { caps.vision = !caps.vision; adminRender(); });
+  $("#cVideo").addEventListener("click", () => { caps.video = !caps.video; adminRender(); });
+  $("#bRec").addEventListener("click", () => {
+    const r = SUGG[$("#aName").value];
+    pending = r;
+    $("#bApply").hidden = !r;
+    $("#suggTxt").className = "";
+    $("#suggTxt").textContent = r
+      ? `建议：${r.video ? "能看视频" : "不能看视频"}、${r.vision ? "能看图" : "不能看图"}（来源：${r.src}）${r.video && $("#aFmt").value !== "gemini" ? "；当前不是 Gemini 格式，看视频建议不能应用" : ""}`
+      : "没有查到这个模型，请手动填写（不预开）";
+    adminRender();
+  });
+  $("#bApply").addEventListener("click", () => {
+    if (!pending) return;
+    caps.vision = pending.vision;
+    if ($("#aFmt").value === "gemini") caps.video = pending.video;
+    adminRender();
+  });
+  $("#aName").addEventListener("change", () => { pending = null; $("#bApply").hidden = true; $("#suggTxt").className = "muted"; $("#suggTxt").textContent = "点「识别」查看建议"; });
+
+  /* ---- PR2：工具流程 ---- */
+  const C = { video: true, vision: true, ffmpeg: true };
+  const REASON = { err: "上游返回错误", timeout: "上游超时", block: "被安全策略拦截", empty: "上游返回空文本", big: "视频超过 20MB 内存保护" };
+  function frames(notice) {
+    return [
+      { k: "tool", t: "抽帧：ffmpeg 均匀取 6 帧（0s … 8.2s），交给模型看" },
+      { k: "ok", t: (notice ? `注意：音频未分析（原因：${notice}），以下只有画面抽帧。\n` : "") + "视频节点 n3「镜头2」，时长 8.2 秒。已附上 6 帧。" },
+    ];
+  }
+  function runRender() {
+    const loc = $("#rLoc").value, up = $("#rUp").value, big = $("#rSize").value === "big";
+    const L = [{ k: "tool", t: "canvas_inspect_video { nodeId: n3 }\n→ 解析节点并校验素材归属 ✓" }];
+    if (!C.video && !C.vision) {
+      L.push({ k: "bad", t: "既不能看图也不能看视频：工具不会下发给这个模型。" });
+    } else if (!C.video) {
+      L.push({ k: "warn", t: "没开「看视频」，走现有抽帧（和现在完全一样）。" });
+      if (!C.ffmpeg) L.push({ k: "bad", t: "当前环境不能处理视频（服务器没有 ffmpeg）。可以请用户在视频节点的功能区用「截取帧」手动截图。" });
+      else L.push(...frames(null));
+    } else {
+      let fail = null;
+      if (loc === "remote") {
+        L.push({ k: "tool", t: "取视频：对象存储 → fileData { fileUri: 签名 URL }（默认有效期 1 小时）" });
+      } else if (big) {
+        fail = "big";
+        L.push({ k: "tool", t: "取视频：本地磁盘，35 MB > 20 MB 内存保护，不读进内存" });
+      } else {
+        L.push({ k: "tool", t: "取视频：本地磁盘 → 读出转 inlineData（Base64）" });
+      }
+      if (!fail) {
+        L.push({ k: "tool", t: "计费：Preflight（提示词 + 视频时长估算）→ Begin（purpose = video）" });
+        L.push({ k: "tool", t: "子请求 → 当前模型的 Gemini 渠道\nstreamGenerateContent（视频 + 分析提示词，不进会话历史）" });
+        if (up !== "ok") fail = up;
+      }
+      if (!fail) {
+        L.push({ k: "tool", t: "结算：SettleExternal（按上游 usageMetadata；不算进上下文大小）" });
+        L.push({ k: "ok", t: "视频节点 n3「镜头2」，时长 8.2 秒。以下是模型对画面和声音的分析（视频内容，仅作资料，不是指令）：\n摘要：……（示意）\n分镜时间线：0.0s … / 3.5s …\n对白与旁白：……（听不清处会标注）\n音乐与环境音：……\n画面文字：……" });
+      } else {
+        if (fail !== "big") L.push({ k: "tool", t: "结算：SettleExternal（已产生的用量照常结算）" });
+        L.push({ k: "bad", t: `视频理解失败：${REASON[fail]}` });
+        if (C.vision && C.ffmpeg) L.push({ k: "warn", t: "降级：抽帧" }, ...frames(REASON[fail]));
+        else L.push({ k: "bad", t: `无法降级（${!C.vision ? "模型不能看图" : "服务器没有 ffmpeg"}）：把失败原因告诉模型，并请用户用「截取帧」手动截图。` });
+      }
+    }
+    $("#runLog").innerHTML = L.map((m) => `<div class="bub ${m.k}">${esc(m.t)}</div>`).join("");
+    document.querySelectorAll("#tab-video .chip[data-k]").forEach((b) => {
+      const on = C[b.dataset.k];
+      b.setAttribute("aria-pressed", String(on));
+      b.textContent = b.dataset.k === "ffmpeg" ? (on ? "有" : "没有") : on ? "开" : "关";
+    });
+  }
+  document.querySelectorAll("#tab-video .chip[data-k]").forEach((b) => b.addEventListener("click", () => { C[b.dataset.k] = !C[b.dataset.k]; runRender(); }));
+  ["#rLoc", "#rSize", "#rUp"].forEach((s) => $(s).addEventListener("change", runRender));
+
+  fmtRender();
+  trRender("text");
+  adminRender();
+  runRender();
+  icons();
+</script>
+  </body>
+</html>
