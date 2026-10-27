@@ -37,8 +37,8 @@ func (r *fakeTransferCanvasRepo) List(context.Context, uint64, string, int, int)
 	return nil, 0, nil
 }
 
-func (r *fakeTransferCanvasRepo) Update(context.Context, uint64, uint64, uint64, map[string]any) error {
-	return nil
+func (r *fakeTransferCanvasRepo) Update(context.Context, uint64, uint64, uint64, map[string]any) (*model.CanvasProject, error) {
+	return nil, nil
 }
 
 func (r *fakeTransferCanvasRepo) Delete(context.Context, uint64, uint64) error { return nil }

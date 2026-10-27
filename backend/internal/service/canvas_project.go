@@ -19,7 +19,8 @@ type CanvasProjectRepo interface {
 	Create(ctx context.Context, p *model.CanvasProject) error
 	GetByID(ctx context.Context, userID, id uint64) (*model.CanvasProject, error)
 	List(ctx context.Context, userID uint64, keyword string, offset, limit int) ([]model.CanvasProjectItem, int64, error)
-	Update(ctx context.Context, userID, id, revision uint64, fields map[string]any) error
+	// Update 按归属与版本更新，返回本次写入的快照，不包含随后其它请求的修改。
+	Update(ctx context.Context, userID, id, revision uint64, fields map[string]any) (*model.CanvasProject, error)
 	Delete(ctx context.Context, userID, id uint64) error
 }
 
@@ -103,7 +104,7 @@ func (s *CanvasProjectService) List(ctx context.Context, userID uint64, req *mod
 	return items, total, q, nil
 }
 
-// Update 带乐观锁更新，成功后返回最新的画布（revision 已 +1）。
+// Update 带乐观锁更新，成功后返回本次写入的画布快照（revision 已 +1）。
 func (s *CanvasProjectService) Update(ctx context.Context, userID, id uint64, req *model.UpdateCanvasProjectReq) (*model.CanvasProject, error) {
 	// 1. 收集要更新的字段：只更新请求里传了的字段
 	fields := map[string]any{}
@@ -123,7 +124,8 @@ func (s *CanvasProjectService) Update(ctx context.Context, userID, id uint64, re
 
 	// 3. 乐观锁更新：只有 revision 与数据库一致才更新并把 revision +1；
 	//    画布不存在返回 404，版本不一致说明已被其他人/其他端修改，返回 409
-	switch err := s.repo.Update(ctx, userID, id, req.Revision, fields); {
+	saved, err := s.repo.Update(ctx, userID, id, req.Revision, fields)
+	switch {
 	case errors.Is(err, repository.ErrNotFound):
 		return nil, errcode.ErrCanvasNotFound
 	case errors.Is(err, repository.ErrRevisionConflict):
@@ -131,8 +133,9 @@ func (s *CanvasProjectService) Update(ctx context.Context, userID, id uint64, re
 	case err != nil:
 		return nil, err
 	}
-	// 4. 重新查询，返回更新后的完整画布（含最新 revision）
-	return s.Get(ctx, userID, id)
+	// 4. 直接返回本次更新的快照，不能重查：Agent 可能已写入下一版本，
+	//    把下一版本返回给前端会让它误认为该版本的补丁已经合并，后续保存可能覆盖 Agent 的内容。
+	return saved, nil
 }
 
 // Delete 删除当前用户的画布（软删除，只写 deleted_at）。
