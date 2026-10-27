@@ -54,6 +54,13 @@ type fakeStreamer struct {
 	tg     llmgateway.Target
 	body   []byte
 	lim    llmgateway.RawLimits
+	req    llmgateway.Request
+}
+
+func (s *fakeStreamer) Stream(ctx context.Context, tg llmgateway.Target, req llmgateway.Request, emit func(llmgateway.Event)) (*llmgateway.Result, error) {
+	s.calls++
+	s.tg, s.req = tg, req
+	return s.script(ctx, emit, func([]byte) {})
 }
 
 func (s *fakeStreamer) StreamRaw(ctx context.Context, tg llmgateway.Target, body []byte, lim llmgateway.RawLimits, emit func(llmgateway.Event), raw func([]byte)) (*llmgateway.Result, error) {
@@ -152,6 +159,57 @@ func (b *bridgeEnv) tool(t *testing.T, tok, name string, args any) *ToolResult {
 // ---- 令牌 ----
 
 // ---- 模型代理 ----
+
+func TestProxyModelPlatform_PassesGeminiFormat(t *testing.T) {
+	for _, format := range []string{"", "openai", "gemini"} {
+		t.Run("接口格式="+format, func(t *testing.T) {
+			b := newBridgeEnv(t)
+			b.reg.snap.Model.APIFormat = format
+			rr := &fakeRequestRecorder{}
+			b.br.SetModelRequestRecorder(rr)
+			body := []byte(`{"model":"agent-model","stream":false,"max_tokens":999999,"messages":[{"role":"user","content":[{"type":"text","text":"看看这张图"},{"type":"image_url","image_url":{"url":"https://oss.example.com/a.png?X-Amz-Signature=secret"}}]}],"junk":"不在白名单"}`)
+			if err := b.br.ProxyModelPlatform(context.Background(), platformCtx(900120, "all"), body, nil, func([]byte) {}); err != nil {
+				t.Fatal(err)
+			}
+			if b.str.tg.Format != format {
+				t.Errorf("目标接口格式=%q，应取快照的 %q", b.str.tg.Format, format)
+			}
+			rec := rr.wait(t, 1)[0]
+			var params map[string]any
+			if err := json.Unmarshal(rec.Params, &params); err != nil {
+				t.Fatal(err)
+			}
+			if got, has := params["api_format"]; has != (format != "") || has && got != format {
+				t.Errorf("摘要接口格式=%v，存在=%v，快照=%q", got, has, format)
+			}
+			var saved map[string]any
+			if err := json.Unmarshal([]byte(gunzip(t, rec.Body)), &saved); err != nil {
+				t.Fatal(err)
+			}
+			if saved["model"] != "claude-up" || saved["stream"] != true || saved["max_tokens"] != float64(b.reg.snap.Model.Capabilities.Context.Output) {
+				t.Errorf("留存应经过 SanitizeRaw 收紧模型、流式与最大输出: %v", saved)
+			}
+			for _, key := range []string{"contents", "systemInstruction", "junk", "api_format"} {
+				if _, has := saved[key]; has {
+					t.Errorf("留存体不应含 %s", key)
+				}
+			}
+			messages, ok := saved["messages"].([]any)
+			if !ok || len(messages) != 1 {
+				t.Fatalf("留存应是 OpenAI 消息: %v", saved)
+			}
+			message := messages[0].(map[string]any)
+			parts := message["content"].([]any)
+			if parts[0].(map[string]any)["text"] != "看看这张图" {
+				t.Errorf("留存应保留用户文字: %v", message)
+			}
+			image := parts[1].(map[string]any)["image_url"].(map[string]any)
+			if image["url"] != fmt.Sprintf("[已省略 %d 字符]", len("https://oss.example.com/a.png?X-Amz-Signature=secret")) {
+				t.Errorf("留存图片应脱敏签名 URL: %v", image)
+			}
+		})
+	}
+}
 
 // ---- 工具 ----
 

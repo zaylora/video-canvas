@@ -102,7 +102,7 @@ make run
 | POST                | /api/v1/agent/runs/:rid/resume                        | 继续 interrupted / budget_exhausted / step_limit 的运行 `{add_budget?}`；预算用尽必须追加（400 / 10001） |
 | POST                | /api/v1/agent/runs/:rid/undo                          | 撤销本轮对画布的改动 → `{reverted, skipped:[{kind,node_id,field,reason}], revision}`；字段只有仍是 Agent 写入的值才恢复，用户改过的保留并列出；运行中 409 / 60003，已撤销 409 / 60007 |
 | POST                | /api/v1/agent/approvals/:aid/decision                 | 对审批的决定 `{decision: approve\|reject, items?: [{index, approve, count?}], answer?, add_budget?}`：批准生成要不超本轮预算（402 / 60008），张数只能少不能多；已处理或已过期 409 / 60004；审批不存在 404 / 60013 |
-| GET                 | /api/v1/agent/models                                  | 当前可用的 Agent 模型 `[{key, name, vision}]`；接入模型配置前为空 |
+| GET                 | /api/v1/agent/models                                  | 当前可用的 Agent 模型 `[{key, name, vendor, vision, video, context_window}]`；`video` 表示支持理解视频画面和声音 |
 | GET                 | /api/v1/agent/skills                                  | 已启用技能目录 `[{name,title,description,source}]`（内置 + 后台导入且已启用），`@` 弹层读它 |
 | GET                 | /api/v1/admin/agent/skills?q=&status=                 | 【admin】技能列表（内置只读 + 导入）；`status=enabled\|disabled` |
 | POST                | /api/v1/admin/agent/skills/imports                    | 【admin】上传并预检（multipart：zip 用 `file`；文件夹 / 单个 SKILL.md 用成对的 `files` + `paths`）。预检不通过也返回 200，问题在 `issues`；zip ≤ 50MB、总量 ≤ 100MB，超限 413 / 61011。内容只在内存里，暂存包 1 小时过期 |

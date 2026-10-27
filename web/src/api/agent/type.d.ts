@@ -42,6 +42,8 @@ export interface AgentModelDto {
   vendor?: string;
   /** 是否支持看图 */
   vision: boolean;
+  /** 是否支持理解视频画面和声音；旧服务可能不返回 */
+  video?: boolean;
   /** 上下文窗口（Token），没配置是 0 */
   context_window: number;
 }

@@ -357,18 +357,26 @@ func (s *AICatalogService) ListModels(ctx context.Context, req *model.ListModelR
 // 带 channel 时先问该渠道的上游（/v1/models 随模型给了规格就用，最准）；上游没给、不合法或请求失败，
 // 退回内置快照（models.dev）。只是建议：都查不到不算错误，返回 Found=false，由运营手填。
 func (s *AICatalogService) ModelLimits(ctx context.Context, name, channel string) model.ModelLimitsView {
+	// 1. 输入模态只作为内置建议；未知时省略字段，避免把已开启能力误关掉。
+	var out model.ModelLimitsView
+	if inputs, ok := modelmeta.LookupModalities(name); ok {
+		out.Vision, out.Video = &inputs.Vision, &inputs.Video
+	}
+	// 2. 上下文规格仍优先使用渠道数据，与输入模态的识别互不影响。
 	if channel != "" {
 		if up, ok, err := s.channels.UpstreamLimits(ctx, channel, name); err == nil && ok && up.Window > 0 && up.Output > 0 && up.Output < up.Window {
 			if l, ok := modelmeta.Clamp(up.Window, up.Output); ok {
-				return model.ModelLimitsView{Found: true, ContextWindow: l.Window, MaxOutput: l.Output, Source: model.ModelLimitsSourceUpstream}
+				out.Found, out.ContextWindow, out.MaxOutput, out.Source = true, l.Window, l.Output, model.ModelLimitsSourceUpstream
+				return out
 			}
 		}
 	}
 	l, ok := modelmeta.Lookup(name)
 	if !ok {
-		return model.ModelLimitsView{}
+		return out
 	}
-	return model.ModelLimitsView{Found: true, ContextWindow: l.Window, MaxOutput: l.Output, Source: model.ModelLimitsSourceBuiltin}
+	out.Found, out.ContextWindow, out.MaxOutput, out.Source = true, l.Window, l.Output, model.ModelLimitsSourceBuiltin
+	return out
 }
 
 // ModelOptions 返回全部模型的列表项（不含状态），不分页：概览等需要“有哪些模型、绑在哪个渠道”的页面用。

@@ -46,6 +46,20 @@ test("观测事实：运行、本轮事件、审批、评价、会话是否被�
     assert.ok(f2.run.ended_at && /^\d{4}-/.test(f2.run.ended_at), "结束的运行有结束时间");
   }));
 
+test("长 Gemini 调用的审批观测 ID 与时间线一致，内部仍能保存原始 ID", () => {
+  const raw = "gc_abcdefgh_" + Buffer.from("s".repeat(1424)).toString("base64url");
+  return withApi({ turns: [{ tools: [{ id: raw, name: "ask_user", args: { question: "确认？" } }] }] }, async (api, e) => {
+    const run = await e.start();
+    await e.engine.idle();
+    const facts = await api.observeFacts(run.id);
+    const start = facts.events.find((event) => event.type === "tool.start");
+    assert.ok(start && start.data && typeof start.data === "object" && "id" in start.data && typeof start.data.id === "string");
+    assert.equal(facts.approvals[0].tool_call_id, start.data.id);
+    assert.ok(facts.approvals[0].tool_call_id.length <= 64);
+    assert.equal(e.store.listApprovals(run.id)[0].toolCallId, raw);
+  });
+});
+
 test("观测事实：评价、会话删除如实反映；运行不存在是 60012", () =>
   withApi({ turns: [{ text: "好" }] }, async (api, e) => {
     const r = await e.start();

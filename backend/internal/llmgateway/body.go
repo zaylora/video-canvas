@@ -2,18 +2,25 @@ package llmgateway
 
 import (
 	"encoding/json"
+	"fmt"
 )
 
 // chatEndpoint 是请求路径：与 newapi 插件一致，渠道的 base_url 不含 /v1。
 const chatEndpoint = "/v1/chat/completions"
 
-// buildBody 生成 OpenAI 兼容的请求体：流式 + 带用量（计费靠它）。
-func buildBody(tg Target, req Request) ([]byte, error) {
+// BuildBody 生成翻译前的请求体：流式并带用量；用于网关出站和媒体脱敏留存。
+// 视频用宿主内部分段表示，仅 Gemini 翻译支持，不能发给 OpenAI 渠道。
+func BuildBody(tg Target, req Request) ([]byte, error) {
 	msgs := make([]any, 0, len(req.Messages)+1)
 	if req.System != "" {
 		msgs = append(msgs, map[string]any{"role": "system", "content": req.System})
 	}
 	for _, m := range req.Messages {
+		for _, p := range m.Parts {
+			if p.Video != nil && tg.Format != FormatGemini {
+				return nil, fmt.Errorf("%w: 当前接口格式不支持视频输入", ErrInvalidRequest)
+			}
+		}
 		msgs = append(msgs, messageJSON(m))
 	}
 	body := map[string]any{
@@ -51,7 +58,9 @@ func messageJSON(m Message) map[string]any {
 	case len(m.Parts) > 0:
 		parts := make([]any, 0, len(m.Parts))
 		for _, p := range m.Parts {
-			if p.ImageURL != "" {
+			if p.Video != nil {
+				parts = append(parts, map[string]any{"type": "video", "video": p.Video})
+			} else if p.ImageURL != "" {
 				parts = append(parts, map[string]any{"type": "image_url", "image_url": map[string]any{"url": p.ImageURL}})
 			} else {
 				parts = append(parts, map[string]any{"type": "text", "text": p.Text})

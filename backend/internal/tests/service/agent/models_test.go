@@ -31,7 +31,7 @@ func TestRegistryAgentModels_List(t *testing.T) {
 
 	t.Run("只取 agent 种类，名字用 label，vision 取自能力", func(t *testing.T) {
 		reg := &fakeAgentRegistry{models: []provider.ModelInfo{
-			{Key: "claude", Kind: "agent", Label: "Claude Sonnet", Capabilities: modelcfg.Capabilities{Vision: true}},
+			{Key: "claude", Kind: "agent", Label: "Claude Sonnet", Capabilities: modelcfg.Capabilities{Vision: true, Video: true}},
 			{Key: "deepseek", Kind: "agent", Label: "DeepSeek V3"},
 		}}
 		got, err := NewRegistryAgentModels(reg).List(ctx)
@@ -41,7 +41,7 @@ func TestRegistryAgentModels_List(t *testing.T) {
 		if reg.gotKind != "agent" {
 			t.Errorf("应只查 agent 种类: %q", reg.gotKind)
 		}
-		if len(got) != 2 || got[0].Key != "claude" || got[0].Name != "Claude Sonnet" || !got[0].Vision || got[1].Vision {
+		if len(got) != 2 || got[0].Key != "claude" || got[0].Name != "Claude Sonnet" || !got[0].Vision || !got[0].Video || got[1].Vision || got[1].Video {
 			t.Errorf("got=%+v", got)
 		}
 	})

@@ -86,7 +86,7 @@ function hangFirst() {
 }
 
 test("被杀后重启，窗口内：自动续跑——先发「恢复中」，工具用同一个幂等键重放，运行接着做完", () =>
-  withFiles({ turns: [{ tools: [{ id: "c1", name: "canvas_get_state" }] }, { text: "接上了" }], tools: { canvas_get_state: hangFirst() } }, async (f) => {
+  withFiles({ turns: [{ tools: [{ id: "gc_abcdefgh_" + Buffer.from("s".repeat(1732)).toString("base64url"), name: "canvas_get_state" }] }, { text: "接上了" }], tools: { canvas_get_state: hangFirst() } }, async (f) => {
     const { child, runId } = await f.spawnChild();
     await until(() => toolCalls(f).length === 1);
     await sleep(100); // 让租约至少续过一次
@@ -98,6 +98,8 @@ test("被杀后重启，窗口内：自动续跑——先发「恢复中」，�
     assert.equal(run.status, "succeeded");
     assert.equal(toolCalls(f).length, 2, "工具重放了一次");
     assert.equal(toolCalls(f)[1].headers["x-idempotency-key"], toolCalls(f)[0].headers["x-idempotency-key"], "两个进程里是同一个幂等键，Go 据此不会写两遍画布");
+    assert.equal(toolCalls(f)[0].body.tool_call_id, toolCalls(f)[1].body.tool_call_id, "重放仍使用同一个短关联 id");
+    assert.ok(typeof toolCalls(f)[0].body.tool_call_id === "string" && toolCalls(f)[0].body.tool_call_id.length <= 64);
     // 「恢复中」只是事件：库里的状态一直是 running，画布没有被放走
     assert.deepEqual(f.statuses(), ["queued", "running", "recovering", "running", "succeeded"]);
     const types = f.store.listEvents(f.sessionId, 0, 1000).map((e) => e.type);

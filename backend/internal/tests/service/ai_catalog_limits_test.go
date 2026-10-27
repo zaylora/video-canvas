@@ -59,3 +59,14 @@ func TestCatalog_ModelLimits(t *testing.T) {
 		}
 	})
 }
+
+func TestCatalog_ModelLimitsModalities(t *testing.T) {
+	got := newCatEnv(t).cat.ModelLimits(context.Background(), "google/gemini-2.5-flash", "")
+	if got.Video == nil || !*got.Video || got.Vision == nil || !*got.Vision {
+		t.Fatalf("应附上视频和图片建议: %+v", got)
+	}
+	unknown := newCatEnv(t).cat.ModelLimits(context.Background(), "private-model-no-match", "")
+	if unknown.Video != nil || unknown.Vision != nil {
+		t.Fatalf("未知模型不能猜测能力: %+v", unknown)
+	}
+}

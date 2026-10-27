@@ -203,6 +203,8 @@ test("撤销：运行还在跑或在等用户 → 60003；没改过画布（revi
 test("模型清单：原样给前端；空清单是 []", async () => {
   await withApi({ turns: [] }, async (api) => assert.deepEqual(await api.models(), [{ key: "claude", name: "Claude", vision: true, context_window: 200000 }]));
   await withApi({ turns: [], models: [] }, async (api) => assert.deepEqual(await api.models(), []));
+  const videoModels = [{ key: "gemini", name: "Gemini", vision: false, video: true, context_window: 1000000 }];
+  await withApi({ turns: [], models: videoModels }, async (api) => assert.deepEqual(await api.models(), videoModels));
 });
 
 // ---- 评价 ----

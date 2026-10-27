@@ -1,10 +1,28 @@
 import { describe, expect, test } from "bun:test";
 
 import type { ModelLimits } from "@/api/admin/ai/type.d";
-import { limitsDiffer, shouldAutoFill, sourceLabel } from "@/utils/admin/model-limits";
+import {
+  limitsDiffer,
+  shouldAutoFill,
+  sourceLabel,
+  suggestedMediaCapabilities,
+} from "@/utils/admin/model-limits";
 
 const found = (window: number, output: number, source: ModelLimits["source"] = "builtin") =>
   ({ found: true, context_window: window, max_output: output, source }) satisfies ModelLimits;
+
+test("手动应用输入能力时只填已知项，OpenAI 不能应用看视频", () => {
+  const limits = { ...found(128000, 16384), vision: true, video: true };
+  expect(suggestedMediaCapabilities(limits, false)).toEqual({ vision: true });
+  expect(suggestedMediaCapabilities(limits, true)).toEqual({ vision: true, video: true });
+  expect(suggestedMediaCapabilities(found(128000, 16384), true)).toEqual({});
+  expect(
+    limitsDiffer(limits, { window: 128000, output: 16384 }, { vision: true, video: false }, true),
+  ).toBe(true);
+  expect(
+    limitsDiffer(limits, { window: 128000, output: 16384 }, { vision: true, video: false }, false),
+  ).toBe(false);
+});
 
 describe("shouldAutoFill：只有运营还没填过时才自动填", () => {
   test("没有 context、或窗口和输出都是 0：可以自动填", () => {

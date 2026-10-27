@@ -57,7 +57,7 @@ func TestPrepareRun_ToolsFollowTheModeAndVision(t *testing.T) {
 	if !hasTool(toolNames(all.Tools), "canvas_arrange") || hasTool(toolNames(prompt.Tools), "canvas_arrange") {
 		t.Errorf("工具随任务模式变化: all=%v prompt=%v", toolNames(all.Tools), toolNames(prompt.Tools))
 	}
-	want := AgentToolDecls("all", true)
+	want := AgentToolDecls("all", true, false)
 	if len(all.Tools) != len(want) {
 		t.Errorf("和令牌模式下发的声明一致: %d vs %d", len(all.Tools), len(want))
 	}
@@ -188,7 +188,7 @@ func mustCatalog(t *testing.T, b *bridgeEnv, rc RunContext) *canvasgraph.Catalog
 
 // tool.start 事件要带界面名称和短动词；Agent 服务不再自己维护一张表，工具声明里就带着。
 func TestToolDecls_CarryTheVerbAndLabelOfTheEvents(t *testing.T) {
-	decls := AgentToolDecls("all", true)
+	decls := AgentToolDecls("all", true, false)
 	if len(decls) == 0 {
 		t.Fatal("没有工具声明")
 	}

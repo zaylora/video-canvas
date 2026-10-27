@@ -45,6 +45,9 @@ func validateCapabilities(kind string, c *Capabilities, issues *[]Issue) {
 	if c.Vision && kind != KindAgent {
 		add("vision", "只有 Agent 模型可以声明 vision（能看图）")
 	}
+	if c.Video && kind != KindAgent {
+		add("video", "只有 Agent 模型可以声明 video（能看视频）")
+	}
 	validateParams(c.Params, add)
 	validateContext(kind, c, add)
 }

@@ -18,4 +18,6 @@ type ModelLimitsView struct {
 	ContextWindow int    `json:"context_window"`   // 上下文窗口（Token），没认出来是 0
 	MaxOutput     int    `json:"max_output"`       // 最大输出（Token），没认出来是 0
 	Source        string `json:"source,omitempty"` // 来源，没认出来为空
+	Vision        *bool  `json:"vision,omitempty"` // 看图建议；未识别输入模态时省略，不覆盖运营配置
+	Video         *bool  `json:"video,omitempty"`  // 看视频建议；只有 Gemini 格式可应用
 }

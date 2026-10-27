@@ -3,6 +3,7 @@ import { Sparkles } from "lucide-react";
 
 import { getModelLimits } from "@/api/admin/ai";
 import type { ModelLimits } from "@/api/admin/ai/type.d";
+import type { Capabilities } from "@/api/model/type.d";
 import { Button } from "@/components/ui/button";
 import { limitsDiffer, shouldAutoFill, sourceLabel } from "@/utils/admin/model-limits";
 
@@ -52,10 +53,14 @@ export function ContextLimitsHintView({
   state,
   current,
   onApply,
+  media,
+  gemini = false,
 }: {
   state: LimitsState;
   current: Context;
-  onApply: (next: { window: number; output: number }) => void;
+  onApply: (next: { window: number; output: number }, limits?: ModelLimits) => void;
+  media?: Pick<Capabilities, "vision" | "video">;
+  gemini?: boolean;
 }) {
   const muted = "text-muted-foreground mt-2 text-xs";
   if (state.kind === "idle")
@@ -71,16 +76,23 @@ export function ContextLimitsHintView({
         <Sparkles className="size-3.5" />
         {sourceLabel(limits.source)}：上下文 {fmt(limits.context_window)} · 最大输出{" "}
         {fmt(limits.max_output)}
+        {media && limits.vision !== undefined && ` · ${limits.vision ? "能看图" : "不能看图"}`}
+        {media && limits.video !== undefined && ` · ${limits.video ? "能看视频" : "不能看视频"}`}
       </span>
-      {limitsDiffer(limits, current) && (
+      {limitsDiffer(limits, current, media, gemini) && (
         <Button
           type="button"
           variant="outline"
           size="sm"
-          onClick={() => onApply({ window: limits.context_window, output: limits.max_output })}
+          onClick={() =>
+            onApply({ window: limits.context_window, output: limits.max_output }, limits)
+          }
         >
           应用识别值
         </Button>
+      )}
+      {media && limits.video && !gemini && (
+        <p className="basis-full">当前接口格式是 OpenAI 兼容，「看视频」不会被应用。</p>
       )}
     </div>
   );
@@ -95,11 +107,15 @@ export function ContextLimitsAssist({
   upstreamModel,
   current,
   onApply,
+  media,
+  gemini,
 }: {
   channel: string;
   upstreamModel: string;
   current: Context;
-  onApply: (next: { window: number; output: number }) => void;
+  onApply: (next: { window: number; output: number }, limits?: ModelLimits) => void;
+  media?: Pick<Capabilities, "vision" | "video">;
+  gemini?: boolean;
 }) {
   const state = useModelLimits(upstreamModel, channel);
   // 效果里要读最新的当前值和回调，但它们变化不该触发重新自动填
@@ -121,5 +137,13 @@ export function ContextLimitsAssist({
       });
   }, [state, channel, upstreamModel]);
 
-  return <ContextLimitsHintView state={state} current={current} onApply={onApply} />;
+  return (
+    <ContextLimitsHintView
+      state={state}
+      current={current}
+      onApply={onApply}
+      media={media}
+      gemini={gemini}
+    />
+  );
 }
