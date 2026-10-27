@@ -71,6 +71,10 @@ func TestCanvasProjectRepository_Update(t *testing.T) {
 			if err := db.Create(p).Error; err != nil {
 				t.Fatal(err)
 			}
+			before, err := repo.GetByID(ctx, 1, p.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
 			if tt.deleted {
 				if err := db.Delete(p).Error; err != nil {
 					t.Fatal(err)
@@ -84,7 +88,7 @@ func TestCanvasProjectRepository_Update(t *testing.T) {
 				return
 			}
 			if err != nil || saved.ID != p.ID || saved.UserID != 1 || saved.Title != "新标题" || saved.Revision != 11 ||
-				!jsonEqual(saved.PayloadJSON, `{"nodes":[]}`) || !saved.CreatedAt.Equal(p.CreatedAt) || saved.UpdatedAt.IsZero() {
+				!jsonEqual(saved.PayloadJSON, `{"nodes":[]}`) || !saved.CreatedAt.Equal(before.CreatedAt) || saved.UpdatedAt.IsZero() {
 				t.Fatalf("应返回完整的本次写入快照：saved=%+v err=%v", saved, err)
 			}
 		})
