@@ -3,11 +3,12 @@ import { toast } from "sonner";
 
 import { uploadAsset } from "@/api/asset";
 import { isUploadAborted } from "@/utils/asset/direct-upload";
-import { clipToLimit, type TrayItem } from "@/utils/agent/attachments";
+import { clipToLimit, documentCount, imageCount, type TrayItem } from "@/utils/agent/attachments";
+import { MAX_ATTACH_DOCUMENTS, pickDocumentFiles } from "@/utils/agent/document-files";
 import { pickImageFiles } from "@/utils/agent/image-files";
 
 /**
- * Agent 聊天框的图片附件托盘：加图时直接上传成素材（不碰画布），托盘里按张记着状态，发送时只带素材 id。
+ * Agent 聊天框的附件托盘：加图或加文档（.txt / .md）时直接上传成素材（不碰画布），托盘里按项记着状态，发送时只带素材 id。
  * 上传中可以取消，失败可以重试，移除会取消上传并回收本地预览。
  */
 export function useAgentAttachments() {
@@ -34,7 +35,7 @@ export function useAgentAttachments() {
     aborts.current.get(item.id)?.abort();
     aborts.current.delete(item.id);
     files.current.delete(item.id);
-    URL.revokeObjectURL(item.previewUrl);
+    if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
   }, []);
 
   const upload = useCallback(
@@ -74,7 +75,7 @@ export function useAgentAttachments() {
   const add = useCallback(
     (picked: ArrayLike<File> | null | undefined) => {
       const { images, skipped, clipped } = pickImageFiles(picked);
-      const room = clipToLimit(latest.current.length, images.length);
+      const room = clipToLimit(imageCount(latest.current), images.length);
       if (skipped > 0) toast.warning("只能添加图片，其他文件已忽略");
       const tooMany = clipped + room.clipped;
       if (tooMany > 0) toast.warning(`一条消息最多 9 张，多出的 ${tooMany} 张没加`);
@@ -85,7 +86,41 @@ export function useAgentAttachments() {
         return {
           id,
           name: file.name || `图片 ${counter.current}`,
+          kind: "image",
+          size: file.size,
           previewUrl: URL.createObjectURL(file),
+          status: "uploading",
+          progress: 0,
+        };
+      });
+      if (added.length === 0) return;
+      commit([...latest.current, ...added]);
+      for (const item of added) void upload(item.id, files.current.get(item.id)!);
+    },
+    [commit, upload],
+  );
+
+  /** 加文档（＋ 菜单的「上传故事或剧本」）：只收 .txt / .md，单个不超过 20 万字节，一条消息最多 3 个；被拒绝的都提示原因 */
+  const addDocuments = useCallback(
+    (picked: ArrayLike<File> | null | undefined) => {
+      const { accepted, wrongType, tooLarge, empty, clipped } = pickDocumentFiles(
+        picked,
+        documentCount(latest.current),
+      );
+      if (wrongType > 0) toast.warning("只支持 .txt 和 .md");
+      if (tooLarge > 0) toast.warning("文件太大了，请控制在 20 万字节以内");
+      if (empty > 0) toast.warning("这个文件是空的");
+      if (clipped > 0)
+        toast.warning(`一条消息最多 ${MAX_ATTACH_DOCUMENTS} 个文档，多出的 ${clipped} 个没加`);
+      const added = accepted.map((file): TrayItem => {
+        const id = crypto.randomUUID();
+        files.current.set(id, file);
+        return {
+          id,
+          name: file.name,
+          kind: "document",
+          size: file.size,
+          previewUrl: "",
           status: "uploading",
           progress: 0,
         };
@@ -129,7 +164,7 @@ export function useAgentAttachments() {
     [release],
   );
 
-  return { items, add, retry, remove, clear };
+  return { items, add, addDocuments, retry, remove, clear };
 }
 
 /** 托盘的操作集：面板持有，输入框用来显示和加图 */

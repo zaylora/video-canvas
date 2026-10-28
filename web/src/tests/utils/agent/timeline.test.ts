@@ -975,6 +975,29 @@ describe("用户消息的图片附件", () => {
     expect((items[0] as { attachments: unknown[] }).attachments).toEqual([att("1"), att("2")]);
   });
 
+  test("文档附件：kind 和 byte_size 原样带上；kind 不认识的按图片处理", () => {
+    reset();
+    const doc = {
+      asset_id: "7",
+      name: "剧本.txt",
+      mime_type: "text/plain",
+      kind: "document",
+      byte_size: 11_683,
+      url: "/files/7.txt",
+    };
+    const items = buildTimeline(
+      fold([
+        ev("message.user", {
+          text: "按这个剧本拆",
+          attachments: [doc, { ...att("8"), kind: "weird" }],
+        }),
+      ]),
+    );
+    const list = (items[0] as { attachments: Array<Record<string, unknown>> }).attachments;
+    expect(list[0]).toEqual(doc);
+    expect(list[1].kind).toBeUndefined();
+  });
+
   test("旧事件没有附件字段、或字段不合法：附件为空数组，不报错", () => {
     reset();
     const items = buildTimeline(

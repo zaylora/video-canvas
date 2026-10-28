@@ -1,6 +1,7 @@
 import * as React from "react"
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover"
 import { cn } from "cn"
+import { FIXED_SIDE_COLLISION } from "./popup-position"
 
 function Popover({ ...props }: PopoverPrimitive.Root.Props) {
   return <PopoverPrimitive.Root data-slot="popover" {...props} />
@@ -17,11 +18,12 @@ function PopoverContent({
   side = "bottom",
   sideOffset = 4,
   anchor,
+  collisionAvoidance = FIXED_SIDE_COLLISION,
   ...props
 }: PopoverPrimitive.Popup.Props &
   Pick<
     PopoverPrimitive.Positioner.Props,
-    "align" | "alignOffset" | "side" | "sideOffset" | "anchor"
+    "align" | "alignOffset" | "side" | "sideOffset" | "anchor" | "collisionAvoidance"
   >) {
   return (
     <PopoverPrimitive.Portal>
@@ -31,6 +33,7 @@ function PopoverContent({
         side={side}
         sideOffset={sideOffset}
         anchor={anchor}
+        collisionAvoidance={collisionAvoidance}
         className="isolate z-50"
       >
         <PopoverPrimitive.Popup

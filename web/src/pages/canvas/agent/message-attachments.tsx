@@ -4,10 +4,13 @@ import { ImageOff } from "lucide-react";
 import type { AgentAttachmentDto } from "@/api/agent/type";
 import { MediaLightbox } from "@/components/canvas/media-lightbox";
 import { variantUrl } from "@/utils/canvas/media-lod";
+
+import { FileCard } from "./file-card";
 import type { PreviewItem } from "@/utils/canvas/preview-items";
 
 /**
- * 用户消息带的图片附件：气泡上方一行缩略图，点开看大图（复用画布同款灯箱，可翻页）。
+ * 用户消息带的附件：气泡上方一行。图片是缩略图，点开看大图（复用画布同款灯箱，可翻页）；
+ * 文档（.txt / .md）是文件卡片，点开在新标签页打开原文件，不展示正文。
  * 缩略图用 /files/ 稳定地址的缩略图变体；素材被删、加载失败时这一格显示「图片已失效」，不影响对话。
  */
 export function MessageAttachments({
@@ -24,7 +27,7 @@ export function MessageAttachments({
   const previews = useMemo<PreviewItem[]>(
     () =>
       items
-        .filter((a) => !dead.has(a.asset_id))
+        .filter((a) => a.kind !== "document" && !dead.has(a.asset_id))
         .map((a) => ({
           id: a.asset_id,
           src: a.url,
@@ -43,7 +46,18 @@ export function MessageAttachments({
     <>
       <div className="flex flex-wrap justify-end gap-1.5">
         {items.map((a) =>
-          dead.has(a.asset_id) ? (
+          a.kind === "document" ? (
+            <a
+              key={a.asset_id}
+              href={a.url}
+              target="_blank"
+              rel="noreferrer"
+              aria-label={`打开文件：${a.name}`}
+              className="focus-visible:ring-node-ring/60 hover:bg-foreground/8 rounded-xl outline-none focus-visible:ring-2"
+            >
+              <FileCard name={a.name} size={a.byte_size} className="pr-2.5" />
+            </a>
+          ) : dead.has(a.asset_id) ? (
             <div
               key={a.asset_id}
               title="图片已失效"

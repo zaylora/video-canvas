@@ -201,7 +201,7 @@ function toolNames(d: Record<string, unknown>): { label?: string; verb?: string 
   return { ...(label && { label }), ...(verb && { verb }) };
 }
 
-/** 事件里的图片附件：只留字段齐全的（旧事件没有、数据损坏的都当没有），不让坏数据把消息流弄崩 */
+/** 事件里的附件（图片或文档）：只留字段齐全的（旧事件没有、数据损坏的都当没有），不让坏数据把消息流弄崩 */
 function attachmentsOf(v: unknown): AgentAttachmentDto[] {
   if (!Array.isArray(v)) return [];
   const out: AgentAttachmentDto[] = [];
@@ -213,6 +213,8 @@ function attachmentsOf(v: unknown): AgentAttachmentDto[] {
       asset_id: str(a.asset_id),
       name: str(a.name),
       mime_type: str(a.mime_type),
+      ...(a.kind === "document" && { kind: "document" as const }),
+      ...(typeof a.byte_size === "number" && { byte_size: a.byte_size }),
       ...(typeof a.width === "number" && { width: a.width }),
       ...(typeof a.height === "number" && { height: a.height }),
       url: str(a.url),

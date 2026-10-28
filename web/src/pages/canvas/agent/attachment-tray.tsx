@@ -1,7 +1,9 @@
 import { EyeOff, RotateCw, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import type { TrayItem } from "@/utils/agent/attachments";
+import { imageCount, isDocument, type TrayItem } from "@/utils/agent/attachments";
+
+import { FileCard } from "./file-card";
 
 /** 进度环：上传中盖在缩略图上 */
 function ProgressRing({ percent }: { percent: number }) {
@@ -39,9 +41,9 @@ function ProgressRing({ percent }: { percent: number }) {
 }
 
 /**
- * 输入框上方的图片附件托盘（设计稿「Agent聊天框改进」6.1.1）：一排 56×56 的缩略图。
+ * 输入框上方的附件托盘（设计稿「Agent聊天框改进」6.1.1）：一排 56×56 的图片缩略图，文档（.txt / .md）是文件卡片。
  * 上传中盖进度环；失败描边、点图上的 ↻ 重试；悬停出现 × 移除（上传中移除就是取消）；
- * 当前模型不能看图时缩略图变暗，底部写明原因（发送按钮同时被禁用）。托盘空着不渲染。
+ * 当前模型不能看图时图片缩略图变暗，底部写明原因（发送按钮同时被禁用）；文档不受影响。托盘空着不渲染。
  */
 export function AttachmentTray({
   items,
@@ -56,11 +58,49 @@ export function AttachmentTray({
   onRemove: (id: string) => void;
 }) {
   if (items.length === 0) return null;
+  const hasImages = imageCount(items) > 0;
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex gap-1.5 overflow-x-auto pb-0.5">
         {items.map((item) => {
           const failed = item.status === "error";
+          if (isDocument(item)) {
+            return (
+              <FileCard
+                key={item.id}
+                name={item.name}
+                size={item.size}
+                className={cn(failed && "border-status-warning ring-status-warning ring-1")}
+                leading={
+                  item.status === "uploading" ? (
+                    <span className="absolute inset-0 grid place-items-center rounded-md bg-black/45 text-white">
+                      <ProgressRing percent={item.progress} />
+                    </span>
+                  ) : undefined
+                }
+              >
+                {failed && (
+                  <button
+                    type="button"
+                    aria-label="重试上传"
+                    title={item.error ? `上传失败：${item.error}` : "重试上传"}
+                    onClick={() => onRetry(item.id)}
+                    className="text-status-warning absolute right-7 grid size-6 place-items-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+                  >
+                    <RotateCw className="size-4" />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  aria-label={`移除 ${item.name}`}
+                  onClick={() => onRemove(item.id)}
+                  className="text-muted-foreground hover:text-foreground absolute top-1 right-1 grid size-5 place-items-center rounded-full outline-none focus-visible:ring-2"
+                >
+                  <X className="size-3.5" />
+                </button>
+              </FileCard>
+            );
+          }
           return (
             <div
               key={item.id}
@@ -104,7 +144,7 @@ export function AttachmentTray({
           );
         })}
       </div>
-      {!vision && (
+      {!vision && hasImages && (
         <div className="text-status-warning flex items-center gap-1.5 text-[11.5px]">
           <EyeOff aria-hidden className="size-3.5 shrink-0" />
           当前模型看不到图片，换一个能看图的模型或移除图片

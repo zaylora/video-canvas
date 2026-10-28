@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import {
   attachmentBlockReason,
   clipToLimit,
+  imageCount,
   toAttachmentsPayload,
   type TrayItem,
 } from "@/utils/agent/attachments";
@@ -27,12 +28,12 @@ describe("附件托盘：什么时候不能发送", () => {
   test("有图片还在上传：拦，提示上传中", () => {
     expect(
       attachmentBlockReason([item({ status: "uploading", progress: 30, asset: undefined })], true),
-    ).toBe("图片上传中…");
+    ).toBe("附件上传中…");
   });
 
   test("有图片上传失败：拦，提示重试或移除", () => {
     expect(attachmentBlockReason([item({ status: "error", asset: undefined })], true)).toBe(
-      "有图片上传失败，重试或移除后再发送",
+      "有附件上传失败，重试或移除后再发送",
     );
   });
 
@@ -41,7 +42,7 @@ describe("附件托盘：什么时候不能发送", () => {
       item({ id: "a", status: "uploading", asset: undefined }),
       item({ id: "b", status: "error", asset: undefined }),
     ];
-    expect(attachmentBlockReason(items, true)).toBe("有图片上传失败，重试或移除后再发送");
+    expect(attachmentBlockReason(items, true)).toBe("有附件上传失败，重试或移除后再发送");
   });
 
   test("当前模型不能看图而托盘里有图：拦，提示换模型或移除", () => {
@@ -52,6 +53,46 @@ describe("附件托盘：什么时候不能发送", () => {
 
   test("当前模型不能看图但托盘是空的：不拦", () => {
     expect(attachmentBlockReason([], false)).toBeNull();
+  });
+});
+
+describe("附件托盘：文档附件", () => {
+  const doc = (over: Partial<TrayItem> = {}): TrayItem =>
+    item({
+      id: "d1",
+      name: "剧本.txt",
+      kind: "document",
+      size: 11_683,
+      previewUrl: "",
+      asset: { id: "201", url: "/files/s.txt", width: null, height: null, mimeType: "text/plain" },
+      ...over,
+    });
+
+  test("当前模型不能看图，但托盘里只有文档：不拦", () => {
+    expect(attachmentBlockReason([doc()], false)).toBeNull();
+  });
+
+  test("文档和图片混着、模型不能看图：只因为图片拦", () => {
+    expect(attachmentBlockReason([doc(), item()], false)).toBe(
+      "当前模型看不到图片，换一个能看图的模型或移除图片",
+    );
+  });
+
+  test("文档还在上传：拦，提示附件上传中", () => {
+    expect(attachmentBlockReason([doc({ status: "uploading", asset: undefined })], false)).toBe(
+      "附件上传中…",
+    );
+  });
+
+  test("文档素材 id 也进发给后端的内容，和图片按托盘顺序", () => {
+    expect(toAttachmentsPayload([item(), doc()])).toEqual([
+      { asset_id: "101" },
+      { asset_id: "201" },
+    ]);
+  });
+
+  test("图片名额只数图片：托盘里有 3 个文档不占图片的 9 张", () => {
+    expect(imageCount([doc(), doc({ id: "d2" }), item()])).toBe(1);
   });
 });
 

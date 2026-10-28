@@ -14,7 +14,6 @@ import {
 } from "@/api/agent";
 import type {
   AgentAttachmentReq,
-  AgentMode,
   AgentModelDto,
   AgentSessionDto,
   DecideAgentApprovalReq,
@@ -29,6 +28,9 @@ import { activeWatches, ensureNotificationPermission, summarizeWatches } from "@
 
 /** 没有会话时共用的空数组，免得每次渲染都是新引用 */
 const NO_SESSIONS: AgentSessionDto[] = [];
+
+/** 输入框不再提供任务模式切换，一律按全能创作运行（后端的另外几种模式和接口保留） */
+const AGENT_MODE = "all" as const;
 
 /** 可用的 Agent 模型：打开浮窗时拉一次；没有已发布的模型时入口按钮变淡 */
 export function useAgentModels() {
@@ -63,7 +65,6 @@ export function useAgentController({
   const settings = useAgentSettings();
   const sessions = useAgentStore((s) => s.sessionsByCanvas[canvasId]) ?? NO_SESSIONS;
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [mode, setMode] = useState<AgentMode>("all");
   const [sending, setSending] = useState(false);
   /** 用户点 ✕ 隐藏了计划的那几轮运行 */
   const [hiddenPlans, setHiddenPlans] = useState<ReadonlySet<string>>(new Set());
@@ -85,13 +86,10 @@ export function useAgentController({
   const openSession = useCallback((target: AgentSessionDto | null) => {
     setSessionId(target?.id ?? null);
     if (target) {
-      setMode(target.mode);
       void useAgentStore
         .getState()
         .loadLatest(target.id)
         .then(() => useAgentStore.getState().loadWatches(target.id));
-    } else {
-      setMode("all");
     }
   }, []);
 
@@ -162,11 +160,14 @@ export function useAgentController({
   /** 确保有会话可发：没有就按当前模式和模型新建一个 */
   const ensureSession = useCallback(async () => {
     if (session) return session;
-    const created = await createAgentSession(canvasId, { mode, model_key: modelKey || undefined });
+    const created = await createAgentSession(canvasId, {
+      mode: AGENT_MODE,
+      model_key: modelKey || undefined,
+    });
     useAgentStore.getState().upsertSession(created);
     setSessionId(created.id);
     return created;
-  }, [canvasId, mode, modelKey, session]);
+  }, [canvasId, modelKey, session]);
 
   /** 发送：运行中就是插话，否则发起新一轮。返回是否发出去了（没发出去输入框要保留原文） */
   const send = useCallback(
@@ -183,7 +184,7 @@ export function useAgentController({
         const target = await ensureSession();
         const run = await startAgentRun(target.id, {
           message,
-          mode,
+          mode: AGENT_MODE,
           // 选中的节点不再整批带上：要引用哪个，就在输入框里变成消息里的 node: chip
           viewport: getViewport(),
           agent_model_key: modelKey || undefined,
@@ -199,7 +200,7 @@ export function useAgentController({
         setSending(false);
       }
     },
-    [activeRun, ensureSession, getViewport, mode, modelKey],
+    [activeRun, ensureSession, getViewport, modelKey],
   );
 
   const stop = useCallback(async () => {
@@ -326,8 +327,6 @@ export function useAgentController({
     loadingOlder: state.loading === "older",
     olderFailed: state.historyReady && state.loadError,
     loadOlder,
-    mode,
-    setMode,
     modelKey,
     undone,
     send,

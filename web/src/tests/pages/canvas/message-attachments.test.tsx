@@ -39,4 +39,40 @@ describe("消息气泡上方的附件缩略图", () => {
     expect(html([att("1")])).toContain("width:48px");
     expect(html([att("1")], 32)).toContain("width:32px");
   });
+
+  describe("文档附件：文件卡片", () => {
+    const doc = (id: string, over: Partial<AgentAttachmentDto> = {}): AgentAttachmentDto => ({
+      asset_id: id,
+      name: "剧本.txt",
+      mime_type: "text/plain",
+      kind: "document",
+      byte_size: 11_683,
+      url: `/files/u1/${id}.txt`,
+      ...over,
+    });
+
+    test("显示文件名和「TXT · 11.41KB」，是新标签页打开的链接，不是缩略图", () => {
+      const out = html([doc("5")]);
+      expect(out).toContain("剧本.txt");
+      expect(out).toContain("TXT · 11.41KB");
+      expect(out).toContain('href="/files/u1/5.txt"');
+      expect(out).toContain('target="_blank"');
+      expect(out).not.toContain("<img");
+      expect(out).not.toContain("查看大图");
+    });
+
+    test("图片和文档一起：图片仍是缩略图，文档是卡片", () => {
+      const out = html([att("1"), doc("5")]);
+      expect(out).toContain('src="/files/u1/1.png?v=thumb"');
+      expect(out).toContain("TXT · 11.41KB");
+    });
+
+    test("没有 byte_size（数据不全）：只显示类型，不显示大小", () => {
+      expect(html([doc("5", { byte_size: undefined })])).toContain(">TXT<");
+    });
+
+    test("旧事件没有 kind：按图片处理", () => {
+      expect(html([att("1")])).toContain("查看大图");
+    });
+  });
 });

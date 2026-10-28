@@ -2,11 +2,10 @@ import type { Ref } from "react";
 import { motion } from "motion/react";
 import { ArrowUp, Bot, Check, ChevronDown, Square } from "lucide-react";
 
-import type { AgentMode, AgentModelDto } from "@/api/agent/type";
+import type { AgentModelDto } from "@/api/agent/type";
 import { ChromeTooltip } from "@/components/canvas/chrome/chrome";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { VendorAvatar } from "@/components/admin-ui/vendor-avatar";
-import { AGENT_MODES } from "@/constants/agent";
 import { vendorOf } from "@/constants/vendors";
 import { TAP } from "@/lib/motion";
 import { cn } from "@/lib/utils";
@@ -22,51 +21,6 @@ import { ContextRing } from "./context-ring";
 import { ModelPopover } from "./model-popover";
 import { SkillPopover } from "./skill-popover";
 import { AGENT_BAR_BTN, AGENT_POP } from "./styles";
-
-/** 任务模式下拉：向上弹出，每项有名称和一句说明 */
-function ModeMenu({
-  mode,
-  onChange,
-  disabled,
-}: {
-  mode: AgentMode;
-  onChange: (m: AgentMode) => void;
-  disabled: boolean;
-}) {
-  const current = AGENT_MODES.find((m) => m.value === mode) ?? AGENT_MODES[0];
-  return (
-    <Popover>
-      <PopoverTrigger disabled={disabled} className={cn(AGENT_BAR_BTN, "min-w-0 shrink")}>
-        <span className="min-w-0 truncate">{current.label}</span>
-        <ChevronDown className="size-3.5 shrink-0" />
-      </PopoverTrigger>
-      <PopoverContent
-        side="top"
-        align="start"
-        sideOffset={8}
-        className={cn(
-          AGENT_POP,
-          "w-[min(280px,calc(100vw-24px))] origin-bottom-left gap-0.5 p-1.5",
-        )}
-      >
-        {AGENT_MODES.map((m) => (
-          <button
-            key={m.value}
-            type="button"
-            onClick={() => onChange(m.value)}
-            className="hover:bg-chrome-hover focus-visible:ring-node-ring/60 flex items-start gap-2 rounded-lg px-2.5 py-2 text-left outline-none focus-visible:ring-2"
-          >
-            <span className="min-w-0 flex-1">
-              <span className="block text-[13px] font-medium">{m.label}</span>
-              <span className="text-muted-foreground block text-xs leading-snug">{m.hint}</span>
-            </span>
-            {m.value === mode && <Check className="mt-0.5 size-4 shrink-0" />}
-          </button>
-        ))}
-      </PopoverContent>
-    </Popover>
-  );
-}
 
 /** Agent 模型的厂商 logo：配了厂商用 VendorAvatar，没配回退 Bot 图标（不用首字头像，底栏里太抢眼） */
 function ModelLogo({ model, className }: { model?: AgentModelDto; className?: string }) {
@@ -158,8 +112,6 @@ export function AgentComposer({
   onStop,
   busy,
   sending,
-  mode,
-  onModeChange,
   models,
   modelKey,
   context,
@@ -179,8 +131,6 @@ export function AgentComposer({
   busy: boolean;
   /** 正在发出请求 */
   sending: boolean;
-  mode: AgentMode;
-  onModeChange: (mode: AgentMode) => void;
   /** 可选的 Agent 模型和当前选中的 */
   models: AgentModelDto[];
   modelKey: string;
@@ -230,10 +180,9 @@ export function AgentComposer({
       {/* 底栏永远一行：放不下时先截断模型名、再截断模式名，窄到 360px 以下只留模型 logo */}
       <div className="flex min-w-0 flex-nowrap items-center gap-0.5">
         <AttachPopover
-          onInsertText={(t) => handle.current?.insertText(t)}
+          onAttachDocuments={attachments.addDocuments}
           onAttachImages={attachments.add}
         />
-        <ModeMenu mode={mode} onChange={onModeChange} disabled={busy} />
         <span aria-hidden className="bg-foreground/8 mx-1 h-3.5 w-px shrink-0" />
         <ModelPopover onPick={(chip) => handle.current?.insertChip(chip)} />
         <SkillPopover onPick={(chip) => handle.current?.insertChip(chip)} />

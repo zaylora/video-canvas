@@ -277,14 +277,18 @@ export interface AgentAttachmentReq {
   asset_id: string;
 }
 
-/** 用户消息事件（message.user）里记录的图片附件：只存引用和展示信息，不存图片内容 */
+/** 用户消息事件（message.user）里记录的附件（图片或文档）：只存引用和展示信息，不存内容 */
 export interface AgentAttachmentDto {
   /** 素材 ID */
   asset_id: string;
   /** 展示名 */
   name: string;
-  /** 图片类型：png / jpeg / webp / gif */
+  /** MIME 类型：图片 png / jpeg / webp / gif，文档 text/plain / text/markdown */
   mime_type: string;
+  /** 种类；旧事件没有，按图片处理 */
+  kind?: "image" | "document";
+  /** 文件大小（字节）；文档卡片显示用 */
+  byte_size?: number;
   /** 宽高（像素），没有为 0 或缺省 */
   width?: number;
   height?: number;

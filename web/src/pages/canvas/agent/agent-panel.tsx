@@ -139,8 +139,7 @@ export function AgentPanel({
     void animate(scope.current, from, { duration: DURATION.base, ease: EASE_OUT });
   }, [docked, reduce, animate, scope]);
 
-  const send = async (message: string, mode = ctl.mode) => {
-    if (mode !== ctl.mode) ctl.setMode(mode);
+  const send = async (message: string) => {
     const ok = await ctl.send(message, toAttachmentsPayload(attachments.items));
     // 发出去了才清空输入框和托盘；没发出去（接口报错）保留原文和图片，用户可以改了再发
     if (ok) {
@@ -253,8 +252,6 @@ export function AgentPanel({
             onStop={() => void ctl.stop()}
             busy={ctl.busy}
             sending={ctl.sending}
-            mode={ctl.mode}
-            onModeChange={ctl.setMode}
             models={models}
             modelKey={ctl.modelKey}
             context={ctl.context}
