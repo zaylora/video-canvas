@@ -56,6 +56,8 @@ export interface StartRunRequest {
 
 /** 一条消息最多几张图片附件（和 Go、前端一致） */
 const MAX_ATTACHMENTS = 9;
+/** 一条消息最多几个文本文件（.txt / .md），和图片分开计数；精确的分项上限由 Go 校验 */
+const MAX_DOCUMENTS = 3;
 
 /** 首条消息 / 标题：空白压成一个空格，最多 40 字；清空后返回 def */
 export function cleanTitle(raw: string, def: string): string {
@@ -289,19 +291,22 @@ export class AgentApiService {
 
   /** 选本轮用的 Agent 模型：优先 want，其次清单第一个；want 不在已发布清单里是 60002 */
   /**
-   * 校验消息的图片附件：格式、数量、当前模型能不能看图都在这里先拦住（不创建运行），
-   * 素材的归属、图片格式和大小再交给 Go。没带附件就什么都不做。
+   * 校验消息的附件（图片和文本文件）：格式、总数在这里先拦住（不创建运行），素材的归属、格式、大小、分项数量交给 Go；
+   * 里面有图片而当前模型不能看图时拒绝（只有文本文件不要求能看图）。没带附件就什么都不做。
    */
   async #checkAttachments(userId: string, raw: unknown, modelKey: string): Promise<AttachmentCheck[]> {
     if (raw === undefined || raw === null) return [];
     if (!Array.isArray(raw)) throw Err.invalidParams("附件格式不对");
     if (raw.length === 0) return [];
-    if (raw.length > MAX_ATTACHMENTS) throw Err.invalidParams(`一条消息最多 ${MAX_ATTACHMENTS} 张图片`);
+    if (raw.length > MAX_ATTACHMENTS + MAX_DOCUMENTS) throw Err.invalidParams(`一条消息最多 ${MAX_ATTACHMENTS} 张图片和 ${MAX_DOCUMENTS} 个文本文件`);
     const ids = raw.map((a) => (a && typeof a === "object" && typeof (a as { asset_id?: unknown }).asset_id === "string" ? (a as { asset_id: string }).asset_id.trim() : ""));
     if (ids.some((id) => !id || id.length > 32)) throw Err.invalidParams("附件格式不对");
-    const model = (await this.models()).find((m) => m.key === modelKey);
-    if (!model?.vision) throw Err.invalidParams("当前模型不能看图，换一个能看图的模型或移除图片");
-    return this.#platform(() => this.#o.platform.checkAttachments(userId, ids));
+    const checked = await this.#platform(() => this.#o.platform.checkAttachments(userId, ids));
+    if (checked.some((a) => a.kind !== "document")) {
+      const model = (await this.models()).find((m) => m.key === modelKey);
+      if (!model?.vision) throw Err.invalidParams("当前模型不能看图，换一个能看图的模型或移除图片");
+    }
+    return checked;
   }
 
   async #pickModel(want: string): Promise<string> {

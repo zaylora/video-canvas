@@ -31,11 +31,34 @@ test("没带附件：不问 Go 校验素材", () =>
     assert.ok(!e.go.seen.some((s) => s.path.endsWith("/attachments/check")));
   }));
 
-test("当前模型不能看图：带附件被拒（10001），不创建运行也不问 Go", () =>
+test("当前模型不能看图：带图片附件被拒（10001），不创建运行", () =>
   withApi({ turns: [{ text: "好" }], models: MODELS }, async (api, e) => {
     await assert.rejects(api.startRun("1", e.sessionId, { message: "看图", agent_model_key: "deepseek", attachments: [{ asset_id: "11" }] }), invalid(/不能看图/));
-    assert.ok(!e.go.seen.some((s) => s.path.endsWith("/attachments/check")));
     assert.deepEqual(e.types(), [], "没有创建运行，也没有事件");
+  }));
+
+test("文本文件附件不需要模型能看图：不能看图的模型照样收下，全文交给它", () =>
+  withApi({
+    turns: [{ text: "读完了" }], models: MODELS,
+    checkAttachments: (body) => ({ attachments: (body.asset_ids as string[]).map((id) => ({ asset_id: id, kind: "document", name: "_剧本原文.txt", mime_type: "text/plain", byte_size: 16, url: `/files/u1/${id}.txt`, text: "第一场 雨夜" })) }),
+  }, async (api, e) => {
+    const run = await api.startRun("1", e.sessionId, { message: "按剧本拆", agent_model_key: "deepseek", attachments: [{ asset_id: "7" }] });
+    assert.equal(run.status, "queued");
+    await e.engine.idle();
+    assert.equal(e.persisted("message.user")[0].attachments[0].kind, "document");
+    assert.match(JSON.stringify(e.go.modelRequests[0].body.messages), /第一场 雨夜/);
+  }));
+
+test("文本文件和图片混着发，模型不能看图：只要里面有图片就被拒", () =>
+  withApi({
+    turns: [{ text: "好" }], models: MODELS,
+    checkAttachments: () => ({ attachments: [
+      { asset_id: "7", kind: "document", name: "a.txt", mime_type: "text/plain", url: "/f/7", text: "x" },
+      { asset_id: "11", kind: "image", name: "图片 11", mime_type: "image/png", url: "/f/11", image: { mime_type: "image/png", data: "QUJD" } },
+    ] }),
+  }, async (api, e) => {
+    await assert.rejects(api.startRun("1", e.sessionId, { message: "x", agent_model_key: "deepseek", attachments: [{ asset_id: "7" }, { asset_id: "11" }] }), invalid(/不能看图/));
+    assert.deepEqual(e.types(), []);
   }));
 
 test("不指定模型时按清单第一个算能不能看图", () =>
@@ -43,10 +66,10 @@ test("不指定模型时按清单第一个算能不能看图", () =>
     await assert.rejects(api.startRun("1", e.sessionId, { message: "看图", attachments: [{ asset_id: "11" }] }), invalid(/不能看图/));
   }));
 
-test("附件数量超过 9、格式不对、素材 id 不是字符串：10001", () =>
+test("附件总数超过 12（9 张图片 + 3 个文本文件）、格式不对、素材 id 不是字符串：10001", () =>
   withApi({ turns: [{ text: "好" }], models: MODELS }, async (api, e) => {
-    const ten = Array.from({ length: 10 }, (_, i) => ({ asset_id: String(i + 1) }));
-    await assert.rejects(api.startRun("1", e.sessionId, { message: "x", attachments: ten }), invalid(/最多 9 张/));
+    const many = Array.from({ length: 13 }, (_, i) => ({ asset_id: String(i + 1) }));
+    await assert.rejects(api.startRun("1", e.sessionId, { message: "x", attachments: many }), invalid(/最多 9 张图片和 3 个文本文件/));
     await assert.rejects(api.startRun("1", e.sessionId, { message: "x", attachments: "abc" as never }), invalid(/附件/));
     await assert.rejects(api.startRun("1", e.sessionId, { message: "x", attachments: [{ asset_id: 5 as never }] }), invalid(/附件/));
     await assert.rejects(api.startRun("1", e.sessionId, { message: "x", attachments: [null as never] }), invalid(/附件/));
