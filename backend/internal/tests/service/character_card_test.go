@@ -32,7 +32,6 @@ type fakeCharacterCards struct {
 	deleteErr error
 	getErr    error
 	countErr  error
-	nameErr   error
 }
 
 func newFakeCharacterCards() *fakeCharacterCards {
@@ -54,7 +53,7 @@ func (f *fakeCharacterCards) List(_ context.Context, userID uint64, q string) ([
 	}
 	out := make([]model.CharacterCard, 0, len(f.cards))
 	for _, c := range f.cards {
-		if c.UserID == userID && strings.Contains(strings.ToLower(c.Name), strings.ToLower(q)) {
+		if c.UserID == userID && c.DramaID == nil && strings.Contains(strings.ToLower(c.Name), strings.ToLower(q)) {
 			out = append(out, *c)
 		}
 	}
@@ -88,18 +87,6 @@ func (f *fakeCharacterCards) GetByID(_ context.Context, userID, id uint64) (*mod
 
 func (f *fakeCharacterCards) Count(_ context.Context, _ uint64) (int64, error) {
 	return f.count, f.countErr
-}
-
-func (f *fakeCharacterCards) NameExists(_ context.Context, userID uint64, name string, excludeID uint64) (bool, error) {
-	if f.nameErr != nil {
-		return false, f.nameErr
-	}
-	for _, c := range f.cards {
-		if c.UserID == userID && c.ID != excludeID && strings.EqualFold(c.Name, name) {
-			return true, nil
-		}
-	}
-	return false, nil
 }
 
 func (f *fakeCharacterCards) Create(_ context.Context, card *model.CharacterCard) error {
@@ -197,19 +184,23 @@ func TestCharacterCardService_Create(t *testing.T) {
 		req  model.CreateCharacterReq
 		code int // 0 表示期望成功
 	}{
-		{"名称为空返回 66005", model.CreateCharacterReq{Name: "  ", AvatarAssetID: avatarAsset}, errcode.ErrCharacterInvalid.Code},
-		{"名称过长返回 66005", model.CreateCharacterReq{Name: strings.Repeat("名", 65), AvatarAssetID: avatarAsset}, errcode.ErrCharacterInvalid.Code},
-		{"设定过长返回 66005", model.CreateCharacterReq{Name: "林晚", Description: strings.Repeat("字", 501), AvatarAssetID: avatarAsset}, errcode.ErrCharacterInvalid.Code},
-		{"主图缺失返回 66003", model.CreateCharacterReq{Name: "林晚"}, errcode.ErrCharacterAssetInvalid.Code},
-		{"主图不是图片返回 66003", model.CreateCharacterReq{Name: "林晚", AvatarAssetID: videoAsset}, errcode.ErrCharacterAssetInvalid.Code},
-		{"主图属于他人返回 66003", model.CreateCharacterReq{Name: "林晚", AvatarAssetID: foreignAsset}, errcode.ErrCharacterAssetInvalid.Code},
-		{"补充图重复返回 66005", model.CreateCharacterReq{Name: "林晚", AvatarAssetID: avatarAsset, ExtraAssetIDs: []uint64{extraAsset, extraAsset}}, errcode.ErrCharacterInvalid.Code},
-		{"补充图含主图返回 66005", model.CreateCharacterReq{Name: "林晚", AvatarAssetID: avatarAsset, ExtraAssetIDs: []uint64{avatarAsset}}, errcode.ErrCharacterInvalid.Code},
-		{"补充图超过 4 张返回 66005", model.CreateCharacterReq{Name: "林晚", AvatarAssetID: avatarAsset, ExtraAssetIDs: []uint64{extraAsset, 6, 7, 8, 9}}, errcode.ErrCharacterInvalid.Code},
-		{"补充图不是图片返回 66003", model.CreateCharacterReq{Name: "林晚", AvatarAssetID: avatarAsset, ExtraAssetIDs: []uint64{voiceAsset}}, errcode.ErrCharacterAssetInvalid.Code},
-		{"补充图属于他人返回 66003", model.CreateCharacterReq{Name: "林晚", AvatarAssetID: avatarAsset, ExtraAssetIDs: []uint64{foreignAsset}}, errcode.ErrCharacterAssetInvalid.Code},
-		{"声音不是音频返回 66003", model.CreateCharacterReq{Name: "林晚", AvatarAssetID: avatarAsset, VoiceAssetID: new(extraAsset)}, errcode.ErrCharacterAssetInvalid.Code},
-		{"声音属于他人返回 66003", model.CreateCharacterReq{Name: "林晚", AvatarAssetID: avatarAsset, VoiceAssetID: new(foreignAsset)}, errcode.ErrCharacterAssetInvalid.Code},
+		{"名称为空返回 66005", model.CreateCharacterReq{Name: "  ", AvatarAssetID: new(uint64(avatarAsset))}, errcode.ErrCharacterInvalid.Code},
+		{"名称过长返回 66005", model.CreateCharacterReq{Name: strings.Repeat("名", 65), AvatarAssetID: new(uint64(avatarAsset))}, errcode.ErrCharacterInvalid.Code},
+		{"设定过长返回 66005", model.CreateCharacterReq{Name: "林晚", Description: strings.Repeat("字", 501), AvatarAssetID: new(uint64(avatarAsset))}, errcode.ErrCharacterInvalid.Code},
+		{"主图缺失允许创建", model.CreateCharacterReq{Name: "林晚"}, 0},
+		{"主图不是图片返回 66003", model.CreateCharacterReq{Name: "林晚", AvatarAssetID: new(uint64(videoAsset))}, errcode.ErrCharacterAssetInvalid.Code},
+		{"主图属于他人返回 66003", model.CreateCharacterReq{Name: "林晚", AvatarAssetID: new(uint64(foreignAsset))}, errcode.ErrCharacterAssetInvalid.Code},
+		{"补充图重复返回 66005", model.CreateCharacterReq{Name: "林晚", AvatarAssetID: new(uint64(avatarAsset)), ExtraAssetIDs: []uint64{extraAsset, extraAsset}}, errcode.ErrCharacterInvalid.Code},
+		{"补充图含主图返回 66005", model.CreateCharacterReq{Name: "林晚", AvatarAssetID: new(uint64(avatarAsset)), ExtraAssetIDs: []uint64{avatarAsset}}, errcode.ErrCharacterInvalid.Code},
+		{"补充图超过 4 张返回 66005", model.CreateCharacterReq{Name: "林晚", AvatarAssetID: new(uint64(avatarAsset)), ExtraAssetIDs: []uint64{extraAsset, 6, 7, 8, 9}}, errcode.ErrCharacterInvalid.Code},
+		{"补充图不是图片返回 66003", model.CreateCharacterReq{Name: "林晚", AvatarAssetID: new(uint64(avatarAsset)), ExtraAssetIDs: []uint64{voiceAsset}}, errcode.ErrCharacterAssetInvalid.Code},
+		{"补充图属于他人返回 66003", model.CreateCharacterReq{Name: "林晚", AvatarAssetID: new(uint64(avatarAsset)), ExtraAssetIDs: []uint64{foreignAsset}}, errcode.ErrCharacterAssetInvalid.Code},
+		{"声音不是音频返回 66003", model.CreateCharacterReq{Name: "林晚", AvatarAssetID: new(uint64(avatarAsset)), VoiceAssetID: new(extraAsset)}, errcode.ErrCharacterAssetInvalid.Code},
+		{"声音属于他人返回 66003", model.CreateCharacterReq{Name: "林晚", AvatarAssetID: new(uint64(avatarAsset)), VoiceAssetID: new(foreignAsset)}, errcode.ErrCharacterAssetInvalid.Code},
+		{"造型名过长", model.CreateCharacterReq{Name: "林晚", LookName: strings.Repeat("型", 65)}, errcode.ErrCharacterInvalid.Code},
+		{"音色描述过长", model.CreateCharacterReq{Name: "林晚", VoicePrompt: strings.Repeat("音", 501)}, errcode.ErrCharacterInvalid.Code},
+		{"无主图仍校验补充图归属", model.CreateCharacterReq{Name: "林晚", ExtraAssetIDs: []uint64{foreignAsset}}, errcode.ErrCharacterAssetInvalid.Code},
+		{"无主图仍校验声音种类", model.CreateCharacterReq{Name: "林晚", VoiceAssetID: new(extraAsset)}, errcode.ErrCharacterAssetInvalid.Code},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -226,10 +217,7 @@ func TestCharacterCardService_Create(t *testing.T) {
 
 	t.Run("成功：名称去首尾空白并返回素材视图", func(t *testing.T) {
 		svc, cards, _ := newCharacterSvc(t)
-		v, err := svc.Create(context.Background(), 1, &model.CreateCharacterReq{
-			Name: "  林晚 ", Description: "28 岁，齐耳短发", AvatarAssetID: avatarAsset,
-			ExtraAssetIDs: []uint64{extraAsset}, VoiceAssetID: new(voiceAsset),
-		})
+		v, err := svc.Create(context.Background(), 1, &model.CreateCharacterReq{Name: "  林晚 ", Description: "28 岁，齐耳短发", AvatarAssetID: new(uint64(avatarAsset)), ExtraAssetIDs: []uint64{extraAsset}, VoiceAssetID: new(voiceAsset)})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -244,24 +232,29 @@ func TestCharacterCardService_Create(t *testing.T) {
 		}
 	})
 
-	t.Run("名称重复（忽略大小写）返回 66001", func(t *testing.T) {
+	t.Run("名称重复（忽略大小写）允许共存", func(t *testing.T) {
 		svc, cards, _ := newCharacterSvc(t)
-		cards.put(&model.CharacterCard{UserID: 1, Name: "LinWan", AvatarAssetID: avatarAsset})
-		_, err := svc.Create(context.Background(), 1, &model.CreateCharacterReq{Name: "linwan", AvatarAssetID: avatarAsset})
-		wantCharacterCode(t, err, errcode.ErrCharacterNameDup.Code)
+		cards.put(&model.CharacterCard{UserID: 1, Name: "LinWan", AvatarAssetID: new(uint64(avatarAsset))})
+		v, err := svc.Create(context.Background(), 1, &model.CreateCharacterReq{Name: "linwan", AvatarAssetID: new(uint64(avatarAsset))})
+		if err != nil || v == nil || len(cards.cards) != 2 {
+			t.Fatalf("同名卡应共存：%+v %v", v, err)
+		}
 	})
 
-	t.Run("并发撞唯一索引同样返回 66001", func(t *testing.T) {
+	t.Run("创建仓储错误原样返回", func(t *testing.T) {
 		svc, cards, _ := newCharacterSvc(t)
-		cards.createErr = repository.ErrDuplicate
-		_, err := svc.Create(context.Background(), 1, &model.CreateCharacterReq{Name: "林晚", AvatarAssetID: avatarAsset})
-		wantCharacterCode(t, err, errcode.ErrCharacterNameDup.Code)
+		boom := errors.New("create failed")
+		cards.createErr = boom
+		_, err := svc.Create(context.Background(), 1, &model.CreateCharacterReq{Name: "林晚"})
+		if !errors.Is(err, boom) {
+			t.Fatalf("创建错误没有保留：%v", err)
+		}
 	})
 
 	t.Run("已有 100 张返回 66002", func(t *testing.T) {
 		svc, cards, _ := newCharacterSvc(t)
 		cards.count = 100
-		_, err := svc.Create(context.Background(), 1, &model.CreateCharacterReq{Name: "林晚", AvatarAssetID: avatarAsset})
+		_, err := svc.Create(context.Background(), 1, &model.CreateCharacterReq{Name: "林晚", AvatarAssetID: new(uint64(avatarAsset))})
 		wantCharacterCode(t, err, errcode.ErrCharacterLimit.Code)
 	})
 
@@ -269,7 +262,7 @@ func TestCharacterCardService_Create(t *testing.T) {
 		svc, cards, _ := newCharacterSvc(t)
 		boom := errors.New("db down")
 		cards.countErr = boom
-		if _, err := svc.Create(context.Background(), 1, &model.CreateCharacterReq{Name: "林晚", AvatarAssetID: avatarAsset}); !errors.Is(err, boom) {
+		if _, err := svc.Create(context.Background(), 1, &model.CreateCharacterReq{Name: "林晚", AvatarAssetID: new(uint64(avatarAsset))}); !errors.Is(err, boom) {
 			t.Fatalf("期望透传仓储错误，实际：%v", err)
 		}
 	})
@@ -280,10 +273,7 @@ func TestCharacterCardService_Update(t *testing.T) {
 	seed := func(t *testing.T) (*service.CharacterCardService, *fakeCharacterCards, *model.CharacterCard) {
 		t.Helper()
 		svc, cards, _ := newCharacterSvc(t)
-		card := cards.put(&model.CharacterCard{
-			UserID: 1, Name: "林晚", Description: "旧设定", AvatarAssetID: avatarAsset,
-			ExtraAssetIDs: []uint64{extraAsset}, VoiceAssetID: new(voiceAsset),
-		})
+		card := cards.put(&model.CharacterCard{UserID: 1, Name: "林晚", Description: "旧设定", AvatarAssetID: new(uint64(avatarAsset)), ExtraAssetIDs: []uint64{extraAsset}, VoiceAssetID: new(voiceAsset)})
 		return svc, cards, card
 	}
 
@@ -339,11 +329,11 @@ func TestCharacterCardService_Update(t *testing.T) {
 		wantCharacterCode(t, err, errcode.ErrCharacterInvalid.Code)
 	})
 
-	t.Run("改成别人的名称返回 66001，只改大小写允许", func(t *testing.T) {
+	t.Run("改成其他角色名称允许，只改大小写允许", func(t *testing.T) {
 		svc, cards, card := seed(t)
-		cards.put(&model.CharacterCard{UserID: 1, Name: "周行", AvatarAssetID: avatarAsset})
-		if _, err := svc.Update(context.Background(), 1, card.ID, &model.UpdateCharacterReq{Name: new("周行")}); err == nil {
-			t.Fatal("期望重名被拒绝")
+		cards.put(&model.CharacterCard{UserID: 1, Name: "周行", AvatarAssetID: new(uint64(avatarAsset))})
+		if _, err := svc.Update(context.Background(), 1, card.ID, &model.UpdateCharacterReq{Name: new("周行")}); err != nil {
+			t.Fatalf("同名更新应成功：%v", err)
 		}
 		if _, err := svc.Update(context.Background(), 1, card.ID, &model.UpdateCharacterReq{Name: new("林晚")}); err != nil {
 			t.Fatalf("只改大小写或改成原名不应失败：%v", err)
@@ -375,11 +365,14 @@ func TestCharacterCardService_Update(t *testing.T) {
 		wantCharacterCode(t, err, errcode.ErrCharacterNotFound.Code)
 	})
 
-	t.Run("并发重名返回 66001", func(t *testing.T) {
+	t.Run("更新仓储错误原样返回", func(t *testing.T) {
 		svc, cards, card := seed(t)
-		cards.updateErr = repository.ErrDuplicate
+		boom := errors.New("update failed")
+		cards.updateErr = boom
 		_, err := svc.Update(context.Background(), 1, card.ID, &model.UpdateCharacterReq{})
-		wantCharacterCode(t, err, errcode.ErrCharacterNameDup.Code)
+		if !errors.Is(err, boom) {
+			t.Fatalf("更新错误没有保留：%v", err)
+		}
 	})
 }
 
@@ -388,15 +381,9 @@ func TestCharacterCardService_ReadAndViews(t *testing.T) {
 	seed := func(t *testing.T) (*service.CharacterCardService, *fakeCharacterCards, *fakeCharacterAssets, *model.CharacterCard) {
 		t.Helper()
 		svc, cards, assets := newCharacterSvc(t)
-		full := cards.put(&model.CharacterCard{
-			UserID: 1, Name: "林晚", AvatarAssetID: avatarAsset,
-			ExtraAssetIDs: []uint64{extraAsset}, VoiceAssetID: new(voiceAsset),
-		})
-		cards.put(&model.CharacterCard{
-			UserID: 1, Name: "周行", AvatarAssetID: avatarAsset,
-			ExtraAssetIDs: []uint64{99}, VoiceAssetID: new(uint64(98)),
-		})
-		cards.put(&model.CharacterCard{UserID: 2, Name: "别人", AvatarAssetID: avatarAsset})
+		full := cards.put(&model.CharacterCard{UserID: 1, Name: "林晚", AvatarAssetID: new(uint64(avatarAsset)), ExtraAssetIDs: []uint64{extraAsset}, VoiceAssetID: new(voiceAsset)})
+		cards.put(&model.CharacterCard{UserID: 1, Name: "周行", AvatarAssetID: new(uint64(avatarAsset)), ExtraAssetIDs: []uint64{99}, VoiceAssetID: new(uint64(98))})
+		cards.put(&model.CharacterCard{UserID: 2, Name: "别人", AvatarAssetID: new(uint64(avatarAsset))})
 		return svc, cards, assets, full
 	}
 
@@ -486,7 +473,7 @@ func TestCharacterCardService_ReadAndViews(t *testing.T) {
 func TestCharacterCardService_Delete(t *testing.T) {
 	t.Run("删除成功后详情返回 66004", func(t *testing.T) {
 		svc, cards, _ := newCharacterSvc(t)
-		card := cards.put(&model.CharacterCard{UserID: 1, Name: "林晚", AvatarAssetID: avatarAsset})
+		card := cards.put(&model.CharacterCard{UserID: 1, Name: "林晚", AvatarAssetID: new(uint64(avatarAsset))})
 		if err := svc.Delete(context.Background(), 1, card.ID); err != nil {
 			t.Fatal(err)
 		}
@@ -496,7 +483,7 @@ func TestCharacterCardService_Delete(t *testing.T) {
 
 	t.Run("他人的卡返回 66004 且不删除", func(t *testing.T) {
 		svc, cards, _ := newCharacterSvc(t)
-		card := cards.put(&model.CharacterCard{UserID: 2, Name: "别人", AvatarAssetID: avatarAsset})
+		card := cards.put(&model.CharacterCard{UserID: 2, Name: "别人", AvatarAssetID: new(uint64(avatarAsset))})
 		wantCharacterCode(t, svc.Delete(context.Background(), 1, card.ID), errcode.ErrCharacterNotFound.Code)
 		if cards.cards[card.ID] == nil {
 			t.Fatal("他人的角色卡被删除了")
@@ -511,4 +498,47 @@ func TestCharacterCardService_Delete(t *testing.T) {
 			t.Fatalf("期望透传仓储错误，实际：%v", err)
 		}
 	})
+}
+
+func TestCharacterCardService_DramaFieldsAndNullableAvatar(t *testing.T) {
+	svc, cards, assets := newCharacterSvc(t)
+	ctx := context.Background()
+	v, err := svc.Create(ctx, 1, &model.CreateCharacterReq{Name: "林晚", LookName: strings.Repeat("型", 64), VoicePrompt: strings.Repeat("音", 500)})
+	if err != nil || v.Avatar != nil || v.DramaID != nil || len([]rune(v.LookName)) != 64 || len([]rune(v.VoicePrompt)) != 500 {
+		t.Fatalf("无主图及边界长度应有效：%+v %v", v, err)
+	}
+	id := uint64(v.ID)
+	v, err = svc.Update(ctx, 1, id, &model.UpdateCharacterReq{AvatarAssetID: []byte("1"), LookName: new("童年"), VoicePrompt: new("清亮少年音")})
+	if err != nil || v.Avatar == nil || v.LookName != "童年" || v.VoicePrompt != "清亮少年音" {
+		t.Fatalf("生成后写回主图和角色字段失败：%+v %v", v, err)
+	}
+	delete(assets.assets, avatarAsset)
+	v, err = svc.Update(ctx, 1, id, &model.UpdateCharacterReq{AvatarAssetID: []byte("null")})
+	if err != nil || v.Avatar != nil || cards.cards[id].AvatarAssetID != nil {
+		t.Fatalf("清空失效主图失败：%+v %v", v, err)
+	}
+	for _, req := range []*model.UpdateCharacterReq{
+		{LookName: new(strings.Repeat("型", 65))},
+		{VoicePrompt: new(strings.Repeat("音", 501))},
+	} {
+		_, err := svc.Update(ctx, 1, id, req)
+		wantCharacterCode(t, err, errcode.ErrCharacterInvalid.Code)
+	}
+	for _, raw := range []string{`"bad"`, "0", "false"} {
+		_, err := svc.Update(ctx, 1, id, &model.UpdateCharacterReq{AvatarAssetID: []byte(raw)})
+		wantCharacterCode(t, err, errcode.ErrInvalidParams.Code)
+	}
+	for _, raw := range []string{"3", "4", "5", "999"} {
+		_, err := svc.Update(ctx, 1, id, &model.UpdateCharacterReq{AvatarAssetID: []byte(raw)})
+		wantCharacterCode(t, err, errcode.ErrCharacterAssetInvalid.Code)
+	}
+	drama := cards.put(&model.CharacterCard{UserID: 1, Name: "短剧角色", DramaID: new(uint64(42))})
+	list, err := svc.List(ctx, 1, "")
+	if err != nil || len(list.Items) != 1 || uint64(list.Items[0].ID) != id {
+		t.Fatalf("默认列表应排除短剧：%+v %v", list, err)
+	}
+	list, err = svc.ListByIDs(ctx, 1, []uint64{drama.ID})
+	if err != nil || len(list.Items) != 1 || list.Items[0].DramaID == nil || uint64(*list.Items[0].DramaID) != 42 || list.Items[0].Avatar != nil {
+		t.Fatalf("ids 应包含无主图短剧角色：%+v %v", list, err)
+	}
 }

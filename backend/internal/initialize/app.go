@@ -165,6 +165,13 @@ func NewApp(cfg *config.Config) (*App, error) {
 		Covers:      canvasProjectRepo,                                  // 任务成功时把第一张图写成画布封面
 	})
 
+	// 短剧流水线复用文本插件与账户计价；拆解写画布与角色卡由同一事务提交。
+	dramaRepo := repository.NewDramaRepository(db)
+	dramaCanvasSvc := service.NewDramaCanvasService(repository.NewDramaCanvasRepository(db), hub)
+	dramaSvc := service.NewDramaService(service.DramaDeps{
+		Repo: dramaRepo, Registry: aiCfgSvc, Executor: executor, Canvas: dramaCanvasSvc, Broadcaster: hub, Credits: settingsSvc,
+	})
+
 	// 配置服务反向依赖插件宿主与任务服务，所以组装完后再注入。
 	aiCfgSvc.SetDryRunner(executor)
 	aiCfgSvc.SetTestTaskCreator(taskSvc)
@@ -213,14 +220,15 @@ func NewApp(cfg *config.Config) (*App, error) {
 
 	// 生成任务队列（River）：任务调度、并发、重试之外的实例心跳与救回都交给它；业务处理仍是 worker。
 	// 入队和后台操作总是可用，是否在本实例执行任务由 ai.worker.enabled 决定（API-only 实例关闭它）。
-	taskQueue, queueConn, err := newTaskQueue(cfg, db, taskSvc, executor, assetSvc, settingsSvc)
+	taskQueue, queueConn, err := newTaskQueue(cfg, db, taskSvc, executor, assetSvc, settingsSvc, dramaSvc)
 	if err != nil {
 		stopRunner(runnerStop)
 		closeRedis(rdb)
 		closeDB(db)
 		return nil, err
 	}
-	taskRepo.SetEnqueuer(taskQueue) // 创建任务的事务里入队：任务、积分冻结、job 一起提交
+	taskRepo.SetEnqueuer(taskQueue)  // 创建任务的事务里入队：任务、积分冻结、job 一起提交
+	dramaRepo.SetEnqueuer(taskQueue) // 短剧项目、流水线任务与 River job 在业务事务里一并提交。
 	riverUI, err := taskQueue.UIHandler(riverUIPrefix)
 	if err != nil {
 		queueConn.Close()
@@ -276,6 +284,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 		User:          handler.NewUserHandler(userSvc),
 		Me:            handler.NewMeHandler(meSvc),
 		CanvasProject: handler.NewCanvasProjectHandler(canvasProjectSvc),
+		Drama:         handler.NewDramaHandler(dramaSvc),
 		CanvasTransfer: handler.NewCanvasTransferHandler(service.NewCanvasTransferService(service.CanvasTransferDeps{
 			Canvases: canvasProjectRepo, Assets: assetSvc, Characters: characterCardRepo,
 			Tx: repository.NewCanvasTransferRepository(db), AppVersion: version.Version,

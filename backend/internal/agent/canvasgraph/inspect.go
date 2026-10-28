@@ -18,7 +18,7 @@ func ImageRefs(g *Graph, ids []string) ([]ImageRef, error) {
 		switch {
 		case n == nil:
 			return nil, fmt.Errorf("%w：节点 %q 不存在", ErrInvalid, id)
-		case n.IsGroup() || n.Kind() != KindImage:
+		case n.IsGroup() || generationKind(n.Kind()) != KindImage:
 			return nil, fmt.Errorf("%w：节点 %q（%s）不是图片节点，只能查看图片节点的内容", ErrInvalid, id, n.Label())
 		}
 		asset := str(n.Data()["assetId"])

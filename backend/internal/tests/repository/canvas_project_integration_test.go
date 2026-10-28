@@ -97,3 +97,33 @@ func TestCanvasProjectRepository_Update(t *testing.T) {
 		t.Fatalf("不存在的画布应返回 ErrNotFound：saved=%+v err=%v", saved, err)
 	}
 }
+
+func TestCanvasProjectRepository_ExcludesDramaFromLists(t *testing.T) {
+	db := isolatedDB(t, &model.CanvasProject{}, &model.Asset{})
+	r := NewCanvasProjectRepository(db)
+	ctx := context.Background()
+	personal := &model.CanvasProject{UserID: 1, Title: "普通画布", PayloadJSON: []byte(`{}`)}
+	drama := &model.CanvasProject{UserID: 1, DramaID: new(uint64(42)), Title: "短剧画布", PayloadJSON: []byte(`{}`)}
+	for _, p := range []*model.CanvasProject{personal, drama} {
+		if err := r.Create(ctx, p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, limit := range []int{1, 20} {
+		items, total, err := r.List(ctx, 1, "画布", 0, limit)
+		if err != nil || total != 1 || len(items) != 1 || items[0].ID != personal.ID {
+			t.Fatalf("列表与最近画布应排除短剧：%+v %d %v", items, total, err)
+		}
+	}
+	items, total, err := r.List(ctx, 1, "短剧", 0, 20)
+	if err != nil || total != 0 || len(items) != 0 {
+		t.Fatalf("关键词也不能暴露短剧画布：%+v %d %v", items, total, err)
+	}
+	got, err := r.GetByID(ctx, 1, drama.ID)
+	if err != nil || got.ID != drama.ID {
+		t.Fatalf("短剧画布详情应照常可读：%+v %v", got, err)
+	}
+	if _, err := r.Update(ctx, 1, drama.ID, got.Revision, map[string]any{"title": "短剧画布更新"}); err != nil {
+		t.Fatalf("短剧画布应照常可写：%v", err)
+	}
+}

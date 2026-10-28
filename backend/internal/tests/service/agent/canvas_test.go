@@ -706,3 +706,54 @@ func TestAgentApplyOps_ConcurrentDuplicatesWriteOnce(t *testing.T) {
 		}
 	}
 }
+
+func TestAgentDramaNodeRetainsReadIdempotencyUndoAndOwnership(t *testing.T) {
+	e := newAgentCanvasEnv(t)
+	e.repo.canvas.PayloadJSON = datatypes.JSON(`{"nodes":[{"id":"role","type":"canvas","position":{"x":0,"y":0},"data":{"kind":"character","characterId":"0000000000000064","label":"角色","params":{"prompt":"原提示词"},"drama":{"type":"character","name":"林川","look":"童年","episodes":[1]}}}],"edges":[]}`)
+	ctx := context.Background()
+	ops := []byte(`[{"op":"update_node","id":"role","prompt":"新的形象提示词"}]`)
+	if _, err := e.svc.ApplyOps(ctx, e.run, "unread", ops); err == nil {
+		t.Fatal("character nodes must retain Agent read-before-write requirement")
+	} else {
+		var business *errcode.Error
+		if !errors.As(err, &business) || business.Code != errcode.ErrAgentNodeUnread.Code {
+			t.Fatalf("unread error=%v", err)
+		}
+	}
+	if _, err := e.svc.ReadDetail(ctx, e.run, []string{"role"}); err != nil {
+		t.Fatal(err)
+	}
+	keyed := WithIdempotencyKey(ctx, "role-edit")
+	first, err := e.svc.ApplyOps(keyed, e.run, "edit", ops)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replayed, err := e.svc.ApplyOps(keyed, e.run, "edit-replay", ops)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.MutationID != replayed.MutationID || e.repo.commits != 1 || len(e.bc.msgs) != 1 {
+		t.Fatalf("replay committed twice: first=%+v replay=%+v", first, replayed)
+	}
+	n := e.payload(t).Node("role")
+	if n.Data()["characterId"] != "0000000000000064" || n.Data()["drama"].(map[string]any)["name"] != "林川" {
+		t.Fatalf("Agent edit overwrote drama binding: %+v", n)
+	}
+	if _, err := e.svc.UndoRun(ctx, e.run); err != nil {
+		t.Fatal(err)
+	}
+	n = e.payload(t).Node("role")
+	if n.Data()["params"].(map[string]any)["prompt"] != "原提示词" || n.Data()["characterId"] != "0000000000000064" {
+		t.Fatalf("undo failed to preserve role: %+v", n)
+	}
+	foreign := *e.run
+	foreign.UserID = 2
+	if _, err := e.svc.ApplyOps(ctx, &foreign, "foreign", ops); err == nil {
+		t.Fatal("public canvas entry bypassed Agent ownership")
+	} else {
+		var business *errcode.Error
+		if !errors.As(err, &business) || business.Code != errcode.ErrCanvasNotFound.Code {
+			t.Fatalf("ownership error=%v", err)
+		}
+	}
+}

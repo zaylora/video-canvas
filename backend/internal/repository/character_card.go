@@ -20,9 +20,9 @@ func NewCharacterCardRepository(db *gorm.DB) *CharacterCardRepository {
 	return &CharacterCardRepository{db: db}
 }
 
-// List 按用户查询角色卡，可按名称做字面量 ILIKE 包含搜索；结果按更新时间、id 倒序。
+// List 按用户查询不属于短剧的角色卡，可按名称做字面量 ILIKE 包含搜索；结果按更新时间、id 倒序。
 func (r *CharacterCardRepository) List(ctx context.Context, userID uint64, q string) ([]model.CharacterCard, error) {
-	db := r.db.WithContext(ctx).Where("user_id = ?", userID)
+	db := r.db.WithContext(ctx).Where("user_id = ? AND drama_id IS NULL", userID)
 	if q != "" {
 		db = db.Where("name ILIKE ?", "%"+escapeLike(q)+"%")
 	}
@@ -55,44 +55,27 @@ func (r *CharacterCardRepository) GetByID(ctx context.Context, userID, id uint64
 	return &card, nil
 }
 
-// Count 统计用户的角色卡数量。
+// Count 统计用户不属于短剧的角色卡数量，用于个人角色库的数量上限。
 func (r *CharacterCardRepository) Count(ctx context.Context, userID uint64) (int64, error) {
 	var count int64
-	if err := r.db.WithContext(ctx).Model(&model.CharacterCard{}).Where("user_id = ?", userID).Count(&count).Error; err != nil {
+	if err := r.db.WithContext(ctx).Model(&model.CharacterCard{}).Where("user_id = ? AND drama_id IS NULL", userID).Count(&count).Error; err != nil {
 		return 0, err
 	}
 	return count, nil
 }
 
-// NameExists 判断用户下是否已有同名角色卡（忽略大小写）；excludeID 非 0 时排除该角色卡。
-func (r *CharacterCardRepository) NameExists(ctx context.Context, userID uint64, name string, excludeID uint64) (bool, error) {
-	db := r.db.WithContext(ctx).Model(&model.CharacterCard{}).
-		Where("user_id = ? AND lower(name) = lower(?)", userID, name)
-	if excludeID != 0 {
-		db = db.Where("id <> ?", excludeID)
-	}
-	var count int64
-	if err := db.Count(&count).Error; err != nil {
-		return false, err
-	}
-	return count > 0, nil
-}
-
-// Create 插入角色卡，成功后回填 id 与时间；同一用户同名返回 ErrDuplicate。
+// Create 插入角色卡，成功后回填 id 与时间；名称允许重复。
 func (r *CharacterCardRepository) Create(ctx context.Context, card *model.CharacterCard) error {
 	if card.ExtraAssetIDs == nil {
 		card.ExtraAssetIDs = datatypes.JSONSlice[uint64]{}
 	}
 	if err := r.db.WithContext(ctx).Create(card).Error; err != nil {
-		if isUniqueViolation(err) {
-			return ErrDuplicate
-		}
 		return err
 	}
 	return nil
 }
 
-// Update 按 id + user_id 更新角色卡全部可变字段；不存在、不属于用户返回 ErrNotFound，同名返回 ErrDuplicate。
+// Update 按 id + user_id 更新角色卡全部可变字段；不存在、不属于用户返回 ErrNotFound。
 func (r *CharacterCardRepository) Update(ctx context.Context, userID uint64, card *model.CharacterCard) error {
 	extra := card.ExtraAssetIDs
 	if extra == nil {
@@ -104,15 +87,14 @@ func (r *CharacterCardRepository) Update(ctx context.Context, userID uint64, car
 		Updates(map[string]any{
 			"name":            card.Name,
 			"description":     card.Description,
+			"look_name":       card.LookName,
+			"voice_prompt":    card.VoicePrompt,
 			"avatar_asset_id": card.AvatarAssetID,
 			"extra_asset_ids": extra,
 			"voice_asset_id":  card.VoiceAssetID,
 			"updated_at":      now,
 		})
 	if res.Error != nil {
-		if isUniqueViolation(res.Error) {
-			return ErrDuplicate
-		}
 		return res.Error
 	}
 	if res.RowsAffected == 0 {

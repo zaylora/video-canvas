@@ -236,6 +236,9 @@ func (a *applier) createNode(op Op) error {
 	if op.Kind == KindDirector {
 		return errors.New("导演台节点只能由用户在画布上手动创建")
 	}
+	if op.Kind == KindCharacter {
+		return errors.New("角色节点需要通过短剧拆解创建并绑定角色卡")
+	}
 	if !validKind(op.Kind) {
 		return fmt.Errorf("节点种类 %q 不认识，可选 script / image / video / audio", op.Kind)
 	}

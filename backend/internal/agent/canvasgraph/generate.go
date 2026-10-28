@@ -47,7 +47,7 @@ func Generation(g *Graph, nodeID string) (*GenSource, error) {
 		return nil, fmt.Errorf("%w：%q 是组，不能生成", ErrInvalid, nodeID)
 	}
 	d := n.Data()
-	src := &GenSource{NodeID: nodeID, Kind: n.Kind(), Label: n.Label(), Model: str(d["model"]), Status: str(d["status"]), HasOutput: hasMedia(d)}
+	src := &GenSource{NodeID: nodeID, Kind: generationKind(n.Kind()), Label: n.Label(), Model: str(d["model"]), Status: str(d["status"]), HasOutput: hasMedia(d)}
 	if !validKind(src.Kind) || src.Kind == KindDirector {
 		return nil, fmt.Errorf("%w：节点 %q 的种类不能生成", ErrInvalid, nodeID)
 	}
@@ -83,7 +83,7 @@ func (s *GenSource) addUpstream(up Node) {
 		return
 	}
 	if id := str(d["assetId"]); id != "" {
-		s.Assets = append(s.Assets, GenAsset{NodeID: up.ID(), Kind: up.Kind(), AssetID: id})
+		s.Assets = append(s.Assets, GenAsset{NodeID: up.ID(), Kind: generationKind(up.Kind()), AssetID: id})
 		return
 	}
 	s.Pending++

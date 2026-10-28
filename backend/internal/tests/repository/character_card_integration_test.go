@@ -20,11 +20,8 @@ func TestCharacterCardRepository(t *testing.T) {
 	const owner, other = uint64(11), uint64(22)
 
 	mk := func(user uint64, name string, at time.Time) *model.CharacterCard {
-		card := &model.CharacterCard{
-			UserID: user, Name: name, Description: "初始设定", AvatarAssetID: 100,
-			ExtraAssetIDs: datatypes.JSONSlice[uint64]{101, 102}, VoiceAssetID: new(uint64(103)),
-			CreatedAt: at, UpdatedAt: at,
-		}
+		card := &model.CharacterCard{UserID: user, Name: name, Description: "初始设定", AvatarAssetID: new(uint64(100)), ExtraAssetIDs: datatypes.JSONSlice[uint64]{101, 102}, VoiceAssetID: new(uint64(103)),
+			CreatedAt: at, UpdatedAt: at}
 		if err := db.Create(card).Error; err != nil {
 			t.Fatalf("插入角色卡失败：%v", err)
 		}
@@ -72,12 +69,12 @@ func TestCharacterCardRepository(t *testing.T) {
 		if _, err := r.GetByID(ctx, other, first.ID); !errors.Is(err, ErrNotFound) {
 			t.Fatalf("他人读取应返回 ErrNotFound：%v", err)
 		}
-		update := &model.CharacterCard{ID: first.ID, Name: "林晚·新", Description: "更新后", AvatarAssetID: 200, ExtraAssetIDs: datatypes.JSONSlice[uint64]{201}, VoiceAssetID: nil}
+		update := &model.CharacterCard{ID: first.ID, Name: "林晚·新", Description: "更新后", AvatarAssetID: new(uint64(200)), ExtraAssetIDs: datatypes.JSONSlice[uint64]{201}, VoiceAssetID: nil}
 		if err := r.Update(ctx, owner, update); err != nil {
 			t.Fatalf("更新失败：%v", err)
 		}
 		got, err = r.GetByID(ctx, owner, first.ID)
-		if err != nil || got.Name != update.Name || got.AvatarAssetID != 200 || len(got.ExtraAssetIDs) != 1 || got.VoiceAssetID != nil {
+		if err != nil || got.Name != update.Name || got.AvatarAssetID == nil || *got.AvatarAssetID != 200 || len(got.ExtraAssetIDs) != 1 || got.VoiceAssetID != nil {
 			t.Fatalf("更新字段不对：%+v, %v", got, err)
 		}
 		if err := r.Update(ctx, other, update); !errors.Is(err, ErrNotFound) {
@@ -88,22 +85,17 @@ func TestCharacterCardRepository(t *testing.T) {
 		}
 	})
 
-	t.Run("count name existence and duplicate errors", func(t *testing.T) {
+	t.Run("count and duplicate names", func(t *testing.T) {
 		count, err := r.Count(ctx, owner)
 		if err != nil || count != 2 {
 			t.Fatalf("计数不对：%d, %v", count, err)
 		}
-		exists, err := r.NameExists(ctx, owner, "林晚·新", 0)
-		if err != nil || !exists {
-			t.Fatalf("名称应存在：%v, %v", exists, err)
+		dup := &model.CharacterCard{UserID: owner, Name: "周行", AvatarAssetID: new(uint64(300))}
+		if err := r.Create(ctx, dup); err != nil {
+			t.Fatalf("重复名称应可创建：%v", err)
 		}
-		exists, err = r.NameExists(ctx, owner, "林晚·新", first.ID)
-		if err != nil || exists {
-			t.Fatalf("排除自身后名称不应存在：%v, %v", exists, err)
-		}
-		dup := &model.CharacterCard{UserID: owner, Name: "周行", AvatarAssetID: 300}
-		if err := r.Create(ctx, dup); !errors.Is(err, ErrDuplicate) {
-			t.Fatalf("重复名称应返回 ErrDuplicate：%v", err)
+		if err := r.Delete(ctx, owner, dup.ID); err != nil {
+			t.Fatal(err)
 		}
 	})
 
@@ -122,4 +114,43 @@ func TestCharacterCardRepository(t *testing.T) {
 			t.Fatalf("删除后计数不对：%d, %v", count, err)
 		}
 	})
+}
+
+func TestCharacterCardRepository_DramaIsolationAndNullableAvatar(t *testing.T) {
+	db := isolatedDB(t, &model.CharacterCard{})
+	r := NewCharacterCardRepository(db)
+	ctx := context.Background()
+	personal := &model.CharacterCard{UserID: 1, Name: "林晚"}
+	drama := &model.CharacterCard{UserID: 1, Name: "林晚", DramaID: new(uint64(42)), LookName: "童年", VoicePrompt: "清亮"}
+	for _, card := range []*model.CharacterCard{personal, drama} {
+		if err := r.Create(ctx, card); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, q := range []string{"", "林"} {
+		cards, err := r.List(ctx, 1, q)
+		if err != nil || len(cards) != 1 || cards[0].ID != personal.ID {
+			t.Fatalf("个人列表应排除短剧角色：%+v %v", cards, err)
+		}
+	}
+	cards, err := r.ListByIDs(ctx, 1, []uint64{drama.ID})
+	if err != nil || len(cards) != 1 || cards[0].DramaID == nil || *cards[0].DramaID != 42 || cards[0].AvatarAssetID != nil {
+		t.Fatalf("批量查询应包含无形象短剧角色：%+v %v", cards, err)
+	}
+	if count, err := r.Count(ctx, 1); err != nil || count != 1 {
+		t.Fatalf("个人角色计数应排除短剧：%d %v", count, err)
+	}
+	drama.AvatarAssetID = new(uint64(10))
+	drama.LookName, drama.VoicePrompt = "成年", "低沉"
+	if err := r.Update(ctx, 1, drama); err != nil {
+		t.Fatal(err)
+	}
+	drama.AvatarAssetID = nil
+	if err := r.Update(ctx, 1, drama); err != nil {
+		t.Fatal(err)
+	}
+	got, err := r.GetByID(ctx, 1, drama.ID)
+	if err != nil || got.AvatarAssetID != nil || got.LookName != "成年" || got.VoicePrompt != "低沉" || got.DramaID == nil || *got.DramaID != 42 {
+		t.Fatalf("可空主图、造型与音色应保存，短剧归属应保留：%+v %v", got, err)
+	}
 }

@@ -23,10 +23,11 @@ const (
 
 // 节点种类。
 const (
-	KindScript = "script" // 文本
-	KindImage  = "image"  // 图片
-	KindVideo  = "video"  // 视频
-	KindAudio  = "audio"  // 音频
+	KindScript    = "script"    // 文本
+	KindImage     = "image"     // 图片
+	KindVideo     = "video"     // 视频
+	KindAudio     = "audio"     // 音频
+	KindCharacter = "character" // 短剧角色卡引用，由短剧事务创建
 	// KindDirector 是导演台（3D 摆位与运镜预演）：只在画布上手动建，Agent 能读到但不能建、不能改、不能连线。
 	KindDirector = "director"
 )
@@ -41,7 +42,7 @@ var downstream = map[string][]string{
 }
 
 // kindLabel 是节点的默认标题。
-var kindLabel = map[string]string{KindScript: "文本", KindImage: "图片", KindVideo: "视频", KindAudio: "音频", KindDirector: "导演台"}
+var kindLabel = map[string]string{KindScript: "文本", KindImage: "图片", KindVideo: "视频", KindAudio: "音频", KindCharacter: "角色", KindDirector: "导演台"}
 
 // hues 是组可选的颜色，与前端 GroupHue 一致。
 var hues = map[string]bool{"red": true, "orange": true, "yellow": true, "green": true, "cyan": true, "blue": true, "purple": true, "pink": true}
@@ -113,6 +114,7 @@ func ParseOps(raw []byte) ([]Op, error) {
 
 // canLink 判断 from 种类的节点能不能连到 to 种类的节点。
 func canLink(from, to string) bool {
+	from, to = generationKind(from), generationKind(to)
 	for _, k := range downstream[from] {
 		if k == to {
 			return true
@@ -122,4 +124,12 @@ func canLink(from, to string) bool {
 }
 
 // validKind 判断是不是认识的节点种类。
-func validKind(k string) bool { _, ok := downstream[k]; return ok }
+func validKind(k string) bool { _, ok := downstream[generationKind(k)]; return ok }
+
+// generationKind 角色节点保留卡片身份，生成、参考和连线规则复用图片能力。
+func generationKind(kind string) string {
+	if kind == KindCharacter {
+		return KindImage
+	}
+	return kind
+}

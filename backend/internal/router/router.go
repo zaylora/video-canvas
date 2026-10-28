@@ -33,6 +33,7 @@ type Handlers struct {
 	Asset          *handler.AssetHandler               // 素材上传与查询
 	AssetLibrary   *handler.AssetLibraryHandler        // 资产库：文件夹、库归属、生成历史
 	CharacterCard  *handler.CharacterCardHandler       // 用户私有角色卡 CRUD 与批量读取
+	Drama          *handler.DramaHandler               // 短剧项目、分集剧本、资产流水线
 	Files          gin.HandlerFunc                     // 素材稳定地址 /files/*：本地存储直出，对象存储签名后 302
 	AIModel        *handler.AIModelHandler             // 面向画布的模型清单
 	AdminAI        *handler.AdminAIHandler             // AI 模型配置管理
@@ -185,6 +186,22 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		characters.POST("", h.CharacterCard.Create)
 		characters.PATCH("/:id", h.CharacterCard.Update)
 		characters.DELETE("/:id", h.CharacterCard.Delete)
+
+		// 短剧工作室：项目与任务 ID 沿用十六进制编码，分集按从 1 起的集号定位。
+		auth.GET("/drama-styles", h.Drama.Styles)
+		dramas := auth.Group("/dramas")
+		dramas.GET("", h.Drama.List)
+		dramas.POST("", h.Drama.Create)
+		dramas.GET("/:id", h.Drama.Get)
+		dramas.PATCH("/:id", h.Drama.Update)
+		dramas.DELETE("/:id", h.Drama.Delete)
+		dramas.GET("/:id/episodes/:no", h.Drama.GetEpisode)
+		dramas.POST("/:id/episodes", h.Drama.CreateEpisode)
+		dramas.PATCH("/:id/episodes/:no", h.Drama.UpdateEpisode)
+		dramas.POST("/:id/estimate", h.Drama.Estimate)
+		dramas.POST("/:id/jobs", h.Drama.CreateJob)
+		dramas.GET("/:id/jobs", h.Drama.ListJobs)
+		dramas.POST("/:id/jobs/:job_id/cancel", h.Drama.CancelJob)
 
 		// 管理员后台接口：读与模型相关的写 = admin 或 super_admin；插件与渠道的写 = 仅 super_admin。
 		// 凭证不再有独立接口，渠道 Key 统一走 PUT /channels/:key/secret。

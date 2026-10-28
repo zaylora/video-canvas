@@ -64,10 +64,6 @@ func (f *fakeTransferHandlerTx) CountCharacters(context.Context, uint64) (int64,
 	return 0, nil
 }
 
-func (f *fakeTransferHandlerTx) CharacterNameExists(context.Context, uint64, string) (bool, error) {
-	return false, nil
-}
-
 func (f *fakeTransferHandlerTx) CreateCharacter(_ context.Context, c *model.CharacterCard) error {
 	c.ID = 600
 	return nil

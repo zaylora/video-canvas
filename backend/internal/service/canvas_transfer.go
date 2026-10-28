@@ -45,7 +45,7 @@ type TransferRepo interface {
 }
 
 // TransferTx 是导入事务内可用的写入与查询操作，都只作用于当前事务：
-// CreateAsset、CountCharacters、CharacterNameExists、CreateCharacter（重名返回 repository.ErrDuplicate）、CreateCanvas。
+// CreateAsset、CountCharacters、CreateCharacter、CreateCanvas。
 // 定义在 repository 包（与 PaymentTx、GenerationTaskTx 同样的做法）：WithTx 的回调签名两边必须是同一个类型，
 // 而 repository 不能反过来 import service。
 type TransferTx = repository.CanvasTransferTx
@@ -113,7 +113,7 @@ type ExportResult struct {
 }
 
 // Export 把当前用户的一张画布导出成文档：素材 ID 换成内容哈希，角色卡内联进文件。
-// 个别素材读不到不会让导出失败，只计入 Report.SkippedAssets；画布不存在或不属于该用户返回 ErrCanvasNotFound；
+// 个别素材读不到不会让导出失败，只计入 Report.SkippedAssets；画布不存在、不属于该用户或属于短剧返回 ErrCanvasNotFound；
 // 导出结果超出导入上限（节点、素材数、素材总大小、文件大小）返回 ErrCanvasExportTooLarge。
 func (s *CanvasTransferService) Export(ctx context.Context, userID, id uint64) (*ExportResult, error) {
 	// 1. 带 user_id 取画布：别人的画布和不存在的画布统一返回「画布不存在」，不暴露画布是否存在
@@ -123,6 +123,9 @@ func (s *CanvasTransferService) Export(ctx context.Context, userID, id uint64) (
 	}
 	if err != nil {
 		return nil, err
+	}
+	if p.DramaID != nil {
+		return nil, errcode.ErrCanvasNotFound
 	}
 
 	// 2. 扫描画布内容，找出会被导出的素材 ID 和角色卡 ID；内容不是合法 JSON 时原样返回错误
@@ -216,10 +219,12 @@ func (s *CanvasTransferService) loadCharacters(ctx context.Context, userID uint6
 		entry := canvasdoc.CharacterEntry{
 			Name:          c.Name,
 			Description:   c.Description,
-			AvatarAssetID: strconv.FormatUint(c.AvatarAssetID, 10),
 			ExtraAssetIDs: make([]string, 0, len(c.ExtraAssetIDs)),
 		}
-		assetIDs = append(assetIDs, entry.AvatarAssetID)
+		if c.AvatarAssetID != nil {
+			entry.AvatarAssetID = strconv.FormatUint(*c.AvatarAssetID, 10)
+			assetIDs = append(assetIDs, entry.AvatarAssetID)
+		}
 		for _, extra := range c.ExtraAssetIDs {
 			extraID := strconv.FormatUint(extra, 10)
 			entry.ExtraAssetIDs = append(entry.ExtraAssetIDs, extraID)
@@ -281,7 +286,6 @@ const (
 	importTitleFallback    = "未命名画布"
 	maxImportTitleLen      = 60 // 导入画布标题（含后缀）最多 60 字
 	importNameFallback     = "未命名角色"
-	maxImportRenameTries   = 2 * maxCharacterCards // 改名重试上限：远大于同一用户可能存在的同名卡数，只防死循环
 	importedCanvasRevision = 1
 )
 
@@ -321,7 +325,7 @@ type ImportMissingAsset struct {
 // ImportCharacters 是角色卡重建的汇总。
 type ImportCharacters struct {
 	Created int                      `json:"created"` // 新建的角色卡数
-	Renamed []ImportRename           `json:"renamed"` // 因重名自动改名的卡
+	Renamed []ImportRename           `json:"renamed"` // 保留导入响应字段；名称允许重复，因此固定为空数组
 	Invalid []ImportInvalidCharacter `json:"invalid"` // 没能重建、节点按「已失效」处理的引用
 }
 
@@ -510,22 +514,18 @@ func createImportedCharacters(ctx context.Context, tx TransferTx, userID uint64,
 	}
 
 	for _, ref := range refs {
-		// 2. 主图缺失的卡无法重建（角色卡主图必填）；数量已满时不建，二者都由 Restore 把节点记为失效
+		// 2. 导出文档要求主图有效，缺失时仍按文档失效卡规则处理；个人角色库已满时不再创建
 		card, ok := importedCard(userID, doc.Characters[ref], byHash)
 		if !ok || count >= maxCharacterCards {
 			continue
 		}
-		// 3. 重名自动改名为「名字 (2)」「名字 (3)」…
-		from := card.Name
-		if err := createWithFreeName(ctx, tx, card); err != nil {
+		// 3. 名称允许重复，导入时保留原名
+		if err := tx.CreateCharacter(ctx, card); err != nil {
 			return nil, report, err
 		}
 		count++
 		report.Created++
 		ids[ref] = idcodec.Encode(card.ID)
-		if card.Name != from {
-			report.Renamed = append(report.Renamed, ImportRename{From: from, To: card.Name})
-		}
 	}
 	return ids, report, nil
 }
@@ -547,7 +547,7 @@ func importedCard(userID uint64, info canvasdoc.CharacterInfo, byHash map[string
 		UserID:        userID,
 		Name:          name,
 		Description:   truncateRunes(info.Description, maxCharacterDescLen),
-		AvatarAssetID: avatar.ID,
+		AvatarAssetID: &avatar.ID,
 		ExtraAssetIDs: datatypes.JSONSlice[uint64]{},
 	}
 	for _, h := range info.Extras {
@@ -566,32 +566,6 @@ func importedCard(userID uint64, info canvasdoc.CharacterInfo, byHash map[string
 		}
 	}
 	return card, true
-}
-
-// createWithFreeName 以 card.Name 为基础找一个导入者没用过的名字（不区分大小写）并插入：
-// 先试原名，再试「名字 (2)」「名字 (3)」…，加后缀时截短名字部分让总长不超过 64 字。
-// 并发导入可能在查完之后抢先建了同名卡，撞唯一索引（ErrDuplicate）同样视为重名、换下一个后缀。
-func createWithFreeName(ctx context.Context, tx TransferTx, card *model.CharacterCard) error {
-	base := card.Name
-	for n := 1; n <= maxImportRenameTries; n++ {
-		if n > 1 {
-			suffix := fmt.Sprintf(" (%d)", n)
-			card.Name = strings.TrimSpace(truncateRunes(base, maxCharacterNameLen-utf8.RuneCountInString(suffix))) + suffix
-		}
-		exists, err := tx.CharacterNameExists(ctx, card.UserID, card.Name)
-		if err != nil {
-			return err
-		}
-		if exists {
-			continue
-		}
-		err = tx.CreateCharacter(ctx, card)
-		if errors.Is(err, repository.ErrDuplicate) {
-			continue
-		}
-		return err
-	}
-	return fmt.Errorf("导入角色卡 %q: 找不到可用的名字", base)
 }
 
 // importTitle 生成导入画布的标题：原标题去首尾空白后加「（导入）」，空标题用「未命名画布」；

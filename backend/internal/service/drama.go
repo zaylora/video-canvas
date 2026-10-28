@@ -1,0 +1,338 @@
+package service
+
+import (
+	"context"
+	"errors"
+	"path/filepath"
+	"slices"
+	"strings"
+	"unicode/utf8"
+
+	"video-canvas/internal/drama"
+	"video-canvas/internal/model"
+	"video-canvas/internal/pkg/errcode"
+	"video-canvas/internal/pkg/idcodec"
+	"video-canvas/internal/pkg/ws"
+	"video-canvas/internal/provider"
+	"video-canvas/internal/repository"
+)
+
+// DramaRepo 短剧查询和事务边界。
+type DramaRepo interface {
+	// WithTx 执行项目、任务和积分的原子变更。
+	WithTx(context.Context, func(repository.DramaTx) error) error
+	// List 返回当前用户分页项目。
+	List(context.Context, uint64, string, int, int) ([]model.DramaProject, int64, error)
+	// Project 按用户查询项目。
+	Project(context.Context, uint64, uint64, bool) (*model.DramaProject, error)
+	// Episodes 按集号读取项目剧本。
+	Episodes(context.Context, uint64, uint64) ([]model.DramaEpisode, error)
+	// Jobs 返回项目全部或活动任务。
+	Jobs(context.Context, uint64, uint64, bool) ([]model.DramaJob, error)
+	// Job 按用户项目读取任务。
+	Job(context.Context, uint64, uint64, uint64, bool) (*model.DramaJob, error)
+}
+
+// DramaCanvasWriter 写入拆解资产和提示词，画布与锁集由其原子执行。
+type DramaCanvasWriter interface {
+	// ApplyBreakdown 合并资产、创建角色卡，并锁定本次集。
+	ApplyBreakdown(context.Context, uint64, uint64, uint64, uint64, []int, []drama.Asset) ([]DramaCanvasAsset, error)
+	// ApplyPrompts 更新本次新建节点的提示词。
+	ApplyPrompts(context.Context, uint64, uint64, uint64, []drama.AssetPrompt) error
+}
+
+// DramaCreditPolicy 提供与现有生成任务一致的新账户初始积分。
+type DramaCreditPolicy interface {
+	// InitialCredits 返回后台当前生效的新账户初始积分。
+	InitialCredits(context.Context) (int, error)
+}
+
+// DramaDeps 短剧服务依赖，模型调用复用 Registry 和 Executor。
+type DramaDeps struct {
+	Repo        DramaRepo
+	Registry    provider.Registry
+	Executor    provider.Executor
+	Canvas      DramaCanvasWriter
+	Broadcaster ws.Broadcaster
+	Credits     DramaCreditPolicy
+}
+
+// DramaService 短剧项目和固定流水线的业务入口。
+type DramaService struct {
+	repo     DramaRepo
+	registry provider.Registry
+	executor provider.Executor
+	canvas   DramaCanvasWriter
+	bc       ws.Broadcaster
+	credits  DramaCreditPolicy
+}
+
+// NewDramaService 创建短剧服务，不启动后台任务。
+func NewDramaService(d DramaDeps) *DramaService {
+	return &DramaService{repo: d.Repo, registry: d.Registry, executor: d.Executor, canvas: d.Canvas, bc: d.Broadcaster, credits: d.Credits}
+}
+
+// Create 校验原文和风格，在同一事务建立项目、画布与首个研读任务。
+func (s *DramaService) Create(ctx context.Context, userID uint64, req *model.CreateDramaReq) (*model.DramaView, error) {
+	// 1. 文件和粘贴文本只能选一个，提取失败转换为契约错误。
+	if req.Filename != "" && strings.TrimSpace(req.Text) != "" {
+		return nil, errcode.ErrDramaSourceInvalid.WithMsg("文件和文本只能选一个")
+	}
+	filename, data := req.Filename, req.Data
+	if filename == "" {
+		filename = "source.txt"
+		data = []byte(req.Text)
+	}
+	source, err := drama.ParseSource(filename, data)
+	if err != nil {
+		if errors.Is(err, drama.ErrSourceTooLong) {
+			return nil, errcode.ErrDramaSourceTooLong
+		}
+		return nil, errcode.ErrDramaSourceInvalid.WithMsg(err.Error())
+	}
+	if err := checkDramaStyle(req.StyleKey, req.StyleCustom); err != nil {
+		return nil, err
+	}
+	// 2. 冻结已启用文本模型；项目创建时即可发现没有可用模型。
+	snap, err := s.resolveModel(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	initial, err := s.dramaInitialCredits(ctx)
+	if err != nil {
+		return nil, err
+	}
+	title := strings.TrimSpace(req.Title)
+	if title == "" && req.Filename != "" {
+		base := filepath.Base(req.Filename)
+		title = strings.TrimSuffix(base, filepath.Ext(base))
+	}
+	if title == "" {
+		title = "未命名短剧"
+	}
+	seconds := req.EpisodeSeconds
+	if seconds == 0 {
+		seconds = 60
+	}
+	p := &model.DramaProject{UserID: userID, Title: title, SourceText: source, Genre: req.Genre, StyleKey: req.StyleKey, StyleCustom: req.StyleCustom, Ratio: req.Ratio, TargetEpisodes: req.TargetEpisodes, EpisodeSeconds: seconds, Status: "analyzing", Revision: 1, TextModelID: &snap.ModelRevisionID}
+	var j *model.DramaJob
+	// 3. 项目、画布、积分冻结与River入队一起提交。
+	err = s.repo.WithTx(ctx, func(tx repository.DramaTx) error {
+		if err := tx.InsertProject(ctx, p); err != nil {
+			return err
+		}
+		var e error
+		j, e = s.enqueue(ctx, tx, p, &model.DramaJobReq{Step: "analyze"}, snap, nil, initial)
+		return e
+	})
+	if err != nil {
+		return nil, dramaError(err)
+	}
+	s.publish(ctx, j)
+	return s.Get(ctx, userID, p.ID)
+}
+
+// Get 读取项目详情，其他用户资源统一视为不存在。
+func (s *DramaService) Get(ctx context.Context, userID, id uint64) (*model.DramaView, error) {
+	// 1. 首先校验归属，再读取集和任务，防止跨用户泄露。
+	p, err := s.repo.Project(ctx, userID, id, false)
+	if err != nil {
+		return nil, dramaError(err)
+	}
+	eps, err := s.repo.Episodes(ctx, userID, id)
+	if err != nil {
+		return nil, err
+	}
+	jobs, err := s.repo.Jobs(ctx, userID, id, true)
+	if err != nil {
+		return nil, err
+	}
+	v := &model.DramaView{ID: idcodec.ID(p.ID), Title: p.Title, CanvasID: idcodec.ID(p.CanvasID), Status: p.Status, SourceKind: p.SourceKind, Genre: p.Genre, StyleKey: p.StyleKey, StyleCustom: p.StyleCustom, Ratio: p.Ratio, TargetEpisodes: p.TargetEpisodes, EpisodeSeconds: p.EpisodeSeconds, TextModel: p.TextModel, OutlineMD: p.OutlineMD, CharactersMD: p.CharactersMD, Revision: p.Revision, CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt, Episodes: []model.DramaEpisodeSummary{}, ActiveJobs: []model.DramaJobView{}}
+	for _, e := range eps {
+		v.Episodes = append(v.Episodes, episodeView(e).DramaEpisodeSummary)
+	}
+	for _, j := range jobs {
+		v.ActiveJobs = append(v.ActiveJobs, jobView(j))
+	}
+	return v, nil
+}
+
+// List 返回用户项目及集数，页大小限制与其他列表一致。
+func (s *DramaService) List(ctx context.Context, userID uint64, keyword string, page, size int) ([]model.DramaSummary, int64, error) {
+	// 1. 统一分页边界，避免无限制读取。
+	page = max(page, 1)
+	if size <= 0 {
+		size = 20
+	}
+	size = min(size, 100)
+	rows, n, err := s.repo.List(ctx, userID, strings.TrimSpace(keyword), page, size)
+	if err != nil {
+		return nil, 0, err
+	}
+	out := make([]model.DramaSummary, 0, len(rows))
+	for _, p := range rows {
+		eps, e := s.repo.Episodes(ctx, userID, p.ID)
+		if e != nil {
+			return nil, 0, e
+		}
+		v := model.DramaSummary{ID: idcodec.ID(p.ID), Title: p.Title, Status: p.Status, EpisodeCount: len(eps), UpdatedAt: p.UpdatedAt}
+		for _, ep := range eps {
+			if ep.LockedAt != nil {
+				v.LockedCount++
+			}
+		}
+		out = append(out, v)
+	}
+	return out, n, nil
+}
+
+// Update 带版本更新项目，不改变已锁定集正文。
+func (s *DramaService) Update(ctx context.Context, userID, id uint64, req *model.UpdateDramaReq) (*model.DramaView, error) {
+	// 1. 事务中锁项目并执行revision比较；PATCH遗漏字段保持原值。
+	err := s.repo.WithTx(ctx, func(tx repository.DramaTx) error {
+		p, err := tx.Project(ctx, userID, id, true)
+		if err != nil {
+			return err
+		}
+		if p.Revision != req.Revision {
+			return errcode.ErrCanvasConflict
+		}
+		fields, err := dramaProjectPatch(p, req)
+		if err != nil {
+			return err
+		}
+		return tx.UpdateProject(ctx, userID, id, req.Revision, fields)
+	})
+	if err != nil {
+		return nil, dramaError(err)
+	}
+	return s.Get(ctx, userID, id)
+}
+
+// dramaProjectPatch 仅应用请求中出现的字段，风格始终按最终组合校验。
+func dramaProjectPatch(p *model.DramaProject, req *model.UpdateDramaReq) (map[string]any, error) {
+	fields := map[string]any{}
+	for key, value := range map[string]*string{"title": req.Title, "genre": req.Genre, "style_key": req.StyleKey, "style_custom": req.StyleCustom, "ratio": req.Ratio, "text_model": req.TextModel, "outline_md": req.OutlineMD, "characters_md": req.CharactersMD} {
+		if value != nil {
+			fields[key] = *value
+		}
+	}
+	if req.Title != nil {
+		title := strings.TrimSpace(*req.Title)
+		if title == "" {
+			return nil, errcode.ErrInvalidParams.WithMsg("标题不能为空")
+		}
+		fields["title"] = title
+	}
+	if req.StyleKey != nil {
+		p.StyleKey = *req.StyleKey
+	}
+	if req.StyleCustom != nil {
+		p.StyleCustom = *req.StyleCustom
+	}
+	if err := checkDramaStyle(p.StyleKey, p.StyleCustom); err != nil {
+		return nil, err
+	}
+	return fields, nil
+}
+
+// Delete 取消活动任务并软删项目、短剧画布与角色卡。
+func (s *DramaService) Delete(ctx context.Context, userID, id uint64) error {
+	// 1. 锁项目和任务，退款与软删除同事务完成。
+	return dramaError(s.repo.WithTx(ctx, func(tx repository.DramaTx) error {
+		if _, e := tx.Project(ctx, userID, id, true); e != nil {
+			return e
+		}
+		jobs, e := tx.Jobs(ctx, userID, id, true)
+		if e != nil {
+			return e
+		}
+		for i := range jobs {
+			if e := s.finishTx(ctx, tx, &jobs[i], "canceled", 0, "", 0, nil); e != nil {
+				return e
+			}
+		}
+		return tx.DeleteProject(ctx, userID, id)
+	}))
+}
+
+// checkDramaStyle 验证内置或自定义画风，拒绝无法应用的风格。
+func checkDramaStyle(key, custom string) error {
+	if key == "custom" {
+		if strings.TrimSpace(custom) == "" || utf8.RuneCountInString(custom) > 500 {
+			return errcode.ErrInvalidParams.WithMsg("自定义画风须为1至500字")
+		}
+		return nil
+	}
+	for _, style := range drama.Styles().Styles {
+		if style.Key == key {
+			return nil
+		}
+	}
+	return errcode.ErrInvalidParams.WithMsg("画风不存在")
+}
+
+// episodeView 映射集状态，正文只在单集接口返回。
+func episodeView(e model.DramaEpisode) model.DramaEpisodeView {
+	return model.DramaEpisodeView{DramaEpisodeSummary: model.DramaEpisodeSummary{No: e.No, Title: e.Title, Synopsis: e.Synopsis, ScriptStatus: e.ScriptStatus, Locked: e.LockedAt != nil, Revision: e.Revision, UpdatedAt: e.UpdatedAt}, ScriptMD: e.ScriptMD}
+}
+
+// jobView 映射任务状态并保证空范围为[]。
+func jobView(j model.DramaJob) model.DramaJobView {
+	return model.DramaJobView{ID: idcodec.ID(j.ID), Step: j.Step, Episodes: append([]int{}, j.Episodes...), Status: j.Status, Progress: j.Progress, Credits: j.Credits, ErrorCode: j.ErrorCode, ErrorMessage: j.ErrorMessage, CreatedAt: j.CreatedAt, FinishedAt: j.FinishedAt}
+}
+
+// dramaError 把仓储哨兵转换为公开业务码。
+func dramaError(e error) error {
+	if errors.Is(e, repository.ErrNotFound) {
+		return errcode.ErrDramaNotFound
+	}
+	if errors.Is(e, repository.ErrStateConflict) {
+		return errcode.ErrCanvasConflict
+	}
+	if errors.Is(e, repository.ErrDuplicate) {
+		return errcode.ErrDramaJobBusy
+	}
+	return e
+}
+
+// dramaActive 判断任务是否允许继续写入。
+func dramaActive(status string) bool { return status == "queued" || status == "running" }
+
+// publish 向用户频道推送任务状态，采用现有WebSocket广播契约。
+func (s *DramaService) publish(ctx context.Context, j *model.DramaJob) {
+	if s.bc != nil && j != nil {
+		s.bc.Publish(ctx, ws.UserChannel(j.UserID), ws.Message{Type: ws.TypeDramaJob, Data: struct {
+			DramaID idcodec.ID         `json:"drama_id"`
+			Job     model.DramaJobView `json:"job"`
+		}{idcodec.ID(j.DramaID), jobView(*j)}})
+	}
+}
+
+// selectedEpisodes 按任务持久化范围选择集。
+func selectedEpisodes(eps []model.DramaEpisode, scope []int) []model.DramaEpisode {
+	out := []model.DramaEpisode{}
+	for _, ep := range eps {
+		if slices.Contains(scope, ep.No) {
+			out = append(out, ep)
+		}
+	}
+	return out
+}
+
+// dramaFailure 将未知上游错误转换为安全错误文案。
+func dramaFailure(err error) (int, string) {
+	var e *errcode.Error
+	if errors.As(err, &e) {
+		return e.Code, e.Msg
+	}
+	return errcode.ErrInternal.Code, errcode.ErrInternal.Msg
+}
+
+// dramaInitialCredits 只在业务事务外读取后台策略。
+func (s *DramaService) dramaInitialCredits(ctx context.Context) (int, error) {
+	if s.credits != nil {
+		return s.credits.InitialCredits(ctx)
+	}
+	return DefaultInitialCredits, nil
+}

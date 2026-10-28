@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -33,7 +34,7 @@ type hCharacterCards struct {
 }
 
 func (h *hCharacterCards) List(_ context.Context, userID uint64, q string) ([]model.CharacterCard, error) {
-	if h.card == nil || h.card.UserID != userID {
+	if h.card == nil || h.card.UserID != userID || h.card.DramaID != nil {
 		return []model.CharacterCard{}, nil
 	}
 	return []model.CharacterCard{*h.card}, nil
@@ -61,10 +62,6 @@ func (h *hCharacterCards) Count(_ context.Context, _ uint64) (int64, error) {
 		return 0, nil
 	}
 	return 1, nil
-}
-
-func (h *hCharacterCards) NameExists(_ context.Context, userID uint64, name string, excludeID uint64) (bool, error) {
-	return h.card != nil && h.card.UserID == userID && h.card.ID != excludeID && h.card.Name == name, nil
 }
 
 func (h *hCharacterCards) Create(_ context.Context, card *model.CharacterCard) error {
@@ -189,7 +186,7 @@ func TestCharacterCardHandler_InvalidInputs(t *testing.T) {
 		{"路径 id 格式错误", "GET", "/characters/not-an-id", "", http.StatusBadRequest, 10001},
 		{"请求体不是合法 JSON", "POST", "/characters", "{", http.StatusBadRequest, 10001},
 		{"字段类型错误", "POST", "/characters", `{"name":"林晚","avatar_asset_id":"x"}`, http.StatusBadRequest, 10001},
-		{"缺主图返回素材不可用", "POST", "/characters", `{"name":"林晚"}`, http.StatusBadRequest, 66003},
+		{"主图零 ID 返回素材不可用", "POST", "/characters", `{"name":"林晚","avatar_asset_id":0}`, http.StatusBadRequest, 66003},
 		{"主图是视频返回素材不可用", "POST", "/characters", `{"name":"林晚","avatar_asset_id":3}`, http.StatusBadRequest, 66003},
 		{"名称为空返回参数不合法", "POST", "/characters", `{"name":"   ","avatar_asset_id":1}`, http.StatusBadRequest, 66005},
 		{"PATCH 声音格式错误", "PATCH", "/characters/" + idcodec.Encode(7), `{"voice_asset_id":"abc"}`, http.StatusBadRequest, 10001},
@@ -231,10 +228,10 @@ func TestCharacterCardHandler_Lifecycle(t *testing.T) {
 		}
 	})
 
-	t.Run("重名返回 409 和 66001", func(t *testing.T) {
+	t.Run("同名允许创建", func(t *testing.T) {
 		status, resp := characterCall(t, r, "POST", "/characters", `{"name":"甲","avatar_asset_id":1}`)
-		if status != http.StatusConflict || responseCode(t, resp) != 66001 {
-			t.Fatalf("重名：%d %+v", status, resp)
+		if status != http.StatusCreated || responseCode(t, resp) != 0 {
+			t.Fatalf("同名创建：%d %+v", status, resp)
 		}
 	})
 
@@ -282,4 +279,42 @@ func TestCharacterCardHandler_Lifecycle(t *testing.T) {
 			t.Fatalf("他人数据：%d %+v", status, resp)
 		}
 	})
+}
+
+func TestCharacterCardHandler_DramaFields(t *testing.T) {
+	r, cards := newCharacterTestRouter()
+	status, resp := characterCall(t, r, "POST", "/characters", `{"name":"短剧角色","avatar_asset_id":null,"look_name":"童年","voice_prompt":"清亮少年音"}`)
+	data := responseData(t, resp)
+	if status != http.StatusCreated || data["avatar"] != nil || data["drama_id"] != nil || data["look_name"] != "童年" || data["voice_prompt"] != "清亮少年音" {
+		t.Fatalf("新建无形象角色：%d %+v", status, resp)
+	}
+	id := idcodec.Encode(cards.card.ID)
+	status, resp = characterCall(t, r, "PATCH", "/characters/"+id, `{"avatar_asset_id":1,"look_name":"成年","voice_prompt":"沉稳"}`)
+	data = responseData(t, resp)
+	if status != http.StatusOK || data["avatar"] == nil || data["look_name"] != "成年" || data["voice_prompt"] != "沉稳" {
+		t.Fatalf("写回形象：%d %+v", status, resp)
+	}
+	status, resp = characterCall(t, r, "PATCH", "/characters/"+id, `{"avatar_asset_id":null}`)
+	if status != http.StatusOK || responseData(t, resp)["avatar"] != nil {
+		t.Fatalf("清空形象：%d %+v", status, resp)
+	}
+	for _, body := range []string{
+		`{"look_name":"` + strings.Repeat("型", 65) + `"}`,
+		`{"voice_prompt":"` + strings.Repeat("音", 501) + `"}`,
+	} {
+		status, resp = characterCall(t, r, "PATCH", "/characters/"+id, body)
+		if status != http.StatusBadRequest || responseCode(t, resp) != 66005 {
+			t.Fatalf("长度超限：%d %+v", status, resp)
+		}
+	}
+	cards.card.DramaID = new(uint64(42))
+	status, resp = characterCall(t, r, "GET", "/characters", "")
+	if status != http.StatusOK || len(responseData(t, resp)["items"].([]any)) != 0 {
+		t.Fatalf("普通列表不应包含短剧角色：%d %+v", status, resp)
+	}
+	status, resp = characterCall(t, r, "GET", "/characters?ids="+id, "")
+	items := responseData(t, resp)["items"].([]any)
+	if status != http.StatusOK || len(items) != 1 || items[0].(map[string]any)["drama_id"] != idcodec.Encode(42) {
+		t.Fatalf("批量读取应包含短剧角色并编码短剧 ID：%d %+v", status, resp)
+	}
 }

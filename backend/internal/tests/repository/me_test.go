@@ -159,6 +159,9 @@ func TestCanvasProjectRepository_CountByUser(t *testing.T) {
 	if err := repo.Delete(ctx, 1, first.ID); err != nil {
 		t.Fatal(err)
 	}
+	if err := repo.Create(ctx, &model.CanvasProject{UserID: 1, DramaID: new(uint64(42)), PayloadJSON: datatypes.JSON(`{}`)}); err != nil {
+		t.Fatal(err)
+	}
 	n, err := repo.CountByUser(ctx, 1)
 	if err != nil || n != 2 {
 		t.Fatalf("未删除的画布数 = %d %v", n, err)

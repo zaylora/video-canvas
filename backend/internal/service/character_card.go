@@ -18,7 +18,7 @@ import (
 
 // 角色卡的业务上限，与接口契约一致。
 const (
-	maxCharacterCards       = 100 // 每用户最多 100 张
+	maxCharacterCards       = 100 // 每用户个人角色库最多 100 张，短剧角色不占额度
 	maxCharacterNameLen     = 64  // 名称去首尾空白后 1–64 字
 	maxCharacterDescLen     = 500 // 设定最多 500 字
 	maxCharacterExtraAssets = 4   // 补充图最多 4 张
@@ -32,19 +32,17 @@ const (
 
 // CharacterCardRepo 是角色卡的数据访问接口（真实实现是 repository.CharacterCardRepository）。
 type CharacterCardRepo interface {
-	// List 返回该用户名称包含 q 的角色卡，更新时间倒序；q 为空表示不筛选。
+	// List 返回该用户不属于短剧且名称包含 q 的角色卡，更新时间倒序；q 为空表示不筛选。
 	List(ctx context.Context, userID uint64, q string) ([]model.CharacterCard, error)
 	// ListByIDs 返回该用户这些 ID 的角色卡，查不到的缺席，ids 为空返回 nil。
 	ListByIDs(ctx context.Context, userID uint64, ids []uint64) ([]model.CharacterCard, error)
 	// GetByID 按 id + user_id 查询，不存在或不属于该用户返回 repository.ErrNotFound。
 	GetByID(ctx context.Context, userID, id uint64) (*model.CharacterCard, error)
-	// Count 统计该用户的角色卡数。
+	// Count 统计该用户不属于短剧的个人角色卡数，用于个人库的数量上限。
 	Count(ctx context.Context, userID uint64) (int64, error)
-	// NameExists 判断该用户是否已有同名（忽略大小写）的角色卡，excludeID 非 0 时排除它自己。
-	NameExists(ctx context.Context, userID uint64, name string, excludeID uint64) (bool, error)
-	// Create 插入角色卡，成功后回填 id；重名返回 repository.ErrDuplicate。
+	// Create 插入角色卡，成功后回填 id；名称允许重复。
 	Create(ctx context.Context, card *model.CharacterCard) error
-	// Update 更新该用户角色卡的全部可变字段，不存在返回 repository.ErrNotFound，重名返回 repository.ErrDuplicate。
+	// Update 更新该用户角色卡的全部可变字段，不存在返回 repository.ErrNotFound。
 	Update(ctx context.Context, userID uint64, card *model.CharacterCard) error
 	// Delete 按 id + user_id 删除，不存在或不属于该用户返回 repository.ErrNotFound。
 	Delete(ctx context.Context, userID, id uint64) error
@@ -82,7 +80,7 @@ func NewCharacterCardService(d CharacterCardDeps) *CharacterCardService {
 	return &CharacterCardService{cards: d.Cards, assets: d.Assets, views: d.Views}
 }
 
-// List 返回当前用户的角色卡列表（不分页，最多 100 张），按更新时间倒序。
+// List 返回当前用户不属于短剧的角色卡列表（不分页，最多 100 张），按更新时间倒序。
 func (s *CharacterCardService) List(ctx context.Context, userID uint64, q string) (*model.CharacterListView, error) {
 	cards, err := s.cards.List(ctx, userID, strings.TrimSpace(q))
 	if err != nil {
@@ -116,8 +114,8 @@ func (s *CharacterCardService) Get(ctx context.Context, userID, id uint64) (*mod
 }
 
 // Create 新建角色卡并返回视图。
-// 规则：名称去首尾空白后 1–64 字且忽略大小写唯一；设定 ≤ 500 字；补充图 ≤ 4 张、去重、不含主图；
-// 主图必须是当前用户的 image，补充图同，声音必须是当前用户的 audio；每用户最多 100 张。
+// 规则：名称去首尾空白后 1–64 字，允许同名；设定和音色描述 ≤ 500 字、造型名 ≤ 64 字；
+// 主图可空，提供的图片和声音必须属于当前用户且种类正确；补充图 ≤ 4 张、去重、不含主图。
 func (s *CharacterCardService) Create(ctx context.Context, userID uint64, req *model.CreateCharacterReq) (*model.CharacterView, error) {
 	// 1. 名称与设定：长度按字符数算，去首尾空白后判空
 	name, err := normalizeCharacterName(req.Name)
@@ -125,6 +123,9 @@ func (s *CharacterCardService) Create(ctx context.Context, userID uint64, req *m
 		return nil, err
 	}
 	if err := checkCharacterDescription(req.Description); err != nil {
+		return nil, err
+	}
+	if err := checkCharacterLookAndVoice(req.LookName, req.VoicePrompt); err != nil {
 		return nil, err
 	}
 
@@ -142,12 +143,7 @@ func (s *CharacterCardService) Create(ctx context.Context, userID uint64, req *m
 		return nil, errcode.ErrCharacterLimit
 	}
 
-	// 4. 重名先查给出 409；并发撞上唯一索引时 repository 返回 ErrDuplicate，同样翻成 409
-	if err := s.checkNameFree(ctx, userID, name, 0); err != nil {
-		return nil, err
-	}
-
-	// 5. 写入前校验素材存在、属于当前用户、种类正确：角色卡只存 ID，素材以后可能被清理
+	// 4. 写入前校验素材存在、属于当前用户、种类正确；主图为空时跳过主图校验
 	if err := s.checkAssets(ctx, userID, req.AvatarAssetID, req.ExtraAssetIDs, req.VoiceAssetID); err != nil {
 		return nil, err
 	}
@@ -156,22 +152,21 @@ func (s *CharacterCardService) Create(ctx context.Context, userID uint64, req *m
 		UserID:        userID,
 		Name:          name,
 		Description:   req.Description,
+		LookName:      req.LookName,
+		VoicePrompt:   req.VoicePrompt,
 		AvatarAssetID: req.AvatarAssetID,
 		ExtraAssetIDs: append(datatypes.JSONSlice[uint64]{}, req.ExtraAssetIDs...),
 		VoiceAssetID:  req.VoiceAssetID,
 	}
 	if err := s.cards.Create(ctx, card); err != nil {
-		if errors.Is(err, repository.ErrDuplicate) {
-			return nil, errcode.ErrCharacterNameDup
-		}
 		return nil, err
 	}
 
-	// 6. 返回带素材地址的视图；素材刚校验过，这里仍按读取规则处理缺失
+	// 5. 返回带素材地址的视图；素材刚校验过，这里仍按读取规则处理缺失
 	return s.toView(ctx, userID, card)
 }
 
-// Update 部分更新角色卡并返回最新视图；没传的字段保持不变，声音传 null 清空、补充图传 [] 清空。
+// Update 部分更新角色卡并返回最新视图；没传的字段不改，主图和声音传 null 清空、补充图传 [] 清空。
 func (s *CharacterCardService) Update(ctx context.Context, userID, id uint64, req *model.UpdateCharacterReq) (*model.CharacterView, error) {
 	// 1. 先确认归属：不存在和属于他人都是 66004
 	card, err := s.getOwned(ctx, userID, id)
@@ -184,15 +179,13 @@ func (s *CharacterCardService) Update(ctx context.Context, userID, id uint64, re
 	if err != nil {
 		return nil, err
 	}
-	if err := s.checkCharacterPatch(ctx, userID, id, card, req, voiceChanged); err != nil {
+	if err := s.checkCharacterPatch(ctx, userID, card, req, voiceChanged); err != nil {
 		return nil, err
 	}
 
-	// 3. 写入：重名撞唯一索引、并发删除都翻译成契约里的错误
+	// 3. 写入时若并发删除，翻译成角色不存在；名称允许重复
 	if err := s.cards.Update(ctx, userID, card); err != nil {
 		switch {
-		case errors.Is(err, repository.ErrDuplicate):
-			return nil, errcode.ErrCharacterNameDup
 		case errors.Is(err, repository.ErrNotFound):
 			return nil, errcode.ErrCharacterNotFound
 		}
@@ -214,29 +207,32 @@ func applyCharacterPatch(card *model.CharacterCard, req *model.UpdateCharacterRe
 	if req.Description != nil {
 		card.Description = *req.Description
 	}
-	if req.AvatarAssetID != nil {
-		card.AvatarAssetID = *req.AvatarAssetID
+	if req.LookName != nil {
+		card.LookName = *req.LookName
+	}
+	if req.VoicePrompt != nil {
+		card.VoicePrompt = *req.VoicePrompt
+	}
+	if _, err := applyCharacterAsset(&card.AvatarAssetID, req.AvatarAssetID, "主图"); err != nil {
+		return false, err
 	}
 	if req.ExtraAssetIDs != nil {
 		card.ExtraAssetIDs = append(datatypes.JSONSlice[uint64]{}, req.ExtraAssetIDs...)
 	}
-	return applyCharacterVoice(&card.VoiceAssetID, req.VoiceAssetID)
+	return applyCharacterAsset(&card.VoiceAssetID, req.VoiceAssetID, "声音")
 }
 
 // checkCharacterPatch 校验更新后的完整状态。
 // 只有本次改动过的素材才重新校验归属：旧素材被清理后，用户仍能改名、改设定，删除失效引用也不需要先补素材。
-func (s *CharacterCardService) checkCharacterPatch(ctx context.Context, userID, id uint64, card *model.CharacterCard, req *model.UpdateCharacterReq, voiceChanged bool) error {
+func (s *CharacterCardService) checkCharacterPatch(ctx context.Context, userID uint64, card *model.CharacterCard, req *model.UpdateCharacterReq, voiceChanged bool) error {
 	if err := checkCharacterDescription(card.Description); err != nil {
+		return err
+	}
+	if err := checkCharacterLookAndVoice(card.LookName, card.VoicePrompt); err != nil {
 		return err
 	}
 	if err := checkCharacterExtras(card.AvatarAssetID, card.ExtraAssetIDs); err != nil {
 		return err
-	}
-	// 只有改了名称才查重名，并排除它自己：只改大小写不算重名
-	if req.Name != nil {
-		if err := s.checkNameFree(ctx, userID, card.Name, id); err != nil {
-			return err
-		}
 	}
 	if voiceChanged && card.VoiceAssetID != nil {
 		if err := s.checkAsset(ctx, userID, *card.VoiceAssetID, characterAssetKindAudio, "声音"); err != nil {
@@ -271,22 +267,12 @@ func (s *CharacterCardService) getOwned(ctx context.Context, userID, id uint64) 
 	return card, nil
 }
 
-// checkNameFree 确认用户名下没有同名（忽略大小写）的角色卡，excludeID 非 0 时排除它自己；重名返回 66001。
-func (s *CharacterCardService) checkNameFree(ctx context.Context, userID uint64, name string, excludeID uint64) error {
-	exists, err := s.cards.NameExists(ctx, userID, name, excludeID)
-	if err != nil {
-		return err
-	}
-	if exists {
-		return errcode.ErrCharacterNameDup
-	}
-	return nil
-}
-
-// checkAssets 逐项校验素材归属与种类；voice 为 nil 时不校验声音。
-func (s *CharacterCardService) checkAssets(ctx context.Context, userID, avatar uint64, extras []uint64, voice *uint64) error {
-	if err := s.checkAsset(ctx, userID, avatar, characterAssetKindImage, "主图"); err != nil {
-		return err
+// checkAssets 逐项校验素材归属与种类；主图或声音为 nil 时跳过对应校验。
+func (s *CharacterCardService) checkAssets(ctx context.Context, userID uint64, avatar *uint64, extras []uint64, voice *uint64) error {
+	if avatar != nil {
+		if err := s.checkAsset(ctx, userID, *avatar, characterAssetKindImage, "主图"); err != nil {
+			return err
+		}
 	}
 	for _, id := range extras {
 		if err := s.checkAsset(ctx, userID, id, characterAssetKindImage, "补充图"); err != nil {
@@ -332,22 +318,29 @@ func (s *CharacterCardService) toList(ctx context.Context, userID uint64, cards 
 }
 
 // toView 组装一张角色卡的视图：主图、声音不可用为 null，补充图不可用直接略过。
-// 依据契约「素材已不可用」：主图缺失等同卡片失效，由前端按 avatar=null 判断。
+// 主图为空既可以表示还没有形象，也可以表示原素材已被清理。
 func (s *CharacterCardService) toView(ctx context.Context, userID uint64, card *model.CharacterCard) (*model.CharacterView, error) {
 	out := &model.CharacterView{
 		ID:          idcodec.ID(card.ID),
 		Name:        card.Name,
 		Description: card.Description,
+		LookName:    card.LookName,
+		VoicePrompt: card.VoicePrompt,
 		Extras:      make([]model.AssetView, 0, len(card.ExtraAssetIDs)),
 		CreatedAt:   card.CreatedAt,
 		UpdatedAt:   card.UpdatedAt,
 	}
 
-	avatar, err := s.assetView(ctx, userID, card.AvatarAssetID)
-	if err != nil {
-		return nil, err
+	if card.DramaID != nil {
+		out.DramaID = new(idcodec.ID(*card.DramaID))
 	}
-	out.Avatar = avatar
+	if card.AvatarAssetID != nil {
+		avatar, err := s.assetView(ctx, userID, *card.AvatarAssetID)
+		if err != nil {
+			return nil, err
+		}
+		out.Avatar = avatar
+	}
 	for _, id := range card.ExtraAssetIDs {
 		extra, err := s.assetView(ctx, userID, id)
 		if err != nil {
@@ -358,9 +351,11 @@ func (s *CharacterCardService) toView(ctx context.Context, userID uint64, card *
 		}
 	}
 	if card.VoiceAssetID != nil {
-		if out.Voice, err = s.assetView(ctx, userID, *card.VoiceAssetID); err != nil {
+		voice, err := s.assetView(ctx, userID, *card.VoiceAssetID)
+		if err != nil {
 			return nil, err
 		}
+		out.Voice = voice
 	}
 	return out, nil
 }
@@ -397,14 +392,25 @@ func checkCharacterDescription(desc string) error {
 	return nil
 }
 
+// checkCharacterLookAndVoice 按字符数校验造型名和音色描述，沿用角色参数错误码。
+func checkCharacterLookAndVoice(lookName, voicePrompt string) error {
+	if utf8.RuneCountInString(lookName) > maxCharacterNameLen {
+		return errcode.ErrCharacterInvalid.WithMsg("造型名过长")
+	}
+	if utf8.RuneCountInString(voicePrompt) > maxCharacterDescLen {
+		return errcode.ErrCharacterInvalid.WithMsg("音色描述过长")
+	}
+	return nil
+}
+
 // checkCharacterExtras 校验补充图的结构规则：≤ 4 张、不重复、不含主图。
-func checkCharacterExtras(avatar uint64, extras []uint64) error {
+func checkCharacterExtras(avatar *uint64, extras []uint64) error {
 	if len(extras) > maxCharacterExtraAssets {
 		return errcode.ErrCharacterInvalid.WithMsg("补充图超过 4 张")
 	}
 	seen := make(map[uint64]struct{}, len(extras))
 	for _, id := range extras {
-		if id == avatar {
+		if avatar != nil && id == *avatar {
 			return errcode.ErrCharacterInvalid.WithMsg("补充图含主图")
 		}
 		if _, ok := seen[id]; ok {
@@ -415,9 +421,9 @@ func checkCharacterExtras(avatar uint64, extras []uint64) error {
 	return nil
 }
 
-// applyCharacterVoice 解析 PATCH 里的声音字段：没传不改、null 清空、数字改成新声音。
-// 返回是否改动了声音，供调用方只对新声音做归属校验。格式不对按参数错误返回。
-func applyCharacterVoice(dst **uint64, raw json.RawMessage) (bool, error) {
+// applyCharacterAsset 解析 PATCH 里的可空素材：没传不改、null 清空、数字更换引用。
+// 返回是否改动，格式不对按参数错误返回。
+func applyCharacterAsset(dst **uint64, raw json.RawMessage, label string) (bool, error) {
 	if raw == nil {
 		return false, nil
 	}
@@ -427,7 +433,7 @@ func applyCharacterVoice(dst **uint64, raw json.RawMessage) (bool, error) {
 	}
 	var id uint64
 	if err := json.Unmarshal(raw, &id); err != nil || id == 0 {
-		return false, errcode.ErrInvalidParams.WithMsg("声音 ID 格式错误")
+		return false, errcode.ErrInvalidParams.WithMsg(label + " ID 格式错误")
 	}
 	*dst = &id
 	return true, nil

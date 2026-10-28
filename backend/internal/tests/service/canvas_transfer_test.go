@@ -145,10 +145,7 @@ func newTransferEnv(t *testing.T, payload string) *transferEnv {
 
 func (e *transferEnv) addCard(id uint64) {
 	voice := uint64(203)
-	e.characters.cards[id] = model.CharacterCard{
-		ID: id, UserID: transferUser, Name: "小明", Description: "一个少年",
-		AvatarAssetID: 201, ExtraAssetIDs: datatypes.JSONSlice[uint64]{202}, VoiceAssetID: &voice,
-	}
+	e.characters.cards[id] = model.CharacterCard{ID: id, UserID: transferUser, Name: "小明", Description: "一个少年", AvatarAssetID: new(uint64(201)), ExtraAssetIDs: datatypes.JSONSlice[uint64]{202}, VoiceAssetID: &voice}
 }
 
 func hashedSet(f *fakeTransferAssets) map[uint64]bool {
@@ -387,5 +384,29 @@ func TestCanvasTransfer_Export_ChecksImportLimits(t *testing.T) {
 				t.Errorf("状态码 %d、结果 %v", ce.HTTPStatus(), res)
 			}
 		})
+	}
+}
+
+func TestCanvasTransfer_Export_DramaCanvasExcluded(t *testing.T) {
+	e := newTransferEnv(t, transferPayload(idcodec.Encode(7)))
+	e.canvases.canvases[5].DramaID = new(uint64(42))
+	res, err := e.svc.Export(context.Background(), transferUser, 5)
+	var businessErr *errcode.Error
+	if !errors.As(err, &businessErr) || businessErr.Code != errcode.ErrCanvasNotFound.Code || res != nil || len(e.assets.hashed) != 0 {
+		t.Fatalf("短剧画布不应可导出：%+v %v", res, err)
+	}
+}
+
+func TestCanvasTransfer_Export_CharacterWithoutAvatar(t *testing.T) {
+	e := newTransferEnv(t, transferPayload(idcodec.Encode(7)))
+	e.characters.cards[7] = model.CharacterCard{ID: 7, UserID: transferUser, Name: "暂无形象"}
+	res, err := e.svc.Export(context.Background(), transferUser, 5)
+	if err != nil || res == nil {
+		t.Fatalf("无形象角色不应阻断普通画布导出：%+v %v", res, err)
+	}
+	for _, id := range e.assets.hashed {
+		if id == 0 {
+			t.Fatal("空主图不应查询素材 ID 0")
+		}
 	}
 }

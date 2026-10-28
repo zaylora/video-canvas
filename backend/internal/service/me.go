@@ -34,9 +34,9 @@ type MeRepo interface {
 	CountLedger(ctx context.Context, userID uint64, types []string) (int64, error)
 }
 
-// CanvasCounter 统计用户未删除的画布数，由 repository.CanvasProjectRepository 实现。
+// CanvasCounter 统计用户未删除且不属于短剧的个人画布数，由 repository.CanvasProjectRepository 实现。
 type CanvasCounter interface {
-	// CountByUser 统计用户未删除的画布数。
+	// CountByUser 统计用户未删除且不属于短剧的个人画布数。
 	CountByUser(ctx context.Context, userID uint64) (int64, error)
 }
 
@@ -164,7 +164,7 @@ func (s *MeService) Stats(ctx context.Context, userID uint64) (*model.MeStatsVie
 	if err != nil {
 		return nil, err
 	}
-	// 2. 画布数：只数未软删除的
+	// 2. 个人画布数：只数未软删除且不属于短剧的画布
 	n, err := s.Canvases.CountByUser(ctx, userID)
 	if err != nil {
 		return nil, err

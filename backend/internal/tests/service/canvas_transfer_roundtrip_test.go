@@ -98,3 +98,30 @@ func cloneAssets(m map[uint64]*model.Asset) map[uint64]model.Asset {
 	}
 	return out
 }
+
+func TestCanvasTransfer_ExportThenImport_CharacterWithoutAvatar(t *testing.T) {
+	ctx := context.Background()
+	src := newTransferEnv(t, transferPayload(idcodec.Encode(7)))
+	src.characters.cards[7] = model.CharacterCard{ID: 7, UserID: transferUser, Name: "待生成形象"}
+	exported, err := src.svc.Export(ctx, transferUser, 5)
+	if err != nil {
+		t.Fatalf("无主图不应阻断导出：%v", err)
+	}
+	raw, err := json.Marshal(exported.Document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dst := newDefaultImportEnv(t)
+	res, err := dst.svc.Import(ctx, importUser, raw)
+	if err != nil || res == nil || len(dst.tx.st.canvases) != 1 {
+		t.Fatalf("无主图普通画布应完成往返：%+v %v", res, err)
+	}
+	// 导出文件现有版本要求角色主图有效；没有主图沿用失效引用规则，保留节点且不伪造角色卡。
+	if len(dst.cardsOf(importUser)) != 0 || len(exported.Document.Characters) != 0 {
+		t.Fatalf("无主图不应伪造导入角色：%+v", res.Report.Characters)
+	}
+	nodes := importedNodes(t, dst.tx.st.canvases[0])
+	if len(nodes) != 3 || nodes["n2"] == nil || nodes["n2"]["characterId"] != nil {
+		t.Fatalf("角色节点应保留且没有旧环境引用：%+v", nodes)
+	}
+}

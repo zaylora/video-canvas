@@ -55,7 +55,7 @@ func PickOp(ops []string, chosen any, hasImage bool) string {
 // setMode 把 mode 写进节点的 params.op。方式要符合节点种类；模型已知时还要是它支持的方式。
 func (a *applier) setMode(n Node, mode string) error {
 	var allowed []string
-	switch n.Kind() {
+	switch generationKind(n.Kind()) {
 	case KindVideo:
 		allowed = videoOps
 	case KindImage:
@@ -104,7 +104,7 @@ func AnnotateModes(res *DetailResult, fn ModelOpsFunc) {
 		if n.Type == "group" {
 			continue
 		}
-		if kind := str(n.Data["kind"]); kind != KindVideo && kind != KindImage {
+		if kind := generationKind(str(n.Data["kind"])); kind != KindVideo && kind != KindImage {
 			continue
 		}
 		model := str(n.Data["model"])
@@ -190,7 +190,7 @@ func (g *Graph) upstreamKinds(id string) map[string]int {
 			continue
 		}
 		if src := g.Node(e.Source()); src != nil && !src.IsGroup() {
-			out[src.Kind()]++
+			out[generationKind(src.Kind())]++
 		}
 	}
 	return out

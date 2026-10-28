@@ -34,14 +34,14 @@ func (r *CanvasProjectRepository) GetByID(ctx context.Context, userID, id uint64
 	return &p, nil
 }
 
-// List 分页查询用户的画布列表，不查 payload_json 大字段；左联 assets 带出封面素材的存储 key（素材没了就是空）。
+// List 分页查询用户不属于短剧的画布列表，不查 payload_json 大字段；左联 assets 带出封面素材的存储 key（素材没了就是空）。
 // 计数不联表，联表后列名要带表名前缀（两张表都有 user_id）。
 func (r *CanvasProjectRepository) List(ctx context.Context, userID uint64, keyword string, offset, limit int) ([]model.CanvasProjectItem, int64, error) {
 	var (
 		items []model.CanvasProjectItem
 		total int64
 	)
-	db := r.db.WithContext(ctx).Model(&model.CanvasProject{}).Where("canvas_projects.user_id = ?", userID)
+	db := r.db.WithContext(ctx).Model(&model.CanvasProject{}).Where("canvas_projects.user_id = ? AND canvas_projects.drama_id IS NULL", userID)
 	if keyword != "" {
 		db = db.Where("canvas_projects.title ILIKE ?", "%"+escapeLike(keyword)+"%")
 	}
@@ -110,10 +110,10 @@ func escapeLike(s string) string {
 	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(s)
 }
 
-// CountByUser 统计用户未删除的画布数（条件 user_id，软删除的不算）。
+// CountByUser 统计用户未删除且不属于短剧的个人画布数（条件 user_id、drama_id IS NULL）。
 func (r *CanvasProjectRepository) CountByUser(ctx context.Context, userID uint64) (int64, error) {
 	var n int64
-	err := r.db.WithContext(ctx).Model(&model.CanvasProject{}).Where("user_id = ?", userID).Count(&n).Error
+	err := r.db.WithContext(ctx).Model(&model.CanvasProject{}).Where("user_id = ? AND drama_id IS NULL", userID).Count(&n).Error
 	return n, err
 }
 

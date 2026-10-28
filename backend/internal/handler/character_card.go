@@ -25,7 +25,7 @@ func NewCharacterCardHandler(svc *service.CharacterCardService) *CharacterCardHa
 	return &CharacterCardHandler{svc: svc}
 }
 
-// List 角色卡列表：?ids= 逗号分隔的十六进制 ID（有 ids 时忽略 q）或 ?q= 名称搜索。
+// List 默认返回个人角色卡；?ids= 批量读取包含短剧角色（有 ids 时忽略 q），?q= 按名称搜索。
 func (h *CharacterCardHandler) List(c *gin.Context) {
 	userID := currentUserID(c)
 	if raw, hasIDs := c.GetQuery("ids"); hasIDs {
@@ -78,7 +78,7 @@ func (h *CharacterCardHandler) Create(c *gin.Context) {
 	response.Created(c, v)
 }
 
-// Update 部分更新角色卡：没传的字段不改，voice_asset_id: null 清空声音，extra_asset_ids: [] 清空补充图。
+// Update 部分更新角色卡：没传不改，主图和声音传 null 清空，补充图传 [] 清空，可更新造型名和音色描述。
 func (h *CharacterCardHandler) Update(c *gin.Context) {
 	id, ok := CanvasPathID(c)
 	if !ok {

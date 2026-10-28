@@ -71,6 +71,7 @@ type Config struct {
 	Handler  Handler
 	Settings SettingsSource
 	Repo     Repo
+	Drama    DramaHandler // 短剧固定流水线步骤执行器
 
 	Enabled bool // 本实例是否执行任务；为 false 时只能入队（API-only 实例）
 
@@ -160,6 +161,10 @@ func New(cfg Config) (*Runtime, error) {
 		rc.Workers = workers
 		// River 队列的 MaxWorkers 启动后改不了，所以取硬上限；实际并发由 gate 控制（后台调整立即生效）
 		rc.Queues = map[string]river.QueueConfig{riverQueue: {MaxWorkers: hardCap}}
+		if cfg.Drama != nil {
+			river.AddWorker(workers, &dramaWorker{rt: rt})
+			rc.Queues["drama"] = river.QueueConfig{MaxWorkers: hardCap}
+		}
 		if cfg.Notifier != nil {
 			river.AddWorker(workers, &notifyWorker{rt: rt})
 			rc.Queues[notifyQueue] = river.QueueConfig{MaxWorkers: notifyWorkers}

@@ -39,7 +39,7 @@ func TestCanvasTransferRepository_WithTx_RollsBackEverything(t *testing.T) {
 		}
 	})
 
-	t.Run("成功时三类行都落库，重名卡返回 ErrDuplicate 且不中断事务", func(t *testing.T) {
+	t.Run("成功时三类行都落库，同名角色卡共存", func(t *testing.T) {
 		var asset model.Asset
 		var canvas model.CanvasProject
 		err := r.WithTx(ctx, func(tx CanvasTransferTx) error {
@@ -50,29 +50,21 @@ func TestCanvasTransferRepository_WithTx_RollsBackEverything(t *testing.T) {
 			if asset.ID == 0 {
 				t.Error("CreateAsset 应回填 ID")
 			}
-			card := &model.CharacterCard{UserID: user, Name: "林夏", AvatarAssetID: asset.ID}
+			card := &model.CharacterCard{UserID: user, Name: "林夏", AvatarAssetID: new(uint64(asset.ID))}
 			if err := tx.CreateCharacter(ctx, card); err != nil {
 				return err
 			}
-			exists, err := tx.CharacterNameExists(ctx, user, "林夏")
-			if err != nil || !exists {
-				t.Errorf("同一事务里应能看到刚建的卡：%v, %v", exists, err)
+			dup := &model.CharacterCard{UserID: user, Name: "林夏", AvatarAssetID: new(uint64(asset.ID))}
+			if err := tx.CreateCharacter(ctx, dup); err != nil {
+				t.Errorf("重名应允许创建，实际 %v", err)
 			}
-			if other, err := tx.CharacterNameExists(ctx, user+1, "林夏"); err != nil || other {
-				t.Errorf("别的用户不应看到这张卡：%v, %v", other, err)
-			}
-			// 撞唯一索引后事务仍可继续：仓储用保存点隔离了这次失败的插入
-			dup := &model.CharacterCard{UserID: user, Name: "林夏", AvatarAssetID: asset.ID}
-			if err := tx.CreateCharacter(ctx, dup); !errors.Is(err, ErrDuplicate) {
-				t.Errorf("重名应返回 ErrDuplicate，实际 %v", err)
-			}
-			renamed := &model.CharacterCard{UserID: user, Name: "林夏 (2)", AvatarAssetID: asset.ID}
+			renamed := &model.CharacterCard{UserID: user, Name: "林夏 (2)", AvatarAssetID: new(uint64(asset.ID))}
 			if err := tx.CreateCharacter(ctx, renamed); err != nil {
 				return err
 			}
 			n, err := tx.CountCharacters(ctx, user)
-			if err != nil || n != 2 {
-				t.Errorf("CountCharacters = %d, %v，期望 2", n, err)
+			if err != nil || n != 3 {
+				t.Errorf("CountCharacters = %d, %v，期望 3", n, err)
 			}
 			canvas = model.CanvasProject{UserID: user, Title: "导入的画布", PayloadJSON: []byte(`{"nodes":[]}`), Revision: 1}
 			return tx.CreateCanvas(ctx, &canvas)
@@ -83,7 +75,7 @@ func TestCanvasTransferRepository_WithTx_RollsBackEverything(t *testing.T) {
 		if canvas.ID == 0 {
 			t.Error("CreateCanvas 应回填 ID")
 		}
-		if count(&model.Asset{}) != 1 || count(&model.CharacterCard{}) != 2 || count(&model.CanvasProject{}) != 1 {
+		if count(&model.Asset{}) != 1 || count(&model.CharacterCard{}) != 3 || count(&model.CanvasProject{}) != 1 {
 			t.Fatalf("落库行数不对：素材 %d、角色卡 %d、画布 %d",
 				count(&model.Asset{}), count(&model.CharacterCard{}), count(&model.CanvasProject{}))
 		}

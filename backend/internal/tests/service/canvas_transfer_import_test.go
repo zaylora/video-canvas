@@ -15,7 +15,6 @@ import (
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/pkg/idcodec"
-	"video-canvas/internal/repository"
 	"video-canvas/internal/service"
 )
 
@@ -95,12 +94,12 @@ type fakeImportTx struct {
 	st importStore
 	// failCanvas 非空时 CreateCanvas 返回它
 	failCanvas error
-	// dupOnce 里的名字在 CreateCharacter 时第一次假装撞唯一索引（模拟并发下另一个请求抢先建了同名卡）
-	dupOnce map[string]bool
+	// failCharacter 非空时插入角色卡失败，整个导入应回滚。
+	failCharacter error
 }
 
 func newFakeImportTx() *fakeImportTx {
-	return &fakeImportTx{st: importStore{nextID: 1000}, dupOnce: map[string]bool{}}
+	return &fakeImportTx{st: importStore{nextID: 1000}}
 }
 
 func (f *fakeImportTx) WithTx(_ context.Context, fn func(tx service.TransferTx) error) error {
@@ -129,29 +128,16 @@ func (f *fakeImportTx) CreateAsset(_ context.Context, a *model.Asset) error {
 func (f *fakeImportTx) CountCharacters(_ context.Context, userID uint64) (int64, error) {
 	var n int64
 	for _, c := range f.st.cards {
-		if c.UserID == userID {
+		if c.UserID == userID && c.DramaID == nil {
 			n++
 		}
 	}
 	return n, nil
 }
 
-func (f *fakeImportTx) CharacterNameExists(_ context.Context, userID uint64, name string) (bool, error) {
-	for _, c := range f.st.cards {
-		if c.UserID == userID && strings.EqualFold(c.Name, name) {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
-func (f *fakeImportTx) CreateCharacter(ctx context.Context, c *model.CharacterCard) error {
-	if f.dupOnce[c.Name] {
-		delete(f.dupOnce, c.Name)
-		return repository.ErrDuplicate
-	}
-	if exists, _ := f.CharacterNameExists(ctx, c.UserID, c.Name); exists {
-		return repository.ErrDuplicate
+func (f *fakeImportTx) CreateCharacter(_ context.Context, c *model.CharacterCard) error {
+	if f.failCharacter != nil {
+		return f.failCharacter
 	}
 	c.ID = f.id()
 	f.st.cards = append(f.st.cards, c)
@@ -187,7 +173,7 @@ func newImportEnv(t *testing.T, limits canvasdoc.Limits) *importEnv {
 // addCard 给用户预置一张角色卡。
 func (e *importEnv) addCard(userID uint64, name string) {
 	e.tx.st.nextID++
-	e.tx.st.cards = append(e.tx.st.cards, &model.CharacterCard{ID: e.tx.st.nextID, UserID: userID, Name: name, AvatarAssetID: 1})
+	e.tx.st.cards = append(e.tx.st.cards, &model.CharacterCard{ID: e.tx.st.nextID, UserID: userID, Name: name, AvatarAssetID: new(uint64(1))})
 }
 
 // importPayload 是原环境里一张真实形状的画布：图片节点 n1（主素材 101 同时是产物、参考图 102）、
@@ -358,7 +344,7 @@ func TestImport_Success(t *testing.T) {
 		t.Fatalf("角色卡结果不对: cards=%v report=%+v", cards, res.Report.Characters)
 	}
 	c := cards[0]
-	if c.Name != "林夏" || c.Description != "短发，黑色风衣" || c.AvatarAssetID != e.newAssetID(t, transferHash(201)) {
+	if c.Name != "林夏" || c.Description != "短发，黑色风衣" || c.AvatarAssetID == nil || *c.AvatarAssetID != e.newAssetID(t, transferHash(201)) {
 		t.Errorf("角色卡内容不对: %+v", c)
 	}
 	if !slices.Equal([]uint64(c.ExtraAssetIDs), []uint64{e.newAssetID(t, transferHash(202))}) {
@@ -414,32 +400,30 @@ func TestImport_MissingAssetReported(t *testing.T) {
 	}
 }
 
-func TestImport_CharacterRename(t *testing.T) {
-	t.Run("同名加后缀，第二次导入继续递增", func(t *testing.T) {
+func TestImport_CharacterNames(t *testing.T) {
+	t.Run("同名保留原名，重复导入仍保留", func(t *testing.T) {
 		e := newDefaultImportEnv(t)
 		e.addCard(importUser, "林夏")
-		e.addCard(importUser+1, "林夏 (2)") // 别人的卡不影响改名
+		e.addCard(importUser+1, "林夏") // 他人的卡不影响导入
 		doc := defaultImportFixture().build(t)
 
 		res, err := e.svc.Import(context.Background(), importUser, doc)
 		if err != nil {
 			t.Fatalf("Import: %v", err)
 		}
-		want := []service.ImportRename{{From: "林夏", To: "林夏 (2)"}}
-		if !slices.Equal(res.Report.Characters.Renamed, want) {
-			t.Errorf("renamed = %+v，期望 %+v", res.Report.Characters.Renamed, want)
+		if len(res.Report.Characters.Renamed) != 0 || e.cardsOf(importUser)[1].Name != "林夏" {
+			t.Errorf("同名应保留：%+v", res.Report.Characters)
 		}
 		res, err = e.svc.Import(context.Background(), importUser, doc)
 		if err != nil {
 			t.Fatalf("第二次 Import: %v", err)
 		}
-		want = []service.ImportRename{{From: "林夏", To: "林夏 (3)"}}
-		if !slices.Equal(res.Report.Characters.Renamed, want) {
-			t.Errorf("第二次 renamed = %+v，期望 %+v", res.Report.Characters.Renamed, want)
+		if len(res.Report.Characters.Renamed) != 0 || e.cardsOf(importUser)[2].Name != "林夏" {
+			t.Errorf("重复导入应保留原名：%+v", res.Report.Characters)
 		}
 	})
 
-	t.Run("不区分大小写", func(t *testing.T) {
+	t.Run("大小写近似的名字同样保留", func(t *testing.T) {
 		e := newDefaultImportEnv(t)
 		e.addCard(importUser, "alice")
 		fx := defaultImportFixture()
@@ -448,12 +432,12 @@ func TestImport_CharacterRename(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Import: %v", err)
 		}
-		if r := res.Report.Characters.Renamed; len(r) != 1 || r[0].To != "Alice (2)" {
+		if r := res.Report.Characters.Renamed; len(r) != 0 || e.cardsOf(importUser)[1].Name != "Alice" {
 			t.Errorf("renamed = %+v", r)
 		}
 	})
 
-	t.Run("64 字的名字改名后仍不超过 64 字", func(t *testing.T) {
+	t.Run("64 字同名仍保留完整名字", func(t *testing.T) {
 		e := newDefaultImportEnv(t)
 		long := strings.Repeat("长", 64)
 		e.addCard(importUser, long)
@@ -463,22 +447,19 @@ func TestImport_CharacterRename(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Import: %v", err)
 		}
-		got := res.Report.Characters.Renamed[0].To
-		if utf8.RuneCountInString(got) > 64 || got != strings.Repeat("长", 60)+" (2)" {
-			t.Errorf("改名结果 %q（%d 字）", got, utf8.RuneCountInString(got))
+		got := e.cardsOf(importUser)[1].Name
+		if len(res.Report.Characters.Renamed) != 0 || got != long {
+			t.Errorf("导入名字 %q（%d 字）", got, utf8.RuneCountInString(got))
 		}
 	})
 
-	t.Run("撞唯一索引视为重名换下一个后缀", func(t *testing.T) {
+	t.Run("角色插入失败保留错误并回滚", func(t *testing.T) {
 		e := newDefaultImportEnv(t)
-		e.tx.dupOnce["林夏"] = true
+		boom := errors.New("角色插入失败")
+		e.tx.failCharacter = boom
 		res, err := e.svc.Import(context.Background(), importUser, defaultImportFixture().build(t))
-		if err != nil {
-			t.Fatalf("Import: %v", err)
-		}
-		want := []service.ImportRename{{From: "林夏", To: "林夏 (2)"}}
-		if !slices.Equal(res.Report.Characters.Renamed, want) {
-			t.Errorf("renamed = %+v，期望 %+v", res.Report.Characters.Renamed, want)
+		if !errors.Is(err, boom) || res != nil || len(e.tx.st.cards) != 0 || len(e.tx.st.assets) != 0 || len(e.tx.st.canvases) != 0 {
+			t.Fatalf("应保留失败且整体回滚：%+v %v", res, err)
 		}
 	})
 
