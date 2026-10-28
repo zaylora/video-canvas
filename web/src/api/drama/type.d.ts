@@ -1,3 +1,6 @@
+import type { AssetDto, BackendAssetDto } from "@/api/asset/type";
+import type { TaskStatus, TaskView } from "@/api/generation-task/type";
+
 /**
  * 短剧工作室接口类型（契约 docs/design/短剧工作室/接口契约.md）。
  * Backend* 是后端原样的 snake_case 响应，其余是前端 camelCase 结构。
@@ -7,13 +10,22 @@
 export type DramaStatus = "analyzing" | "outlined" | "scripting" | "ready" | "failed";
 
 /** 流水线步骤 */
-export type DramaStep = "analyze" | "outline" | "scripts" | "breakdown" | "asset_prompts";
+export type DramaStep =
+  | "analyze"
+  | "outline"
+  | "scripts"
+  | "breakdown"
+  | "asset_prompts"
+  | "storyboard";
 
 /** 任务状态 */
 export type DramaJobStatus = "queued" | "running" | "succeeded" | "failed" | "canceled";
 
 /** 一集剧本的状态 */
 export type ScriptStatus = "empty" | "generating" | "ready" | "failed";
+
+/** 一集分镜脚本的状态（契约 §9.1） */
+export type StoryboardStatus = "empty" | "generating" | "ready" | "failed";
 
 /** 成片比例，空串表示未定 */
 export type DramaRatio = "9:16" | "16:9" | "21:9" | "3:4" | "4:3" | "1:1" | "";
@@ -39,6 +51,11 @@ export interface BackendEpisodeSummary {
   locked: boolean;
   revision: number;
   updated_at: string;
+  /** 二期字段（契约 §9.1）；后端还没带时按空处理 */
+  storyboard_status?: StoryboardStatus;
+  segment_count?: number;
+  segment_seconds?: number;
+  done_segment_count?: number;
 }
 
 export interface BackendEpisodeView extends BackendEpisodeSummary {
@@ -108,6 +125,14 @@ export interface EpisodeSummary {
   locked: boolean;
   revision: number;
   updatedAt: string;
+  /** 分镜脚本状态 */
+  storyboardStatus: StoryboardStatus;
+  /** 片段数 */
+  segmentCount: number;
+  /** 各片段时长之和（秒） */
+  segmentSeconds: number;
+  /** 有「采用」视频的片段数 */
+  doneSegmentCount: number;
 }
 
 export interface Episode extends EpisodeSummary {
@@ -209,10 +234,114 @@ export interface DramaJobInput {
   episodes: number[];
   /** breakdown 且项目未定比例时必填 */
   ratio?: DramaRatio;
+  /** storyboard：所选视频模型的单段时长上限（秒），缺省 15，范围 4–60 */
+  maxSeconds?: number;
 }
 
 /** WebSocket drama.job 事件载荷 */
 export interface DramaJobEvent {
   dramaId: string;
   job: DramaJob;
+}
+
+/** 片段状态（由最近一条 take 推出） */
+export type SegmentStatus = "idle" | "running" | "done" | "error";
+
+export interface BackendShot {
+  seconds: number;
+  shot_size: string;
+  camera: string;
+  action: string;
+  dialogue: string;
+}
+
+export interface BackendSegmentTake {
+  task_id: string;
+  status: TaskStatus;
+  asset: BackendAssetDto | null;
+  error_message: string;
+  created_at: string;
+}
+
+export interface BackendSegmentView {
+  id: string;
+  episode_no: number;
+  seq: number;
+  seconds: number;
+  prompt: string;
+  shots: BackendShot[] | null;
+  keyframe: BackendAssetDto | null;
+  takes: BackendSegmentTake[] | null;
+  chosen_task_id: string;
+  status: SegmentStatus;
+  revision: number;
+  updated_at: string;
+}
+
+/** 分镜表的一行（只读，供参考） */
+export interface SegmentShot {
+  seconds: number;
+  shotSize: string;
+  camera: string;
+  action: string;
+  dialogue: string;
+}
+
+/** 片段的一次视频生成结果 */
+export interface SegmentTake {
+  taskId: string;
+  status: TaskStatus;
+  asset: AssetDto | null;
+  errorMessage: string;
+  createdAt: string;
+}
+
+export interface Segment {
+  id: string;
+  episodeNo: number;
+  /** 从 0 开始，按它排序 */
+  seq: number;
+  seconds: number;
+  /** `@[名](短剧画布节点 id)` 形式的提示词 */
+  prompt: string;
+  shots: SegmentShot[];
+  /** 首帧图；有则生成视频走 i2v */
+  keyframe: AssetDto | null;
+  /** 按创建时间正序 */
+  takes: SegmentTake[];
+  /** 采用的那一条；空串 = 没有 */
+  chosenTaskId: string;
+  status: SegmentStatus;
+  revision: number;
+  updatedAt: string;
+}
+
+/** PATCH /drama-segments/:sid 可改字段 */
+export interface UpdateSegmentInput {
+  revision: number;
+  prompt?: string;
+  seconds?: number;
+  chosenTaskId?: string;
+}
+
+/** POST /dramas/:id/episodes/:no/segments 请求体 */
+export interface AddSegmentInput {
+  prompt?: string;
+  seconds?: number;
+  afterSeq?: number;
+}
+
+/** generate / keyframe 请求体：input 与 POST /generation-tasks 的 input 同构 */
+export interface SegmentGenerateBody {
+  model_id: string;
+  input: Record<string, unknown>;
+}
+
+export type SegmentGenerateResult = { task: TaskView };
+
+/** WebSocket drama.segment 事件载荷（原样 snake_case） */
+export interface DramaSegmentEvent {
+  drama_id: string;
+  episode_no: number;
+  segment: BackendSegmentView;
 }

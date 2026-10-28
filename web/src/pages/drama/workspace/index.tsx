@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
 import { MotionConfig } from "motion/react";
-import { Clapperboard } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -12,6 +11,7 @@ import { formatPageTitle } from "@/utils/page-title";
 import { AssetsArea } from "./assets-area";
 import { BreakdownDialog } from "./breakdown-dialog";
 import { DramaWorkspaceContext } from "./context";
+import { EpisodesArea } from "./episodes-area";
 import { Rail } from "./rail";
 import { ScriptArea } from "./script-area";
 import { SidePanel } from "./side-panel";
@@ -19,21 +19,6 @@ import { Topbar } from "./topbar";
 import { useDramaWorkspace, type DramaWorkspace, type WorkspaceArea } from "./use-workspace";
 
 const AREAS: readonly WorkspaceArea[] = ["script", "assets", "episodes"];
-
-/** 分集区：一期只放占位，二期上线分镜脚本与逐片段出视频 */
-function EpisodesPlaceholder() {
-  return (
-    <div className="text-muted-foreground flex h-full flex-col items-center justify-center gap-2 text-center">
-      <span className="bg-muted grid size-12 place-items-center rounded-2xl">
-        <Clapperboard className="size-6" />
-      </span>
-      <div className="text-foreground text-base font-medium">分集视频 · 二期上线</div>
-      <p className="max-w-xs text-sm">
-        每集先生成分镜脚本，再逐片段出视频。先在「剧本」和「资产」里把角色、场景、道具准备好。
-      </p>
-    </div>
-  );
-}
 
 function WorkspaceSkeleton() {
   return (
@@ -114,7 +99,9 @@ function Workspace({ id }: { id: string }) {
                   {area === "assets" && (
                     <AssetsArea onBreakdownOpen={() => setBreakdownOpen(true)} />
                   )}
-                  {area === "episodes" && <EpisodesPlaceholder />}
+                  {area === "episodes" && (
+                    <EpisodesArea onGoScript={() => setParams({}, { replace: true })} />
+                  )}
                 </main>
                 {sideOpen && (
                   <SidePanel className="max-lg:absolute max-lg:inset-y-0 max-lg:right-0 max-lg:z-30 max-lg:shadow-xl" />

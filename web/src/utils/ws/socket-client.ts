@@ -1,5 +1,5 @@
 import type { AgentEventDto, CanvasPatchDto } from "@/api/agent/type";
-import type { BackendJobView } from "@/api/drama/type";
+import type { BackendJobView, DramaSegmentEvent } from "@/api/drama/type";
 import type { ServerMessage, TaskView } from "@/api/generation-task/type";
 import type { PaymentWsUpdate } from "@/store/payment";
 import type { ConnectionState } from "@/store/ws";
@@ -128,6 +128,24 @@ export function parseServerMessage(raw: unknown): ServerMessage | null {
       }
       return msg as ServerMessage;
     }
+    case "drama.segment": {
+      if (typeof data !== "object" || data === null) return null;
+      const event = data as {
+        drama_id?: unknown;
+        episode_no?: unknown;
+        segment?: { id?: unknown };
+      };
+      if (
+        typeof event.drama_id !== "string" ||
+        typeof event.episode_no !== "number" ||
+        typeof event.segment !== "object" ||
+        event.segment === null ||
+        typeof event.segment.id !== "string"
+      ) {
+        return null;
+      }
+      return msg as ServerMessage;
+    }
     default:
       return null;
   }
@@ -165,6 +183,8 @@ export type SocketClientDeps = {
   onPayment?: (update: PaymentWsUpdate) => void;
   /** 收到短剧流水线任务的状态 / 进度变化 */
   onDramaJob?: (event: { drama_id: string; job: BackendJobView }) => void;
+  /** 收到短剧片段的变化 */
+  onDramaSegment?: (event: DramaSegmentEvent) => void;
   /** 每次连接成功（包括重连）后调用，用来对账 */
   onOpen: () => void;
   onState: (state: ConnectionState) => void;
@@ -319,6 +339,7 @@ export class TaskSocketClient {
       else if (msg.type === "agent.event") this.deps.onAgentEvent?.(msg.data);
       else if (msg.type === "payment.updated") this.deps.onPayment?.(msg.data);
       else if (msg.type === "drama.job") this.deps.onDramaJob?.(msg.data);
+      else if (msg.type === "drama.segment") this.deps.onDramaSegment?.(msg.data);
     };
     socket.onclose = () => {
       if (generation !== this.generation) return;

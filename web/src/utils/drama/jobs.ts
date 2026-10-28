@@ -69,6 +69,7 @@ const STEP_NAME: Record<DramaStep, string> = {
   scripts: "分集剧本",
   breakdown: "资产拆解",
   asset_prompts: "写资产提示词",
+  storyboard: "分镜脚本",
 };
 
 /** 步骤的短名称 */
@@ -79,7 +80,7 @@ export function jobTitle(job: Pick<DramaJob, "step" | "episodes">): string {
   const name = STEP_NAME[job.step];
   if (job.step === "analyze" || job.step === "outline" || job.step === "asset_prompts") return name;
   if (job.episodes.length === 0) return name;
-  if (job.episodes.length === 1 && job.step === "breakdown") {
+  if (job.episodes.length === 1 && (job.step === "breakdown" || job.step === "storyboard")) {
     return `${name} · 第 ${job.episodes[0]} 集`;
   }
   return `${name} · ${job.episodes.length} 集`;

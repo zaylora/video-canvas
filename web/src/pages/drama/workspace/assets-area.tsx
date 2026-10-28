@@ -11,6 +11,8 @@ import {
 } from "lucide-react";
 
 import { getCanvas } from "@/api/canvas";
+import { listSegments } from "@/api/drama";
+import { confirm } from "@/components/admin-ui/confirm-dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CanvasEditor } from "@/components/canvas-editor/canvas-editor";
 import type { CanvasEditorCommands } from "@/components/canvas-editor/editor-api";
@@ -18,11 +20,12 @@ import { Button } from "@/components/ui/button";
 import { useCanvasLock } from "@/hooks/use-canvas-lock";
 import { cn } from "@/lib/utils";
 import { buildAddNodeItems } from "@/pages/canvas/chrome/add-node-items";
-import type { CanvasNode, CanvasNodeData, NodeDrama, NodeKind } from "@/types";
+import type { CanvasNode, CanvasNodeData, FlowNode, NodeDrama, NodeKind } from "@/types";
 import { draftStore } from "@/utils/canvas/draft-idb";
 import { loadCanvasForEditing, type OpenedCanvas } from "@/utils/canvas/open-canvas";
 import { defaultDramaForNew, type AssetType, type EpisodeFilter } from "@/utils/drama/assets";
 import { busyReason } from "@/utils/drama/jobs";
+import { referenceWarning } from "@/utils/drama/segment-assets";
 import { getCurrentUserId } from "@/utils/storage/user-id";
 
 import { AssetsUiContext, type AssetsUi } from "./assets-ui";
@@ -123,6 +126,37 @@ function DramaCanvas({
   const { drama } = useWorkspace();
   const canvasId = drama.canvasId;
   const lock = useCanvasLock(canvasId);
+  const dramaRef = useRef(drama);
+  useEffect(() => {
+    dramaRef.current = drama;
+  }, [drama]);
+  /** 删资产节点前：有片段的提示词引用了它就提示一声（只提示，不阻止） */
+  const confirmDeleteNodes = useCallback(async (nodes: FlowNode[]): Promise<boolean> => {
+    const doomed = nodes.flatMap((node) => {
+      if (node.type === "group") return [];
+      const data = node.data as CanvasNodeData;
+      return data.drama?.type ? [{ id: node.id, label: data.label }] : [];
+    });
+    const current = dramaRef.current;
+    const episodes = current.episodes.filter((ep) => ep.segmentCount > 0);
+    if (doomed.length === 0 || episodes.length === 0) return true;
+    let prompts: string[];
+    try {
+      const lists = await Promise.all(episodes.map((ep) => listSegments(current.id, ep.no)));
+      prompts = lists.flat().map((segment) => segment.prompt);
+    } catch {
+      // 读不到片段就不拦着，提示只是善意提醒
+      return true;
+    }
+    const warning = referenceWarning(doomed, prompts);
+    if (!warning) return true;
+    return confirm({
+      title: `有 ${warning.segments} 个片段引用了它`,
+      description: `「${warning.names.join("」「")}」被 ${warning.segments} 个片段的提示词引用。删除后这些引用会显示为失效，片段仍可生成，只是这部分只用文字。`,
+      confirmLabel: "仍然删除",
+      destructive: true,
+    });
+  }, []);
   const [opened, setOpened] = useState<OpenedCanvas | null>(null);
   const [error, setError] = useState(false);
 
@@ -178,6 +212,7 @@ function DramaCanvas({
           onNodeCreate={onNodeCreate}
           toolbarExtra={renderToolbarExtra}
           toolbarVisible={toolbarVisible}
+          confirmDeleteNodes={confirmDeleteNodes}
           copyOpenPath={copyOpenPath}
           containerClassName="h-full w-full"
           commandsRef={commandsRef}

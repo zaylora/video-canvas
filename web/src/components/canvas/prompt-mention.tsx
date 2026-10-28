@@ -39,7 +39,7 @@ import { findPreset, type PresetKind } from "@/constants/presets";
 import { DURATION, EASE_OUT } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { useCharactersStore } from "@/store/characters";
-import type { CanvasNode, NodeKind, NodeMediaType } from "@/types";
+import type { CanvasNode, CanvasNodeData, NodeKind, NodeMediaType } from "@/types";
 import { planPreset, type PresetPick, type PresetPlan } from "@/utils/canvas/preset-rules";
 import {
   MENTION_NODE,
@@ -74,7 +74,26 @@ export type PromptMentionSource = {
   link: (source: RefSource) => void;
   /** 眼下接进来的上游 id；chip 指向的节点不在里面就算失效 */
   linkedIds: ReadonlySet<string>;
+  /**
+   * 不连线的场景（短剧片段）：菜单两组换成自己的标题、选中不显示「连线」，
+   * 空菜单换成自己的说明；link 照常被调用，传个空函数即可
+   */
+  plain?: { linkedTitle: string; canvasTitle: string; empty: string };
 };
+
+/** chip 要显示的素材信息：取自画布节点数据，或由调用方按 id 自己查 */
+export type ChipLive = Pick<
+  CanvasNodeData,
+  "kind" | "label" | "src" | "mediaType" | "text" | "characterId"
+>;
+
+/** 按素材 id 查 chip 的信息；查不到（节点已删）返回 undefined。提供它后 chip 不再读 xyflow 的节点，能在画布之外用 */
+export type ChipResolver = (id: string) => ChipLive | undefined;
+
+const ChipResolverContext = createContext<ChipResolver | null>(null);
+
+/** 画布之外（比如短剧片段工作区）用提示词编辑器时，用它告诉 chip 素材是谁 */
+export const PromptChipResolverProvider = ChipResolverContext.Provider;
 
 /** 提示词里被点中的预设 chip：选择器据此在它旁边打开，用来替换 */
 export type PresetChipTarget = {
@@ -169,10 +188,25 @@ export function RefThumb({ source }: { source: RefSource }) {
  * 提示词里的素材 chip：缩略图 + 节点标题（取画布上的最新标题，节点没了才用存下的名字）。
  * 源节点被删、或者连线已经断开时显示删除线，提交时退回成素材名。
  */
-function MentionChip({ node }: NodeViewProps) {
+function MentionChip(props: NodeViewProps) {
+  const resolver = useContext(ChipResolverContext);
+  return resolver ? <ResolverChip {...props} resolver={resolver} /> : <FlowChip {...props} />;
+}
+
+/** 画布里的 chip：素材信息取自 xyflow 的节点 */
+function FlowChip(props: NodeViewProps) {
+  const live = useNodesData<CanvasNode>(String(props.node.attrs.id ?? ""))?.data;
+  return <ChipBody node={props.node} live={live} />;
+}
+
+/** 画布之外的 chip：素材信息由调用方按 id 查 */
+function ResolverChip(props: NodeViewProps & { resolver: ChipResolver }) {
+  return <ChipBody node={props.node} live={props.resolver(String(props.node.attrs.id ?? ""))} />;
+}
+
+function ChipBody({ node, live }: { node: NodeViewProps["node"]; live: ChipLive | undefined }) {
   const id = String(node.attrs.id ?? "");
   const saved = String(node.attrs.label ?? "");
-  const live = useNodesData<CanvasNode>(id)?.data;
   const refs = usePromptRefs();
   // 角色卡节点自己没有素材，缩略图和名字取角色卡此刻的内容；读不到时退回占位图标和存下的名字
   const card = useCharactersStore((state) =>
@@ -181,7 +215,7 @@ function MentionChip({ node }: NodeViewProps) {
   const isCharacter = live?.kind === "character";
   const gone = !live || !(refs?.linkedIds.has(id) ?? true);
   const lit = refs?.highlight === id;
-  const label = (isCharacter ? card?.name : undefined) ?? live?.label ?? saved;
+  const label = (isCharacter ? card?.name : undefined) ?? (live?.label || saved);
   const src = isCharacter ? (card?.avatar?.url ?? null) : live?.src;
   const mediaType = isCharacter ? "image" : live?.mediaType;
   // 悬停放大（设计稿 10.1）：已断开、文本、音频、没产出的不弹
@@ -317,12 +351,14 @@ function MentionMenu({
   menu,
   entries,
   active,
+  plain,
   onHover,
   onPick,
 }: {
   menu: MenuState;
   entries: MenuEntry[];
   active: number;
+  plain?: PromptMentionSource["plain"];
   onHover: (index: number) => void;
   onPick: (entry: MenuEntry) => void;
 }) {
@@ -368,7 +404,7 @@ function MentionMenu({
           <RefThumb source={entry.source} />
         </span>
         <span className="min-w-0 flex-1 truncate">{entry.source.label}</span>
-        {!entry.linked && (
+        {!entry.linked && !plain && (
           <span className="text-muted-foreground flex shrink-0 items-center gap-0.5 text-[11px]">
             <Link2 className="size-3" />
             连线
@@ -409,21 +445,25 @@ function MentionMenu({
     >
       {linked.length > 0 && (
         <>
-          <p className="text-muted-foreground px-2 pt-1.5 pb-1 text-[11px]">已引用</p>
+          <p className="text-muted-foreground px-2 pt-1.5 pb-1 text-[11px]">
+            {plain?.linkedTitle ?? "已引用"}
+          </p>
           {linked.map(row)}
         </>
       )}
       {canvas.length > 0 && (
         <>
           <p className="text-muted-foreground px-2 pt-1.5 pb-1 text-[11px]">
-            画布中 · 选中后自动连线
+            {plain?.canvasTitle ?? "画布中 · 选中后自动连线"}
           </p>
           {canvas.map(row)}
         </>
       )}
       {entries.length === 0 && (
         <p className="text-muted-foreground px-2.5 py-2.5 text-xs">
-          {menu.query ? `没有匹配「${menu.query}」的素材` : "画布里还没有能引用的素材"}
+          {menu.query
+            ? `没有匹配「${menu.query}」的素材`
+            : (plain?.empty ?? "画布里还没有能引用的素材")}
         </p>
       )}
     </motion.div>,
@@ -519,6 +559,8 @@ export function PromptEditor({
   large,
   autoFocus,
   mention,
+  className,
+  acceptDrop,
 }: {
   ref?: Ref<PromptEditorHandle>;
   value: string;
@@ -531,6 +573,13 @@ export function PromptEditor({
   autoFocus?: boolean;
   /** 不给就不能 @ */
   mention?: PromptMentionSource;
+  /** 追加到编辑区的类名（如覆盖最小高度） */
+  className?: string;
+  /**
+   * 拖进来的东西是不是一个素材：是就返回它，编辑器在落点插入同一种 chip；不是返回 null，交给默认处理。
+   * 不给就不接收拖放
+   */
+  acceptDrop?: (data: DataTransfer) => { id: string; label: string } | null;
 }) {
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [active, setActive] = useState(0);
@@ -575,7 +624,25 @@ export function PromptEditor({
           "nowheel w-full overflow-y-auto px-1 text-[15px] leading-[1.75] break-words whitespace-pre-wrap outline-none",
           // 大框所在的对话框还有标题、引用条、字数行和底栏（约 290px 加提示行），留 22rem 余量免得整体超出视口
           large ? "max-h-[min(60vh,calc(100dvh_-_22rem))] min-h-72" : "max-h-50 min-h-18",
+          className,
         ),
+      },
+      // 把素材拖到提示词里：在落点插入 chip（和 @ 选中的是同一种节点）
+      handleDrop: (view, event) => {
+        const hit = event.dataTransfer && acceptDrop?.(event.dataTransfer);
+        if (!hit) return false;
+        event.preventDefault();
+        const dropped = view.posAtCoords({ left: event.clientX, top: event.clientY });
+        const at = dropped?.pos ?? view.state.selection.to;
+        const { schema } = view.state;
+        view.dispatch(
+          view.state.tr.insert(at, [
+            schema.nodes[MENTION_NODE].create({ id: hit.id, label: hit.label }),
+            schema.text(" "),
+          ]),
+        );
+        view.focus();
+        return true;
       },
       // 直接挂在 view 上的按键先于 suggestion 插件处理，菜单的上下、选中就在这里接
       handleKeyDown: (_view, event) => {
@@ -606,7 +673,7 @@ export function PromptEditor({
         return true;
       },
     }),
-    [current, entries, large, menu, onSubmit, pick],
+    [acceptDrop, className, current, entries, large, menu, onSubmit, pick],
   );
 
   const editor = useEditor({
@@ -729,6 +796,7 @@ export function PromptEditor({
             menu={menu}
             entries={entries}
             active={current}
+            plain={mention?.plain}
             onHover={setActive}
             onPick={pick}
           />

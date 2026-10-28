@@ -1,3 +1,4 @@
+import { mapAsset } from "@/api/asset";
 import service from "@/utils/requests/service";
 
 import type {
@@ -7,6 +8,8 @@ import type {
   BackendEpisodeSummary,
   BackendEpisodeView,
   BackendJobView,
+  BackendSegmentView,
+  AddSegmentInput,
   CreateDramaInput,
   Drama,
   DramaJob,
@@ -16,8 +19,12 @@ import type {
   DramaSummary,
   Episode,
   EpisodeSummary,
+  Segment,
+  SegmentGenerateBody,
+  SegmentGenerateResult,
   UpdateDramaInput,
   UpdateEpisodeInput,
+  UpdateSegmentInput,
 } from "./type";
 
 export const mapDramaSummary = (raw: BackendDramaSummary): DramaSummary => ({
@@ -38,6 +45,10 @@ export const mapEpisodeSummary = (raw: BackendEpisodeSummary): EpisodeSummary =>
   locked: raw.locked,
   revision: raw.revision,
   updatedAt: raw.updated_at,
+  storyboardStatus: raw.storyboard_status ?? "empty",
+  segmentCount: raw.segment_count ?? 0,
+  segmentSeconds: raw.segment_seconds ?? 0,
+  doneSegmentCount: raw.done_segment_count ?? 0,
 });
 
 export const mapEpisode = (raw: BackendEpisodeView): Episode => ({
@@ -83,6 +94,34 @@ export const mapDrama = (raw: BackendDramaView): Drama => ({
 export const mapStyles = (raw: BackendDramaStyles): DramaStyles => ({
   genres: raw.genres ?? [],
   styles: raw.styles ?? [],
+});
+
+/** 片段（契约 §9.2）：shots / takes 可能为 null，task_id 兼容数字 */
+export const mapSegment = (raw: BackendSegmentView): Segment => ({
+  id: String(raw.id),
+  episodeNo: raw.episode_no,
+  seq: raw.seq,
+  seconds: raw.seconds,
+  prompt: raw.prompt ?? "",
+  shots: (raw.shots ?? []).map((shot) => ({
+    seconds: shot.seconds,
+    shotSize: shot.shot_size ?? "",
+    camera: shot.camera ?? "",
+    action: shot.action ?? "",
+    dialogue: shot.dialogue ?? "",
+  })),
+  keyframe: raw.keyframe ? mapAsset(raw.keyframe) : null,
+  takes: (raw.takes ?? []).map((take) => ({
+    taskId: String(take.task_id),
+    status: take.status,
+    asset: take.asset ? mapAsset(take.asset) : null,
+    errorMessage: take.error_message ?? "",
+    createdAt: take.created_at,
+  })),
+  chosenTaskId: raw.chosen_task_id ? String(raw.chosen_task_id) : "",
+  status: raw.status,
+  revision: raw.revision,
+  updatedAt: raw.updated_at,
 });
 
 /** 去掉值为 undefined 的键，PATCH 只发要改的字段 */
@@ -134,7 +173,21 @@ export const toUpdateEpisodeBody = (input: UpdateEpisodeInput) =>
 
 /** 估价 / 提交任务的请求体 */
 export const toJobBody = (input: DramaJobInput) =>
-  compact({ step: input.step, episodes: input.episodes, ratio: input.ratio || undefined });
+  compact({
+    step: input.step,
+    episodes: input.episodes,
+    ratio: input.ratio || undefined,
+    max_seconds: input.step === "storyboard" ? input.maxSeconds : undefined,
+  });
+
+/** PATCH /drama-segments/:sid 请求体 */
+export const toSegmentUpdateBody = (input: UpdateSegmentInput) =>
+  compact({
+    revision: input.revision,
+    prompt: input.prompt,
+    seconds: input.seconds,
+    chosen_task_id: input.chosenTaskId,
+  });
 
 /** 获取题材与画风清单 */
 export const getDramaStyles = async (): Promise<DramaStyles> =>
@@ -243,3 +296,74 @@ export const listActiveJobs = async (id: string): Promise<DramaJob[]> => {
 /** 取消任务 */
 export const cancelJob = async (id: string, jobId: string): Promise<DramaJob> =>
   mapJob(await service.post<BackendJobView>(`/dramas/${id}/jobs/${jobId}/cancel`));
+
+/** 一集的片段，按 seq 排序 */
+export const listSegments = async (id: string, no: number, silent = true): Promise<Segment[]> => {
+  const res = await service.get<{ items: BackendSegmentView[] | null }>(
+    `/dramas/${id}/episodes/${no}/segments`,
+    undefined,
+    { silent },
+  );
+  return (res.items ?? []).map(mapSegment);
+};
+
+/** 新增片段（不传 afterSeq 追加到末尾） */
+export const addSegment = async (
+  id: string,
+  no: number,
+  body: AddSegmentInput = {},
+): Promise<Segment> =>
+  mapSegment(
+    await service.post<BackendSegmentView>(`/dramas/${id}/episodes/${no}/segments`, {
+      prompt: body.prompt,
+      seconds: body.seconds,
+      after_seq: body.afterSeq,
+    }),
+  );
+
+/** 改片段；revision 冲突（409）、67011 由调用方处理，不弹全局提示 */
+export const updateSegment = async (sid: string, input: UpdateSegmentInput): Promise<Segment> =>
+  mapSegment(
+    await service.patch<BackendSegmentView>(`/drama-segments/${sid}`, toSegmentUpdateBody(input), {
+      silent: true,
+    }),
+  );
+
+/** 删除片段（不删生成任务和素材） */
+export const deleteSegment = async (sid: string): Promise<void> => {
+  await service.delete(`/drama-segments/${sid}`, { silent: true });
+};
+
+/** 重排：ids 必须恰好是该集全部片段（否则 67012），返回新顺序的片段 */
+export const reorderSegments = async (
+  id: string,
+  no: number,
+  ids: string[],
+): Promise<Segment[]> => {
+  const res = await service.put<{ items: BackendSegmentView[] | null }>(
+    `/dramas/${id}/episodes/${no}/segments/order`,
+    { ids },
+    { silent: true },
+  );
+  return (res.items ?? []).map(mapSegment);
+};
+
+/** 提交片段的视频生成（202）；统一经 utils/tasks/gateway.ts 调用，那里管幂等键与重试 */
+export const generateSegment = (
+  sid: string,
+  body: SegmentGenerateBody,
+  idempotencyKey: string,
+): Promise<SegmentGenerateResult> =>
+  service.post<SegmentGenerateResult>(`/drama-segments/${sid}/generate`, body, {
+    headers: { "Idempotency-Key": idempotencyKey },
+  });
+
+/** 提交片段的首帧图生成（202） */
+export const keyframeSegment = (
+  sid: string,
+  body: SegmentGenerateBody,
+  idempotencyKey: string,
+): Promise<SegmentGenerateResult> =>
+  service.post<SegmentGenerateResult>(`/drama-segments/${sid}/keyframe`, body, {
+    headers: { "Idempotency-Key": idempotencyKey },
+  });

@@ -16,7 +16,9 @@ export type Estimate =
  * 估算失败（如 67006 前置未完成、67007 没有文本模型）把原因交给界面展示。
  */
 export function useEstimate(dramaId: string, input: DramaJobInput | null): Estimate {
-  const key = input ? `${input.step}|${input.episodes.join(",")}|${input.ratio ?? ""}` : "";
+  const key = input
+    ? `${input.step}|${input.episodes.join(",")}|${input.ratio ?? ""}|${input.maxSeconds ?? ""}`
+    : "";
   const [result, setResult] = useState<{ key: string; value: Estimate } | null>(null);
 
   useEffect(() => {

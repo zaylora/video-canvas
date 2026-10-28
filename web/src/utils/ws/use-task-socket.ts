@@ -9,6 +9,7 @@ import { useWsStore } from "@/store/ws";
 import { getToken } from "@/utils/storage/token";
 
 import { handleDramaJobEvent, reconcileWatchedDramas } from "@/utils/drama/job-events";
+import { handleDramaSegmentEvent, reconcileWatchedSegments } from "@/utils/drama/segment-events";
 
 import { handleTaskView, reconcileActiveTasks } from "./task-events";
 import { buildWsUrl, TaskSocketClient } from "./socket-client";
@@ -34,9 +35,11 @@ export function useTaskSocket() {
       onAgentEvent: (event) => useAgentStore.getState().handleEvent(event, { live: true }),
       onPayment: (update) => usePaymentStore.getState().handleWsUpdate(update),
       onDramaJob: handleDramaJobEvent,
+      onDramaSegment: handleDramaSegmentEvent,
       onOpen: () => {
         void reconcileActiveTasks();
         void reconcileWatchedDramas();
+        void reconcileWatchedSegments();
         void useCreditsStore.getState().refresh();
         // 断线期间可能漏了 Agent 事件：把已经打开过的会话补齐
         const { sessions, sync } = useAgentStore.getState();
@@ -53,6 +56,7 @@ export function useTaskSocket() {
       client.reconnectNow();
       void reconcileActiveTasks();
       void reconcileWatchedDramas();
+      void reconcileWatchedSegments();
     };
     const onOnline = () => client.reconnectNow();
     document.addEventListener("visibilitychange", onVisible);

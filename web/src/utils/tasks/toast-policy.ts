@@ -47,6 +47,9 @@ export function isFreshTerminalTransition(
 /** 首页生成的对话任务的 node_id 前缀（rec:{记录id}:{格子序号}），它们没有画布 */
 const CONVERSATION_NODE_PREFIX = "rec:";
 
+/** 短剧片段任务的 node_id 前缀：seg:{片段id} 是视频，segkf:{片段id} 是首帧图 */
+const SEGMENT_NODE_PREFIXES = ["seg:", "segkf:"] as const;
+
 /**
  * 画布外的完成提示：用户正看着这张画布时节点自己会变，不弹；
  * 在列表页或别的画布时弹「《画布名》中的视频已生成 / 生成失败」，点击跳转。
@@ -65,6 +68,9 @@ export function planTaskToast(
 ): TaskToastPlan | null {
   if (view.node_id.startsWith(CONVERSATION_NODE_PREFIX)) {
     return planConversationToast(view, pathname);
+  }
+  if (SEGMENT_NODE_PREFIXES.some((prefix) => view.node_id.startsWith(prefix))) {
+    return planSegmentToast(view, pathname);
   }
   const canvasId =
     view.canvas_id === null || view.canvas_id === undefined ? null : String(view.canvas_id);
@@ -106,6 +112,27 @@ function planConversationToast(view: TaskView, pathname: string): TaskToastPlan 
         id,
         tone: "error",
         title: `${kind}${view.status === "expired" ? "生成超时" : "生成失败"}`,
+        description: failureDescription(view),
+      };
+    default:
+      return null;
+  }
+}
+
+/** 片段任务的提示：正在片段工作区时片段自己会变，不弹；短剧画布不是普通画布，不带画布名也不跳转 */
+function planSegmentToast(view: TaskView, pathname: string): TaskToastPlan | null {
+  if (/^\/drama\/[^/]+\/ep\//.test(pathname)) return null;
+  const name = view.node_id.startsWith("segkf:") ? "片段首帧" : "片段视频";
+  const id = `task:${taskKey(view.id)}`;
+  switch (view.status) {
+    case "succeeded":
+      return { id, tone: "success", title: `${name}已生成` };
+    case "failed":
+    case "expired":
+      return {
+        id,
+        tone: "error",
+        title: `${name}${view.status === "expired" ? "生成超时" : "生成失败"}`,
         description: failureDescription(view),
       };
     default:

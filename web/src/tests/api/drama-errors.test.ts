@@ -62,3 +62,17 @@ describe("任务失败文案 jobFailureMessage", () => {
     expect(jobFailureMessage({ errorCode: 0, errorMessage: "" })).toBe("任务失败");
   });
 });
+
+describe("二期错误码（契约 §12）", () => {
+  test("67009 / 67011 / 67012 / 67013 有固定文案", () => {
+    expect(dramaErrorMessage(err(DRAMA_ERR.segmentNotFound, 404, ""))).toContain("片段不存在");
+    expect(dramaErrorMessage(err(DRAMA_ERR.takeInvalid, 400, ""))).toContain("成功");
+    expect(dramaErrorMessage(err(DRAMA_ERR.segmentOrderInvalid, 400, ""))).toContain("全部片段");
+    expect(dramaErrorMessage(err(DRAMA_ERR.storyboardHasTakes, 409, ""))).toContain("清空");
+  });
+
+  test("67013 是业务 409，不当作 revision 冲突", () => {
+    expect(isRevisionConflict(err(DRAMA_ERR.storyboardHasTakes, 409))).toBe(false);
+    expect(isRevisionConflict(err(40900, 409))).toBe(true);
+  });
+});

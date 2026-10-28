@@ -163,6 +163,11 @@ export type CanvasEditorProps = {
   onNodeCreate?: (node: CanvasNode) => CanvasNode;
   /** 节点功能区追加按钮，见 NodeExtensions。要保持引用稳定 */
   toolbarExtra?: NodeExtensions["toolbarExtra"];
+  /**
+   * 删除节点前的确认钩子（Delete 键、选中工具栏、角色卡节点上的删除都经它）：返回 false 就不删。
+   * 页面用它提示「有 N 个片段引用了它」这类影响；组删除有自己的确认框，不经这里。要保持引用稳定。
+   */
+  confirmDeleteNodes?: (nodes: FlowNode[]) => boolean | Promise<boolean>;
   /** 空节点（无素材无历史）默认不出功能区；返回 true 的节点仍显示，只摆 toolbarExtra 的内容。要保持引用稳定 */
   toolbarVisible?: NodeExtensions["toolbarVisible"];
   /**
@@ -198,6 +203,7 @@ export const CanvasEditor = memo(function CanvasEditor({
   onNodeCreate,
   toolbarExtra,
   toolbarVisible,
+  confirmDeleteNodes,
   copyOpenPath,
   containerClassName,
   overlay,
@@ -468,16 +474,23 @@ export const CanvasEditor = memo(function CanvasEditor({
     [groupSelected, selectedGroupId, setRenamingId, ungroupById],
   );
   /** Delete / Backspace 删到组时先拦下来问一声；确认之后那一次放行 */
+  const confirmDeleteRef = useRef(confirmDeleteNodes);
+  useEffect(() => {
+    confirmDeleteRef.current = confirmDeleteNodes;
+  }, [confirmDeleteNodes]);
   const onBeforeDelete = useCallback<OnBeforeDelete<FlowNode, CanvasEdge>>(
     async ({ nodes: doomed, edges: doomedEdges }) => {
+      if (confirmedDelete.current) return { nodes: doomed, edges: doomedEdges };
       const groups = doomed.filter(isGroupNode);
-      if (groups.length === 0 || confirmedDelete.current)
-        return { nodes: doomed, edges: doomedEdges };
-      askDeleteGroup(
-        groups.map((group) => group.id),
-        doomed.map((node) => node.id),
-      );
-      return false;
+      if (groups.length > 0) {
+        askDeleteGroup(
+          groups.map((group) => group.id),
+          doomed.map((node) => node.id),
+        );
+        return false;
+      }
+      if (confirmDeleteRef.current && !(await confirmDeleteRef.current(doomed))) return false;
+      return { nodes: doomed, edges: doomedEdges };
     },
     [askDeleteGroup],
   );

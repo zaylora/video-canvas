@@ -18,6 +18,14 @@ export const DRAMA_ERR = {
   noTextModel: 67007,
   /** 模型输出无法解析 */
   outputInvalid: 67008,
+  /** 片段不存在 */
+  segmentNotFound: 67009,
+  /** 只能采用本片段已成功的结果 */
+  takeInvalid: 67011,
+  /** 排序必须包含该集全部片段 */
+  segmentOrderInvalid: 67012,
+  /** 这一集已有生成结果，重新生成分镜会清空片段 */
+  storyboardHasTakes: 67013,
 } as const;
 
 /** 各错误码的兜底文案：后端 Msg 为空时用 */
@@ -30,18 +38,23 @@ const FALLBACK: Record<number, string> = {
   [DRAMA_ERR.stepNotReady]: "前置步骤未完成",
   [DRAMA_ERR.noTextModel]: "没有可用的文本模型，请联系管理员启用",
   [DRAMA_ERR.outputInvalid]: "模型输出无法解析，失败不扣积分，可以重试",
+  [DRAMA_ERR.segmentNotFound]: "片段不存在，可能已被删除",
+  [DRAMA_ERR.takeInvalid]: "只能采用本片段已成功的结果",
+  [DRAMA_ERR.segmentOrderInvalid]: "排序必须包含这一集的全部片段，请刷新后重试",
+  [DRAMA_ERR.storyboardHasTakes]: "这一集已有生成结果，重新生成分镜会清空片段",
 };
 
 /** 错误是不是这个业务码 */
 export const isDramaError = (error: unknown, code: number): boolean =>
   error instanceof ApiError && error.code === code;
 
-/** 保存撞上 revision 冲突（HTTP 409 且不是 67004 / 67005 这两个业务 409） */
+/** 保存撞上 revision 冲突（HTTP 409 且不是 67004 / 67005 / 67013 这几个业务 409） */
 export const isRevisionConflict = (error: unknown): boolean =>
   error instanceof ApiError &&
   error.status === 409 &&
   error.code !== DRAMA_ERR.jobBusy &&
-  error.code !== DRAMA_ERR.episodeLocked;
+  error.code !== DRAMA_ERR.episodeLocked &&
+  error.code !== DRAMA_ERR.storyboardHasTakes;
 
 /**
  * 把错误转成给用户看的一句话：
