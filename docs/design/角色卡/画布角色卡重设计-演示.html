@@ -1,0 +1,833 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>画布角色卡重设计 演示</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+    <style>
+      :root {
+        --radius: 0.625rem;
+        --background: 0 0% 100%;
+        --foreground: 240 10% 3.9%;
+        --card: 0 0% 100%;
+        --muted: 240 4.8% 95.9%;
+        --muted-foreground: 240 3.8% 46.1%;
+        --primary: 240 5.9% 10%;
+        --primary-foreground: 0 0% 98%;
+        --accent: 240 4.8% 95.9%;
+        --border: 240 5.9% 90%;
+        --ok: 5 150 105;
+        --bad: 220 38 38;
+        --warn: 180 83 9;
+        --info: 2 132 199;
+        --violet: 124 58 237;
+        color-scheme: light;
+      }
+      .dark {
+        --background: 240 10% 3.9%;
+        --foreground: 0 0% 98%;
+        --card: 240 10% 5.5%;
+        --muted: 240 3.7% 15.9%;
+        --muted-foreground: 240 5% 64.9%;
+        --primary: 0 0% 98%;
+        --primary-foreground: 240 5.9% 10%;
+        --accent: 240 3.7% 15.9%;
+        --border: 240 3.7% 17%;
+        --ok: 52 211 153;
+        --bad: 248 113 113;
+        --warn: 251 191 36;
+        --info: 56 189 248;
+        --violet: 167 139 250;
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body { margin: 0; font-family: Geist, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; background: hsl(var(--background)); color: hsl(var(--foreground)); -webkit-font-smoothing: antialiased; line-height: 1.55; }
+      code, .mono { font-family: "Geist Mono", "SF Mono", Consolas, monospace; }
+      code { font-size: 0.92em; background: hsl(var(--muted)); padding: 1px 5px; border-radius: 5px; }
+      [data-lucide] { width: 1em; height: 1em; flex: none; }
+      h1, h2, h3, h4, p { margin: 0; }
+      button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+      input, textarea, select { font: inherit; color: inherit; }
+      table { border-collapse: collapse; width: 100%; }
+      th { font-weight: 500; text-align: left; }
+      [hidden] { display: none !important; }
+      .muted { color: hsl(var(--muted-foreground)); }
+      .row { display: flex; align-items: center; gap: 8px; }
+      .wrapflex { flex-wrap: wrap; }
+      .spacer { margin-left: auto; }
+
+      .top { position: sticky; top: 0; z-index: 30; background: hsl(var(--background) / 0.92); backdrop-filter: blur(8px); border-bottom: 1px solid hsl(var(--border)); }
+      .top-in { max-width: 1160px; margin: 0 auto; padding: 0 20px; display: flex; align-items: center; gap: 16px; height: 56px; }
+      .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; white-space: nowrap; }
+      .logo { width: 28px; height: 28px; border-radius: 8px; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; }
+      .tabs { display: flex; gap: 2px; margin-left: 8px; overflow-x: auto; }
+      .tab { height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13px; font-weight: 500; color: hsl(var(--muted-foreground)); white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; transition: background 0.15s, color 0.15s; }
+      .tab:hover { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+      .tab[aria-selected="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn { height: 32px; padding: 0 10px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; }
+      .btn:hover { background: hsl(var(--accent)); }
+      .btn-primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn-primary:hover { background: hsl(var(--primary) / 0.9); }
+      .btn-outline { border: 1px solid hsl(var(--border)); }
+      .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+      .switch { width: 34px; height: 20px; border-radius: 999px; background: hsl(var(--border)); position: relative; transition: background 0.15s; flex: none; }
+      .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+      .switch[aria-checked="true"] { background: rgb(var(--violet)); }
+      .switch[aria-checked="true"]::after { transform: translateX(14px); }
+
+      .wrap { max-width: 1160px; margin: 0 auto; padding: 32px 20px 80px; }
+      .h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+      .lead { margin-top: 10px; max-width: 820px; font-size: 15px; color: hsl(var(--muted-foreground)); }
+      .lead b { color: hsl(var(--foreground)); }
+      .sec { margin-top: 36px; }
+      .sec > h2 { font-size: 18px; font-weight: 600; }
+      .sec > .sub { margin: 4px 0 14px; max-width: 820px; font-size: 13.5px; color: hsl(var(--muted-foreground)); }
+      .card { border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: var(--radius); padding: 16px; }
+      .grid { display: grid; gap: 12px; }
+      .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      @media (max-width: 820px) { .g2, .g3 { grid-template-columns: 1fr; } .top-in { padding: 0 12px; } .wrap { padding: 24px 16px 64px; } }
+      ul.list { margin: 0; padding-left: 18px; font-size: 13.5px; }
+      ul.list li { margin: 2px 0; }
+
+      .tag { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 999px; font-size: 11.5px; font-weight: 500; white-space: nowrap; }
+      .t-ok { background: rgb(var(--ok) / 0.12); color: rgb(var(--ok)); }
+      .t-bad { background: rgb(var(--bad) / 0.12); color: rgb(var(--bad)); }
+      .t-warn { background: rgb(var(--warn) / 0.12); color: rgb(var(--warn)); }
+      .t-info { background: rgb(var(--info) / 0.12); color: rgb(var(--info)); }
+      .t-mute { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
+
+      .callout { display: flex; gap: 10px; padding: 12px 14px; border-radius: var(--radius); font-size: 13.5px; border: 1px solid; }
+      .callout > i { margin-top: 3px; }
+      .c-info { background: rgb(var(--info) / 0.07); border-color: rgb(var(--info) / 0.3); }
+      .c-info > i { color: rgb(var(--info)); }
+      .c-warn { background: rgb(var(--warn) / 0.07); border-color: rgb(var(--warn) / 0.3); }
+      .c-warn > i { color: rgb(var(--warn)); }
+      .c-bad { background: rgb(var(--bad) / 0.07); border-color: rgb(var(--bad) / 0.3); }
+      .c-bad > i { color: rgb(var(--bad)); }
+      .c-ok { background: rgb(var(--ok) / 0.07); border-color: rgb(var(--ok) / 0.3); }
+      .c-ok > i { color: rgb(var(--ok)); }
+
+      .flow { display: flex; align-items: stretch; gap: 6px; flex-wrap: wrap; padding: 14px; border-radius: var(--radius); }
+      .flow .node { flex: 1 1 140px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 12px; font-size: 12.5px; }
+      .flow .node b { display: block; font-size: 13px; margin-bottom: 2px; }
+      .flow .node.hl { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+      .flow .arrow { display: grid; place-items: center; color: hsl(var(--muted-foreground)); }
+
+      .cmp-wrap { overflow-x: auto; border: 1px solid hsl(var(--border)); border-radius: var(--radius); }
+      .cmp th, .cmp td { padding: 9px 12px; font-size: 13px; vertical-align: top; border-bottom: 1px solid hsl(var(--border)); }
+      .cmp tr:last-child th, .cmp tr:last-child td { border-bottom: 0; }
+      .cmp thead th { background: hsl(var(--muted)); font-size: 12.5px; white-space: nowrap; }
+      .cmp tbody th { width: 130px; color: hsl(var(--muted-foreground)); font-weight: 500; }
+      .cmp .y { color: rgb(var(--ok)); }
+      .cmp .m { color: rgb(var(--warn)); }
+
+      .steps { list-style: none; counter-reset: s; display: grid; gap: 12px; }
+      .steps li { counter-increment: s; position: relative; padding-left: 32px; font-size: 13.5px; }
+      .steps li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 22px; height: 22px; border-radius: 50%; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; font-size: 12px; font-weight: 600; }
+      .steps li small { display: block; color: hsl(var(--muted-foreground)); font-size: 12.5px; }
+
+      .codeblock { background: hsl(var(--muted)); border-radius: var(--radius); padding: 14px; font-family: "Geist Mono", "SF Mono", Consolas, monospace; font-size: 12.5px; overflow-x: auto; }
+
+      .frame { border: 1px solid hsl(var(--border)); border-radius: 12px; overflow: hidden; background: hsl(var(--background)); }
+      .frame-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: hsl(var(--muted)); font-size: 12px; color: hsl(var(--muted-foreground)); }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: hsl(var(--border)); }
+      .note { outline: 1.5px dashed rgb(var(--violet)); outline-offset: 3px; position: relative; }
+      .note-txt { display: none; margin-top: 6px; font-size: 11.5px; line-height: 1.5; color: rgb(var(--violet)); }
+      .show-notes .note-txt { display: block; }
+      body:not(.show-notes) .note { outline: none; }
+      .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 90; pointer-events: none; }
+      .toast > div { display: flex; align-items: center; gap: 8px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 14px; font-size: 13px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); }
+
+      /* ================= 原型：画布与角色卡节点 ================= */
+      .proto { position: relative; min-height: 620px; display: flex; flex-direction: column; }
+      .pbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 12px; border-bottom: 1px solid hsl(var(--border)); font-size: 12.5px; position: relative; z-index: 5; }
+      .pbar label { display: inline-flex; align-items: center; gap: 6px; }
+      .pbar select { height: 28px; border: 1px solid hsl(var(--border)); border-radius: 7px; background: hsl(var(--card)); padding: 0 6px; }
+      .menu { position: absolute; z-index: 20; min-width: 200px; background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: 12px; padding: 6px; box-shadow: 0 12px 32px rgb(0 0 0 / 0.18); }
+      .menu .mi { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border-radius: 8px; font-size: 13px; text-align: left; }
+      .menu .mi:hover:not(:disabled) { background: hsl(var(--accent)); }
+      .menu .mi:disabled { opacity: 0.45; cursor: not-allowed; }
+      .menu hr { border: 0; border-top: 1px solid hsl(var(--border)); margin: 4px 0; }
+      .menu .hd { font-size: 11.5px; color: hsl(var(--muted-foreground)); padding: 4px 10px; }
+
+      .canvas { flex: 1; position: relative; overflow: auto; padding: 36px 24px 24px; background-color: hsl(var(--muted) / 0.5); background-image: radial-gradient(hsl(var(--muted-foreground) / 0.35) 1px, transparent 1px); background-size: 20px 20px; display: flex; gap: 56px; align-items: flex-start; min-height: 470px; }
+      .cnode { position: relative; width: 196px; flex: none; }
+      .cn-label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: hsl(var(--muted-foreground)); margin: 0 2px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .cn-card { border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 16px; padding: 8px; transition: box-shadow 0.15s, border-color 0.15s; }
+      .cnode:hover .cn-card { border-color: hsl(var(--muted-foreground) / 0.5); }
+      .cnode.sel .cn-card { border-color: hsl(var(--foreground)); box-shadow: 0 0 0 2px hsl(var(--foreground) / 0.15); }
+      .cn-cover { aspect-ratio: 3 / 4; border-radius: 10px; overflow: hidden; background: hsl(var(--muted)); position: relative; display: grid; place-items: center; }
+      .cn-empty { display: grid; gap: 6px; width: 78%; }
+      .cn-empty button { height: 28px; border-radius: 8px; background: hsl(var(--card)); border: 1px solid hsl(var(--border)); font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 5px; }
+      .cn-empty button:hover { background: hsl(var(--accent)); }
+      .art { position: absolute; inset: 0; background: linear-gradient(165deg, hsl(var(--h) 55% 52%), hsl(calc(var(--h) + 35) 45% 18%)); }
+      .art svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+      .art path { fill: rgb(0 0 0 / 0.55); stroke: hsl(var(--h) 80% 80% / 0.5); stroke-width: 1; }
+      .shimmer { position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, hsl(var(--foreground) / 0.12) 50%, transparent 70%) 0 0 / 200% 100%, hsl(var(--muted)); animation: sh 1.4s linear infinite; }
+      @keyframes sh { to { background-position: -200% 0; } }
+      @media (prefers-reduced-motion: reduce) { .shimmer { animation: none; } }
+      .cn-ov { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; font-size: 12px; padding: 10px; }
+      .cn-row { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+      .cell { width: 36px; height: 36px; border-radius: 10px; background: hsl(var(--muted)); display: grid; place-items: center; font-size: 14px; position: relative; overflow: hidden; }
+      .cell.on { background: rgb(var(--info) / 0.15); color: rgb(var(--info)); }
+      .cell.add:hover, .cell.vc:hover { background: hsl(var(--accent)); }
+      .cn-foot { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 12.5px; }
+      .cn-foot b { font-weight: 600; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .cn-sub { display: flex; align-items: center; margin-top: 2px; font-size: 11.5px; color: hsl(var(--muted-foreground)); }
+      .port { position: absolute; top: 50%; width: 20px; height: 20px; border-radius: 50%; border: 1px solid hsl(var(--muted-foreground) / 0.6); background: hsl(var(--background)); display: grid; place-items: center; font-size: 12px; color: hsl(var(--muted-foreground)); }
+      .port.l { left: -28px; } .port.r { right: -28px; }
+      .link-btn { position: absolute; right: -2px; top: -26px; font-size: 11.5px; padding: 1px 8px; border-radius: 999px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); display: inline-flex; align-items: center; gap: 4px; }
+      .link-btn[aria-pressed="true"] { background: rgb(var(--info) / 0.15); color: rgb(var(--info)); border-color: rgb(var(--info) / 0.4); }
+
+      .vnode { width: 280px; flex: none; margin-left: auto; }
+      .vnode .cn-card { padding: 12px; }
+      .refbar { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; min-height: 40px; }
+      .rchip { display: inline-flex; align-items: center; gap: 5px; height: 36px; padding: 0 8px 0 3px; border-radius: 9px; background: hsl(var(--muted)); font-size: 11.5px; }
+      .rchip .th { width: 30px; height: 30px; border-radius: 7px; position: relative; overflow: hidden; }
+      .rchip.cut { opacity: 0.5; text-decoration: line-through; }
+      .rchip.au { padding-left: 8px; }
+      .rnote { font-size: 11.5px; margin-top: 4px; display: flex; gap: 5px; align-items: flex-start; }
+
+      .gpanel { border-top: 1px solid hsl(var(--border)); background: hsl(var(--card)); padding: 12px 14px; position: relative; z-index: 3; }
+      .gpanel textarea { width: 100%; min-height: 54px; resize: vertical; border: 0; outline: 0; background: transparent; font-size: 13.5px; }
+      .gchips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+      .gchip { height: 28px; padding: 0 9px; border-radius: 8px; background: hsl(var(--muted)); font-size: 12px; display: inline-flex; align-items: center; gap: 5px; }
+      .send { width: 32px; height: 32px; border-radius: 50%; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; }
+      .send:disabled { opacity: 0.4; cursor: not-allowed; }
+
+      .ov { position: absolute; inset: 0; background: rgb(0 0 0 / 0.45); z-index: 40; display: grid; place-items: center; padding: 14px; }
+      .dlg { width: min(900px, 100%); max-height: 100%; overflow: auto; background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: 16px; display: grid; grid-template-columns: 300px minmax(0, 1fr); }
+      .dlg.sm { width: min(520px, 100%); display: block; padding: 16px; }
+      @media (max-width: 760px) { .dlg { grid-template-columns: 1fr; } }
+      .dl-left { padding: 14px; display: grid; gap: 10px; align-content: start; }
+      .dl-img { aspect-ratio: 3 / 4; border-radius: 12px; overflow: hidden; background: hsl(var(--muted)); position: relative; display: grid; place-items: center; font-size: 13px; }
+      .dl-ex { display: flex; gap: 6px; flex-wrap: wrap; }
+      .dl-ex .th { width: 44px; height: 58px; border-radius: 8px; position: relative; overflow: hidden; }
+      .dl-ex .x { position: absolute; right: 2px; top: 2px; width: 16px; height: 16px; border-radius: 50%; background: rgb(0 0 0 / 0.6); color: #fff; font-size: 10px; display: grid; place-items: center; }
+      .dl-right { padding: 18px; display: grid; gap: 12px; align-content: start; border-left: 1px solid hsl(var(--border)); }
+      @media (max-width: 760px) { .dl-right { border-left: 0; border-top: 1px solid hsl(var(--border)); } }
+      .fld { display: grid; gap: 5px; font-size: 12.5px; }
+      .fld > span { font-weight: 600; font-size: 13px; }
+      .inp { height: 36px; border: 1px solid hsl(var(--border)); border-radius: 9px; background: hsl(var(--muted) / 0.6); padding: 0 10px; width: 100%; outline: none; }
+      .inp:focus, textarea.inp:focus { border-color: hsl(var(--foreground) / 0.5); }
+      textarea.inp { height: 74px; padding: 8px 10px; resize: vertical; }
+      .opt { border: 1px solid hsl(var(--border)); border-radius: 10px; padding: 10px; display: grid; gap: 8px; }
+      .opt.act { border-color: hsl(var(--foreground) / 0.6); }
+      .opt > label { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; cursor: pointer; }
+      .vbtns { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+      .vbtns button { height: 34px; border-radius: 8px; background: hsl(var(--muted)); font-size: 12.5px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+      .vbtns button:hover:not(:disabled) { background: hsl(var(--accent)); }
+      .vbtns button:disabled { opacity: 0.45; cursor: not-allowed; }
+      .pick { display: grid; gap: 6px; margin: 10px 0; }
+      .pick button { display: flex; align-items: center; gap: 10px; text-align: left; border: 1px solid hsl(var(--border)); border-radius: 10px; padding: 8px 10px; font-size: 13px; }
+      .pick button:hover:not(:disabled) { background: hsl(var(--accent)); }
+      .pick button:disabled { opacity: 0.5; cursor: not-allowed; }
+      .pick .th { width: 34px; height: 44px; border-radius: 6px; position: relative; overflow: hidden; flex: none; display: grid; place-items: center; background: hsl(var(--muted)); }
+    </style>
+  </head>
+
+  <body class="show-notes">
+    <header class="top">
+      <div class="top-in">
+        <div class="brand"><span class="logo"><i data-lucide="user-round"></i></span>画布角色卡重设计 演示</div>
+        <div class="tabs" role="tablist">
+          <button class="tab" role="tab" data-tab="overview" aria-selected="true"><i data-lucide="map"></i>总览</button>
+          <button class="tab" role="tab" data-tab="proto" aria-selected="false"><i data-lucide="layout-dashboard"></i>可点击原型</button>
+          <button class="tab" role="tab" data-tab="impl" aria-selected="false"><i data-lucide="database"></i>数据与接口（提案）</button>
+        </div>
+        <div class="spacer row">
+          <label class="row muted" style="font-size: 12px">
+            设计标注
+            <button class="switch" id="notesSw" role="switch" aria-checked="true" onclick="toggleNotes()"></button>
+          </label>
+          <button class="btn" onclick="document.documentElement.classList.toggle('dark')" aria-label="切换明暗主题"><i data-lucide="sun-moon"></i></button>
+        </div>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <!-- ================= 总览 ================= -->
+      <section id="tab-overview">
+        <h1 class="h1">角色卡变成画布里的普通节点，数据只属于这张画布</h1>
+        <p class="lead">
+          现在的角色卡是全局实体，画布节点只存一个 ID 去引用它，所以才有「已失效」「重新选择」「缓存」这一整套机制。新设计把角色卡做成和图片、视频一样的节点：新建就是一个空节点，<b>上传、从素材库选、或直接 AI 生成</b>就能补上形象，音色放在详情里。<b>个人资产库里的全局角色本期不做</b>，旧角色卡数据不迁移。
+        </p>
+
+        <div class="callout c-info" style="margin-top: 16px">
+          <i data-lucide="info"></i>
+          <div>
+            <b>阅读说明。</b>本页是<b>设计提案，尚未实现</b>。「现状」来自代码核对；「对标产品」只做了搜索摘要级检索；原型里的图片、音频、生成结果、耗时都是<b>示意</b>，刷新页面复原。对应 Markdown：<code>画布角色卡重设计.md</code>。界面截图来自你提供的两张图，其中「角色设定板 / 角色特写组 / 基础形象」等文案在源码里没有找到，只当方向参考。<br />
+            <span class="muted">核实度图例：</span>
+            <span class="tag t-ok">已核对代码</span>
+            <span class="tag t-info">调研检索，未逐条复核</span>
+            <span class="tag t-warn">未验证 · 需实测</span>
+            <span class="tag t-mute">提案</span>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>主线：从加号菜单到连线，一个角色怎么做出来</h2>
+          <p class="sub">全程不离开画布、不弹选择框。每一步都可以跳过，空节点也能放着。</p>
+          <div class="flow note">
+            <div class="node"><b>1 加号菜单 →「角色卡」</b>落点直接出现一个空节点，可撤销</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>2 补主图（三选一）</b>上传 / 素材库（只选图片）/ 下方面板生成</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>3 详情：补充图、音色</b>补充图 ≤4；文本音色或音频音色</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>4 连线或 @</b>主图和补充图当参考图，音频当参考音频</div>
+          </div>
+          <div class="note-txt">设计：角色卡不再是「外部实体的影子」，而是图片节点加一份 <code>character</code> 元数据。所以生成面板、素材选择、复制撤销、导出都直接复用，不新造一套生命周期。</div>
+          <div class="callout c-warn" style="margin-top: 10px">
+            <i data-lucide="corner-down-right"></i>
+            <div><b>没有形象 / 素材被删时（降级，永远可用）：</b>空节点可以放着、可以连线，只是不带入任何参考，下游会写「角色节点还没有形象图」；素材被清理时主图按「待补充」、补充图略过、音频按「无音色」，<b>不会再出现「已失效」</b>，也不阻断生成。</div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>节点的三种形态</h2>
+          <p class="sub">同一种节点，随内容不同看起来不同；多个形象靠「同一个角色名」归在一起。</p>
+          <div class="grid g3">
+            <div class="card">
+              <div class="row"><i data-lucide="square-dashed"></i><b>空节点</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-warn">待补充</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>封面是「上传」「素材库」两个按钮。</b>选中后下方面板可以直接生成。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="image"></i><b>有形象的节点</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-ok">就绪</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>封面是主图，</b>下面有音色格和补充图格；连到视频节点时展开为参考图和参考音频。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="users"></i><b>同一角色的多个形象</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-info">按角色名归组</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>一个节点 = 一个形象。</b>日常装、礼服各建一个节点，详情里「角色名称」选已有角色即可。</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>和现状、和并存方案的对比</h2>
+          <p class="sub">为什么选「画布内嵌」，以及它放弃了什么（跨画布复用）。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th></th><th>现状：全局实体 + 引用</th><th>本方案：画布内嵌节点</th><th>内嵌 + 全局并存（本期搁置）</th></tr></thead>
+              <tbody>
+                <tr><th>创建速度</th><td class="m">慢：先去资产页建卡，再回画布选</td><td class="y">快：加号菜单直接放</td><td class="y">快</td></tr>
+                <tr><th>画布自包含</th><td class="m">否：依赖外部卡，卡删了节点失效</td><td class="y">是</td><td class="m">部分</td></tr>
+                <tr><th>失效 / 缓存 / 刷新</th><td class="m">要：5 分钟缓存、提交前刷新、重新选择</td><td class="y">不需要</td><td class="m">全局部分仍需要</td></tr>
+                <tr><th>导入导出</th><td class="m">要带 <code>characters</code> 字典，导入新建个人卡</td><td class="y">同普通节点</td><td class="m">复杂</td></tr>
+                <tr><th>跨画布复用</th><td class="y">强</td><td class="m">弱：复制节点，或导出再导入</td><td class="y">强</td></tr>
+                <tr><th>实现复杂度</th><td>已有</td><td class="m">中：拆旧机制 + 新节点</td><td class="m">高</td></tr>
+                <tr><th>核实度</th><td><span class="tag t-ok">已核对代码</span></td><td><span class="tag t-mute">提案</span></td><td><span class="tag t-mute">提案（搁置）</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>用户打开一张旧画布时，会发生什么</h2>
+          <p class="sub">旧画布里的角色节点只存了一个 ID。你决定「不迁移、直接清掉旧角色卡」，所以它们会变成空节点。</p>
+          <div class="grid g2">
+            <div class="card">
+              <ol class="steps" style="margin: 0; padding: 0">
+                <li><b>打开画布</b><small>前端发现节点有 <code>characterId</code> 但没有 <code>character</code></small></li>
+                <li><b>规整为空角色节点</b><small>保留位置和连线；<code>character.name</code> 取原来缓存的名字（默认值，几乎零成本）</small></li>
+                <li><b>显示「待补充」</b><small>不弹「已失效」，下游连线不带参考</small></li>
+                <li><b>下次保存时落盘</b><small>不做服务端 SQL 迁移</small></li>
+              </ol>
+            </div>
+            <div class="card">
+              <div class="callout c-warn">
+                <i data-lucide="triangle-alert"></i>
+                <div>
+                  <b>边界：旧角色的形象图和声音不会自动回来</b>
+                  <ul class="list" style="margin-top: 6px">
+                    <li>只有名字被保留；图片和音频文件本身还在素材库里，需要重新选。</li>
+                    <li>已经连好线的视频节点，下次生成会少掉这些参考，要重新补图。</li>
+                    <li>资产页「角色卡」入口是否同期下线，还没有定（见「数据与接口」页待确认 1）。</li>
+                  </ul>
+                </div>
+              </div>
+              <p class="muted" style="font-size: 12.5px; margin-top: 10px">发布时要提前告知：升级后旧画布里的角色卡需要重新补形象图。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= 可点击原型 ================= -->
+      <section id="tab-proto" hidden>
+        <h1 class="h1">可点击原型：在画布里做一个角色</h1>
+        <p class="lead">
+          数据在内存里，刷新复原；生成和上传都是<b>模拟，非真实调用</b>，耗时是示意。已预置一个有形象的「林晚」和一个空节点。<b>怎么看失败：</b>生成提示词里写 <code>bad</code>（模拟审核不通过）；上传选「超大文件.png」或「录音.mp3」；音色描述里写 <code>bad</code> 再点「AI 生成」；补充图加到第 5 张。
+        </p>
+        <div class="frame" style="margin-top: 18px">
+          <div class="frame-bar">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            <span style="margin-left: 8px">app.example.com / 画布 / 示例画布（示意）</span>
+          </div>
+          <div class="proto" id="proto"></div>
+        </div>
+        <div class="note" style="margin-top: 14px; padding: 8px 10px"><span class="muted" style="font-size: 12.5px">原型要点：点节点选中后下方出现生成面板；双击节点或点「…」→ 编辑打开详情；右上角「连到视频」把节点接到右侧的视频节点，看参考图怎么展开。</span></div>
+        <div class="note-txt">设计：加号菜单里的「角色卡」不再弹选择框，直接在落点放空节点（放弃了「先选再放」的旧做法，因为全局卡已不存在）。「从资产库添加」只剩素材，不再列角色。</div>
+      </section>
+
+      <!-- ================= 数据与接口 ================= -->
+      <section id="tab-impl" hidden>
+        <h1 class="h1">数据与接口（提案）</h1>
+        <p class="lead">下面都是设计提案，尚未实现。对应 Markdown 设计文档的 §6、§8、§11。本期<b>没有新增后端接口</b>，主要工作在前端节点和数据规整。</p>
+
+        <div class="sec">
+          <h2>关系</h2>
+          <p class="sub">谁和谁绑定、为什么这样绑。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>对象</th><th>允许的关系</th><th>为什么</th></tr></thead>
+              <tbody>
+                <tr><th>角色节点 ↔ 形象</th><td><code>1 : 1</code></td><td>一个节点只表达一个形象，连线和 <code>@</code> 才能精确到一张脸（已确认）</td></tr>
+                <tr><th>角色名 ↔ 节点</th><td><code>1 : N</code>，仅靠相同的名字归组</td><td>不建「角色」实体，避免多一套生命周期；「已有角色」下拉只是复用名字（推断）</td></tr>
+                <tr><th>角色节点 → 下游</th><td>图片节点、视频节点；多对多</td><td>沿用旧规则，不连音频、文本、导演台节点</td></tr>
+                <tr><th>角色节点 ↔ 素材</th><td>主图 1 + 补充图 ≤4 + 音频 ≤1，只存素材 id</td><td>不复制文件；素材被删时降级</td></tr>
+                <tr><th>角色节点 ↔ 画布</th><td><code>N : 1</code>，只属于当前画布</td><td>用户要求；复制画布即带走（已确认）</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>数据模型：画布 payload 里的角色节点</h2>
+          <p class="sub">沿用现有「payload 只校验是 JSON 对象」的机制，不需要数据库迁移；主图沿用图片节点的字段。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th colspan="2">节点 <code>data</code>（<code>kind: "character"</code>）</th></tr></thead>
+              <tbody>
+                <tr><th><code>label</code></th><td>字符串。节点标题，默认「未命名角色 N」，展示 = <code>character.name</code></td></tr>
+                <tr><th><code>assetId / src</code></th><td>主图素材 id 与地址，沿用图片节点；为空即「待补充」</td></tr>
+                <tr><th><code>status / outputs / prompt / params</code></th><td>生成状态、历史结果、提示词、参数，沿用图片节点和 <code>TaskPromptPanel</code></td></tr>
+                <tr><th><code>character.name</code></th><td>字符串，1–64 字，允许重复</td></tr>
+                <tr><th><code>character.look</code></th><td>字符串，≤64 字，默认「基础形象」</td></tr>
+                <tr><th><code>character.description</code></th><td>字符串，≤500 字，只展示，不注入提示词</td></tr>
+                <tr><th><code>character.extras[]</code></th><td><code>{assetId, src}</code>，≤4，去重，不含主图，必须是图片素材</td></tr>
+                <tr><th><code>character.voice</code></th><td><code>null</code> | <code>{mode:"text", text}</code>（≤500 字）| <code>{mode:"audio", assetId, src, origin:"upload"|"generated"|"library"}</code>；两种互斥</td></tr>
+                <tr><th><code>drama</code></th><td>仅短剧画布：<code>{type, name, look, episodes}</code>，沿用</td></tr>
+                <tr><th>去掉</th><td><code>characterId</code>、<code>labelCache</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout c-warn" style="margin-top: 10px">
+            <i data-lucide="triangle-alert"></i>
+            <div><b>两个需要核对的点：</b>序列化白名单（<code>canvas-persistence.ts:110-112</code>）要加入 <code>character</code>；导出和素材清理凭 <code>data.assetId</code> 找引用，<code>extras[]</code> 和 <code>voice</code> 里的素材 id 要加入收集，否则导出漏文件、清理误删（未验证）。</div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>接口</h2>
+          <p class="sub">本期没有新增接口，全部沿用。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>方法与路径</th><th>说明</th></tr></thead>
+              <tbody>
+                <tr><th><code>PUT /canvas/:id</code></th><td>保存画布，角色数据随 payload；<code>revision</code> 乐观锁，冲突 409 沿用现有弹窗</td></tr>
+                <tr><th>素材上传 / 素材库列表</th><td>沿用；选图片时按种类过滤，选音频同理</td></tr>
+                <tr><th><code>POST /generation-tasks</code></th><td>主图生成：<code>node_id</code> 是角色节点 id，同图片节点。<b>音频生成</b>的 <code>node_id</code> 约定待核对（待确认 4）</td></tr>
+                <tr><th><code>/characters</code> 全部接口</th><td>画布不再调用。资产页入口与接口去留见待确认 1</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>核心逻辑：连线时的展开（提案）</h2>
+          <p class="sub">取代旧的「按 characterId 读缓存再展开」。</p>
+          <div class="codeblock"><pre style="margin: 0; font: inherit; white-space: pre-wrap">// 角色节点 → 下游生成节点的参考展开（提案）
+function expandCharacter(node, target):
+  c = node.data.character
+  images = []
+  if node.data.assetId:  images.push(main = node.data.assetId)   // 主图在前
+  for x in c.extras:     images.push(x.assetId)                  // 补充图依次在后
+  images = images.slice(0, target.maxRefImages)                  // 超限按顺序截断
+  if images.length &lt; total: warn("第 N 张起未带入")
+
+  audio = null
+  if c.voice?.mode == "audio":
+    if target.acceptsRefAudio: audio = c.voice.assetId
+    else: warn("当前模型不支持参考音频，声音未生效")           // 不阻断
+  // c.voice.mode == "text"：只展示，不带入（待确认 3）
+
+  if images.length == 0: warn("角色节点还没有形象图")            // 不阻断，不报失效
+  return { images, audio }
+
+// 旧画布规整（打开时一次）
+for node in nodes where node.kind == "character" and node.data.characterId and !node.data.character:
+  node.data.character = { name: labelCache?.name ?? "未命名角色", look: "基础形象", description: "", extras: [], voice: null }
+  delete node.data.characterId; delete node.data.labelCache</pre></div>
+        </div>
+
+        <div class="sec">
+          <h2>已确认的决定</h2>
+          <div class="card">
+            <ol class="list" style="padding-left: 18px">
+              <li><b>角色卡是画布里的普通节点，数据只属于当前画布</b>：用户要求，和图片、视频一样。</li>
+              <li><b>新建为空节点，可上传或从素材库选图</b>：用户要求。</li>
+              <li><b>一个节点 = 一个角色的一个形象</b>：访谈选择；不同造型各建一个节点。</li>
+              <li><b>空节点可直接 AI 生成</b>：外层默认生成图片，点入详情可生成音频（用户回答，并附界面截图）。</li>
+              <li><b>个人资产库的全局角色本期不做</b>：用户最终口径；此前「去掉全局角色卡」「只在素材库引入」两次表述已由它取代。</li>
+              <li><b>旧角色卡不迁移、直接清掉</b>：用户回答（在「去掉全局」的口径下给出，与最终口径不冲突）。</li>
+              <li><b>已搁置：全局角色 + 「从资产库添加」复制进画布</b>：用户访谈中选择「复制」而非「实时引用」，随全局角色一起搁置，将来启用时可复用。</li>
+              <li><b>主文档已回写</b>：以上全部在 Markdown §11.1–11.2；HTML 中没有新增未回写的决定。</li>
+            </ol>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>仍待确认</h2>
+          <div class="card">
+            <ol class="list" style="padding-left: 18px">
+              <li><b>旧全局体系的去留</b>：资产页「角色卡」标签、<code>/characters</code>、<code>character_cards</code> 表，本期下线并清掉，还是保留不动？<span class="tag t-info">建议：下线入口并清空数据</span></li>
+              <li><b>「拼图」按钮</b>是什么？<span class="tag t-info">一期建议先不做</span></li>
+              <li><b>文本音色</b>是否拼进视频提示词？（现在只展示）</li>
+              <li><b>音频生成怎么提交</b>：<code>node_id</code> 约定和音频模型来源，需先核对 <code>generation_task_create.go</code>。<span class="tag t-info">一期可只做上传 / 绑定</span></li>
+              <li><b>改角色名是否批量</b>同步到同名节点。</li>
+              <li><b>内嵌素材引用</b>是否被导出、素材清理识别。</li>
+              <li><b>Agent</b> 是否放开创建 / 编辑角色节点。<span class="tag t-info">一期建议不开放</span></li>
+            </ol>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+      const $ = (s, r = document) => r.querySelector(s);
+      const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const icons = () => { if (window.lucide) lucide.createIcons(); };
+      function toggleNotes() {
+        const on = document.body.classList.toggle("show-notes");
+        $("#notesSw").setAttribute("aria-checked", String(on));
+      }
+      let toastTimer;
+      function toast(msg, kind = "ok") {
+        const icon = { ok: "circle-check", bad: "circle-x", warn: "triangle-alert" }[kind] || "info";
+        $("#toast").innerHTML = `<div><i data-lucide="${icon}" style="color: rgb(var(--${kind}))"></i>${esc(msg)}</div>`;
+        icons();
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => ($("#toast").innerHTML = ""), 2600);
+      }
+      function showTab(id) {
+        document.querySelectorAll("main > section").forEach((s) => (s.hidden = s.id !== "tab-" + id));
+        document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === id)));
+        window.scrollTo(0, 0);
+      }
+      document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab)));
+
+      /* ================= 原型（内存状态，刷新复原；所有异步均为模拟） ================= */
+      const SIL = "M50 22c-11 0-19 9-19 20 0 8 3 14 8 18-2 1-4 3-5 5-16 4-27 15-30 33l-1 32h94l-1-32c-3-18-14-29-30-33-1-2-3-4-5-5 5-4 8-10 8-18 0-11-8-20-19-20z";
+      const art = (h) => `<div class="art" style="--h:${h}"><svg viewBox="0 0 100 130" preserveAspectRatio="xMidYMax slice"><path d="${SIL}"/></svg></div>`;
+      const LIB = [
+        { id: "i1", kind: "image", name: "林晚-正面.png", hue: 28 },
+        { id: "i2", kind: "image", name: "林晚-侧面.png", hue: 40 },
+        { id: "i3", kind: "image", name: "沈既白.png", hue: 250 },
+        { id: "v1", kind: "video", name: "雾港空镜.mp4", hue: 200 },
+        { id: "a1", kind: "audio", name: "女声-冷静.mp3" },
+        { id: "a2", kind: "audio", name: "男声-沙哑.mp3" },
+      ];
+      let seq = 2; /* 已用到的角色序号：新节点从 3 开始，对应「未命名角色 3」 */
+      const S = {
+        nodes: [
+          { id: "n1", name: "林晚", look: "基础形象", status: "ready", hue: 28, extras: [{ hue: 40 }], voice: { mode: "audio", label: "女声-冷静.mp3", origin: "library" }, text: "年轻女声，偏低，语速慢", desc: "", eps: "1", err: "" },
+          { id: "n2", name: "未命名角色 2", look: "基础形象", status: "empty", hue: 0, extras: [], voice: null, text: "", desc: "", eps: "1", err: "" },
+        ],
+        sel: "n2", linked: new Set(["n1"]), audioOk: true, limit: 2, drama: false,
+        menu: false, detail: null, pick: null, upload: null, genVoice: false, prompt: "",
+      };
+      const node = (id) => S.nodes.find((n) => n.id === id);
+      const roleNames = () => [...new Set(S.nodes.map((n) => n.name))];
+
+      function tagFor(n) {
+        if (n.status === "gen") return `<span class="tag t-info">生成中</span>`;
+        if (n.status === "fail") return `<span class="tag t-bad">生成失败</span>`;
+        if (n.status === "empty") return `<span class="tag t-warn">待补充</span>`;
+        return "";
+      }
+      function voiceIcon(n) {
+        if (!n.voice) return `<i data-lucide="audio-lines"></i>`;
+        return n.voice.mode === "audio" ? `<i data-lucide="music"></i>` : `<i data-lucide="type"></i>`;
+      }
+      function coverHtml(n) {
+        if (n.status === "gen") return `<div class="shimmer"></div><div class="cn-ov"><div><b>生成中 ${Math.round(n.prog || 0)}%</b><div class="muted">示意，非真实调用</div></div></div>`;
+        if (n.status === "fail") return `<div class="cn-ov"><div><i data-lucide="circle-x" style="color: rgb(var(--bad)); font-size: 22px"></i><div style="margin: 6px 0"><b>${esc(n.err)}</b></div><button class="btn btn-outline" data-act="retry" data-id="${n.id}">重试</button></div></div>`;
+        if (n.status === "empty") return `<div class="cn-empty"><button data-act="upload" data-id="${n.id}"><i data-lucide="upload"></i>上传</button><button data-act="lib" data-id="${n.id}" data-kind="image"><i data-lucide="folder"></i>素材库</button></div>`;
+        return art(n.hue);
+      }
+      function nodeHtml(n) {
+        const sel = S.sel === n.id;
+        const ex = n.extras.map((x) => `<div class="cell"><div class="art" style="--h:${x.hue}"></div></div>`).join("");
+        return `<div class="cnode ${sel ? "sel" : ""}" data-node="${n.id}">
+          <div class="cn-label"><i data-lucide="user-round"></i>${esc(n.name)}</div>
+          <button class="link-btn" data-act="link" data-id="${n.id}" aria-pressed="${S.linked.has(n.id)}"><i data-lucide="link"></i>${S.linked.has(n.id) ? "已连到视频" : "连到视频"}</button>
+          <div class="port l"><i data-lucide="plus"></i></div><div class="port r"><i data-lucide="plus"></i></div>
+          <div class="cn-card">
+            <div class="cn-cover">${coverHtml(n)}</div>
+            <div class="cn-row">
+              <button class="cell vc ${n.voice ? "on" : ""}" data-act="detail" data-id="${n.id}" title="${n.voice ? (n.voice.mode === "audio" ? "音频音色：" + esc(n.voice.label) : "文本音色") : "还没有音色，点开详情设置"}">${voiceIcon(n)}</button>
+              ${ex}
+              ${n.extras.length < 4 ? `<button class="cell add" data-act="extra" data-id="${n.id}" title="添加补充图（最多 4 张）"><i data-lucide="plus"></i></button>` : ""}
+            </div>
+            <div class="cn-foot"><b title="${esc(n.look)}">${esc(n.look)}</b>${tagFor(n)}<span class="spacer"></span><button class="btn" style="height: 26px; padding: 0 6px" data-act="detail" data-id="${n.id}" aria-label="编辑"><i data-lucide="ellipsis"></i></button></div>
+            ${S.drama ? `<div class="cn-sub">出现集数：第 ${esc(n.eps)} 集</div>` : ""}
+          </div>
+        </div>`;
+      }
+
+      /* 下游视频节点：把连到它的角色节点展开成参考图 / 参考音频 */
+      function videoHtml() {
+        const linked = S.nodes.filter((n) => S.linked.has(n.id));
+        const chips = [], notes = [];
+        let used = 0;
+        for (const n of linked) {
+          const imgs = [];
+          if (n.status === "ready") imgs.push({ hue: n.hue, label: `${n.name} · ${n.look}` });
+          n.extras.forEach((x, i) => imgs.push({ hue: x.hue, label: `${n.name} 补充${i + 1}` }));
+          if (!imgs.length) notes.push(`<div class="rnote" style="color: rgb(var(--warn))"><i data-lucide="triangle-alert"></i>「${esc(n.name)}」还没有形象图，未带入（不阻断）</div>`);
+          for (const im of imgs) {
+            used++;
+            const cut = used > S.limit;
+            chips.push(`<span class="rchip ${cut ? "cut" : ""}"><span class="th"><div class="art" style="--h:${im.hue}"></div></span>图${used}</span>`);
+            if (cut && !notes.some((x) => x.includes("未带入：超"))) notes.push(`<div class="rnote" style="color: rgb(var(--warn))"><i data-lucide="triangle-alert"></i>未带入：超出模型参考图上限 ${S.limit} 张，第 ${S.limit + 1} 张起未带入</div>`);
+          }
+          if (n.voice && n.voice.mode === "audio") {
+            chips.push(`<span class="rchip au ${S.audioOk ? "" : "cut"}"><i data-lucide="music"></i>${esc(n.name)} 音频</span>`);
+            if (!S.audioOk) notes.push(`<div class="rnote" style="color: rgb(var(--warn))"><i data-lucide="triangle-alert"></i>当前模型不支持参考音频，声音未生效（只带形象，不阻断）</div>`);
+          } else if (n.voice && n.voice.mode === "text") {
+            notes.push(`<div class="rnote muted"><i data-lucide="info"></i>「${esc(n.name)}」是文本音色，只展示，不带入（待确认 3）</div>`);
+          }
+        }
+        return `<div class="cnode vnode"><div class="cn-label"><i data-lucide="video"></i>视频生成（示意）</div>
+          <div class="port l"><i data-lucide="plus"></i></div>
+          <div class="cn-card"><div class="cn-cover" style="aspect-ratio: 16 / 9"><span class="muted" style="font-size: 12px">下游视频节点</span></div>
+            <div class="muted" style="font-size: 12px; margin-top: 8px">参考素材（来自连线）</div>
+            <div class="refbar">${chips.join("") || '<span class="muted" style="font-size: 12px">还没有连线</span>'}</div>${notes.join("")}</div></div>`;
+      }
+
+      function panelHtml() {
+        const n = node(S.sel);
+        if (!n) return `<div class="gpanel muted" style="font-size: 13px">选中一个角色节点，这里会出现生成面板。</div>`;
+        const busy = n.status === "gen";
+        return `<div class="gpanel">
+          <textarea id="gprompt" placeholder="描述想要生成的形象，例如：二十四岁女学徒，短发，旧风衣，雾港冷调，正面半身像" ${busy ? "disabled" : ""}>${esc(S.prompt)}</textarea>
+          <div class="gchips">
+            <span class="gchip"><i data-lucide="palette"></i>风格</span>
+            <span class="gchip"><i data-lucide="image"></i>智能图片 V2.5 Pro（示意）</span>
+            <span class="gchip">9:16 · 1K</span>
+            <span class="gchip"><i data-lucide="user-round"></i>预设：角色设计</span>
+            <span class="spacer"></span>
+            <span class="muted" style="font-size: 12px">${busy ? "生成中，提示词已锁定" : "约 8 积分（示意）"}</span>
+            <button class="send" id="gsend" data-act="gen" ${busy ? "disabled" : ""} title="${busy ? "这个节点正在生成" : "生成形象，结果成为主图"}"><i data-lucide="${busy ? "loader" : "arrow-up"}"></i></button>
+          </div></div>`;
+      }
+
+      function paintBar() {
+        $("#pbar").innerHTML = `
+          <button class="btn btn-primary" data-act="menu"><i data-lucide="plus"></i>添加节点</button>
+          <label>下游模型<select data-ctl="audio"><option value="1" ${S.audioOk ? "selected" : ""}>支持参考音频</option><option value="0" ${S.audioOk ? "" : "selected"}>不支持参考音频</option></select></label>
+          <label>参考图上限<select data-ctl="limit">${[2, 4, 9].map((x) => `<option ${S.limit === x ? "selected" : ""}>${x}</option>`).join("")}</select></label>
+          <label>模拟短剧画布<button class="switch" role="switch" aria-checked="${S.drama}" data-act="drama"></button></label>
+          <span class="spacer"></span><button class="btn btn-outline" data-act="reset"><i data-lucide="rotate-ccw"></i>重置</button>`;
+        if (S.menu) {
+          const it = (ic, t, act, dis, why) => `<button class="mi" ${act ? `data-act="${act}"` : ""} ${dis ? "disabled" : ""} title="${esc(why || "")}"><i data-lucide="${ic}"></i>${t}${why ? `<span class="tag t-mute spacer">${why}</span>` : ""}</button>`;
+          $("#pbar").insertAdjacentHTML("beforeend", `<div class="menu" style="left: 12px; top: 46px"><div class="hd">添加节点</div>
+            ${it("image", "图片生成", "", true, "示意")}${it("video", "视频生成", "", true, "示意")}${it("type", "文本", "", true, "示意")}${it("music", "音频", "", true, "示意")}<hr />
+            ${it("upload", "上传素材", "", true, "示意")}${it("library", "从资产库添加", "", true, "只含素材")}
+            ${it("user-round", "角色卡", "addrole")}</div>`);
+        }
+      }
+      function paintCanvas() {
+        $("#canvas").innerHTML = S.nodes.map(nodeHtml).join("") + videoHtml();
+        $("#panel").innerHTML = panelHtml();
+        icons();
+      }
+      function paintAll() { paintBar(); paintCanvas(); paintOverlay(); }
+
+      /* ---------- 覆盖层：详情、素材选择、上传 ---------- */
+      function paintOverlay() {
+        const o = $("#overlay");
+        if (S.pick) {
+          const want = S.pick.kind;
+          const items = LIB.map((a) => {
+            const okk = a.kind === want;
+            const why = okk ? "" : want === "image" ? "只能选图片" : "只能选音频";
+            const thumb = a.kind === "image" ? `<div class="art" style="--h:${a.hue}"></div>` : `<i data-lucide="${a.kind === "audio" ? "music" : "video"}"></i>`;
+            return `<button data-act="pickit" data-aid="${a.id}" ${okk ? "" : "disabled"}><span class="th">${thumb}</span><span>${esc(a.name)}</span><span class="spacer tag ${okk ? "t-mute" : "t-warn"}">${okk ? a.kind === "image" ? "图片" : "音频" : why}</span></button>`;
+          }).join("");
+          o.innerHTML = `<div class="ov"><div class="dlg sm"><div class="row"><b>素材库 · ${want === "image" ? "选择图片" : "选择音频"}</b><span class="spacer"></span><button class="btn" data-act="closeov" aria-label="关闭"><i data-lucide="x"></i></button></div><div class="pick">${items}</div><div class="muted" style="font-size: 12px">不可选的素材置灰并写原因，不隐藏（示意）。</div></div></div>`;
+        } else if (S.upload) {
+          const files = [["林晚-新图.png", "ok"], ["超大文件.png", "big"], ["录音.mp3", "kind"]];
+          const audioFiles = [["旁白.mp3", "ok"], ["头像.png", "kind"]];
+          const list = (S.upload.kind === "audio" ? audioFiles : files).map(([name, t]) => `<button data-act="upfile" data-name="${esc(name)}" data-t="${t}"><span class="th"><i data-lucide="${/mp3/.test(name) ? "music" : "image"}"></i></span><span>${esc(name)}</span></button>`).join("");
+          o.innerHTML = `<div class="ov"><div class="dlg sm"><div class="row"><b>选择本地文件（模拟）</b><span class="spacer"></span><button class="btn" data-act="closeov" aria-label="关闭"><i data-lucide="x"></i></button></div><div class="pick">${list}</div><div class="muted" style="font-size: 12px">「超大文件.png」模拟超过大小上限；种类不符的文件会被拒绝。</div></div></div>`;
+        } else if (S.detail) {
+          paintDetail(o);
+        } else o.innerHTML = "";
+        icons();
+      }
+      function paintDetail(o) {
+        const n = node(S.detail);
+        const ex = n.extras.map((x, i) => `<div class="th"><div class="art" style="--h:${x.hue}"></div><button class="x" data-act="rmextra" data-i="${i}" aria-label="移除补充图">×</button></div>`).join("");
+        const textAct = !n.voice || n.voice.mode === "text";
+        o.innerHTML = `<div class="ov"><div class="dlg">
+          <div class="dl-left">
+            <div class="dl-img">${n.status === "ready" ? art(n.hue) : '<span class="muted">还没有主图</span>'}</div>
+            <div class="dl-ex" id="dlex">${ex}</div>
+            <div class="row"><button class="btn btn-outline" data-act="extra" data-id="${n.id}" style="flex: 1; justify-content: center">上传源素材</button>
+              <button class="btn btn-outline" style="flex: 1; justify-content: center" disabled title="拼图的含义待确认（待确认 2），一期不做">拼图</button></div>
+          </div>
+          <div class="dl-right">
+            <div class="row"><b style="font-size: 16px">角色卡详情</b><span class="spacer"></span><button class="btn" data-act="closeov" aria-label="关闭"><i data-lucide="x"></i></button></div>
+            <label class="fld"><span>角色名称</span>
+              <div class="row"><input class="inp" id="fname" maxlength="64" value="${esc(n.name)}" />
+              <select class="inp" id="frole" style="width: 130px" title="复用画布里已有的角色名"><option value="">已有角色…</option>${roleNames().map((r) => `<option>${esc(r)}</option>`).join("")}</select></div></label>
+            <label class="fld"><span>形象名称</span><input class="inp" id="flook" maxlength="64" value="${esc(n.look)}" /></label>
+            ${S.drama ? `<label class="fld"><span>出现集数</span><select class="inp" id="feps">${["1", "1, 2", "2", "1-3"].map((e) => `<option ${n.eps === e ? "selected" : ""}>${e}</option>`).join("")}</select></label>` : ""}
+            <div class="fld"><span>形象音色</span>
+              <div class="opt ${textAct ? "act" : ""}" id="optText"><label><input type="radio" name="vm" value="text" ${textAct ? "checked" : ""} />文本音色</label>
+                <textarea class="inp" id="ftext" maxlength="500" placeholder="请输入音色描述">${esc(n.text)}</textarea></div>
+              <div class="opt ${!textAct ? "act" : ""}" id="optAudio"><label><input type="radio" name="vm" value="audio" ${!textAct ? "checked" : ""} />音频音色</label>
+                <div class="vbtns"><button data-act="upaudio"><i data-lucide="upload"></i>上传音频</button>
+                  <button data-act="genvoice" id="gvbtn" ${S.genVoice || !n.text.trim() ? "disabled" : ""} title="${!n.text.trim() ? "先在文本音色里写一段音色描述" : "用音色描述生成一段音频（模拟）"}"><i data-lucide="${S.genVoice ? "loader" : "audio-lines"}"></i>${S.genVoice ? "生成中…" : "AI 生成"}</button>
+                  <button data-act="lib" data-id="${n.id}" data-kind="audio"><i data-lucide="folder"></i>绑定已有</button></div>
+                <div class="muted" id="vcur" style="font-size: 12px">${n.voice && n.voice.mode === "audio" ? "已绑定：" + esc(n.voice.label) : "还没有音频"}</div></div>
+            </div>
+          </div></div></div>`;
+        const set = (k, v) => { node(S.detail)[k] = v; paintCanvas(); };
+        $("#fname").oninput = (e) => set("name", e.target.value);
+        $("#frole").onchange = (e) => { if (e.target.value) { $("#fname").value = e.target.value; set("name", e.target.value); } };
+        $("#flook").oninput = (e) => set("look", e.target.value);
+        if ($("#feps")) $("#feps").onchange = (e) => set("eps", e.target.value);
+        $("#ftext").oninput = (e) => {
+          n.text = e.target.value; if (!n.voice || n.voice.mode === "text") n.voice = n.text ? { mode: "text" } : null;
+          const b = $("#gvbtn"); if (b && !S.genVoice) { b.disabled = !n.text.trim(); b.title = n.text.trim() ? "用音色描述生成一段音频（模拟）" : "先在文本音色里写一段音色描述"; }
+          paintCanvas();
+        };
+        o.querySelectorAll('input[name="vm"]').forEach((r) => (r.onchange = () => {
+          if (r.value === "text") n.voice = n.text ? { mode: "text" } : null;
+          else if (!(n.voice && n.voice.mode === "audio")) n.voice = n.audioKeep || null;
+          if (r.value === "audio" && n.voice == null) toast("还没有音频，请上传、AI 生成或绑定已有音频", "warn");
+          $("#optText").classList.toggle("act", r.value === "text"); $("#optAudio").classList.toggle("act", r.value === "audio"); paintCanvas();
+        }));
+      }
+
+      /* ---------- 动作 ---------- */
+      function setMain(n, hue) { n.status = "ready"; n.hue = hue; n.err = ""; }
+      function startGen(n, bad) {
+        n.status = "gen"; n.prog = 4; paintAll();
+        const iv = setInterval(() => {
+          n.prog += 18 + Math.random() * 10;
+          if (bad && n.prog > 50) { clearInterval(iv); n.status = "fail"; n.err = "内容审核未通过（模拟），不扣积分"; toast("生成失败：" + n.err, "bad"); }
+          else if (n.prog >= 100) { clearInterval(iv); setMain(n, [210, 330, 150, 18][Math.floor(Math.random() * 4)]); toast("形象已生成，已设为主图"); }
+          if (!S.pick && !S.upload && !S.detail) paintAll(); else paintCanvas();
+        }, 450);
+      }
+      function addExtra(n) {
+        if (n.extras.length >= 4) return toast("补充图最多 4 张", "warn");
+        n.extras.push({ hue: [40, 200, 300, 120][n.extras.length % 4] });
+        toast(`已添加补充图（${n.extras.length}/4）`); paintAll();
+      }
+      const A = {
+        menu() { S.menu = !S.menu; paintBar(); icons(); },
+        addrole() {
+          const id = "n" + ++seq;
+          S.nodes.push({ id, name: `未命名角色 ${seq}`, look: "基础形象", status: "empty", hue: 0, extras: [], voice: null, text: "", desc: "", eps: "1", err: "" });
+          S.sel = id; S.menu = false; paintAll(); toast("已在落点放置一个空角色节点（可撤销）");
+        },
+        upload(el) { S.upload = { id: el.dataset.id, kind: "image" }; paintOverlay(); },
+        lib(el) { S.pick = { id: el.dataset.id, kind: el.dataset.kind }; paintOverlay(); },
+        extra(el) { addExtra(node(el.dataset.id)); if (S.detail) paintOverlay(); },
+        rmextra(el) { node(S.detail).extras.splice(+el.dataset.i, 1); paintAll(); },
+        detail(el) { S.detail = el.dataset.id; S.sel = el.dataset.id; paintAll(); },
+        link(el) { const id = el.dataset.id; S.linked.has(id) ? S.linked.delete(id) : S.linked.add(id); paintCanvas(); },
+        drama() { S.drama = !S.drama; paintAll(); },
+        reset() { resetState(); paintAll(); toast("已重置"); },
+        /* 选择框 / 上传框盖在详情上：先关它们，详情还在；再关才关详情 */
+        closeov() { if (S.pick || S.upload) { S.pick = null; S.upload = null; } else S.detail = null; paintOverlay(); paintCanvas(); },
+        retry(el) { startGen(node(el.dataset.id), false); },
+        gen() {
+          const n = node(S.sel); if (!n || n.status === "gen") return;
+          if (!S.prompt.trim()) return toast("先写一段提示词", "warn");
+          startGen(n, /bad/i.test(S.prompt));
+        },
+        pickit(el) {
+          const a = LIB.find((x) => x.id === el.dataset.aid), n = node(S.pick.id);
+          if (S.pick.kind === "image") { setMain(n, a.hue); toast("已设为主图"); }
+          else { n.voice = { mode: "audio", label: a.name, origin: "library" }; n.audioKeep = n.voice; toast("已绑定音频"); }
+          S.pick = null; paintAll();
+        },
+        upfile(el) {
+          const n = node(S.upload.id), name = el.dataset.name, t = el.dataset.t, kind = S.upload.kind;
+          if (t === "kind") return toast(kind === "image" ? "只能上传图片，这是音频文件，已拒绝" : "只能上传音频，这是图片文件，已拒绝", "bad");
+          S.upload = null;
+          if (t === "big") { n.status = "fail"; n.err = "文件超过大小上限（模拟）"; paintAll(); return toast("上传失败：文件超过大小上限", "bad"); }
+          if (kind === "audio") { n.voice = { mode: "audio", label: name, origin: "upload" }; n.audioKeep = n.voice; toast("音频已上传并绑定"); }
+          else { setMain(n, 18); toast("上传成功，已设为主图"); }
+          paintAll();
+        },
+        upaudio() { S.upload = { id: S.detail, kind: "audio" }; paintOverlay(); },
+        genvoice() {
+          const n = node(S.detail); if (S.genVoice || !n.text.trim()) return;
+          S.genVoice = true; paintOverlay(); toast("正在生成音频（模拟）");
+          setTimeout(() => {
+            S.genVoice = false;
+            if (/bad/i.test(n.text)) toast("音频生成失败：描述未通过审核（模拟），不扣积分", "bad");
+            else { n.voice = { mode: "audio", label: "AI 生成音色.mp3", origin: "generated" }; n.audioKeep = n.voice; toast("音频已生成并绑定"); }
+            paintOverlay(); paintCanvas();
+          }, 1200);
+        },
+      };
+
+      function resetState() {
+        seq = 2;
+        Object.assign(S, {
+          nodes: [
+            { id: "n1", name: "林晚", look: "基础形象", status: "ready", hue: 28, extras: [{ hue: 40 }], voice: { mode: "audio", label: "女声-冷静.mp3", origin: "library" }, text: "年轻女声，偏低，语速慢", desc: "", eps: "1", err: "" },
+            { id: "n2", name: "未命名角色 2", look: "基础形象", status: "empty", hue: 0, extras: [], voice: null, text: "", desc: "", eps: "1", err: "" },
+          ],
+          sel: "n2", linked: new Set(["n1"]), audioOk: true, limit: 2, drama: false, menu: false, detail: null, pick: null, upload: null, genVoice: false, prompt: "",
+        });
+      }
+
+      /* 事件只绑一次（重置不重复绑定） */
+      function initProto() {
+        $("#proto").innerHTML = `<div class="pbar" id="pbar"></div><div class="canvas" id="canvas"></div><div id="panel"></div><div id="overlay"></div>`;
+        resetState();
+        const root = $("#proto");
+        root.addEventListener("click", (e) => {
+          const b = e.target.closest("[data-act]");
+          if (b) { if (!b.disabled) { e.stopPropagation(); A[b.dataset.act]?.(b); } return; }
+          if (S.menu && !e.target.closest(".menu")) { S.menu = false; paintBar(); icons(); }
+          const nd = e.target.closest("[data-node]");
+          if (nd && !e.target.closest("button")) { S.sel = nd.dataset.node; paintCanvas(); }
+        });
+        root.addEventListener("dblclick", (e) => {
+          const nd = e.target.closest("[data-node]");
+          if (nd && !e.target.closest("button")) { S.detail = nd.dataset.node; S.sel = S.detail; paintAll(); }
+        });
+        root.addEventListener("input", (e) => { if (e.target.id === "gprompt") S.prompt = e.target.value; });
+        root.addEventListener("change", (e) => {
+          if (e.target.dataset.ctl === "audio") { S.audioOk = e.target.value === "1"; paintCanvas(); }
+          if (e.target.dataset.ctl === "limit") { S.limit = +e.target.value; paintCanvas(); }
+        });
+        paintAll();
+      }
+      initProto();
+      icons();
+    </script>
+  </body>
+</html>
