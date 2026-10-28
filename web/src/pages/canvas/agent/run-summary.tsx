@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 import { useAgentHighlight } from "@/store/agent-highlight";
 import type { TimelineItem } from "@/utils/agent/timeline";
 
-import { useFitNodes, useFocusNode } from "../chrome/use-focus-node";
+import { useFitNodes, useFocusNode } from "@/components/canvas-editor/use-focus-node";
 import type { NodeOption } from "./agent-editor";
 
 type Summary = Extract<TimelineItem, { type: "run-summary" }>;

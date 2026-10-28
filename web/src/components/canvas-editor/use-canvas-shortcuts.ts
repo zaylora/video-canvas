@@ -12,7 +12,7 @@ import {
   type ClipboardContent,
 } from "@/utils/canvas/paste";
 
-import { VIEWPORT_DURATION } from "./chrome/view-controls";
+import { VIEWPORT_DURATION } from "./viewport";
 
 /** 复制到剪贴板的节点：跨画布也能粘（同一个标签页里） */
 let clipboard: { nodes: FlowNode[]; edges: CanvasEdge[] } | null = null;

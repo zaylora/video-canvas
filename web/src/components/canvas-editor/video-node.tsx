@@ -61,6 +61,7 @@ import type { VideoNodeView } from "@/utils/tasks/node-view";
 import { VersionBadge } from "@/components/canvas/version-badge";
 import { showVersionBadge } from "@/utils/canvas/versions";
 
+import { useRegisterNodeActions } from "./node-actions";
 import { NodeOverlays, NodeOverlaysPresence } from "./node-overlays";
 import { useDragSelected } from "./overlay-gate";
 import { useMultiSelected } from "./selection-toolbar";
@@ -312,6 +313,11 @@ function MediaTaskNode({
   const meta = NODE_META.get(kind);
   const PlaceholderIcon = meta?.placeholderIcon;
   const KindIcon = meta?.icon;
+  // 把「提交生成」登记出去：编辑器之外的页面（短剧资产列表的批量生成）靠它触发
+  useRegisterNodeActions(id, {
+    blockedReason: () => vm.blockedReason,
+    submit: () => vm.submit(),
+  });
 
   // 输入口随所选模型的 schema 增减；xyflow 只在节点挂载时量一次连接点，
   // 之后口变了必须通知它重新测量，否则连到新口上的线会因为「找不到 handle」被藏起来

@@ -39,7 +39,7 @@ import { arrangeNodes, type ArrangeMode } from "@/utils/canvas/arrange";
 import { absolutePosition, isGroupNode, localizePositions } from "@/utils/canvas/group";
 
 import { animatePositions } from "./arrange-animation";
-import { MOD } from "./chrome/keys";
+import { MOD } from "./keys";
 import { SelectionFanHandle } from "./selection-fan-handle";
 import { duplicateSelection } from "./use-canvas-shortcuts";
 

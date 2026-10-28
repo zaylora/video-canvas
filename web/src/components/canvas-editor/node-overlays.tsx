@@ -18,7 +18,7 @@ import {
   usePaneBusy,
   usePanelPlacement,
 } from "@/components/canvas/hooks/use-panel-placement";
-import { NODE_TOOLBAR, type ToolbarTail } from "@/constants/node-toolbar";
+import { NODE_TOOLBAR, type NodeToolbarConfig, type ToolbarTail } from "@/constants/node-toolbar";
 import { useFrameNodes } from "@/hooks/use-frame-nodes";
 import { useRemoteModels } from "@/hooks/use-models";
 import { DURATION, EASE_OUT } from "@/lib/motion";
@@ -35,12 +35,15 @@ import { toolbarGate } from "@/utils/canvas/node-toolbar-state";
 import { outpaintModels } from "@/utils/canvas/outpaint-node";
 import { supportsTrim, UNSUPPORTED_TRIM_MESSAGE } from "@/utils/canvas/trim-engine";
 
+import { resolveToolbar, useNodeExtensions } from "./extensions";
 import { useNodePreview } from "./preview-context";
 
 /** 标题行（13px 字加 8px 间距）在画布 100% 时离卡片顶边的高度，随缩放一起缩 */
 const TITLE_ROW_HEIGHT = 28;
 /** 功能区离标题行的距离，不随缩放：100% 时合起来是 44，和原来的历史浮条一致 */
 const TOOLBAR_GAP = 16;
+/** 只显示页面追加内容的功能区（空节点）：没有加工类按钮，也没有查看类按钮 */
+const EXTRA_ONLY_CONFIG: NodeToolbarConfig = { actions: [], tail: [] };
 /** 功能区往上浮的距离：出现和退出都是这么多（设计稿 6.16 动效表） */
 const TOOLBAR_RISE = 6;
 
@@ -86,6 +89,7 @@ export function NodeOverlays({
   children?: (width: number) => ReactNode;
 }) {
   const previewNode = useNodePreview();
+  const { toolbarExtra, toolbarVisible } = useNodeExtensions();
   const { width, shift } = usePanelPlacement(id);
   const paneBusy = usePaneBusy();
   const nodeDragging = useNodeDragging(id);
@@ -107,6 +111,7 @@ export function NodeOverlays({
 
   const config = NODE_TOOLBAR[data.kind];
   const gate = toolbarGate(data);
+  const toolbarMode = resolveToolbar(gate, data, toolbarVisible);
   /** 点「扩图」：只进入扩图模式、摆出框和面板，不生成任何图片；没有能做扩图的模型就不进 */
   const startOutpaint = useCallback(() => {
     if (imageModels.status !== "ready") {
@@ -221,7 +226,7 @@ export function NodeOverlays({
 
   return (
     <>
-      {gate.visible && (
+      {toolbarMode !== "hidden" && (
         <NodeToolbar
           isVisible
           position={Position.Top}
@@ -235,12 +240,13 @@ export function NodeOverlays({
             style={{ pointerEvents: fade.pointerEvents }}
           >
             <NodeActionBar
-              config={config}
+              config={toolbarMode === "full" ? config : EXTRA_ONLY_CONFIG}
               label={label}
               gate={gate}
               onAction={onAction}
               onTail={onTail}
               onGridPick={startGridSplit}
+              extra={toolbarExtra?.({ id, data })}
             />
           </motion.div>
         </NodeToolbar>

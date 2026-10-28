@@ -1,6 +1,6 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
-import { MOD } from "./keys";
+import { MOD } from "@/components/canvas-editor/keys";
 
 const SHORTCUTS: [string, string][] = [
   ["发送生成", `${MOD}↵`],

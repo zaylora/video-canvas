@@ -19,7 +19,7 @@ import { ASSET_LIBRARY_ACTION, CHARACTER_ACTION, UPLOAD_ACTION } from "@/constan
 import type { NodeKind } from "@/types";
 
 import { buildAddNodeItems } from "./add-node-items";
-import { MOD } from "./keys";
+import { MOD } from "@/components/canvas-editor/keys";
 import { TasksSheet } from "./tasks-sheet";
 
 /** 左侧居中的主工具条（竖排）：添加节点、选择 / 抓手、撤销重做、资产库、任务历史 */

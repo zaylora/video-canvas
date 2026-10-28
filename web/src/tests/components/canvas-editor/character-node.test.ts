@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import type { AssetDto } from "@/api/asset/type";
 import type { CharacterDto } from "@/api/character/type";
-import { characterNodeView } from "@/pages/canvas/character-node";
+import { characterNodeView } from "@/components/canvas-editor/character-node";
 import type { CharacterEntry } from "@/store/characters";
 
 const asset = (id: string): AssetDto => ({ id, kind: "image" }) as AssetDto;
@@ -13,6 +13,9 @@ const card = (patch: Partial<CharacterDto> = {}): CharacterDto => ({
   avatar: asset("1"),
   extras: [],
   voice: null,
+  dramaId: null,
+  lookName: "",
+  voicePrompt: "",
   createdAt: "",
   updatedAt: "",
   ...patch,
@@ -47,6 +50,11 @@ describe("characterNodeView：节点展示状态（设计 §7）", () => {
   test("主图素材已不可用：等同角色卡失效", () => {
     const view = characterNodeView("c1", entry({ card: card({ avatar: null }) }));
     expect(view).toEqual({ phase: "dead", reason: "形象主图已不可用" });
+  });
+
+  test("短剧角色卡还没有形象（主图为空）：正常显示「待生成形象」，不算失效", () => {
+    const view = characterNodeView("c1", entry({ card: card({ avatar: null, dramaId: "1a2b" }) }));
+    expect(view.phase).toBe("ready");
   });
 
   test("旧数据没有 characterId：已失效，可以重新选择", () => {

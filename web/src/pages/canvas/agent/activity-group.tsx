@@ -32,7 +32,7 @@ import { useAgentHighlight } from "@/store/agent-highlight";
 import { activitySummary, formatSeconds, toolIcon, type VerbIcon } from "@/utils/agent/activity";
 import type { TimelineItem, ToolCall } from "@/utils/agent/timeline";
 
-import { useFocusNode } from "../chrome/use-focus-node";
+import { useFocusNode } from "@/components/canvas-editor/use-focus-node";
 
 type Activity = Extract<TimelineItem, { type: "activity" }>;
 

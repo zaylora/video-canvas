@@ -3,7 +3,7 @@ import { Position, useNodeConnections, useNodesData, useReactFlow } from "@xyflo
 import { Trash2, UserRoundX, VolumeX } from "lucide-react";
 
 import type { CharacterDto } from "@/api/character/type";
-import { NodeCard, type NodeCardHandle } from "@/components/canvas";
+import { NodeCard, NodeVideoBody, type NodeCardHandle } from "@/components/canvas";
 import { BaseNodeContent } from "@/components/canvas/base-node";
 import { CharacterCover, ExtraStack } from "@/components/characters/character-card";
 import { VoiceBar } from "@/components/characters/voice-player";
@@ -11,11 +11,19 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { NODE_META } from "@/constants/canvas";
 import { useCharacterEntry } from "@/hooks/use-characters";
+import { useTaskGeneration } from "@/hooks/use-task-generation";
+import { useTaskNode, type TaskNodeModel } from "@/hooks/use-task-node";
 import { useCharacterReselect } from "@/store/character-reselect";
 import type { CharacterEntry } from "@/store/characters";
 import type { CanvasNode, CanvasNodeData } from "@/types";
 import { CHARACTER_NODE_WIDTH } from "@/utils/canvas/character-nodes";
 import { ignoresVoice } from "@/utils/canvas/link-rule";
+
+import { useRegisterNodeActions } from "./node-actions";
+import { NodeOverlays, NodeOverlaysPresence } from "./node-overlays";
+import { useDragSelected } from "./overlay-gate";
+import { useMultiSelected } from "./selection-toolbar";
+import { NodeStatusLabel, TaskPromptPanel } from "./video-node";
 
 /** 角色卡节点只有一个输出口：它不接上游，内容来自角色卡本身 */
 const CHARACTER_HANDLES: NodeCardHandle[] = [{ type: "source", position: Position.Right }];
@@ -61,11 +69,66 @@ export function characterNodeView(
   if (entry?.status === "missing") return { phase: "dead", reason: "原角色卡已被删除" };
   const card = entry?.card;
   if (card) {
-    if (!card.avatar) return { phase: "dead", reason: "形象主图已不可用" };
+    // 短剧角色卡拆解出来时还没有形象，主图为空是正常的（待生成）；普通角色卡的主图没了才是素材失效
+    if (!card.avatar && !card.dramaId) return { phase: "dead", reason: "形象主图已不可用" };
     return { phase: "ready", card, stale: entry.status === "error" };
   }
   return { phase: "loading", failed: entry?.status === "error" };
 }
+
+/** 角色卡节点：带 drama 元数据的（短剧资产）还能生成形象图，其余只引用角色卡 */
+export function CharacterCanvasNode({
+  id,
+  data,
+  selected,
+}: {
+  id: string;
+  data: CanvasNodeData;
+  selected?: boolean;
+}) {
+  return data.drama ? (
+    <GenerableCharacterNode id={id} data={data} selected={selected} />
+  ) : (
+    <CharacterNodeShell id={id} data={data} />
+  );
+}
+
+/** 短剧角色节点：和图片节点一样接生成任务（提示词面板、进度、失败重试），内容仍以角色卡为准 */
+function GenerableCharacterNode({
+  id,
+  data,
+  selected,
+}: {
+  id: string;
+  data: CanvasNodeData;
+  selected?: boolean;
+}) {
+  const generation = useTaskGeneration(id, "image");
+  const vm = useTaskNode(id, data, "image", generation);
+  useRegisterNodeActions(id, {
+    blockedReason: () => vm.blockedReason,
+    submit: () => vm.submit(),
+  });
+  const multiSelected = useMultiSelected();
+  const dragSelected = useDragSelected(id);
+  return (
+    <>
+      <CharacterNodeShell id={id} data={data} vm={vm} />
+      <NodeOverlaysPresence multiSelected={multiSelected}>
+        {selected && !dragSelected && (
+          <NodeOverlays key="overlays" id={id} data={data}>
+            {(width) => (
+              <TaskPromptPanel vm={vm} data={data} kind="image" nodeId={id} width={width} />
+            )}
+          </NodeOverlays>
+        )}
+      </NodeOverlaysPresence>
+    </>
+  );
+}
+
+/** 生成中、排队中、转存中、失败：角色节点正文换成进度 / 失败占位 */
+const SHOWS_TASK_BODY = new Set(["queued", "running", "finalizing", "failed"]);
 
 /**
  * 角色卡节点（设计 §6.4、§7）：节点名在卡片上方（人形图标 + 角色名），卡片是 3:4 封面 + 底部声音条，
@@ -73,7 +136,16 @@ export function characterNodeView(
  * 已失效时灰显，连线保留但不参与提交，提供「重新选择」「删除节点」；
  * 连到不收参考音频的目标时，「声音未生效」标签挂在节点名旁。
  */
-export function CharacterCanvasNode({ id, data }: { id: string; data: CanvasNodeData }) {
+function CharacterNodeShell({
+  id,
+  data,
+  vm,
+}: {
+  id: string;
+  data: CanvasNodeData;
+  /** 短剧角色节点的生成状态；普通角色卡节点没有 */
+  vm?: TaskNodeModel;
+}) {
   const { updateNodeData, deleteElements } = useReactFlow<CanvasNode>();
   const entry = useCharacterEntry(data.characterId);
   const view = characterNodeView(data.characterId, entry);
@@ -97,7 +169,9 @@ export function CharacterCanvasNode({ id, data }: { id: string; data: CanvasNode
       onRename={dead ? undefined : (label) => updateNodeData(id, { label })}
       icon={dead ? <UserRoundX /> : KindIcon ? <KindIcon /> : undefined}
       status={
-        voiceIgnored ? (
+        vm && SHOWS_TASK_BODY.has(vm.view.phase) ? (
+          <NodeStatusLabel view={vm.view} />
+        ) : voiceIgnored ? (
           <span
             data-slot="voice-ignored-tag"
             title="目标模型不收参考音频，只带入形象"
@@ -114,7 +188,19 @@ export function CharacterCanvasNode({ id, data }: { id: string; data: CanvasNode
       className={dead ? "opacity-70" : undefined}
     >
       <BaseNodeContent>
-        {view.phase === "loading" ? (
+        {vm && SHOWS_TASK_BODY.has(vm.view.phase) ? (
+          <NodeVideoBody
+            view={vm.view}
+            aspect={3 / 4}
+            placeholder="选中后输入提示词生成形象"
+            mediaType="image"
+            onCancel={vm.view.phase === "queued" ? vm.cancel : undefined}
+            cancelling={vm.cancelling}
+            onRetry={vm.view.phase === "failed" ? () => void vm.submit() : undefined}
+            retryDisabled={!!vm.blockedReason}
+            retryHint={vm.blockedReason ?? undefined}
+          />
+        ) : view.phase === "loading" ? (
           <>
             <div className="relative aspect-3/4 w-full">
               <Skeleton className="absolute inset-0 rounded-none motion-reduce:animate-none" />
@@ -158,7 +244,16 @@ export function CharacterCanvasNode({ id, data }: { id: string; data: CanvasNode
         ) : (
           <>
             <div className="bg-muted relative aspect-3/4 w-full">
-              <CharacterCover card={view.card} />
+              {/* 角色卡还没有主图但刚生成出了图：先显示生成结果，主图写回后由角色卡接管 */}
+              {!view.card.avatar && data.src ? (
+                <img
+                  src={data.src}
+                  alt={name}
+                  className="absolute inset-0 size-full object-cover"
+                />
+              ) : (
+                <CharacterCover card={view.card} />
+              )}
               <ExtraStack card={view.card} />
             </div>
             <div className="flex h-10 items-center px-2.5 text-xs">

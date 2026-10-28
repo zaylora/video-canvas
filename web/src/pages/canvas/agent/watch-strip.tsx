@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { useAgentHighlight } from "@/store/agent-highlight";
 import type { WatchSummary } from "@/utils/agent/watch";
 
-import { useFocusNode } from "../chrome/use-focus-node";
+import { useFocusNode } from "@/components/canvas-editor/use-focus-node";
 import { ProgressRing } from "./progress-ring";
 
 /** 任务状态文字的颜色：生成中蓝、成功绿、失败红 */

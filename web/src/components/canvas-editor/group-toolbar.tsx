@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 import type { CanvasEdge, CanvasGroupData, FlowNode, GroupHue } from "@/types";
 import { groupMembers, groupTitleScale } from "@/utils/canvas/group";
 
-import { MOD } from "./chrome/keys";
+import { MOD } from "./keys";
 import { useGroupUi } from "./group-ui";
 import { useGroupOps } from "./use-group-ops";
 
