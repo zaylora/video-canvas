@@ -4,7 +4,7 @@
  * 工具的名字、说明、参数 schema 都由 Go 定（这里不内置任何业务工具），execute 回调 Go 的平台 API：
  *   - 普通工具 → POST /tools/:name，幂等键是 Pi 的工具任务 id（每次调用唯一，同一次调用重放时不变），
  *     所以崩溃后重放写画布不会写两遍，也不会因为模型给的 tool_call_id 重复而悄悄丢掉真实的写入；
- *   - 会让用户决定的三个（generate_media / canvas_delete / ask_user）→ 先 propose 预估，通过后交给宿主创建审批，本轮停下；
+ *   - 审批工具（生成、删除、提问、短剧写入）→ 先 propose 预估，通过后交给宿主创建审批，本轮停下；
  *   - plan_update 在这里本地校验（它只产生一个事件，没有平台副作用）。
  *
  * 运行状态（步数、事件、审批、暂停）归运行引擎，工具层只通过 ToolHost 和它交互，所以可以单独测试。
@@ -52,7 +52,11 @@ export interface PlanStep {
 }
 
 /** 这几个工具要用户决定，对应的审批种类 */
-const APPROVAL_KIND: Record<string, ApprovalKind> = { generate_media: "generate", canvas_delete: "delete", ask_user: "ask" };
+const APPROVAL_KIND: Record<string, ApprovalKind> = {
+  generate_media: "generate", canvas_delete: "delete", ask_user: "ask",
+  drama_update_outline: "drama_update_outline", drama_update_episode: "drama_update_episode",
+  drama_update_segment: "drama_update_segment", drama_run_job: "drama_run_job",
+};
 
 /**
  * 崩溃后能不能重放：
@@ -64,6 +68,7 @@ const APPROVAL_KIND: Record<string, ApprovalKind> = { generate_media: "generate"
 const SAFE = new Set([
   "canvas_get_state", "model_list", "task_get", "skill_search", "skill_read", "canvas_inspect_image", "canvas_inspect_video", "web_search", "web_fetch",
   "canvas_apply_ops", "canvas_arrange", "plan_update", "generate_media", "canvas_delete", "ask_user",
+  "drama_read", "drama_update_outline", "drama_update_episode", "drama_update_segment", "drama_run_job",
 ]);
 export const replayOf = (name: string): "safe" | "unsafe" => (SAFE.has(name) ? "safe" : "unsafe");
 

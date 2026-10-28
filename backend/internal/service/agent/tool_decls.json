@@ -609,5 +609,30 @@
         }
       }
     }
+  },
+  {
+    "name": "drama_read",
+    "description": "读取当前短剧：overview 为项目、大纲、人物和各集摘要；episode 为单集全文；segments 为单集片段列表。修改前先读相关范围。",
+    "parameters": {"type":"object","required":["scope"],"additionalProperties":false,"properties":{"scope":{"type":"string","enum":["overview","episode","segments"]},"episode_no":{"type":"integer","minimum":1,"maximum":100}}}
+  },
+  {
+    "name": "drama_update_outline",
+    "description": "申请修改当前短剧大纲或人物传记。必须经用户审批，展示修改前后，批准后按当前 revision 调短剧服务。",
+    "parameters": {"type":"object","additionalProperties":false,"minProperties":1,"properties":{"reason":{"type":"string","maxLength":500},"outline_md":{"type":"string"},"characters_md":{"type":"string"}}}
+  },
+  {
+    "name": "drama_update_episode",
+    "description": "申请修改指定集的标题、梗概或剧本。必须审批；锁定集只能改标题，改剧本或梗概返回 67005。",
+    "parameters": {"type":"object","required":["episode_no"],"additionalProperties":false,"properties":{"reason":{"type":"string","maxLength":500},"episode_no":{"type":"integer","minimum":1,"maximum":100},"title":{"type":"string","maxLength":255},"synopsis":{"type":"string"},"script_md":{"type":"string"}}}
+  },
+  {
+    "name": "drama_update_segment",
+    "description": "申请修改当前短剧片段的提示词或秒数，必须审批。segment_id 使用 drama_read 返回的十六进制 ID。",
+    "parameters": {"type":"object","required":["segment_id"],"additionalProperties":false,"properties":{"reason":{"type":"string","maxLength":500},"segment_id":{"type":"string"},"prompt":{"type":"string"},"seconds":{"type":"integer","minimum":1}}}
+  },
+  {
+    "name": "drama_run_job",
+    "description": "申请运行短剧任务。先估价显示积分并审批，批准后提交，不等待任务结束；同项目同时只能有一个进行中任务（67004）。compose 合成一集采用视频，免费。",
+    "parameters": {"type":"object","required":["step","episodes"],"additionalProperties":false,"properties":{"reason":{"type":"string","maxLength":500},"step":{"type":"string","enum":["analyze","outline","scripts","breakdown","asset_prompts","storyboard","compose"]},"episodes":{"type":"array","maxItems":100,"items":{"type":"integer","minimum":1,"maximum":100}},"ratio":{"type":"string","enum":["9:16","16:9","21:9","3:4","4:3","1:1"]},"max_seconds":{"type":"integer","minimum":4,"maximum":60}}}
   }
 ]

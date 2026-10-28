@@ -73,6 +73,8 @@ type agentDeps struct {
 	registry   provider.Registry
 	secrets    provider.SecretResolver
 	skills     agentsvc.SkillLibrary
+	drama      agentsvc.AgentDramaService
+	segments   agentsvc.AgentDramaSegments
 	// toolCalls 逐条留存工具调用的参数、结果和耗时；nil 表示不记录
 	toolCalls agentsvc.ToolCallRecorder
 	// modelRequests 留存模型调用实际发给上游的请求体（7 天）；nil 表示不记录
@@ -120,6 +122,7 @@ func newAgentRuntime(cfg *config.Config, d agentDeps) (*agentRuntime, error) {
 	bridge := agentsvc.NewAgentBridge(agentsvc.BridgeDeps{
 		Repo: d.repo, Canvas: d.canvas, Agent: d.agent, Billing: agentsvc.NewAgentBilling(d.repo),
 		Registry: d.registry, Secrets: d.secrets, Tasks: d.tasks, Assets: d.assets, AssetLinks: d.assetLinks, Frames: d.frames, FrameStore: d.frameStore, Streamer: llmgateway.New(llmgateway.Options{IPAllowed: d.ipAllowed}), Skills: d.skills, Web: web, RunUsage: d.repo,
+		Drama: d.drama, DramaSegments: d.segments, DramaApprovalKey: []byte(ac.ServiceToken),
 	})
 	bridge.SetDisabledTools(AgentDisabledTools(ac))
 	if d.toolCalls != nil {

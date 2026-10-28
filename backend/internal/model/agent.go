@@ -13,12 +13,13 @@ const (
 	AgentModeScript     = "script"     // 剧本创编
 	AgentModeStoryboard = "storyboard" // 分镜搭建
 	AgentModePrompt     = "prompt"     // 提示词优化
+	AgentModeDrama      = "drama"      // 短剧助手
 )
 
 // ValidAgentMode 判断是不是认识的任务模式。
 func ValidAgentMode(m string) bool {
 	switch m {
-	case AgentModeAll, AgentModeScript, AgentModeStoryboard, AgentModePrompt:
+	case AgentModeAll, AgentModeScript, AgentModeStoryboard, AgentModePrompt, AgentModeDrama:
 		return true
 	}
 	return false

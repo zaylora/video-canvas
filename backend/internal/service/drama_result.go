@@ -131,6 +131,9 @@ func (s *DramaService) finishTx(ctx context.Context, tx repository.DramaTx, j *m
 
 // settleDramaCredit 保持freeze = settle + refund，和现有积分对账语义一致。
 func settleDramaCredit(ctx context.Context, tx repository.DramaTx, j *model.DramaJob, status string, cost int) error {
+	if j.Step == "compose" {
+		return nil
+	}
 	if _, e := tx.LockCredit(ctx, j.UserID); e != nil {
 		return e
 	}

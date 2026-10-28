@@ -5,6 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import { backupDatabase } from "../src/backup.ts";
 import { openStore } from "../src/store/store.ts";
 
@@ -19,7 +20,7 @@ function withDir(fn: (dir: string) => void | Promise<void>) {
   };
 }
 
-const CLI = new URL("../src/backup-cli.ts", import.meta.url).pathname;
+const CLI = fileURLToPath(new URL("../src/backup-cli.ts", import.meta.url));
 const node = (args: string[], env: Record<string, string> = {}) =>
   spawnSync("node", ["--disable-warning=ExperimentalWarning", CLI, ...args], { env: { PATH: process.env.PATH ?? "", ...env }, encoding: "utf8" });
 

@@ -64,10 +64,15 @@ var toolSpecs = []toolSpec{
 	// 联网：所有模式都能用；结果只是资料，可以被脚本调用。是否真的下发由运行时的停用清单决定（RuntimeConfig.DisabledTools）
 	{name: "web_search", label: "搜索网页", verb: "搜索", scriptable: true, run: (*AgentBridge).toolWebSearch},
 	{name: "web_fetch", label: "读取网页", verb: "读网页", scriptable: true, run: (*AgentBridge).toolWebFetch},
+	{name: "drama_read", label: "读取短剧", verb: "读取", scriptable: true, modes: []string{model.AgentModeDrama}, run: (*AgentBridge).toolDramaRead},
+	{name: "drama_update_outline", label: "修改大纲", verb: "修改", modes: []string{model.AgentModeDrama}, run: (*AgentBridge).toolDramaOutline},
+	{name: "drama_update_episode", label: "修改分集", verb: "修改", modes: []string{model.AgentModeDrama}, run: (*AgentBridge).toolDramaEpisode},
+	{name: "drama_update_segment", label: "修改片段", verb: "修改", modes: []string{model.AgentModeDrama}, run: (*AgentBridge).toolDramaSegment},
+	{name: "drama_run_job", label: "运行短剧任务", verb: "生成", modes: []string{model.AgentModeDrama}, run: (*AgentBridge).toolDramaJob},
 }
 
-// layoutModes 是能排列、删除和生成的任务模式：全能创作和分镜搭建。
-var layoutModes = []string{model.AgentModeAll, model.AgentModeStoryboard}
+// layoutModes 是能排列、删除和生成的任务模式：全能创作、分镜搭建和短剧助手。
+var layoutModes = []string{model.AgentModeAll, model.AgentModeStoryboard, model.AgentModeDrama}
 
 // allowsMode 判断任务模式能不能用这个工具；空模式按全能创作算。
 func (s *toolSpec) allowsMode(mode string) bool {

@@ -25,12 +25,14 @@ import (
 	"video-canvas/internal/migration"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/idcodec"
+	"video-canvas/internal/pkg/videoframe"
 	"video-canvas/internal/provider"
 	"video-canvas/internal/provider/modelcfg"
 	"video-canvas/internal/provider/queue"
 	"video-canvas/internal/provider/worker"
 	"video-canvas/internal/repository"
 	"video-canvas/internal/service"
+	"video-canvas/internal/storage"
 )
 
 type registry struct{}
@@ -55,12 +57,13 @@ func (registry) Snapshot(_ context.Context, key string) (*provider.Snapshot, err
 
 type executor struct {
 	provider.Executor
-	db *gorm.DB
+	db       *gorm.DB
+	mediaDir string
 }
 
 func (e executor) Submit(ctx context.Context, snap *provider.Snapshot, in provider.SubmitInput) (*provider.SubmitResult, error) {
 	if snap.Model.Kind != model.KindText {
-		return smokeMediaOutput(ctx, e.db, snap.Model.Kind, in.Task)
+		return smokeMediaOutput(ctx, e.db, e.mediaDir, snap.Model.Kind, in.Task, !strings.Contains(fmt.Sprint(in.Input["prompt"]), "静音"))
 	}
 	prompt := in.Input["prompt"].(string)
 	start := strings.Index(prompt, "```json\n") + len("```json\n")
@@ -163,6 +166,9 @@ type env struct {
 	canvasRepo *repository.CanvasProjectRepository
 	url        string
 	events     *smokeEvents
+	mediaDir   string
+	drama      *service.DramaService
+	segments   *service.DramaSegmentService
 }
 
 // openIsolatedDB 在专用测试库建隔离 schema 并迁移，返回连接与清理函数。
@@ -187,17 +193,20 @@ func openIsolatedDB(ctx context.Context, dsn string) (*gorm.DB, *sql.DB, string,
 	}
 }
 
-// startServer 装配服务、River 运行时与路由，返回 HTTP 地址和停止函数。
-func startServer(ctx context.Context, db *gorm.DB, sqlDB *sql.DB, schema string, events *smokeEvents) (string, func()) {
+// startServer 装配隔离数据库、存储和 River 服务，返回验收上下文与停止函数。
+func startServer(ctx context.Context, db *gorm.DB, sqlDB *sql.DB, schema string, events *smokeEvents) (env, func()) {
 	repo := repository.NewDramaRepository(db)
 	canvases := repository.NewCanvasProjectRepository(db)
-	assets := service.NewAssetService(repository.NewAssetRepository(db), nil, config.Storage{})
-	exec := executor{db: db}
+	mediaDir, err := os.MkdirTemp("", "drama-smoke-media-*")
+	must(err)
+	stores := storage.NewRegistry(smokeStorageSource{dir: mediaDir}, 0)
+	assets := service.NewAssetService(repository.NewAssetRepository(db), stores, config.Storage{})
+	exec := executor{db: db, mediaDir: mediaDir}
 	tasksRepo := repository.NewGenerationTaskRepository(db)
 	tasks := service.NewGenerationTaskService(service.GenerationTaskDeps{Repo: tasksRepo, Registry: registry{}, Executor: exec, Assets: assets, Broadcaster: events})
 	segments := service.NewDramaSegmentService(service.DramaSegmentDeps{Repo: repo, Tasks: tasks, Assets: assets, Broadcaster: events})
 	tasks.SetTaskObserver(segments)
-	svc := service.NewDramaService(service.DramaDeps{Repo: repo, Registry: registry{}, Executor: exec, Canvas: service.NewDramaCanvasService(repository.NewDramaCanvasRepository(db), nil), Credits: creditPolicy{}, Segments: segments, CanvasAssets: canvases, Broadcaster: events})
+	svc := service.NewDramaService(service.DramaDeps{Repo: repo, Registry: registry{}, Executor: exec, Canvas: service.NewDramaCanvasService(repository.NewDramaCanvasRepository(db), nil), Credits: creditPolicy{}, Segments: segments, CanvasAssets: canvases, Broadcaster: events, Assets: assets, Compose: videoframe.New(videoframe.Options{Timeout: time.Minute})})
 	rt, e := queue.New(queue.Config{DB: sqlDB, Schema: schema, Repo: repository.NewQueueRepository(db), Drama: svc, Store: tasks, Handler: worker.New(tasks, exec, nil, worker.Options{Logger: zap.NewNop()}), Enabled: true, HardCap: 2, FetchPollInterval: 100 * time.Millisecond, Logger: zap.NewNop()})
 	must(e)
 	repo.SetEnqueuer(rt)
@@ -215,10 +224,11 @@ func startServer(ctx context.Context, db *gorm.DB, sqlDB *sql.DB, schema string,
 	r.GET("/dramas/:id/episodes/:no", h.GetEpisode)
 	r.PATCH("/dramas/:id/episodes/:no", h.UpdateEpisode)
 	r.POST("/dramas/:id/jobs", h.CreateJob)
+	r.POST("/dramas/:id/estimate", h.Estimate)
 	r.GET("/dramas/:id/jobs", h.ListJobs)
 	registerSegmentRoutes(r, segments)
 	srv := httptest.NewServer(r)
-	return srv.URL, func() { srv.Close(); cancel(); must(<-done) }
+	return env{db: db, canvasRepo: canvases, url: srv.URL, events: events, mediaDir: mediaDir, drama: svc, segments: segments}, func() { srv.Close(); cancel(); must(<-done); must(os.RemoveAll(mediaDir)) }
 }
 
 // createDrama 用带分集标记的原文创建短剧，返回短剧与画布 ID。
@@ -324,15 +334,16 @@ func main() {
 	defer cleanup()
 	idcodec.Init("drama-smoke-test-key")
 	events := &smokeEvents{}
-	url, stop := startServer(ctx, db, sqlDB, schema, events)
+	e, stop := startServer(ctx, db, sqlDB, schema, events)
 	defer stop()
-	e := env{db: db, canvasRepo: repository.NewCanvasProjectRepository(db), url: url, events: events}
-	id, canvasID := createDrama(ctx, url)
-	awaitReady(url, id)
-	breakdownEachEpisode(url, id)
+	id, canvasID := createDrama(ctx, e.url)
+	awaitReady(e.url, id)
+	breakdownEachEpisode(e.url, id)
 	cvID, cid := verifyCanvas(ctx, e, canvasID)
 	verifyBilling(ctx, e, id)
 	verifyStoryboardAndGeneration(ctx, e, id, canvasID)
+	verifyCompose(ctx, e, id)
+	verifyDramaAgent(ctx, e, id, cvID)
 	verifyCascade(ctx, e, id, cvID, cid)
-	_, _ = os.Stdout.WriteString("PASS: HTTP201→River analyze/outline→breakdown+asset_prompts→storyboard→segment CRUD/order/revision→keyframe+video worker→auto adoption+WS→67013→billing reconciliation→cascade204/404\n")
+	_, _ = os.Stdout.WriteString("PASS: HTTP201→River analyze/outline→breakdown+asset_prompts→storyboard→segment CRUD/order/revision→keyframe+video worker→auto adoption+WS→67013→compose H264/AAC+silence/skips→final/stale/67010→zero-charge reconciliation→cascade204/404\n")
 }

@@ -39,17 +39,19 @@ func (DramaProject) TableName() string { return "drama_projects" }
 // DramaEpisode 集号定位的剧本，拆解后锁定正文和梗概。
 type DramaEpisode struct {
 	BaseModel
-	UserID           uint64 `gorm:"not null;index"`
-	DramaID          uint64 `gorm:"not null;uniqueIndex:uk_drama_episode_no,priority:1"`
-	No               int    `gorm:"not null;uniqueIndex:uk_drama_episode_no,priority:2"`
-	Title            string `gorm:"size:255;not null;default:''"`
-	Synopsis         string `gorm:"type:text;not null;default:''"`
-	ScriptMD         string `gorm:"type:text;not null;default:''"`
-	ScriptStatus     string `gorm:"size:16;not null;default:empty"`
-	StoryboardStatus string `gorm:"size:16;not null;default:empty"`
-	FinalAssetID     *uint64
-	LockedAt         *time.Time
-	Revision         int64 `gorm:"not null;default:1"`
+	UserID              uint64 `gorm:"not null;index"`
+	DramaID             uint64 `gorm:"not null;uniqueIndex:uk_drama_episode_no,priority:1"`
+	No                  int    `gorm:"not null;uniqueIndex:uk_drama_episode_no,priority:2"`
+	Title               string `gorm:"size:255;not null;default:''"`
+	Synopsis            string `gorm:"type:text;not null;default:''"`
+	ScriptMD            string `gorm:"type:text;not null;default:''"`
+	ScriptStatus        string `gorm:"size:16;not null;default:empty"`
+	StoryboardStatus    string `gorm:"size:16;not null;default:empty"`
+	FinalAssetID        *uint64
+	SegmentVersion      int64 `gorm:"not null;default:0"`
+	FinalSegmentVersion int64 `gorm:"not null;default:0"`
+	LockedAt            *time.Time
+	Revision            int64 `gorm:"not null;default:1"`
 }
 
 // TableName 返回 DramaEpisode 对应的表名。
@@ -58,7 +60,7 @@ func (DramaEpisode) TableName() string { return "drama_episodes" }
 // DramaJob 一次流水线步骤，与一个 River job 一一对应。
 type DramaJob struct {
 	BaseModel
-	UserID         uint64                   `gorm:"not null;index"`
+	UserID         uint64                   `gorm:"not null;index;uniqueIndex:uk_drama_job_approval,priority:1"`
 	DramaID        uint64                   `gorm:"not null;index;uniqueIndex:uk_drama_active_job,where:status = 'queued' OR status = 'running'"`
 	Step           string                   `gorm:"size:16;not null"`
 	Episodes       datatypes.JSONSlice[int] `gorm:"type:jsonb;not null;default:'[]'"`
@@ -72,6 +74,7 @@ type DramaJob struct {
 	InputJSON      datatypes.JSON           `gorm:"type:jsonb;not null;default:'{}'"`
 	ModelID        uint64                   `gorm:"not null;default:0"`
 	Output         datatypes.JSON           `gorm:"type:jsonb;not null;default:'{}'"`
+	ApprovalID     *uint64                  `gorm:"uniqueIndex:uk_drama_job_approval,priority:2"`
 	StartedAt      *time.Time
 	FinishedAt     *time.Time
 }
@@ -122,7 +125,7 @@ type UpdateDramaEpisodeReq struct {
 
 // DramaJobReq 提交或估价的步骤与范围。
 type DramaJobReq struct {
-	Step       string `json:"step" binding:"required,oneof=analyze outline scripts breakdown asset_prompts storyboard"`
+	Step       string `json:"step" binding:"required,oneof=analyze outline scripts breakdown asset_prompts storyboard compose"`
 	Episodes   []int  `json:"episodes" binding:"max=100,dive,min=1,max=100"`
 	Ratio      string `json:"ratio" binding:"omitempty,oneof=9:16 16:9 21:9 3:4 4:3 1:1"`
 	MaxSeconds int    `json:"max_seconds" binding:"omitempty,min=4,max=60"`
@@ -141,17 +144,19 @@ type DramaSummary struct {
 
 // DramaEpisodeSummary 集概要。
 type DramaEpisodeSummary struct {
-	No               int       `json:"no"`
-	Title            string    `json:"title"`
-	Synopsis         string    `json:"synopsis"`
-	ScriptStatus     string    `json:"script_status"`
-	StoryboardStatus string    `json:"storyboard_status"`
-	SegmentCount     int       `json:"segment_count"`
-	SegmentSeconds   int       `json:"segment_seconds"`
-	DoneSegmentCount int       `json:"done_segment_count"`
-	Locked           bool      `json:"locked"`
-	Revision         int64     `json:"revision"`
-	UpdatedAt        time.Time `json:"updated_at"`
+	No               int        `json:"no"`
+	Title            string     `json:"title"`
+	Synopsis         string     `json:"synopsis"`
+	ScriptStatus     string     `json:"script_status"`
+	StoryboardStatus string     `json:"storyboard_status"`
+	SegmentCount     int        `json:"segment_count"`
+	SegmentSeconds   int        `json:"segment_seconds"`
+	DoneSegmentCount int        `json:"done_segment_count"`
+	Locked           bool       `json:"locked"`
+	Revision         int64      `json:"revision"`
+	UpdatedAt        time.Time  `json:"updated_at"`
+	Final            *AssetView `json:"final"`
+	FinalStale       bool       `json:"final_stale"`
 }
 
 // DramaEpisodeView 单集正文。
@@ -162,16 +167,23 @@ type DramaEpisodeView struct {
 
 // DramaJobView 任务状态与结算结果。
 type DramaJobView struct {
-	ID           idcodec.ID `json:"id"`
-	Step         string     `json:"step"`
-	Episodes     []int      `json:"episodes"`
-	Status       string     `json:"status"`
-	Progress     int        `json:"progress"`
-	Credits      int        `json:"credits"`
-	ErrorCode    int        `json:"error_code"`
-	ErrorMessage string     `json:"error_message"`
-	CreatedAt    time.Time  `json:"created_at"`
-	FinishedAt   *time.Time `json:"finished_at"`
+	ID           idcodec.ID          `json:"id"`
+	Step         string              `json:"step"`
+	Episodes     []int               `json:"episodes"`
+	Status       string              `json:"status"`
+	Progress     int                 `json:"progress"`
+	Credits      int                 `json:"credits"`
+	ErrorCode    int                 `json:"error_code"`
+	ErrorMessage string              `json:"error_message"`
+	CreatedAt    time.Time           `json:"created_at"`
+	FinishedAt   *time.Time          `json:"finished_at"`
+	Result       *DramaComposeResult `json:"result"`
+}
+
+// DramaComposeResult 合成成片与未采用而跳过的片段序号。
+type DramaComposeResult struct {
+	Asset       AssetView `json:"asset"`
+	SkippedSeqs []int     `json:"skipped_seqs"`
 }
 
 // DramaView 项目详情。

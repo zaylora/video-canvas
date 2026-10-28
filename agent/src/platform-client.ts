@@ -120,7 +120,7 @@ export interface RunSetup {
   harness: { prompt_version: number; tools_hash: string; build_sha: string; key: string };
 }
 
-export type ApprovalKind = "generate" | "delete" | "ask";
+export type ApprovalKind = "generate" | "delete" | "ask" | "drama_update_outline" | "drama_update_episode" | "drama_update_segment" | "drama_run_job";
 
 export interface ApprovalProposal {
   is_error: boolean;
@@ -145,6 +145,9 @@ export interface ApprovalOutcome {
   items?: unknown[];
   node_ids?: string[];
   edge_ids?: string[];
+  /** Go 签发的短剧审批快照与签名；解析后原样交回执行接口。 */
+  drama?: unknown;
+  drama_signature?: string;
 }
 
 export interface ApprovalExecution {
@@ -264,9 +267,9 @@ export function createPlatform({ baseUrl, serviceToken, fetchImpl = fetch }: Pla
     encodeId: async (n: string, signal?: AbortSignal): Promise<string> => (await call<{ encoded: string }>("GET", `/ids/${encodeURIComponent(n)}`, undefined, undefined, { signal })).encoded,
     /** 当前可用的 Agent 模型（没有时是空数组） */
     models: (signal?: AbortSignal) => call<AgentModel[]>("GET", "/agent/models", undefined, undefined, { signal }),
-    /** 确认画布属于这个用户；别人的和不存在的一样抛「画布不存在」（30001） */
-    checkCanvas: async (userId: string, canvasId: string, signal?: AbortSignal): Promise<void> => {
-      await call<null>("POST", "/canvases/check", undefined, userCanvas(userId, canvasId), { signal });
+    /** 确认画布归属；drama 模式同时要求短剧画布，保留普通画布的请求格式。 */
+    checkCanvas: async (userId: string, canvasId: string, signal?: AbortSignal, mode?: string): Promise<void> => {
+      await call<null>("POST", "/canvases/check", undefined, { ...userCanvas(userId, canvasId), ...(mode && { mode }) }, { signal });
     },
     /** 校验消息里的引用（节点、模型、技能），返回去掉了已不存在节点的选中列表 */
     checkMessage: async (userId: string, canvasId: string, message: string, selection: string[] = [], signal?: AbortSignal): Promise<string[]> =>

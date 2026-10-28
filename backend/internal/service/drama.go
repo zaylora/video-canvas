@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"path/filepath"
 	"slices"
@@ -69,6 +70,8 @@ type DramaDeps struct {
 	Credits      DramaCreditPolicy
 	CanvasAssets DramaStoryboardCanvasReader
 	Segments     DramaSegmentSummary
+	Compose      DramaVideoComposer
+	Assets       DramaComposeAssets
 }
 
 // DramaService 短剧项目和固定流水线的业务入口。
@@ -81,11 +84,13 @@ type DramaService struct {
 	credits      DramaCreditPolicy
 	canvasAssets DramaStoryboardCanvasReader
 	segments     DramaSegmentSummary
+	compose      DramaVideoComposer
+	assets       DramaComposeAssets
 }
 
 // NewDramaService 创建短剧服务，不启动后台任务。
 func NewDramaService(d DramaDeps) *DramaService {
-	return &DramaService{repo: d.Repo, registry: d.Registry, executor: d.Executor, canvas: d.Canvas, bc: d.Broadcaster, credits: d.Credits, canvasAssets: d.CanvasAssets, segments: d.Segments}
+	return &DramaService{repo: d.Repo, registry: d.Registry, executor: d.Executor, canvas: d.Canvas, bc: d.Broadcaster, credits: d.Credits, canvasAssets: d.CanvasAssets, segments: d.Segments, compose: d.Compose, assets: d.Assets}
 }
 
 // Create 校验原文和风格，在同一事务建立项目、画布与首个研读任务。
@@ -138,7 +143,7 @@ func (s *DramaService) Create(ctx context.Context, userID uint64, req *model.Cre
 			return err
 		}
 		var e error
-		j, e = s.enqueue(ctx, tx, p, &model.DramaJobReq{Step: "analyze"}, snap, nil, initial)
+		j, e = s.enqueue(ctx, tx, p, &model.DramaJobReq{Step: "analyze"}, snap, nil, initial, nil)
 		return e
 	})
 	if err != nil {
@@ -311,12 +316,27 @@ func (s *DramaService) dramaEpisodeView(ctx context.Context, ep model.DramaEpiso
 			return nil, err
 		}
 	}
+	if ep.FinalAssetID != nil && s.assets != nil {
+		var err error
+		v.Final, err = s.assets.View(ctx, ep.UserID, *ep.FinalAssetID)
+		if err != nil {
+			return nil, err
+		}
+		v.FinalStale = ep.SegmentVersion != ep.FinalSegmentVersion
+	}
 	return &v, nil
 }
 
 // jobView 映射任务状态并保证空范围为[]。
 func jobView(j model.DramaJob) model.DramaJobView {
-	return model.DramaJobView{ID: idcodec.ID(j.ID), Step: j.Step, Episodes: append([]int{}, j.Episodes...), Status: j.Status, Progress: j.Progress, Credits: j.Credits, ErrorCode: j.ErrorCode, ErrorMessage: j.ErrorMessage, CreatedAt: j.CreatedAt, FinishedAt: j.FinishedAt}
+	v := model.DramaJobView{ID: idcodec.ID(j.ID), Step: j.Step, Episodes: append([]int{}, j.Episodes...), Status: j.Status, Progress: j.Progress, Credits: j.Credits, ErrorCode: j.ErrorCode, ErrorMessage: j.ErrorMessage, CreatedAt: j.CreatedAt, FinishedAt: j.FinishedAt}
+	if j.Step == "compose" && j.Status == "succeeded" {
+		var result model.DramaComposeResult
+		if json.Unmarshal(j.Output, &result) == nil && result.Asset.ID != 0 {
+			v.Result = &result
+		}
+	}
+	return v
 }
 
 // dramaError 把仓储哨兵转换为公开业务码。

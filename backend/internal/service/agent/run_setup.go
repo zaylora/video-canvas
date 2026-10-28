@@ -87,6 +87,11 @@ func (b *AgentBridge) PrepareRun(ctx context.Context, rc RunContext, req Prepare
 	if err := rc.validate(); err != nil {
 		return nil, err
 	}
+	if rc.Mode == model.AgentModeDrama {
+		if err := b.CheckCanvasMode(ctx, rc.UserID, rc.CanvasID, rc.Mode); err != nil {
+			return nil, err
+		}
+	}
 	if req.MaxSteps < 0 {
 		return nil, errcode.ErrInvalidParams.WithMsg("max_steps 不能是负数")
 	}

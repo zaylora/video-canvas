@@ -156,6 +156,8 @@ func modeLabel(mode string) string {
 		return "分镜搭建"
 	case model.AgentModePrompt:
 		return "提示词优化"
+	case model.AgentModeDrama:
+		return "短剧助手"
 	}
 	return "全能创作"
 }

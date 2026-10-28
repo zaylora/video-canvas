@@ -256,6 +256,7 @@ var (
 	ErrDramaNoTextModel         = New(67007, "没有可用的文本模型", http.StatusBadRequest)
 	ErrDramaOutputInvalid       = New(67008, "模型输出无法解析", http.StatusBadGateway)
 	ErrDramaSegmentNotFound     = New(67009, "片段不存在", http.StatusNotFound)
+	ErrDramaNothingToCompose    = New(67010, "这一集还没有可合成的片段", http.StatusBadRequest)
 	ErrDramaTakeInvalid         = New(67011, "只能采用本片段已成功的结果", http.StatusBadRequest)
 	ErrDramaSegmentOrderInvalid = New(67012, "排序必须包含该集全部片段", http.StatusBadRequest)
 	ErrDramaStoryboardHasTakes  = New(67013, "这一集已有生成结果，重新生成分镜会清空片段", http.StatusConflict)

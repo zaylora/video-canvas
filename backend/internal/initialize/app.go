@@ -25,6 +25,7 @@ import (
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/idcodec"
 	"video-canvas/internal/pkg/logger"
+	"video-canvas/internal/pkg/videoframe"
 	"video-canvas/internal/pkg/ws"
 	"video-canvas/internal/provider/plugin"
 	"video-canvas/internal/provider/pluginrunner"
@@ -173,6 +174,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 	dramaSvc := service.NewDramaService(service.DramaDeps{
 		Repo: dramaRepo, Registry: aiCfgSvc, Executor: executor, Canvas: dramaCanvasSvc, Broadcaster: hub, Credits: settingsSvc,
 		Segments: dramaSegments, CanvasAssets: canvasProjectRepo,
+		Compose: videoframe.New(videoframe.Options{Timeout: 10 * time.Minute}), Assets: assetSvc,
 	})
 
 	// 配置服务反向依赖插件宿主与任务服务，所以组装完后再注入。
@@ -205,7 +207,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 	} else if n > 0 {
 		logger.Warn("Go 库里有旧的 Agent 运行还停在进行中，已标为中断", zap.Int64("runs", n))
 	}
-	agentRT, err := newAgentRuntime(cfg, agentDeps{tasks: taskSvc, assets: assetSvc, assetLinks: assetSvc, frames: newVideoFrames(), frameStore: assetFrameStore{assetSvc}, repo: agentRepo, agent: agentSvc, canvas: agentCanvasSvc, registry: aiCfgSvc, secrets: aiCfgSvc, skills: skillSvc, toolCalls: observeRepo, modelRequests: observeRepo, ipAllowed: outboundIPPolicy(cfg), broadcaster: hub})
+	agentRT, err := newAgentRuntime(cfg, agentDeps{tasks: taskSvc, assets: assetSvc, assetLinks: assetSvc, frames: newVideoFrames(), frameStore: assetFrameStore{assetSvc}, repo: agentRepo, agent: agentSvc, canvas: agentCanvasSvc, registry: aiCfgSvc, secrets: aiCfgSvc, skills: skillSvc, drama: dramaSvc, segments: dramaSegments, toolCalls: observeRepo, modelRequests: observeRepo, ipAllowed: outboundIPPolicy(cfg), broadcaster: hub})
 	if err != nil {
 		stopRunner(runnerStop)
 		closeRedis(rdb)

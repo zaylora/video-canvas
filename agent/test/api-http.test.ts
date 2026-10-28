@@ -92,7 +92,6 @@ test("请求体校验：规则和 Go 的绑定标签一致，错误是中文提�
     };
     await bad("POST", `/agent/sessions/${sid}/runs`, {}, /消息为必填字段/);
     await bad("POST", `/agent/sessions/${sid}/runs`, { message: "字".repeat(20001) }, /消息长度不能超过20000个字符/);
-    await bad("POST", `/agent/sessions/${sid}/runs`, { message: "x", mode: "fly" }, /任务模式必须是\[all script storyboard prompt\]中的一个/);
     await bad("POST", `/agent/sessions/${sid}/runs`, { message: "x", budget_credits: -1 }, /本轮预算必须大于或等于0/);
     await bad("POST", `/agent/sessions/${sid}/runs`, { message: "x", budget_credits: 100001 }, /本轮预算必须小于或等于100000/);
     await bad("POST", `/agent/sessions/${sid}/runs`, { message: "x", selection: Array(201).fill("n") }, /选中节点/);

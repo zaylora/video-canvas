@@ -51,6 +51,9 @@ func (s *DramaService) HandleDrama(ctx context.Context, userID, dramaID, jobID u
 		return nil
 	}
 	s.publish(ctx, run.job)
+	if run.job.Step == "compose" {
+		return s.handleCompose(ctx, run)
+	}
 	// 2. 网络请求在事务外执行；有效输出写入持久checkpoint以支持崩溃恢复。
 	if deadline := run.snapshot.Model.Deadline.D(); deadline > 0 {
 		var cancel context.CancelFunc
@@ -298,7 +301,7 @@ func (s *DramaService) continueDrama(ctx context.Context, tx repository.DramaTx,
 		}
 		selected = selectedEpisodes(eps, current.Episodes)
 	}
-	following, e := s.enqueue(ctx, tx, p, req, snap, selected, 0)
+	following, e := s.enqueue(ctx, tx, p, req, snap, selected, 0, nil)
 	if e != nil {
 		return nil, e
 	}

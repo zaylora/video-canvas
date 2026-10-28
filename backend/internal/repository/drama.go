@@ -46,6 +46,10 @@ type DramaTx interface {
 	Jobs(context.Context, uint64, uint64, bool) ([]model.DramaJob, error)
 	// Job 读取用户所属项目的任务。
 	Job(context.Context, uint64, uint64, uint64, bool) (*model.DramaJob, error)
+	// JobByApproval 按用户和审批ID恢复已创建任务，缺失返回ErrNotFound。
+	JobByApproval(context.Context, uint64, uint64) (*model.DramaJob, error)
+	// CreateAsset 在当前事务登记当前用户的合成素材。
+	CreateAsset(context.Context, *model.Asset) error
 	// InsertJob 插入任务并在同一事务入队。
 	InsertJob(context.Context, *model.DramaJob) error
 	// UpdateJob 更新任务可变列。
@@ -160,7 +164,7 @@ func (r *DramaRepository) SaveEpisode(ctx context.Context, e *model.DramaEpisode
 	if e.ID == 0 {
 		return r.db.WithContext(ctx).Create(e).Error
 	}
-	res := r.db.WithContext(ctx).Model(&model.DramaEpisode{}).Where("user_id = ? AND drama_id = ? AND id = ? AND revision = ?", e.UserID, e.DramaID, e.ID, revision).Updates(map[string]any{"title": e.Title, "synopsis": e.Synopsis, "script_md": e.ScriptMD, "script_status": e.ScriptStatus, "storyboard_status": e.StoryboardStatus, "locked_at": e.LockedAt, "revision": gorm.Expr("revision + 1"), "updated_at": time.Now()})
+	res := r.db.WithContext(ctx).Model(&model.DramaEpisode{}).Where("user_id = ? AND drama_id = ? AND id = ? AND revision = ?", e.UserID, e.DramaID, e.ID, revision).Updates(map[string]any{"title": e.Title, "synopsis": e.Synopsis, "script_md": e.ScriptMD, "script_status": e.ScriptStatus, "storyboard_status": e.StoryboardStatus, "locked_at": e.LockedAt, "final_asset_id": e.FinalAssetID, "final_segment_version": e.FinalSegmentVersion, "revision": gorm.Expr("revision + 1"), "updated_at": time.Now()})
 	if res.Error != nil {
 		return res.Error
 	}
@@ -242,4 +246,16 @@ func (r *DramaRepository) AddCredit(ctx context.Context, userID uint64, balance,
 // InsertLedger 复用幂等积分流水写入。
 func (r *DramaRepository) InsertLedger(ctx context.Context, e *model.CreditLedger) (bool, error) {
 	return (&GenerationTaskRepository{db: r.db}).InsertLedger(ctx, e)
+}
+
+// JobByApproval 按用户和审批ID读取任务，缺失返回ErrNotFound。
+func (r *DramaRepository) JobByApproval(ctx context.Context, userID, approvalID uint64) (*model.DramaJob, error) {
+	var row model.DramaJob
+	err := r.db.WithContext(ctx).Where("user_id = ? AND approval_id = ?", userID, approvalID).First(&row).Error
+	return &row, translate(err)
+}
+
+// CreateAsset 在当前事务插入合成素材行，不创建资产库归属。
+func (r *DramaRepository) CreateAsset(ctx context.Context, asset *model.Asset) error {
+	return r.db.WithContext(ctx).Create(asset).Error
 }

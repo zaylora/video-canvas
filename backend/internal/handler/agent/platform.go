@@ -353,6 +353,7 @@ func (h *PlatformHandler) AgentModels(c *gin.Context) {
 type canvasBody struct {
 	UserID   uint64 `json:"user_id,string" binding:"required,min=1" label:"user_id"`
 	CanvasID uint64 `json:"canvas_id,string" binding:"required,min=1" label:"canvas_id"`
+	Mode     string `json:"mode" binding:"omitempty,oneof=all script storyboard prompt drama" label:"mode"`
 }
 
 // CheckCanvas 确认画布属于这个用户；别人的和不存在的一样返回「画布不存在」。
@@ -361,7 +362,17 @@ func (h *PlatformHandler) CheckCanvas(c *gin.Context) {
 	if !handler.BindJSON(c, &req) {
 		return
 	}
-	if err := h.svc.CheckCanvas(c.Request.Context(), req.UserID, req.CanvasID); err != nil {
+	var err error
+	if checker, ok := h.svc.(interface {
+		CheckCanvasMode(context.Context, uint64, uint64, string) error
+	}); ok && req.Mode != "" {
+		err = checker.CheckCanvasMode(c.Request.Context(), req.UserID, req.CanvasID, req.Mode)
+	} else if req.Mode == model.AgentModeDrama {
+		err = errcode.ErrInvalidParams.WithMsg("短剧模式校验未启用")
+	} else {
+		err = h.svc.CheckCanvas(c.Request.Context(), req.UserID, req.CanvasID)
+	}
+	if err != nil {
 		response.Fail(c, err)
 		return
 	}

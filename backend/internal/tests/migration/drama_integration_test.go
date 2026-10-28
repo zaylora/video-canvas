@@ -20,7 +20,7 @@ func TestDramaMigration_Upgrade(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, name := range names {
-		if strings.HasPrefix(name, "0017_") {
+		if strings.HasPrefix(name, "0017_") || strings.HasPrefix(name, "0018_") || strings.HasPrefix(name, "0019_") { // 短剧迁移都留给升级步骤
 			continue
 		}
 		data, readErr := migrations.FS.ReadFile(name)

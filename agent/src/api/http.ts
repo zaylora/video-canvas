@@ -17,7 +17,7 @@ import { ValidationError, queryInt, validateBody, type FieldSpec } from "./valid
 export const USER_HEADER = "x-agent-user";
 const SERVICE_TOKEN_HEADER = "x-agent-service-token";
 const DEFAULT_MAX_BODY = 1 << 20;
-const MODES = ["all", "script", "storyboard", "prompt"] as const;
+const MODES = ["all", "script", "storyboard", "prompt", "drama"] as const;
 const DEFAULT_OBSERVE_PAGE = 200;
 const BUDGET = { min: 0, max: 100000 };
 

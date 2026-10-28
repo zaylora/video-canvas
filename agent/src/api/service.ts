@@ -84,7 +84,7 @@ export class AgentApiService {
   }
 
   async createSession(userId: string, canvasId: string, req: CreateSessionRequest): Promise<SessionView> {
-    await this.#platform(() => this.#o.platform.checkCanvas(userId, canvasId));
+    await this.#platform(() => this.#o.platform.checkCanvas(userId, canvasId, undefined, req.mode === "drama" ? req.mode : undefined));
     // 每个画布最多 50 个会话，避免历史无限增长
     if (this.#o.store.countSessions(userId, canvasId) >= MAX_SESSIONS_PER_CANVAS) throw new AgentError(60010, 409, "这个画布的会话数量已达上限");
     const title = cleanTitle(req.title ?? "", "");
@@ -172,6 +172,7 @@ export class AgentApiService {
     const sess = this.#session(userId, sessionId);
     const message = req.message.trim();
     if (!message) throw Err.invalidParams("消息不能为空");
+    if ((req.mode || sess.mode) === "drama") await this.#platform(() => this.#o.platform.checkCanvas(userId, sess.canvasId, undefined, "drama"));
     // 消息里的引用（节点、模型、技能）必须有效；选中的节点里已不存在的去掉
     const selection = await this.#platform(() => this.#o.platform.checkMessage(userId, sess.canvasId, message, req.selection ?? []));
     const modelKey = await this.#pickModel(req.agent_model_key || sess.modelKey);

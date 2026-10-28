@@ -48,7 +48,14 @@ func (r *DramaRepository) SaveSegment(ctx context.Context, row *model.DramaSegme
 		return err
 	}
 	if row.ID == 0 {
-		return r.db.WithContext(ctx).Create(row).Error
+		if err := r.db.WithContext(ctx).Create(row).Error; err != nil {
+			return err
+		}
+		return r.bumpSegmentVersion(ctx, row.UserID, row.EpisodeID)
+	}
+	previous, err := r.Segment(ctx, row.UserID, row.ID, false)
+	if err != nil {
+		return err
 	}
 	now := time.Now()
 	res := r.db.WithContext(ctx).Model(&model.DramaSegment{}).Where("user_id = ? AND episode_id = ? AND id = ? AND revision = ?", row.UserID, row.EpisodeID, row.ID, revision).Updates(map[string]any{
@@ -63,11 +70,18 @@ func (r *DramaRepository) SaveSegment(ctx context.Context, row *model.DramaSegme
 		return ErrStateConflict
 	}
 	row.Revision, row.UpdatedAt = revision+1, now
+	if previous.Seq != row.Seq || !sameChosenTask(previous.ChosenTaskID, row.ChosenTaskID) {
+		return r.bumpSegmentVersion(ctx, row.UserID, row.EpisodeID)
+	}
 	return nil
 }
 
 // DeleteSegment 只软删当前用户存活项目下的片段，缺失返回ErrNotFound；任务和素材不受影响。
 func (r *DramaRepository) DeleteSegment(ctx context.Context, userID, id uint64) error {
+	row, err := r.Segment(ctx, userID, id, false)
+	if err != nil {
+		return err
+	}
 	res := r.db.WithContext(ctx).Where("user_id = ? AND id = ? AND episode_id IN (?)", userID, id, r.liveSegmentEpisodes(ctx, userID)).Delete(&model.DramaSegment{})
 	if res.Error != nil {
 		return res.Error
@@ -75,7 +89,7 @@ func (r *DramaRepository) DeleteSegment(ctx context.Context, userID, id uint64) 
 	if res.RowsAffected == 0 {
 		return ErrNotFound
 	}
-	return nil
+	return r.bumpSegmentVersion(ctx, userID, row.EpisodeID)
 }
 
 // ReplaceSegments 在调用方项目锁保护的事务内替换全集片段，不删除历史任务和素材。
@@ -93,10 +107,12 @@ func (r *DramaRepository) ReplaceSegments(ctx context.Context, userID, episodeID
 			rows[i].Shots = []byte(`[]`)
 		}
 	}
-	if len(rows) == 0 {
-		return nil
+	if len(rows) > 0 {
+		if err := r.db.WithContext(ctx).Create(&rows).Error; err != nil {
+			return err
+		}
 	}
-	return r.db.WithContext(ctx).Create(&rows).Error
+	return r.bumpSegmentVersion(ctx, userID, episodeID)
 }
 
 // SegmentTasks 严格匹配用户、画布、节点且排除试跑，按创建时间、ID正序返回。
@@ -127,4 +143,25 @@ func (r *DramaRepository) HasSegmentTakes(ctx context.Context, userID, episodeID
 	var count int64
 	err = r.db.WithContext(ctx).Model(&model.GenerationTask{}).Where("user_id = ? AND canvas_project_id = ? AND node_id IN ? AND kind = ? AND is_test = false", userID, project.CanvasID, nodes, model.KindVideo).Count(&count).Error
 	return count > 0, err
+}
+
+// bumpSegmentVersion 记录采用、顺序和增删发生过变化；即使之后改回也不能误报成片仍新鲜。
+func (r *DramaRepository) bumpSegmentVersion(ctx context.Context, userID, episodeID uint64) error {
+	res := r.db.WithContext(ctx).Model(&model.DramaEpisode{}).Where("user_id = ? AND id = ?", userID, episodeID).
+		Updates(map[string]any{"segment_version": gorm.Expr("segment_version + 1"), "updated_at": time.Now()})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// sameChosenTask 比较可空采用ID，提示词、首帧等编辑不影响既有成片。
+func sameChosenTask(a, b *uint64) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
 }

@@ -4,6 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/png"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -18,16 +23,59 @@ import (
 )
 
 // smokeMediaOutput 仅替代模型调用，生成任务的队列、结算、素材归属与片段回写仍走真实实现。
-func smokeMediaOutput(ctx context.Context, db *gorm.DB, kind string, task provider.TaskRef) (*provider.SubmitResult, error) {
-	mime := "video/mp4"
+func smokeMediaOutput(ctx context.Context, db *gorm.DB, dir, kind string, task provider.TaskRef, audio bool) (*provider.SubmitResult, error) {
+	mime, ext := "video/mp4", ".mp4"
 	if kind == model.KindImage {
-		mime = "image/png"
+		mime, ext = "image/png", ".png"
 	}
-	asset := model.Asset{UserID: task.UserID, Kind: kind, StorageKey: fmt.Sprintf("smoke/%d", task.ID), MimeType: mime, Source: model.AssetSourceGenerated, TaskID: &task.ID}
+	key := fmt.Sprintf("smoke/%d%s", task.ID, ext)
+	filename := filepath.Join(dir, filepath.FromSlash(key))
+	if err := os.MkdirAll(filepath.Dir(filename), 0o750); err != nil {
+		return nil, err
+	}
+	if err := writeSmokeMedia(ctx, filename, kind, audio); err != nil {
+		return nil, err
+	}
+	info, err := os.Stat(filename)
+	if err != nil {
+		return nil, err
+	}
+	asset := model.Asset{UserID: task.UserID, Kind: kind, StorageID: 1, StorageKey: key, MimeType: mime, ByteSize: info.Size(), Source: model.AssetSourceGenerated, TaskID: &task.ID}
 	if err := db.WithContext(ctx).Create(&asset).Error; err != nil {
 		return nil, err
 	}
 	return &provider.SubmitResult{Immediate: &provider.QueryResult{Status: provider.StatusSucceeded, Outputs: []provider.Output{{Type: provider.OutputAsset, AssetID: asset.ID, AssetURL: "/files/" + asset.StorageKey, MediaType: kind}}}}, nil
+}
+
+// writeSmokeMedia 现生成真实小样本，视频的一段带音轨、一段静音，并故意使用不同尺寸。
+func writeSmokeMedia(ctx context.Context, filename, kind string, audio bool) error {
+	if kind == model.KindImage {
+		f, err := os.Create(filename) //nolint:gosec // 路径来自本进程创建的临时目录
+		if err != nil {
+			return err
+		}
+		err = png.Encode(f, image.NewRGBA(image.Rect(0, 0, 2, 2)))
+		closeErr := f.Close()
+		if err != nil {
+			return err
+		}
+		return closeErr
+	}
+	color, size := "blue", "240x160"
+	if audio {
+		color, size = "red", "160x120"
+	}
+	args := []string{"-v", "error", "-f", "lavfi", "-i", "color=c=" + color + ":s=" + size + ":r=12:d=1"}
+	if audio {
+		args = append(args, "-f", "lavfi", "-i", "sine=frequency=440:duration=1", "-c:a", "aac")
+	}
+	args = append(args, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-y", filename)
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	if out, err := exec.CommandContext(ctx, "ffmpeg", args...).CombinedOutput(); err != nil {
+		return fmt.Errorf("生成验收视频失败: %w: %s", err, out)
+	}
+	return nil
 }
 
 // smokeStoryboardOutput 为实际分镜步骤提供有资产引用、完整镜头表和精确时长的模型输出。

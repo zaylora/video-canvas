@@ -23,6 +23,7 @@ type Repo struct {
 	IdempotencyKey string
 	CreateError    *model.TaskItemError
 	Err            error
+	SegmentVersion int64
 	nextID         uint64
 }
 
@@ -35,9 +36,11 @@ func (r *Repo) WithTx(_ context.Context, fn func(repository.DramaTx) error) erro
 		return r.Err
 	}
 	before := slices.Clone(r.Rows)
+	version := r.SegmentVersion
 	err := fn(r)
 	if err != nil {
 		r.Rows = before
+		r.SegmentVersion = version
 	}
 	return err
 }
@@ -58,7 +61,7 @@ func (r *Repo) Episodes(ctx context.Context, userID, id uint64) ([]model.DramaEp
 	if _, err := r.Project(ctx, userID, id, false); err != nil {
 		return nil, err
 	}
-	return []model.DramaEpisode{{BaseModel: model.BaseModel{ID: 10}, UserID: 1, DramaID: 7, No: 1, Revision: 1}}, nil
+	return []model.DramaEpisode{{BaseModel: model.BaseModel{ID: 10}, UserID: 1, DramaID: 7, No: 1, Revision: 1, SegmentVersion: r.SegmentVersion}}, nil
 }
 
 // SegmentEpisode 校验分集ID与父项目归属。
@@ -118,12 +121,17 @@ func (r *Repo) SaveSegment(ctx context.Context, row *model.DramaSegment, revisio
 		row.ID, row.CreatedAt, row.UpdatedAt = r.nextID, time.Now(), time.Now()
 		r.nextID++
 		r.Rows = append(r.Rows, *row)
+		r.SegmentVersion++
 		return nil
 	}
 	for i := range r.Rows {
 		if r.Rows[i].ID == row.ID && r.Rows[i].UserID == row.UserID && !r.Rows[i].DeletedAt.Valid {
 			if r.Rows[i].Revision != revision {
 				return repository.ErrStateConflict
+			}
+			old := r.Rows[i]
+			if old.Seq != row.Seq || !sameChosen(old.ChosenTaskID, row.ChosenTaskID) {
+				r.SegmentVersion++
 			}
 			row.Revision, row.UpdatedAt = revision+1, time.Now()
 			r.Rows[i] = *row
@@ -141,6 +149,7 @@ func (r *Repo) DeleteSegment(ctx context.Context, userID, sid uint64) error {
 	for i := range r.Rows {
 		if r.Rows[i].ID == sid {
 			r.Rows[i].DeletedAt.Time, r.Rows[i].DeletedAt.Valid = time.Now(), true
+			r.SegmentVersion++
 			return nil
 		}
 	}
@@ -209,4 +218,12 @@ func (r *Repo) HasSegmentTakes(ctx context.Context, userID, episodeID uint64) (b
 		}
 	}
 	return false, nil
+}
+
+// sameChosen 比较可空采用ID，让共享fake遵循真实仓储的过期判定。
+func sameChosen(a, b *uint64) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
 }

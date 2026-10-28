@@ -91,7 +91,8 @@ func (b *AgentBridge) EndPlatformRun(runID uint64) {
 
 // platformExcluded 是不能经通用入口执行的工具：计划和提问只在 Agent 服务里；生成和删除会创建审批，审批归 Agent 服务，
 // Go 只提供「预估」和「执行」两个专门的接口（见 platform_approval.go）。
-var platformExcluded = map[string]bool{"plan_update": true, "ask_user": true, "canvas_delete": true, "generate_media": true}
+var platformExcluded = map[string]bool{"plan_update": true, "ask_user": true, "canvas_delete": true, "generate_media": true,
+	"drama_update_outline": true, "drama_update_episode": true, "drama_update_segment": true, "drama_run_job": true}
 
 // ExecutePlatformTool 在上下文模式下执行一次工具调用。和令牌模式的 ExecuteTool 的区别：
 // 没有运行记录要查、不发 tool.start / tool.end（Agent 服务自己发）、不记步数和步数上限（Agent 服务自己数）；工具调用的参数、结果、耗时照常留存（后台导出和失败分析要看）。
