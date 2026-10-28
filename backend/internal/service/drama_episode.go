@@ -21,8 +21,7 @@ func (s *DramaService) GetEpisode(ctx context.Context, userID, id uint64, no int
 	}
 	for _, e := range eps {
 		if e.No == no {
-			v := episodeView(e)
-			return &v, nil
+			return s.dramaEpisodeView(ctx, e)
 		}
 	}
 	return nil, errcode.ErrDramaNotFound
@@ -53,8 +52,7 @@ func (s *DramaService) CreateEpisode(ctx context.Context, userID, id uint64, req
 	if err != nil {
 		return nil, dramaError(err)
 	}
-	v := episodeView(e)
-	return &v, nil
+	return s.dramaEpisodeView(ctx, e)
 }
 
 // UpdateEpisode 乐观锁更新单集；拆解锁定后仅允许改标题。
@@ -87,8 +85,7 @@ func (s *DramaService) UpdateEpisode(ctx context.Context, userID, id uint64, no 
 	if err != nil {
 		return nil, dramaError(err)
 	}
-	v := episodeView(result)
-	return &v, nil
+	return s.dramaEpisodeView(ctx, result)
 }
 
 // applyDramaEpisodePatch 校验revision与拆解锁，再应用实际出现的字段。

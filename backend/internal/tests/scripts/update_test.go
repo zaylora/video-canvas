@@ -287,7 +287,15 @@ func TestUpdate_RollbackExplainsAgentDataNewerThanOldImage(t *testing.T) {
 		t.Fatalf("应报需要人工处理：%d %v\n%s", code, st, out)
 	}
 	agent := e.backups("pre-1.1.0-*.agent.sqlite")
-	if len(agent) != 1 || !strings.Contains(st["message"], agent[0]) || !strings.Contains(st["message"], "agent 拒绝启动") {
+	if len(agent) != 1 {
+		t.Fatalf("应保留一份 Agent 备份：%v", agent)
+	}
+	// Git Bash 将 Windows 盘符路径转换成 /e/...；比较完整路径时统一到脚本使用的格式。
+	backupPath := filepath.ToSlash(agent[0])
+	if volume := filepath.VolumeName(agent[0]); len(volume) == 2 && volume[1] == ':' {
+		backupPath = "/" + strings.ToLower(volume[:1]) + strings.TrimPrefix(backupPath, volume)
+	}
+	if !strings.Contains(st["message"], backupPath) || !strings.Contains(st["message"], "agent 拒绝启动") {
 		t.Errorf("要指到 Agent 备份：%q（备份 %v）", st["message"], agent)
 	}
 	if got := e.envValue("IMAGE_TAG"); got != "1.0.0" {

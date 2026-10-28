@@ -3,7 +3,7 @@
 本目录提示词及 `../styles.json` 的中文描述由 video-canvas 项目重新撰写，适配本项目的 JSON 字段、校验、短剧流水线与画布节点，不包含第三方提示词原文。以下开源项目提供流程与字段设计参考；题材和画风分类名称参考 Toonflow，描述为原创改写。确认许可证日期：2026-10-28。
 
 - Toonflow-app：<https://github.com/HBAI-Ltd/Toonflow-app>；流程、题材和画风分类参考；MIT License。版权声明：Copyright (c) 2026 HBAI-Ltd。许可证原文：<https://github.com/HBAI-Ltd/Toonflow-app/blob/master/LICENSE>。
-- drama-skills：<https://github.com/zenstory-ai/drama-skills>；原著研读、资产身份与变体、跨集连续性、资产图片提示词的职责划分参考；MIT License。版权声明：Copyright (c) 2026 drama-skills contributors。许可证原文：<https://github.com/zenstory-ai/drama-skills/blob/main/LICENSE>。
+- drama-skills：<https://github.com/zenstory-ai/drama-skills>；原著研读、资产身份与变体、跨集连续性、资产图片提示词的职责划分，以及 short-drama-storyboard 的镜头职责 / 动作落实 / 空间连续性与 short-drama-video-prompts 的起止状态 / 对白时机 / 稳定资产绑定规则参考；MIT License。storyboard.md 按本项目片段 JSON 契约独立重写。版权声明：Copyright (c) 2026 drama-skills contributors。许可证原文：<https://github.com/zenstory-ai/drama-skills/blob/main/LICENSE>。
 - shuohao-skills：<https://github.com/eternityspring/shuohao-skills>；大纲、分集剧本、人物与音色字段设计参考；Apache License, Version 2.0。许可证原文：<https://github.com/eternityspring/shuohao-skills/blob/main/LICENSE>，标准许可文本：<https://www.apache.org/licenses/LICENSE-2.0>。本项目重写了相关表达，并改用本项目结构化输入输出；未复制上游文件或模板。
 
 huobao-drama 使用 CC BY-NC-SA 4.0；本目录不使用、不改编、不复制该项目的任何文本。

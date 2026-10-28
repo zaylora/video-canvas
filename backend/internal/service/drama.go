@@ -47,29 +47,45 @@ type DramaCreditPolicy interface {
 	InitialCredits(context.Context) (int, error)
 }
 
+// DramaStoryboardCanvasReader 提供按用户隔离的分镜资产画布。
+type DramaStoryboardCanvasReader interface {
+	// GetByID 按用户和画布ID读取当前资产节点。
+	GetByID(context.Context, uint64, uint64) (*model.CanvasProject, error)
+}
+
+// DramaSegmentSummary 提供片段工作区的实时聚合。
+type DramaSegmentSummary interface {
+	// Summary 返回集的片段数、总秒数和已有采用视频的片段数。
+	Summary(context.Context, uint64, uint64) (count, seconds, done int, err error)
+}
+
 // DramaDeps 短剧服务依赖，模型调用复用 Registry 和 Executor。
 type DramaDeps struct {
-	Repo        DramaRepo
-	Registry    provider.Registry
-	Executor    provider.Executor
-	Canvas      DramaCanvasWriter
-	Broadcaster ws.Broadcaster
-	Credits     DramaCreditPolicy
+	Repo         DramaRepo
+	Registry     provider.Registry
+	Executor     provider.Executor
+	Canvas       DramaCanvasWriter
+	Broadcaster  ws.Broadcaster
+	Credits      DramaCreditPolicy
+	CanvasAssets DramaStoryboardCanvasReader
+	Segments     DramaSegmentSummary
 }
 
 // DramaService 短剧项目和固定流水线的业务入口。
 type DramaService struct {
-	repo     DramaRepo
-	registry provider.Registry
-	executor provider.Executor
-	canvas   DramaCanvasWriter
-	bc       ws.Broadcaster
-	credits  DramaCreditPolicy
+	repo         DramaRepo
+	registry     provider.Registry
+	executor     provider.Executor
+	canvas       DramaCanvasWriter
+	bc           ws.Broadcaster
+	credits      DramaCreditPolicy
+	canvasAssets DramaStoryboardCanvasReader
+	segments     DramaSegmentSummary
 }
 
 // NewDramaService 创建短剧服务，不启动后台任务。
 func NewDramaService(d DramaDeps) *DramaService {
-	return &DramaService{repo: d.Repo, registry: d.Registry, executor: d.Executor, canvas: d.Canvas, bc: d.Broadcaster, credits: d.Credits}
+	return &DramaService{repo: d.Repo, registry: d.Registry, executor: d.Executor, canvas: d.Canvas, bc: d.Broadcaster, credits: d.Credits, canvasAssets: d.CanvasAssets, segments: d.Segments}
 }
 
 // Create 校验原文和风格，在同一事务建立项目、画布与首个研读任务。
@@ -149,7 +165,11 @@ func (s *DramaService) Get(ctx context.Context, userID, id uint64) (*model.Drama
 	}
 	v := &model.DramaView{ID: idcodec.ID(p.ID), Title: p.Title, CanvasID: idcodec.ID(p.CanvasID), Status: p.Status, SourceKind: p.SourceKind, Genre: p.Genre, StyleKey: p.StyleKey, StyleCustom: p.StyleCustom, Ratio: p.Ratio, TargetEpisodes: p.TargetEpisodes, EpisodeSeconds: p.EpisodeSeconds, TextModel: p.TextModel, OutlineMD: p.OutlineMD, CharactersMD: p.CharactersMD, Revision: p.Revision, CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt, Episodes: []model.DramaEpisodeSummary{}, ActiveJobs: []model.DramaJobView{}}
 	for _, e := range eps {
-		v.Episodes = append(v.Episodes, episodeView(e).DramaEpisodeSummary)
+		summary, err := s.dramaEpisodeView(ctx, e)
+		if err != nil {
+			return nil, err
+		}
+		v.Episodes = append(v.Episodes, summary.DramaEpisodeSummary)
 	}
 	for _, j := range jobs {
 		v.ActiveJobs = append(v.ActiveJobs, jobView(j))
@@ -274,7 +294,24 @@ func checkDramaStyle(key, custom string) error {
 
 // episodeView 映射集状态，正文只在单集接口返回。
 func episodeView(e model.DramaEpisode) model.DramaEpisodeView {
-	return model.DramaEpisodeView{DramaEpisodeSummary: model.DramaEpisodeSummary{No: e.No, Title: e.Title, Synopsis: e.Synopsis, ScriptStatus: e.ScriptStatus, Locked: e.LockedAt != nil, Revision: e.Revision, UpdatedAt: e.UpdatedAt}, ScriptMD: e.ScriptMD}
+	status := e.StoryboardStatus
+	if status == "" {
+		status = "empty"
+	}
+	return model.DramaEpisodeView{DramaEpisodeSummary: model.DramaEpisodeSummary{No: e.No, Title: e.Title, Synopsis: e.Synopsis, ScriptStatus: e.ScriptStatus, StoryboardStatus: status, Locked: e.LockedAt != nil, Revision: e.Revision, UpdatedAt: e.UpdatedAt}, ScriptMD: e.ScriptMD}
+}
+
+// dramaEpisodeView 在基础状态上映射实时片段聚合，避免持久化重复计数。
+func (s *DramaService) dramaEpisodeView(ctx context.Context, ep model.DramaEpisode) (*model.DramaEpisodeView, error) {
+	v := episodeView(ep)
+	if s.segments != nil {
+		var err error
+		v.SegmentCount, v.SegmentSeconds, v.DoneSegmentCount, err = s.segments.Summary(ctx, ep.UserID, ep.ID)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return &v, nil
 }
 
 // jobView 映射任务状态并保证空范围为[]。

@@ -26,6 +26,22 @@ type DramaTx interface {
 	Episodes(context.Context, uint64, uint64) ([]model.DramaEpisode, error)
 	// SaveEpisode 插入新集或按revision更新已有集。
 	SaveEpisode(context.Context, *model.DramaEpisode, int64) error
+	// Segments 读取用户存活项目下某集片段，按seq和ID排序。
+	Segments(context.Context, uint64, uint64) ([]model.DramaSegment, error)
+	// ReplaceSegments 替换指定集全部片段，不删除任务和素材。
+	ReplaceSegments(context.Context, uint64, uint64, []model.DramaSegment) error
+	// HasSegmentTakes 判断该集现存片段是否已有任何视频任务。
+	HasSegmentTakes(context.Context, uint64, uint64) (bool, error)
+	// SegmentEpisode 读取片段所属集，同时校验项目存活。
+	SegmentEpisode(context.Context, uint64, uint64) (*model.DramaEpisode, error)
+	// Segment 读取用户片段，可在项目锁之后锁定片段。
+	Segment(context.Context, uint64, uint64, bool) (*model.DramaSegment, error)
+	// SaveSegment 插入片段或按revision更新，冲突返回ErrStateConflict。
+	SaveSegment(context.Context, *model.DramaSegment, int64) error
+	// DeleteSegment 只软删用户片段，缺失返回ErrNotFound。
+	DeleteSegment(context.Context, uint64, uint64) error
+	// SegmentTasks 读取同用户、画布和节点的正式任务，按创建时间和ID排序。
+	SegmentTasks(context.Context, uint64, uint64, string) ([]model.GenerationTask, error)
 	// Jobs 读取项目任务，可仅返回活动任务。
 	Jobs(context.Context, uint64, uint64, bool) ([]model.DramaJob, error)
 	// Job 读取用户所属项目的任务。
@@ -144,7 +160,7 @@ func (r *DramaRepository) SaveEpisode(ctx context.Context, e *model.DramaEpisode
 	if e.ID == 0 {
 		return r.db.WithContext(ctx).Create(e).Error
 	}
-	res := r.db.WithContext(ctx).Model(&model.DramaEpisode{}).Where("user_id = ? AND drama_id = ? AND id = ? AND revision = ?", e.UserID, e.DramaID, e.ID, revision).Updates(map[string]any{"title": e.Title, "synopsis": e.Synopsis, "script_md": e.ScriptMD, "script_status": e.ScriptStatus, "locked_at": e.LockedAt, "revision": gorm.Expr("revision + 1"), "updated_at": time.Now()})
+	res := r.db.WithContext(ctx).Model(&model.DramaEpisode{}).Where("user_id = ? AND drama_id = ? AND id = ? AND revision = ?", e.UserID, e.DramaID, e.ID, revision).Updates(map[string]any{"title": e.Title, "synopsis": e.Synopsis, "script_md": e.ScriptMD, "script_status": e.ScriptStatus, "storyboard_status": e.StoryboardStatus, "locked_at": e.LockedAt, "revision": gorm.Expr("revision + 1"), "updated_at": time.Now()})
 	if res.Error != nil {
 		return res.Error
 	}

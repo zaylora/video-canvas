@@ -39,6 +39,7 @@ var promptTemplates = map[string]string{
 	"scripts":       loadPrompt("scripts"),
 	"breakdown":     loadPrompt("breakdown"),
 	"asset_prompts": loadPrompt("asset_prompts"),
+	"storyboard":    loadPrompt("storyboard"),
 }
 
 // loadPrompt 读取编译期常量模板；丢失内置资源属于不可恢复的启动错误。

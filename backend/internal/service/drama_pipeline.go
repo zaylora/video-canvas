@@ -62,7 +62,12 @@ func (s *DramaService) HandleDrama(ctx context.Context, userID, dramaID, jobID u
 		return s.failDrama(ctx, run.job, err)
 	}
 	// 3. 输出落库、结算和自动续步一起提交。
-	return s.commitDrama(ctx, run, result)
+	err = s.commitDrama(ctx, run, result)
+	var business *errcode.Error
+	if run.job.Step == "storyboard" && errors.As(err, &business) {
+		return s.failDrama(ctx, run.job, err)
+	}
+	return err
 }
 
 // startDrama 按project→job顺序加锁，保留首次开始时间。
@@ -125,6 +130,8 @@ func (s *DramaService) executeDrama(ctx context.Context, run *dramaRun) (*dramaR
 		return s.runBreakdown(ctx, run, vars, selected)
 	case "asset_prompts":
 		return s.runAssetPrompts(ctx, run, vars)
+	case "storyboard":
+		return s.runStoryboard(ctx, run, vars, selected)
 	default:
 		err = errcode.ErrInvalidParams.WithMsg("不支持的流水线步骤")
 	}

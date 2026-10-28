@@ -96,7 +96,7 @@ func TestDecodeOutput(t *testing.T) {
 		{"拒绝null数组", "breakdown", `{"assets":[{"type":"scene","name":"街头","look":"","aliases":null,"episodes":[],"description":"街头","voice_prompt":""}]}`, false},
 		{"同名同造型交由画布合并", "breakdown", `{"assets":[{"type":"scene","name":"Street","look":"","aliases":[],"episodes":[1],"description":"街头","voice_prompt":""},{"type":"scene","name":" street ","look":"","aliases":[],"episodes":[2],"description":"街头","voice_prompt":""}]}`, true},
 		{"拒绝重复节点提示词", "asset_prompts", `{"prompts":[{"node_id":"n_a","prompt":"图像"},{"node_id":"n_a","prompt":"图像"}]}`, false},
-		{"拒绝未知步骤", "storyboard", `{}`, false},
+		{"拒绝未知步骤", "unknown_step", `{}`, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

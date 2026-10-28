@@ -20,12 +20,15 @@ import (
 
 type dramaMemory struct {
 	repository.DramaTx
-	project  model.DramaProject
-	episodes []model.DramaEpisode
-	jobs     []model.DramaJob
-	credit   model.UserCredit
-	ledger   []model.CreditLedger
-	nextID   uint64
+	project    model.DramaProject
+	episodes   []model.DramaEpisode
+	jobs       []model.DramaJob
+	credit     model.UserCredit
+	ledger     []model.CreditLedger
+	nextID     uint64
+	segments   []model.DramaSegment
+	hasTakes   bool
+	replaceErr error
 }
 
 func newDramaMemory() *dramaMemory {
@@ -36,6 +39,7 @@ func (r *dramaMemory) WithTx(ctx context.Context, fn func(repository.DramaTx) er
 	before.episodes = append([]model.DramaEpisode{}, r.episodes...)
 	before.jobs = append([]model.DramaJob{}, r.jobs...)
 	before.ledger = append([]model.CreditLedger{}, r.ledger...)
+	before.segments = append([]model.DramaSegment{}, r.segments...)
 	if err := fn(r); err != nil {
 		*r = before
 		return err
@@ -120,6 +124,53 @@ func (r *dramaMemory) SaveEpisode(_ context.Context, e *model.DramaEpisode, revi
 	e.ID = r.nextID
 	r.episodes = append(r.episodes, *e)
 	return nil
+}
+func (r *dramaMemory) Segments(_ context.Context, userID, episodeID uint64) ([]model.DramaSegment, error) {
+	out := []model.DramaSegment{}
+	for _, segment := range r.segments {
+		if segment.UserID == userID && segment.EpisodeID == episodeID {
+			out = append(out, segment)
+		}
+	}
+	return out, nil
+}
+func (r *dramaMemory) ReplaceSegments(_ context.Context, userID, episodeID uint64, segments []model.DramaSegment) error {
+	if r.replaceErr != nil {
+		return r.replaceErr
+	}
+	out := []model.DramaSegment{}
+	for _, segment := range r.segments {
+		if segment.UserID != userID || segment.EpisodeID != episodeID {
+			out = append(out, segment)
+		}
+	}
+	for _, segment := range segments {
+		r.nextID++
+		segment.ID = r.nextID
+		out = append(out, segment)
+	}
+	r.segments = out
+	return nil
+}
+func (r *dramaMemory) HasSegmentTakes(context.Context, uint64, uint64) (bool, error) {
+	return r.hasTakes, nil
+}
+func (r *dramaMemory) Summary(ctx context.Context, userID, episodeID uint64) (count, seconds, done int, err error) {
+	segments, err := r.Segments(ctx, userID, episodeID)
+	for _, segment := range segments {
+		count++
+		seconds += segment.Seconds
+		if segment.ChosenTaskID != nil {
+			done++
+		}
+	}
+	return count, seconds, done, err
+}
+func (r *dramaMemory) GetByID(_ context.Context, userID, canvasID uint64) (*model.CanvasProject, error) {
+	if userID != r.project.UserID || canvasID != r.project.CanvasID {
+		return nil, repository.ErrNotFound
+	}
+	return &model.CanvasProject{PayloadJSON: []byte(`{"nodes":[{"id":"n_scene","data":{"drama":{"type":"scene","name":"村口","look":"夜","episodes":[]},"params":{"prompt":"夜间村口灯光"}}},{"id":"n_other","data":{"drama":{"type":"prop","name":"其他集","look":"","episodes":[2]},"params":{"prompt":"不应输入"}}}]}`)}, nil
 }
 func (r *dramaMemory) Jobs(_ context.Context, userID, id uint64, active bool) ([]model.DramaJob, error) {
 	if userID != r.project.UserID || id != r.project.ID {
@@ -234,11 +285,15 @@ type dramaTextExecutor struct {
 	prompts []string
 	calls   int
 	failAt  int
+	onCall  func()
 }
 
 func (e *dramaTextExecutor) Submit(_ context.Context, _ *provider.Snapshot, in provider.SubmitInput) (*provider.SubmitResult, error) {
 	e.calls++
 	e.prompts = append(e.prompts, in.Input["prompt"].(string))
+	if e.onCall != nil {
+		e.onCall()
+	}
 	if e.calls == e.failAt {
 		return nil, errors.New("上游失败")
 	}
@@ -267,7 +322,7 @@ func (c *dramaPipelineCanvas) ApplyPrompts(context.Context, uint64, uint64, uint
 func dramaTestService(r *dramaMemory, e *dramaTextExecutor, c *dramaPipelineCanvas) (*service.DramaService, *dramaRegistry) {
 	snap := &provider.Snapshot{ModelRevisionID: 9, Model: provider.ModelSnapshot{Key: "text", Kind: "text", Pricing: modelcfg.Pricing{Billing: modelcfg.BillingPerCall, Unit: 5}, Capabilities: modelcfg.Capabilities{Prompt: modelcfg.PromptSpec{MaxLength: 100000}, Context: &modelcfg.ContextSpec{Window: 100000, Output: 5000}}}}
 	registry := &dramaRegistry{snap: snap, models: []provider.ModelInfo{{Key: "text", Kind: "text"}}}
-	return service.NewDramaService(service.DramaDeps{Repo: r, Registry: registry, Executor: e, Canvas: c}), registry
+	return service.NewDramaService(service.DramaDeps{Repo: r, Registry: registry, Executor: e, Canvas: c, CanvasAssets: r, Segments: r}), registry
 }
 func dramaCheckCode(t *testing.T, err error, code int) {
 	t.Helper()

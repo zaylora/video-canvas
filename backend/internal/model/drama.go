@@ -122,9 +122,10 @@ type UpdateDramaEpisodeReq struct {
 
 // DramaJobReq 提交或估价的步骤与范围。
 type DramaJobReq struct {
-	Step     string `json:"step" binding:"required,oneof=analyze outline scripts breakdown asset_prompts"`
-	Episodes []int  `json:"episodes" binding:"max=100,dive,min=1,max=100"`
-	Ratio    string `json:"ratio" binding:"omitempty,oneof=9:16 16:9 21:9 3:4 4:3 1:1"`
+	Step       string `json:"step" binding:"required,oneof=analyze outline scripts breakdown asset_prompts storyboard"`
+	Episodes   []int  `json:"episodes" binding:"max=100,dive,min=1,max=100"`
+	Ratio      string `json:"ratio" binding:"omitempty,oneof=9:16 16:9 21:9 3:4 4:3 1:1"`
+	MaxSeconds int    `json:"max_seconds" binding:"omitempty,min=4,max=60"`
 }
 
 // DramaSummary 列表项。
@@ -140,13 +141,17 @@ type DramaSummary struct {
 
 // DramaEpisodeSummary 集概要。
 type DramaEpisodeSummary struct {
-	No           int       `json:"no"`
-	Title        string    `json:"title"`
-	Synopsis     string    `json:"synopsis"`
-	ScriptStatus string    `json:"script_status"`
-	Locked       bool      `json:"locked"`
-	Revision     int64     `json:"revision"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	No               int       `json:"no"`
+	Title            string    `json:"title"`
+	Synopsis         string    `json:"synopsis"`
+	ScriptStatus     string    `json:"script_status"`
+	StoryboardStatus string    `json:"storyboard_status"`
+	SegmentCount     int       `json:"segment_count"`
+	SegmentSeconds   int       `json:"segment_seconds"`
+	DoneSegmentCount int       `json:"done_segment_count"`
+	Locked           bool      `json:"locked"`
+	Revision         int64     `json:"revision"`
+	UpdatedAt        time.Time `json:"updated_at"`
 }
 
 // DramaEpisodeView 单集正文。

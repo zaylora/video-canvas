@@ -19,6 +19,7 @@ import (
 	"gorm.io/gorm"
 	gormlog "gorm.io/gorm/logger"
 
+	"video-canvas/internal/config"
 	"video-canvas/internal/handler"
 	"video-canvas/internal/middleware"
 	"video-canvas/internal/migration"
@@ -27,6 +28,7 @@ import (
 	"video-canvas/internal/provider"
 	"video-canvas/internal/provider/modelcfg"
 	"video-canvas/internal/provider/queue"
+	"video-canvas/internal/provider/worker"
 	"video-canvas/internal/repository"
 	"video-canvas/internal/service"
 )
@@ -38,13 +40,28 @@ func (creditPolicy) InitialCredits(context.Context) (int, error) { return 100, n
 func (registry) ListModels(context.Context, string) ([]provider.ModelInfo, error) {
 	return []provider.ModelInfo{{Key: "smoke-text", Kind: "text"}}, nil
 }
-func (registry) Snapshot(context.Context, string) (*provider.Snapshot, error) {
-	return &provider.Snapshot{ModelRevisionID: 1, Model: provider.ModelSnapshot{Key: "smoke-text", Kind: "text", Pricing: modelcfg.Pricing{Billing: modelcfg.BillingPerCall, Unit: 1}, Capabilities: modelcfg.Capabilities{Prompt: modelcfg.PromptSpec{MaxLength: 100000}, Context: &modelcfg.ContextSpec{Window: 128000, Output: 4000}}}}, nil
+func (registry) Snapshot(_ context.Context, key string) (*provider.Snapshot, error) {
+	snap := &provider.Snapshot{ModelRevisionID: 1, Model: provider.ModelSnapshot{Key: key, Kind: "text", Pricing: modelcfg.Pricing{Billing: modelcfg.BillingPerCall, Unit: 1}, Capabilities: modelcfg.Capabilities{Prompt: modelcfg.PromptSpec{MaxLength: 100000}, Context: &modelcfg.ContextSpec{Window: 128000, Output: 4000}}}}
+	if key == "smoke-video" || key == "smoke-image" {
+		snap.Model.Kind = strings.TrimPrefix(key, "smoke-")
+		snap.Model.Capabilities.Context = nil
+		snap.Model.Capabilities.Ops = []string{modelcfg.OpT2V}
+		if snap.Model.Kind == model.KindImage {
+			snap.Model.Capabilities.Ops = []string{modelcfg.OpT2I}
+		}
+	}
+	return snap, nil
 }
 
-type executor struct{ provider.Executor }
+type executor struct {
+	provider.Executor
+	db *gorm.DB
+}
 
-func (executor) Submit(_ context.Context, _ *provider.Snapshot, in provider.SubmitInput) (*provider.SubmitResult, error) {
+func (e executor) Submit(ctx context.Context, snap *provider.Snapshot, in provider.SubmitInput) (*provider.SubmitResult, error) {
+	if snap.Model.Kind != model.KindText {
+		return smokeMediaOutput(ctx, e.db, snap.Model.Kind, in.Task)
+	}
 	prompt := in.Input["prompt"].(string)
 	start := strings.Index(prompt, "```json\n") + len("```json\n")
 	end := strings.Index(prompt[start:], "\n```") + start
@@ -52,6 +69,8 @@ func (executor) Submit(_ context.Context, _ *provider.Snapshot, in provider.Subm
 	must(json.Unmarshal([]byte(prompt[start:end]), &vars))
 	output := `{"source_kind":"script","summary":"母亲回家并找到玉佩。","characters_md":"母亲：短发中年女性。"}`
 	switch {
+	case strings.Contains(prompt, `"required":["segments"]`):
+		output = smokeStoryboardOutput(vars)
 	case strings.Contains(prompt, `"required": ["prompts"]`):
 		var assets []struct {
 			NodeID string `json:"node_id"`
@@ -143,6 +162,7 @@ type env struct {
 	db         *gorm.DB
 	canvasRepo *repository.CanvasProjectRepository
 	url        string
+	events     *smokeEvents
 }
 
 // openIsolatedDB 在专用测试库建隔离 schema 并迁移，返回连接与清理函数。
@@ -168,12 +188,20 @@ func openIsolatedDB(ctx context.Context, dsn string) (*gorm.DB, *sql.DB, string,
 }
 
 // startServer 装配服务、River 运行时与路由，返回 HTTP 地址和停止函数。
-func startServer(ctx context.Context, db *gorm.DB, sqlDB *sql.DB, schema string) (string, func()) {
+func startServer(ctx context.Context, db *gorm.DB, sqlDB *sql.DB, schema string, events *smokeEvents) (string, func()) {
 	repo := repository.NewDramaRepository(db)
-	svc := service.NewDramaService(service.DramaDeps{Repo: repo, Registry: registry{}, Executor: executor{}, Canvas: service.NewDramaCanvasService(repository.NewDramaCanvasRepository(db), nil), Credits: creditPolicy{}})
-	rt, e := queue.New(queue.Config{DB: sqlDB, Schema: schema, Repo: repository.NewQueueRepository(db), Drama: svc, Enabled: true, HardCap: 2, FetchPollInterval: 100 * time.Millisecond, Logger: zap.NewNop()})
+	canvases := repository.NewCanvasProjectRepository(db)
+	assets := service.NewAssetService(repository.NewAssetRepository(db), nil, config.Storage{})
+	exec := executor{db: db}
+	tasksRepo := repository.NewGenerationTaskRepository(db)
+	tasks := service.NewGenerationTaskService(service.GenerationTaskDeps{Repo: tasksRepo, Registry: registry{}, Executor: exec, Assets: assets, Broadcaster: events})
+	segments := service.NewDramaSegmentService(service.DramaSegmentDeps{Repo: repo, Tasks: tasks, Assets: assets, Broadcaster: events})
+	tasks.SetTaskObserver(segments)
+	svc := service.NewDramaService(service.DramaDeps{Repo: repo, Registry: registry{}, Executor: exec, Canvas: service.NewDramaCanvasService(repository.NewDramaCanvasRepository(db), nil), Credits: creditPolicy{}, Segments: segments, CanvasAssets: canvases, Broadcaster: events})
+	rt, e := queue.New(queue.Config{DB: sqlDB, Schema: schema, Repo: repository.NewQueueRepository(db), Drama: svc, Store: tasks, Handler: worker.New(tasks, exec, nil, worker.Options{Logger: zap.NewNop()}), Enabled: true, HardCap: 2, FetchPollInterval: 100 * time.Millisecond, Logger: zap.NewNop()})
 	must(e)
 	repo.SetEnqueuer(rt)
+	tasksRepo.SetEnqueuer(rt)
 	runCtx, cancel := context.WithCancel(ctx)
 	done := make(chan error, 1)
 	go func() { done <- rt.Run(runCtx) }()
@@ -188,6 +216,7 @@ func startServer(ctx context.Context, db *gorm.DB, sqlDB *sql.DB, schema string)
 	r.PATCH("/dramas/:id/episodes/:no", h.UpdateEpisode)
 	r.POST("/dramas/:id/jobs", h.CreateJob)
 	r.GET("/dramas/:id/jobs", h.ListJobs)
+	registerSegmentRoutes(r, segments)
 	srv := httptest.NewServer(r)
 	return srv.URL, func() { srv.Close(); cancel(); must(<-done) }
 }
@@ -294,14 +323,16 @@ func main() {
 	db, sqlDB, schema, cleanup := openIsolatedDB(ctx, dsn)
 	defer cleanup()
 	idcodec.Init("drama-smoke-test-key")
-	url, stop := startServer(ctx, db, sqlDB, schema)
+	events := &smokeEvents{}
+	url, stop := startServer(ctx, db, sqlDB, schema, events)
 	defer stop()
-	e := env{db: db, canvasRepo: repository.NewCanvasProjectRepository(db), url: url}
+	e := env{db: db, canvasRepo: repository.NewCanvasProjectRepository(db), url: url, events: events}
 	id, canvasID := createDrama(ctx, url)
 	awaitReady(url, id)
 	breakdownEachEpisode(url, id)
 	cvID, cid := verifyCanvas(ctx, e, canvasID)
 	verifyBilling(ctx, e, id)
+	verifyStoryboardAndGeneration(ctx, e, id, canvasID)
 	verifyCascade(ctx, e, id, cvID, cid)
-	_, _ = os.Stdout.WriteString("PASS: HTTP201→River analyze/outline shortcut→2 episodes→revision409→breakdown+asset_prompts→merge3 nodes across2 episodes→locked67005→4 credits settled→cascade204/404\n")
+	_, _ = os.Stdout.WriteString("PASS: HTTP201→River analyze/outline→breakdown+asset_prompts→storyboard→segment CRUD/order/revision→keyframe+video worker→auto adoption+WS→67013→billing reconciliation→cascade204/404\n")
 }

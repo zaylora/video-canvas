@@ -34,6 +34,7 @@ type Handlers struct {
 	AssetLibrary   *handler.AssetLibraryHandler        // 资产库：文件夹、库归属、生成历史
 	CharacterCard  *handler.CharacterCardHandler       // 用户私有角色卡 CRUD 与批量读取
 	Drama          *handler.DramaHandler               // 短剧项目、分集剧本、资产流水线
+	DramaSegment   *handler.DramaSegmentHandler        // 分集片段编辑、排序与视频/首帧生成
 	Files          gin.HandlerFunc                     // 素材稳定地址 /files/*：本地存储直出，对象存储签名后 302
 	AIModel        *handler.AIModelHandler             // 面向画布的模型清单
 	AdminAI        *handler.AdminAIHandler             // AI 模型配置管理
@@ -202,6 +203,14 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		dramas.POST("/:id/jobs", h.Drama.CreateJob)
 		dramas.GET("/:id/jobs", h.Drama.ListJobs)
 		dramas.POST("/:id/jobs/:job_id/cancel", h.Drama.CancelJob)
+		dramas.GET("/:id/episodes/:no/segments", h.DramaSegment.List)
+		dramas.POST("/:id/episodes/:no/segments", h.DramaSegment.Create)
+		dramas.PUT("/:id/episodes/:no/segments/order", h.DramaSegment.Order)
+		segments := auth.Group("/drama-segments")
+		segments.PATCH("/:sid", h.DramaSegment.Update)
+		segments.DELETE("/:sid", h.DramaSegment.Delete)
+		segments.POST("/:sid/generate", h.DramaSegment.Generate)
+		segments.POST("/:sid/keyframe", h.DramaSegment.Keyframe)
 
 		// 管理员后台接口：读与模型相关的写 = admin 或 super_admin；插件与渠道的写 = 仅 super_admin。
 		// 凭证不再有独立接口，渠道 Key 统一走 PUT /channels/:key/secret。

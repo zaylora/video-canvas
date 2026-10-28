@@ -14,6 +14,7 @@ const (
 	TypeAgentEvent     = "agent.event"     // Agent 会话里的一条事件（文本增量、工具调用、审批……）
 	TypePaymentUpdated = "payment.updated" // 支付订单状态变化（入账、关单……），前端据此刷新商城和余额
 	TypeDramaJob       = "drama.job"       // 短剧流水线状态、进度和结算结果
+	TypeDramaSegment   = "drama.segment"   // 短剧片段编辑、生成结果和首帧变化
 
 	// 以下是连接控制类消息（订阅协议与心跳）。
 	TypePing         = "ping"         // 客户端 → 服务端：应用层心跳

@@ -168,8 +168,11 @@ func NewApp(cfg *config.Config) (*App, error) {
 	// 短剧流水线复用文本插件与账户计价；拆解写画布与角色卡由同一事务提交。
 	dramaRepo := repository.NewDramaRepository(db)
 	dramaCanvasSvc := service.NewDramaCanvasService(repository.NewDramaCanvasRepository(db), hub)
+	dramaSegments := service.NewDramaSegmentService(service.DramaSegmentDeps{Repo: dramaRepo, Tasks: taskSvc, Assets: assetSvc, Broadcaster: hub})
+	taskSvc.SetTaskObserver(dramaSegments)
 	dramaSvc := service.NewDramaService(service.DramaDeps{
 		Repo: dramaRepo, Registry: aiCfgSvc, Executor: executor, Canvas: dramaCanvasSvc, Broadcaster: hub, Credits: settingsSvc,
+		Segments: dramaSegments, CanvasAssets: canvasProjectRepo,
 	})
 
 	// 配置服务反向依赖插件宿主与任务服务，所以组装完后再注入。
@@ -285,6 +288,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 		Me:            handler.NewMeHandler(meSvc),
 		CanvasProject: handler.NewCanvasProjectHandler(canvasProjectSvc),
 		Drama:         handler.NewDramaHandler(dramaSvc),
+		DramaSegment:  handler.NewDramaSegmentHandler(dramaSegments),
 		CanvasTransfer: handler.NewCanvasTransferHandler(service.NewCanvasTransferService(service.CanvasTransferDeps{
 			Canvases: canvasProjectRepo, Assets: assetSvc, Characters: characterCardRepo,
 			Tx: repository.NewCanvasTransferRepository(db), AppVersion: version.Version,

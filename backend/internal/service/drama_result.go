@@ -16,6 +16,12 @@ import (
 func (s *DramaService) applyDramaOutput(ctx context.Context, tx repository.DramaTx, p *model.DramaProject, j *model.DramaJob, out any) error {
 	fields := map[string]any{}
 	switch result := out.(type) {
+	case drama.StoryboardOutput:
+		if err := saveStoryboardOutput(ctx, tx, p, j, result); err != nil {
+			return err
+		}
+		p.Status = "ready"
+		fields["status"] = "ready"
 	case drama.AnalyzeOutput:
 		p.SourceKind = result.SourceKind
 		p.SourceSummary = result.Summary
@@ -92,6 +98,9 @@ func (s *DramaService) finishTx(ctx context.Context, tx repository.DramaTx, j *m
 		cost = 0
 	}
 	cost = min(max(cost, 0), j.FrozenCredits)
+	if e := finishStoryboardStatus(ctx, tx, j, status); e != nil {
+		return e
+	}
 	if e := settleDramaCredit(ctx, tx, j, status, cost); e != nil {
 		return e
 	}

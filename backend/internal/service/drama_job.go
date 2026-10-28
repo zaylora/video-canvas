@@ -16,6 +16,12 @@ import (
 
 // Estimate 使用现有模型定价及相同请求范围估价，不冻结积分。
 func (s *DramaService) Estimate(ctx context.Context, userID, id uint64, req *model.DramaJobReq) (int, error) {
+	if err := checkStoryboardRequest(req); err != nil {
+		return 0, err
+	}
+	if req.Step == "storyboard" {
+		return s.estimateStoryboard(ctx, userID, id, req)
+	}
 	// 1. 估价执行与提交相同的前置检查。
 	p, err := s.repo.Project(ctx, userID, id, false)
 	if err != nil {
@@ -48,6 +54,9 @@ func (s *DramaService) Estimate(ctx context.Context, userID, id uint64, req *mod
 
 // CreateJob 同项目任务串行提交，积分冻结与River入队原子完成。
 func (s *DramaService) CreateJob(ctx context.Context, userID, id uint64, req *model.DramaJobReq) (*model.DramaJobView, error) {
+	if err := checkStoryboardRequest(req); err != nil {
+		return nil, err
+	}
 	// 1. 事务外冻结模型配置，事务内只做数据库操作。
 	p, err := s.repo.Project(ctx, userID, id, false)
 	if err != nil {
@@ -98,6 +107,11 @@ func (s *DramaService) prepareDramaJob(ctx context.Context, tx repository.DramaT
 	selected, e := selectDramaEpisodes(p, eps, req)
 	if e != nil {
 		return nil, e
+	}
+	if req.Step == "storyboard" {
+		if e := checkStoryboardTakes(ctx, tx, p.UserID, selected); e != nil {
+			return nil, e
+		}
 	}
 	if req.Step != "breakdown" || p.Ratio != "" {
 		return selected, nil
@@ -205,6 +219,11 @@ func (s *DramaService) enqueue(ctx context.Context, tx repository.DramaTx, p *mo
 		scope = append(scope, ep.No)
 	}
 	j := &model.DramaJob{UserID: p.UserID, DramaID: p.ID, Step: req.Step, Episodes: scope, Status: "queued", FrozenCredits: dramaQuote(p, req.Step, eps, snap), ConfigSnapshot: raw, InputJSON: []byte(`{}`), Output: []byte(`{}`), ModelID: snap.ModelRevisionID}
+	if req.Step == "storyboard" {
+		if e := enqueueStoryboard(ctx, tx, j, req, eps); e != nil {
+			return nil, e
+		}
+	}
 	if req.Step == "asset_prompts" {
 		if e := prepareDramaAssetInput(ctx, tx, j); e != nil {
 			return nil, e
@@ -277,6 +296,9 @@ func (s *DramaService) freezeDrama(ctx context.Context, tx repository.DramaTx, j
 
 // selectDramaEpisodes 统一估价与提交的步骤前置条件。
 func selectDramaEpisodes(p *model.DramaProject, eps []model.DramaEpisode, req *model.DramaJobReq) ([]model.DramaEpisode, error) {
+	if err := checkStoryboardRequest(req); err != nil {
+		return nil, err
+	}
 	switch req.Step {
 	case "analyze":
 		return nil, nil
@@ -285,7 +307,7 @@ func selectDramaEpisodes(p *model.DramaProject, eps []model.DramaEpisode, req *m
 			return nil, errcode.ErrDramaStepNotReady.WithMsg("请先完成原文研读")
 		}
 		return nil, nil
-	case "scripts", "breakdown", "asset_prompts":
+	case "scripts", "breakdown", "asset_prompts", "storyboard":
 	default:
 		return nil, errcode.ErrInvalidParams.WithMsg("不支持的流水线步骤")
 	}
@@ -328,6 +350,9 @@ func checkDramaEpisodeStep(ep model.DramaEpisode, step string) error {
 	if step == "breakdown" && (ep.ScriptStatus != "ready" || ep.LockedAt != nil) {
 		return errcode.ErrDramaStepNotReady.WithMsg("所选集须已有剧本且尚未拆解")
 	}
+	if step == "storyboard" && (ep.ScriptStatus != "ready" || strings.TrimSpace(ep.ScriptMD) == "" || ep.LockedAt == nil) {
+		return errcode.ErrDramaStepNotReady.WithMsg("所选集须已拆解资产且剧本已就绪")
+	}
 	return nil
 }
 
@@ -347,7 +372,7 @@ func dramaQuote(p *model.DramaProject, step string, eps []model.DramaEpisode, sn
 			requests++
 		}
 		chars = min(utf8.RuneCountInString(p.SourceText)+2048, dramaContextLimit(snap))
-	case "breakdown":
+	case "breakdown", "storyboard":
 		for _, ep := range eps {
 			chars += utf8.RuneCountInString(ep.ScriptMD)
 		}

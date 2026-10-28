@@ -5,10 +5,12 @@ import (
 	"errors"
 	"time"
 
+	"go.uber.org/zap"
 	"gorm.io/datatypes"
 
 	"video-canvas/internal/config"
 	"video-canvas/internal/model"
+	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/pkg/ws"
 	"video-canvas/internal/provider"
 	"video-canvas/internal/provider/modelcfg"
@@ -71,6 +73,12 @@ type CanvasCoverSetter interface {
 	SetCoverIfEmpty(ctx context.Context, userID, canvasID, assetID uint64) error
 }
 
+// GenerationTaskObserver 在任务提交后更新关联业务投影，不参与任务积分结算。
+type GenerationTaskObserver interface {
+	// OnTaskChanged 根据已持久化的任务更新关联业务数据。
+	OnTaskChanged(context.Context, *model.GenerationTask) error
+}
+
 // GenerationTaskDeps 是任务服务的依赖，全部以接口注入。
 type GenerationTaskDeps struct {
 	Repo        GenerationTaskRepo
@@ -107,6 +115,7 @@ type GenerationTaskService struct {
 	cfg         config.AI
 	limits      TaskLimits
 	covers      CanvasCoverSetter
+	observer    GenerationTaskObserver
 
 	validateInput func(kind string, caps modelcfg.Capabilities, input map[string]any) (map[string]any, []modelcfg.FieldError)
 	now           func() time.Time
@@ -140,6 +149,12 @@ func NewGenerationTaskService(deps GenerationTaskDeps, opts ...GenerationTaskOpt
 		o(s)
 	}
 	return s
+}
+
+// SetTaskObserver 在初始化时绑定关联业务观察者，必须在接收请求和启动队列前调用。
+func (s *GenerationTaskService) SetTaskObserver(observer GenerationTaskObserver) {
+	// 1. 关联业务依赖任务服务，通过初始化后注入解除构造顺序的循环。
+	s.observer = observer
 }
 
 // maxActiveTasks 返回用户进行中任务的上限：单用户覆盖 > 系统设置默认 > DefaultMaxActiveTasks。
@@ -194,4 +209,10 @@ func (s *GenerationTaskService) publish(ctx context.Context, t *model.Generation
 		Channel: channel,
 		Data:    taskView(t),
 	})
+	if s.observer != nil {
+		if err := s.observer.OnTaskChanged(ctx, t); err != nil {
+			// 任务与积分已提交，不能回滚或重标为失败；关联业务读取时按任务表重新对账。
+			logger.Warn("更新任务关联业务失败，读取时重新对账", logger.TaskID(t.ID), zap.Error(err))
+		}
+	}
 }

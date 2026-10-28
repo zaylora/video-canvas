@@ -185,7 +185,7 @@ func (o AssetPromptsOutput) Validate() error {
 }
 
 // DecodeOutput 严格解析单个 JSON 对象，拒绝未知、重复、缺失或 null 字段，并执行步骤语义校验。
-// 返回非指针的 AnalyzeOutput、OutlineOutput、ScriptOutput、BreakdownOutput 或 AssetPromptsOutput。
+// 返回对应步骤的非指针输出，包括 StoryboardOutput。
 func DecodeOutput(step string, data []byte) (any, error) {
 	if !utf8.Valid(data) {
 		return nil, invalidOutput("JSON 必须使用 UTF-8 编码")
@@ -221,7 +221,7 @@ type outputDefinition struct {
 	itemFields []string
 }
 
-// definitionForStep 只列出一期允许的步骤，避免未知步骤或字段被静默接受。
+// definitionForStep 列出流水线允许的步骤，避免未知步骤或字段被静默接受。
 func definitionForStep(step string) (outputDefinition, error) {
 	switch step {
 	case "analyze":
@@ -237,6 +237,9 @@ func definitionForStep(step string) (outputDefinition, error) {
 	case "asset_prompts":
 		return outputDefinition{value: &AssetPromptsOutput{}, fields: []string{"prompts"},
 			listKey: "prompts", itemFields: []string{"node_id", "prompt"}}, nil
+	case "storyboard":
+		return outputDefinition{value: &StoryboardOutput{}, fields: []string{"segments"},
+			listKey: "segments", itemFields: []string{"seconds", "prompt", "shots"}}, nil
 	default:
 		return outputDefinition{}, invalidOutput("不支持的流水线步骤")
 	}
@@ -257,6 +260,9 @@ func (d outputDefinition) checkFields(data []byte) error {
 			return err
 		}
 	}
+	if _, ok := d.value.(*StoryboardOutput); ok {
+		return checkStoryboardShots(data)
+	}
 	return nil
 }
 
@@ -272,6 +278,8 @@ func outputValue(output any) (any, error) {
 	case *BreakdownOutput:
 		return *value, nil
 	case *AssetPromptsOutput:
+		return *value, nil
+	case *StoryboardOutput:
 		return *value, nil
 	default:
 		return nil, invalidOutput("不支持的输出类型")
