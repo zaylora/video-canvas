@@ -73,7 +73,7 @@ function LibraryFloat({ items }: { items: AssetItem[] }) {
   return (
     <ChromeZone
       position="top-left"
-      className="bg-chrome ring-chrome-border pointer-events-auto max-h-[60%] w-56 flex-col items-stretch gap-0 rounded-2xl p-0 shadow-lg ring-1 backdrop-blur-xl max-md:hidden"
+      className="bg-chrome ring-chrome-border pointer-events-auto left-[4.5rem] max-h-[60%] w-56 flex-col items-stretch gap-0 rounded-2xl p-0 shadow-lg ring-1 backdrop-blur-xl max-md:hidden"
     >
       <div className="flex items-center gap-2 px-3 pt-3 pb-1.5 text-sm">
         <b>资产库</b>
