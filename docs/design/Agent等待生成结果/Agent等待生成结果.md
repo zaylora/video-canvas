@@ -1,14 +1,14 @@
 # Agent 等待生成结果（后台监听 + 自动续跑）
 
 > - **范围**：画布 Agent 申请的生成（图片 / 视频 / 音频）被批准后，本轮照常结束、释放画布；系统在后台监听这批任务，全部结束后把结果投回同一个会话，自动开一轮新运行让 Agent 验收并推进下一步。涉及 Go（任务归属字段、River 门铃 job、两个平台接口）、Agent 服务（Pi 文档 + Pi 后台监听任务、门铃接口、唤醒运行）和前端（后台监听状态、提醒）。
-> - **日期和状态**：2026-10-28，设计已确认，待实现。
+> - **日期和状态**：2026-10-28，设计已确认；Go、Agent、前端均已实现（未提交，未联调、未在浏览器里看过），与设计的出入见 §13。
 > - **证据约定**：**事实**附文件路径；**推断**是基于事实的判断；**提案**是尚未实现的设计。
 > - **方案演进**：
 >   1. 访谈前半段定为「等待期间运行不结束（新状态 `waiting_tasks`）、占画布、可插话」。之后用户提出「用子代理在后台监听，不影响主 Agent 对话」，确认改为**后台监听、主运行结束**（§11 Q9）。被搁置的方案见 §9.3。
 >   2. 用户选项里写的是「监听放到 pi-durable 后台任务」。设计时发现 pi-durable 没有外部唤醒 API（§2.1），一度改为「AgentStore 表 + 引擎定时器」。用户追问「pi-durable 也支持长任务」后重新比较（§9.2），确认改为 **pi-durable 原生**：监听状态放会话级 Pi 文档 `app.watches`，每批一个 Pi 后台任务 `app.task-watch` 负责兜底轮询和交付重试（`sleepUntil`），River 门铃仍是快速路径（Q11）。
 >   4. 参考 Claude Code 的后台任务约定，加入「同会话正忙时插进当前轮」和「通知不是用户输入」两条（§4.3，Q10）。
 >   3. 「监听」不使用 LLM 子代理：等状态不需要模型，用 LLM 会白花 token。用便宜模型子代理做**验收**列为后续（§10）。
-> - **配套演示**：[Agent等待生成结果-演示.html](Agent等待生成结果-演示.html)
+> - **配套演示**：[Agent等待生成结果-演示.html](Agent等待生成结果-演示.html)（方案说明）；[Agent等待生成结果-原型.html](Agent等待生成结果-原型.html)（高保真原型，按现有画布页与 Agent 面板的令牌、组件和文案仿真，可走完整条链）
 
 ## 1. 设计摘要
 
@@ -20,7 +20,7 @@
 
 1. **本轮照常结束**。批准执行后，在同一个 Pi 提交里为本批任务登记**后台监听**：写会话级 Pi 文档 `app.watches`，并创建一个 Pi 后台任务 `app.task-watch`（`background: true`，不让会话变忙）。运行正常走到 `succeeded`，画布释放，用户可以继续聊、开别的会话。
 2. **Go 在任务进入终态的同一个数据库事务里插入 River job**（`agent.task_settled`），job 调 Agent 内部接口当门铃；Agent 不在线就按 River 退避重试。门铃只说「某任务结束了」，结果醒来时再向 Go 取。
-3. **一批全部结束才唤醒**：Agent 向 Go 取结果摘要，在**同一个会话**里新开一轮运行（`trigger=wake`），把摘要作为带 `requestId` 的输入提交给 Pi（重启重放不会重复唤醒），Agent 在完整上下文里验收、推进。
+3. **一批全部结束才唤醒**：Agent 向 Go 取结果摘要，在**同一个会话**里新开一轮运行（运行的第一条事件是 `tasks.settled`），把摘要作为带 `requestId` 的输入提交给 Pi（重启重放不会重复唤醒），Agent 在完整上下文里验收、推进。
 4. **忙时插进当前轮、被占时排队**：唤醒时如果用户正在**同一会话**里和 Agent 聊（运行 `running`），结果以插话（`whenBusy: "steer"`）插进当前这一轮，Agent 当场验收；如果画布被**另一个会话**占着、或本会话在等审批 / 等回答，先记着，等那次运行结束立刻唤醒。（参考 Claude Code 后台任务通知，§4.3）
 5. **Pi 后台任务兜底**：监听任务用 `sleepUntil` 持久睡眠，到点向 Go 查还没收到门铃的任务；整批结束后负责交付，交付不成（画布被占、Go 不可用）就睡 60 秒再试。重启后由 pi-durable 自动续上；门铃丢了最多慢两三分钟。
 
@@ -105,7 +105,7 @@
 | 启动后台任务立即返回 id，模型不阻塞 | 批准后登记监听，本轮照常结束 |
 | 宿主盯任务，工具说明明确「完成会通知你，不要轮询」 | 系统提示词改为不要用 task_get 反复查（§8.3） |
 | 通知注入同一对话，带状态、摘要和完整输出位置 | 唤醒输入 `app.tasks_settled` 带摘要，细节用 canvas_inspect 自取 |
-| 模型空闲时宿主重新唤起 | 同一会话自动开 `trigger=wake` 新一轮 |
+| 模型空闲时宿主重新唤起 | 同一会话自动新开一轮（第一条事件 `tasks.settled`） |
 | 模型忙时通知插入当前轮 | **采用**：同会话 `running` 时用 steer 插入（§6.4，Q10） |
 | 通知强调「系统事件，不是用户输入，不能当作确认」 | **采用**：唤醒文本加同样声明（§6.4） |
 | 不许编造未回来的结果 | 提示词：被问进度时调一次 task_get 如实回答（§8.3） |
@@ -153,10 +153,10 @@ Agent 记账：该批全部结束？ ── 否 ─► 等
 ### 6.3 门铃（Go → Agent，经 River）
 
 1. `AgentGenerator.submit` 创建任务时带内部字段 `AgentRunID`（不从用户请求读取），写入 `generation_tasks.agent_run_id`。
-2. `finish()` 事务内：`agent_run_id <> ''` 且非试跑、且 Agent 已启用时，`InsertTx` 一个 `agent.task_settled` job（args：`task_id`、`run_id`；按 args 唯一）。插入失败则整笔回滚，任务由 worker 再次处理。
+2. `finish()` 事务内：`agent_run_id <> 0` 且非试跑、且 Agent 已启用时，`InsertTx` 一个 `agent.task_settled` job（args：`task_id`、`run_id`；按 args 唯一）。插入失败则整笔回滚，任务由 worker 再次处理。
 3. Job 在新队列 `agent_notify`（并发 4，不占生成名额）执行：`POST {agent.url}/internal/v1/watches/task-settled`，请求头 `X-Agent-Service-Token`，body `{ task_id, run_id, status }`。
    - 2xx → 完成。404（没有对应监听，如已取消监听或 `wait=false`）→ 完成，不重试。
-   - 连不上 / 5xx → 返回错误，River 默认退避重试，`MaxAttempts=25`。
+   - 连不上 / 5xx → 返回错误，按**显式退避**重试：2 秒起翻倍、封顶 10 分钟，`MaxAttempts=25`（约覆盖 3 小时）。
 
 ### 6.4 唤醒
 
@@ -170,8 +170,8 @@ Agent 记账：该批全部结束？ ── 否 ─► 等
 2. 画布上已有活跃运行：
    - 是**本会话**的运行且状态为 `running`（用户正在聊）→ 取摘要后 `conv.submit({ type: "input", whenBusy: "steer", content: 唤醒文本, requestId })`，在当前工具步之后交给 Agent；复用引擎现有插话机制（`a.steers`、`steer.read` 事件），时间线显示为系统条目而不是用户插话；`delivered_run_id` 记当前运行。（Q10）
    - 是本会话但在 `waiting_approval` / `waiting_input`，或是**另一个会话**的运行 → **不唤醒**，保持可交付；该画布任一运行进入终态时（引擎的运行结束钩子）再试。
-3. 调 Go `POST /internal/platform/v1/tasks/digest { task_ids }` 取摘要；失败则留给该批的监听任务下次醒来重试。
-4. 以 `trigger=wake` 新建运行（走 `startRun` 的同一套校验与画布占用；撞 60001 回到第 2 步）。预算和步数取默认值；`wake_of` 记录来源运行 id。
+3. 调 Go `POST /internal/platform/v1/tasks/status { user_id, task_ids }` 取这批任务的最新状态和产物，由 Agent 拼成唤醒文本（节点标题登记时就存在文档里）；失败则留给该批的监听任务下次醒来重试。
+4. 新建运行（`store.createRun`，同一画布的唯一索引保证只有一个活跃运行；撞上了就排队）。预算不限、步数取默认值；运行没有专门的列标记它是系统唤醒的，看它的第一条事件 `tasks.settled`。
 5. kickoff：`conv.submit({ type: "input", content: 唤醒文本, requestId: "wake:{sessionId}:{最小批 id}", entry: { kind: "app.tasks_settled", data: { batchIds, taskIds } } })`。
 6. `conv.commit()` 把这些批标记 `delivered`（记 `deliveredRunId`）。监听任务下次醒来看到 `delivered` 就结束自己；也可以立即 `harness.abortTask(watcherTaskId)` 收掉（它没有外部副作用，abort 无需清理）。如果在第 5 步之后、第 6 步之前崩溃，监听任务重启后再次交付，用的是相同的 `requestId`，Pi 返回原来那次提交，不会重复唤醒；新建的运行由现有启动恢复逻辑处理。
 
@@ -202,13 +202,15 @@ Agent 记账：该批全部结束？ ── 否 ─► 等
 
 ### 6.6 取消监听（替代「停止」）
 
-- 本轮已结束，等待期间没有运行可停。会话里显示监听条「后台等待生成 · 2/6」，带**「不用等了」**按钮：在文档里把该会话所有未交付的批标记 `canceled`，并用 `harness.abortTask()` 收掉它们的监听任务；之后的门铃返回 404。生成任务**不取消**，产物照常回填节点、照常扣费。（Q8 原则：只停 Agent，任务继续）
+- 本轮已结束，等待期间没有运行可停。Agent 面板顶部（头部下方）显示监听条「后台等待生成 · 2/6」，带**「不用等了」**按钮：在文档里把该会话所有未交付的批标记 `canceled`，并用 `harness.abortTask()` 收掉它们的监听任务；之后的门铃返回 404。生成任务**不取消**，产物照常回填节点、照常扣费。（Q8 原则：只停 Agent，任务继续）
 - 唤醒运行开始后，用户点停止，行为同普通运行。
 - 删除会话：其监听一并取消（会话级 `abort(context, { background: true })` 或逐个 `abortTask`）。
 
 ### 6.7 等审批时发消息
 
 等审批（`waiting_approval`）时，在输入框发消息 = **拒绝本次审批 + 补充说明**：走 `decide(reject, answer=消息)`，运行继续，模型看到「用户拒绝了这次生成。用户的说明：…」（`approval.go:220` 已支持）。`waiting_input`（ask_user）时发消息 = 回答。（Q7）
+
+界面上**不用新做**：等审批时输入框已经被决定框替换（`web/src/pages/canvas/agent/decision-dock.tsx`），它的第 3 项「拒绝，并告诉 Agent 怎么改…」就是这个行为（`decision-dock.tsx:92`）；提问卡的「其他…」同理。上面说的后端转换只用来兜底其它客户端。2026-10-28 画原型时扫码确认。
 
 ### 6.8 提醒（前端）
 
@@ -219,7 +221,7 @@ Agent 记账：该批全部结束？ ── 否 ─► 等
 
 ### 6.9 界面
 
-- 会话里的监听条：`后台等待生成 · 2/6 已完成`，展开可见每个任务（节点名、状态），点击定位节点；右侧「不用等了」。
+- 监听条放在 **Agent 面板顶部、头部下方**（用户 2026-10-28 看原型后指定；不放输入框顶沿，因为等审批时输入框被决定框替换，放顶部两种状态下都看得到）：`后台等待生成 · 2/6 已结束`，点开向下展开每个任务（节点名、状态），点击定位节点；右侧「不用等了」。
 - 画布被其它运行占着、唤醒在排队时：监听条显示「已全部完成，等当前运行结束后 Agent 继续」。
 - 唤醒运行在消息流里以系统条目开头「生成全部结束，Agent 继续」（`app.tasks_settled`），不显示成用户消息。
 - 等审批时输入框占位文字：「发送会拒绝这次申请并告诉 Agent 你的想法」。
@@ -255,7 +257,7 @@ Agent 记账：该批全部结束？ ── 否 ─► 等
 
 | 字段 | 类型 | 含义 |
 | --- | --- | --- |
-| `agent_run_id` | `varchar(32) not null default ''` | 发起它的 Agent 运行 id；部分索引 `WHERE agent_run_id <> ''` |
+| `agent_run_id` | `bigint not null default 0` | 发起它的 Agent 运行 id（Go 里运行 id 是 uint64），0 表示不是 Agent 发起的；部分索引 `WHERE agent_run_id <> 0` |
 
 - `model.CreateGenerationTaskReq` 加 `AgentRunID string \`json:"-"\``，只由 `AgentGenerator.submit` 填写。
 - 迁移走 `backend/internal/migration` 现有机制。
@@ -267,7 +269,7 @@ River：
 | 队列 | `agent_notify`，`MaxWorkers=4` |
 | kind | `agent.task_settled` |
 | args | `{ task_id: uint64, run_id: string }`，`UniqueOpts{ ByArgs: true }` |
-| 重试 | `MaxAttempts=25`，River 默认退避 |
+| 重试 | `MaxAttempts=25`；自定义 `RetryPolicy`：通知 job 用 2 秒起翻倍、封顶 10 分钟的退避，其它 job 沿用 River 默认 |
 | 注册 | `ai.worker.enabled` 且 `agent.enabled` 的实例 |
 
 改动点：`provider/queue/queue.go`（新 Args）、`runtime.go`（注册 worker、`rc.Queues` 加队列、新增 `EnqueueAgentNotifyTx`）、`repository/generation_task.go`（`GenerationTaskTx`、`TaskEnqueuer` 加方法）、`service/generation_task_store.go`（`finish()` 事务内入队）、`repository/queue.go`（后台队列统计包含新队列；sweep 不需要管它，丢失由 Pi 监听任务兜底）、新增 `service/agent/notify.go`（调用 Agent，参照 `observe_remote.go`）。
@@ -276,8 +278,9 @@ River：
 
 | 方法 路径 | 请求 | 返回 | 业务错误 |
 | --- | --- | --- | --- |
-| `POST /tasks/status` | `{ task_ids: string[≤50] }` | `{ items: [{ task_id, status, finished_at }] }`，不存在或不属于该用户的 `status="missing"` | 400 参数 |
-| `POST /tasks/digest` | `{ task_ids: string[≤50] }` | `{ text, items: [{ task_id, node_id, node_title, kind, status, error_message, outputs: [{ media_type, asset_id }] }] }` | 400 参数 |
+| `POST /tasks/status` | `{ user_id: string, task_ids: string[1..50] }`（id 都是十进制字符串，不要运行上下文头） | `{ items: [{ task_id, node_id, kind, status, progress?, error?, credits?, outputs?: [{ media_type, asset_id?, text? }] }] }`，顺序与请求一致；不存在或不属于该用户的 `status="missing"` | 400 参数 |
+
+只有这一个接口：对账查询和唤醒取结果是同一份数据，**没有单独的 digest 接口**；节点标题不由 Go 给，登记监听时从审批内容里取、存在 `app.watches` 里。
 
 ### 8.2 Agent（pi-durable + SQLite）
 
@@ -312,13 +315,13 @@ interface WatchesDoc {
 
 **Pi 任务 `app.task-watch`**（`defineTask`，`version: 1`）：输入 `{ batchId, sessionId }`，checkpoint `{ phase: "wait" | "check" }`，行为见 §6.5。装在引擎新建的扩展 `engine-watch` 的 `tasks` 字段里；重启时必须先装好扩展再 `harness.resume()`（`README.md:472`）。
 
-**AgentStore（SQLite）**：`agent_runs` 新增 `trigger TEXT NOT NULL DEFAULT 'user'`（`user | wake`）、`wake_of TEXT`（来源运行 id）。运行状态**不新增**，活跃运行唯一索引不变。**不新建监听表**。
+**AgentStore（SQLite）**：**不加列、不建表**。运行状态不新增，活跃运行唯一索引不变；唤醒新开的运行靠它的第一条事件 `tasks.settled` 识别。
 
 - 新内部接口（Go → Agent）：`POST /internal/v1/watches/task-settled`，服务令牌鉴权（复用 `/observe` 的中间件）。按 `run_id` 找会话，在 Pi 文档里记账。200 `{ accepted: true }`；404 无对应监听（运行或会话不存在、文档里没有该任务、该批已取消）。
 - 用户接口（经 Go 反向代理）：`GET /agent/sessions/:id/watches` 返回监听条数据；`POST /agent/sessions/:id/watches/cancel` 取消未交付的监听。监听进度变化发会话事件 `watch.updated { total, settled, state: waiting|queued|delivered|canceled }`，走现有事件推送。
-- 引擎改动：安装 `engine-watch` 扩展（`app.watches` 文档 + `app.task-watch` 任务）；`decide` 登记监听；新增 `#settle(task)`（门铃和监听任务共用）、`#tryWake(sessionId)`（按会话加锁）；运行进入终态时对同画布的会话调用 `#tryWake`；`startRun` 支持 `trigger=wake`。不新增定时器。
+- 引擎改动（`agent/src/engine/engine.ts` 与新文件 `watch.ts`）：安装 `engine-watch` 扩展（`app.watches` 文档 + `app.task-watch` 任务）；`decide` 登记监听；`taskSettled`（门铃）、`#watchCheck`（监听任务）共用 `#recordSettled`；`#tryWake(session)` 按会话串行；运行结束时对排队的会话再试。不新增定时器。
 - 发消息入口：当前运行 `waiting_approval` / `waiting_input` 时转为 `decide`（拒绝 + 说明 / 回答），不再返回 60001。
-- Go `model/agent.go` 观测相关结构加 `trigger` 字段显示（后台运行详情）。
+- Go 观测导出（`observe_export.go`）：`tasks.settled` 标成「系统唤醒（生成全部结束）」，`watch.updated` 不进时间线。
 
 ### 8.3 工具与提示词
 
@@ -330,7 +333,7 @@ interface WatchesDoc {
 ### 8.4 前端
 
 - `web/src/constants/agent.ts`：唤醒轮的系统条目文案。
-- 会话监听条组件（状态行附近），订阅 `watch.updated`。
+- 监听条组件（Agent 面板头部下方，`agent-header.tsx` 与消息列表之间），订阅 `watch.updated`。
 - 时间线（`utils/agent/timeline.ts`）识别 `app.tasks_settled`。
 - 新 hook：标签标题与浏览器通知（`Notification` API）。
 - 输入框：等审批时切换占位文字和发送语义。
@@ -438,7 +441,45 @@ interface WatchesDoc {
 - 项目文件：§2.1 各行路径（2026-10-28 读取，分支 `release/v0.5.4`，含未提交改动）。
 - pi-durable 1.4.0 README（`agent/node_modules/@earendil-works/pi-durable/README.md`）；示例 23 不在发布包内，**未验证**。
 - 外部方案据已有知识，本次**未联网复核**。
-- River v0.49.0 默认退避曲线未核实；`MaxAttempts=25` 覆盖多长时间，实现时确认。
+- ~~River v0.49.0 默认退避曲线未核实~~：已改成显式退避（见 §6.3、§13），不再依赖默认曲线。
 - 假设：Agent 单容器（`durable.ts` 注释）；多 Agent 分片时门铃要按会话路由，本期不处理。
 - pi-durable 的 `defineDoc` / `defineTask` / `background` / `abortTask` 已核对 README 与 `dist/harness/types.d.ts:75,199,755`，本项目还没用过，**未实测**。
 - 未验证：唤醒运行用默认预算是否会让用户觉得「每轮预算重算」不直观——上线后观察。
+
+
+## 13. 实现记录（2026-10-28）
+
+**已实现，未提交，未联调（Go ↔ Agent 没有一起跑过）**；各端自己的测试通过（见下），前端页面没有在浏览器里看过。
+
+### 与设计的出入
+
+| 设计 | 实际 | 原因 |
+| --- | --- | --- |
+| `agent_run_id varchar(32)` | `bigint not null default 0`，部分索引 `<> 0` | Go 里运行 id 是 uint64，不用转字符串 |
+| 通知 job 用 River 默认退避 | 自定义 `RetryPolicy`：2 秒起翻倍、封顶 10 分钟 | 默认曲线没核实；显式的更可控，测试也能缩短起点 |
+| 两个平台接口 `tasks/status`、`tasks/digest` | 只有 `tasks/status`，返回节点、种类、状态、错误、产物 | 对账和取结果是同一份数据；节点标题登记时存进文档 |
+| `agent_runs` 加 `trigger`、`wake_of` 列 | 不加列 | 少一次迁移；唤醒运行靠第一条事件 `tasks.settled` 识别 |
+| 交付后监听任务收尾 | 立即 `abortTask`；但监听任务自己那次醒来触发的交付不 abort 自己（会等自己结束而死锁），让它看到已交付后自己收尾 | 实现中发现 |
+| 唤醒文本 | 多一句「这条消息没有附画布目录，要改节点前先用 canvas_get_state 读取」 | 唤醒的那一轮没有画布目录 |
+| — | 删除会话时一并取消它的后台等待 | 免得留下没人认领的监听任务 |
+| — | 新增 Agent 错误码 60014「没有对应的等待」，门铃回 404 | Go 的通知器把 404 当作已送达，不再重试 |
+| 提示词 | 版本 18 → 19；`generate_media` 增加 `wait` 参数；工具声明基准文件同步 | — |
+
+### 改动清单
+
+- **Go**：`migrations/0016_generation_task_agent_run.sql`；`model.GenerationTask.AgentRunID`、`CreateGenerationTaskReq.AgentRunID`（`json:"-"`）；`finish()` 事务内 `EnqueueAgentNotify`；`provider/queue`（`NotifyArgs`、`notifyWorker`、`EnqueueAgentNotifyTx`、`retryPolicy`、队列 `agent_notify`）；`provider.AgentNotifier`；`service/agent/notify.go`（`TaskNotifier`）；`service/agent/platform_tasks.go` 与 `handler/agent` 的 `TaskStatus`；`router/bridge.go` 与 `router/router.go`（两个转发路由）；`GeneratePayload.Wait`；`tool_decls.json`、`system.md`、`initialize/queue.go`。
+- **Agent**：`src/engine/watch.ts`（文档、任务、`wakeText`）；`engine.ts`（登记、门铃、交付、`watches`/`cancelWatches`）；`api/service.ts`、`api/http.ts`（`GET /agent/sessions/:sid/watches`、`POST …/watches/cancel`、`POST /internal/v1/watches/task-settled`）；`platform-client.ts`（`taskStates`）；`store.ts`（`sessionByConversation`）。
+- **前端**：`utils/agent/watch.ts`、`pages/canvas/agent/watch-strip.tsx`、`hooks/use-agent-notifications.ts`，以及会话状态、时间线、标签标题、控制器的接入。
+
+### 验证
+
+- Go：`go test ./internal/...` 全绿，唯一失败的是 `internal/tests/scripts` 里一条升级脚本测试（Windows 路径形式不匹配，与本次无关）；`golangci-lint run --new-from-rev=HEAD ./internal/...` 0 个新问题。新增测试覆盖：创建任务记下运行 id；成功/失败/超时/取消四种终态都入队门铃，试跑和用户任务不入队，入队失败整笔回滚；River 门铃的送达、退避重试、回滚、未启用、去重（真实 PostgreSQL）；通知器的 2xx/404/5xx/连不上；`tasks/status` 的 handler、业务层和路由令牌；`wait` 默认值；提示词。
+- Agent：新增 24 个测试（`watch.test.ts`、`engine-watch.test.ts`、`api-http.test.ts` 与 `platform-client.test.ts` 的补充），覆盖登记、门铃、重复门铃、失败/超时结果、画布被占排队、同会话插进当前轮、等审批时排队、不用等了、门铃丢了由 Pi 监听任务兜底、Go 暂时不可用。全量 `npm test` 283/286 通过，3 个失败是 Windows 路径问题（`E:\E:\…`），与本次无关；`npm run typecheck`、`npm run build` 通过。
+- 前端：`bun test` 全量 3425 通过；`oxfmt`、`oxlint` 对改动文件无新问题；`tsc` 有一个与本次无关的既有报错（`text-editor-dialog.tsx`）。
+
+### 遗留
+
+- 没有端到端联调（真起 Go + River + Agent）。
+- `defineDoc` / `defineTask` 已在假时钟下验证睡眠、重启前后的行为，但**没有测真实重启**（关掉 Agent 进程再起）。
+- 前端页面没有在浏览器里看过；通知权限请求的时机、标签标题是否被别处覆盖需要实测。
+- 子代理验收仍未做（§10 后续）。

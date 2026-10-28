@@ -1,0 +1,771 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agent 等待生成结果 · 原型</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+    <style>
+      /* 令牌照搬 web/src/index.css（omp 扫描报告 §1.3，2026-10-28） */
+      :root {
+        --background: oklch(1 0 0);
+        --foreground: oklch(0.145 0 0);
+        --card: oklch(1 0 0);
+        --popover: oklch(1 0 0);
+        --primary: oklch(0.205 0 0);
+        --muted: oklch(0.97 0 0);
+        --muted-foreground: oklch(0.556 0 0);
+        --border: oklch(0.922 0 0);
+        --destructive: oklch(0.577 0.245 27.325);
+        --canvas-bg: oklch(0.975 0 0);
+        --canvas-dot: oklch(0 0 0 / 0.16);
+        --chrome: oklch(1 0 0 / 0.82);
+        --chrome-border: oklch(0 0 0 / 0.08);
+        --chrome-hover: oklch(0 0 0 / 0.05);
+        --credit: oklch(0.72 0.15 75);
+        --preset: oklch(0.55 0.2 295);
+        --status-running: oklch(0.58 0.15 250);
+        --status-success: oklch(0.6 0.15 155);
+        --status-warning: oklch(0.7 0.16 70);
+        --beam: oklch(0.62 0.16 55);
+        --beam-bright: oklch(0.78 0.15 70);
+        --sheen: oklch(1 0 0 / 0.7);
+        --elevation-near: oklch(0 0 0 / 0.06);
+        --elevation-far: oklch(0 0 0 / 0.18);
+        --note: oklch(0.55 0.2 295);
+        --shell: oklch(0.93 0 0);
+        color-scheme: light;
+      }
+      .dark {
+        --background: oklch(0.145 0 0);
+        --foreground: oklch(0.985 0 0);
+        --card: oklch(0.205 0 0);
+        --popover: oklch(0.205 0 0);
+        --primary: oklch(0.922 0 0);
+        --muted: oklch(0.269 0 0);
+        --muted-foreground: oklch(0.708 0 0);
+        --border: oklch(1 0 0 / 10%);
+        --destructive: oklch(0.704 0.191 22.216);
+        --canvas-bg: oklch(0.13 0 0);
+        --canvas-dot: oklch(1 0 0 / 0.14);
+        --chrome: oklch(0.2 0 0 / 0.78);
+        --chrome-border: oklch(1 0 0 / 0.08);
+        --chrome-hover: oklch(1 0 0 / 0.07);
+        --credit: oklch(0.82 0.15 85);
+        --preset: oklch(0.6 0.19 295);
+        --status-running: oklch(0.75 0.12 240);
+        --status-success: oklch(0.75 0.15 155);
+        --status-warning: oklch(0.8 0.15 75);
+        --beam: oklch(0.78 0.15 70);
+        --sheen: oklch(1 0 0 / 0.09);
+        --elevation-near: oklch(0 0 0 / 0.1);
+        --elevation-far: oklch(0 0 0 / 0.42);
+        --note: oklch(0.72 0.17 295);
+        --shell: oklch(0.1 0 0);
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; }
+      body {
+        font-family: Geist, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+        background: var(--shell); color: var(--foreground); -webkit-font-smoothing: antialiased;
+        display: flex; flex-direction: column; overflow: hidden;
+      }
+      button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+      input, textarea { font: inherit; color: inherit; }
+      [data-lucide] { width: 16px; height: 16px; flex: none; stroke-width: 1.8; }
+      .mono { font-family: "Geist Mono", Consolas, monospace; font-variant-numeric: tabular-nums; }
+      .muted { color: var(--muted-foreground); }
+      .row { display: flex; align-items: center; gap: 6px; }
+      .spacer { margin-left: auto; }
+      [hidden] { display: none !important; }
+
+      /* ---------- 假浏览器标签栏 ---------- */
+      .browser { display: flex; align-items: flex-end; gap: 2px; height: 38px; padding: 0 10px; background: var(--shell); flex: none; }
+      .dots { display: flex; gap: 6px; align-self: center; margin-right: 10px; }
+      .dots i { width: 11px; height: 11px; border-radius: 50%; background: oklch(0.7 0 0 / 0.5); display: block; }
+      .btab { height: 30px; min-width: 0; max-width: 260px; flex: 0 1 260px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 9px 9px 0 0; font-size: 12px; color: var(--muted-foreground); cursor: pointer; }
+      .btab.on { background: var(--background); color: var(--foreground); }
+      .btab span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .favicon { width: 14px; height: 14px; border-radius: 4px; background: radial-gradient(circle at 35% 30%, var(--beam-bright), var(--beam) 60%, color-mix(in oklab, var(--beam) 40%, black)); flex: none; }
+      .favicon.other { background: oklch(0.6 0.15 250); }
+      .tabtitle.flash { animation: flash 1.2s ease 2; }
+      @keyframes flash { 50% { color: var(--status-warning); } }
+
+      /* ---------- 应用视口 ---------- */
+      .viewport { flex: 1; min-height: 0; position: relative; display: flex; background: var(--background); overflow: hidden; }
+      .canvas { position: relative; flex: 1; min-width: 0; overflow: hidden; background-color: var(--canvas-bg);
+        background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1.2px); background-size: 20px 20px; }
+      .world { position: absolute; left: 0; top: 0; transform-origin: 0 0; width: 1080px; height: 640px; }
+      .away { position: absolute; inset: 0; z-index: 80; background: oklch(0.2 0 0 / 0.55); backdrop-filter: blur(3px); display: grid; place-items: center; color: white; font-size: 14px; text-align: center; cursor: pointer; }
+      .away b { display: block; font-size: 18px; margin-bottom: 6px; }
+
+      /* chrome 胶囊 */
+      .pill { position: absolute; z-index: 10; display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 999px; background: var(--chrome);
+        border: 1px solid var(--chrome-border); backdrop-filter: blur(12px); box-shadow: 0 6px 20px -8px var(--elevation-far); font-size: 13px; }
+      .pill .ib { width: 32px; height: 32px; border-radius: 999px; display: grid; place-items: center; color: var(--muted-foreground); }
+      .pill .ib:hover { background: var(--chrome-hover); color: var(--foreground); }
+      .pill .ib.solid { background: var(--foreground); color: var(--background); }
+      .pill .sep { width: 1px; height: 18px; background: var(--chrome-border); margin: 0 2px; }
+      .pill.v { flex-direction: column; border-radius: 22px; }
+      .pill.v .sep { width: 18px; height: 1px; margin: 2px 0; }
+      .orb { width: 20px; height: 20px; border-radius: 7px; flex: none; background: radial-gradient(circle at 35% 30%, var(--beam-bright), var(--beam) 60%, color-mix(in oklab, var(--beam) 40%, black)); }
+
+      /* ---------- 节点 ---------- */
+      .node { position: absolute; width: 220px; }
+      .nhead { position: absolute; left: 2px; right: 2px; bottom: 100%; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted-foreground); }
+      .nhead b { font-weight: 500; color: var(--foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .nhead .st { margin-left: auto; font-size: 12px; white-space: nowrap; }
+      .ncard { height: 124px; border-radius: 8px; background: var(--card); box-shadow: 0 0 0 1px color-mix(in oklab, var(--foreground) 8%, transparent), 0 2px 6px var(--elevation-near); overflow: hidden; position: relative; transition: box-shadow 0.3s; }
+      .node.touched .ncard { box-shadow: 0 0 0 2px var(--preset), 0 8px 24px -10px var(--elevation-far); }
+      .ph { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; font-size: 12px; }
+      .skel { background: linear-gradient(100deg, var(--muted) 30%, color-mix(in oklab, var(--muted) 60%, var(--background)) 50%, var(--muted) 70%) 0 0 / 300% 100%; animation: skel 1.6s linear infinite; }
+      @keyframes skel { to { background-position: -150% 0; } }
+      .ph .t { display: flex; align-items: center; justify-content: center; gap: 6px; font-weight: 500; color: var(--foreground); }
+      .bar { width: 128px; height: 4px; border-radius: 99px; background: color-mix(in oklab, var(--foreground) 10%, transparent); margin: 7px auto 5px; overflow: hidden; }
+      .bar i { display: block; height: 100%; background: var(--status-running); border-radius: 99px; transition: width 0.4s; }
+      .fail { background: color-mix(in oklab, var(--destructive) 6%, var(--card)); color: var(--destructive); padding: 10px; }
+      .fail small { display: block; color: var(--muted-foreground); }
+      .chipbtn { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; border-radius: 7px; border: 1px solid var(--border); background: var(--background); color: var(--foreground); font-size: 12px; margin-top: 6px; }
+      .media { position: absolute; inset: 0; }
+      .media .ver { position: absolute; right: 6px; top: 6px; font-size: 10.5px; padding: 1px 5px; border-radius: 5px; background: oklch(0 0 0 / 0.45); color: white; }
+      .media .play { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 34px; height: 34px; border-radius: 50%; background: oklch(0 0 0 / 0.45); display: grid; place-items: center; color: white; }
+      .media .dur { position: absolute; left: 6px; bottom: 6px; font-size: 10.5px; color: white; }
+      .empty { color: var(--muted-foreground); }
+      svg.links { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+      svg.links path { fill: none; stroke: color-mix(in oklab, var(--foreground) 22%, transparent); stroke-width: 1.5; }
+      .spin { animation: spin 0.9s linear infinite; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+
+      /* ---------- Agent 停靠面板 ---------- */
+      .agent { width: 400px; flex: none; display: flex; flex-direction: column; background: var(--popover); box-shadow: -1px 0 0 var(--chrome-border), -16px 0 48px -24px var(--elevation-far); position: relative; z-index: 20; }
+      .ahead { height: 52px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 12px 0 14px; }
+      .ahead .title { display: flex; align-items: center; gap: 4px; font-size: 13.5px; font-weight: 500; min-width: 0; }
+      .ahead .title span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .hb { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; color: var(--muted-foreground); }
+      .hb:hover { background: var(--chrome-hover); color: var(--foreground); }
+      .msgs { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 16px 12px; display: flex; flex-direction: column; gap: 12px; font-size: 13.5px; line-height: 1.7;
+        mask-image: linear-gradient(to bottom, transparent, black 12px, black calc(100% - 12px), transparent); }
+      .msgs::-webkit-scrollbar { width: 6px; } .msgs::-webkit-scrollbar-thumb { background: color-mix(in oklab, var(--foreground) 12%, transparent); border-radius: 9px; }
+      .inset { box-shadow: inset 0 1px 0 var(--sheen), 0 0 0 1px var(--chrome-border); }
+      .u { align-self: flex-end; max-width: 88%; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+      .u .lab { font-size: 11px; color: var(--muted-foreground); }
+      .u .bub { background: color-mix(in oklab, var(--foreground) 7%, transparent); border-radius: 16px 16px 4px 16px; padding: 8px 12px; white-space: pre-wrap; word-break: break-word; }
+      .chip { display: inline-flex; align-items: center; gap: 3px; padding: 0 5px; border-radius: 5px; font-size: 12.5px; background: color-mix(in oklab, var(--status-running) 13%, transparent); color: var(--status-running); line-height: 1.6; }
+      .a { color: color-mix(in oklab, var(--foreground) 92%, transparent); }
+      .a p { margin: 0 0 6px; } .a p:last-child { margin: 0; }
+      .a ul { margin: 2px 0 6px; padding-left: 18px; }
+      .think { font-size: 12.5px; color: var(--muted-foreground); display: inline-flex; align-items: center; gap: 2px; }
+      .act { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px; margin-left: -8px; border-radius: 8px; font-size: 12.5px; color: var(--muted-foreground); }
+      .act:hover { background: var(--chrome-hover); }
+      .act .bad { color: var(--destructive); }
+      .arow { display: flex; align-items: flex-start; gap: 6px; font-size: 12.5px; color: var(--muted-foreground); }
+      .arow b { font-weight: 500; color: var(--foreground); }
+      .foot { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted-foreground); margin-top: -6px; }
+      .foot .cap { height: 22px; padding: 0 8px; border-radius: 99px; display: inline-flex; align-items: center; gap: 4px; background: color-mix(in oklab, var(--foreground) 5%, transparent); }
+      .foot .hb { width: 24px; height: 24px; }
+      .wake { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted-foreground); margin: 4px 0; }
+      .wake::before, .wake::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, transparent, var(--border)); }
+      .wake::after { background: linear-gradient(90deg, var(--border), transparent); }
+      .wake span { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 99px; background: color-mix(in oklab, var(--beam) 12%, transparent); color: color-mix(in oklab, var(--beam) 80%, var(--foreground)); white-space: nowrap; }
+      .card { border-radius: 12px; padding: 10px 12px; font-size: 13px; }
+      .status { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 16px; font-size: 12.5px; flex: none; }
+      .shimmer { background: linear-gradient(90deg, var(--muted-foreground) 0%, var(--muted-foreground) 35%, var(--foreground) 50%, var(--muted-foreground) 65%, var(--muted-foreground) 100%) 0 0 / 250% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: shim 1.6s linear infinite; }
+      @keyframes shim { from { background-position: 100% 0; } to { background-position: -150% 0; } }
+      .odot { width: 8px; height: 8px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, var(--beam-bright), var(--beam)); box-shadow: 0 0 8px var(--beam-bright); animation: breathe 1.6s ease-in-out infinite; }
+      @keyframes breathe { 50% { opacity: 0.45; } }
+      kbd { font-family: "Geist Mono", monospace; font-size: 10.5px; padding: 0 4px; border-radius: 4px; border: 1px solid var(--border); }
+
+      /* 输入区 */
+      .composer-wrap { padding: 0 12px 12px; flex: none; }
+      .composer { border-radius: 18px; background: color-mix(in oklab, var(--foreground) 4%, var(--popover));
+        box-shadow: inset 0 1px 0 var(--sheen), 0 0 0 1px color-mix(in oklab, var(--foreground) 10%, transparent), 0 10px 28px -12px var(--elevation-far); overflow: hidden; }
+      .composer:focus-within { box-shadow: inset 0 1px 0 var(--sheen), 0 0 0 1px color-mix(in oklab, var(--foreground) 24%, transparent), 0 10px 28px -12px var(--elevation-far); }
+      .strip { border-bottom: 1px solid color-mix(in oklab, var(--foreground) 8%, transparent); font-size: 12.5px; }
+      .strip-h { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 8px 0 12px; cursor: pointer; }
+      .strip-h .txt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .strip-list { padding: 0 12px 8px 34px; display: grid; gap: 3px; }
+      .strip-list .li { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted-foreground); }
+      .strip-list .li b { font-weight: 500; color: var(--foreground); }
+      .strip .mini { height: 24px; padding: 0 8px; border-radius: 7px; font-size: 12px; color: var(--muted-foreground); }
+      .strip .mini:hover { background: var(--chrome-hover); color: var(--foreground); }
+      textarea.ed { display: block; width: 100%; border: 0; outline: 0; background: transparent; resize: none; padding: 12px 14px 4px; min-height: 48px; max-height: 120px; font-size: 13.5px; line-height: 1.6; }
+      textarea.ed::placeholder { color: var(--muted-foreground); }
+      .cbar { display: flex; align-items: center; gap: 2px; padding: 6px 8px 8px; font-size: 12.5px; color: var(--muted-foreground); }
+      .cbar .tb { height: 28px; padding: 0 7px; border-radius: 8px; display: inline-flex; align-items: center; gap: 4px; }
+      .cbar .tb:hover { background: var(--chrome-hover); color: var(--foreground); }
+      .send { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: var(--foreground); color: var(--background); margin-left: 4px; }
+      .send.off { background: color-mix(in oklab, var(--foreground) 10%, transparent); color: var(--muted-foreground); cursor: not-allowed; }
+      .send.stop { background: color-mix(in oklab, var(--foreground) 10%, transparent); color: var(--foreground); }
+      .ring { width: 16px; height: 16px; flex: none; }
+      #stripSlot { flex: none; padding: 0 12px 6px; }
+      #stripSlot:empty { display: none; }
+      #stripSlot .strip { border: 0; border-radius: 12px; background: color-mix(in oklab, var(--foreground) 4%, var(--popover));
+        box-shadow: inset 0 1px 0 var(--sheen), 0 0 0 1px color-mix(in oklab, var(--foreground) 9%, transparent); }
+      #stripSlot .strip-list { padding-top: 2px; }
+
+      /* 决定框 */
+      .dock { border-radius: 18px; background: var(--popover); overflow: hidden; position: relative;
+        box-shadow: inset 0 1px 0 var(--sheen), 0 0 0 1px color-mix(in oklab, var(--status-warning) 35%, transparent), 0 10px 28px -12px var(--elevation-far); }
+      .dock::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 40px; background: linear-gradient(to bottom, color-mix(in oklab, var(--status-warning) 12%, transparent), transparent); pointer-events: none; }
+      .dock-h { display: flex; align-items: center; gap: 8px; padding: 12px 14px 4px; font-size: 13.5px; font-weight: 500; position: relative; }
+      .credit { color: var(--credit); font-weight: 500; font-variant-numeric: tabular-nums; }
+      .reason { padding: 0 14px 6px 38px; font-size: 12.5px; color: var(--muted-foreground); }
+      .items { margin: 2px 14px 8px; border-radius: 10px; background: color-mix(in oklab, var(--foreground) 3%, transparent); padding: 4px 0; max-height: 150px; overflow-y: auto; }
+      .item { display: flex; align-items: center; gap: 8px; padding: 4px 10px; font-size: 12.5px; }
+      .item .m { color: var(--muted-foreground); }
+      .item input { accent-color: var(--foreground); }
+      .opts { padding: 0 8px 8px; display: grid; gap: 2px; }
+      .opt { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 8px; border-radius: 10px; font-size: 13px; text-align: left; }
+      .opt:hover { background: var(--chrome-hover); }
+      .opt.main { background: var(--foreground); color: var(--background); }
+      .opt.main:hover { background: color-mix(in oklab, var(--foreground) 88%, transparent); }
+      .opt .k { width: 18px; height: 18px; border-radius: 5px; display: grid; place-items: center; font-size: 11px; font-family: "Geist Mono", monospace; background: color-mix(in oklab, currentColor 14%, transparent); }
+      .opt input { flex: 1; height: 30px; border: 0; outline: 0; background: transparent; font-size: 13px; }
+
+      /* 系统通知（模拟操作系统） */
+      .sysnote { position: fixed; right: 16px; top: 48px; z-index: 200; width: 340px; border-radius: 14px; padding: 12px 14px; background: oklch(0.98 0 0 / 0.96); color: oklch(0.2 0 0);
+        box-shadow: 0 18px 48px -12px oklch(0 0 0 / 0.35), 0 0 0 1px oklch(0 0 0 / 0.06); font-size: 13px; cursor: pointer; animation: slidein 0.35s cubic-bezier(.2,.8,.2,1); }
+      .dark .sysnote { background: oklch(0.27 0 0 / 0.96); color: oklch(0.96 0 0); }
+      @keyframes slidein { from { transform: translateX(40px); opacity: 0; } }
+      .sysnote .src { font-size: 11.5px; opacity: 0.6; display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+
+      /* 演示控制台（不属于产品界面） */
+      .ctl { position: absolute; left: 12px; bottom: 12px; z-index: 60; width: 330px; border-radius: 14px; background: var(--popover); font-size: 12.5px;
+        box-shadow: 0 0 0 1.5px var(--note), 0 18px 48px -16px var(--elevation-far); overflow: hidden; }
+      .ctl-h { display: flex; align-items: center; gap: 6px; padding: 8px 10px; background: color-mix(in oklab, var(--note) 12%, transparent); color: var(--note); font-weight: 600; cursor: pointer; }
+      .ctl-b { padding: 8px 10px 10px; display: grid; gap: 8px; max-height: 52vh; overflow-y: auto; }
+      .ctl .sw { display: flex; align-items: center; gap: 6px; }
+      .ctl .tk { display: flex; align-items: center; gap: 6px; }
+      .ctl .tk b { font-weight: 500; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .ctl .sm { height: 22px; padding: 0 7px; border-radius: 6px; border: 1px solid var(--border); font-size: 11.5px; }
+      .ctl .sm:hover { background: var(--chrome-hover); }
+      .ctl .sec { font-size: 11px; color: var(--muted-foreground); text-transform: none; margin-top: 2px; }
+      .log { font-family: "Geist Mono", Consolas, monospace; font-size: 11px; display: grid; gap: 3px; }
+      .log div { padding: 3px 6px; border-radius: 5px; background: var(--muted); color: var(--muted-foreground); }
+      .log div.w { background: color-mix(in oklab, var(--status-success) 14%, transparent); color: var(--foreground); }
+      .log div.q { background: color-mix(in oklab, var(--status-warning) 16%, transparent); color: var(--foreground); }
+      .notes { display: grid; gap: 4px; }
+      .notes button { text-align: left; font-size: 12px; padding: 5px 7px; border-radius: 7px; background: color-mix(in oklab, var(--note) 8%, transparent); }
+      .notes button b { color: var(--note); }
+      .hl { outline: 2px dashed var(--note) !important; outline-offset: 3px; animation: pulse 0.6s ease 3; }
+      @keyframes pulse { 50% { outline-color: transparent; } }
+      .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 300; padding: 9px 14px; border-radius: 10px; background: var(--popover); box-shadow: 0 0 0 1px var(--chrome-border), 0 12px 32px -10px var(--elevation-far); font-size: 13px; display: flex; gap: 8px; align-items: center; }
+    </style>
+  </head>
+  <body>
+    <div class="browser">
+      <div class="dots"><i></i><i></i><i></i></div>
+      <div class="btab on" id="tabApp" onclick="setAway(false)"><span class="favicon"></span><span class="tabtitle" id="tabTitle">雨夜短片 - 连镜</span></div>
+      <div class="btab" id="tabOther" onclick="setAway(true)"><span class="favicon other"></span><span>飞书 · 消息</span></div>
+    </div>
+
+    <div class="viewport" id="viewport">
+      <div class="canvas" id="canvas">
+        <div class="world" id="world"></div>
+
+        <!-- 左上 -->
+        <div class="pill" style="left: 12px; top: 12px; padding-right: 12px">
+          <button class="ib" title="返回列表"><span class="orb"></span></button>
+          <span style="font-weight: 500; padding: 0 4px">雨夜短片</span>
+          <span class="muted row" style="font-size: 12px"><i data-lucide="check" style="width: 14px; height: 14px"></i>已保存</span>
+        </div>
+        <!-- 右上 -->
+        <div class="pill" style="right: 12px; top: 12px">
+          <button class="ib"><i data-lucide="more-horizontal"></i></button>
+          <span class="row" style="padding: 0 10px 0 4px"><i data-lucide="sparkle" style="color: var(--credit)"></i><span class="mono" id="credits">1280</span></span>
+          <span style="width: 28px; height: 28px; border-radius: 50%; background: oklch(0.7 0.08 250); display: grid; place-items: center; color: white; font-size: 12px">张</span>
+        </div>
+        <!-- 左侧工具栏 -->
+        <div class="pill v" style="left: 12px; top: 50%; transform: translateY(-50%)">
+          <button class="ib solid" title="添加节点"><i data-lucide="plus"></i></button>
+          <span class="sep"></span>
+          <button class="ib" style="color: var(--foreground); background: var(--chrome-hover)"><i data-lucide="mouse-pointer-2"></i></button>
+          <button class="ib"><i data-lucide="hand"></i></button>
+          <span class="sep"></span>
+          <button class="ib"><i data-lucide="undo-2"></i></button>
+          <button class="ib"><i data-lucide="redo-2"></i></button>
+          <span class="sep"></span>
+          <button class="ib"><i data-lucide="folder-open"></i></button>
+          <button class="ib"><i data-lucide="history"></i></button>
+        </div>
+        <!-- 左下：缩放 -->
+        <div class="pill" style="right: 12px; bottom: 12px; padding: 4px 12px; font-size: 12px"><span class="mono muted" id="zoom">100%</span></div>
+
+        <!-- 演示控制台 -->
+        <div class="ctl" id="ctl">
+          <div class="ctl-h" onclick="S.ctlOpen = !S.ctlOpen; renderCtl()">
+            <i data-lucide="flask-conical"></i>演示控制（不属于产品界面）<span class="spacer"></span><i data-lucide="chevron-down" id="ctlChev"></i>
+          </div>
+          <div class="ctl-b" id="ctlBody"></div>
+        </div>
+      </div>
+
+      <aside class="agent" id="agent">
+        <div class="ahead">
+          <span class="orb"></span>
+          <button class="title" title="历史会话 · 双击改名"><span id="sessTitle">分镜出图</span><i data-lucide="chevron-down" style="width: 14px; height: 14px; color: var(--muted-foreground)"></i></button>
+          <span class="spacer"></span>
+          <button class="hb" title="新对话"><i data-lucide="square-pen"></i></button>
+          <button class="hb" title="改为浮窗"><i data-lucide="picture-in-picture-2"></i></button>
+          <button class="hb" title="设置"><i data-lucide="settings"></i></button>
+          <button class="hb" title="收起"><i data-lucide="minus"></i></button>
+        </div>
+        <div id="stripSlot"></div>
+        <div class="msgs" id="msgs"></div>
+        <div class="status" id="status"></div>
+        <div class="composer-wrap" id="bottom"></div>
+      </aside>
+
+      <div class="away" id="away" hidden onclick="setAway(false)">
+        <div><b>（模拟）你切到了别的标签页</b>Agent 需要你时会发系统通知，标签标题也会变。点这里或上方「雨夜短片」标签回来。</div>
+      </div>
+    </div>
+
+    <div id="sysnote"></div>
+    <div id="toast"></div>
+
+    <script>
+      /* 原型：数据在内存里，刷新复原；时间、积分、文案中的结果都是示意。对应设计文档 docs/design/Agent等待生成结果/Agent等待生成结果.md */
+      const $ = (s) => document.querySelector(s);
+      const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const icons = () => window.lucide && lucide.createIcons();
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      const I = (n, st = "") => `<i data-lucide="${n}" style="${st}"></i>`;
+
+      // 画面：雨夜霓虹的渐变示意图
+      const ART = [
+        "radial-gradient(circle at 70% 30%, oklch(0.75 0.18 340 / .8), transparent 40%), linear-gradient(160deg, oklch(0.3 0.08 260), oklch(0.18 0.05 280))",
+        "radial-gradient(circle at 25% 60%, oklch(0.8 0.14 200 / .7), transparent 45%), linear-gradient(200deg, oklch(0.32 0.07 230), oklch(0.16 0.04 250))",
+        "radial-gradient(circle at 50% 75%, oklch(0.78 0.16 60 / .75), transparent 42%), linear-gradient(170deg, oklch(0.28 0.06 300), oklch(0.15 0.03 270))",
+        "radial-gradient(circle at 80% 70%, oklch(0.72 0.17 20 / .7), transparent 40%), linear-gradient(140deg, oklch(0.3 0.05 240), oklch(0.14 0.03 260))",
+      ];
+      const IMG_MODEL = "图灵二代（高清）", VID_MODEL = "Seedance 2.0";
+
+      let S;
+      function reset() {
+        S = {
+          ctlOpen: true, auto: true, other: false, away: false, notes: true,
+          nodes: [1, 2, 3, 4].map((i) => ({ id: "s" + i, title: "镜头 " + i, kind: "image", x: 40 + (i - 1) * 255, y: 110, art: ART[i - 1], st: "empty", ver: 0 })),
+          links: [],
+          msgs: [], status: null, dock: null, watch: null, stripOpen: false,
+          running: false, runToken: 0, steerPending: false, stage: 0, credits: 1280,
+          tasks: {}, log: [], sessTitle: "分镜出图",
+        };
+        S.msgs.push({ t: "user", html: `${chipN("镜头 1")} ${chipN("镜头 2")} ${chipN("镜头 3")} ${chipN("镜头 4")} 先出分镜图，我看过再做成视频` });
+        S.msgs.push({ t: "think" });
+        S.msgs.push({ t: "act", icon: "book-open", text: "读取了画布 · 查看了可用模型", dur: "2.4s" });
+        S.msgs.push({ t: "a", html: `<p>4 个镜头的提示词都写好了：雨夜街口、窗边、巷子、天桥，统一 16:9，用 <b>${IMG_MODEL}</b> 出分镜图。</p>` });
+        S.msgs.push({ t: "act", icon: "wand-sparkles", text: "申请了生成", dur: "0.6s" });
+        openDock(["s1", "s2", "s3", "s4"].map((id) => ({ node: id, label: node(id).title, model: IMG_MODEL, cost: 2, redo: false })), "根据剧本为 4 个镜头生成分镜图");
+        log("Agent 提出申请：审批卡出现，运行进入「等你确认」");
+        renderAll();
+      }
+      const chipN = (t) => `<span class="chip">${I("image", "width:12px;height:12px")}${esc(t)}</span>`;
+      const node = (id) => S.nodes.find((n) => n.id === id);
+      function log(t, k = "") { S.log.unshift({ t, k }); S.log = S.log.slice(0, 8); }
+      function toast(t) { $("#toast").innerHTML = `<div class="toast">${I("info")}${esc(t)}</div>`; icons(); clearTimeout(toast.h); toast.h = setTimeout(() => ($("#toast").innerHTML = ""), 2400); }
+
+      /* ---------------- 审批（复用现有决定框） ---------------- */
+      function openDock(items, reason) {
+        S.dock = { items: items.map((x) => ({ ...x, on: true })), reason, rejecting: false };
+        S.status = { kind: "wait" };
+        if (S.away) sysNotify("Agent 需要你批准一批生成", `雨夜短片 · ${S.dock.items.length} 个节点，预估 ✦ ${dockTotal()}`);
+        flashTitle();
+      }
+      const dockTotal = () => S.dock.items.filter((x) => x.on).reduce((a, x) => a + x.cost, 0);
+      function approve() {
+        const items = S.dock.items.filter((x) => x.on);
+        if (!items.length) return toast("至少勾选一项");
+        const total = dockTotal();
+        S.msgs.push({ t: "arow", ok: true, text: `已批准：申请生成 ${items.length} 个节点` });
+        S.dock = null; S.credits -= total;
+        runAfterApprove(items);
+      }
+      function reject(note) {
+        const n = S.dock.items.length;
+        S.msgs.push({ t: "arow", ok: false, text: `已拒绝：申请生成 ${n} 个节点`, note });
+        S.dock = null;
+        startRun(async (ok) => {
+          S.status = { kind: "run", text: "思考中" }; renderAll();
+          await sleep(900); if (!ok()) return;
+          S.msgs.push({ t: "a", html: note ? `<p>好的，按你说的「${esc(note)}」调整，这批先不生成。改好后我再申请。</p>` : "<p>好的，这批先不生成，积分没有动。需要时再叫我。</p>" });
+          endRun();
+        });
+      }
+
+      /* ---------------- 运行 ---------------- */
+      function startRun(fn) {
+        const token = ++S.runToken; S.running = true;
+        const ok = () => S.runToken === token && S.running;
+        fn(ok).catch(() => {});
+      }
+      function endRun(chips) {
+        S.running = false; S.status = null;
+        if (chips) S.msgs.push({ t: "foot", chips });
+        renderAll();
+        // 本会话这轮结束：排队中的唤醒现在可以交付了
+        if (S.watch && S.watch.state === "queued") { S.watch.state = "waiting"; tryWake(); }
+      }
+      function stopRun() {
+        // 结果正要插进这一轮时被停止：退回「整批已结束、待交付」，下面重新判定，不丢唤醒
+        if (S.steerPending && S.watch) S.watch.state = "queued";
+        S.running = false; S.runToken++; S.steerPending = false;
+        S.msgs.push({ t: "card", tone: "neutral", title: "已停止", text: "没做完的计划还留着，可以接着让它做" });
+        S.status = null; log("用户停止了运行（后台监听不受影响）");
+        renderAll();
+        if (S.watch && S.watch.state === "queued") { S.watch.state = "waiting"; tryWake(); }
+      }
+
+      function runAfterApprove(items) {
+        startRun(async (ok) => {
+          S.status = { kind: "run", text: "正在提交任务" }; renderAll();
+          await sleep(700); if (!ok()) return;
+          const ids = [];
+          items.forEach((it) => {
+            const n = node(it.node);
+            n.st = "queued"; n.progress = 0; n.elapsed = 0;
+            const dur = n.kind === "video" ? 140 + Math.random() * 80 : 30 + Math.random() * 30;
+            const fail = S.stage === 0 && n.id === "s3"; // 预置：第一轮镜头 3 触发风控
+            S.tasks[n.id] = { dur, fail, done: false };
+            ids.push(n.id);
+          });
+          // 登记监听：一次 Pi 提交写 app.watches + 建 app.task-watch
+          S.watch = { ids, state: "waiting", batch: "A" + (S.stage + 1) };
+          log(`Pi 提交：app.watches 加批 ${S.watch.batch}（${ids.length} 个任务）+ 建后台任务 app.task-watch`, "w");
+          S.msgs.push({ t: "act", icon: "wand-sparkles", text: `提交了 ${ids.length} 个生成任务`, dur: "0.7s" });
+          S.msgs.push({ t: "a", html: "<p>已提交。它们在后台生成，<b>全部结束后我会自动接着验收</b>，你可以先忙别的，或者关掉这个面板。</p>" });
+          endRun([`${I("wand-sparkles", "width:12px;height:12px")}生成 ${ids.length}`]);
+          log("本轮结束 → 运行 succeeded，画布释放");
+          flashTitle();
+        });
+      }
+
+      /* ---------------- 任务推进（模拟 Go + River） ---------------- */
+      setInterval(() => {
+        if (!S.auto) return;
+        let changed = false;
+        for (const [id, t] of Object.entries(S.tasks)) {
+          if (t.done) continue;
+          const n = node(id);
+          n.elapsed += 6; changed = true; // 每 0.5 秒 = 6 秒模拟时间（示意）
+          if (n.st === "queued" && n.elapsed > 8) n.st = "running";
+          if (n.st === "running") n.progress = Math.min(99, Math.round((n.elapsed / t.dur) * 100));
+          if (n.elapsed >= t.dur) settle(id, !t.fail);
+        }
+        if (changed) { renderNodes(); renderBottom(); renderCtl(); }
+      }, 500);
+
+      function settle(id, success) {
+        const t = S.tasks[id]; if (!t || t.done) return;
+        const n = node(id);
+        if (n.st === "queued") n.st = "running";
+        n.st = "finalizing"; renderNodes();
+        setTimeout(() => {
+          t.done = true;
+          n.st = success ? "done" : "failed";
+          if (success) n.ver += 1; else S.credits += n.kind === "video" ? 20 : 2; // 失败退积分
+          log(`任务 ${n.title} ${success ? "成功" : "失败"}：finish() 事务内入队 agent.task_settled → 门铃`);
+          if (S.watch && S.watch.ids.includes(id)) {
+            if (S.watch.state === "canceled") log("门铃 → 404（已取消等待），job 结束");
+            else log(`Agent 在 app.watches 记账：${settledCount()}/${S.watch.ids.length}`);
+          }
+          tryWake();
+          renderAll();
+        }, 700);
+      }
+      const settledCount = () => S.watch.ids.filter((id) => ["done", "failed"].includes(node(id).st)).length;
+
+      /* ---------------- 唤醒 ---------------- */
+      function tryWake() {
+        const w = S.watch;
+        if (!w || w.state !== "waiting" || settledCount() < w.ids.length) return;
+        if (S.other) { w.state = "queued"; log("整批结束，但画布被「角色设定」会话占着 → 排队", "q"); renderAll(); return; }
+        if (S.running && !S.dock) { w.state = "delivered"; S.steerPending = true; log("整批结束，本会话正在回答 → steer 插进当前这一轮", "w"); renderAll(); return; }
+        if (S.dock) { w.state = "queued"; log("整批结束，本会话在等审批 → 排队", "q"); renderAll(); return; }
+        w.state = "delivered";
+        log(`唤醒：新开运行 trigger=wake，submit(requestId=wake:S1:${w.batch})`, "w");
+        wake(false);
+      }
+      function wake(steer) {
+        const ids = S.watch.ids;
+        S.watch = null;
+        S.msgs.push({ t: "wake", steer });
+        if (S.away) sysNotify("生成已完成，Agent 正在验收", `雨夜短片 · ${ids.length} 个任务全部结束`);
+        const body = async (ok) => {
+          await verify(ids, ok);
+        };
+        if (steer) return body(() => S.running);
+        startRun(body);
+      }
+      async function verify(ids, ok) {
+        const okIds = ids.filter((id) => node(id).st === "done"), bad = ids.filter((id) => node(id).st === "failed");
+        const imgs = okIds.filter((id) => node(id).kind === "image"), vids = okIds.filter((id) => node(id).kind === "video");
+        S.status = { kind: "run", text: `正在验收 ${ids.length} 个结果` }; renderAll();
+        await sleep(1100); if (!ok()) return;
+        if (imgs.length) S.msgs.push({ t: "act", icon: "eye", text: `查看了图片 ×${imgs.length}`, dur: "3.2s" });
+        if (vids.length) S.msgs.push({ t: "act", icon: "film", text: `查看了视频 ×${vids.length}`, dur: "8.6s" });
+        renderAll();
+        await sleep(900); if (!ok()) return;
+
+        if (S.stage === 0) {
+          let html = `<p>看了 ${imgs.length} 张成功的分镜图：</p><ul>`;
+          imgs.forEach((id) => (html += `<li><b>${node(id).title}</b>：构图和人物一致，可以做视频</li>`));
+          bad.forEach((id) => (html += `<li><b>${node(id).title}</b>：生成失败（触发内容安全风控，积分已退回）。我把提示词里的「血迹」改成了「散落的雨伞」</li>`));
+          html += "</ul>";
+          S.msgs.push({ t: "a", html });
+          S.msgs.push({ t: "act", icon: "pencil-line", text: `修改了画布 · 新建 ${imgs.length} 个视频节点`, dur: "1.1s" });
+          imgs.forEach((id) => {
+            const src = node(id), vid = { id: "v" + id.slice(1), title: src.title.replace("镜头", "视频"), kind: "video", x: src.x, y: 360, art: src.art, st: "empty", ver: 0, touched: true };
+            S.nodes.push(vid); S.links.push([id, vid.id]);
+          });
+          bad.forEach((id) => { node(id).st = "empty"; node(id).touched = true; });
+          renderAll();
+          await sleep(700); if (!ok()) return;
+          S.stage = 1;
+          S.msgs.push({ t: "act", icon: "wand-sparkles", text: "申请了生成", dur: "0.5s" });
+          openDock([
+            ...bad.map((id) => ({ node: id, label: node(id).title + "（重做）", model: IMG_MODEL, cost: 2 })),
+            ...imgs.map((id) => ({ node: "v" + id.slice(1), label: node("v" + id.slice(1)).title, model: VID_MODEL, cost: 20 })),
+          ], `重做失败的镜头，合格的 ${imgs.length} 张做成 5 秒图生视频`);
+          S.running = false; // 运行停在等你确认
+          renderAll();
+          return;
+        }
+        // 第二轮：汇报
+        const redo = bad.length ? `<li>${bad.map((id) => node(id).title).join("、")} 又失败了，原因已标在节点上，要不要换个模型再试？</li>` : "";
+        const newImg = imgs.length ? `<li>${imgs.map((id) => node(id).title).join("、")} 重做成功，画面没问题。要不要也做成视频？</li>` : "";
+        S.msgs.push({ t: "a", html: `<p>这一组做完了：</p><ul><li>${vids.length} 段视频都已验收：运镜平稳，雨丝和霓虹反光连贯</li>${newImg}${redo}</ul>` });
+        S.stage = 2;
+        if (S.away) sysNotify("Agent 完成了这一组镜头", "雨夜短片 · 点开查看结果");
+        endRun([`${I("eye", "width:12px;height:12px")}验收 ${ids.length}`]);
+      }
+
+      /* ---------------- 用户输入 ---------------- */
+      function send() {
+        const el = $("#ed"); const text = el.value.trim(); if (!text) return;
+        el.value = "";
+        if (S.running) { // 插话（现有行为）
+          S.msgs.push({ t: "user", html: esc(text), steer: true }); renderAll(); return;
+        }
+        if (S.other) { el.value = text; return toast("这个画布上已有运行中的 Agent（「角色设定」会话），稍后再试"); } // 现有 60001
+        S.msgs.push({ t: "user", html: esc(text) });
+        startRun(async (ok) => {
+          S.status = { kind: "run", text: "思考中" }; renderAll();
+          await sleep(1300); if (!ok()) return;
+          S.msgs.push({ t: "act", icon: "book-open", text: "读取了画布 · 修改了画布", dur: "1.6s" });
+          S.msgs.push({ t: "a", html: "<p>改好了。这是一轮普通对话，后台等待不受影响。</p>" });
+          renderAll();
+          await sleep(1300); if (!ok()) return;
+          if (S.steerPending) { // 结果插进这一轮
+            S.steerPending = false;
+            await wakeSteer(ok);
+            return;
+          }
+          endRun();
+        });
+      }
+      async function wakeSteer(ok) {
+        const ids = S.watch ? S.watch.ids : [];
+        S.msgs.push({ t: "wake", steer: true });
+        S.watch = null;
+        await verify(ids.length ? ids : lastIds(), ok);
+      }
+      const lastIds = () => Object.keys(S.tasks).filter((id) => S.tasks[id].done && S.tasks[id].stage === undefined);
+      function cancelWatch() {
+        S.watch.state = "canceled";
+        log("用户点「不用等了」：app.watches 标记 canceled，abortTask 收掉监听任务");
+        renderAll();
+        setTimeout(() => { if (S.watch && S.watch.state === "canceled") { S.watch = null; renderAll(); } }, 2500);
+      }
+
+      /* ---------------- 外部环境：标签页、系统通知 ---------------- */
+      function setAway(v) {
+        S.away = v; $("#away").hidden = !v;
+        $("#tabApp").classList.toggle("on", !v); $("#tabOther").classList.toggle("on", v);
+        if (!v) $("#sysnote").innerHTML = "";
+        renderCtl();
+      }
+      function sysNotify(title, body) {
+        $("#sysnote").innerHTML = `<div class="sysnote" onclick="setAway(false)"><div class="src"><span class="favicon"></span>连镜 · ${new Date().toTimeString().slice(0, 5)}</div><b>${esc(title)}</b><div style="opacity:.75;margin-top:2px">${esc(body)}</div></div>`;
+        clearTimeout(sysNotify.h); sysNotify.h = setTimeout(() => ($("#sysnote").innerHTML = ""), 7000);
+      }
+      function pageTitle() {
+        const base = "雨夜短片 - 连镜";
+        if (S.dock) return "⏸ 待批准 · " + base;
+        if (S.watch && S.watch.state !== "canceled" && S.watch.state !== "delivered") return `⏳ ${settledCount()}/${S.watch.ids.length} · ` + base;
+        return base;
+      }
+      function flashTitle() { const el = $("#tabTitle"); el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); }
+
+      /* ---------------- 渲染 ---------------- */
+      function renderAll() { renderNodes(); renderMsgs(); renderStatus(); renderBottom(); renderCtl(); $("#tabTitle").textContent = pageTitle(); document.title = pageTitle(); $("#credits").textContent = S.credits; icons(); }
+
+      function renderNodes() {
+        const w = $("#world");
+        const lines = S.links.map(([a, b]) => { const A = node(a), B = node(b); const x1 = A.x + 110, y1 = A.y + 124, x2 = B.x + 110, y2 = B.y - 30; return `<path d="M${x1} ${y1} C ${x1} ${y1 + 50}, ${x2} ${y2 - 50}, ${x2} ${y2}"/>`; }).join("");
+        w.innerHTML = `<svg class="links">${lines}</svg>` + S.nodes.map(nodeHtml).join("");
+        $("#tabTitle").textContent = pageTitle();
+        icons();
+      }
+      function nodeHtml(n) {
+        const icon = n.kind === "video" ? "video" : "image";
+        let st = "", body = "";
+        const sec = (s) => (s >= 60 ? `${Math.floor(s / 60)}分${Math.round(s % 60)}秒` : `${Math.round(s)}秒`);
+        if (n.st === "queued") { st = `<span class="st muted">排队中</span>`; body = `<div class="ph skel"><div><div class="t">${I("loader-2", "width:14px;height:14px")}排队中</div><div class="muted" style="margin-top:4px">前面的任务处理完后会自动开始</div></div></div>`; }
+        else if (n.st === "running") { st = `<span class="st mono" style="color:var(--status-running)">生成中 ${n.progress}%</span>`; body = `<div class="ph skel"><div><div class="t"><i data-lucide="loader-2" class="spin" style="width:14px;height:14px"></i>生成中 <span class="mono muted">${n.progress}%</span></div><div class="bar"><i style="width:${n.progress}%"></i></div><div class="muted">已耗时 ${sec(n.elapsed)}</div></div></div>`; }
+        else if (n.st === "finalizing") { st = `<span class="st" style="color:var(--status-running)">即将完成</span>`; body = `<div class="ph skel"><div><div class="t"><i data-lucide="loader-2" class="spin" style="width:14px;height:14px"></i>即将完成</div><div class="muted" style="margin-top:4px">正在保存${n.kind === "video" ? "视频" : "图片"}</div></div></div>`; }
+        else if (n.st === "failed") { st = `<span class="st" style="color:var(--destructive)">生成失败</span>`; body = `<div class="ph fail"><div>${I("triangle-alert")}<div style="margin-top:4px">触发内容安全风控</div><small>积分已退回 · #task-3f2a</small></div></div>`; }
+        else if (n.st === "done") { body = `<div class="media" style="background:${n.art}"><span class="ver">v${n.ver}</span>${n.kind === "video" ? `<span class="play">${I("play", "width:14px;height:14px")}</span><span class="dur mono">0:05</span>` : ""}</div>`; }
+        else body = `<div class="ph empty"><div>${I(icon, "width:22px;height:22px;opacity:.5")}<div style="margin-top:4px;font-size:11.5px">提示词已写好 · ${n.kind === "video" ? VID_MODEL : IMG_MODEL}</div></div></div>`;
+        return `<div class="node ${n.touched ? "touched" : ""}" style="left:${n.x}px;top:${n.y}px"><div class="nhead">${I(icon, "width:14px;height:14px")}<b>${esc(n.title)}</b>${st}</div><div class="ncard">${body}</div></div>`;
+      }
+
+      function renderMsgs() {
+        const html = S.msgs.map((m) => {
+          if (m.t === "user") return `<div class="u">${m.steer ? '<span class="lab">插话</span>' : ""}<div class="bub inset">${m.html}</div></div>`;
+          if (m.t === "think") return `<div class="think">${I("chevron-right", "width:13px;height:13px")}已思考</div>`;
+          if (m.t === "act") return `<div class="act">${I(m.icon, "width:14px;height:14px")}${esc(m.text)}<span class="mono" style="opacity:.7">${m.dur}</span>${I("chevron-right", "width:12px;height:12px;opacity:.6")}</div>`;
+          if (m.t === "a") return `<div class="a">${m.html}</div>`;
+          if (m.t === "arow") return `<div class="arow">${I(m.ok ? "check" : "x", "width:14px;height:14px;margin-top:3px")}<span>${esc(m.text)}${m.note ? ` · 你的说明：<b>${esc(m.note)}</b>` : ""}</span></div>`;
+          if (m.t === "foot") return `<div class="foot">${m.chips.map((c) => `<span class="cap">${c}</span>`).join("")}<span class="spacer"></span><button class="hb">${I("copy", "width:13px;height:13px")}</button><button class="hb">${I("thumbs-up", "width:13px;height:13px")}</button><button class="hb">${I("thumbs-down", "width:13px;height:13px")}</button></div>`;
+          if (m.t === "wake") return `<div class="wake" id="wakeMark"><span>${I("sparkles", "width:12px;height:12px")}${m.steer ? "生成全部结束 · 插进这一轮" : "生成全部结束 · Agent 自动继续"}</span></div>`;
+          if (m.t === "card") return `<div class="card inset" style="display:flex;gap:8px">${I("circle-stop", "margin-top:2px;color:var(--muted-foreground)")}<div><b style="font-weight:500">${esc(m.title)}</b><div class="muted" style="font-size:12.5px">${esc(m.text)}</div></div></div>`;
+          return "";
+        }).join("");
+        const el = $("#msgs"); el.innerHTML = html; el.scrollTop = el.scrollHeight;
+      }
+      function renderStatus() {
+        const s = S.status, el = $("#status");
+        if (!s) { el.innerHTML = ""; return; }
+        if (s.kind === "wait") el.innerHTML = `${I("hand", "width:14px;height:14px;color:var(--status-warning)")}<span class="muted">等你确认 ↓</span>`;
+        else el.innerHTML = `<span class="odot"></span><span class="shimmer">${esc(s.text)}</span><span class="spacer muted"><kbd>Esc</kbd> 停止</span>`;
+      }
+
+      function ringSvg(k, n, color) {
+        const r = 6.5, c = 2 * Math.PI * r, p = n ? k / n : 0;
+        return `<svg class="ring" viewBox="0 0 16 16"><circle cx="8" cy="8" r="${r}" fill="none" stroke="color-mix(in oklab, var(--foreground) 12%, transparent)" stroke-width="2"/><circle cx="8" cy="8" r="${r}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-dasharray="${c * p} ${c}" transform="rotate(-90 8 8)"/></svg>`;
+      }
+      function renderStrip() { $("#stripSlot").innerHTML = stripHtml(); icons(); }
+      function stripHtml() {
+        const w = S.watch; if (!w || w.state === "delivered") return "";
+        const k = settledCount(), n = w.ids.length;
+        const fails = w.ids.filter((id) => node(id).st === "failed").length;
+        let txt, right = "";
+        if (w.state === "waiting") { txt = `后台等待生成 · <span class="mono">${k}/${n}</span> 已结束${fails ? ` <span style="color:var(--destructive)">· ${fails} 项失败</span>` : ""}`; right = `<button class="mini" onclick="event.stopPropagation();cancelWatch()">不用等了</button>`; }
+        else if (w.state === "queued") txt = S.dock ? "已全部结束 · 处理完这次审批后 Agent 继续" : S.other ? "已全部结束 · 等「角色设定」会话的运行结束后继续" : "已全部结束 · 这一轮回答完后 Agent 继续";
+        else txt = '<span class="muted">已取消等待 · 生成照常进行，不会再叫醒 Agent</span>';
+        const list = S.stripOpen && w.state !== "canceled" ? `<div class="strip-list">${w.ids.map((id) => { const x = node(id); const m = { queued: ["排队中", "muted"], running: [`生成中 ${x.progress}%`, ""], finalizing: ["即将完成", ""], done: ["成功", ""], failed: ["失败", ""] }[x.st] || ["", ""]; const ic = x.st === "done" ? I("check", "width:13px;height:13px;color:var(--status-success)") : x.st === "failed" ? I("x", "width:13px;height:13px;color:var(--destructive)") : '<i data-lucide="loader-2" class="spin" style="width:13px;height:13px"></i>'; return `<div class="li">${ic}<b>${esc(x.title)}</b><span class="spacer mono">${m[0]}</span></div>`; }).join("")}</div>` : "";
+        return `<div class="strip" id="stripEl"><div class="strip-h" onclick="S.stripOpen=!S.stripOpen;renderStrip()">${ringSvg(k, n, w.state === "waiting" ? "var(--status-running)" : "var(--status-success)")}<span class="txt">${txt}</span><span class="spacer"></span>${right}${I(S.stripOpen ? "chevron-up" : "chevron-down", "width:14px;height:14px;color:var(--muted-foreground)")}</div>${list}</div>`;
+      }
+      let bottomKey = "";
+      function renderBottom(force = false) {
+        const el = $("#bottom");
+        const key = (S.dock ? "d" : "c") + (S.running ? 1 : 0);
+        renderStrip();
+        if (!force && key === bottomKey && el.firstChild) {
+          // 只刷新发送按钮，不重建输入框 / 决定框（否则正在输入的会失焦）
+          if (!S.dock) renderSend();
+          return;
+        }
+        bottomKey = key;
+        if (S.dock) {
+          const d = S.dock;
+          const items = d.items.map((x, i) => `<label class="item"><input type="checkbox" ${x.on ? "checked" : ""} onchange="S.dock.items[${i}].on=this.checked;renderBottom(true);icons()"/><span>${esc(x.label)}</span><span class="m">${esc(x.model)}</span><span class="spacer credit">✦ ${x.cost}</span></label>`).join("");
+          const third = d.rejecting
+            ? `<div class="opt" style="background:var(--chrome-hover)"><span class="k">3</span><input id="rejIn" placeholder="比如：改用 Seedream，只生成林夏" onkeydown="if(event.key==='Enter'&&this.value.trim())reject(this.value.trim())"/><button onclick="const v=$('#rejIn').value.trim(); if(v) reject(v)">${I("arrow-up")}</button></div>`
+            : `<button class="opt" onclick="S.dock.rejecting=true;renderBottom(true);icons();$('#rejIn').focus()"><span class="k">3</span>拒绝，并告诉 Agent 怎么改…</button>`;
+          el.innerHTML = `<div class="dock" id="dockEl">
+            <div class="dock-h">${I("sparkles", "color:var(--status-warning)")}申请生成 ${d.items.length} 个节点<span class="spacer credit">✦ ${dockTotal()}</span></div>
+            <div class="reason">${esc(d.reason)}</div>
+            <div class="items">${items}</div>
+            <div class="opts">
+              <button class="opt main" onclick="approve()"><span class="k">1</span>批准生成<span class="spacer" style="opacity:.8">✦ ${dockTotal()}</span></button>
+              <button class="opt" onclick="reject()"><span class="k">2</span>拒绝</button>
+              ${third}
+            </div></div>`;
+          return;
+        }
+        const busy = S.running;
+        const ph = busy ? "补充要求，Agent 会在下一步看到" : "描述你的想法，@ 引用节点，/ 插入技能";
+        const prev = $("#ed") ? $("#ed").value : "";
+        el.innerHTML = `<div class="composer" id="composerEl">
+          <textarea class="ed" id="ed" rows="2" placeholder="${ph}" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();send()}" oninput="renderSend()"></textarea>
+          <div class="cbar">
+            <button class="tb">${I("plus")}</button><button class="tb">全能创作${I("chevron-down", "width:13px;height:13px")}</button>
+            <span style="width:1px;height:16px;background:var(--border);margin:0 2px"></span>
+            <button class="tb">${I("box")}</button><button class="tb">${I("book-marked")}</button>
+            <span class="spacer"></span>
+            <button class="tb">Claude Sonnet 4.6${I("chevron-down", "width:13px;height:13px")}</button>
+            ${ringSvg(22, 100, "var(--muted-foreground)")}
+            <span id="sendBtn"></span>
+          </div></div>`;
+        $("#ed").value = prev;
+        renderSend();
+      }
+      function renderSend() {
+        const has = $("#ed") && $("#ed").value.trim();
+        const b = $("#sendBtn"); if (!b) return;
+        if (S.running && !has) b.innerHTML = `<button class="send stop" title="停止 (Esc)" onclick="stopRun()">${I("square", "width:13px;height:13px;fill:currentColor")}</button>`;
+        else b.innerHTML = `<button class="send ${has ? "" : "off"}" title="${S.running ? "插话" : "发送"}" onclick="send()">${I("arrow-up")}</button>`;
+        icons();
+      }
+
+      function renderCtl() {
+        $("#ctlBody").hidden = !S.ctlOpen;
+        if (!S.ctlOpen) { icons(); return; }
+        const active = S.nodes.filter((n) => ["queued", "running"].includes(n.st));
+        const tasks = active.length
+          ? active.map((n) => `<div class="tk"><b>${esc(n.title)}</b><button class="sm" onclick="settle('${n.id}',true)">成功</button><button class="sm" onclick="settle('${n.id}',false)">失败</button></div>`).join("")
+          : '<div class="muted">没有进行中的生成</div>';
+        const tip = S.dock ? "点「批准生成」，或第 3 项写一句话看「拒绝并说明」" : S.watch && S.watch.state === "waiting" ? "试试：在输入框聊一句，趁 Agent 回答时把最后一个任务点成功" : S.stage === 2 ? "整条链走完了，可以点「重来」" : "";
+        $("#ctlBody").innerHTML = `
+          ${tip ? `<div style="color:var(--note)">${I("lightbulb", "width:13px;height:13px;vertical-align:-2px")} ${esc(tip)}</div>` : ""}
+          <label class="sw"><input type="checkbox" ${S.auto ? "checked" : ""} onchange="S.auto=this.checked"/>自动推进任务（0.5 秒 = 6 秒，示意）</label>
+          <div class="sec">进行中的生成（手动结束）</div>${tasks}
+          <label class="sw"><input type="checkbox" ${S.other ? "checked" : ""} onchange="toggleOther(this.checked)"/>另一会话「角色设定」占着画布</label>
+          <label class="sw"><input type="checkbox" ${S.away ? "checked" : ""} onchange="setAway(this.checked)"/>页面在后台（看系统通知和标签标题）</label>
+          <div class="row"><button class="sm" onclick="reset()">${I("rotate-ccw", "width:12px;height:12px")} 重来</button><button class="sm" onclick="document.documentElement.classList.toggle('dark')">${I("sun-moon", "width:12px;height:12px")} 明暗</button></div>
+          <div class="sec">幕后（Go / River / pi-durable）</div>
+          <div class="log">${S.log.map((l) => `<div class="${l.k}">${esc(l.t)}</div>`).join("") || '<div>—</div>'}</div>
+          <div class="sec">这次新增的界面（点击定位）</div>
+          <div class="notes">
+            <button onclick="spot('#stripEl')"><b>后台等待条</b>：放在 Agent 面板顶部、头部下方，等审批和输入时都看得到；进度环 + 已结束数 + 「不用等了」，点开向下展开任务列表。没有监听时不出现</button>
+            <button onclick="spot('#wakeMark')"><b>唤醒分隔条</b>：系统发起的一轮从这里开始，不显示成用户消息，也不代表你批准了什么</button>
+            <button onclick="spot('#tabTitle')"><b>标签标题</b>：「⏸ 待批准」「⏳ 2/4」前缀，在现有「画布名 - 连镜」前面加</button>
+            <button onclick="spot('#dockEl')"><b>决定框（现有）</b>：第 3 项就是「等审批时发消息 = 拒绝并说明」，不另做</button>
+          </div>`;
+        icons();
+      }
+      function toggleOther(v) {
+        S.other = v;
+        log(v ? "「角色设定」会话开始运行，占着画布" : "「角色设定」会话的运行结束 → 对该画布 tryWake", v ? "q" : "");
+        if (!v && S.watch && S.watch.state === "queued" && !S.dock && !S.running) { S.watch.state = "waiting"; tryWake(); }
+        renderAll();
+      }
+      function spot(sel) {
+        const el = $(sel);
+        if (!el) return toast("现在界面上没有它，走到对应步骤再点");
+        el.classList.add("hl"); el.scrollIntoView({ block: "nearest" });
+        setTimeout(() => el.classList.remove("hl"), 1900);
+      }
+
+      // 画布缩放适配
+      function fit() {
+        const c = $("#canvas"), z = Math.min(1, (c.clientWidth - 90) / 1080, (c.clientHeight - 40) / 560);
+        $("#world").style.transform = `translate(${Math.max(70, (c.clientWidth - 1080 * z) / 2)}px, 30px) scale(${z})`;
+        $("#zoom").textContent = Math.round(z * 100) + "%";
+      }
+      window.addEventListener("resize", fit);
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && S.running) stopRun();
+        if (S.dock && !S.dock.rejecting && document.activeElement.tagName !== "INPUT") {
+          if (e.key === "1") approve(); else if (e.key === "2") reject(); else if (e.key === "3") { S.dock.rejecting = true; renderBottom(true); icons(); $("#rejIn").focus(); e.preventDefault(); }
+        }
+      });
+      reset(); fit();
+    </script>
+  </body>
+</html>

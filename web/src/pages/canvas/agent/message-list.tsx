@@ -8,6 +8,7 @@ import {
   Copy,
   Layers,
   Play,
+  Sparkles,
   TriangleAlert,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -366,6 +367,8 @@ function Item({
       return <StatusCard item={item} ctl={ctl} />;
     case "compaction":
       return <CompactionDivider item={item} window={ctl.context.window} />;
+    case "settled":
+      return <SettledDivider text={item.text} />;
     case "plan-done":
       return (
         <p className="text-muted-foreground flex items-center gap-2 text-[13px]">
@@ -378,6 +381,27 @@ function Item({
     case "run-feedback":
       return null;
   }
+}
+
+/**
+ * 唤醒分隔条：后台等待的生成全部结束，系统自动让 Agent 继续。居中的一条淡线加一句话，和压缩分隔行同一风格；
+ * 它不是用户消息，也不代表你批准了什么，所以不用气泡。
+ */
+function SettledDivider({ text }: { text: string }) {
+  return (
+    <div
+      role="separator"
+      aria-label={text}
+      className="text-muted-foreground flex items-center gap-2.5 text-[11.5px]"
+    >
+      <span className="bg-foreground/12 h-px flex-1" />
+      <span className="bg-beam/12 inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 whitespace-nowrap">
+        <Sparkles className="size-3" />
+        {text}
+      </span>
+      <span className="bg-foreground/12 h-px flex-1" />
+    </div>
+  );
 }
 
 /**

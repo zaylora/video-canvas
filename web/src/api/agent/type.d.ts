@@ -203,6 +203,40 @@ export interface AgentEventDto {
   created_at: string;
 }
 
+/** 后台等待里一个生成任务的最终结果（watch.updated / tasks.settled 里的 task_status） */
+export type AgentWatchTaskResult = "succeeded" | "failed" | "expired" | "canceled" | "missing";
+
+/** 后台等待里的一个生成任务 */
+export interface AgentWatchTaskDto {
+  /** 生成任务 ID（十进制字符串） */
+  task_id: string;
+  /** 它绑定的画布节点 */
+  node_id: string;
+  /** 节点标题，批准时记下的 */
+  label: string;
+  /** pending 还没结束；settled 已结束，结果看 task_status */
+  status: "pending" | "settled";
+  /** 结束后的结果，还没结束没有 */
+  task_status?: AgentWatchTaskResult;
+}
+
+/**
+ * 一批后台等待：一次批准的生成。waiting 还有任务没结束；deliverable 全部结束、等当前运行结束后 Agent 继续；
+ * delivered 已交给 Agent；canceled 用户点了「不用等了」
+ */
+export interface AgentWatchBatchDto {
+  /** 批 ID（批准的审批 ID） */
+  batch_id: string;
+  /** 这一批的状态 */
+  state: "waiting" | "deliverable" | "delivered" | "canceled";
+  /** 这一批的任务总数 */
+  total: number;
+  /** 已结束的任务数 */
+  settled: number;
+  /** 逐个任务 */
+  tasks: AgentWatchTaskDto[];
+}
+
 /** 一页聊天记录：事件按序号升序，has_more 表示更早还有没加载的 */
 export type AgentHistoryDto = {
   events: AgentEventDto[];

@@ -25,6 +25,7 @@ import { useAgentStore } from "@/store/agent";
 import { useCreditsStore } from "@/store/credits";
 import { activeRunId, emptySession } from "@/utils/agent/session-state";
 import { buildRunStrip, buildStatusLine, buildTimeline } from "@/utils/agent/timeline";
+import { activeWatches, ensureNotificationPermission, summarizeWatches } from "@/utils/agent/watch";
 
 /** 没有会话时共用的空数组，免得每次渲染都是新引用 */
 const NO_SESSIONS: AgentSessionDto[] = [];
@@ -85,7 +86,10 @@ export function useAgentController({
     setSessionId(target?.id ?? null);
     if (target) {
       setMode(target.mode);
-      void useAgentStore.getState().loadLatest(target.id);
+      void useAgentStore
+        .getState()
+        .loadLatest(target.id)
+        .then(() => useAgentStore.getState().loadWatches(target.id));
     } else {
       setMode("all");
     }
@@ -138,6 +142,17 @@ export function useAgentController({
     );
     return list.at(-1) ?? null;
   }, [activeRun, state.approvals]);
+  /** 会话里进行中的后台等待（多批合并），没有为 null：监听条据此显示，标签页标题也用它 */
+  const watch = useMemo(() => summarizeWatches(activeWatches(state)), [state]);
+  /** 不用等了：取消还没交给 Agent 的等待，生成照常完成；接口失败的提示由全局请求拦截器弹出 */
+  const cancelWatch = useCallback(async () => {
+    if (!sessionId) return;
+    try {
+      await useAgentStore.getState().cancelWatches(sessionId);
+    } catch {
+      // 全局提示已经弹了
+    }
+  }, [sessionId]);
   /** 当前会话的上下文用量：已用取最近一次对话调用的输入（新一轮开始前沿用上一轮的），上限是当前模型的窗口 */
   const context = {
     tokens: state.contextTokens,
@@ -207,6 +222,10 @@ export function useAgentController({
   /** 对审批做决定；接口失败的提示由全局请求拦截器弹出，返回是否成功 */
   const decide = useCallback(
     async (approvalId: string, req: DecideAgentApprovalReq): Promise<"ok" | "failed"> => {
+      // 第一次批准生成时顺带问一次系统通知权限：之后生成结束、需要批准时页面在后台也能提醒；拒绝或不支持就算了
+      if (req.decision === "approve" && state.approvals[approvalId]?.kind === "generate") {
+        ensureNotificationPermission();
+      }
       try {
         await decideAgentApproval(approvalId, req);
         void useCreditsStore.getState().refresh();
@@ -215,7 +234,7 @@ export function useAgentController({
         return "failed";
       }
     },
-    [],
+    [state.approvals],
   );
 
   /** 撤销本轮；返回结果（成功）或 null */
@@ -294,6 +313,8 @@ export function useAgentController({
     strip,
     statusLine,
     pending,
+    watch,
+    cancelWatch,
     context,
     activeRun,
     busy: activeRun !== null,

@@ -33,6 +33,7 @@ import { AgentEmpty } from "./agent-empty";
 import { AgentLoading } from "./agent-loading";
 import { AgentHeader } from "./agent-header";
 import { DecisionDock } from "./decision-dock";
+import { WatchStrip } from "./watch-strip";
 import { MessageList } from "./message-list";
 import { RunStrip } from "./run-strip";
 import { SteerTray } from "./steer-tray";
@@ -192,6 +193,8 @@ export function AgentPanel({
         onClose={onClose}
         onDragStart={mobile || docked ? undefined : (e) => controls.start(e)}
       />
+      {/* 后台等待生成的监听条：头部下方，审批和输入时都看得到；没有进行中的批时不出现 */}
+      {ctl.watch && <WatchStrip summary={ctl.watch} onCancel={() => void ctl.cancelWatch()} />}
       {loading ? (
         <AgentLoading failed={ctl.openFailed} onRetry={ctl.reload} />
       ) : empty ? (

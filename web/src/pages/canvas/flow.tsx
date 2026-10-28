@@ -46,7 +46,9 @@ import { useContentNodes } from "@/hooks/use-content-nodes";
 import { useRemoteModels } from "@/hooks/use-models";
 import { useTaskBackfill } from "@/hooks/use-task-backfill";
 import { rememberCanvasTitle } from "@/utils/canvas/title-cache";
+import { useAgentNotifications } from "@/hooks/use-agent-notifications";
 import { usePageTitle } from "@/hooks/use-page-title";
+import { watchTitlePrefix } from "@/utils/agent/watch";
 import { canvasPageTitle } from "@/utils/page-title";
 import { useSettingsStore } from "@/store";
 import { useFramePickStore } from "@/store/frame-pick";
@@ -284,7 +286,6 @@ export const Flow = memo(function Flow({
     rememberCanvasTitle(canvas.id, canvas.title);
   }, [canvas.id, canvas.title]);
   const [title, setTitle] = useState(canvas.title);
-  usePageTitle(canvasPageTitle(title));
   const onRename = useCallback(
     (next: string) => {
       const previous = title;
@@ -364,6 +365,9 @@ export const Flow = memo(function Flow({
     models: agentModels ?? [],
     getViewport,
   });
+  // 标签页标题带上 Agent 的状态（待批准 / 后台等待进度），切到别的标签页也看得到；页面在后台时的系统通知同理
+  usePageTitle(canvasPageTitle(title, watchTitlePrefix(agentCtl.pending !== null, agentCtl.watch)));
+  useAgentNotifications(canvas.id, title);
   // 画布选中的节点 id（含组）。nodes 拖动时每帧都是新数组，这里拼成字符串再拆，选中没变时引用不变
   const agentSelectionKey = nodes
     .filter((node) => node.selected)

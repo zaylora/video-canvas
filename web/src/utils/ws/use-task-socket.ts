@@ -29,7 +29,7 @@ export function useTaskSocket() {
       createSocket: (url) => new WebSocket(url),
       onTask: (view) => handleTaskView(view, "live"),
       onCanvasPatch: publishCanvasPatch,
-      onAgentEvent: (event) => useAgentStore.getState().handleEvent(event),
+      onAgentEvent: (event) => useAgentStore.getState().handleEvent(event, { live: true }),
       onPayment: (update) => usePaymentStore.getState().handleWsUpdate(update),
       onOpen: () => {
         void reconcileActiveTasks();

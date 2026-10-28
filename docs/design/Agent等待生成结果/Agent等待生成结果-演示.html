@@ -417,7 +417,7 @@
               <table class="cmp">
                 <thead><tr><th colspan="2"><code>generation_tasks</code> 新增（Go）</th></tr></thead>
                 <tbody>
-                  <tr><th><code>agent_run_id</code></th><td><code>varchar(32) not null default ''</code>；部分索引 <code>WHERE agent_run_id &lt;&gt; ''</code>。只由 <code>AgentGenerator.submit</code> 写，用户请求无法设置（<code>json:"-"</code>）</td></tr>
+                  <tr><th><code>agent_run_id</code></th><td><code>bigint not null default 0</code>；部分索引 <code>WHERE agent_run_id &lt;&gt; 0</code>。只由 <code>AgentGenerator.submit</code> 写，用户请求无法设置（<code>json:"-"</code>）</td></tr>
                 </tbody>
               </table>
             </div>
@@ -427,7 +427,7 @@
                 <tbody>
                   <tr><th>队列 / kind</th><td><code>agent_notify</code> / <code>agent.task_settled</code>，并发 4，不占生成名额</td></tr>
                   <tr><th>args</th><td><code>{ task_id, run_id }</code>，按 args 唯一</td></tr>
-                  <tr><th>重试</th><td><code>MaxAttempts=25</code>，River 默认退避 <span class="tag t-warn">退避曲线未核实</span></td></tr>
+                  <tr><th>重试</th><td><code>MaxAttempts=25</code>；通知 job 用显式退避：2 秒起翻倍、封顶 10 分钟（约覆盖 3 小时）</td></tr>
                   <tr><th>入队条件</th><td><code>finish()</code> 事务内、<code>agent_run_id ≠ ''</code>、非试跑、Agent 已启用</td></tr>
                 </tbody>
               </table>
@@ -458,7 +458,7 @@
               </tbody>
             </table>
           </div>
-          <p class="muted" style="font-size: 12.5px; margin-top: 8px"><code>agent_runs</code> 新增 <code>trigger</code>（<code>user | wake</code>，默认 user）和 <code>wake_of</code>（来源运行 id）。</p>
+          <p class="muted" style="font-size: 12.5px; margin-top: 8px"><code>agent_runs</code> <b>不加列</b>：唤醒新开的运行靠它的第一条事件 <code>tasks.settled</code> 识别。节点标题登记监听时存在文档里，不由 Go 再给。</p>
         </div>
 
         <div class="sec">
@@ -469,7 +469,7 @@
               <tbody>
                 <tr><th><code>POST /internal/v1/watches/task-settled</code></th><td>Go → Agent</td><td>门铃。body <code>{ task_id, run_id, status }</code>，头 <code>X-Agent-Service-Token</code>。按 run_id 找会话，在 Pi 文档里记账。200 已记账；404 没有对应监听（已取消或 wait=false），job 视为完成；5xx / 连不上由 River 重试</td></tr>
                 <tr><th><code>POST /internal/platform/v1/tasks/status</code></th><td>Agent → Go</td><td>Pi 监听任务兜底用。<code>{ task_ids: ≤50 }</code> → <code>{ items: [{ task_id, status, finished_at }] }</code>，不存在或不属于该用户的返回 <code>missing</code>；400 参数错</td></tr>
-                <tr><th><code>POST /internal/platform/v1/tasks/digest</code></th><td>Agent → Go</td><td>唤醒用。返回 <code>{ text, items: [{ task_id, node_id, node_title, kind, status, error_message, outputs }] }</code>；400 参数错</td></tr>
+                <tr><th><code>（已合并）</code></th><td>—</td><td>唤醒取结果和对账查询是同一份数据，<b>只用上面的 <code>tasks/status</code></b>：返回节点、种类、状态、错误和产物；Agent 自己拼唤醒文本。主文档 §13 记了这处出入。</td></tr>
                 <tr><th><code>GET /agent/sessions/:id/watches</code></th><td>前端 → Agent（经 Go 代理）</td><td>监听条数据：总数、已结束数、状态 <code>waiting | queued | delivered | canceled</code>、每个任务</td></tr>
                 <tr><th><code>POST /agent/sessions/:id/watches/cancel</code></th><td>前端 → Agent</td><td>不用等了：文档里未交付的批置 <code>canceled</code>，<code>abortTask</code> 收掉监听任务；不取消生成</td></tr>
                 <tr><th>事件 <code>watch.updated</code></th><td>Agent → 前端（现有事件推送）</td><td><code>{ total, settled, state }</code></td></tr>
@@ -511,13 +511,13 @@ tryWake(session):
   if batches.empty: return
   active = canvasActiveRun(session.canvas)
   if active &amp;&amp; active.session == session &amp;&amp; active.status == "running":
-    digest = platform.tasksDigest(batches.taskIds)
-    conv.submit({type: "input", whenBusy: "steer", content: wakeText(digest), requestId: ...})
+    states = platform.tasksStatus(batches.taskIds)
+    conv.submit({type: "input", whenBusy: "steer", content: wakeText(batches, states), requestId: ...})
     return markDelivered(batches, active.id)          // 插进当前这一轮
   if active: return                                  // 排队；任一运行终态时再调 tryWake
-  digest = platform.tasksDigest(batches.taskIds)    // 失败：留给监听任务下次醒来
-  run = startRun(session, {trigger: "wake", wakeOf: batches.runId})   // 撞 60001 → return
-  conv.submit({type: "input", content: wakeText(digest),
+  states = platform.tasksStatus(batches.taskIds)    // 失败：留给监听任务下次醒来
+  run = createRun(session)   // 同画布唯一索引：撞上了就排队 → return
+  conv.submit({type: "input", content: wakeText(batches, states),
                requestId: "wake:" + session + ":" + batches.minId,   // 重放不重复
                entry: {kind: "app.tasks_settled", data: {batchIds, taskIds}}})
   watches.markDelivered(batches, run.id)
@@ -599,7 +599,7 @@ TaskWatch = defineTask({ name: "app.task-watch", version: 1, initial: () =&gt; (
           ["01:40", "n", "T1 成功：finish() 事务里结算积分 + 入队 agent.task_settled(T1)"],
           ["01:40", "n", "River → Agent 门铃 T1：pending→settled；批 A1 还差 T2"],
           ["02:10", "n", "T2 成功：同上，门铃 T2：批 A1 全部结束"],
-          ["02:10", "w", "画布空闲 → 取摘要 → 新开运行 R2(trigger=wake) → submit(requestId=wake:S1:A1)"],
+          ["02:10", "w", "画布空闲 → 取摘要 → 新开运行 R2（第一条事件 tasks.settled） → submit(requestId=wake:S1:A1)"],
           ["02:11", "n", "Agent 看图验收，提出下一批申请（审批卡）"],
         ]},
         { id: "down", name: "Agent 宕机", desc: "任务结束时 Agent 容器在重启。", lines: [

@@ -3,9 +3,11 @@ import { create } from "zustand";
 import { toast } from "sonner";
 
 import {
+  cancelAgentWatches,
   deleteAgentFeedback,
   getAgentEvents,
   getAgentHistory,
+  getAgentWatches,
   listAgentSessions,
   setAgentFeedback,
 } from "@/api/agent";
@@ -13,6 +15,7 @@ import type {
   AgentEventDto,
   AgentRunDto,
   AgentSessionDto,
+  AgentWatchBatchDto,
   SetAgentFeedbackReq,
 } from "@/api/agent/type";
 import {
@@ -26,6 +29,22 @@ import {
   emptySession,
   type AgentSessionState,
 } from "@/utils/agent/session-state";
+
+/** 实时事件的监听者：只收 WebSocket 实时推来的、第一次到达的持久化事件（回放、重复到达的不收），给系统通知用 */
+type LiveListener = (event: AgentEventDto) => void;
+const liveListeners = new Set<LiveListener>();
+
+/**
+ * 订阅实时到达的 Agent 事件；回放补来的历史事件不会触发，避免对已经发生过的事重复提醒
+ * @param listener 收到事件的回调
+ * @returns 取消订阅
+ */
+export function subscribeLiveAgentEvents(listener: LiveListener): () => void {
+  liveListeners.add(listener);
+  return () => {
+    liveListeners.delete(listener);
+  };
+}
 
 /** 一页回放最多拉多少页，防止服务端异常时死循环 */
 const MAX_REPLAY_PAGES = 50;
@@ -41,8 +60,12 @@ type AgentStore = {
   upsertSession: (session: AgentSessionDto) => void;
   /** 从列表里去掉会话（删除后） */
   removeSession: (canvasId: string, sessionId: string) => void;
-  /** 收到一条事件（WebSocket 实时推送或回放） */
-  handleEvent: (event: AgentEventDto) => void;
+  /** 收到一条事件；live 表示是 WebSocket 实时推来的（回放不带），实时的新事件会通知 subscribeLiveAgentEvents 的监听者 */
+  handleEvent: (event: AgentEventDto, opts?: { live?: boolean }) => void;
+  /** 读会话里进行中的后台等待并进状态（打开会话时）；事件里已有的批以事件为准；失败不抛出，条就不显示 */
+  loadWatches: (sessionId: string) => Promise<void>;
+  /** 不用等了：取消还没交给 Agent 的等待，被取消的批标成 canceled；生成照常完成 */
+  cancelWatches: (sessionId: string) => Promise<void>;
   /** 拉回会话里漏掉的事件：从连续收齐的序号之后分页拉到没有为止 */
   replay: (sessionId: string) => Promise<void>;
   /** 打开会话：取最新一页聊天记录（加载过就什么也不做）；失败不抛出，留下 loadError 让界面给重试 */
@@ -96,7 +119,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
       };
     }),
 
-  handleEvent: (event) => {
+  handleEvent: (event, opts) => {
     // 会话标题变了（开始运行时的草稿、首轮结束后模型命名的结果）：改会话列表里的标题，不属于会话的事件流
     if (event.type === "session.titled") {
       const title = typeof event.data?.title === "string" ? event.data.title.trim() : "";
@@ -113,11 +136,38 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
         });
       return;
     }
+    const known = get().sessions[event.session_id]?.events.some((e) => e.seq === event.seq);
     set((s) => {
       const current = s.sessions[event.session_id] ?? emptySession();
       const next = applyAgentEvent(current, event);
       return next === current ? s : { sessions: { ...s.sessions, [event.session_id]: next } };
     });
+    if (opts?.live && event.seq > 0 && !known) for (const fn of [...liveListeners]) fn(event);
+  },
+
+  loadWatches: async (sessionId) => {
+    let items: AgentWatchBatchDto[];
+    try {
+      items = await getAgentWatches(sessionId);
+    } catch {
+      return;
+    }
+    patchSession(sessionId, (x) => {
+      const fresh = items.filter((b) => !(b.batch_id in x.watches));
+      if (fresh.length === 0) return x;
+      return {
+        ...x,
+        watches: { ...x.watches, ...Object.fromEntries(fresh.map((b) => [b.batch_id, b])) },
+      };
+    });
+  },
+
+  cancelWatches: async (sessionId) => {
+    const items = await cancelAgentWatches(sessionId);
+    patchSession(sessionId, (x) => ({
+      ...x,
+      watches: { ...x.watches, ...Object.fromEntries(items.map((b) => [b.batch_id, b])) },
+    }));
   },
 
   replay: async (sessionId) => {

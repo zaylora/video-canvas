@@ -134,6 +134,15 @@ export type TimelineItem =
       after: number | null;
     }
   | {
+      /** 系统因为后台等待的生成全部结束而唤醒 Agent：不是用户消息也不是助手消息，紧跟在它后面的助手消息属于它 */
+      type: "settled";
+      key: string;
+      /** 插进了当前这一轮（用户正在聊）；false 是新开的一轮 */
+      steer: boolean;
+      /** 分隔条上的文字 */
+      text: string;
+    }
+  | {
       /** 计划全部完成 */
       type: "plan-done";
       key: string;
@@ -385,6 +394,16 @@ export function buildTimeline(state: AgentSessionState): TimelineItem[] {
           for (const item of waiting) item.after = d.context_tokens;
           awaitingUsage.delete(runId);
         }
+        break;
+      }
+      case "tasks.settled": {
+        const steer = d.steer === true;
+        items.push({
+          type: "settled",
+          key: `e${ev.seq}`,
+          steer,
+          text: steer ? "生成全部结束 · 插进这一轮" : "生成全部结束 · Agent 自动继续",
+        });
         break;
       }
       case "approval.created": {
