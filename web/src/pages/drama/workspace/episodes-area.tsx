@@ -1,13 +1,15 @@
 import { useCallback, useState } from "react";
 import { useNavigate } from "react-router";
 import { motion } from "motion/react";
-import { ArrowRight, Loader2, Play, Plus, RotateCw, Sparkles } from "lucide-react";
+import { ArrowRight, Combine, Loader2, Play, Plus, RotateCw, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 import { addEpisode, deleteSegment, listSegments, submitJob } from "@/api/drama";
 import { DRAMA_ERR, dramaErrorMessage, isDramaError } from "@/api/drama/errors";
 import type { EpisodeSummary } from "@/api/drama/type";
 import { confirm } from "@/components/admin-ui/confirm-dialog";
+import { VideoPoster } from "@/components/canvas/media-preview";
+import { FinalDialog } from "@/components/drama/final-video";
 import { DramaPoster } from "@/components/drama/poster";
 import { StatusPill } from "@/components/drama/status-pill";
 import { VideoModelMenu } from "@/components/drama/video-model-menu";
@@ -17,10 +19,12 @@ import { useDramaVideoModel } from "@/hooks/use-drama-video-model";
 import { DURATION, EASE_OUT, STAGGER, STAGGER_MAX, TAP_CARD } from "@/lib/motion";
 import { useDramaJobsStore } from "@/store/drama";
 import { useDramaSegmentsStore } from "@/store/drama-segments";
+import { activeComposeJob, composeCheckEpisode, finalState } from "@/utils/drama/compose";
 import { episodeCardView, storyboardStart } from "@/utils/drama/episode-cards";
 import { busyReason } from "@/utils/drama/jobs";
 import { countForEpisode, type RefAsset } from "@/utils/drama/segment-assets";
 
+import { useCompose } from "../use-compose";
 import { useWorkspace } from "./context";
 import { useEstimate } from "./use-estimate";
 
@@ -154,6 +158,12 @@ function EpisodeCard({
   const counts = countForEpisode(assets, episode.no);
   const { action } = view;
   const busy = starter.pending === episode.no;
+  // 合成整集（契约 §14）：成片、是否过期、合成进度
+  const final = finalState(episode);
+  const composing = activeComposeJob(jobs, episode.no);
+  const composeGate = composeCheckEpisode(episode, busyReason(jobs));
+  const { compose, pending: composePending } = useCompose(drama.id);
+  const [playerOpen, setPlayerOpen] = useState(false);
 
   return (
     <motion.div
@@ -167,23 +177,48 @@ function EpisodeCard({
       }}
       className="bg-card hover:ring-beam/60 flex gap-3.5 rounded-2xl border p-3 transition-shadow hover:ring-1"
     >
-      <DramaPoster
-        seed={`ep${episode.no}${episode.title}`}
-        className="text-foreground/70 grid w-[86px] shrink-0 place-items-center self-start rounded-[10px]"
-      >
-        <div
+      {episode.final ? (
+        <button
+          type="button"
+          aria-label={`播放第 ${episode.no} 集成片`}
+          onClick={() => setPlayerOpen(true)}
           style={{ aspectRatio: posterRatio(drama.ratio) }}
-          className="grid w-full place-items-center"
+          className="bg-muted focus-visible:ring-ring/50 relative w-[86px] shrink-0 self-start overflow-hidden rounded-[10px] outline-none focus-visible:ring-2"
         >
-          <Play className="size-5" />
-        </div>
-      </DramaPoster>
+          <VideoPoster src={episode.final.url} />
+          <span className="absolute inset-0 grid place-items-center bg-black/30 text-white">
+            <Play className="size-5" />
+          </span>
+        </button>
+      ) : (
+        <DramaPoster
+          seed={`ep${episode.no}${episode.title}`}
+          className="text-foreground/70 grid w-[86px] shrink-0 place-items-center self-start rounded-[10px]"
+        >
+          <div
+            style={{ aspectRatio: posterRatio(drama.ratio) }}
+            className="grid w-full place-items-center"
+          >
+            <Play className="size-5" />
+          </div>
+        </DramaPoster>
+      )}
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
         <div className="flex items-center gap-1.5">
           <StatusPill tone={view.badge.tone}>
             {action.kind === "generating" && <Loader2 className="animate-spin" />}
             {view.badge.text}
           </StatusPill>
+          {composing ? (
+            <StatusPill tone="running">
+              <Loader2 className="animate-spin" />
+              合成中 {composing.progress}%
+            </StatusPill>
+          ) : final === "fresh" ? (
+            <StatusPill tone="success">已合成</StatusPill>
+          ) : final === "stale" ? (
+            <StatusPill tone="warning">成片已过期</StatusPill>
+          ) : null}
         </div>
         <div className="truncate text-sm font-semibold">
           第 {episode.no} 集 · {episode.title}
@@ -238,8 +273,34 @@ function EpisodeCard({
               {action.label}
             </Button>
           )}
+          {final === "stale" && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!composeGate.enabled || !!composing || composePending === episode.no}
+              title={composeGate.reason ?? "成片已过期，按当前采用的片段重新合成，不扣积分"}
+              onClick={() => void compose(episode.no)}
+            >
+              {composePending === episode.no ? <Loader2 className="animate-spin" /> : <Combine />}
+              重新合成
+            </Button>
+          )}
         </div>
       </div>
+      {episode.final && (
+        <FinalDialog
+          open={playerOpen}
+          onOpenChange={setPlayerOpen}
+          asset={episode.final}
+          ratio={drama.ratio}
+          stale={final === "stale"}
+          title={drama.title}
+          no={episode.no}
+          onRecompose={() => void compose(episode.no)}
+          composing={!!composing || composePending === episode.no}
+          recomposeReason={composeGate.reason}
+        />
+      )}
     </motion.div>
   );
 }

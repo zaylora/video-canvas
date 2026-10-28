@@ -16,7 +16,9 @@ export type DramaStep =
   | "scripts"
   | "breakdown"
   | "asset_prompts"
-  | "storyboard";
+  | "storyboard"
+  /** 合成整集（契约 §14）：服务端 ffmpeg，不扣积分 */
+  | "compose";
 
 /** 任务状态 */
 export type DramaJobStatus = "queued" | "running" | "succeeded" | "failed" | "canceled";
@@ -56,6 +58,9 @@ export interface BackendEpisodeSummary {
   segment_count?: number;
   segment_seconds?: number;
   done_segment_count?: number;
+  /** 三期字段（契约 §14）：成片与是否过期；后端还没带时按「没有成片」处理 */
+  final?: BackendAssetDto | null;
+  final_stale?: boolean;
 }
 
 export interface BackendEpisodeView extends BackendEpisodeSummary {
@@ -74,6 +79,8 @@ export interface BackendJobView {
   error_message: string;
   created_at: string;
   finished_at: string | null;
+  /** compose 成功时 `{asset, skipped_seqs}`；其他步骤为 null（契约 §14） */
+  result?: { asset: BackendAssetDto; skipped_seqs: number[] | null } | null;
 }
 
 export interface BackendDramaView {
@@ -133,6 +140,10 @@ export interface EpisodeSummary {
   segmentSeconds: number;
   /** 有「采用」视频的片段数 */
   doneSegmentCount: number;
+  /** 合成好的成片；没有为 null */
+  final: AssetDto | null;
+  /** 成片之后有片段改了采用 / 顺序 / 增删：提示「成片已过期，可重新合成」 */
+  finalStale: boolean;
 }
 
 export interface Episode extends EpisodeSummary {
@@ -153,6 +164,14 @@ export interface DramaJob {
   errorMessage: string;
   createdAt: string;
   finishedAt: string | null;
+  /** compose 成功的结果；其他步骤为 null */
+  result: DramaJobResult | null;
+}
+
+/** compose 任务的结果：成片素材与被跳过（没有采用视频）的片段 seq（从 0 起，界面显示 seq+1） */
+export interface DramaJobResult {
+  asset: AssetDto;
+  skippedSeqs: number[];
 }
 
 export interface Drama {

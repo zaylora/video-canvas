@@ -49,6 +49,8 @@ export const mapEpisodeSummary = (raw: BackendEpisodeSummary): EpisodeSummary =>
   segmentCount: raw.segment_count ?? 0,
   segmentSeconds: raw.segment_seconds ?? 0,
   doneSegmentCount: raw.done_segment_count ?? 0,
+  final: raw.final ? mapAsset(raw.final) : null,
+  finalStale: raw.final_stale ?? false,
 });
 
 export const mapEpisode = (raw: BackendEpisodeView): Episode => ({
@@ -67,6 +69,9 @@ export const mapJob = (raw: BackendJobView): DramaJob => ({
   errorMessage: raw.error_message ?? "",
   createdAt: raw.created_at,
   finishedAt: raw.finished_at ?? null,
+  result: raw.result
+    ? { asset: mapAsset(raw.result.asset), skippedSeqs: raw.result.skipped_seqs ?? [] }
+    : null,
 });
 
 export const mapDrama = (raw: BackendDramaView): Drama => ({

@@ -1,21 +1,14 @@
 import { useState } from "react";
 import { Reorder } from "motion/react";
-import { CircleX, Film, Layers, Loader2, Play, Plus } from "lucide-react";
+import { CircleX, Film, Layers, Loader2, Pause, Play, Plus } from "lucide-react";
 
 import { VideoPoster } from "@/components/canvas/media-preview";
-import { StatusPill } from "@/components/drama/status-pill";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { Segment } from "@/api/drama/type";
-import {
-  applyOrder,
-  clipWidth,
-  orderIds,
-  playableTake,
-  sameOrder,
-  totalSeconds,
-} from "@/utils/drama/segments";
+import { applyOrder, clipWidth, orderIds, playableTake, sameOrder } from "@/utils/drama/segments";
 
+import { usePlaybackContext } from "./use-playback";
 import { useStudio } from "./use-studio";
 
 const mmss = (seconds: number) =>
@@ -86,10 +79,13 @@ function Clip({
 
 /**
  * 底部片段条：宽度按时长、选中描边、状态；拖动排序（motion Reorder，松手后一次提交整个顺序）；
- * 新增、批量生成（对没有采用视频的片段逐个提交）；连播按钮显示但禁用（三期）。
+ * 新增、批量生成（对没有采用视频的片段逐个提交）；
+ * 连播：按 seq 依次播采用的视频，播放头随时间移动，点片段跳到该段开头。
  */
 export function ClipBar() {
   const { segments, selected, select, actions } = useStudio();
+  const playback = usePlaybackContext();
+  const { bindPlayhead } = playback;
   // 拖动过程中只改本地顺序，松手再提交；store 里的片段一变（推送、服务端确认）就回到 store 的版本
   const [local, setLocal] = useState<{ base: Segment[]; list: Segment[] } | null>(null);
   const shown = local && local.base === segments ? local.list : segments;
@@ -112,18 +108,30 @@ export function ClipBar() {
         <Button
           variant="ghost"
           size="icon-sm"
-          disabled
-          aria-label="连播（三期）"
-          title="连播在三期上线"
+          disabled={!playback.available}
+          aria-label={playback.playing ? "暂停连播" : "连播"}
+          aria-pressed={playback.playing}
+          title={
+            playback.available
+              ? playback.playing
+                ? "暂停连播"
+                : playback.active
+                  ? "继续连播"
+                  : "连播：按顺序播放各片段采用的视频，没有采用的跳过"
+              : "还没有片段采用视频，无法连播"
+          }
+          onClick={playback.toggle}
         >
-          <Play />
+          {playback.playing ? <Pause /> : <Play />}
         </Button>
         <span className="text-muted-foreground text-xs tabular-nums">
-          {mmss(0)} / {mmss(totalSeconds(segments))}
+          {mmss(playback.active ? playback.elapsed : 0)} / {mmss(playback.total)}
         </span>
-        <StatusPill tone="muted" className="h-4 text-[10px]">
-          连播 · 三期
-        </StatusPill>
+        {playback.active && (
+          <span className="bg-beam/15 text-beam inline-flex h-4 items-center rounded-full px-2 text-[10px] font-medium">
+            {playback.playing ? "连播中" : "已暂停"}
+          </span>
+        )}
         <span className="flex-1" />
         <Button variant="ghost" size="sm" onClick={() => void actions.batch()}>
           <Layers />
@@ -132,23 +140,36 @@ export function ClipBar() {
         <span className="text-muted-foreground text-[11.5px] max-sm:hidden">拖动片段可排序</span>
       </div>
       <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-        <Reorder.Group
-          axis="x"
-          as="div"
-          values={shown}
-          onReorder={(list) => setLocal({ base: segments, list })}
-          onPointerUp={commit}
-          className="flex shrink-0 gap-1"
-        >
-          {shown.map((segment) => (
-            <Clip
-              key={segment.id}
-              segment={segment}
-              selected={selected?.id === segment.id}
-              onSelect={() => select(segment.id)}
+        <div className="relative shrink-0">
+          <Reorder.Group
+            axis="x"
+            as="div"
+            values={shown}
+            onReorder={(list) => setLocal({ base: segments, list })}
+            onPointerUp={commit}
+            className="flex shrink-0 gap-1"
+          >
+            {shown.map((segment) => (
+              <Clip
+                key={segment.id}
+                segment={segment}
+                selected={selected?.id === segment.id}
+                onSelect={() => {
+                  select(segment.id);
+                  playback.jumpTo(segment.id);
+                }}
+              />
+            ))}
+          </Reorder.Group>
+          {/* 播放头：位置由连播 hook 直接写 transform，没有 CSS 过渡，减弱动态时也不会有动画 */}
+          {playback.active && (
+            <div
+              ref={bindPlayhead}
+              aria-hidden
+              className="bg-beam pointer-events-none absolute inset-y-0 left-0 z-10 w-0.5 rounded-full"
             />
-          ))}
-        </Reorder.Group>
+          )}
+        </div>
         <Button
           variant="outline"
           size="icon"

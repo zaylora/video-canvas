@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { motion } from "motion/react";
 import { ArrowUpRight, Clapperboard, LayoutGrid, Users, type LucideIcon } from "lucide-react";
 
@@ -12,6 +13,15 @@ function Key({ children }: { children: string }) {
   );
 }
 
+/** 空会话的文案：标题、副标题、起步建议、底部提示。画布 Agent 用默认的，短剧助手传自己的 */
+export type AgentEmptyCopy = {
+  title: string;
+  subtitle: string;
+  starters: ReadonlyArray<{ icon: LucideIcon; text: string }>;
+  /** 底部的键位提示；null 不显示 */
+  hint: ReactNode | null;
+};
+
 /** 起步建议（设计稿 6.12）：点了只填进输入框，不直接发送，用户可以先改 */
 const STARTERS: ReadonlyArray<{ icon: LucideIcon; text: string }> = [
   { icon: Clapperboard, text: "把选中的剧本拆成分镜" },
@@ -19,22 +29,37 @@ const STARTERS: ReadonlyArray<{ icon: LucideIcon; text: string }> = [
   { icon: LayoutGrid, text: "把画布按场景整理整齐" },
 ];
 
+const DEFAULT_COPY: AgentEmptyCopy = {
+  title: "让 Agent 帮你把想法搭成分镜",
+  subtitle: "读懂画布、搭建节点、整理布局；花积分和删除前都会先问你",
+  starters: STARTERS,
+  hint: (
+    <>
+      <Key>⌘ /</Key>随时唤起 · <Key>@</Key>引用节点 · <Key>/</Key>插入技能
+    </>
+  ),
+};
+
 /**
  * 空会话（扁平风格）：40px 品牌光球（无光晕、无投影，规范不允许常驻循环动画）+ 标题 + 副标题 + 起步建议 + 键位提示，在面板里居中。
  * 居中用内层的 m-auto：放得下就上下左右居中，窗口矮到放不下时自动变成从顶部开始滚动，不会被裁掉；
  * 滚动条常驻可见（agent-scroll）。
  */
-export function AgentEmpty({ onStarter }: { onStarter: (text: string) => void }) {
+export function AgentEmpty({
+  onStarter,
+  copy = DEFAULT_COPY,
+}: {
+  onStarter: (text: string) => void;
+  copy?: AgentEmptyCopy;
+}) {
   return (
     <div className="agent-scroll flex min-h-0 flex-1 flex-col px-5 py-5">
       <div className="m-auto flex w-full flex-col items-center gap-1">
         <div aria-hidden className="agent-orb mb-1 size-10 shrink-0 rounded-full" />
-        <p className="text-[15px] font-semibold tracking-[-0.01em]">让 Agent 帮你把想法搭成分镜</p>
-        <p className="text-muted-foreground mb-4 text-center text-xs">
-          读懂画布、搭建节点、整理布局；花积分和删除前都会先问你
-        </p>
+        <p className="text-[15px] font-semibold tracking-[-0.01em]">{copy.title}</p>
+        <p className="text-muted-foreground mb-4 text-center text-xs">{copy.subtitle}</p>
         <div className="mb-4 flex w-full flex-col gap-1.5">
-          {STARTERS.map(({ icon: Icon, text }) => (
+          {copy.starters.map(({ icon: Icon, text }) => (
             <motion.button
               key={text}
               type="button"
@@ -48,9 +73,11 @@ export function AgentEmpty({ onStarter }: { onStarter: (text: string) => void })
             </motion.button>
           ))}
         </div>
-        <p className="text-muted-foreground flex items-center gap-1.5 text-[11.5px]">
-          <Key>⌘ /</Key>随时唤起 · <Key>@</Key>引用节点 · <Key>/</Key>插入技能
-        </p>
+        {copy.hint !== null && (
+          <p className="text-muted-foreground flex items-center gap-1.5 text-[11.5px]">
+            {copy.hint}
+          </p>
+        )}
       </div>
     </div>
   );

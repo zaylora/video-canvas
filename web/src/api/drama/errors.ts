@@ -22,6 +22,8 @@ export const DRAMA_ERR = {
   segmentNotFound: 67009,
   /** 只能采用本片段已成功的结果 */
   takeInvalid: 67011,
+  /** 这一集还没有可合成的片段（没有任何采用的视频） */
+  nothingToCompose: 67010,
   /** 排序必须包含该集全部片段 */
   segmentOrderInvalid: 67012,
   /** 这一集已有生成结果，重新生成分镜会清空片段 */
@@ -39,6 +41,7 @@ const FALLBACK: Record<number, string> = {
   [DRAMA_ERR.noTextModel]: "没有可用的文本模型，请联系管理员启用",
   [DRAMA_ERR.outputInvalid]: "模型输出无法解析，失败不扣积分，可以重试",
   [DRAMA_ERR.segmentNotFound]: "片段不存在，可能已被删除",
+  [DRAMA_ERR.nothingToCompose]: "这一集还没有可合成的片段",
   [DRAMA_ERR.takeInvalid]: "只能采用本片段已成功的结果",
   [DRAMA_ERR.segmentOrderInvalid]: "排序必须包含这一集的全部片段，请刷新后重试",
   [DRAMA_ERR.storyboardHasTakes]: "这一集已有生成结果，重新生成分镜会清空片段",

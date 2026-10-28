@@ -189,7 +189,8 @@ export function AgentHeader({
   /** 消息流已滚离顶部 */
   scrolled: boolean;
   onToggleDock: () => void;
-  onClose: () => void;
+  /** 收起；嵌在页面里的助手（短剧工作台右栏）没有「收起」，不传 */
+  onClose?: () => void;
   /** 在顶栏空白处按下：开始拖动；停靠和窄屏不传 */
   onDragStart?: (e: ReactPointerEvent) => void;
 }) {
@@ -238,11 +239,13 @@ export function AgentHeader({
         </ChromeTooltip>
       )}
       <SettingsPopover />
-      <ChromeTooltip label="收起" shortcut="⌘/" side="bottom">
-        <button type="button" aria-label="收起 Agent" onClick={onClose} className={ICON_BTN}>
-          <Minus />
-        </button>
-      </ChromeTooltip>
+      {onClose && (
+        <ChromeTooltip label="收起" shortcut="⌘/" side="bottom">
+          <button type="button" aria-label="收起 Agent" onClick={onClose} className={ICON_BTN}>
+            <Minus />
+          </button>
+        </ChromeTooltip>
+      )}
       <span
         aria-hidden
         className={cn(

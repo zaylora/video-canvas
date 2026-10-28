@@ -1,7 +1,7 @@
 import type { GraphChange } from "@/utils/canvas/graph-changes";
 
-/** 任务模式：全能创作 / 剧本创编 / 分镜搭建 / 提示词优化 */
-export type AgentMode = "all" | "script" | "storyboard" | "prompt";
+/** 任务模式：全能创作 / 剧本创编 / 分镜搭建 / 提示词优化 / 短剧助手（只有短剧画布能建，契约 §15） */
+export type AgentMode = "all" | "script" | "storyboard" | "prompt" | "drama";
 
 /** 运行状态 */
 export type AgentRunStatus =
@@ -98,8 +98,11 @@ export interface AgentRunDto {
   ended_at: string | null;
 }
 
-/** 审批种类：生成 / 删除 / 提问 */
-export type AgentApprovalKind = "generate" | "delete" | "ask";
+/**
+ * 审批种类：生成 / 删除 / 提问；短剧助手的写工具（改大纲、改剧本、改片段、提交任务）走 edit，
+ * 前端对任何不认识的种类都按 edit 的通用修改卡展示（读 payload 的 title / reason / before / after）
+ */
+export type AgentApprovalKind = "generate" | "delete" | "ask" | "edit";
 
 /** 审批状态 */
 export type AgentApprovalStatus =
@@ -165,6 +168,18 @@ export interface AgentAskPayload {
   models?: Array<{ key: string; name: string; hint: string }>;
 }
 
+/** 通用修改审批的内容（approval.kind = edit，短剧助手）：before / after 是修改前后的文本摘要 */
+export interface AgentEditPayload {
+  /** 一句话标题，如「修改第 3 集剧本」 */
+  title?: string;
+  /** Agent 给的理由 */
+  reason?: string;
+  /** 修改前的摘要文本 */
+  before?: string;
+  /** 修改后的摘要文本 */
+  after?: string;
+}
+
 /** 审批（后端返回的原始结构，payload 按种类解析前是 JSON） */
 export interface AgentApprovalDto {
   /** 审批 ID */
@@ -176,7 +191,7 @@ export interface AgentApprovalDto {
   /** 审批状态 */
   status: AgentApprovalStatus;
   /** 待决定的内容，形状由 kind 决定：AgentGeneratePayload / AgentDeletePayload / AgentAskPayload */
-  payload: AgentGeneratePayload | AgentDeletePayload | AgentAskPayload;
+  payload: AgentGeneratePayload | AgentDeletePayload | AgentAskPayload | AgentEditPayload;
   /** 预估积分 */
   quote_credits: number;
   /** 用户的决定，未决定为 null */

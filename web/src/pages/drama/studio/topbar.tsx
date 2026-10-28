@@ -1,15 +1,32 @@
 import { Link } from "react-router";
-import { ChevronLeft, CloudAlert, CloudCheck, Combine, Loader2, MonitorPlay } from "lucide-react";
+import {
+  Bot,
+  ChevronLeft,
+  CloudAlert,
+  CloudCheck,
+  Combine,
+  Loader2,
+  MonitorPlay,
+} from "lucide-react";
 
 import { ChipPopover, MenuLabel } from "@/components/drama/pickers";
 import { VideoModelMenu } from "@/components/drama/video-model-menu";
-import { StatusPill } from "@/components/drama/status-pill";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { CreditsPill } from "@/pages/canvas/chrome/top-right-bar";
+import { useDramaJobsStore } from "@/store/drama";
+import {
+  activeComposeJob,
+  composeCheck,
+  finalState,
+  missingVideoSeqs,
+  skippedText,
+} from "@/utils/drama/compose";
+import { busyReason } from "@/utils/drama/jobs";
 import { matchOption, paramEntries } from "@/utils/tasks/capabilities";
 
+import { useCompose } from "../use-compose";
 import type { SaveSummary } from "../workspace/use-workspace";
 import { useStudio } from "./use-studio";
 
@@ -68,8 +85,56 @@ function ResolutionChip() {
   );
 }
 
-/** 片段工作区顶栏：返回分集、集名、保存状态、视频模型、分辨率 / 比例、积分、合成整集（三期） */
-export function Topbar() {
+const NO_JOBS: never[] = [];
+
+/**
+ * 合成整集：至少一个片段有采用视频才可点（否则写明原因）；服务端 ffmpeg 拼接，不扣积分；
+ * 合成中按钮显示进度；已有成片时叫「重新合成」，成片过期时按钮更醒目。
+ */
+function ComposeButton() {
+  const { drama, episode, no, segments, segmentsStatus } = useStudio();
+  const jobs = useDramaJobsStore((state) => state.byDrama[drama.id]) ?? NO_JOBS;
+  const { compose, pending } = useCompose(drama.id);
+  const running = activeComposeJob(jobs, no);
+  const check = composeCheck(segments, busyReason(jobs));
+  const state = finalState(episode);
+  const skipped = missingVideoSeqs(segments);
+  const loading = segmentsStatus === "loading";
+  const disabled = loading || !check.enabled || !!running || pending === no;
+  const title = running
+    ? "合成中"
+    : loading
+      ? "片段加载中"
+      : (check.reason ??
+        `按顺序拼接各片段采用的视频，不扣积分${
+          skipped.length > 0 ? `；没有采用视频的片段（${skippedText(skipped)}）会被跳过` : ""
+        }${state === "stale" ? "；成片已过期" : ""}`);
+  return (
+    <Button
+      size="sm"
+      variant={state === "fresh" ? "outline" : "default"}
+      disabled={disabled}
+      title={title}
+      onClick={() => void compose(no)}
+      className="ml-1 max-sm:hidden"
+    >
+      {running || pending === no ? <Loader2 className="animate-spin" /> : <Combine />}
+      {running ? `合成中 ${running.progress}%` : state === "none" ? "合成整集" : "重新合成"}
+      {state === "stale" && !running && (
+        <span className="bg-status-warning size-1.5 rounded-full" aria-label="成片已过期" />
+      )}
+    </Button>
+  );
+}
+
+/** 片段工作区顶栏：返回分集、集名、保存状态、视频模型、分辨率 / 比例、积分、助手、合成整集 */
+export function Topbar({
+  assistantOpen,
+  onToggleAssistant,
+}: {
+  assistantOpen: boolean;
+  onToggleAssistant: () => void;
+}) {
   const { drama, episode, no, save, video } = useStudio();
   const status = SAVE_LABEL[save];
   return (
@@ -113,17 +178,16 @@ export function Topbar() {
       <ThemeToggle />
       <CreditsPill />
       <Button
+        variant={assistantOpen ? "secondary" : "ghost"}
         size="sm"
-        disabled
-        title="合成整集在三期上线：服务端按片段顺序拼接"
-        className="ml-1 max-sm:hidden"
+        aria-pressed={assistantOpen}
+        title="短剧助手：对话修改剧本、资产和分镜"
+        onClick={onToggleAssistant}
       >
-        <Combine />
-        合成整集
-        <StatusPill tone="muted" className="h-4 text-[10px]">
-          三期
-        </StatusPill>
+        <Bot />
+        助手
       </Button>
+      <ComposeButton />
     </header>
   );
 }

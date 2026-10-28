@@ -29,7 +29,7 @@ import { AgentComposer } from "./agent-composer";
 import type { RefNode } from "@/utils/agent/selection-refs";
 
 import type { AgentEditorHandle, NodeOption } from "./agent-editor";
-import { AgentEmpty } from "./agent-empty";
+import { AgentEmpty, type AgentEmptyCopy } from "./agent-empty";
 import { AgentLoading } from "./agent-loading";
 import { AgentHeader } from "./agent-header";
 import { DecisionDock } from "./decision-dock";
@@ -72,6 +72,9 @@ export function AgentPanel({
   nodes,
   refNodes,
   onClose,
+  variant = "floating",
+  label = "画布 Agent",
+  emptyCopy,
 }: {
   ctl: AgentController;
   models: AgentModelDto[];
@@ -81,7 +84,17 @@ export function AgentPanel({
   nodes: NodeOption[];
   /** 解析选中节点标题用：含组（nodes 是输入框 @ 的候选，不含组） */
   refNodes: RefNode[];
-  onClose: () => void;
+  /** 收起；嵌在页面里（embedded）时不传，顶栏不显示收起按钮 */
+  onClose?: () => void;
+  /**
+   * floating 画布里的浮窗 / 停靠 / 窄屏 Sheet（默认）；
+   * embedded 填满父容器的一栏（短剧工作台右栏），不能拖动、不能停靠，没有进出场动画
+   */
+  variant?: "floating" | "embedded";
+  /** 无障碍名称 */
+  label?: string;
+  /** 空会话的文案，默认是画布 Agent 的 */
+  emptyCopy?: AgentEmptyCopy;
 }) {
   const mobile = useIsMobile();
   const reduce = useReducedMotion();
@@ -90,7 +103,8 @@ export function AgentPanel({
   const wantDock = useAgentSettings((s) => s.docked);
   const dockWidth = useAgentSettings((s) => s.dockWidth);
   const canDock = windowWidth - dockWidth >= MIN_CANVAS_WIDTH;
-  const docked = wantDock && canDock && !mobile;
+  const embedded = variant === "embedded";
+  const docked = wantDock && canDock && !mobile && !embedded;
 
   const [text, setText] = useState("");
   const attachments = useAgentAttachments();
@@ -186,11 +200,11 @@ export function AgentPanel({
         ctl={ctl}
         title={ctl.session?.title ?? "新对话"}
         docked={docked}
-        canDock={mobile ? null : canDock}
+        canDock={mobile || embedded ? null : canDock}
         scrolled={!empty && !loading && scrolled}
         onToggleDock={() => useAgentSettings.getState().patch({ docked: !docked })}
         onClose={onClose}
-        onDragStart={mobile || docked ? undefined : (e) => controls.start(e)}
+        onDragStart={mobile || docked || embedded ? undefined : (e) => controls.start(e)}
       />
       {/* 后台等待生成的监听条：头部下方，审批和输入时都看得到；没有进行中的批时不出现 */}
       {ctl.watch && <WatchStrip summary={ctl.watch} onCancel={() => void ctl.cancelWatch()} />}
@@ -198,6 +212,7 @@ export function AgentPanel({
         <AgentLoading failed={ctl.openFailed} onRetry={ctl.reload} />
       ) : empty ? (
         <AgentEmpty
+          copy={emptyCopy}
           onStarter={(t) => {
             editor.current?.setText(t);
             editor.current?.focus();
@@ -269,12 +284,26 @@ export function AgentPanel({
 
   const shell = "@container text-popover-foreground flex flex-col overflow-hidden";
 
+  if (embedded) {
+    return (
+      <div
+        ref={scope}
+        role="region"
+        aria-label={label}
+        onKeyDown={onKeyDown}
+        className={cn(shell, "h-full min-h-0 w-full")}
+      >
+        {body}
+      </div>
+    );
+  }
+
   if (mobile) {
     return (
       <motion.div
         ref={scope}
         role="dialog"
-        aria-label="画布 Agent"
+        aria-label={label}
         onKeyDown={onKeyDown}
         initial={enter}
         animate={{ opacity: 1, y: 0 }}
@@ -323,7 +352,7 @@ export function AgentPanel({
         <motion.div
           ref={scope}
           role="dialog"
-          aria-label="画布 Agent"
+          aria-label={label}
           onKeyDown={onKeyDown}
           initial={enter}
           animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}

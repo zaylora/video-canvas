@@ -14,6 +14,7 @@ import {
 } from "@/api/agent";
 import type {
   AgentAttachmentReq,
+  AgentMode,
   AgentModelDto,
   AgentSessionDto,
   DecideAgentApprovalReq,
@@ -22,6 +23,7 @@ import type {
 import { useAgentSettings } from "@/store/agent-settings";
 import { useAgentStore } from "@/store/agent";
 import { useCreditsStore } from "@/store/credits";
+import { visibleSessions } from "@/utils/agent/drama";
 import { activeRunId, emptySession } from "@/utils/agent/session-state";
 import { buildRunStrip, buildStatusLine, buildTimeline } from "@/utils/agent/timeline";
 import { activeWatches, ensureNotificationPermission, summarizeWatches } from "@/utils/agent/watch";
@@ -29,8 +31,8 @@ import { activeWatches, ensureNotificationPermission, summarizeWatches } from "@
 /** 没有会话时共用的空数组，免得每次渲染都是新引用 */
 const NO_SESSIONS: AgentSessionDto[] = [];
 
-/** 输入框不再提供任务模式切换，一律按全能创作运行（后端的另外几种模式和接口保留） */
-const AGENT_MODE = "all" as const;
+/** 输入框不再提供任务模式切换：画布按全能创作运行（后端的另外几种模式和接口保留）；短剧助手传 drama */
+const DEFAULT_MODE: AgentMode = "all";
 
 /** 可用的 Agent 模型：打开浮窗时拉一次；没有已发布的模型时入口按钮变淡 */
 export function useAgentModels() {
@@ -51,19 +53,24 @@ export function useAgentModels() {
  * 画布 Agent 浮窗的全部状态和动作：会话列表与当前会话、发送 / 停止 / 插话、审批决定、撤销本轮、继续。
  * 数据都来自 agent store（WebSocket 推送 + HTTP 回放）；这里只管「现在看哪个会话」和调用接口。
  * 接口失败的提示由全局请求拦截器弹出，这里只恢复状态。
+ * 同一个控制器也驱动短剧助手：传 mode: "drama"，会话建在短剧画布上，只列 drama 会话，不带视口。
  */
 export function useAgentController({
   canvasId,
   models,
   getViewport,
+  mode = DEFAULT_MODE,
 }: {
   canvasId: string;
   models: AgentModelDto[];
-  /** 当前视口 */
-  getViewport: () => { x: number; y: number; zoom: number };
+  /** 当前视口；没有画布视口的入口（短剧助手）不传 */
+  getViewport?: () => { x: number; y: number; zoom: number };
+  /** 会话与运行的任务模式，默认全能创作 */
+  mode?: AgentMode;
 }) {
   const settings = useAgentSettings();
-  const sessions = useAgentStore((s) => s.sessionsByCanvas[canvasId]) ?? NO_SESSIONS;
+  const allSessions = useAgentStore((s) => s.sessionsByCanvas[canvasId]) ?? NO_SESSIONS;
+  const sessions = useMemo(() => visibleSessions(allSessions, mode), [allSessions, mode]);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   /** 用户点 ✕ 隐藏了计划的那几轮运行 */
@@ -102,13 +109,13 @@ export function useAgentController({
       .then((list) => {
         if (!active) return;
         setLoadedCanvas(canvasId);
-        openSession(list[0] ?? null);
+        openSession(visibleSessions(list, mode)[0] ?? null);
       })
       .catch(() => active && setLoadedCanvas(canvasId));
     return () => {
       active = false;
     };
-  }, [canvasId, openSession]);
+  }, [canvasId, mode, openSession]);
 
   /** 正在打开：会话列表或这个会话最近一页聊天记录还在加载（新建的会话没有历史，不算） */
   const opening =
@@ -161,13 +168,13 @@ export function useAgentController({
   const ensureSession = useCallback(async () => {
     if (session) return session;
     const created = await createAgentSession(canvasId, {
-      mode: AGENT_MODE,
+      mode,
       model_key: modelKey || undefined,
     });
     useAgentStore.getState().upsertSession(created);
     setSessionId(created.id);
     return created;
-  }, [canvasId, modelKey, session]);
+  }, [canvasId, mode, modelKey, session]);
 
   /** 发送：运行中就是插话，否则发起新一轮。返回是否发出去了（没发出去输入框要保留原文） */
   const send = useCallback(
@@ -184,9 +191,9 @@ export function useAgentController({
         const target = await ensureSession();
         const run = await startAgentRun(target.id, {
           message,
-          mode: AGENT_MODE,
+          mode,
           // 选中的节点不再整批带上：要引用哪个，就在输入框里变成消息里的 node: chip
-          viewport: getViewport(),
+          viewport: getViewport?.(),
           agent_model_key: modelKey || undefined,
           ...(attachments?.length && { attachments }),
         });
@@ -200,7 +207,7 @@ export function useAgentController({
         setSending(false);
       }
     },
-    [activeRun, ensureSession, getViewport, modelKey],
+    [activeRun, ensureSession, getViewport, mode, modelKey],
   );
 
   const stop = useCallback(async () => {
@@ -292,13 +299,14 @@ export function useAgentController({
       }
       useAgentStore.getState().removeSession(canvasId, target.id);
       if (target.id === sessionId) {
-        const rest = (useAgentStore.getState().sessionsByCanvas[canvasId] ?? []).filter(
-          (s) => s.id !== target.id,
-        );
+        const rest = visibleSessions(
+          useAgentStore.getState().sessionsByCanvas[canvasId] ?? [],
+          mode,
+        ).filter((s) => s.id !== target.id);
         openSession(rest[0] ?? null);
       }
     },
-    [canvasId, openSession, sessionId],
+    [canvasId, mode, openSession, sessionId],
   );
 
   const hidePlan = useCallback(

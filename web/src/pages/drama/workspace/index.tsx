@@ -8,6 +8,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { formatPageTitle } from "@/utils/page-title";
 
+import { DramaAssistantProvider } from "../assistant/use-drama-assistant";
+import { useComposeNotices } from "../use-compose";
 import { AssetsArea } from "./assets-area";
 import { BreakdownDialog } from "./breakdown-dialog";
 import { DramaWorkspaceContext } from "./context";
@@ -53,6 +55,7 @@ function Workspace({ id }: { id: string }) {
   const { drama, error, jobs, save, refresh, patch, applyEpisode, reportSave } = workspace;
 
   usePageTitle(formatPageTitle(drama?.title, "短剧工作室"));
+  useComposeNotices(id);
 
   const value = useMemo<DramaWorkspace | null>(
     () => (drama ? { drama, jobs, save, refresh, patch, applyEpisode, reportSave } : null),
@@ -80,38 +83,40 @@ function Workspace({ id }: { id: string }) {
 
   return (
     <DramaWorkspaceContext.Provider value={value}>
-      <MotionConfig reducedMotion="user">
-        <TooltipProvider delay={400}>
-          <div className="bg-background text-foreground flex h-svh w-svw overflow-hidden">
-            <Rail
-              area={area}
-              onChange={(next) =>
-                setParams(next === "script" ? {} : { area: next }, { replace: true })
-              }
-            />
-            <div className="flex min-w-0 flex-1 flex-col">
-              <Topbar sideOpen={sideOpen} onToggleSide={() => setSideOpen((open) => !open)} />
-              <div className="flex min-h-0 flex-1">
-                <main className="min-w-0 flex-1">
-                  {area === "script" && (
-                    <ScriptArea onBreakdownOpen={() => setBreakdownOpen(true)} />
+      <DramaAssistantProvider drama={value.drama} refresh={refresh}>
+        <MotionConfig reducedMotion="user">
+          <TooltipProvider delay={400}>
+            <div className="bg-background text-foreground flex h-svh w-svw overflow-hidden">
+              <Rail
+                area={area}
+                onChange={(next) =>
+                  setParams(next === "script" ? {} : { area: next }, { replace: true })
+                }
+              />
+              <div className="flex min-w-0 flex-1 flex-col">
+                <Topbar sideOpen={sideOpen} onToggleSide={() => setSideOpen((open) => !open)} />
+                <div className="flex min-h-0 flex-1">
+                  <main className="min-w-0 flex-1">
+                    {area === "script" && (
+                      <ScriptArea onBreakdownOpen={() => setBreakdownOpen(true)} />
+                    )}
+                    {area === "assets" && (
+                      <AssetsArea onBreakdownOpen={() => setBreakdownOpen(true)} />
+                    )}
+                    {area === "episodes" && (
+                      <EpisodesArea onGoScript={() => setParams({}, { replace: true })} />
+                    )}
+                  </main>
+                  {sideOpen && (
+                    <SidePanel className="max-lg:absolute max-lg:inset-y-0 max-lg:right-0 max-lg:z-30 max-lg:shadow-xl" />
                   )}
-                  {area === "assets" && (
-                    <AssetsArea onBreakdownOpen={() => setBreakdownOpen(true)} />
-                  )}
-                  {area === "episodes" && (
-                    <EpisodesArea onGoScript={() => setParams({}, { replace: true })} />
-                  )}
-                </main>
-                {sideOpen && (
-                  <SidePanel className="max-lg:absolute max-lg:inset-y-0 max-lg:right-0 max-lg:z-30 max-lg:shadow-xl" />
-                )}
+                </div>
               </div>
             </div>
-          </div>
-          <BreakdownDialog open={breakdownOpen} onOpenChange={setBreakdownOpen} />
-        </TooltipProvider>
-      </MotionConfig>
+            <BreakdownDialog open={breakdownOpen} onOpenChange={setBreakdownOpen} />
+          </TooltipProvider>
+        </MotionConfig>
+      </DramaAssistantProvider>
     </DramaWorkspaceContext.Provider>
   );
 }

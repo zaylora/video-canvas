@@ -11,9 +11,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DURATION, EASE_OUT, SPRING } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { useDramaJobsStore } from "@/store/drama";
+import { skippedText } from "@/utils/drama/compose";
 import { isActiveJob, jobTitle } from "@/utils/drama/jobs";
 import { formatCanvasTime } from "@/utils/home/home";
 
+import { AssistantPane } from "../assistant/assistant-pane";
 import { useWorkspace } from "./context";
 
 /** 一张任务卡：进行中显示进度条，失败显示原因与重试，成功显示时间与实际扣费 */
@@ -120,11 +122,18 @@ function JobCard({ job }: { job: DramaJob }) {
           {job.credits > 0 && <span className="text-credit ml-2">-{job.credits} 积分</span>}
         </div>
       )}
+      {job.step === "compose" &&
+        job.status === "succeeded" &&
+        (job.result?.skippedSeqs.length ?? 0) > 0 && (
+          <p className="text-status-warning text-xs">
+            跳过了没有采用视频的片段 {skippedText(job.result?.skippedSeqs ?? [])}
+          </p>
+        )}
     </motion.div>
   );
 }
 
-/** 右栏：「进度」任务卡（WebSocket 推送 + 挂载 / 重连时对账）和「助手」（三期占位） */
+/** 右栏：「进度」任务卡（WebSocket 推送 + 挂载 / 重连时对账）和「助手」（短剧助手，复用画布 Agent） */
 export function SidePanel({ className }: { className?: string }) {
   const { jobs } = useWorkspace();
   return (
@@ -162,18 +171,8 @@ export function SidePanel({ className }: { className?: string }) {
             </p>
           </div>
         </TabsContent>
-        <TabsContent
-          value="assistant"
-          className="flex flex-col items-center gap-2 px-6 py-16 text-center"
-        >
-          <span className="bg-muted grid size-10 place-items-center rounded-xl">
-            <Bot className="size-5" />
-          </span>
-          <div className="text-sm font-medium">短剧助手</div>
-          <span className="bg-beam/15 text-beam rounded-full px-2 py-px text-xs">三期上线</span>
-          <p className="text-muted-foreground text-xs">
-            之后可以在这里对话修改剧本、资产和分镜，改动前会先给出审批卡。
-          </p>
+        <TabsContent value="assistant" className="min-h-0">
+          <AssistantPane />
         </TabsContent>
       </Tabs>
     </aside>

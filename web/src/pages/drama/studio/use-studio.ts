@@ -535,12 +535,14 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
         useDramaSegmentsStore
           .getState()
           .setList(dramaId, no, await reorderSegments(dramaId, no, ids));
+        // 顺序变了：成片是否过期要跟着刷新
+        void refresh();
       } catch (e) {
         toast.error(dramaErrorMessage(e, "排序失败，已恢复原顺序"));
         void reloadSegments(dramaId, no);
       }
     },
-    [dramaId, key, no],
+    [dramaId, key, no, refresh],
   );
 
   const setSeconds = useCallback<Studio["actions"]["setSeconds"]>(
