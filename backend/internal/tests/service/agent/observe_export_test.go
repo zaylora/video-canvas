@@ -299,7 +299,7 @@ func TestBuildTimeline(t *testing.T) {
 	if a := byKind[TimelineAssist]; len(a) != 1 || a[0].Thinking != "剧本里有 12 个节拍，按节拍拆最细致" || a[0].Partial {
 		t.Errorf("模型回复和思考：%+v", a)
 	}
-	if len(byKind[TimelineApproval]) != 2 || len(byKind[TimelinePlan]) != 1 || len(byKind[TimelineUndo]) != 1 || len(byKind[TimelineFeedback]) != 1 || len(byKind[TimelineNotice]) != 1 {
+	if len(byKind[TimelineApproval]) != 2 || len(byKind[TimelinePlan]) != 1 || len(byKind[TimelineUndo]) != 1 || len(byKind[TimelineFeedback]) != 1 || len(byKind[TimelineNotice]) != 2 { // 运行时提示 + 系统唤醒（tasks.settled）
 		t.Errorf("各类步骤数量：%v", map[string]int{"approval": len(byKind[TimelineApproval]), "plan": len(byKind[TimelinePlan])})
 	}
 

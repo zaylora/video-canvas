@@ -74,9 +74,21 @@ func (s *AssetService) CreateUploadIntent(ctx context.Context, userID uint64, in
 	if in.Size > limit {
 		return nil, assetTooLarge(limit)
 	}
-	ext, ok := assetMimeExt[in.MimeType]
+	mimeType := in.MimeType
+	ext, ok := assetMimeExt[mimeType]
 	if !ok {
-		return nil, errcode.ErrAssetInvalid.WithMsg("不支持的文件类型，仅支持常见的图片、视频、音频格式")
+		// 文档（.txt / .md）：浏览器给 .md 的类型常常是空的或 octet-stream，按文件名补
+		if _, isDoc := documentMimeExt[mimeType]; !isDoc {
+			if byName, named := documentMimeOfName(in.FileName); named && (mimeType == "" || mimeType == "application/octet-stream") {
+				mimeType = byName
+			}
+		}
+		if ext, ok = documentMimeExt[mimeType]; !ok {
+			return nil, errcode.ErrAssetInvalid.WithMsg("不支持的文件类型，仅支持常见的图片、视频、音频格式，以及 .txt、.md 文本")
+		}
+		if in.Size > maxDocumentBytes {
+			return nil, errcode.ErrAssetInvalid.WithMsg(msgDocumentTooLarge)
+		}
 	}
 
 	// 2. 取默认存储。管理员没开直传、或存储不支持（如本地磁盘）时回退到后端中转，这不是错误
@@ -93,7 +105,7 @@ func (s *AssetService) CreateUploadIntent(ctx context.Context, userID uint64, in
 	key := fmt.Sprintf("u%d/%s/%s%s", userID, s.now().Format("200601"), newAssetUUID(), ext)
 	intent := &model.AssetUploadIntent{
 		UserID: userID, StorageID: h.ID, StorageKey: key, FileName: sanitizeAssetFileName(in.FileName),
-		MimeType: in.MimeType, Kind: assetKindOfMime(in.MimeType), DeclaredSize: in.Size, ExpiresAt: s.now().Add(uploadIntentTTL),
+		MimeType: mimeType, Kind: assetKindOfMime(mimeType), DeclaredSize: in.Size, ExpiresAt: s.now().Add(uploadIntentTTL),
 	}
 	if err := s.intents.Create(ctx, intent); err != nil {
 		return nil, fmt.Errorf("记录上传申请失败: %w", err)
@@ -101,7 +113,7 @@ func (s *AssetService) CreateUploadIntent(ctx context.Context, userID uint64, in
 
 	// 4. 签发凭证；失败要撤销刚记录的意图，不留没有凭证的孤儿记录
 	du, err := up.DirectUpload(ctx, storage.DirectUploadRequest{
-		Key: key, ContentType: in.MimeType, Size: in.Size, MaxSize: limit, TTL: uploadIntentTTL,
+		Key: key, ContentType: mimeType, Size: in.Size, MaxSize: limit, TTL: uploadIntentTTL,
 	})
 	if err != nil {
 		if derr := s.intents.Delete(ctx, intent.ID); derr != nil {
@@ -168,9 +180,13 @@ func (s *AssetService) CompleteUpload(ctx context.Context, userID, intentID uint
 		return nil, err
 	}
 	mime, ok := sniffAssetMime(head[:min(len(head), assetHeadLen)])
+	if !ok && assetKindOfMime(in.MimeType) == "document" && info.Size <= maxDocumentBytes {
+		// 申请时声明的是文档：整份内容（不超过上限，head 一定读全了）必须是合法的 UTF-8 文本
+		mime, ok = sniffDocumentMime(in.FileName, head)
+	}
 	if !ok {
 		s.discardUpload(ctx, h, in)
-		return nil, errcode.ErrAssetInvalid.WithMsg("不支持的文件类型，仅支持常见的图片、视频、音频格式")
+		return nil, errcode.ErrAssetInvalid.WithMsg("不支持的文件类型，仅支持常见的图片、视频、音频格式，以及 .txt、.md 文本")
 	}
 	meta := probeAssetMeta(mime, bytes.NewReader(head), info.Size)
 
@@ -178,7 +194,7 @@ func (s *AssetService) CompleteUpload(ctx context.Context, userID, intentID uint
 	//    并发的重复登记会撞上 storage_key 唯一约束，此时直接返回已登记的那一份
 	name := in.FileName
 	if name == "" {
-		name = "unnamed" + assetMimeExt[mime]
+		name = "unnamed" + mimeExt(mime)
 	}
 	asset := &model.Asset{
 		UserID: userID, Kind: assetKindOfMime(mime), StorageID: in.StorageID, StorageKey: in.StorageKey, MimeType: mime,

@@ -16,12 +16,17 @@ func newAttachmentEnv(t *testing.T, remote ...bool) *AgentBridge {
 	t.Helper()
 	b := newBridgeEnv(t)
 	assets := &fakeAssets{owner: 1, remote: len(remote) > 0 && remote[0], files: map[uint64]*model.Asset{
-		1: {ID: 1, Kind: "image", MimeType: "image/png", ByteSize: 3, Width: 800, Height: 600, FileName: "参考.png", StorageKey: "u1/a.png"},
-		2: {ID: 2, Kind: "image", MimeType: "image/jpeg", ByteSize: 3, StorageKey: "u1/b.jpg"},
-		3: {ID: 3, Kind: "image", MimeType: "image/png", ByteSize: 6 << 20, StorageKey: "u1/big.png"},
-		4: {ID: 4, Kind: "image", MimeType: "image/svg+xml", ByteSize: 3, StorageKey: "u1/c.svg"},
-		6: {ID: 6, Kind: "video", MimeType: "video/mp4", ByteSize: 3, StorageKey: "u1/v.mp4"},
-	}, data: map[uint64][]byte{1: []byte("ABC"), 2: []byte("XYZ")}}
+		1:  {ID: 1, Kind: "image", MimeType: "image/png", ByteSize: 3, Width: 800, Height: 600, FileName: "参考.png", StorageKey: "u1/a.png"},
+		2:  {ID: 2, Kind: "image", MimeType: "image/jpeg", ByteSize: 3, StorageKey: "u1/b.jpg"},
+		3:  {ID: 3, Kind: "image", MimeType: "image/png", ByteSize: 6 << 20, StorageKey: "u1/big.png"},
+		4:  {ID: 4, Kind: "image", MimeType: "image/svg+xml", ByteSize: 3, StorageKey: "u1/c.svg"},
+		6:  {ID: 6, Kind: "video", MimeType: "video/mp4", ByteSize: 3, StorageKey: "u1/v.mp4"},
+		7:  {ID: 7, Kind: "document", MimeType: "text/plain", ByteSize: 36, FileName: "_剧本原文.txt", StorageKey: "u1/story.txt"},
+		8:  {ID: 8, Kind: "document", MimeType: "text/markdown", ByteSize: 9, FileName: "大纲.md", StorageKey: "u1/outline.md"},
+		9:  {ID: 9, Kind: "document", MimeType: "text/plain", ByteSize: 8, FileName: "坏.txt", StorageKey: "u1/bad.txt"},
+		10: {ID: 10, Kind: "document", MimeType: "text/plain", ByteSize: 300000, FileName: "长.txt", StorageKey: "u1/long.txt"},
+	}, data: map[uint64][]byte{1: []byte("ABC"), 2: []byte("XYZ"),
+		7: []byte("\xEF\xBB\xBF第一场 雨夜\n林夏站在门口。\n"), 8: []byte("# 大纲\n正文"), 9: []byte("abc\x00defg")}}
 	return NewAgentBridge(BridgeDeps{
 		Repo: b.repo, Canvas: NewAgentCanvasService(b.repo, b.bc), Agent: b.svc, Billing: NewAgentBilling(b.bill),
 		Registry: b.reg, Secrets: fakeSecrets{"channel:ch1": "sk-test"}, Streamer: b.str, Assets: assets,
@@ -124,5 +129,58 @@ func TestCheckAttachments_LimitsDedupeAndEmpty(t *testing.T) {
 	}
 	if _, err := br.CheckAttachments(context.Background(), 0, []string{"1"}); err == nil {
 		t.Error("缺 user_id 要拒绝")
+	}
+}
+
+// 文档附件（.txt / .md）：全文交给模型，展示信息落事件；不需要模型能看图。
+func TestCheckAttachments_Documents(t *testing.T) {
+	br := newAttachmentEnv(t)
+	got, err := br.CheckAttachments(context.Background(), 1, []string{"1", "7", "8"})
+	if err != nil || len(got) != 3 {
+		t.Fatalf("got=%+v err=%v", got, err)
+	}
+	if got[0].Kind != "image" || got[0].Image == nil {
+		t.Errorf("图片照旧，种类 image：%+v", got[0])
+	}
+	d := got[1]
+	if d.Kind != "document" || d.AssetID != "7" || d.Name != "_剧本原文.txt" || d.MimeType != "text/plain" || d.ByteSize != 36 || d.URL != "/files/u1/story.txt" {
+		t.Errorf("展示信息: %+v", d)
+	}
+	if d.Image != nil || d.Width != 0 {
+		t.Errorf("文档没有图片内容和宽高：%+v", d)
+	}
+	if d.Text != "第一场 雨夜\n林夏站在门口。\n" {
+		t.Errorf("交给模型的是全文，开头的 BOM 去掉：%q", d.Text)
+	}
+	if got[2].Kind != "document" || got[2].MimeType != "text/markdown" || got[2].Text != "# 大纲\n正文" {
+		t.Errorf("md 也一样：%+v", got[2])
+	}
+}
+
+func TestCheckAttachments_DocumentRejects(t *testing.T) {
+	br := newAttachmentEnv(t)
+	for name, c := range map[string]struct {
+		ids  []string
+		uid  uint64
+		want string
+	}{
+		"内容不是文本":      {[]string{"9"}, 1, "文件 1：不是有效的文本文件"},
+		"文件太大":        {[]string{"1", "10"}, 1, "文件 2：太大"},
+		"别人的文档和不存在一样": {[]string{"7"}, 2, "不存在或已删除"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := br.CheckAttachments(context.Background(), c.uid, c.ids)
+			if msg := invalidMsg(t, err); !strings.Contains(msg, c.want) {
+				t.Errorf("want %q, got %q", c.want, msg)
+			}
+		})
+	}
+	// 文档单独计数：最多 3 个；图片的 9 张上限不受影响，两者互不占名额
+	four := []string{"7", "8", "9", "10"}
+	if _, err := br.CheckAttachments(context.Background(), 1, four); !strings.Contains(invalidMsg(t, err), "一条消息最多 3 个文本文件") {
+		t.Errorf("超过 3 个文档：%v", err)
+	}
+	if got, err := br.CheckAttachments(context.Background(), 1, []string{"1", "2", "7", "8"}); err != nil || len(got) != 4 {
+		t.Errorf("图片和文档分开计数：%+v %v", got, err)
 	}
 }

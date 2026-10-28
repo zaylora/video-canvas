@@ -343,6 +343,19 @@ func (s *AssetService) ingest(ctx context.Context, p assetIngest) (*model.Asset,
 	head := make([]byte, assetHeadLen)
 	hn, _ := f.ReadAt(head, 0)
 	mime, ok := sniffAssetMime(head[:hn])
+	if !ok && p.Source == model.AssetSourceUpload {
+		// 用户上传的 .txt / .md：整份读出来按文本判断（上限 20 万字节，不会占多少内存）
+		if _, isDoc := documentMimeOfName(p.FileName); isDoc {
+			if n > maxDocumentBytes {
+				return nil, "", errcode.ErrAssetInvalid.WithMsg(msgDocumentTooLarge)
+			}
+			whole := make([]byte, n)
+			if _, err := f.ReadAt(whole, 0); err != nil && !errors.Is(err, io.EOF) {
+				return nil, "", fmt.Errorf("读取文本文件失败: %w", err)
+			}
+			mime, ok = sniffDocumentMime(p.FileName, whole)
+		}
+	}
 	if !ok && p.FallbackMime != "" {
 		// 仅生成产物：平台声明的类型在白名单内时兜底，内容仍是自己下载的，风险可接受
 		if _, allowed := assetMimeExt[p.FallbackMime]; allowed {
@@ -350,7 +363,7 @@ func (s *AssetService) ingest(ctx context.Context, p assetIngest) (*model.Asset,
 		}
 	}
 	if !ok {
-		return nil, "", errcode.ErrAssetInvalid.WithMsg("不支持的文件类型，仅支持常见的图片、视频、音频格式")
+		return nil, "", errcode.ErrAssetInvalid.WithMsg("不支持的文件类型，仅支持常见的图片、视频、音频格式，以及 .txt、.md 文本")
 	}
 
 	// 4. 确定种类：以内容为准；生成产物若与期望种类冲突则拒绝。
@@ -375,7 +388,7 @@ func (s *AssetService) ingest(ctx context.Context, p assetIngest) (*model.Asset,
 
 	// 7. 生成不可猜测的对象 key：{前缀}{用户ID}/{年月}/{随机uuid}{扩展名}
 	//    扩展名取自嗅探结果而不是文件名，避免客户端塞入奇怪的后缀
-	key := fmt.Sprintf("%s%d/%s/%s%s", p.KeyPrefix, p.UserID, s.now().Format("200601"), newAssetUUID(), assetMimeExt[mime])
+	key := fmt.Sprintf("%s%d/%s/%s%s", p.KeyPrefix, p.UserID, s.now().Format("200601"), newAssetUUID(), mimeExt(mime))
 
 	// 8. 写入存储；失败也尝试删一次，防止对象已部分落地却没有对应记录
 	if _, err := f.Seek(0, io.SeekStart); err != nil {
@@ -389,7 +402,7 @@ func (s *AssetService) ingest(ctx context.Context, p assetIngest) (*model.Asset,
 	// 9. 插入素材行；失败必须删除刚写入的对象，否则会留下永远没人引用的孤儿文件
 	name := p.FileName
 	if name == "" {
-		name = "unnamed" + assetMimeExt[mime]
+		name = "unnamed" + mimeExt(mime)
 	}
 	asset := &model.Asset{
 		UserID:     p.UserID,
@@ -662,4 +675,12 @@ func (c *redirectCache) put(key, url string, exp, now time.Time) {
 		}
 	}
 	c.items[key] = redirectItem{url: url, exp: exp}
+}
+
+// mimeExt 返回类型对应的扩展名：先查素材白名单，再查文档。
+func mimeExt(mime string) string {
+	if ext, ok := assetMimeExt[mime]; ok {
+		return ext
+	}
+	return documentMimeExt[mime]
 }

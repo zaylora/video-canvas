@@ -1,13 +1,16 @@
 package service
 
 import (
+	"bytes"
 	"encoding/binary"
 	"image"
 	_ "image/gif" // 注册 gif 解码器，供 image.DecodeConfig 使用
 	_ "image/jpeg"
 	_ "image/png"
 	"io"
+	"path/filepath"
 	"strings"
+	"unicode/utf8"
 )
 
 // assetMeta 是从文件内容里探测出来的元数据，探测不到的字段保持 0。
@@ -35,8 +38,59 @@ var assetMimeExt = map[string]string{
 	"audio/aac":       ".aac",
 }
 
-// assetKindOfMime 返回 mime 所属的素材种类（image / video / audio）。
+// 文档（故事、剧本）：没有 magic bytes，只能按扩展名加「内容是合法 UTF-8 文本」判断，所以单独一张表，
+// 不进上面的 assetMimeExt：那张表还管生成产物的兜底类型，文本不能借它混进素材。
+// 文档只作为聊天附件，不进素材库；单个文件有上限，Agent 会把全文交给模型。
+var documentMimeExt = map[string]string{
+	"text/plain":    ".txt",
+	"text/markdown": ".md",
+}
+
+// maxDocumentBytes 是单个文档的大小上限（字节）。
+const maxDocumentBytes = 200_000
+
+// msgDocumentTooLarge 是文档超过上限时给用户看的文案。
+const msgDocumentTooLarge = "文本文件太大了，请控制在 20 万字节以内，或分段上传"
+
+// documentMimeOfName 按文件名后缀判断文档类型：.txt 是 text/plain，.md / .markdown 是 text/markdown，其它不是文档。
+func documentMimeOfName(name string) (string, bool) {
+	switch strings.ToLower(filepath.Ext(name)) {
+	case ".txt":
+		return "text/plain", true
+	case ".md", ".markdown":
+		return "text/markdown", true
+	}
+	return "", false
+}
+
+// isTextContent 判断内容是不是正常的 UTF-8 文本：合法 UTF-8，不含 NUL 和其它控制字符（换行、回车、制表除外）。
+// 二进制文件、GBK 之类的旧编码都过不了这一关。
+func isTextContent(b []byte) bool {
+	if !utf8.Valid(b) || bytes.IndexByte(b, 0) >= 0 {
+		return false
+	}
+	for _, c := range b {
+		if c < 0x20 && c != '\n' && c != '\r' && c != '\t' {
+			return false
+		}
+	}
+	return true
+}
+
+// sniffDocumentMime 判断一个文件是不是文档：文件名是 .txt / .md，内容（整个文件）是合法的 UTF-8 文本。
+func sniffDocumentMime(fileName string, content []byte) (string, bool) {
+	mime, ok := documentMimeOfName(fileName)
+	if !ok || !isTextContent(content) {
+		return "", false
+	}
+	return mime, true
+}
+
+// assetKindOfMime 返回 mime 所属的素材种类（image / video / audio / document）。
 func assetKindOfMime(mime string) string {
+	if _, ok := documentMimeExt[mime]; ok {
+		return "document"
+	}
 	if i := strings.IndexByte(mime, '/'); i > 0 {
 		return mime[:i]
 	}

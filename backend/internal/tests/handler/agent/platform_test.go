@@ -744,7 +744,7 @@ func TestPlatformHandler_CheckMessage(t *testing.T) {
 }
 
 func TestPlatformHandler_CheckAttachments(t *testing.T) {
-	api := &fakePlatform{attachments: []agentsvc.AttachmentCheck{{AssetID: "11", Name: "参考.png", MimeType: "image/png", URL: "/files/u1/a.png", Image: agentsvc.ToolImage{MimeType: "image/png", Data: "QUJD"}}}}
+	api := &fakePlatform{attachments: []agentsvc.AttachmentCheck{{AssetID: "11", Name: "参考.png", MimeType: "image/png", URL: "/files/u1/a.png", Kind: "image", Image: &agentsvc.ToolImage{MimeType: "image/png", Data: "QUJD"}}}}
 	w := platformCall(newPlatformRouter(api), http.MethodPost, "/internal/platform/v1/attachments/check", `{"user_id":"1","asset_ids":["11"]}`, nil)
 	if w.Code != 200 || api.attUser != 1 || len(api.attIDs) != 1 || api.attIDs[0] != "11" {
 		t.Fatalf("%d %s %+v", w.Code, w.Body, api)
