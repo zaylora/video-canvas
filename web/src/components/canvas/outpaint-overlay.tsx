@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
 import { NodeToolbar, Position, useReactFlow, useStore, type ReactFlowState } from "@xyflow/react";
-import { useParams } from "react-router";
 
 import { NodePromptInput } from "@/components/canvas/node-prompt-input";
 import { OutpaintFrameLayer } from "@/components/canvas/outpaint-frame-layer";
@@ -18,6 +17,7 @@ import { DURATION, EASE_OUT } from "@/lib/motion";
 import { useCreditsStore } from "@/store/credits";
 import { useOutpaintStore } from "@/store/outpaint";
 import type { CanvasEdge, CanvasNode, CanvasNodeData } from "@/types";
+import { useCurrentCanvasId } from "@/utils/canvas/canvas-id";
 import { planCompose } from "@/utils/canvas/outpaint-compose";
 import {
   frameByMult,
@@ -53,7 +53,7 @@ export function OutpaintOverlay({ id, data }: { id: string; data: CanvasNodeData
     CanvasNode,
     CanvasEdge
   >();
-  const { id: canvasId } = useParams();
+  const canvasId = useCurrentCanvasId();
   const history = useCanvasHistoryContext();
   const leave = useOutpaintStore((state) => state.leave);
   const { width, shift } = usePanelPlacement(id);

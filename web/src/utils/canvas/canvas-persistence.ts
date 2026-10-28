@@ -109,6 +109,7 @@ export function serializeGraph(
           ...(rest.scene !== undefined ? { scene: rest.scene } : {}),
           ...(rest.characterId !== undefined ? { characterId: rest.characterId } : {}),
           ...(rest.labelCache !== undefined ? { labelCache: rest.labelCache } : {}),
+          ...(rest.drama !== undefined ? { drama: rest.drama } : {}),
         };
         if (data.src?.startsWith("blob:") && !data.assetId) delete data.src;
         return {

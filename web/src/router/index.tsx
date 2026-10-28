@@ -24,6 +24,8 @@ import Assets from "@/pages/assets";
 import Canvas from "@/pages/canvas";
 import CanvasList from "@/pages/home/canvas-list";
 import Conversation from "@/pages/conversation";
+import DramaList from "@/pages/drama";
+import DramaWorkspace from "@/pages/drama/workspace";
 import Home from "@/pages/home";
 import HomeLayout from "@/pages/home/layout";
 import Login from "@/pages/login";
@@ -97,6 +99,7 @@ export const router = createBrowserRouter([
               { index: true, element: <Home /> },
               { path: "canvases", element: <CanvasList /> },
               { path: "assets", element: <Assets /> },
+              { path: "drama", element: <DramaList /> },
               /** 旧的「新对话」地址：新建对话现在就是创作页 */
               { path: "conversations/new", element: <Navigate to="/" replace /> },
               { path: "conversations/:id", element: <Conversation /> },
@@ -110,6 +113,11 @@ export const router = createBrowserRouter([
           {
             path: "canvas/:id",
             element: <Canvas />,
+          },
+          /** 短剧工作台：全屏，与 /canvas/:id 同层级，不带首页侧栏 */
+          {
+            path: "drama/:id",
+            element: <DramaWorkspace />,
           },
           {
             path: "admin",

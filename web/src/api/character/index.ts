@@ -6,6 +6,7 @@ import type {
   BackendCharacterDto,
   CharacterDto,
   CharacterInput,
+  CharacterPatch,
 } from "./type";
 
 /** 批量按 ID 读取的上限（契约 §3：≤ 100 个） */
@@ -19,6 +20,9 @@ export const mapCharacter = (raw: BackendCharacterDto): CharacterDto => ({
   avatar: raw.avatar ? mapAsset(raw.avatar) : null,
   extras: (raw.extras ?? []).map(mapAsset),
   voice: raw.voice ? mapAsset(raw.voice) : null,
+  dramaId: raw.drama_id ? raw.drama_id : null,
+  lookName: raw.look_name ?? "",
+  voicePrompt: raw.voice_prompt ?? "",
   createdAt: raw.created_at,
   updatedAt: raw.updated_at,
 });
@@ -82,6 +86,27 @@ export const updateCharacter = async (id: string, input: CharacterInput): Promis
     await service.patch<BackendCharacterDto>(`/characters/${id}`, toBody(input), {
       silent: true,
     }),
+  );
+
+/**
+ * 局部更新角色卡（契约 §5）：只传要改的字段。短剧角色生成形象成功后用它把主图写回
+ * @param id 角色卡 ID
+ * @param patch 要改的字段
+ * @returns 保存后的角色卡
+ */
+export const patchCharacter = async (id: string, patch: CharacterPatch): Promise<CharacterDto> =>
+  mapCharacter(
+    await service.patch<BackendCharacterDto>(
+      `/characters/${id}`,
+      {
+        ...(patch.avatarAssetId !== undefined
+          ? { avatar_asset_id: patch.avatarAssetId === null ? null : Number(patch.avatarAssetId) }
+          : {}),
+        ...(patch.lookName !== undefined ? { look_name: patch.lookName } : {}),
+        ...(patch.voicePrompt !== undefined ? { voice_prompt: patch.voicePrompt } : {}),
+      },
+      { silent: true },
+    ),
   );
 
 /**

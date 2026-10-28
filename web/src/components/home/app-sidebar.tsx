@@ -1,6 +1,6 @@
 import type { ComponentType, SVGProps } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
-import { Clapperboard, Compass, FolderOpen, ShieldCheck, Workflow } from "lucide-react";
+import { Clapperboard, Compass, Film, FolderOpen, ShieldCheck, Workflow } from "lucide-react";
 
 import { CanvasCover } from "@/components/home/canvas-cover";
 import { ConversationList } from "@/components/home/conversation-list";
@@ -37,12 +37,15 @@ type NavItem = {
   icon: ComponentType<SVGProps<SVGSVGElement>>;
   /** 跳转地址；没有就是还没上线的入口 */
   to?: string;
+  /** 名字右侧的新功能角标 */
+  badge?: string;
 };
 
 const NAV: NavItem[] = [
   { label: "创作", icon: Clapperboard, to: "/" },
   { label: "探索", icon: Compass },
   { label: "资产", icon: FolderOpen, to: "/assets" },
+  { label: "短剧工作室", icon: Film, to: "/drama", badge: "New" },
 ];
 
 /** 每个分组最多列几项 */
@@ -76,6 +79,11 @@ function NavButton({ item, active }: { item: NavItem; active: boolean }) {
     >
       {active && <NavActiveHighlight layoutId="home-nav-active" />}
       {content}
+      {item.badge && (
+        <span className="bg-beam/15 text-beam ml-auto rounded-full px-1.5 py-px text-[10px] leading-4 font-medium group-data-[collapsible=icon]:hidden">
+          {item.badge}
+        </span>
+      )}
     </SidebarMenuButton>
   );
 }

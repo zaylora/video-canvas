@@ -1,0 +1,245 @@
+import service from "@/utils/requests/service";
+
+import type {
+  BackendDramaStyles,
+  BackendDramaSummary,
+  BackendDramaView,
+  BackendEpisodeSummary,
+  BackendEpisodeView,
+  BackendJobView,
+  CreateDramaInput,
+  Drama,
+  DramaJob,
+  DramaJobInput,
+  DramaPage,
+  DramaStyles,
+  DramaSummary,
+  Episode,
+  EpisodeSummary,
+  UpdateDramaInput,
+  UpdateEpisodeInput,
+} from "./type";
+
+export const mapDramaSummary = (raw: BackendDramaSummary): DramaSummary => ({
+  id: raw.id,
+  title: raw.title,
+  status: raw.status,
+  episodeCount: raw.episode_count,
+  lockedCount: raw.locked_count,
+  coverUrl: raw.cover_url ? raw.cover_url : null,
+  updatedAt: raw.updated_at,
+});
+
+export const mapEpisodeSummary = (raw: BackendEpisodeSummary): EpisodeSummary => ({
+  no: raw.no,
+  title: raw.title,
+  synopsis: raw.synopsis ?? "",
+  scriptStatus: raw.script_status,
+  locked: raw.locked,
+  revision: raw.revision,
+  updatedAt: raw.updated_at,
+});
+
+export const mapEpisode = (raw: BackendEpisodeView): Episode => ({
+  ...mapEpisodeSummary(raw),
+  scriptMd: raw.script_md ?? "",
+});
+
+export const mapJob = (raw: BackendJobView): DramaJob => ({
+  id: raw.id,
+  step: raw.step,
+  episodes: raw.episodes ?? [],
+  status: raw.status,
+  progress: raw.progress,
+  credits: raw.credits,
+  errorCode: raw.error_code,
+  errorMessage: raw.error_message ?? "",
+  createdAt: raw.created_at,
+  finishedAt: raw.finished_at ?? null,
+});
+
+export const mapDrama = (raw: BackendDramaView): Drama => ({
+  id: raw.id,
+  title: raw.title,
+  canvasId: raw.canvas_id,
+  status: raw.status,
+  sourceKind: raw.source_kind,
+  genre: raw.genre ?? "",
+  styleKey: raw.style_key,
+  styleCustom: raw.style_custom ?? "",
+  ratio: raw.ratio ?? "",
+  targetEpisodes: raw.target_episodes,
+  episodeSeconds: raw.episode_seconds,
+  textModel: raw.text_model ?? "",
+  outlineMd: raw.outline_md ?? "",
+  charactersMd: raw.characters_md ?? "",
+  revision: raw.revision,
+  episodes: (raw.episodes ?? []).map(mapEpisodeSummary),
+  activeJobs: (raw.active_jobs ?? []).map(mapJob),
+  createdAt: raw.created_at,
+  updatedAt: raw.updated_at,
+});
+
+export const mapStyles = (raw: BackendDramaStyles): DramaStyles => ({
+  genres: raw.genres ?? [],
+  styles: raw.styles ?? [],
+});
+
+/** 去掉值为 undefined 的键，PATCH 只发要改的字段 */
+const compact = <T extends Record<string, unknown>>(body: T): Partial<T> =>
+  Object.fromEntries(Object.entries(body).filter(([, value]) => value !== undefined)) as Partial<T>;
+
+/** 新建短剧的 multipart 表单：file 与 text 二选一，空字段不发 */
+export function buildCreateForm(input: CreateDramaInput): FormData {
+  const form = new FormData();
+  if (input.file) form.append("file", input.file);
+  else form.append("text", input.text ?? "");
+  const fields: Record<string, string | undefined> = {
+    title: input.title?.trim() || undefined,
+    genre: input.genre || undefined,
+    style_key: input.styleKey,
+    style_custom: input.styleCustom || undefined,
+    ratio: input.ratio || undefined,
+    target_episodes: input.targetEpisodes ? String(input.targetEpisodes) : undefined,
+    episode_seconds: input.episodeSeconds ? String(input.episodeSeconds) : undefined,
+  };
+  for (const [key, value] of Object.entries(fields)) {
+    if (value !== undefined) form.append(key, value);
+  }
+  return form;
+}
+
+/** PATCH /dramas/:id 请求体（snake_case，只含传了的字段） */
+export const toUpdateDramaBody = (input: UpdateDramaInput) =>
+  compact({
+    revision: input.revision,
+    title: input.title,
+    genre: input.genre,
+    style_key: input.styleKey,
+    style_custom: input.styleCustom,
+    ratio: input.ratio,
+    text_model: input.textModel,
+    outline_md: input.outlineMd,
+    characters_md: input.charactersMd,
+  });
+
+/** PATCH /dramas/:id/episodes/:no 请求体 */
+export const toUpdateEpisodeBody = (input: UpdateEpisodeInput) =>
+  compact({
+    revision: input.revision,
+    title: input.title,
+    synopsis: input.synopsis,
+    script_md: input.scriptMd,
+  });
+
+/** 估价 / 提交任务的请求体 */
+export const toJobBody = (input: DramaJobInput) =>
+  compact({ step: input.step, episodes: input.episodes, ratio: input.ratio || undefined });
+
+/** 获取题材与画风清单 */
+export const getDramaStyles = async (): Promise<DramaStyles> =>
+  mapStyles(await service.get<BackendDramaStyles>("/drama-styles"));
+
+/**
+ * 我的短剧列表，updated_at 倒序
+ * @param params 关键字与分页
+ */
+export const listDramas = async (
+  params: { keyword?: string; page?: number; pageSize?: number } = {},
+): Promise<DramaPage> => {
+  const res = await service.get<{
+    list: BackendDramaSummary[] | null;
+    total: number;
+    page: number;
+    page_size: number;
+  }>("/dramas", {
+    keyword: params.keyword?.trim() || undefined,
+    page: params.page,
+    page_size: params.pageSize,
+  });
+  return {
+    items: (res.list ?? []).map(mapDramaSummary),
+    total: res.total ?? 0,
+    page: res.page ?? 1,
+    pageSize: res.page_size ?? params.pageSize ?? 20,
+  };
+};
+
+/**
+ * 新建短剧并排队研读；67002 / 67003 由调用方就地展示，不弹全局提示
+ * @param input 原文（文件或文本）与创作设置
+ */
+export const createDrama = async (input: CreateDramaInput): Promise<Drama> =>
+  mapDrama(
+    await service.upload<BackendDramaView>("/dramas", buildCreateForm(input), { silent: true }),
+  );
+
+/** 短剧详情 */
+export const getDrama = async (id: string, silent = false): Promise<Drama> =>
+  mapDrama(await service.get<BackendDramaView>(`/dramas/${id}`, undefined, { silent }));
+
+/** 改短剧；revision 冲突（409）由调用方处理，不弹全局提示 */
+export const updateDrama = async (id: string, input: UpdateDramaInput): Promise<Drama> =>
+  mapDrama(
+    await service.patch<BackendDramaView>(`/dramas/${id}`, toUpdateDramaBody(input), {
+      silent: true,
+    }),
+  );
+
+/** 删除短剧（连带删画布与它的角色卡） */
+export const deleteDrama = async (id: string): Promise<void> => {
+  await service.delete(`/dramas/${id}`);
+};
+
+/** 读单集（含剧本正文） */
+export const getEpisode = async (id: string, no: number): Promise<Episode> =>
+  mapEpisode(await service.get<BackendEpisodeView>(`/dramas/${id}/episodes/${no}`));
+
+/** 在末尾追加一集 */
+export const addEpisode = async (
+  id: string,
+  body: { title?: string; synopsis?: string } = {},
+): Promise<Episode> =>
+  mapEpisode(await service.post<BackendEpisodeView>(`/dramas/${id}/episodes`, body));
+
+/** 改单集；锁定集改正文 67005、revision 冲突 409 都由调用方处理 */
+export const updateEpisode = async (
+  id: string,
+  no: number,
+  input: UpdateEpisodeInput,
+): Promise<Episode> =>
+  mapEpisode(
+    await service.patch<BackendEpisodeView>(
+      `/dramas/${id}/episodes/${no}`,
+      toUpdateEpisodeBody(input),
+      { silent: true },
+    ),
+  );
+
+/** 估算一次任务要多少积分 */
+export const estimateJob = async (id: string, input: DramaJobInput): Promise<number> => {
+  const res = await service.post<{ credits: number }>(`/dramas/${id}/estimate`, toJobBody(input), {
+    silent: true,
+  });
+  return res.credits;
+};
+
+/** 提交任务（202）；业务错误由调用方展示 */
+export const submitJob = async (id: string, input: DramaJobInput): Promise<DramaJob> =>
+  mapJob(
+    await service.post<BackendJobView>(`/dramas/${id}/jobs`, toJobBody(input), { silent: true }),
+  );
+
+/** 进行中（queued / running）的任务，挂载与重连时对账用 */
+export const listActiveJobs = async (id: string): Promise<DramaJob[]> => {
+  const res = await service.get<{ items: BackendJobView[] | null }>(
+    `/dramas/${id}/jobs`,
+    { status: "active" },
+    { silent: true },
+  );
+  return (res.items ?? []).map(mapJob);
+};
+
+/** 取消任务 */
+export const cancelJob = async (id: string, jobId: string): Promise<DramaJob> =>
+  mapJob(await service.post<BackendJobView>(`/dramas/${id}/jobs/${jobId}/cancel`));

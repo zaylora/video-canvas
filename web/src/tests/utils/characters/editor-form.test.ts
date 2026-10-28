@@ -140,12 +140,8 @@ describe("表单与请求体", () => {
 describe("mapSaveError：业务错误按契约 §4 摆到该摆的地方", () => {
   const err = (code: number, message: string) => new ApiError(message, code, 400);
 
-  test("66001 重名显示在名称框下", () => {
-    expect(mapSaveError(err(66001, "已有同名角色卡"))).toEqual({
-      kind: "field",
-      field: "name",
-      message: "已有同名角色卡",
-    });
+  test("名称不再唯一：66001 不再有名称框下的特殊提示，按普通业务错误走横幅", () => {
+    expect(mapSaveError(err(66001, "已有同名角色卡")).kind).toBe("banner");
   });
 
   test("66002 / 66003 / 66005 在弹框底部横幅，文案用后端给的", () => {

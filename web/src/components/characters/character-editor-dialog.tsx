@@ -45,7 +45,7 @@ const PICK_TITLE: Record<PickMode, string> = {
 /**
  * 角色卡新建 / 编辑弹框（资产页与画布选择框共用）。左图右文，选素材复用 AssetPickerDialog 并按种类过滤
  * （主图 / 补充图只列图片，声音只列音频）。保存中按钮转圈、弹框不可关闭；失败时已填内容保留：
- * 重名显示在名称框下，数量上限 / 素材不可用 / 参数不合法在底部横幅，角色卡已被删则提示并关闭。
+ * 数量上限 / 素材不可用 / 参数不合法在底部横幅（名称允许重名），角色卡已被删则提示并关闭。
  * 保存成功后写进角色卡缓存，引用它的画布节点自动刷新。每次打开都从初始状态开始。
  * @param open 是否打开
  * @param character 要编辑的角色卡；null 是新建
@@ -156,8 +156,7 @@ function EditorBody({
       onClose();
     } catch (error) {
       const failure = mapSaveError(error);
-      if (failure.kind === "field") setErrors({ [failure.field]: failure.message });
-      else if (failure.kind === "banner") setBanner(failure.message);
+      if (failure.kind === "banner") setBanner(failure.message);
       else {
         // 编辑时角色卡已被别处删除：缓存标成查不到，关弹框
         if (character) useCharactersStore.getState().remove(character.id);

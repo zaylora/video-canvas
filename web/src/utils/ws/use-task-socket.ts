@@ -8,6 +8,8 @@ import { publishCanvasPatch } from "@/utils/agent/patch-bus";
 import { useWsStore } from "@/store/ws";
 import { getToken } from "@/utils/storage/token";
 
+import { handleDramaJobEvent, reconcileWatchedDramas } from "@/utils/drama/job-events";
+
 import { handleTaskView, reconcileActiveTasks } from "./task-events";
 import { buildWsUrl, TaskSocketClient } from "./socket-client";
 
@@ -31,8 +33,10 @@ export function useTaskSocket() {
       onCanvasPatch: publishCanvasPatch,
       onAgentEvent: (event) => useAgentStore.getState().handleEvent(event, { live: true }),
       onPayment: (update) => usePaymentStore.getState().handleWsUpdate(update),
+      onDramaJob: handleDramaJobEvent,
       onOpen: () => {
         void reconcileActiveTasks();
+        void reconcileWatchedDramas();
         void useCreditsStore.getState().refresh();
         // 断线期间可能漏了 Agent 事件：把已经打开过的会话补齐
         const { sessions, sync } = useAgentStore.getState();
@@ -48,6 +52,7 @@ export function useTaskSocket() {
       if (document.visibilityState !== "visible") return;
       client.reconnectNow();
       void reconcileActiveTasks();
+      void reconcileWatchedDramas();
     };
     const onOnline = () => client.reconnectNow();
     document.addEventListener("visibilitychange", onVisible);

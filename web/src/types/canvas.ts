@@ -64,6 +64,24 @@ export type CanvasNodeData = {
   characterId?: string;
   /** 角色卡节点上次读到的名称和主图素材 ID，只在加载前或读取失败时占位，不作为事实来源 */
   labelCache?: { name: string; coverAssetId?: string };
+  /** 短剧资产元数据，只有短剧专属画布里的节点才有；没有这个字段的节点在短剧里算「未分类」 */
+  drama?: NodeDrama;
+};
+
+/**
+ * 短剧资产元数据（契约 §4，后端拆解时写入、前端「出现集数」读写）。
+ * 其余未知字段（如别名）原样保留，改集数时不能丢。
+ */
+export type NodeDrama = {
+  /** 资产类型；文本 / 图片 / 视频 / 音频这类普通节点可以没有 */
+  type?: "character" | "scene" | "prop";
+  /** 资产名，合并与 @ 候选用 */
+  name?: string;
+  /** 造型 / 变体名，可空串 */
+  look?: string;
+  /** 出现的集号；空数组 = 全集 */
+  episodes: number[];
+  [extra: string]: unknown;
 };
 
 /** 节点的一版生成产物 */

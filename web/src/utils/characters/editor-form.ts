@@ -60,7 +60,7 @@ const lengthOf = (text: string) => [...text].length;
 
 /**
  * 保存前的预校验（后端同样校验，这里让错误就地出现、少一次请求）：
- * 名称去首尾空格后 1–64 字，设定 ≤ 500 字，主图必填。重名只有后端知道，由保存失败时的 66001 提示。
+ * 名称去首尾空格后 1–64 字，设定 ≤ 500 字，主图必填。名称不要求唯一（短剧里同一角色有多个造型），前端不做重名校验。
  * @param form 表单内容
  * @returns 各字段的错误；空对象表示可以保存
  */
@@ -157,16 +157,8 @@ export function toInput(form: EditorForm): CharacterInput {
   };
 }
 
-/** 保存失败该怎么摆：field 就地挂在字段下，banner 是弹框底部横幅，gone 是角色卡已不存在 */
+/** 保存失败该怎么摆：banner 是弹框底部横幅，gone 是角色卡已不存在（名称不再唯一，没有挂在字段下的失败） */
 export type SaveFailure =
-  | {
-      /** 挂在某个字段下 */
-      kind: "field";
-      /** 目前只有名称重复 */
-      field: "name";
-      /** 提示文案 */
-      message: string;
-    }
   | {
       /** 弹框底部横幅，已填内容保留 */
       kind: "banner";
@@ -188,8 +180,6 @@ export type SaveFailure =
 export function mapSaveError(error: unknown): SaveFailure {
   if (error instanceof ApiError) {
     switch (error.code) {
-      case CHARACTER_ERR.nameDup:
-        return { kind: "field", field: "name", message: error.message };
       case CHARACTER_ERR.notFound:
         return { kind: "gone", message: error.message };
       default:

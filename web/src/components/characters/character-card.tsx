@@ -13,12 +13,13 @@ import { VoiceBar } from "./voice-player";
 /** 封面左上叠放的补充图缩略图最多几张 */
 const STACK_MAX = 3;
 
-/** 3:4 竖版封面：主图；主图素材已不可用时给人形占位，仍可点进去重选 */
+/** 3:4 竖版封面：主图；没有形象（短剧角色待生成）或主图素材已不可用时给人形占位和「待生成形象」，仍可点进去选图 */
 export function CharacterCover({ card }: { card: CharacterDto }) {
   if (card.avatar) return <AssetCover asset={card.avatar} />;
   return (
-    <div className="bg-muted text-muted-foreground/60 absolute inset-0 grid place-items-center">
+    <div className="bg-muted text-muted-foreground/60 absolute inset-0 flex flex-col items-center justify-center gap-2">
       <UserRound className="size-1/4" />
+      <span className="text-xs">待生成形象</span>
     </div>
   );
 }

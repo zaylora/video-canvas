@@ -1,4 +1,4 @@
-import type { DirectorScene } from "@/types";
+import type { DirectorScene, NodeDrama } from "@/types";
 
 /** 持久化到后端的画布节点 */
 export interface PersistedCanvasNodeDto {
@@ -57,6 +57,8 @@ export interface PersistedCanvasNodeDto {
     characterId?: string;
     /** 角色卡节点上次读到的名称和主图素材 ID，仅在读取失败或加载前占位 */
     labelCache?: { name: string; coverAssetId?: string };
+    /** 短剧资产元数据（仅短剧专属画布的节点），结构见 types/canvas 的 NodeDrama */
+    drama?: NodeDrama;
   };
 }
 
