@@ -172,3 +172,25 @@ test("会话侧四个接口：模型清单、画布归属、消息引用、撤�
     assert.equal(f.seen.at(-1)!.path, "/internal/platform/v1/runs/1152921504606846977/undo");
     assert.deepEqual(decodeRunContext(String(f.seen.at(-1)!.headers["x-agent-context"])), rc);
   }));
+
+test("任务状态：user_id 和 task_ids 都按十进制字符串发给平台，结果按顺序原样返回", () =>
+  withPlatform(async (p, f) => {
+    f.reply("POST /internal/platform/v1/tasks/status", { json: { code: 0, data: { items: [
+      { task_id: "1152921504606846978", node_id: "n1", kind: "image", status: "succeeded", outputs: [{ media_type: "image", asset_id: "42" }] },
+      { task_id: "9", status: "missing" },
+    ] } } });
+    const items = await p.taskStates("1152921504606846977", ["1152921504606846978", "9"]);
+    assert.deepEqual(f.seen[0].body, { user_id: "1152921504606846977", task_ids: ["1152921504606846978", "9"] });
+    assert.equal(f.seen[0].headers["x-agent-service-token"], TOKEN);
+    assert.equal(f.seen[0].headers["x-agent-context"], undefined, "只按用户查，不需要运行上下文");
+    assert.deepEqual(items.map((i) => [i.task_id, i.status]), [["1152921504606846978", "succeeded"], ["9", "missing"]]);
+    assert.equal(items[0].outputs?.[0].asset_id, "42");
+  }));
+
+test("任务状态：id 不是规范的十进制字符串在本地就拒绝（数字会在 JavaScript 里丢精度），不发请求", () =>
+  withPlatform(async (p, f) => {
+    await assert.rejects(p.taskStates("1", ["abc"]), /task_ids/);
+    await assert.rejects(p.taskStates("0", ["1"]), /user_id/);
+    await assert.rejects(p.taskStates("1", ["007"]), /task_ids/);
+    assert.equal(f.seen.length, 0);
+  }));

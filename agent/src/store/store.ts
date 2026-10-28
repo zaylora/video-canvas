@@ -195,6 +195,12 @@ export class AgentStore {
     return sessionOf(row);
   }
 
+  /** 按 Pi 会话 id 找会话（后台监听的任务只知道 Pi 会话）；没有或已删除返回 undefined */
+  sessionByConversation(conversationId: string): Session | undefined {
+    const row = this.#get("SELECT * FROM agent_sessions WHERE conversation_id = ? AND deleted_at IS NULL", conversationId);
+    return row ? sessionOf(row) : undefined;
+  }
+
   /** 列出用户在某画布上的会话，最近更新的在前（同一时刻按 ID 倒序） */
   listSessions(userId: string, canvasId: string): Session[] {
     return this.#all(

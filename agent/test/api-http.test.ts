@@ -162,3 +162,88 @@ test("发起运行和插话的请求体里的 attachments 不会被校验白名�
     const bad = await h.call("POST", "/agent/sessions/" + enc(e.sessionId) + "/runs", { message: "看图", attachments: "abc" });
     assert.deepEqual([bad.status, bad.body.code], [400, 10001]);
   }));
+
+// ---- 后台等待生成 ----
+
+const WATCH_GO = {
+  turns: [{ tools: [{ id: "call_g", name: "generate_media", args: { items: [{ nodeId: "n1" }, { nodeId: "n2" }] } }] }, { text: "已提交" }],
+  propose: { generate: { payload: { items: [{ node_id: "n1", label: "镜头 1", price: 5 }, { node_id: "n2", label: "镜头 2", price: 5 }], quote_credits: 10, wait: true }, quote_credits: 10, summary: "s", content: "已提交" } },
+  execute: () => ({ status: "executed", result: { tasks: [{ node_id: "n1", task_id: "101" }, { node_id: "n2", task_id: "102" }] }, outcome_text: "任务已提交" }),
+};
+
+/** 模型申请生成并被批准：这批任务进入后台等待 */
+async function waiting(h: Parameters<Parameters<typeof withHttp>[1]>[0], e: Parameters<Parameters<typeof withHttp>[1]>[1]) {
+  const run = await e.start();
+  await e.engine.idle();
+  const [approval] = e.store.listApprovals(run.id);
+  await h.call("POST", "/agent/approvals/" + enc(approval.id) + "/decision", { decision: "approve" });
+  await e.engine.idle();
+  return run;
+}
+
+test("等待条：GET 给出进行中的批（任务、标题、进度），不用等了 POST 取消它们；别人的会话是 404", () =>
+  withHttp(WATCH_GO, async (h, e) => {
+    await waiting(h, e);
+    const sid = enc(e.sessionId);
+    const got = await h.call("GET", `/agent/sessions/${sid}/watches`);
+    assert.deepEqual([got.status, got.body.code], [200, 0]);
+    const [b] = got.body.data.items;
+    assert.deepEqual([b.state, b.total, b.settled], ["waiting", 2, 0]);
+    assert.deepEqual(b.tasks.map((t: any) => [t.task_id, t.node_id, t.label, t.status]), [["101", "n1", "镜头 1", "pending"], ["102", "n2", "镜头 2", "pending"]]);
+
+    const other = await h.call("GET", `/agent/sessions/${sid}/watches`, undefined, { "x-agent-user": "2" });
+    assert.deepEqual([other.status, other.body.code], [404, 60011]);
+    const otherCancel = await h.call("POST", `/agent/sessions/${sid}/watches/cancel`, undefined, { "x-agent-user": "2" });
+    assert.deepEqual([otherCancel.status, otherCancel.body.code], [404, 60011]);
+    assert.equal((await h.call("GET", `/agent/sessions/${sid}/watches`)).body.data.items.length, 1, "别人取消不了");
+
+    const canceled = await h.call("POST", `/agent/sessions/${sid}/watches/cancel`);
+    assert.deepEqual([canceled.status, canceled.body.data.items.map((x: any) => x.state)], [200, ["canceled"]]);
+    assert.deepEqual((await h.call("GET", `/agent/sessions/${sid}/watches`)).body.data.items, []);
+    assert.deepEqual((await h.call("POST", `/agent/sessions/${sid}/watches/cancel`)).body.data.items, [], "再点一次什么都没有");
+  }, { engine: { piClock: true } }));
+
+test("没有任何等待的会话：GET 是空数组，不是 404", () =>
+  withHttp({ turns: [] }, async (h, e) => {
+    const r = await h.call("GET", `/agent/sessions/${enc(e.sessionId)}/watches`);
+    assert.deepEqual([r.status, r.body.data], [200, { items: [] }]);
+  }));
+
+test("门铃（Go → Agent）：只认服务令牌，不要用户头；认识的任务 200，不认识的 404（Go 据此不再重试）；参数不对 400", () =>
+  withHttp(WATCH_GO, async (h, e) => {
+    const run = await waiting(h, e);
+    const bell = (body: unknown, headers: Record<string, string | undefined> = { "x-agent-user": undefined }) => h.call("POST", "/internal/v1/watches/task-settled", body, headers);
+
+    const noToken = await bell({ task_id: "101", run_id: run.id, status: "succeeded" }, { "x-agent-user": undefined, "x-agent-service-token": undefined });
+    assert.equal(noToken.status, 401);
+
+    const ok = await bell({ task_id: "101", run_id: run.id, status: "succeeded" });
+    assert.deepEqual([ok.status, ok.body.code, ok.body.data], [200, 0, { accepted: true }]);
+    const state = await h.call("GET", `/agent/sessions/${enc(e.sessionId)}/watches`);
+    assert.equal(state.body.data.items[0].settled, 1);
+
+    const unknownTask = await bell({ task_id: "555", run_id: run.id, status: "succeeded" });
+    assert.deepEqual([unknownTask.status, unknownTask.body.code], [404, 60014]);
+    const unknownRun = await bell({ task_id: "101", run_id: "999999", status: "succeeded" });
+    assert.deepEqual([unknownRun.status, unknownRun.body.code], [404, 60014]);
+
+    for (const [name, body] of Object.entries({
+      "任务 id 不是数字": { task_id: "abc", run_id: run.id, status: "succeeded" },
+      "运行 id 是 JSON 数字": { task_id: "101", run_id: 7, status: "succeeded" },
+      "状态不是终态": { task_id: "101", run_id: run.id, status: "running" },
+      "缺状态": { task_id: "101", run_id: run.id },
+    })) {
+      const r = await bell(body);
+      assert.deepEqual([r.status, r.body.code], [400, 10001], name);
+    }
+  }, { engine: { piClock: true } }));
+
+test("删除会话：它的后台等待一并收掉（不会留下没人认领的监听任务）", () =>
+  withHttp(WATCH_GO, async (h, e) => {
+    await waiting(h, e);
+    assert.equal(await e.engine.liveTaskCount(), 1);
+    const del = await h.call("DELETE", "/agent/sessions/" + enc(e.sessionId));
+    assert.equal(del.status, 200);
+    for (let i = 0; i < 100 && (await e.engine.liveTaskCount()) > 0; i++) await new Promise((r) => setTimeout(r, 20));
+    assert.equal(await e.engine.liveTaskCount(), 0);
+  }, { engine: { piClock: true } }));

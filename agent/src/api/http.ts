@@ -51,6 +51,15 @@ const DECIDE: FieldSpec[] = [
   { key: "add_budget", label: "追加预算", kind: "int", ...BUDGET },
 ];
 
+/** 门铃的状态：生成任务的终态 */
+const SETTLED_STATUSES = ["succeeded", "failed", "expired", "canceled", "missing"] as const;
+const DECIMAL_ID = /^[1-9][0-9]{0,19}$/;
+const TASK_SETTLED: FieldSpec[] = [
+  { key: "task_id", label: "task_id", kind: "string", required: true, max: 20 },
+  { key: "run_id", label: "run_id", kind: "string", required: true, max: 20 },
+  { key: "status", label: "status", kind: "string", required: true, oneof: SETTLED_STATUSES },
+];
+
 const FEEDBACK: FieldSpec[] = [
   { key: "rating", label: "评价", kind: "int", required: true, oneof: ["1", "-1"] },
   { key: "reasons", label: "原因", kind: "strings", max: 5, itemMax: 32 },
@@ -120,6 +129,13 @@ export function createApiApp(o: ApiOptions): FastifyInstance {
       const limit = queryInt(q, "limit", "limit", 0, 500) || DEFAULT_OBSERVE_PAGE;
       return ok(reply, await service.observeRuns(after, limit));
     });
+    // 门铃：Go 在生成任务进入终态的同一个事务里入队，由 River 调到这里；没有用户，只认服务令牌
+    app.post("/internal/v1/watches/task-settled", async (req, reply) => {
+      const b = validateBody(req.body ?? {}, TASK_SETTLED);
+      if (!DECIMAL_ID.test(b.task_id) || !DECIMAL_ID.test(b.run_id)) throw Err.invalidParams("task_id 和 run_id 必须是正整数的十进制字符串");
+      await service.taskSettled(b.run_id, b.task_id, b.status);
+      return ok(reply, { accepted: true });
+    });
     app.get("/observe/runs/:rid", async (req: Req, reply) => {
       const rid = req.params.rid;
       if (!/^[1-9][0-9]{0,19}$/.test(rid)) throw Err.invalidParams("rid 格式错误");
@@ -175,6 +191,8 @@ export function createApiApp(o: ApiOptions): FastifyInstance {
       const sid = id(req, "sid");
       return ok(reply, await service.startRun(user(req), sid, validateBody(body(req), START_RUN) as never), 202);
     });
+    app.get("/agent/sessions/:sid/watches", async (req: Req, reply) => ok(reply, await service.watches(user(req), id(req, "sid"))));
+    app.post("/agent/sessions/:sid/watches/cancel", async (req: Req, reply) => ok(reply, await service.cancelWatches(user(req), id(req, "sid"))));
     app.post("/agent/runs/:rid/interject", async (req: Req, reply) => {
       const rid = id(req, "rid");
       const b = validateBody(body(req), INTERJECT);

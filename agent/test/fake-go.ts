@@ -54,6 +54,8 @@ export interface FakeGoOptions {
   checkMessage?: (body: any) => { selection: string[] } | { error: { status: number; code: number; msg: string } };
   /** 附件校验：默认每个素材 id 都通过，给一张 800×600 的 PNG（本地存储，image 是 base64 QUJD） */
   checkAttachments?: (body: any) => { attachments: unknown[] } | { error: { status: number; code: number; msg: string } };
+  /** 任务状态查询（POST /tasks/status）：按请求里的任务 id 给状态；默认每个任务都成功，节点是 n<任务 id>；"down" 让它连接失败 */
+  taskStates?: (ids: string[], body: any) => Array<Record<string, unknown>> | "down";
   undo?: (runId: string) => Record<string, unknown> | { error: { status: number; code: number; msg: string } };
   /** 运行准备的出参覆盖项 */
   setup?: Partial<RunSetup>;
@@ -124,6 +126,12 @@ export async function fakeGo(opts: FakeGoOptions) {
           return ok(res, { is_error: false, payload: { kind: body.kind, args: body.args }, quote_credits: 0, summary: "申请 " + body.kind, content: "已提交，等待决定。", terminate: true, ...p });
         }
         if (path === `${base}/events`) return ok(res, null); // 事件推送：只记录
+        if (path === `${base}/tasks/status`) {
+          const ids = body.task_ids as string[];
+          const r = opts.taskStates?.(ids, body) ?? ids.map((id) => ({ task_id: id, node_id: "n" + id, kind: "image", status: "succeeded", outputs: [{ media_type: "image", asset_id: "9" + id }] }));
+          if (r === "down") return void res.destroy();
+          return ok(res, { items: r });
+        }
         const idm = /^\/internal\/platform\/v1\/ids\/(\d+)$/.exec(path);
         if (idm) return ok(res, { encoded: createIdCodec(opts.idKey ?? "test-id-key").encode(BigInt(idm[1])) });
         if (path === `${base}/agent/models`) return ok(res, opts.models ?? [{ key: "claude", name: "Claude", vision: true, context_window: 200000 }]);

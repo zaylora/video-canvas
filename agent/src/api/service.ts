@@ -6,7 +6,7 @@
  * 所有 id 参数都是十进制字符串；路径里的编码串由 HTTP 层先解码。
  */
 import type { AttachmentCheck } from "../attachments.ts";
-import type { AgentEngine, ApprovalView } from "../engine/engine.ts";
+import type { AgentEngine, ApprovalView, WatchBatchView } from "../engine/engine.ts";
 import { fromPlatform } from "../engine/engine.ts";
 import { AgentError, Err } from "../engine/errors.ts";
 import { isActive } from "../engine/status.ts";
@@ -105,7 +105,25 @@ export class AgentApiService {
     const sess = this.#session(userId, sessionId);
     const active = this.#o.store.activeRun(sess.canvasId);
     if (active && active.sessionId === sessionId) throw Err.runActive();
+    await this.#o.engine.cancelWatches(userId, sessionId).catch(() => {}); // 后台等待的监听任务一并收掉
     this.#o.store.deleteSession(userId, sessionId);
+  }
+
+  // ---- 后台等待生成 ----
+
+  /** 进行中的后台等待（waiting / deliverable），等待条的初始状态；之后靠 watch.updated 事件更新 */
+  async watches(userId: string, sessionId: string): Promise<{ items: WatchBatchView[] }> {
+    return { items: await this.#o.engine.watches(userId, sessionId) };
+  }
+
+  /** 不用等了：只取消 Agent 的跟进，已批准的生成照常完成 */
+  async cancelWatches(userId: string, sessionId: string): Promise<{ items: WatchBatchView[] }> {
+    return { items: await this.#o.engine.cancelWatches(userId, sessionId) };
+  }
+
+  /** Go 的门铃：一个 Agent 发起的生成任务结束了。没有对应的等待就是 404，Go 据此不再重试 */
+  async taskSettled(runId: string, taskId: string, status: string): Promise<void> {
+    if (!(await this.#o.engine.taskSettled(runId, taskId, status))) throw Err.watchMissing();
   }
 
   // ---- 事件和历史 ----

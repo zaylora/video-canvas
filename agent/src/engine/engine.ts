@@ -11,7 +11,7 @@ import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
 import type { AssistantMessage, Message } from "@earendil-works/pi-ai";
 import {
   CompactionTask, GenerationTask, Harness, ProviderDoc, createRegistry, defineExtension, hook, watchEvents,
-  type Conversation, type ConversationId, type Extension, type Storage, type Submission, type ToolRegistration,
+  type Conversation, type ConversationId, type Extension, type SetTimer, type Storage, type Submission, type TaskId, type ToolRegistration,
 } from "@earendil-works/pi-durable";
 import { SUMMARY_SYSTEM_PROMPT, buildPrompt, compactionLimits, serializeMessages, summaryMaxTokens } from "../compaction.ts";
 import { createCodemode } from "../codemode.ts";
@@ -21,12 +21,13 @@ import { ACTIVITY_CONCURRENCY, ACTIVITY_MIN_TOOLS, ACTIVITY_SYSTEM_PROMPT, build
 import { createToolsExtension, type ToolHost, type ToolRun } from "../durable-tools.ts";
 import type { IdCodec } from "../ids.ts";
 import { PROVIDER_ID, createModelRegistry, createRunContexts, runContextExtension, type RunContexts } from "../model-provider.ts";
-import { PlatformError, platformToolCallId, type ApprovalDecision, type ApprovalExecution, type ApprovalKind, type ApprovalOutcome, type Platform, type PlatformUsage, type RunContext, type RunSetup, type ToolDecl } from "../platform-client.ts";
+import { PlatformError, TERMINAL_TASK_STATUSES, platformToolCallId, type ApprovalDecision, type ApprovalExecution, type ApprovalKind, type ApprovalOutcome, type Platform, type PlatformUsage, type RunContext, type RunSetup, type ToolDecl } from "../platform-client.ts";
 import { DuplicateError, NotFoundError, StateConflictError } from "../store/errors.ts";
 import type { AgentStore } from "../store/store.ts";
 import type { Approval, Run, Session } from "../store/types.ts";
 import { AgentError, Err, OVER_BUDGET_CODE } from "./errors.ts";
 import { ACTIVE_STATUSES, isActive, statusEvent } from "./status.ts";
+import { Watches, allSettled, createWatchExtension, isClosed, pruneBatches, wakeText, type WatchBatch, type WatchTaskStatus, type WatchesDoc, type WatchExtension } from "./watch.ts";
 
 const DEFAULT_TITLE = "新对话";
 const DEFAULT_MAX_STEPS = 40;
@@ -50,6 +51,9 @@ const APPROVAL_NUDGE = "（用户已处理上面的请求，请根据结果继�
 const DEFAULT_LEASE_INTERVAL_MS = 10_000;
 const DEFAULT_LEASE_TTL_MS = 30_000;
 const DEFAULT_RESUME_WINDOW_MS = 5 * 60_000;
+/** 后台等待：登记后多久第一次醒来兜底（给 Go 的门铃留时间），之后交付没成时隔多久再试 */
+const DEFAULT_WATCH_GRACE_MS = 2 * 60_000;
+const DEFAULT_WATCH_POLL_MS = 60_000;
 const EXECUTE_ATTEMPTS = 3;
 const EXECUTE_RETRY_MS = 100;
 /** 命名请求的超时：它是锦上添花，不能拖着运行的收尾 */
@@ -101,6 +105,12 @@ export interface EngineOptions {
   autoTitle?: boolean;
   /** 一段连续的工具调用结束后，用同一个模型写一句说明（默认开）；false 关闭，前端只显示动作短语 */
   activitySummary?: boolean;
+  /** 后台等待生成：登记后第一次醒来兜底的时间（默认 2 分钟，给 Go 的门铃留宽限） */
+  watchGraceMs?: number;
+  /** 后台等待生成：整批结束但没交付成（画布被占、Go 暂时不可用）后隔多久再试（默认 60 秒） */
+  watchPollMs?: number;
+  /** 传给 Pi Harness 的时钟和定时器；生产不用传，测试用它控制「睡一会儿」的任务 */
+  harness?: { now?: () => number; setTimer?: SetTimer };
 }
 
 export interface StartRunRequest {
@@ -146,6 +156,8 @@ interface Active {
   steers: Map<string, Submission>;
   /** 收下了、还没读到也没丢掉的插话（id → 正文，按收下的顺序）：已交给 Pi 的在 steers 里，其余是引擎扣着的 */
   unread: Map<string, string>;
+  /** 生成全部结束后插进这一轮的通知（请求 id → 提交）：不是用户的插话，不发 steer.* 事件，只在读不到时撤回 */
+  wakes: Map<string, Submission>;
   modelError?: { code?: number; status?: number; message?: string };
   drive?: Promise<void>;
   /** 正在进行的一段连续工具调用（第一个调用的 id 当 group_id，和前端活动块的 groupId 对应） */
@@ -177,6 +189,20 @@ export interface ApprovalView {
   expires_at: string;
 }
 
+/** 交付的选项：fromWatcher 表示是监听任务自己的那次醒来触发的，交付后不能 abort 它（会等自己结束） */
+interface WakeOptions {
+  fromWatcher?: boolean;
+}
+
+/** 后台等待的一批：前端的等待条据此显示（也是 watch.updated 事件的内容） */
+export interface WatchBatchView {
+  batch_id: string;
+  state: WatchBatch["state"];
+  total: number;
+  settled: number;
+  tasks: Array<{ task_id: string; node_id: string; label: string; status: "pending" | "settled"; task_status?: WatchTaskStatus }>;
+}
+
 /** Go 平台的业务错误原样变成引擎的业务错误；连不上、5xx 是「Agent 暂不可用」 */
 export function fromPlatform(e: unknown): Error {
   if (e instanceof PlatformError && e.code !== undefined && e.status >= 400 && e.status < 500) return new AgentError(e.code, e.status, e.message);
@@ -205,6 +231,12 @@ export class AgentEngine {
   readonly #stops: Array<() => Promise<unknown>> = [];
   /** 已经试过自动命名的会话：每个会话每个进程只试一次，失败了也不再重试（每次都要花积分） */
   readonly #titleTried = new Set<string>();
+  /** 后台等待：监听任务的定义（创建任务时要用它的令牌） */
+  #watchTask!: WatchExtension["task"];
+  /** 会话 → 正在进行的交付：同一个会话的交付一个接一个，免得并发地开两轮 */
+  readonly #wakeLocks = new Map<string, Promise<void>>();
+  /** 整批已结束、但画布被占着没能交付的会话（会话 id → 用户和画布）：占着画布的运行一结束就再试 */
+  readonly #wakePending = new Map<string, { userId: string; canvasId: string }>();
   #models!: ReturnType<typeof createModelRegistry>;
   #toolsKey = "";
   #closing = false;
@@ -237,11 +269,14 @@ export class AgentEngine {
     this.#registry.install(runContextExtension(this.#contexts));
     this.#registry.install(this.#hooksExtension());
     this.#registry.install(this.#compactionExtension());
+    const watch = createWatchExtension({ check: (conv, batch) => this.#watchCheck(conv, batch), pollMs: this.#o.watchPollMs ?? DEFAULT_WATCH_POLL_MS });
+    this.#watchTask = watch.task;
+    this.#registry.install(watch.extension);
     const codemode = createCodemode(this.host);
     for (const t of codemode.tools ?? []) this.#toolRegs.set(t.name, t);
     this.#registry.install(codemode);
     this.#harness = await Harness.open(this.#o.storage, {
-      models: this.#models.models, registry: this.#registry,
+      models: this.#models.models, registry: this.#registry, ...this.#o.harness,
       // 重试策略在 Go；同一轮的工具调用一个个执行；插话用官方效果（排队，下一次请求前一起带上）
       // 压缩的触发线按模型的上下文窗口算（窗口小的模型收紧）；后台压缩不用：写摘要要有运行的上下文，运行结束后没有
       settings: () => ({
@@ -588,7 +623,7 @@ export class AgentEngine {
     const convId = String(conv.id);
     await this.#watch(conv, convId);
     this.#contexts.set(convId, rc);
-    const a: Active = { run, convId, rc, conv, paused: false, finishing: false, steps: run.steps, maxSteps: run.maxSteps, callIds: [], summaryCallIds: [], compactionDisabled: false, recovering: false, startedBefore: new Set(), steers: new Map(), unread: new Map(loadUnread ? this.#unreadSteers(run) : []), lock: Promise.resolve(), activityQueue: [], activityActive: 0, activityAbort: new AbortController() };
+    const a: Active = { run, convId, rc, conv, paused: false, finishing: false, steps: run.steps, maxSteps: run.maxSteps, callIds: [], summaryCallIds: [], compactionDisabled: false, recovering: false, startedBefore: new Set(), steers: new Map(), unread: new Map(loadUnread ? this.#unreadSteers(run) : []), wakes: new Map(), lock: Promise.resolve(), activityQueue: [], activityActive: 0, activityAbort: new AbortController() };
     this.#active.set(convId, a);
     this.#answered.set(convId, 0);
     this.#byRun.set(run.id, a);
@@ -668,6 +703,7 @@ export class AgentEngine {
       if (!this.#closing) {
         await this.#drainActivity(a);
         await this.#release(a);
+        this.#wakeQueued(a.run.canvasId);
       }
     }
   }
@@ -720,7 +756,7 @@ export class AgentEngine {
         let busy = await pending();
         if (busy && a.modelError) {
           // 模型调用失败：Pi 把没读到的插话留在收件箱里，空闲了也不会有人去读。不撤回的话这里会一直等下去（还是一个不让出事件循环的空转）
-          for (const sub of a.steers.values()) await sub.abort(context).catch(() => {});
+          for (const sub of [...a.steers.values(), ...a.wakes.values()]) await sub.abort(context).catch(() => {});
           busy = await pending();
         }
         if (!busy) a.finishing = true;
@@ -840,6 +876,8 @@ export class AgentEngine {
       final = store.updateApprovalIf(approval.id, ["approved", "partially_approved"], { status: exec.status, result: exec.result ?? {} });
     }
     this.#emit(ev, "approval.decided", this.#approvalView(final));
+    // 批准的生成已经提交：登记要等的任务（先于续跑，任务结束的门铃来得再早也找得到）
+    await this.#registerWatch(fresh, sess, approval, exec).catch(() => {});
 
     // 让运行接着往下走；起不来就标为中断，用户可以稍后点「继续」
     try {
@@ -1046,6 +1084,286 @@ export class AgentEngine {
       ids = this.#unreadSteers(run).map(([id]) => id);
     }
     if (ids.length > 0) this.#emit({ id: run.id, userId: run.userId, sessionId: run.sessionId, canvasId: run.canvasId }, "steer.dropped", { ids, reason });
+  }
+
+  // ---- 后台等待生成 ----
+  //
+  // 批准生成后本轮照常结束。这批任务在会话文档 app.watches 里登记，并建一个 Pi 后台任务兜底；
+  // 任务结束时 Go 的门铃（taskSettled）记账，整批结束就把结果交回同一个会话：
+  //   本会话正在回答 → 插进当前这一轮；画布空闲 → 新开一轮；画布被占 / 在等审批 → 排队，占着的运行一结束再试。
+
+  /** 会话文档里的所有批（文档还没创建过就是空） */
+  async #watchDoc(convId: string): Promise<WatchesDoc> {
+    const doc = await this.#harness.snapshot(Watches, Number(convId) as unknown as ConversationId, context);
+    return (doc ?? { batches: {} }) as WatchesDoc;
+  }
+
+  #batchView(id: string, b: WatchBatch): WatchBatchView {
+    const tasks = Object.entries(b.tasks).map(([task_id, t]) => ({ task_id, node_id: t.nodeId, label: t.label, status: t.status, ...(t.taskStatus && { task_status: t.taskStatus }) }));
+    return { batch_id: id, state: b.state, total: tasks.length, settled: tasks.filter((t) => t.status === "settled").length, tasks };
+  }
+
+  /** 一批的状态变了：落库并推给前端。事件挂在登记这批的那次运行名下（它早就结束了也一样） */
+  #emitWatch(sess: Session, id: string, b: WatchBatch): void {
+    this.#emit({ id: b.runId, userId: sess.userId, sessionId: sess.id, canvasId: sess.canvasId }, "watch.updated", this.#batchView(id, b));
+  }
+
+  /** 批准了生成并且执行成功：登记要等的任务。登记失败不影响运行（模型从结果里知道任务已提交，用户可以手动叫它） */
+  async #registerWatch(run: Run, sess: Session, approval: Approval, exec: ApprovalExecution): Promise<void> {
+    if (approval.kind !== "generate" || exec.status !== "executed" || !sess.conversationId) return;
+    const payload = (approval.payload ?? {}) as { items?: Array<{ node_id?: string; label?: string }>; wait?: boolean };
+    if (payload.wait !== true) return;
+    const created = ((exec.result as { tasks?: Array<{ node_id?: string; task_id?: string }> } | undefined)?.tasks ?? []).filter((t) => typeof t.task_id === "string" && t.task_id !== "");
+    if (created.length === 0) return;
+    const labels = new Map((payload.items ?? []).map((i) => [String(i.node_id), String(i.label || i.node_id)]));
+    const conv = await this.#convOf(sess.conversationId);
+    if (!conv) return;
+    const now = this.#now();
+    const batch: WatchBatch = {
+      runId: run.id, watcherTaskId: "", createdAt: now, state: "waiting",
+      tasks: Object.fromEntries(created.map((t) => [t.task_id!, { nodeId: t.node_id ?? "", label: labels.get(t.node_id ?? "") ?? t.node_id ?? "", status: "pending" as const }])),
+    };
+    // 文档和监听任务在同一次提交里：不会出现登记了没人守，或者有人守没登记
+    await conv.commit(async (tx) => {
+      const doc = await tx.doc(Watches, conv.id);
+      const task = await tx.createTask(this.#watchTask, { batchId: approval.id, firstCheckAt: now + (this.#o.watchGraceMs ?? DEFAULT_WATCH_GRACE_MS) }, { ownership: { kind: "conversation" }, background: true, conversationId: conv.id });
+      batch.watcherTaskId = String(task);
+      doc.batches[approval.id] = JSON.parse(JSON.stringify(batch));
+      pruneBatches(doc, now);
+    }, context);
+    this.#emitWatch(sess, approval.id, batch);
+  }
+
+  /** 把这些任务记成已结束；这批全部结束就改成待交付。返回这些任务是否在某个还没关闭的批里（重复通知也算在里面） */
+  async #recordSettled(sess: Session, entries: Array<{ taskId: string; status: string }>): Promise<boolean> {
+    const conv = sess.conversationId ? await this.#convOf(sess.conversationId) : undefined;
+    if (!conv) return false;
+    let found = false;
+    const changed: Array<[string, WatchBatch]> = [];
+    const now = this.#now();
+    await conv.commit(async (tx) => {
+      found = false;
+      changed.length = 0;
+      const doc = await tx.doc(Watches, conv.id);
+      for (const [id, b] of Object.entries(doc.batches)) {
+        if (isClosed(b as WatchBatch)) continue;
+        let touched = false;
+        for (const { taskId, status } of entries) {
+          const t = b.tasks[taskId];
+          if (!t) continue;
+          found = true;
+          if (t.status === "settled") continue;
+          t.status = "settled";
+          t.taskStatus = status as WatchTaskStatus;
+          t.settledAt = now;
+          touched = true;
+        }
+        if (!touched) continue;
+        if (b.state === "waiting" && allSettled(b as WatchBatch)) b.state = "deliverable";
+        changed.push([id, JSON.parse(JSON.stringify(b))]);
+      }
+    }, context);
+    for (const [id, b] of changed) this.#emitWatch(sess, id, b);
+    return found;
+  }
+
+  /**
+   * Go 的门铃：一个 Agent 发起的生成任务结束了（成功、失败、超时、取消）。记账，整批结束就尝试交付。
+   * 返回 false 表示这个任务没有在等的批（已取消等待、已交付、不认识）：Go 据此不再重试。
+   */
+  async taskSettled(runId: string, taskId: string, status: string): Promise<boolean> {
+    if (this.#closing) throw Err.unavailable();
+    if (!(TERMINAL_TASK_STATUSES as readonly string[]).includes(status)) throw Err.invalidParams("status 必须是任务的终态");
+    let sess: Session;
+    try {
+      const run = this.#o.store.getRunById(runId);
+      sess = this.#o.store.getSession(run.userId, run.sessionId);
+    } catch (e) {
+      if (e instanceof NotFoundError) return false;
+      throw e;
+    }
+    if (!(await this.#recordSettled(sess, [{ taskId, status }]))) return false;
+    await this.#tryWake(sess);
+    return true;
+  }
+
+  /** 这个会话里还在等的批（waiting / deliverable），按登记顺序 */
+  async watches(userId: string, sessionId: string): Promise<WatchBatchView[]> {
+    const sess = this.#session(userId, sessionId);
+    if (!sess.conversationId) return [];
+    const doc = await this.#watchDoc(sess.conversationId);
+    return Object.entries(doc.batches).filter(([, b]) => !isClosed(b)).sort(([, a], [, b]) => a.createdAt - b.createdAt).map(([id, b]) => this.#batchView(id, b));
+  }
+
+  /** 不用等了：取消还没交付的批，收掉它们的监听任务。只取消 Agent 的跟进，生成任务照常完成 */
+  async cancelWatches(userId: string, sessionId: string): Promise<WatchBatchView[]> {
+    const sess = this.#session(userId, sessionId);
+    const conv = sess.conversationId ? await this.#convOf(sess.conversationId) : undefined;
+    if (!conv) return [];
+    const canceled: Array<[string, WatchBatch]> = [];
+    await conv.commit(async (tx) => {
+      canceled.length = 0;
+      const doc = await tx.doc(Watches, conv.id);
+      for (const [id, b] of Object.entries(doc.batches)) {
+        if (isClosed(b as WatchBatch)) continue;
+        b.state = "canceled";
+        canceled.push([id, JSON.parse(JSON.stringify(b))]);
+      }
+    }, context);
+    for (const [id, b] of canceled) {
+      if (b.watcherTaskId) await this.#harness.abortTask(Number(b.watcherTaskId) as unknown as TaskId, context).catch(() => {});
+      this.#emitWatch(sess, id, b);
+    }
+    return canceled.map(([id, b]) => this.#batchView(id, b));
+  }
+
+  /** 监听任务睡醒后的一次检查：补记没收到门铃的任务，整批结束就尝试交付。返回 true 表示这批不用再守了 */
+  async #watchCheck(convId: string, batchId: string): Promise<boolean> {
+    if (this.#closing) return false;
+    const sess = this.#o.store.sessionByConversation(convId);
+    if (!sess) return true; // 会话已经删了
+    const b = (await this.#watchDoc(convId)).batches[batchId];
+    if (isClosed(b)) return true;
+    const pending = Object.entries(b.tasks).filter(([, t]) => t.status === "pending").map(([id]) => id);
+    if (pending.length > 0) {
+      try {
+        const states = await this.#o.platform.taskStates(sess.userId, pending);
+        const done = states.filter((st) => (TERMINAL_TASK_STATUSES as readonly string[]).includes(st.status));
+        if (done.length > 0) await this.#recordSettled(sess, done.map((st) => ({ taskId: st.task_id, status: st.status })));
+      } catch {
+        // Go 暂时不可用：下次醒来再查
+      }
+    }
+    // 在监听任务自己的执行里交付：不能收掉自己（abortTask 会等它结束），它看到批已交付就会自己收尾
+    await this.#tryWake(sess, { fromWatcher: true });
+    return isClosed((await this.#watchDoc(convId)).batches[batchId]);
+  }
+
+  /** 尝试把这个会话里整批已结束的批交付给 Agent；同一个会话的交付排队执行，任何失败都留给下一次（门铃、监听任务、占着画布的运行结束） */
+  #tryWake(sess: Session, o: WakeOptions = {}): Promise<void> {
+    const prev = this.#wakeLocks.get(sess.id) ?? Promise.resolve();
+    const next = prev.then(() => this.#wakeOnce(sess, o)).catch(() => undefined);
+    this.#wakeLocks.set(sess.id, next);
+    void next.finally(() => { if (this.#wakeLocks.get(sess.id) === next) this.#wakeLocks.delete(sess.id); });
+    return next;
+  }
+
+  async #wakeOnce(stale: Session, o: WakeOptions): Promise<void> {
+    if (this.#closing || !stale.conversationId) return;
+    const sess = this.#session(stale.userId, stale.id); // 模型、模式可能在这期间改过
+    const ready = Object.entries((await this.#watchDoc(sess.conversationId)).batches)
+      .filter(([, b]) => b.state === "deliverable").sort(([, a], [, b]) => a.createdAt - b.createdAt);
+    if (ready.length === 0) return;
+    const active = this.#o.store.activeRun(sess.canvasId);
+    if (active) {
+      const a = this.#byRun.get(active.id);
+      if (a && active.sessionId === sess.id && active.status === "running") return this.#wakeIntoRun(a, sess, ready, o);
+      this.#wakePending.set(sess.id, { userId: sess.userId, canvasId: sess.canvasId }); // 等占着画布的运行结束
+      return;
+    }
+    return this.#wakeNewRun(sess, ready, o);
+  }
+
+  /** 向 Go 取这批任务的最新结果，写成交给模型的那条消息；取不到返回 undefined（留给下一次） */
+  async #wakeMessage(sess: Session, ready: Array<[string, WatchBatch]>): Promise<{ text: string; requestId: string; tasks: Array<{ task_id: string; node_id: string; label: string; task_status: string }> } | undefined> {
+    const ids = ready.flatMap(([, b]) => Object.keys(b.tasks));
+    let states;
+    try {
+      states = await this.#o.platform.taskStates(sess.userId, ids);
+    } catch {
+      return undefined;
+    }
+    const byId = new Map(states.map((st) => [st.task_id, st.status]));
+    return {
+      text: wakeText(ready.map(([, b]) => b), states),
+      // 同一批交付两次得到同一个请求 id：重启后重放、重复触发都只会提交一次
+      requestId: `wake:${sess.id}:${ready.map(([id]) => id).join("+")}`,
+      tasks: ready.flatMap(([, b]) => Object.entries(b.tasks).map(([task_id, t]) => ({ task_id, node_id: t.nodeId, label: t.label, task_status: byId.get(task_id) ?? t.taskStatus ?? "missing" }))),
+    };
+  }
+
+  /** 改这些批的状态（交付成功记 delivered 和交给了哪次运行；交付失败改回 deliverable），并推给前端 */
+  async #markBatches(sess: Session, ids: string[], state: WatchBatch["state"], runId?: string, o: WakeOptions = {}): Promise<void> {
+    const conv = await this.#convOf(sess.conversationId);
+    if (!conv) return;
+    const changed: Array<[string, WatchBatch]> = [];
+    await conv.commit(async (tx) => {
+      changed.length = 0;
+      const doc = await tx.doc(Watches, conv.id);
+      for (const id of ids) {
+        const b = doc.batches[id];
+        if (!b || b.state === "canceled") continue;
+        b.state = state;
+        if (runId) b.deliveredRunId = runId;
+        changed.push([id, JSON.parse(JSON.stringify(b))]);
+      }
+    }, context);
+    for (const [id, b] of changed) {
+      // 交付了：监听任务没有别的事可做，立刻收掉，不等它下次醒来
+      if (state === "delivered" && !o.fromWatcher && b.watcherTaskId) await this.#harness.abortTask(Number(b.watcherTaskId) as unknown as TaskId, context).catch(() => {});
+      this.#emitWatch(sess, id, b);
+    }
+  }
+
+  /** 画布空闲：新开一轮运行，把结果当作第一条输入交给模型 */
+  async #wakeNewRun(sess: Session, ready: Array<[string, WatchBatch]>, o: WakeOptions): Promise<void> {
+    if (!sess.modelKey) return; // 会话没有选过模型，没法开新一轮
+    const msg = await this.#wakeMessage(sess, ready);
+    if (!msg) return;
+    const store = this.#o.store;
+    const maxSteps = this.#o.defaultMaxSteps ?? DEFAULT_MAX_STEPS;
+    let run: Run;
+    try {
+      run = store.createRun({ sessionId: sess.id, canvasId: sess.canvasId, userId: sess.userId, status: "queued", mode: sess.mode, budgetCredits: 0, maxSteps });
+    } catch (e) {
+      if (e instanceof DuplicateError) {
+        this.#wakePending.set(sess.id, { userId: sess.userId, canvasId: sess.canvasId }); // 刚好有人开了运行
+        return;
+      }
+      throw e;
+    }
+    const ev = { id: run.id, userId: sess.userId, sessionId: sess.id, canvasId: sess.canvasId };
+    const batchIds = ready.map(([id]) => id);
+    this.#emit(ev, "tasks.settled", { batch_ids: batchIds, steer: false, tasks: msg.tasks });
+    this.#emit(ev, "run.status", statusEvent("queued"));
+    await this.#markBatches(sess, batchIds, "delivered", run.id, o);
+    try {
+      await this.#launch(run, this.#session(sess.userId, sess.id), {
+        selection: [], prepare: { max_steps: maxSteps }, recordHarness: true, fresh: true,
+        kickoff: (a) => a.conv.submit({ type: "input", content: msg.text, requestId: msg.requestId }, context),
+      });
+    } catch {
+      await this.#markBatches(sess, batchIds, "deliverable").catch(() => {}); // 运行没起来（已标为失败）：这批还要交付，监听任务稍后再试
+    }
+  }
+
+  /** 本会话正在回答：把结果插进当前这一轮（工具跑完后、下一次请求前交给模型），不另开一轮 */
+  async #wakeIntoRun(a: Active, sess: Session, ready: Array<[string, WatchBatch]>, o: WakeOptions): Promise<void> {
+    const msg = await this.#wakeMessage(sess, ready);
+    if (!msg) return;
+    const batchIds = ready.map(([id]) => id);
+    const delivered = await this.#locked(a, async () => {
+      // 刚好在收尾、或进入等回答 / 等审批：这一轮不会再读了，留给运行结束后的交付
+      if (a.finishing || this.#o.store.getRun(a.run.userId, a.run.id).status !== "running") return false;
+      this.#emit(this.#ev(a), "tasks.settled", { batch_ids: batchIds, steer: true, tasks: msg.tasks });
+      a.wakes.set(msg.requestId, await a.conv.submit({ type: "input", content: msg.text, whenBusy: "steer", requestId: msg.requestId }, context));
+      return true;
+    });
+    if (delivered) await this.#markBatches(sess, batchIds, "delivered", a.run.id, o);
+    else this.#wakePending.set(sess.id, { userId: sess.userId, canvasId: sess.canvasId });
+  }
+
+  /** 一段运行结束、画布空出来了：之前因为画布被占而排队的交付再试一次 */
+  #wakeQueued(canvasId: string): void {
+    for (const [sessionId, p] of [...this.#wakePending]) {
+      if (p.canvasId !== canvasId) continue;
+      this.#wakePending.delete(sessionId);
+      try {
+        void this.#tryWake(this.#session(p.userId, sessionId));
+      } catch {
+        // 会话已经删了
+      }
+    }
   }
 
   #run(userId: string, runId: string): Run {

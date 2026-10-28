@@ -168,6 +168,28 @@ export interface PlatformUsage {
   };
 }
 
+/** 生成任务的一个产物：Agent 据此知道出了什么图、什么视频 */
+export interface TaskOutput {
+  media_type: string;
+  asset_id?: string;
+  text?: string;
+}
+
+/** Agent 查到的一个生成任务的最新状态；任务不存在或不属于这个用户是 missing（不区分，不泄露别人任务是否存在） */
+export interface TaskState {
+  task_id: string;
+  node_id?: string;
+  kind?: string;
+  status: string;
+  progress?: number;
+  error?: string;
+  credits?: number;
+  outputs?: TaskOutput[];
+}
+
+/** 任务到了这些状态就不会再变：成功、失败、超时、取消；missing 也算（再等也等不来） */
+export const TERMINAL_TASK_STATUSES = ["succeeded", "failed", "expired", "canceled", "missing"] as const;
+
 export interface AgentModel {
   key: string;
   name: string;
@@ -279,6 +301,17 @@ export function createPlatform({ baseUrl, serviceToken, fetchImpl = fetch }: Pla
     /** 把事件成批推给 Go，由它经 WebSocket 发给浏览器（顺序由调用方保证）；事件已落在 Agent 自己的库里，推送失败不影响运行 */
     pushEvents: async (events: RelayEvent[], signal?: AbortSignal): Promise<void> => {
       await call<null>("POST", "/events", undefined, { events }, { signal });
+    },
+    /** 一批生成任务的最新状态（顺序与 taskIds 一致，最多 50 个）：补收没送到的结束通知、整批结束后取结果交给模型 */
+    taskStates: async (userId: string, taskIds: string[], signal?: AbortSignal): Promise<TaskState[]> => {
+      for (const [name, v] of [["user_id", userId], ...taskIds.map((t) => ["task_ids", t] as const)] as const) {
+        try {
+          if (parseDecimal(v) === 0n) throw new Error("zero");
+        } catch {
+          throw new Error(`${name} 必须是正整数的十进制字符串，当前是 ${JSON.stringify(v)}`);
+        }
+      }
+      return (await call<{ items: TaskState[] }>("POST", "/tasks/status", undefined, { user_id: userId, task_ids: taskIds }, { signal })).items;
     },
     /** 运行结束：释放 Go 内存里这个运行的状态（联网次数、技能固定版本）；不调用也会在闲置过期后清掉 */
     endRun: (rc: RunContext, signal?: AbortSignal) => call<null>("DELETE", `/runs/${rc.run_id}`, rc, undefined, { signal }),

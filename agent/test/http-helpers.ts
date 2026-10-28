@@ -9,10 +9,11 @@ export interface Http {
   call(method: string, path: string, body?: unknown, headers?: Record<string, string | undefined>): Promise<{ status: number; body: any }>;
 }
 
-export async function withHttp(go: FakeGoOptions, fn: (h: Http, e: Env) => Promise<void>, over: { maxBody?: number } = {}) {
+export async function withHttp(go: FakeGoOptions, fn: (h: Http, e: Env) => Promise<void>, over: { maxBody?: number; engine?: NonNullable<Parameters<typeof withEngine>[2]> } = {}) {
+  const { engine: engineOpts, ...apiOver } = over;
   await withEngine(go, async (e) => {
     const service = new AgentApiService({ store: e.store, engine: e.engine, platform: e.platform, codec });
-    const app = createApiApp({ service, codec, serviceToken: TOKEN, log: () => {}, ...over });
+    const app = createApiApp({ service, codec, serviceToken: TOKEN, log: () => {}, ...apiOver });
     const url = await app.listen({ port: 0, host: "127.0.0.1" });
     const call: Http["call"] = async (method, path, body, headers = {}) => {
       const h: Record<string, string> = { "x-agent-service-token": TOKEN, "x-agent-user": "1", ...(body !== undefined && { "content-type": "application/json" }) };
@@ -25,5 +26,5 @@ export async function withHttp(go: FakeGoOptions, fn: (h: Http, e: Env) => Promi
     } finally {
       await app.close();
     }
-  });
+  }, engineOpts);
 }
