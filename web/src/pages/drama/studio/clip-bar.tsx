@@ -46,9 +46,11 @@ function Clip({
       }}
       whileDrag={{ scale: 1.03, zIndex: 2 }}
       className={cn(
-        "bg-muted relative h-[68px] shrink-0 cursor-grab touch-none overflow-hidden rounded-lg outline-none select-none active:cursor-grabbing",
+        "bg-muted relative h-[76px] shrink-0 cursor-grab touch-none overflow-hidden rounded-lg outline-none select-none active:cursor-grabbing",
         "focus-visible:ring-ring/50 focus-visible:ring-2",
-        selected ? "ring-foreground ring-2" : "ring-border ring-1",
+        selected
+          ? "ring-primary shadow-[0_0_0_3px_color-mix(in_oklch,var(--primary)_18%,transparent)] ring-2"
+          : "ring-border hover:ring-foreground/30 ring-1",
       )}
     >
       {take?.asset ? (
@@ -173,7 +175,7 @@ export function ClipBar() {
         <Button
           variant="outline"
           size="icon"
-          className="h-[68px] w-10 shrink-0 border-dashed"
+          className="hover:border-primary hover:text-primary h-[76px] w-12 shrink-0 border-dashed"
           aria-label="新增片段"
           title="新增片段"
           onClick={() => void actions.add()}

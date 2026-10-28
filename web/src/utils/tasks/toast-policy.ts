@@ -58,7 +58,7 @@ const SEGMENT_NODE_PREFIXES = ["seg:", "segkf:"] as const;
  * @param view 任务快照
  * @param currentCanvasId 正在看的画布 id，不在画布页为 null
  * @param canvasTitle 任务所属画布的标题
- * @param pathname 当前地址，判断是不是正在看对话页
+ * @param pathname 当前地址（路径加查询串，如 /drama/1a2b?area=studio），判断是不是正在看对话页或片场
  */
 export function planTaskToast(
   view: TaskView,
@@ -119,9 +119,19 @@ function planConversationToast(view: TaskView, pathname: string): TaskToastPlan 
   }
 }
 
-/** 片段任务的提示：正在片段工作区时片段自己会变，不弹；短剧画布不是普通画布，不带画布名也不跳转 */
+/**
+ * 正在看片场：工作台的 ?area=studio（片场已并入工作台），或旧的 /drama/:id/ep/:no（会被重定向，
+ * 重定向前的一瞬间也算）。查询参数顺序不固定，所以按参数解析，不用正则硬匹配。
+ */
+function inStudio(location: string): boolean {
+  if (/^\/drama\/[^/?]+\/ep\//.test(location)) return true;
+  const match = /^\/drama\/[^/?]+\?(.*)$/.exec(location);
+  return !!match && new URLSearchParams(match[1]).get("area") === "studio";
+}
+
+/** 片段任务的提示：正在片场时片段自己会变，不弹；短剧画布不是普通画布，不带画布名也不跳转 */
 function planSegmentToast(view: TaskView, pathname: string): TaskToastPlan | null {
-  if (/^\/drama\/[^/]+\/ep\//.test(pathname)) return null;
+  if (inStudio(pathname)) return null;
   const name = view.node_id.startsWith("segkf:") ? "片段首帧" : "片段视频";
   const id = `task:${taskKey(view.id)}`;
   switch (view.status) {

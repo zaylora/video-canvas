@@ -8,9 +8,6 @@ import { reconcileDrama } from "@/utils/drama/job-events";
 import type { AutosaveStatus } from "@/utils/drama/autosave";
 import { toast } from "sonner";
 
-/** 工作台左导航的三个区 */
-export type WorkspaceArea = "script" | "assets" | "episodes";
-
 /** 顶栏「保存状态」：把各处自动保存的状态汇总成一个 */
 export type SaveSummary = "saved" | "saving" | "error" | "conflict";
 

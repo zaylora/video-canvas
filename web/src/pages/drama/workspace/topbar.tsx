@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  ArrowLeft,
   Check,
   CloudAlert,
   CloudCheck,
@@ -7,8 +8,10 @@ import {
   PanelRight,
   Palette,
   Ratio,
+  Search,
   Type,
 } from "lucide-react";
+import { Link } from "react-router";
 import { toast } from "sonner";
 
 import { ChipPopover, RatioList, StyleGrid } from "@/components/drama/pickers";
@@ -20,8 +23,10 @@ import { cn } from "@/lib/utils";
 import { CreditsPill } from "@/pages/canvas/chrome/top-right-bar";
 import { ratioFixed } from "@/utils/drama/episodes";
 import { CUSTOM_STYLE_KEY } from "@/utils/drama/options";
+import type { StageHints, WorkspaceStage } from "@/utils/drama/stages";
 
 import { useWorkspace } from "./context";
+import { StageTabs } from "./stage-tabs";
 import type { SaveSummary } from "./use-workspace";
 
 const SAVE_LABEL: Record<SaveSummary, { text: string; icon: React.ReactNode; tone?: string }> = {
@@ -82,7 +87,7 @@ function TitleInput() {
           event.currentTarget.blur();
         }
       }}
-      className="hover:bg-muted focus:bg-muted focus-visible:ring-ring/50 h-8 w-48 min-w-0 rounded-lg bg-transparent px-2 text-sm font-semibold outline-none focus-visible:ring-2 max-sm:w-32"
+      className="hover:bg-muted focus:bg-muted focus-visible:ring-ring/50 font-display h-8 w-44 min-w-0 rounded-lg bg-transparent px-2 text-sm font-bold tracking-wide outline-none focus-visible:ring-2 max-sm:w-28"
     />
   );
 }
@@ -206,46 +211,80 @@ function RatioChip() {
   );
 }
 
-/** 工作台顶栏：项目名（可改）、保存状态、画风、比例、文本模型、积分、右栏开关 */
+/**
+ * 工作台顶栏：左边返回列表 + 项目名（可改）+ 保存状态，中间是工序标签，
+ * 右边是画风 / 比例 / Agent 模型、明暗、积分、右栏开关。
+ */
 export function Topbar({
   sideOpen,
   onToggleSide,
+  stage,
+  hints,
+  onStage,
+  onPalette,
 }: {
   sideOpen: boolean;
   onToggleSide: () => void;
+  stage: WorkspaceStage;
+  hints: StageHints;
+  onStage: (stage: WorkspaceStage) => void;
+  onPalette: () => void;
 }) {
   const { save } = useWorkspace();
   const status = SAVE_LABEL[save];
   return (
-    <header className="border-border flex h-12 shrink-0 items-center gap-1 border-b px-3">
-      <TitleInput />
-      <span
-        role="status"
-        className={cn(
-          "text-muted-foreground ml-1 inline-flex items-center gap-1 text-xs max-sm:hidden",
-          status.tone,
-        )}
-      >
-        {status.icon}
-        {status.text}
-      </span>
-      <span className="flex-1" />
-      <div className="flex items-center gap-0.5 max-md:hidden">
-        <StyleChip />
-        <RatioChip />
-        <ModelChip />
+    <header className="border-border bg-chrome relative z-30 grid h-14 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 border-b px-3 backdrop-blur-xl">
+      <div className="flex min-w-0 items-center gap-1">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="返回短剧列表"
+          render={<Link to="/drama" />}
+        >
+          <ArrowLeft />
+        </Button>
+        <TitleInput />
+        <span
+          role="status"
+          className={cn(
+            "text-muted-foreground ml-1 inline-flex items-center gap-1 text-xs max-lg:hidden",
+            status.tone,
+          )}
+        >
+          {status.icon}
+          {status.text}
+        </span>
       </div>
-      <ThemeToggle />
-      <CreditsPill />
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        aria-label={sideOpen ? "收起右栏" : "展开右栏"}
-        aria-pressed={sideOpen}
-        onClick={onToggleSide}
-      >
-        <PanelRight />
-      </Button>
+      <StageTabs stage={stage} hints={hints} onChange={onStage} />
+      <div className="flex items-center justify-end gap-0.5">
+        <div className="flex items-center gap-0.5 max-xl:hidden">
+          <StyleChip />
+          <RatioChip />
+          <ModelChip />
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label="命令面板"
+          title="命令面板（⌘K）"
+          onClick={onPalette}
+          className="text-muted-foreground max-md:hidden"
+        >
+          <Search />
+          <kbd className="bg-muted rounded px-1 font-mono text-[11px]">⌘K</kbd>
+        </Button>
+        <ThemeToggle />
+        <CreditsPill />
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={sideOpen ? "收起右栏" : "展开右栏"}
+          aria-pressed={sideOpen}
+          onClick={onToggleSide}
+        >
+          <PanelRight />
+        </Button>
+      </div>
     </header>
   );
 }

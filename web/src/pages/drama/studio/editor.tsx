@@ -16,12 +16,15 @@ import { DURATION, EASE_OUT } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { modelMaxSeconds } from "@/utils/drama/video-models";
 import { hasVideo, latestError } from "@/utils/drama/segments";
-import { Link } from "react-router";
 
 import { PromptPane } from "./prompt-pane";
 import { RefsBar } from "./refs-bar";
 import { ShotsTable } from "./shots-table";
 import { useStudio } from "./use-studio";
+
+/** 右侧检查器：宽屏固定 400，窄屏（预览被隐藏时）撑满；自己滚动 */
+const INSPECTOR =
+  "border-border bg-card min-w-0 flex-1 overflow-y-auto border-l lg:w-[400px] lg:flex-none";
 
 const SECOND_CHOICES = [3, 4, 5, 6, 8, 10, 12, 15, 20, 30];
 
@@ -146,36 +149,20 @@ function useBlockedReason(): string | null {
 
 /** 中间编辑区：片段标题与时长、参考素材条、提示词、首帧、积分与生成、失败提示、分镜表 */
 export function Editor() {
-  const {
-    selected,
-    plan,
-    credits,
-    availableCredits,
-    actions,
-    submitting,
-    segmentsStatus,
-    drama,
-    no,
-  } = useStudio();
+  const { selected, plan, credits, availableCredits, actions, submitting, segmentsStatus, no } =
+    useStudio();
   const blocked = useBlockedReason();
 
   if (!selected) {
     return (
-      <section className="min-w-0 flex-1 overflow-y-auto">
-        <p className="text-muted-foreground mt-20 text-center text-sm">
+      <section className={INSPECTOR}>
+        <p className="text-muted-foreground mt-20 px-6 text-center text-sm">
           {segmentsStatus === "loading"
             ? "加载中…"
             : segmentsStatus === "error"
               ? "片段读取失败，请刷新页面重试"
-              : "这一集还没有片段，点下方「+」新建，或回到分集页生成分镜脚本"}
+              : "这一集还没有片段，点下方时间线末尾的「+」新建一个"}
         </p>
-        {segmentsStatus === "ready" && (
-          <p className="text-center">
-            <Link to={`/drama/${drama.id}?area=episodes`} className="text-sm underline">
-              回到分集视频
-            </Link>
-          </p>
-        )}
       </section>
     );
   }
@@ -187,19 +174,16 @@ export function Editor() {
     credits !== undefined && availableCredits !== null && credits > availableCredits;
 
   return (
-    <section
-      aria-label={`第 ${no} 集 片段 ${selected.seq + 1}`}
-      className="min-w-0 flex-1 overflow-y-auto"
-    >
+    <section aria-label={`第 ${no} 集 片段 ${selected.seq + 1}`} className={INSPECTOR}>
       <motion.div
         key={selected.id}
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: DURATION.base, ease: EASE_OUT }}
-        className="mx-auto grid max-w-[760px] gap-4 px-7 pt-5 pb-10"
+        className="grid gap-4 px-4 pt-4 pb-8"
       >
         <div className="flex items-baseline gap-2">
-          <h2 className="text-[22px] font-semibold tabular-nums">
+          <h2 className="font-mono text-[22px] font-semibold tracking-tight">
             片段 {String(selected.seq + 1).padStart(2, "0")}
           </h2>
           <SecondsChip />

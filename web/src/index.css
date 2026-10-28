@@ -64,6 +64,11 @@
   --color-cover-scrim: var(--cover-scrim);
   --color-cover-foreground: var(--cover-foreground);
   --color-edge: var(--edge);
+  --color-paper: var(--paper);
+  --color-paper-foreground: var(--paper-foreground);
+  --color-info: var(--info);
+  /* 短剧工作台的标题与剧本正文：衬线体，不引入网络字体，走系统自带的宋体 / 思源宋体 */
+  --font-display: "Songti SC", "Noto Serif SC", "Source Han Serif SC", "STSong", serif;
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -316,6 +321,86 @@
   --chart-3: oklch(0.8 0.12 205);
   --chart-4: oklch(0.8 0.15 75);
   --chart-5: oklch(0.74 0.17 345);
+}
+
+/*
+ * 短剧工作台主题（设计：docs/design/短剧工作室/短剧工作室原型-v2.html）。
+ * 只作用在挂了 .drama-theme 的工作台根节点内：覆盖 shadcn 的语义变量，里面的按钮、弹窗、下拉
+ * 不用逐个改就跟着换成「暗房片场」——暖黑底 + 钨丝灯琥珀。强调色只有一个（--primary 即琥珀）。
+ * 浅色是 .drama-theme 本身，深色是 .dark .drama-theme；站点的明暗开关照常生效。
+ */
+.drama-theme {
+  --background: oklch(0.95 0.007 85);
+  --foreground: oklch(0.22 0.01 85);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.22 0.01 85);
+  --popover: oklch(0.985 0.004 85);
+  --popover-foreground: oklch(0.22 0.01 85);
+  --primary: oklch(0.67 0.14 78);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.92 0.008 85);
+  --secondary-foreground: oklch(0.22 0.01 85);
+  --muted: oklch(0.92 0.008 85);
+  --muted-foreground: oklch(0.5 0.015 85);
+  --accent: oklch(0.92 0.008 85);
+  --accent-foreground: oklch(0.22 0.01 85);
+  --destructive: oklch(0.58 0.2 28);
+  --border: oklch(0.22 0.02 85 / 0.1);
+  --input: oklch(0.22 0.02 85 / 0.16);
+  --ring: oklch(0.67 0.14 78);
+  --sidebar: oklch(0.95 0.007 85);
+  --sidebar-foreground: oklch(0.22 0.01 85);
+  --sidebar-accent: oklch(0.92 0.008 85);
+  --sidebar-accent-foreground: oklch(0.22 0.01 85);
+  --sidebar-border: oklch(0.22 0.02 85 / 0.1);
+  --panel: oklch(1 0 0);
+  --menu: oklch(0.985 0.004 85);
+  --chrome: oklch(0.95 0.007 85 / 0.78);
+  --chrome-border: oklch(0.22 0.02 85 / 0.1);
+  --chrome-hover: oklch(0.22 0.02 85 / 0.06);
+  --status-running: oklch(0.67 0.14 78);
+  --status-success: oklch(0.6 0.13 160);
+  --status-warning: oklch(0.67 0.14 78);
+  --info: oklch(0.55 0.17 265);
+  --paper: oklch(0.99 0.006 90);
+  --paper-foreground: oklch(0.26 0.012 85);
+}
+
+.dark .drama-theme {
+  --background: oklch(0.145 0.002 286);
+  --foreground: oklch(0.955 0.008 85);
+  --card: oklch(0.19 0.004 286);
+  --card-foreground: oklch(0.955 0.008 85);
+  --popover: oklch(0.225 0.006 286);
+  --popover-foreground: oklch(0.955 0.008 85);
+  --primary: oklch(0.81 0.15 82);
+  --primary-foreground: oklch(0.2 0.03 85);
+  --secondary: oklch(0.275 0.01 286);
+  --secondary-foreground: oklch(0.955 0.008 85);
+  --muted: oklch(0.275 0.01 286);
+  --muted-foreground: oklch(0.75 0.015 85);
+  --accent: oklch(0.275 0.01 286);
+  --accent-foreground: oklch(0.955 0.008 85);
+  --destructive: oklch(0.68 0.2 28);
+  --border: oklch(1 0 0 / 0.08);
+  --input: oklch(1 0 0 / 0.13);
+  --ring: oklch(0.81 0.15 82);
+  --sidebar: oklch(0.145 0.002 286);
+  --sidebar-foreground: oklch(0.955 0.008 85);
+  --sidebar-accent: oklch(0.275 0.01 286);
+  --sidebar-accent-foreground: oklch(0.955 0.008 85);
+  --sidebar-border: oklch(1 0 0 / 0.08);
+  --panel: oklch(0.19 0.004 286);
+  --menu: oklch(0.225 0.006 286);
+  --chrome: oklch(0.145 0.002 286 / 0.72);
+  --chrome-border: oklch(1 0 0 / 0.08);
+  --chrome-hover: oklch(1 0 0 / 0.06);
+  --status-running: oklch(0.81 0.15 82);
+  --status-success: oklch(0.8 0.15 160);
+  --status-warning: oklch(0.81 0.15 82);
+  --info: oklch(0.76 0.12 265);
+  --paper: oklch(0.19 0.004 286);
+  --paper-foreground: oklch(0.925 0.01 85);
 }
 
 @layer base {

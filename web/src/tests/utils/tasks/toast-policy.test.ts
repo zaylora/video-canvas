@@ -138,6 +138,14 @@ describe("planTaskToast：短剧片段任务（seg: / segkf: 前缀）", () => {
     expect(planTaskToast(view, null, "短剧画布", "/drama/1a2b/ep/1")).toBeNull();
   });
 
+  test("片场并入工作台后：在 ?area=studio 时同样不弹，在工作台其他工序仍然弹", () => {
+    const view = succeeded({ node_id: "seg:5d2a", canvas_id: "10" });
+    expect(planTaskToast(view, null, "短剧画布", "/drama/1a2b?area=studio&ep=3")).toBeNull();
+    expect(planTaskToast(view, null, "短剧画布", "/drama/1a2b?ep=3&area=studio")).toBeNull();
+    expect(planTaskToast(view, null, "短剧画布", "/drama/1a2b?area=assets&ep=3")).not.toBeNull();
+    expect(planTaskToast(view, null, "短剧画布", "/drama/1a2b")).not.toBeNull();
+  });
+
   test("在别处：不带画布名、没有跳转（短剧画布不是普通画布），区分片段视频与首帧", () => {
     const video = planTaskToast(
       succeeded({ node_id: "seg:5d2a", canvas_id: "10" }),

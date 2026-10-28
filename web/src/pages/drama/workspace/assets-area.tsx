@@ -227,10 +227,25 @@ function DramaCanvas({
  * 资产区：顶部是「列表 ⇄ 画布」切换、集数筛选、多选、资产拆解；下面是短剧专属画布（一直挂着），
  * 列表视图盖在画布上，读的是画布里同一份节点数据。
  */
-export function AssetsArea({ onBreakdownOpen }: { onBreakdownOpen: () => void }) {
+export function AssetsArea({
+  ep,
+  onBreakdownOpen,
+}: {
+  /** 左侧分集栏当前选中的集；0 = 全集 */
+  ep: number;
+  onBreakdownOpen: () => void;
+}) {
   const { drama, jobs } = useWorkspace();
   const [view, setView] = useState<"list" | "canvas">("list");
-  const [filter, setFilter] = useState<EpisodeFilter>({ kind: "all" });
+  const [filter, setFilter] = useState<EpisodeFilter>(
+    ep === 0 ? { kind: "all" } : { kind: "episode", no: ep },
+  );
+  // 分集栏换了集，筛选跟着换（顶部的「未分类」筛选只在栏没动时保留）
+  const [seenEp, setSeenEp] = useState(ep);
+  if (seenEp !== ep) {
+    setSeenEp(ep);
+    setFilter(ep === 0 ? { kind: "all" } : { kind: "episode", no: ep });
+  }
   const [type, setType] = useState<AssetType>("character");
   const [multi, setMulti] = useState(false);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());

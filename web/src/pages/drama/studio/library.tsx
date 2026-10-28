@@ -128,7 +128,7 @@ export function Library() {
   return (
     <aside
       aria-label="资产库"
-      className="border-border flex w-60 shrink-0 flex-col border-r max-md:hidden"
+      className="border-border flex w-56 shrink-0 flex-col border-r max-xl:hidden"
     >
       <div className="flex items-center px-3 pt-3 pb-2">
         <b className="text-sm">资产库</b>
