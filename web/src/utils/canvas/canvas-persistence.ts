@@ -9,6 +9,7 @@ import { isGroupNode, normalizeFlowNodes } from "./group";
 import { unflatten, type MergeEdge, type MergeOptions } from "./graph-changes";
 import { isUploading } from "./upload-state";
 import { dropNodeOrigin } from "./placement";
+import { normalizeLegacyCharacter } from "@/utils/characters/node-character";
 
 /** 扩图中途被打断（刷新、关页）后，节点上显示的话：合成图还没传好，只能回原图重新扩 */
 export const OUTPAINT_INTERRUPTED = "扩图被中断，请回到原图重新扩图";
@@ -107,8 +108,7 @@ export function serializeGraph(
           ...(rest.activeOutputId !== undefined ? { activeOutputId: rest.activeOutputId } : {}),
           ...(rest.outpaintFrom !== undefined ? { outpaintFrom: rest.outpaintFrom } : {}),
           ...(rest.scene !== undefined ? { scene: rest.scene } : {}),
-          ...(rest.characterId !== undefined ? { characterId: rest.characterId } : {}),
-          ...(rest.labelCache !== undefined ? { labelCache: rest.labelCache } : {}),
+          ...(rest.character !== undefined ? { character: rest.character } : {}),
           ...(rest.drama !== undefined ? { drama: rest.drama } : {}),
         };
         if (data.src?.startsWith("blob:") && !data.assetId) delete data.src;
@@ -170,7 +170,7 @@ export function deserializeNode(node: CanvasGraphDto["nodes"][number]): FlowNode
       ? { ...node, data: { ...node.data, status: "idle" as const } }
       : node;
   // 老存档里带 origin 的节点，position 统一换算成左上角
-  return dropNodeOrigin(withDirectorScene(fixed) as FlowNode);
+  return dropNodeOrigin(normalizeLegacyCharacter(withDirectorScene(fixed)) as FlowNode);
 }
 
 /** 把 Agent 补丁里拍平的节点字段（"data.x" 路径）造成前端节点。 */

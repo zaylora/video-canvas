@@ -72,8 +72,6 @@ export function matchesFilter(episodes: number[] | null, filter: EpisodeFilter):
 
 /** 状态判断时由外部给的上下文 */
 export type StatusContext = {
-  /** 角色卡有没有主图（按节点的 characterId 查缓存） */
-  hasAvatar?: (characterId: string | undefined) => boolean;
   /** 「资产提示词」任务还在跑 */
   analyzing?: boolean;
 };
@@ -82,12 +80,9 @@ export type StatusContext = {
 export function assetStatusOf(data: CanvasNodeData, ctx: StatusContext = {}): AssetStatus {
   if (data.status === "running") return "running";
   if (data.status === "error") return "error";
+  // 角色卡节点的主图就是节点自己的 src，和图片节点同一个判断
   const hasContent =
-    data.kind === "character"
-      ? !!ctx.hasAvatar?.(data.characterId) || (!!data.src && !data.src.startsWith("blob:"))
-      : data.kind === "script"
-        ? !!data.text?.trim()
-        : !!data.src && !data.src.startsWith("blob:");
+    data.kind === "script" ? !!data.text?.trim() : !!data.src && !data.src.startsWith("blob:");
   if (hasContent) return "done";
   const hasPrompt = typeof data.params?.prompt === "string" && data.params.prompt.trim() !== "";
   if (ctx.analyzing && !hasPrompt && !data.prompt) return "analyzing";
@@ -195,11 +190,13 @@ export function episodesLabel(episodes: readonly number[] | null): string {
   return `第 ${parts.join("、")} 集`;
 }
 
-/** 类型 tab 里「新建」对应的画布节点种类；角色要先选角色卡，不能直接建空节点（返回 null） */
-export function newNodeKindOf(type: AssetType): "image" | "video" | "script" | "audio" | null {
+/** 类型 tab 里「新建」对应的画布节点种类：角色是空的角色卡节点，场景 / 道具 / 图片都是图片节点 */
+export function newNodeKindOf(
+  type: AssetType,
+): "character" | "image" | "video" | "script" | "audio" {
   switch (type) {
     case "character":
-      return null;
+      return "character";
     case "scene":
     case "prop":
     case "image":

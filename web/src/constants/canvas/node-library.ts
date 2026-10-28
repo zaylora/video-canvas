@@ -76,7 +76,7 @@ export const NODE_LIBRARY = [
     kind: "character",
     label: "角色卡",
     description: "人物形象与声音，连到图片 / 视频生成节点",
-    placeholder: "角色卡的内容在资产页编辑，这里只引用。",
+    placeholder: "上传或从素材库选一张图作为形象，也可以选中后直接生成。",
     icon: UserRound,
     placeholderIcon: CharacterPlaceholderIcon,
   },
@@ -100,4 +100,5 @@ export const ADD_NODE_MENU: { kind: NodeKind; title: string; description: string
   { kind: "script", title: "文本", description: "脚本、分镜描述" },
   { kind: "audio", title: "音频", description: "配乐、音效、配音" },
   { kind: "director", title: "导演台", description: "3D 摆位与运镜预演" },
+  { kind: "character", title: "角色卡", description: "人物形象与声音，只属于当前画布" },
 ];

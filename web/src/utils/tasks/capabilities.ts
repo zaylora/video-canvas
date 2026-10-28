@@ -125,11 +125,11 @@ export function inputPorts(caps: Capabilities | undefined, op: GenerationOp | un
 }
 
 /**
- * 角色卡节点此刻的引用内容（来自角色卡 store 的最新读取）：素材 id 是前端的字符串 id。
+ * 角色卡节点此刻的引用内容（来自节点自带的数据，见 characterRefsOfNode）：素材 id 是前端的字符串 id。
  * 提交任务时据此展开成参考图和参考音频。
  */
 export type CharacterRefs = {
-  /** 角色卡 ID */
+  /** 角色卡节点 id */
   id: string;
   /** 角色名，用于提示 */
   name: string;
@@ -143,7 +143,7 @@ export type CharacterRefs = {
 
 /** 一根展开出来的虚拟连线是角色卡的哪一部分 */
 export type CharacterPart = {
-  /** 角色卡 ID */
+  /** 角色卡节点 id */
   id: string;
   /** avatar 主图；extra 补充图；voice 声音 */
   part: "avatar" | "extra" | "voice";
@@ -163,9 +163,10 @@ export type IncomingLink = {
   assetId?: string;
   /** 上游文本（文本节点的正文，没生成过就取它写的提示词） */
   text?: string;
-  /** 角色卡节点引用的角色卡 ID（sourceKind 为 character 时有，缺省是旧数据） */
-  characterId?: string;
-  /** 角色卡节点的当前内容：缺省表示还在加载，null 表示角色卡已失效，两者都不参与提交 */
+  /**
+   * 角色卡节点此刻的内容（sourceKind 为 character 时有，来自节点自带的数据）：
+   * null 表示没有可带入的形象（空节点、或正在生成），不参与提交，但不算失效
+   */
   character?: CharacterRefs | null;
   /** 只在 resolveBindings 展开出来的虚拟连线上有：它是角色卡的哪一部分 */
   fromCharacter?: CharacterPart;

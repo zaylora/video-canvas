@@ -25,7 +25,7 @@ const nodes: GraphNode[] = [
   node("c1", {
     kind: "character",
     label: "林川 · 童年",
-    characterId: "card1",
+    character: { name: "林川", look: "童年", description: "", extras: [], voice: null },
     drama: { type: "character", name: "林川", look: "童年", episodes: [1, 2] },
   }),
   node("s1", {
@@ -59,18 +59,34 @@ describe("assetsFromGraph：短剧画布上的资产节点", () => {
     expect(assets.map((a) => a.id)).toEqual(["c1", "s1", "p1", "run"]);
   });
 
-  test("字段映射：造型、节点标题、角色卡 id；本地 blob 素材不算有图；生成中的标出来", () => {
+  test("字段映射：造型、节点标题、角色数据；本地 blob 素材不算有图；生成中的标出来", () => {
     expect(assets[0]).toMatchObject({
       type: "character",
       name: "林川",
       look: "童年",
       label: "林川 · 童年",
-      characterId: "card1",
+      character: { name: "林川", look: "童年", description: "", extras: [], voice: null },
       episodes: [1, 2],
     });
     expect(assets[1]).toMatchObject({ src: "https://cdn/s1.png", assetId: "11" });
     expect(assets[2].src).toBeNull();
     expect(assets[3].generating).toBe(true);
+  });
+
+  test("旧画布里引用全局角色卡的节点：规整成带原名字的空角色节点，不再带 characterId", () => {
+    const legacy = assetsFromGraph([
+      node("old", {
+        kind: "character",
+        label: "老王",
+        characterId: "gone",
+        labelCache: { name: "老王" },
+        drama: { type: "character", name: "老王", look: "", episodes: [] },
+      }),
+    ]);
+    expect(legacy).toHaveLength(1);
+    expect(legacy[0].character?.name).toBe("老王");
+    expect(legacy[0]).not.toHaveProperty("characterId");
+    expect(legacy[0].src).toBeNull();
   });
 
   test("画布没有节点时是空数组", () => {

@@ -1,6 +1,5 @@
 import type { Capabilities, GenerationOp } from "@/api/model/type";
-import type { CharacterEntry } from "@/store/characters";
-import { characterRefsOf } from "@/utils/characters/refs";
+import { characterRefsOfNode } from "@/utils/characters/node-character";
 import { parsePrompt } from "@/utils/canvas/prompt-tokens";
 import {
   buildTaskInput,
@@ -20,8 +19,8 @@ export type RefView = {
   id: string;
   label: string;
   type: DramaAssetType | null;
-  /** image 带了参考图；text 只用文字（没图 / 被截断 / 首帧模式）；loading 角色卡还在读取；dead 节点已被删 */
-  state: "image" | "text" | "loading" | "dead";
+  /** image 带了参考图；text 只用文字（没图 / 被截断 / 首帧模式）；dead 节点已被删 */
+  state: "image" | "text" | "dead";
   /** 这个资产在 input.images 里占了几张 */
   imageCount: number;
   /** 超出参考图上限，被截掉了一部分 */
@@ -49,8 +48,6 @@ export type SegmentPlan = {
   deadLabels: string[];
 };
 
-type Characters = Record<string, CharacterEntry | undefined>;
-
 /** 首帧图的提示词前缀：让图片模型画「开场第一帧」而不是整段剧情 */
 export const KEYFRAME_PREFIX = "为下面这个视频片段生成首帧（开场第一帧的静态画面）：";
 
@@ -70,7 +67,7 @@ function citedRefs(prompt: string, assets: readonly RefAsset[]): Cited[] {
 }
 
 /** 资产变成一根「上游连线」：和画布节点接进来的连线同一个形状，复用 resolveBindings */
-function toLink(asset: RefAsset, characters: Characters): IncomingLink {
+function toLink(asset: RefAsset): IncomingLink {
   const link: IncomingLink = {
     edgeId: asset.id,
     sourceId: asset.id,
@@ -81,39 +78,39 @@ function toLink(asset: RefAsset, characters: Characters): IncomingLink {
   if (asset.kind === "character") {
     return {
       ...link,
-      characterId: asset.characterId,
-      character: asset.characterId ? characterRefsOf(characters[asset.characterId]) : null,
+      // 角色卡的内容就在资产自己的数据里；没有主图（或正在生成）时为 null：只用文字，不算失效
+      character: characterRefsOfNode(asset.id, {
+        assetId: asset.src ? asset.assetId : undefined,
+        status: asset.generating ? "running" : undefined,
+        character: asset.character,
+      }),
     };
   }
   // 正在生成的节点 assetId 还指着上一版，不当参考图
   return { ...link, assetId: asset.src && !asset.generating ? asset.assetId : undefined };
 }
 
-/** 引用已经不可用：节点没了，或角色卡已被删除 */
-const isDead = (asset: RefAsset | undefined, characters: Characters): boolean =>
-  !asset ||
-  (asset.kind === "character" &&
-    (!asset.characterId || characters[asset.characterId]?.status === "missing"));
+/** 引用已经不可用：节点没了，或角色卡节点缺少角色数据（异常数据；空节点没有形象不算失效） */
+const isDead = (asset: RefAsset | undefined): boolean =>
+  !asset || (asset.kind === "character" && !asset.character);
 
 type Linked = { links: IncomingLink[]; cited: Cited[] };
 
-function linkRefs(prompt: string, assets: readonly RefAsset[], characters: Characters): Linked {
+function linkRefs(prompt: string, assets: readonly RefAsset[]): Linked {
   const cited = citedRefs(prompt, assets);
-  const links = cited.flatMap(({ asset }) =>
-    asset && !isDead(asset, characters) ? [toLink(asset, characters)] : [],
-  );
+  const links = cited.flatMap(({ asset }) => (asset && !isDead(asset) ? [toLink(asset)] : []));
   return { links, cited };
 }
 
-const deadLabelsOf = (linked: Linked, characters: Characters): string[] =>
-  linked.cited.filter(({ asset }) => isDead(asset, characters)).map(({ label }) => label);
+const deadLabelsOf = (linked: Linked): string[] =>
+  linked.cited.filter(({ asset }) => isDead(asset)).map(({ label }) => label);
 
 /** 参考素材条的每一项：按 bindings 看这个资产实际带了几张图、声音去哪了 */
-function refViews(linked: Linked, characters: Characters, bindings: Bindings): RefView[] {
+function refViews(linked: Linked, bindings: Bindings): RefView[] {
   const countOf = (list: IncomingLink[], id: string) =>
     list.filter((link) => link.sourceId === id).length;
   return linked.cited.map(({ id, label, asset }) => {
-    if (!asset || isDead(asset, characters)) {
+    if (!asset || isDead(asset)) {
       return {
         id,
         label,
@@ -124,9 +121,6 @@ function refViews(linked: Linked, characters: Characters, bindings: Bindings): R
         voice: "none",
       };
     }
-    const loading =
-      asset.kind === "character" &&
-      characterRefsOf(asset.characterId ? characters[asset.characterId] : undefined) === undefined;
     const imageCount = countOf(bindings.images, id);
     const droppedImage = bindings.dropped.some(
       (link) => link.sourceId === id && link.fromCharacter?.part !== "voice",
@@ -146,7 +140,7 @@ function refViews(linked: Linked, characters: Characters, bindings: Bindings): R
       id,
       label,
       type: asset.type,
-      state: loading ? "loading" : imageCount > 0 ? "image" : "text",
+      state: imageCount > 0 ? "image" : "text",
       imageCount,
       truncated: droppedImage,
       voice,
@@ -185,12 +179,11 @@ export function planSegmentInput(args: {
   ratio: string;
   overrides: Record<string, unknown>;
   assets: readonly RefAsset[];
-  characters: Characters;
   /** 首帧图的素材 id；没有为 null */
   keyframeAssetId: string | null;
 }): SegmentPlan {
-  const { caps, prompt, characters, keyframeAssetId } = args;
-  const linked = linkRefs(prompt, args.assets, characters);
+  const { caps, prompt, keyframeAssetId } = args;
+  const linked = linkRefs(prompt, args.assets);
   const hasKeyframe = keyframeAssetId !== null;
   const keyLink: IncomingLink | null = hasKeyframe
     ? {
@@ -230,11 +223,11 @@ export function planSegmentInput(args: {
     errors: built.errors,
     notices,
     // 首帧模式下 @ 的资产都只用文字：用空绑定算
-    refs: refViews(linked, characters, keyframeOnly ? resolveBindings(caps, op, []) : bindings),
+    refs: refViews(linked, keyframeOnly ? resolveBindings(caps, op, []) : bindings),
     imageCount: Array.isArray(images) ? images.length : 0,
     imageMax: caps?.refs?.image?.max ?? 0,
     keyframe: hasKeyframe && Array.isArray(images) && images.length > 0,
-    deadLabels: deadLabelsOf(linked, characters),
+    deadLabels: deadLabelsOf(linked),
   };
 }
 
@@ -248,13 +241,12 @@ export function planKeyframeInput(args: {
   prompt: string;
   ratio: string;
   assets: readonly RefAsset[];
-  characters: Characters;
 }) {
-  const linked = linkRefs(args.prompt, args.assets, args.characters);
+  const linked = linkRefs(args.prompt, args.assets);
   const params = {
     prompt: `${KEYFRAME_PREFIX}${args.prompt}`,
     ...segmentParams(args.caps, { seconds: 0, ratio: args.ratio, overrides: {} }),
   };
-  const fresh = buildFreshInput(args.caps, params, linked.links, args.characters);
-  return { ...fresh, deadLabels: deadLabelsOf(linked, args.characters) };
+  const fresh = buildFreshInput(args.caps, params, linked.links);
+  return { ...fresh, deadLabels: deadLabelsOf(linked) };
 }

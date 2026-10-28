@@ -1,4 +1,4 @@
-import type { DirectorScene, NodeDrama } from "@/types";
+import type { DirectorScene, NodeCharacter, NodeDrama } from "@/types";
 
 /** 持久化到后端的画布节点 */
 export interface PersistedCanvasNodeDto {
@@ -53,9 +53,11 @@ export interface PersistedCanvasNodeDto {
     >;
     /** 导演台节点的 3D 场景（结构见 types/director.ts） */
     scene?: DirectorScene;
-    /** 角色卡节点引用的角色卡 ID（十六进制串）；内容以角色卡本身为准，不随画布保存 */
+    /** 角色卡节点自带的角色数据（结构见 types/canvas 的 NodeCharacter），主图沿用本节点的 assetId / src */
+    character?: NodeCharacter;
+    /** @deprecated 旧版角色卡节点引用的全局角色卡 ID，打开画布时规整掉 */
     characterId?: string;
-    /** 角色卡节点上次读到的名称和主图素材 ID，仅在读取失败或加载前占位 */
+    /** @deprecated 旧版角色卡节点缓存的名称和主图，规整时只取名字 */
     labelCache?: { name: string; coverAssetId?: string };
     /** 短剧资产元数据（仅短剧专属画布的节点），结构见 types/canvas 的 NodeDrama */
     drama?: NodeDrama;
@@ -260,20 +262,6 @@ export interface CanvasExportAsset {
   fileName: string;
 }
 
-/** 导出文档里内嵌的角色卡内容，素材一律用 assets 的内容哈希引用 */
-export interface CanvasExportCharacter {
-  /** 角色名 */
-  name: string;
-  /** 角色描述 */
-  description: string;
-  /** 头像素材哈希 */
-  avatar: string;
-  /** 附加图片素材哈希，最多 4 张 */
-  extras: string[];
-  /** 声音素材哈希，null 表示没有声音 */
-  voice: string | null;
-}
-
 /** 画布导出文档（video-canvas/canvas）；前端只下载和回传，节点与连线不解析 */
 export interface CanvasExportDocument {
   /** 固定为 "video-canvas/canvas" */
@@ -293,10 +281,8 @@ export interface CanvasExportDocument {
     /** 连线列表 */
     edges: Array<Record<string, unknown>>;
   };
-  /** 用到的素材，键为 SHA-256 十六进制内容哈希 */
+  /** 用到的素材，键为 SHA-256 十六进制内容哈希（角色卡节点的补充图、音频音色也在其中，角色数据随节点导出） */
   assets: Record<string, CanvasExportAsset>;
-  /** 内嵌的角色卡，键为文件内局部编号 */
-  characters: Record<string, CanvasExportCharacter>;
 }
 
 /** 导出画布的后端响应 */
@@ -340,15 +326,6 @@ export interface BackendCanvasImportDto {
       /** 找不到的素材所在节点 */
       missing?: Array<{ node_id: string; file_name: string }> | null;
     };
-    /** 角色卡处理情况 */
-    characters: {
-      /** 新建的角色卡数 */
-      created: number;
-      /** 因重名被改名的角色卡 */
-      renamed?: Array<{ from: string; to: string }> | null;
-      /** 内容不合法、未能新建的角色卡所在节点 */
-      invalid?: Array<{ node_id: string; name: string }> | null;
-    };
     /** 因端点节点不存在而丢弃的连线数 */
     edges_dropped: number;
   };
@@ -375,15 +352,6 @@ export interface CanvasImportResultDto {
       copied: number;
       /** 找不到的素材所在节点 */
       missing: { nodeId: string; fileName: string }[];
-    };
-    /** 角色卡处理情况 */
-    characters: {
-      /** 新建的角色卡数 */
-      created: number;
-      /** 因重名被改名的角色卡 */
-      renamed: { from: string; to: string }[];
-      /** 内容不合法、未能新建的角色卡所在节点 */
-      invalid: { nodeId: string; name: string }[];
     };
     /** 因端点节点不存在而丢弃的连线数 */
     edgesDropped: number;

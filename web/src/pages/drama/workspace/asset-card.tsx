@@ -15,10 +15,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import { AssetCover } from "@/components/assets/asset-card";
 import { DramaPoster } from "@/components/drama/poster";
 import { Button } from "@/components/ui/button";
-import type { CharacterEntry } from "@/store/characters";
 import { DURATION, STAGGER, STAGGER_MAX, TAP_CARD } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import type { AssetItem, AssetType } from "@/utils/drama/assets";
@@ -33,13 +31,9 @@ export const TYPE_ICON: Record<AssetType, LucideIcon> = {
   audio: AudioLines,
 };
 
-/** 完成态的封面：角色取角色卡主图，其余取节点素材；没有可显示的就用渐变占位 */
-function DoneCover({ item, entry }: { item: AssetItem; entry?: CharacterEntry }) {
+/** 完成态的封面：取节点素材（角色卡节点的主图也是它的 src）；没有可显示的就用渐变占位 */
+function DoneCover({ item }: { item: AssetItem }) {
   const { data } = item;
-  if (item.type === "character") {
-    const avatar = entry?.card?.avatar;
-    if (avatar) return <AssetCover asset={avatar} />;
-  }
   if (data.kind === "script") {
     return (
       <div className="text-muted-foreground bg-muted absolute inset-0 overflow-hidden p-3 text-xs leading-5 break-words">
@@ -101,7 +95,6 @@ function EmptyFrame({
 export function AssetCard({
   item,
   index,
-  entry,
   multi,
   selected,
   generating,
@@ -111,7 +104,6 @@ export function AssetCard({
 }: {
   item: AssetItem;
   index: number;
-  entry?: CharacterEntry;
   multi: boolean;
   selected: boolean;
   /** 能不能生成（角色 / 场景 / 道具，且不是正在生成） */
@@ -124,7 +116,7 @@ export function AssetCard({
   const canGenerate =
     (item.type === "character" || item.type === "scene" || item.type === "prop") &&
     (item.status === "idle" || item.status === "error");
-  const hasVoice = item.type === "character" && !!entry?.card?.voicePrompt;
+  const hasVoice = item.type === "character" && !!item.data.character?.voice;
 
   return (
     <motion.div
@@ -144,7 +136,7 @@ export function AssetCard({
       >
         {item.status === "done" ? (
           <>
-            <DoneCover item={item} entry={entry} />
+            <DoneCover item={item} />
             <div className="from-cover-scrim absolute inset-x-0 bottom-0 bg-linear-to-t to-transparent px-2.5 pt-8 pb-2">
               <div className="text-cover-foreground truncate text-xs font-semibold">
                 {item.name}

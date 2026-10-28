@@ -1,41 +1,21 @@
 import { describe, expect, test } from "bun:test";
 
-import type { AssetDto } from "@/api/asset/type";
-import type { CharacterDto } from "@/api/character/type";
 import type { Capabilities } from "@/api/model/type";
-import type { CharacterEntry } from "@/store/characters";
+import type { NodeCharacter } from "@/types";
 import type { RefAsset } from "@/utils/drama/segment-assets";
 import { planKeyframeInput, planSegmentInput } from "@/utils/drama/segment-input";
 
-const asset = (id: string, kind: AssetDto["kind"] = "image"): AssetDto => ({
-  id,
-  url: `https://cdn/${id}`,
-  kind,
-  mimeType: "",
-  byteSize: 1,
-  width: null,
-  height: null,
-  durationMs: null,
-  fileName: null,
-});
-
-const card = (patch: Partial<CharacterDto> = {}): CharacterDto => ({
-  id: "c1",
+/** 角色卡节点自带的数据：补充图 2、音频音色 9（素材 id 在 payload 里是字符串） */
+const roleData = (patch: Partial<NodeCharacter> = {}): NodeCharacter => ({
   name: "林川",
+  look: "",
   description: "",
-  avatar: asset("1"),
-  extras: [asset("2")],
-  voice: asset("9", "audio"),
-  dramaId: "d1",
-  lookName: "",
-  voicePrompt: "",
-  createdAt: "x",
-  updatedAt: "x",
+  extras: [{ assetId: "2", src: "https://cdn/2" }],
+  voice: { mode: "audio", assetId: "9", src: "https://cdn/9", origin: "upload" },
   ...patch,
 });
 
-const ready = (c: CharacterDto): CharacterEntry => ({ status: "ready", card: c, loadedAt: 1 });
-
+/** 角色卡节点资产：主图 1（节点自己的 assetId / src） */
 const character = (id: string, patch: Partial<RefAsset> = {}): RefAsset => ({
   id,
   type: "character",
@@ -44,8 +24,10 @@ const character = (id: string, patch: Partial<RefAsset> = {}): RefAsset => ({
   label: "林川",
   episodes: [],
   kind: "character",
-  src: null,
-  characterId: "c1",
+  src: "https://cdn/1",
+  mediaType: "image",
+  assetId: "1",
+  character: roleData(),
   generating: false,
   ...patch,
 });
@@ -90,7 +72,6 @@ const base = {
 
 describe("planSegmentInput：@ 解析与参考素材组装（契约 §13）", () => {
   const assets = [character("n1"), scene("n2")];
-  const characters = { c1: ready(card()) };
 
   test("角色卡展开成主图 + 补充图（参考图）和声音（参考音频），@ 在提示词里换成名字 / 图片编号", () => {
     const plan = planSegmentInput({
@@ -98,7 +79,6 @@ describe("planSegmentInput：@ 解析与参考素材组装（契约 §13）", ()
       caps: video(),
       prompt: "@[林川](n1)走进@[村口](n2)",
       assets,
-      characters,
     });
     expect(plan.op).toBe("omni");
     expect(plan.input.images).toEqual([5, 1, 2]);
@@ -118,7 +98,6 @@ describe("planSegmentInput：@ 解析与参考素材组装（契约 §13）", ()
       caps: video({ max: 2 }),
       prompt: "@[村口](n2)@[林川](n1)",
       assets,
-      characters,
     });
     expect(plan.input.images).toEqual([5, 1]);
     expect(plan.notices.join("")).toContain("参考图最多 2 张");
@@ -134,7 +113,6 @@ describe("planSegmentInput：@ 解析与参考素材组装（契约 §13）", ()
       caps: video({ audio: false }),
       prompt: "@[林川](n1)",
       assets,
-      characters,
     });
     expect(plan.input.audios).toBeUndefined();
     expect(plan.notices).toContain("当前模型不支持参考音频，声音未生效");
@@ -146,20 +124,35 @@ describe("planSegmentInput：@ 解析与参考素材组装（契约 §13）", ()
       ...base,
       caps: video(),
       prompt: "@[林川](n1)",
-      assets,
-      characters: { c1: ready(card({ voice: null })) },
+      assets: [character("n1", { character: roleData({ voice: null }) }), scene("n2")],
     });
     expect(plan.input.audios).toBeUndefined();
     expect(plan.refs[0].voice).toBe("none");
   });
 
-  test("没有图的资产只保留文字：角色没有主图、场景没有素材都不进参考图", () => {
+  test("文本音色只展示：不当参考音频带入，也不标「声音未生效」", () => {
+    const plan = planSegmentInput({
+      ...base,
+      caps: video(),
+      prompt: "@[林川](n1)",
+      assets: [
+        character("n1", { character: roleData({ voice: { mode: "text", text: "年轻女声" } }) }),
+      ],
+    });
+    expect(plan.input.audios).toBeUndefined();
+    expect(plan.refs[0].voice).toBe("none");
+    expect(plan.notices).toEqual([]);
+  });
+
+  test("没有图的资产只保留文字：空角色节点（没有形象图）、场景没有素材都不进参考图，也不算失效", () => {
     const plan = planSegmentInput({
       ...base,
       caps: video(),
       prompt: "@[林川](n1)在@[村口](n2)",
-      assets: [character("n1"), scene("n2", { src: null, assetId: undefined })],
-      characters: { c1: ready(card({ avatar: null })) },
+      assets: [
+        character("n1", { src: null, assetId: undefined }),
+        scene("n2", { src: null, assetId: undefined }),
+      ],
     });
     expect(plan.refs.map((ref) => ref.state)).toEqual(["text", "text"]);
     expect(plan.input.images).toBeUndefined();
@@ -175,7 +168,6 @@ describe("planSegmentInput：@ 解析与参考素材组装（契约 §13）", ()
       caps: video(),
       prompt: "@[旧场景](gone)里@[村口](n2)",
       assets: [scene("n2")],
-      characters,
     });
     expect(plan.deadLabels).toEqual(["旧场景"]);
     expect(plan.refs[0]).toMatchObject({ id: "gone", label: "旧场景", state: "dead" });
@@ -183,15 +175,26 @@ describe("planSegmentInput：@ 解析与参考素材组装（契约 §13）", ()
     expect(plan.errors).toEqual({});
   });
 
-  test("角色卡还在读取：标成读取中，不进参考图", () => {
+  test("角色节点正在生成形象：assetId 还指着上一版，不当参考图，只用文字", () => {
     const plan = planSegmentInput({
       ...base,
       caps: video(),
       prompt: "@[林川](n1)",
-      assets: [character("n1")],
-      characters: { c1: { status: "loading", loadedAt: 0 } },
+      assets: [character("n1", { generating: true })],
     });
-    expect(plan.refs[0].state).toBe("loading");
+    expect(plan.refs[0].state).toBe("text");
+    expect(plan.input.images).toBeUndefined();
+  });
+
+  test("角色节点缺角色数据（异常数据）：按失效处理，记下名字，不阻断", () => {
+    const plan = planSegmentInput({
+      ...base,
+      caps: video(),
+      prompt: "@[林川](n1)",
+      assets: [character("n1", { character: undefined })],
+    });
+    expect(plan.refs[0].state).toBe("dead");
+    expect(plan.deadLabels).toEqual(["林川"]);
   });
 
   test("同一个资产引用多次只算一次，按第一次出现的顺序", () => {
@@ -200,7 +203,6 @@ describe("planSegmentInput：@ 解析与参考素材组装（契约 §13）", ()
       caps: video(),
       prompt: "@[村口](n2)@[林川](n1)@[村口](n2)",
       assets,
-      characters,
     });
     expect(plan.refs.map((ref) => ref.id)).toEqual(["n2", "n1"]);
     expect(plan.input.images).toEqual([5, 1, 2]);
@@ -209,7 +211,6 @@ describe("planSegmentInput：@ 解析与参考素材组装（契约 §13）", ()
 
 describe("planSegmentInput：首帧走图生视频", () => {
   const assets = [character("n1"), scene("n2")];
-  const characters = { c1: ready(card()) };
 
   test("有首帧且模型支持 i2v：op = i2v，参考图只放首帧，@ 的资产只用文字", () => {
     const plan = planSegmentInput({
@@ -217,7 +218,6 @@ describe("planSegmentInput：首帧走图生视频", () => {
       caps: video(),
       prompt: "@[林川](n1)在@[村口](n2)",
       assets,
-      characters,
       keyframeAssetId: "77",
     });
     expect(plan.op).toBe("i2v");
@@ -235,7 +235,6 @@ describe("planSegmentInput：首帧走图生视频", () => {
       caps: video({ ops: ["omni"] }),
       prompt: "@[林川](n1)",
       assets,
-      characters,
       keyframeAssetId: "77",
     });
     expect(plan.op).toBe("omni");
@@ -249,7 +248,6 @@ describe("planSegmentInput：首帧走图生视频", () => {
       caps: video(),
       prompt: "@[村口](n2)",
       assets,
-      characters,
     });
     expect(plan.op).toBe("omni");
     expect(plan.keyframe).toBe(false);
@@ -264,7 +262,6 @@ describe("planSegmentInput：时长与校验", () => {
       caps: video(),
       prompt: "一个镜头",
       assets: [],
-      characters: {},
     });
     expect(plan.input.duration).toBe(15);
     expect(plan.notices.join("")).toContain("15");
@@ -276,7 +273,6 @@ describe("planSegmentInput：时长与校验", () => {
       caps: video(),
       prompt: "  ",
       assets: [],
-      characters: {},
     });
     expect(plan.errors.prompt).toBeTruthy();
   });
@@ -287,7 +283,6 @@ describe("planSegmentInput：时长与校验", () => {
       caps: video({ ops: ["omni"] }),
       prompt: "一个镜头",
       assets: [],
-      characters: {},
     });
     expect(plan.op).toBe("omni");
     expect(plan.errors.images).toBeTruthy();
@@ -299,7 +294,6 @@ describe("planSegmentInput：时长与校验", () => {
       caps: undefined,
       prompt: "x",
       assets: [],
-      characters: {},
     });
     expect(plan.input).toEqual({});
   });
@@ -331,7 +325,6 @@ describe("planKeyframeInput：首帧图走图片模型", () => {
       prompt: "@[林川](n1)站在@[村口](n2)",
       ratio: "9:16",
       assets: [character("n1"), scene("n2")],
-      characters: { c1: ready(card()) },
     });
     expect(plan.input.op).toBe("i2i");
     expect(plan.input.images).toEqual([5, 1, 2]);
@@ -347,7 +340,6 @@ describe("planKeyframeInput：首帧图走图片模型", () => {
       prompt: "雨夜的街道",
       ratio: "9:16",
       assets: [],
-      characters: {},
     });
     expect(plan.input.op).toBe("t2i");
     expect(plan.input.images).toBeUndefined();

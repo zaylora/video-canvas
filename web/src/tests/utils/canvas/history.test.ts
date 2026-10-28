@@ -26,12 +26,27 @@ describe("structureKey / contentKey", () => {
     expect(contentKey(typed)).not.toBe(contentKey(a));
   });
 
-  test("角色卡节点同名换另一张卡是内容变化，只有选中状态不同则不是", () => {
-    const card = (characterId: string) =>
-      node("c1", { kind: "character", label: "小明", characterId });
-    const a = { nodes: [card("aa11")], edges: [] };
-    expect(contentKey({ nodes: [card("bb22")], edges: [] })).not.toBe(contentKey(a));
-    expect(contentKey({ nodes: [{ ...card("aa11"), selected: true }], edges: [] })).toBe(
+  test("角色卡节点改角色名 / 形象名 / 音色 / 补充图是内容变化，只有选中状态不同则不是", () => {
+    const base = { name: "小明", look: "基础形象", description: "", extras: [], voice: null };
+    const card = (character: typeof base & Record<string, unknown>) =>
+      node("c1", { kind: "character", label: "小明", character });
+    const a = { nodes: [card(base)], edges: [] };
+    expect(contentKey({ nodes: [card({ ...base, name: "小红" })], edges: [] })).not.toBe(
+      contentKey(a),
+    );
+    expect(contentKey({ nodes: [card({ ...base, look: "礼服" })], edges: [] })).not.toBe(
+      contentKey(a),
+    );
+    expect(
+      contentKey({ nodes: [card({ ...base, voice: { mode: "text", text: "x" } })], edges: [] }),
+    ).not.toBe(contentKey(a));
+    expect(
+      contentKey({
+        nodes: [card({ ...base, extras: [{ assetId: "1", src: "/1.png" }] })],
+        edges: [],
+      }),
+    ).not.toBe(contentKey(a));
+    expect(contentKey({ nodes: [{ ...card(base), selected: true }], edges: [] })).toBe(
       contentKey(a),
     );
   });

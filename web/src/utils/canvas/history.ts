@@ -62,7 +62,7 @@ export function contentKey({ nodes }: HistorySnapshot) {
             node.data.prompt,
             node.data.params,
             node.data.paramAssets,
-            node.data.characterId,
+            node.data.character,
           ],
     ),
   );

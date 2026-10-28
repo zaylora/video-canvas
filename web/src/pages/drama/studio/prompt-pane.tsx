@@ -39,8 +39,7 @@ export function readDroppedAsset(data: DataTransfer): { id: string; label: strin
  */
 export function PromptPane({ segment }: { segment: Segment }) {
   const studio = useStudio();
-  const { assets, assetsStatus, characters, no, actions, reportSave, registerEditor, setDraft } =
-    studio;
+  const { assets, assetsStatus, no, actions, reportSave, registerEditor, setDraft } = studio;
   const editorRef = useRef<PromptEditorHandle>(null);
   const [value, setValue] = useState(segment.prompt);
   const [over, setOver] = useState(false);
@@ -84,17 +83,14 @@ export function PromptPane({ segment }: { segment: Segment }) {
   // 把「插入引用 / 立即存盘」登记给工作区（资产库点击插入、生成前存盘用）
   const assetsById = useMemo(() => new Map(assets.map((asset) => [asset.id, asset])), [assets]);
   const toSource = useCallback(
-    (asset: RefAsset): RefSource => {
-      const card = asset.characterId ? characters[asset.characterId]?.card : undefined;
-      return {
-        id: asset.id,
-        kind: asset.kind,
-        label: asset.label,
-        src: asset.kind === "character" ? (card?.avatar?.url ?? null) : asset.src,
-        mediaType: "image",
-      };
-    },
-    [characters],
+    (asset: RefAsset): RefSource => ({
+      id: asset.id,
+      kind: asset.kind,
+      label: asset.label,
+      src: asset.src,
+      mediaType: "image",
+    }),
+    [],
   );
   useEffect(() => {
     registerEditor({
@@ -122,20 +118,15 @@ export function PromptPane({ segment }: { segment: Segment }) {
   const mention = useMemo<PromptMentionSource>(
     () => ({
       list: () => {
-        // 已删除的角色卡不列：它不参与提交，选了也没用
-        const usable = assets.filter(
-          (asset) =>
-            asset.kind !== "character" ||
-            (asset.characterId && characters[asset.characterId]?.status !== "missing"),
-        );
-        const { here, other } = splitByEpisode(usable, no);
+        // 没有形象图的角色也列出来：选了只是暂时只用文字，补上图之后自然带入
+        const { here, other } = splitByEpisode(assets, no);
         return { linked: here.map(toSource), canvas: other.map(toSource) };
       },
       link: () => undefined,
       linkedIds: new Set<string>(),
       plain: { linkedTitle: "本集资产", canvasTitle: "其他集", empty: "还没有可引用的资产" },
     }),
-    [assets, characters, no, toSource],
+    [assets, no, toSource],
   );
 
   // chip 的素材信息按 id 查本剧资产；资产还没读到时先当它存在，别闪一下「已失效」
@@ -148,7 +139,6 @@ export function PromptPane({ segment }: { segment: Segment }) {
         label: asset.label,
         src: asset.src,
         mediaType: "image",
-        characterId: asset.characterId,
       };
     },
     [assetsById, assetsStatus],

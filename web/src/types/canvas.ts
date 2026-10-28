@@ -60,12 +60,49 @@ export type CanvasNodeData = {
   outpaintFrom?: string;
   /** 导演台节点的 3D 场景，只有 kind 为 director 时才有；编辑器里改动后自动写回 */
   scene?: DirectorScene;
-  /** 角色卡节点引用的角色卡 ID（十六进制串），只有 kind 为 character 时才有；内容实时取自角色卡，不随画布保存 */
+  /** 角色卡节点自带的角色数据，只有 kind 为 character 时才有；主图沿用本节点的 assetId / src，数据只属于当前画布 */
+  character?: NodeCharacter;
+  /** @deprecated 旧版角色卡节点引用的全局角色卡 ID。角色卡已改为画布内嵌，打开画布时由 normalizeLegacyCharacters 规整掉，不再写回 */
   characterId?: string;
-  /** 角色卡节点上次读到的名称和主图素材 ID，只在加载前或读取失败时占位，不作为事实来源 */
+  /** @deprecated 旧版角色卡节点缓存的名称和主图，同上，规整时只取名字 */
   labelCache?: { name: string; coverAssetId?: string };
   /** 短剧资产元数据，只有短剧专属画布里的节点才有；没有这个字段的节点在短剧里算「未分类」 */
   drama?: NodeDrama;
+};
+
+/** 角色卡节点上的一份素材引用（补充图、音频音色）：只存素材 id 和地址，不复制文件 */
+export type CharacterAssetRef = {
+  /** 素材 id（字符串） */
+  assetId: string;
+  /** 素材地址，展示用 */
+  src: string;
+};
+
+/**
+ * 角色音色：文本描述和音频二选一。
+ * 文本音色只展示，不会当作参考音频带入下游；音频音色会展开成参考音频。
+ */
+export type CharacterVoice =
+  /** 文本音色：一段音色描述，≤500 字 */
+  | { mode: "text"; text: string }
+  /** 音频音色：一段音频素材，来源是上传、AI 生成或从素材库绑定 */
+  | { mode: "audio"; assetId: string; src: string; origin: "upload" | "generated" | "library" };
+
+/**
+ * 角色卡节点自带的数据（设计 docs/design/角色卡/画布角色卡重设计.md §8.1）：
+ * 一个节点 = 一个角色的一个形象，主图是节点自己的 assetId / src，数据只属于当前画布。
+ */
+export type NodeCharacter = {
+  /** 角色名，1–64 字，允许重复；相同的名字把同一角色的多个形象归在一起 */
+  name: string;
+  /** 形象（造型）名，≤64 字，默认「基础形象」 */
+  look: string;
+  /** 角色设定，≤500 字，只展示，不注入提示词 */
+  description: string;
+  /** 补充图，≤4 张，去重，不含主图，必须是图片 */
+  extras: CharacterAssetRef[];
+  /** 音色；null 表示没有 */
+  voice: CharacterVoice | null;
 };
 
 /**

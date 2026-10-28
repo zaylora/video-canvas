@@ -10,15 +10,14 @@ import {
   type AssetsTab,
 } from "@/utils/assets/route-state";
 
-import { CharactersView } from "./characters-view";
 import { HistoryView } from "./history-view";
 import { LibraryView } from "./library-view";
 
-/** 三个范围从左到右的顺序，决定切换时内容滑入的方向 */
-const TAB_ORDER: readonly AssetsTab[] = ["history", "library", "characters"];
+/** 两个范围从左到右的顺序，决定切换时内容滑入的方向 */
+const TAB_ORDER: readonly AssetsTab[] = ["history", "library"];
 
 /**
- * 资产页（设计稿 docs/design/资产库、docs/design/角色卡）：「生成历史 / 个人资产库 / 角色卡」三个范围。
+ * 资产页（设计稿 docs/design/资产库）：「生成历史 / 个人资产库」两个范围。
  * 范围和个人资产库里的文件夹都写在地址栏（/assets?tab=library&folder=1f），刷新、后退能还原。
  * 各范围自己管内容和工具条；头部右侧留一个容器，各范围把自己的搜索框（和「新建」）用 portal 放进来，
  * 这样切换范围时顶部的分段控件不会重新挂载，滑块动画是连续的。
@@ -56,7 +55,6 @@ export default function AssetsPage() {
           options={[
             { value: "history", label: "生成历史" },
             { value: "library", label: "个人资产库" },
-            { value: "characters", label: "角色卡" },
           ]}
         />
         <div ref={setSearchSlot} className="ml-auto flex items-center gap-2" />
@@ -77,7 +75,6 @@ export default function AssetsPage() {
               onFolderChange={changeFolder}
             />
           )}
-          {route.tab === "characters" && <CharactersView searchSlot={searchSlot} />}
         </motion.div>
       </MotionConfig>
     </div>

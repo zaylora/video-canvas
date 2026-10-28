@@ -1,100 +1,61 @@
 import { useMemo } from "react";
 import { Position, useNodeConnections, useNodesData, useReactFlow } from "@xyflow/react";
-import { Trash2, UserRoundX, VolumeX } from "lucide-react";
+import { toast } from "sonner";
+import {
+  AudioLines,
+  Ellipsis,
+  FolderOpen,
+  Pause,
+  Play,
+  Plus,
+  Type,
+  Upload,
+  VolumeX,
+} from "lucide-react";
 
-import type { CharacterDto } from "@/api/character/type";
+import type { AssetDto } from "@/api/asset/type";
 import { NodeCard, NodeVideoBody, type NodeCardHandle } from "@/components/canvas";
 import { BaseNodeContent } from "@/components/canvas/base-node";
-import { CharacterCover, ExtraStack } from "@/components/characters/character-card";
-import { VoiceBar } from "@/components/characters/voice-player";
+import { toggleVoice, useVoicePlaying } from "@/components/characters/voice-player";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { NODE_META } from "@/constants/canvas";
-import { useCharacterEntry } from "@/hooks/use-characters";
+import { useCharacterMedia } from "@/hooks/use-character-media";
 import { useTaskGeneration } from "@/hooks/use-task-generation";
-import { useTaskNode, type TaskNodeModel } from "@/hooks/use-task-node";
-import { useCharacterReselect } from "@/store/character-reselect";
-import type { CharacterEntry } from "@/store/characters";
+import { useTaskNode } from "@/hooks/use-task-node";
+import { cn } from "@/lib/utils";
+import { useCharacterDetail } from "@/store/character-detail";
 import type { CanvasNode, CanvasNodeData } from "@/types";
-import { CHARACTER_NODE_WIDTH } from "@/utils/canvas/character-nodes";
 import { ignoresVoice } from "@/utils/canvas/link-rule";
+import { NODE_FRAME_SHORT_SIDE } from "@/utils/canvas/node-frame";
+import { applyPickedAssets, emptyCharacter, MAX_EXTRAS } from "@/utils/characters/node-character";
+import { characterNodeView, voiceCell } from "@/utils/characters/node-view";
 
+import { CharacterDetailDialog } from "./character-detail-dialog";
 import { useRegisterNodeActions } from "./node-actions";
 import { NodeOverlays, NodeOverlaysPresence } from "./node-overlays";
 import { useDragSelected } from "./overlay-gate";
 import { useMultiSelected } from "./selection-toolbar";
+import { LibraryPickerForCharacter } from "./character-library-picker";
 import { NodeStatusLabel, TaskPromptPanel } from "./video-node";
 
-/** 角色卡节点只有一个输出口：它不接上游，内容来自角色卡本身 */
-const CHARACTER_HANDLES: NodeCardHandle[] = [{ type: "source", position: Position.Right }];
+/**
+ * 角色卡节点两侧各一个口：左边接参考图 / 文本（「参考图建角色」类生成用，规则同图片节点），
+ * 右边输出到图片 / 视频生成节点（形象和声音在那里展开成参考）。
+ */
+const CHARACTER_HANDLES: NodeCardHandle[] = [
+  { type: "target", position: Position.Left },
+  { type: "source", position: Position.Right },
+];
 
-/** 已失效的节点保留一个隐藏的输出口：连线不能因为找不到 handle 被 xyflow 藏掉（设计 §7 连线保留） */
-const DEAD_HANDLES: NodeCardHandle[] = [{ type: "source", position: Position.Right, hidden: true }];
-
-/** 节点此刻的展示状态：loading 骨架，error 读取失败（有旧内容就沿用），dead 已失效，ready 正常 */
-export type CharacterNodeView =
-  | {
-      /** 首次读取中，或读取失败且没有旧内容 */
-      phase: "loading";
-      /** 读取失败（而不是还在读）：显示「暂时读取失败」 */
-      failed: boolean;
-    }
-  | {
-      /** 角色卡已被删除，或主图素材已不可用 */
-      phase: "dead";
-      /** 失效原因，摆给用户看的那句 */
-      reason: string;
-    }
-  | {
-      /** 正常显示 */
-      phase: "ready";
-      /** 最新的角色卡内容 */
-      card: CharacterDto;
-      /** 最近一次刷新失败：内容是旧的，节点提示「暂时读取失败」 */
-      stale: boolean;
-    };
+/** 生成中、排队中、转存中、失败：节点正文换成进度 / 失败占位 */
+const SHOWS_TASK_BODY = new Set(["queued", "running", "finalizing", "failed"]);
 
 /**
- * 由缓存项推出节点的展示状态（设计 §7）：
- * 查不到（missing）或主图素材不可用算已失效；读到过内容的失败沿用旧内容并标 stale；
- * 没有 characterId 的旧数据算已失效；其余没读到的是加载中。
- * @param characterId 节点上的角色卡 ID
- * @param entry 缓存项
+ * 角色卡节点（设计 docs/design/角色卡/画布角色卡重设计.md §6.1）：
+ * 和图片节点一样的普通节点，角色数据（名字、形象名、补充图、音色）就存在节点上、只属于当前画布。
+ * 新建是空节点，封面给「上传」「素材库」两个入口，选中后下方出现图片生成面板，生成的图就是主图。
  */
-export function characterNodeView(
-  characterId: string | undefined,
-  entry: CharacterEntry | undefined,
-): CharacterNodeView {
-  if (!characterId) return { phase: "dead", reason: "原角色卡已被删除" };
-  if (entry?.status === "missing") return { phase: "dead", reason: "原角色卡已被删除" };
-  const card = entry?.card;
-  if (card) {
-    // 短剧角色卡拆解出来时还没有形象，主图为空是正常的（待生成）；普通角色卡的主图没了才是素材失效
-    if (!card.avatar && !card.dramaId) return { phase: "dead", reason: "形象主图已不可用" };
-    return { phase: "ready", card, stale: entry.status === "error" };
-  }
-  return { phase: "loading", failed: entry?.status === "error" };
-}
-
-/** 角色卡节点：带 drama 元数据的（短剧资产）还能生成形象图，其余只引用角色卡 */
 export function CharacterCanvasNode({
-  id,
-  data,
-  selected,
-}: {
-  id: string;
-  data: CanvasNodeData;
-  selected?: boolean;
-}) {
-  return data.drama ? (
-    <GenerableCharacterNode id={id} data={data} selected={selected} />
-  ) : (
-    <CharacterNodeShell id={id} data={data} />
-  );
-}
-
-/** 短剧角色节点：和图片节点一样接生成任务（提示词面板、进度、失败重试），内容仍以角色卡为准 */
-function GenerableCharacterNode({
   id,
   data,
   selected,
@@ -113,7 +74,7 @@ function GenerableCharacterNode({
   const dragSelected = useDragSelected(id);
   return (
     <>
-      <CharacterNodeShell id={id} data={data} vm={vm} />
+      <CharacterNodeBody id={id} data={data} vm={vm} />
       <NodeOverlaysPresence multiSelected={multiSelected}>
         {selected && !dragSelected && (
           <NodeOverlays key="overlays" id={id} data={data}>
@@ -127,49 +88,92 @@ function GenerableCharacterNode({
   );
 }
 
-/** 生成中、排队中、转存中、失败：角色节点正文换成进度 / 失败占位 */
-const SHOWS_TASK_BODY = new Set(["queued", "running", "finalizing", "failed"]);
+/** 音色格里的音频试听：圆形按钮，点一下播放 / 暂停（全站同一时刻只放一条） */
+function AudioCell({
+  asset,
+  ignored,
+  title,
+}: {
+  asset: AssetDto;
+  ignored: boolean;
+  title: string;
+}) {
+  const playing = useVoicePlaying(asset.id);
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-label={playing ? "暂停试听" : "试听音色"}
+      aria-pressed={playing}
+      onClick={(event) => {
+        event.stopPropagation();
+        toggleVoice(asset);
+      }}
+      onPointerDown={(event) => event.stopPropagation()}
+      className={cn(
+        "focus-visible:ring-ring/60 bg-info/15 text-info grid size-9 shrink-0 place-items-center rounded-[10px] outline-none focus-visible:ring-2 [&_svg]:size-4",
+        ignored && "opacity-50",
+      )}
+    >
+      {playing ? <Pause /> : <Play />}
+    </button>
+  );
+}
 
 /**
- * 角色卡节点（设计 §6.4、§7）：节点名在卡片上方（人形图标 + 角色名），卡片是 3:4 封面 + 底部声音条，
- * 右侧一个输出口。内容实时取自角色卡缓存（资产页改 / 删后自动跟着变），节点自己只存 characterId。
- * 已失效时灰显，连线保留但不参与提交，提供「重新选择」「删除节点」；
+ * 节点正文：封面（空 / 生成中 / 失败 / 主图）、音色格 + 补充图格、形象名与状态标签、「…」菜单入口。
  * 连到不收参考音频的目标时，「声音未生效」标签挂在节点名旁。
  */
-function CharacterNodeShell({
+function CharacterNodeBody({
   id,
   data,
   vm,
 }: {
   id: string;
   data: CanvasNodeData;
-  /** 短剧角色节点的生成状态；普通角色卡节点没有 */
-  vm?: TaskNodeModel;
+  vm: ReturnType<typeof useTaskNode>;
 }) {
-  const { updateNodeData, deleteElements } = useReactFlow<CanvasNode>();
-  const entry = useCharacterEntry(data.characterId);
-  const view = characterNodeView(data.characterId, entry);
+  const { updateNodeData } = useReactFlow<CanvasNode>();
+  // 详情由「…」按钮、音色格、或编辑器里双击节点打开；同一时刻只开一个
+  const detailOpen = useCharacterDetail((state) => state.nodeId === id);
+  const setDetailOpen = (open: boolean) =>
+    open ? useCharacterDetail.getState().open(id) : useCharacterDetail.getState().close();
+  const character = data.character ?? emptyCharacter(data.label);
+  const view = characterNodeView(data);
   const KindIcon = NODE_META.get("character")?.icon;
 
   const outgoing = useNodeConnections({ id, handleType: "source" });
   const targets = useNodesData<CanvasNode>(outgoing.map((connection) => connection.target));
-  const voice = view.phase === "ready" ? view.card.voice : null;
-  /** 连着的某个目标收图片却不收参考音频：声音在那里不生效 */
+  const hasAudio = character.voice?.mode === "audio";
+  /** 连着的某个目标收图片却不收参考音频：音频音色在那里不生效 */
   const voiceIgnored = useMemo(
-    () => !!voice && targets.some((target) => ignoresVoice(target.data)),
-    [targets, voice],
+    () => hasAudio && targets.some((target) => ignoresVoice(target.data)),
+    [hasAudio, targets],
   );
+  const cell = voiceCell(character, voiceIgnored);
 
-  const name = view.phase === "ready" ? view.card.name : (data.labelCache?.name ?? data.label);
-  const dead = view.phase === "dead";
+  /** 拿到素材后写进节点：主图落在节点自己的 assetId / src，补充图、音频落在 character 里 */
+  const apply = (
+    assets: AssetDto[],
+    purpose: "main" | "extra" | "voice",
+    origin: "upload" | "library" = "library",
+  ) => {
+    const { patch, warnings } = applyPickedAssets(data, assets, purpose, origin);
+    if (Object.keys(patch).length > 0) updateNodeData(id, patch);
+    if (warnings.length > 0) toast.warning([...new Set(warnings)].join("；"));
+  };
+  const media = useCharacterMedia((asset, purpose) => apply([asset], purpose, "upload"));
+
+  const showTask = SHOWS_TASK_BODY.has(vm.view.phase);
+  const extraFull = character.extras.length >= MAX_EXTRAS;
 
   return (
     <NodeCard
-      title={dead ? "角色卡已失效" : data.label}
-      onRename={dead ? undefined : (label) => updateNodeData(id, { label })}
-      icon={dead ? <UserRoundX /> : KindIcon ? <KindIcon /> : undefined}
+      title={data.label}
+      onRename={(label) => updateNodeData(id, { label })}
+      icon={KindIcon ? <KindIcon /> : undefined}
       status={
-        vm && SHOWS_TASK_BODY.has(vm.view.phase) ? (
+        showTask ? (
           <NodeStatusLabel view={vm.view} />
         ) : voiceIgnored ? (
           <span
@@ -182,95 +186,145 @@ function CharacterNodeShell({
           </span>
         ) : undefined
       }
-      handles={dead ? DEAD_HANDLES : CHARACTER_HANDLES}
-      canAcceptConnection={() => false}
-      width={CHARACTER_NODE_WIDTH}
-      className={dead ? "opacity-70" : undefined}
+      handles={CHARACTER_HANDLES}
+      canAcceptConnection={() => true}
+      width={NODE_FRAME_SHORT_SIDE}
     >
       <BaseNodeContent>
-        {vm && SHOWS_TASK_BODY.has(vm.view.phase) ? (
-          <NodeVideoBody
-            view={vm.view}
-            aspect={3 / 4}
-            placeholder="选中后输入提示词生成形象"
-            mediaType="image"
-            onCancel={vm.view.phase === "queued" ? vm.cancel : undefined}
-            cancelling={vm.cancelling}
-            onRetry={vm.view.phase === "failed" ? () => void vm.submit() : undefined}
-            retryDisabled={!!vm.blockedReason}
-            retryHint={vm.blockedReason ?? undefined}
-          />
-        ) : view.phase === "loading" ? (
-          <>
-            <div className="relative aspect-3/4 w-full">
-              <Skeleton className="absolute inset-0 rounded-none motion-reduce:animate-none" />
+        <div className="relative aspect-3/4 w-full">
+          {showTask ? (
+            <NodeVideoBody
+              view={vm.view}
+              aspect={3 / 4}
+              placeholder="选中后输入提示词生成形象"
+              mediaType="image"
+              onCancel={vm.view.phase === "queued" ? vm.cancel : undefined}
+              cancelling={vm.cancelling}
+              onRetry={vm.view.phase === "failed" ? () => void vm.submit() : undefined}
+              retryDisabled={!!vm.blockedReason}
+              retryHint={vm.blockedReason ?? undefined}
+            />
+          ) : view.phase === "ready" && data.src ? (
+            <img
+              src={data.src}
+              alt={character.name}
+              draggable={false}
+              className="absolute inset-0 size-full object-cover"
+            />
+          ) : (
+            <div className="bg-muted absolute inset-0 flex flex-col items-center justify-center gap-2 px-6">
+              <Button
+                variant="secondary"
+                size="sm"
+                className="w-full max-w-40"
+                disabled={media.uploading === "main"}
+                onClick={() => media.pickFile("image", "main")}
+              >
+                <Upload />
+                {media.uploading === "main" ? "上传中…" : "上传"}
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="w-full max-w-40"
+                onClick={() => media.openLibrary("image", "main")}
+              >
+                <FolderOpen />
+                素材库
+              </Button>
+              <span className="text-muted-foreground mt-1 text-center text-xs">
+                或选中后在下方直接生成
+              </span>
             </div>
-            <div className="flex h-10 items-center px-2.5 pb-2 text-xs">
-              {view.failed ? (
-                <span className="text-muted-foreground">角色卡信息暂时读取失败（{name}）</span>
-              ) : (
-                <Skeleton className="h-5 w-full rounded-md motion-reduce:animate-none" />
+          )}
+        </div>
+
+        <div className="flex items-center gap-1.5 px-2.5 pt-2.5">
+          {cell.kind === "audio" && character.voice?.mode === "audio" ? (
+            <AudioCell
+              asset={{ id: character.voice.assetId, url: character.voice.src } as AssetDto}
+              ignored={cell.ignored}
+              title={cell.title}
+            />
+          ) : (
+            <button
+              type="button"
+              title={cell.title}
+              aria-label="音色：打开详情设置"
+              onClick={() => setDetailOpen(true)}
+              className={cn(
+                "bg-muted text-muted-foreground hover:bg-accent focus-visible:ring-ring/60 grid size-9 shrink-0 place-items-center rounded-[10px] outline-none focus-visible:ring-2 [&_svg]:size-4",
+                cell.kind === "text" && "bg-info/15 text-info",
               )}
-            </div>
-          </>
-        ) : view.phase === "dead" ? (
-          <>
-            <div className="text-muted-foreground bg-muted/50 flex aspect-3/4 w-full flex-col items-center justify-center gap-2 text-[13px]">
-              <UserRoundX className="size-8 opacity-60" />
-              {view.reason}
-            </div>
-            <div className="flex flex-col gap-2 px-2.5 pb-2.5">
-              <span className="text-muted-foreground text-xs">连线保留，但不参与生成</span>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => useCharacterReselect.getState().open(id)}
-                >
-                  重新选择
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label="删除节点"
-                  className="ml-auto"
-                  onClick={() => void deleteElements({ nodes: [{ id }] })}
-                >
-                  <Trash2 />
-                </Button>
-              </div>
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="bg-muted relative aspect-3/4 w-full">
-              {/* 角色卡还没有主图但刚生成出了图：先显示生成结果，主图写回后由角色卡接管 */}
-              {!view.card.avatar && data.src ? (
-                <img
-                  src={data.src}
-                  alt={name}
-                  className="absolute inset-0 size-full object-cover"
-                />
-              ) : (
-                <CharacterCover card={view.card} />
+            >
+              {cell.kind === "text" ? <Type /> : <AudioLines />}
+            </button>
+          )}
+          {character.extras.map((extra) => (
+            <span
+              key={extra.assetId}
+              className="bg-muted size-9 shrink-0 overflow-hidden rounded-[10px]"
+            >
+              <img src={extra.src} alt="" draggable={false} className="size-full object-cover" />
+            </span>
+          ))}
+          {!extraFull && (
+            <button
+              type="button"
+              title={`添加补充图（${character.extras.length}/${MAX_EXTRAS}）`}
+              aria-label="添加补充图"
+              disabled={media.uploading === "extra"}
+              onClick={() => media.openLibrary("image", "extra")}
+              className="bg-muted text-muted-foreground hover:bg-accent focus-visible:ring-ring/60 grid size-9 shrink-0 place-items-center rounded-[10px] outline-none focus-visible:ring-2 disabled:opacity-50 [&_svg]:size-4"
+            >
+              <Plus />
+            </button>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1.5 px-2.5 pt-2 pb-2.5 text-xs">
+          <b className="max-w-28 truncate text-[13px]" title={character.look}>
+            {character.look}
+          </b>
+          {view.tag && (
+            <span
+              className={cn(
+                "rounded-md px-1.5 py-0.5 text-[10px] font-medium",
+                view.phase === "failed"
+                  ? "bg-destructive/15 text-destructive"
+                  : view.phase === "generating"
+                    ? "bg-info/15 text-info"
+                    : "bg-status-warning/15 text-status-warning",
               )}
-              <ExtraStack card={view.card} />
-            </div>
-            <div className="flex h-10 items-center px-2.5 text-xs">
-              {view.stale ? (
-                <span className="text-muted-foreground">角色卡信息暂时读取失败</span>
-              ) : voice ? (
-                <VoiceBar asset={voice} dimmed={voiceIgnored} className="w-full" />
-              ) : (
-                <span className="text-muted-foreground flex items-center gap-1">
-                  <VolumeX className="size-3.5" />
-                  未绑定声音
-                </span>
-              )}
-            </div>
-          </>
+            >
+              {view.tag}
+            </span>
+          )}
+          <span className="flex-1" />
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="编辑角色卡"
+            title="编辑角色卡（双击节点也可以）"
+            onClick={() => setDetailOpen(true)}
+          >
+            <Ellipsis />
+          </Button>
+        </div>
+        {data.drama && (
+          <div className="text-muted-foreground -mt-1.5 px-2.5 pb-2.5 text-[11px]">
+            出现集数：
+            {data.drama.episodes.length === 0 ? "全集" : `第 ${data.drama.episodes.join("、")} 集`}
+          </div>
         )}
       </BaseNodeContent>
+      <LibraryPickerForCharacter
+        request={media.library}
+        data={data}
+        onClose={media.closeLibrary}
+        onConfirm={(assets, purpose) => apply(assets, purpose, "library")}
+      />
+      <CharacterDetailDialog id={id} data={data} open={detailOpen} onOpenChange={setDetailOpen} />
     </NodeCard>
   );
 }

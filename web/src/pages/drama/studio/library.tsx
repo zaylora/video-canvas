@@ -5,7 +5,6 @@ import { Box, GripVertical, Image as ImageIcon, User } from "lucide-react";
 import { StatusPill } from "@/components/drama/status-pill";
 import { SPRING } from "@/lib/motion";
 import { cn } from "@/lib/utils";
-import { characterRefsOf } from "@/utils/characters/refs";
 import {
   groupByType,
   splitByEpisode,
@@ -24,32 +23,21 @@ const TYPE_ICON: Record<DramaAssetType, typeof User> = {
   prop: Box,
 };
 
-/** 资产的缩略图地址：角色取角色卡此刻的主图，其余取节点素材 */
+/** 资产的缩略图地址：就是节点上的素材（角色卡节点的主图也在 src 里） */
 export function useAssetThumb(asset: RefAsset): string | null {
-  const { characters } = useStudio();
-  if (asset.kind === "character") {
-    const entry = asset.characterId ? characters[asset.characterId] : undefined;
-    return entry?.card?.avatar?.url ?? null;
-  }
   return asset.src;
 }
 
-/** 有没有能当参考图的形象：角色看角色卡主图，其余看节点素材 */
-export function assetHasImage(
-  asset: RefAsset,
-  characters: ReturnType<typeof useStudio>["characters"],
-) {
-  if (asset.kind === "character") {
-    return !!(asset.characterId && characterRefsOf(characters[asset.characterId]));
-  }
-  return !!asset.src;
+/** 有没有能当参考图的形象：角色卡节点看主图，其余看节点素材；正在生成的不算（assetId 还指着上一版） */
+export function assetHasImage(asset: RefAsset): boolean {
+  return !!asset.src && !asset.generating;
 }
 
 function Item({ asset }: { asset: RefAsset }) {
-  const { characters, insertRef } = useStudio();
+  const { insertRef } = useStudio();
   const thumb = useAssetThumb(asset);
   const Icon = TYPE_ICON[asset.type];
-  const noImage = !assetHasImage(asset, characters);
+  const noImage = !assetHasImage(asset);
   return (
     <button
       type="button"

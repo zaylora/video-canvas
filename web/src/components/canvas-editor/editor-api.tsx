@@ -47,8 +47,6 @@ export type CanvasEditorApi = CanvasEditorCommands & {
   uploadAtCenter: () => void;
   /** 打开资产库弹框，引入的素材落在视口中心 */
   openAssetPicker: () => void;
-  /** 打开角色卡选择框，节点落在视口中心 */
-  openCharacterPicker: () => void;
   /** 打开设置弹窗（里面按节点种类列出模型清单） */
   openSettings: () => void;
 };

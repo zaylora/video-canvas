@@ -38,10 +38,6 @@ export type ImportOutcome =
 export type ImportReportSummary = {
   /** 找不到的素材数 */
   missing: number;
-  /** 因重名被改名的角色卡数 */
-  renamed: number;
-  /** 主图缺失、没有创建的角色卡数 */
-  invalid: number;
   /** 被丢弃的连线数 */
   edgesDropped: number;
   /** 需要注意的项数；被丢弃的连线不论多少根都只算 1 项 */
@@ -55,16 +51,8 @@ export type ImportReportSummary = {
  */
 export function summarizeImportReport(report: ImportReport): ImportReportSummary {
   const missing = report.assets.missing.length;
-  const renamed = report.characters.renamed.length;
-  const invalid = report.characters.invalid.length;
   const { edgesDropped } = report;
-  return {
-    missing,
-    renamed,
-    invalid,
-    edgesDropped,
-    total: missing + renamed + invalid + (edgesDropped > 0 ? 1 : 0),
-  };
+  return { missing, edgesDropped, total: missing + (edgesDropped > 0 ? 1 : 0) };
 }
 
 /**

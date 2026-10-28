@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import { ASSET_LIBRARY_ACTION, CHARACTER_ACTION, UPLOAD_ACTION } from "@/constants/canvas";
+import { ASSET_LIBRARY_ACTION, UPLOAD_ACTION } from "@/constants/canvas";
 import { buildAddNodeItems } from "@/pages/canvas/chrome/add-node-items";
 
 describe("buildAddNodeItems：添加节点菜单的条目", () => {
-  test("顺序：图片、视频、文本、音频、导演台，上传素材隔一条线，其后是从资产库添加、角色卡", () => {
+  test("顺序：图片、视频、文本、音频、导演台、角色卡六种节点，上传素材隔一条线，其后是从资产库添加", () => {
     const items = buildAddNodeItems();
     expect(items.map((item) => item.value)).toEqual([
       "image",
@@ -12,12 +12,12 @@ describe("buildAddNodeItems：添加节点菜单的条目", () => {
       "script",
       "audio",
       "director",
+      "character",
       UPLOAD_ACTION,
       ASSET_LIBRARY_ACTION,
-      CHARACTER_ACTION,
     ]);
-    // 「从资产库添加」「角色卡」紧挨着上传素材，同属「引入」一组，不另起分隔线
     expect(items.map((item) => !!item.separated)).toEqual([
+      false,
       false,
       false,
       false,
@@ -25,26 +25,28 @@ describe("buildAddNodeItems：添加节点菜单的条目", () => {
       false,
       true,
       false,
-      false,
     ]);
   });
 
-  test("角色卡不是 ADD_NODE_MENU 里的生成节点：菜单里它是动作项而不是 character 种类", () => {
+  test("角色卡是和图片、视频一样的普通节点项：value 就是 character 种类，没有专属的动作项", () => {
     const values = buildAddNodeItems().map((item) => item.value);
-    expect(values).not.toContain("character");
-    expect(CHARACTER_ACTION).not.toBe("character");
+    expect(values).toContain("character");
+    expect(values.filter((value) => String(value).startsWith("action:"))).toEqual([
+      UPLOAD_ACTION,
+      ASSET_LIBRARY_ACTION,
+    ]);
   });
 
-  test("名字沿用「图片生成 / 视频生成 / 文本 / 音频 / 导演台 / 上传素材 / 从资产库添加 / 角色卡」", () => {
+  test("名字沿用「图片生成 / 视频生成 / 文本 / 音频 / 导演台 / 角色卡 / 上传素材 / 从资产库添加」", () => {
     expect(buildAddNodeItems().map((item) => item.label)).toEqual([
       "图片生成",
       "视频生成",
       "文本",
       "音频",
       "导演台",
+      "角色卡",
       "上传素材",
       "从资产库添加",
-      "角色卡",
     ]);
   });
 
@@ -63,7 +65,7 @@ describe("buildAddNodeItems：添加节点菜单的条目", () => {
       true,
       true,
       true,
-      false,
+      true,
       false,
       false,
     ]);
@@ -72,10 +74,8 @@ describe("buildAddNodeItems：添加节点菜单的条目", () => {
     expect(none.find((item) => item.value === UPLOAD_ACTION)?.disabled).toBe(true);
   });
 
-  test("从资产库添加、角色卡不受拉线类型限制：只建节点不连线，始终可点", () => {
+  test("从资产库添加不受拉线类型限制：只建节点不连线，始终可点", () => {
     const none = buildAddNodeItems(() => true);
-    for (const value of [ASSET_LIBRARY_ACTION, CHARACTER_ACTION]) {
-      expect(none.find((item) => item.value === value)?.disabled).toBeFalsy();
-    }
+    expect(none.find((item) => item.value === ASSET_LIBRARY_ACTION)?.disabled).toBeFalsy();
   });
 });

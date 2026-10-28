@@ -17,7 +17,6 @@ import { confirm } from "@/components/admin-ui/confirm-dialog";
 import { useDramaAssets, type DramaAssetsState } from "@/hooks/use-drama-assets";
 import { useDramaVideoModel } from "@/hooks/use-drama-video-model";
 import { useRemoteModels } from "@/hooks/use-models";
-import { useCharactersStore, type CharacterEntry } from "@/store/characters";
 import { useCreditsStore } from "@/store/credits";
 import { useDramaJobsStore } from "@/store/drama";
 import { segmentKey, useDramaSegmentsStore } from "@/store/drama-segments";
@@ -58,7 +57,6 @@ export type Studio = {
   select: (id: string) => void;
   assets: RefAsset[];
   assetsStatus: DramaAssetsState["status"];
-  characters: Record<string, CharacterEntry | undefined>;
   video: ReturnType<typeof useDramaVideoModel>;
   /** 首帧用的图片模型 */
   image: { models: ModelInfo[]; model: ModelInfo | undefined; setModel: (key: string) => void };
@@ -107,15 +105,6 @@ export function useStudio(): Studio {
   return value;
 }
 
-/** 提示词里 @ 的角色卡 id（去重）：提交前强制刷新它们，不用缓存里可能过期的形象和声音 */
-function characterIdsIn(prompt: string, assets: readonly RefAsset[]): string[] {
-  const ids = new Set<string>();
-  for (const asset of assets) {
-    if (asset.characterId && prompt.includes(`](${asset.id})`)) ids.add(asset.characterId);
-  }
-  return [...ids];
-}
-
 /**
  * 片段工作区的数据层：片段列表（HTTP 读取 + WebSocket 推送 + 生成中兜底轮询）、资产库、模型与偏好、
  * 选中的片段及其参考素材组装、积分预估，以及增删改排序、采用结果、立即生成、首帧、批量生成这些动作。
@@ -156,8 +145,11 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
   }, [anyRunning, dramaId, no]);
 
   const settled = useDramaJobsStore((state) => state.settled[dramaId] ?? 0);
-  const { assets, status: assetsStatus } = useDramaAssets(drama.canvasId, settled);
-  const characters = useCharactersStore((state) => state.byId);
+  const {
+    assets,
+    status: assetsStatus,
+    reload: reloadAssets,
+  } = useDramaAssets(drama.canvasId, settled);
   const video = useDramaVideoModel(dramaId);
   const imageRemote = useRemoteModels("image");
   const prefs = useStudioPrefs(dramaId);
@@ -185,11 +177,10 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
             ratio: drama.ratio,
             overrides: prefs.overrides,
             assets,
-            characters,
             keyframeAssetId: selected.keyframe?.id ?? null,
           })
         : null,
-    [assets, caps, characters, drama.ratio, prefs.overrides, prompt, selected],
+    [assets, caps, drama.ratio, prefs.overrides, prompt, selected],
   );
   const credits = useMemo(() => {
     if (!plan || !video.model || Object.keys(plan.input).length === 0) return undefined;
@@ -202,14 +193,13 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
       prompt,
       ratio: drama.ratio,
       assets,
-      characters,
     });
     return quote(
       imageModel.pricing,
       imageModel.capabilities,
       priceSpecOf(imageModel.capabilities, built.input),
     );
-  }, [assets, characters, drama.ratio, imageModel, prompt, selected]);
+  }, [assets, drama.ratio, imageModel, prompt, selected]);
 
   const reportSave = useCallback((name: string, status: AutosaveStatus) => {
     setSaveStates((prev) => (prev[name] === status ? prev : { ...prev, [name]: status }));
@@ -277,20 +267,14 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
     });
   }, []);
 
-  /** 提交前强制刷新被引用的角色卡，用最新形象和声音组装；读取失败返回 null */
-  const freshCharacters = useCallback(
-    async (prompts: string[]) => {
-      const ids = [...new Set(prompts.flatMap((text) => characterIdsIn(text, assets)))];
-      if (ids.length === 0) return useCharactersStore.getState().byId;
-      const latest = await useCharactersStore.getState().refresh(ids);
-      if (ids.some((id) => latest[id]?.status === "error")) return null;
-      return useCharactersStore.getState().byId;
-    },
-    [assets],
-  );
+  /**
+   * 提交前重读一次画布里的资产，用最新的形象和声音组装（资产页刚改的、还没被定时重读捕到的也算）；
+   * 读取失败返回 null
+   */
+  const freshAssets = useCallback(() => reloadAssets(), [reloadAssets]);
 
   const submitVideo = useCallback(
-    async (segment: Segment, chars: Record<string, CharacterEntry | undefined>) => {
+    async (segment: Segment, latest: RefAsset[]) => {
       const model = video.model;
       if (!model) return { ok: false as const, message: "没有可用的视频模型" };
       const built = planSegmentInput({
@@ -299,8 +283,7 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
         seconds: segment.seconds,
         ratio: drama.ratio,
         overrides: prefs.overrides,
-        assets,
-        characters: chars,
+        assets: latest,
         keyframeAssetId: segment.keyframe?.id ?? null,
       });
       const firstError = Object.values(built.errors)[0];
@@ -312,7 +295,7 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
         return { ok: false as const, message: describeSubmitError(e).message };
       }
     },
-    [assets, drama.ratio, prefs.overrides, video.model],
+    [drama.ratio, prefs.overrides, video.model],
   );
 
   const generate = useCallback<Studio["actions"]["generate"]>(
@@ -326,9 +309,9 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
           .getState()
           .byEpisode[key]?.find((item) => item.id === segment.id);
         const current = fresh ?? segment;
-        const chars = await freshCharacters([current.prompt]);
-        if (!chars) {
-          toast.error("角色卡信息读取失败，请稍后重试");
+        const latest = await freshAssets();
+        if (!latest) {
+          toast.error("资产信息读取失败，请稍后重试");
           return;
         }
         const preview = planSegmentInput({
@@ -337,8 +320,7 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
           seconds: current.seconds,
           ratio: drama.ratio,
           overrides: prefs.overrides,
-          assets,
-          characters: chars,
+          assets: latest,
           keyframeAssetId: current.keyframe?.id ?? null,
         });
         if (preview.deadLabels.length > 0) {
@@ -349,7 +331,7 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
           });
           if (!go) return;
         }
-        const result = await submitVideo(current, chars);
+        const result = await submitVideo(current, latest);
         if (!result.ok) {
           toast.error(result.message);
           return;
@@ -360,10 +342,9 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
       }
     },
     [
-      assets,
       drama.ratio,
       dramaId,
-      freshCharacters,
+      freshAssets,
       key,
       markSubmitting,
       no,
@@ -386,17 +367,16 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
         const current =
           useDramaSegmentsStore.getState().byEpisode[key]?.find((item) => item.id === segment.id) ??
           segment;
-        const chars = await freshCharacters([current.prompt]);
-        if (!chars) {
-          toast.error("角色卡信息读取失败，请稍后重试");
+        const latest = await freshAssets();
+        if (!latest) {
+          toast.error("资产信息读取失败，请稍后重试");
           return;
         }
         const built = planKeyframeInput({
           caps: imageModel.capabilities,
           prompt: current.prompt,
           ratio: drama.ratio,
-          assets,
-          characters: chars,
+          assets: latest,
         });
         const firstError = Object.values(built.errors)[0];
         if (firstError) {
@@ -417,17 +397,7 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
         markSubmitting(segment.id, false);
       }
     },
-    [
-      assets,
-      drama.ratio,
-      dramaId,
-      freshCharacters,
-      imageModel,
-      key,
-      markSubmitting,
-      no,
-      submitting,
-    ],
+    [drama.ratio, dramaId, freshAssets, imageModel, key, markSubmitting, no, submitting],
   );
 
   const batch = useCallback<Studio["actions"]["batch"]>(async () => {
@@ -437,9 +407,9 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
       return;
     }
     await editor.current?.flush();
-    const chars = await freshCharacters(targets.map((item) => item.prompt));
-    if (!chars) {
-      toast.error("角色卡信息读取失败，请稍后重试");
+    const latest = await freshAssets();
+    if (!latest) {
+      toast.error("资产信息读取失败，请稍后重试");
       return;
     }
     // 引用失效的先一起问一次，允许继续
@@ -451,8 +421,7 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
         seconds: item.seconds,
         ratio: drama.ratio,
         overrides: prefs.overrides,
-        assets,
-        characters: chars,
+        assets: latest,
         keyframeAssetId: item.keyframe?.id ?? null,
       });
       planned.deadLabels.forEach((label) => dead.add(label));
@@ -469,7 +438,7 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
     const failed: string[] = [];
     for (const item of targets) {
       markSubmitting(item.id, true);
-      const result = await submitVideo(item, chars);
+      const result = await submitVideo(item, latest);
       markSubmitting(item.id, false);
       if (result.ok) ok += 1;
       else {
@@ -482,10 +451,9 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
     if (ok > 0) toast.info(`已提交 ${ok} 个片段`);
     if (failed.length > 0) toast.error(`有 ${targets.length - ok} 个片段没能提交：${failed[0]}`);
   }, [
-    assets,
     drama.ratio,
     dramaId,
-    freshCharacters,
+    freshAssets,
     key,
     markSubmitting,
     no,
@@ -596,7 +564,6 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
     select: setSelectedId,
     assets,
     assetsStatus,
-    characters,
     video,
     image: { models: imageRemote.models, model: imageModel, setModel: imageSetModel },
     overrides: prefs.overrides,

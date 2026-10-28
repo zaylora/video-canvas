@@ -182,11 +182,12 @@ describe("资产状态", () => {
     expect(assetStatusOf({ kind: "image", label: "a" })).toBe("idle");
   });
 
-  test("角色看角色卡有没有主图", () => {
-    const data: CanvasNodeData = { kind: "character", label: "a", characterId: "c1" };
-    expect(assetStatusOf(data, { hasAvatar: () => true })).toBe("done");
-    expect(assetStatusOf(data, { hasAvatar: () => false })).toBe("idle");
-    expect(assetStatusOf(data)).toBe("idle");
+  test("角色卡节点看自己有没有主图（空节点是待生成）", () => {
+    const empty: CanvasNodeData = { kind: "character", label: "a" };
+    expect(assetStatusOf(empty)).toBe("idle");
+    expect(assetStatusOf({ ...empty, src: "https://x/1.png", assetId: "1" })).toBe("done");
+    expect(assetStatusOf({ ...empty, src: "blob:xx" })).toBe("idle");
+    expect(assetStatusOf({ ...empty, src: "https://x/1.png", status: "running" })).toBe("running");
   });
 
   test("资产提示词任务还在跑、节点还没有提示词：分析设定中", () => {
@@ -259,8 +260,8 @@ describe("展示与新建", () => {
     expect(episodesLabel([5, 1, 3, 2])).toBe("第 1–3、5 集");
   });
 
-  test("新建节点的种类：角色要先选角色卡", () => {
-    expect(newNodeKindOf("character")).toBeNull();
+  test("新建节点的种类：角色就是角色卡节点（空节点，和场景、道具一样直接建）", () => {
+    expect(newNodeKindOf("character")).toBe("character");
     expect(newNodeKindOf("scene")).toBe("image");
     expect(newNodeKindOf("text")).toBe("script");
   });

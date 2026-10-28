@@ -52,11 +52,6 @@ function Chip({ view }: { view: RefView }) {
           已失效
         </StatusPill>
       )}
-      {view.state === "loading" && (
-        <StatusPill tone="muted" className="h-4 text-[10px]">
-          读取中
-        </StatusPill>
-      )}
       {view.state === "text" && (
         <StatusPill tone="warning" className="h-4 text-[10px]">
           只用文字

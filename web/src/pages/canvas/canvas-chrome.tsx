@@ -57,7 +57,6 @@ export function CanvasChrome() {
           onAdd={editor.addAtCenter}
           onUpload={editor.uploadAtCenter}
           onOpenAssets={editor.openAssetPicker}
-          onOpenCharacters={editor.openCharacterPicker}
           canUndo={editor.history.canUndo}
           canRedo={editor.history.canRedo}
           onUndo={editor.history.undo}

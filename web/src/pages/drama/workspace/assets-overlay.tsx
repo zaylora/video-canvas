@@ -1,15 +1,13 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { Hand, Plus, Search, Sparkles, WandSparkles } from "lucide-react";
 import { toast } from "sonner";
 
-import { patchCharacter } from "@/api/character";
 import { ChromePill, ChromeZone } from "@/components/canvas/chrome/chrome";
 import { useCanvasEditor } from "@/components/canvas-editor/editor-api";
 import { submitNodeById } from "@/components/canvas-editor/node-actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useRemoteModels } from "@/hooks/use-models";
-import { useCharactersStore } from "@/store/characters";
 import { BottomToolbar } from "@/pages/canvas/chrome/bottom-toolbar";
 import { ViewControls } from "@/pages/canvas/chrome/view-controls";
 import { openShortcuts } from "@/pages/canvas/shortcuts-state";
@@ -30,29 +28,6 @@ import { lowestUnit } from "@/utils/pricing/quote";
 import { AssetCard, TYPE_ICON } from "./asset-card";
 import { useAssetsUi } from "./assets-ui";
 import { useWorkspace } from "./context";
-
-/** 角色节点生成出形象后，把主图写回角色卡（角色卡还没有主图时）；每个节点只尝试一次，失败提示一次 */
-function useAvatarWriteback() {
-  const { nodes } = useCanvasEditor();
-  const attempted = useRef(new Set<string>());
-  useEffect(() => {
-    for (const node of nodes) {
-      if (node.type === "group") continue;
-      const { data } = node;
-      if (data.kind !== "character" || !data.drama) continue;
-      if (data.status !== "done" || !data.assetId || !data.characterId) continue;
-      const key = `${node.id}:${data.assetId}`;
-      if (attempted.current.has(key)) continue;
-      const card = useCharactersStore.getState().byId[data.characterId]?.card;
-      // 角色卡还没读到（下一轮节点更新时再看）或已经有主图：不写
-      if (!card || card.avatar) continue;
-      attempted.current.add(key);
-      patchCharacter(card.id, { avatarAssetId: data.assetId })
-        .then((saved) => useCharactersStore.getState().upsert(saved))
-        .catch(() => toast.error(`「${data.label}」的形象没能写回角色卡，请到资产页手动选择主图`));
-    }
-  }, [nodes]);
-}
 
 /** 资产库浮窗（画布视图）：当前集数筛选下的资产按类型分组，点一项飞到画布上的节点 */
 function LibraryFloat({ items }: { items: AssetItem[] }) {
@@ -132,7 +107,6 @@ function LibraryFloat({ items }: { items: AssetItem[] }) {
 function AssetList({ items }: { items: AssetItem[] }) {
   const ui = useAssetsUi();
   const editor = useCanvasEditor();
-  const entries = useCharactersStore((state) => state.byId);
   const imageModels = useRemoteModels("image");
   const [batching, setBatching] = useState(false);
 
@@ -186,12 +160,6 @@ function AssetList({ items }: { items: AssetItem[] }) {
 
   const createNew = () => {
     const kind = newNodeKindOf(ui.type);
-    if (kind === null) {
-      // 角色要先选角色卡：新节点按「角色 / 全集」归类
-      ui.setNewDrama({ drama: dramaForNewAsset("character", ui.filter) });
-      editor.openCharacterPicker();
-      return;
-    }
     ui.setNewDrama({ drama: dramaForNewAsset(ui.type, ui.filter) });
     editor.addAtCenter(kind);
     toast.info("已在短剧画布上新建节点，列表同步出现");
@@ -280,7 +248,6 @@ function AssetList({ items }: { items: AssetItem[] }) {
               key={item.id}
               item={item}
               index={index}
-              entry={item.data.characterId ? entries[item.data.characterId] : undefined}
               multi={ui.multi}
               selected={ui.selected.has(item.id)}
               generating={batching}
@@ -330,7 +297,6 @@ function CanvasChrome({ items }: { items: AssetItem[] }) {
           onAdd={editor.addAtCenter}
           onUpload={editor.uploadAtCenter}
           onOpenAssets={editor.openAssetPicker}
-          onOpenCharacters={editor.openCharacterPicker}
           canUndo={editor.history.canUndo}
           canRedo={editor.history.canRedo}
           onUndo={editor.history.undo}
@@ -362,33 +328,8 @@ export const AssetsOverlay = memo(function AssetsOverlay() {
   const ui = useAssetsUi();
   const editor = useCanvasEditor();
   const { jobs } = useWorkspace();
-  const entries = useCharactersStore((state) => state.byId);
-  useAvatarWriteback();
-
-  // 角色节点要知道有没有主图：保证角色卡已读进缓存
-  const characterIds = useMemo(
-    () =>
-      editor.nodes.flatMap((node) =>
-        node.type !== "group" && node.data.characterId ? [node.data.characterId] : [],
-      ),
-    [editor.nodes],
-  );
-  const idsKey = characterIds.join(",");
-  useEffect(() => {
-    if (characterIds.length > 0) void useCharactersStore.getState().ensure(characterIds);
-    // idsKey 编码了 characterIds 的内容
-    // oxlint-disable-next-line react-hooks/exhaustive-deps
-  }, [idsKey]);
-
   const analyzing = jobs.some((job) => job.step === "asset_prompts" && isActiveJob(job));
-  const items = useMemo(
-    () =>
-      toAssetItems(editor.nodes, {
-        analyzing,
-        hasAvatar: (characterId) => !!characterId && !!entries[characterId]?.card?.avatar,
-      }),
-    [analyzing, editor.nodes, entries],
-  );
+  const items = useMemo(() => toAssetItems(editor.nodes, { analyzing }), [analyzing, editor.nodes]);
 
   const { clearSelection } = editor;
   const { setNewDrama } = ui;

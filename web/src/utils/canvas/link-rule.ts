@@ -87,18 +87,18 @@ export function partitionLinkable<T extends LinkEnd>(sources: T[], target: LinkE
 
 /** 判断能不能被引用要看的字段 */
 export type MaterialEnd = LinkEnd &
-  Pick<CanvasNodeData, "text" | "src" | "assetId" | "status" | "characterId">;
+  Pick<CanvasNodeData, "text" | "src" | "assetId" | "status" | "character">;
 
 /**
  * 节点手里有没有能被引用的东西：文本要有正文，图片 / 视频 / 音频要有已经入库的素材，
- * 角色卡只看有没有 characterId（没有的是旧数据）。还在生成的不算，产物还没定。
- * 角色卡的内容在角色卡缓存里，这里不读缓存；卡已失效的由调用方按缓存再筛一遍。
+ * 角色卡只要有角色数据就算（缺角色数据的是异常数据）：空节点也可以连线、可以 @，
+ * 只是还没有形象图时下游不会带入任何参考，补上图之后自然生效。还在生成的不算，产物还没定。
  */
 export function hasMaterial(
-  data: Pick<MaterialEnd, "kind" | "text" | "src" | "assetId" | "status" | "characterId">,
+  data: Pick<MaterialEnd, "kind" | "text" | "src" | "assetId" | "status" | "character">,
 ) {
+  if (data.kind === "character") return !!data.character;
   if (data.status === "running") return false;
-  if (data.kind === "character") return !!data.characterId;
   return data.kind === "script" ? !!data.text?.trim() : !!data.src && !!data.assetId;
 }
 

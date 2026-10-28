@@ -47,7 +47,6 @@ import {
   UPLOAD_ACCEPT,
   UPLOAD_ACTION,
   ASSET_LIBRARY_ACTION,
-  CHARACTER_ACTION,
 } from "@/constants/canvas";
 import { CanvasHistoryProvider, useCanvasHistory } from "@/hooks/use-canvas-history";
 import { useCanvasMenu } from "@/hooks/use-canvas-menu";
@@ -61,6 +60,7 @@ import { useDirectorStore } from "@/store/director";
 import { useTrimStore } from "@/store/trim";
 import { DirectorHost } from "@/components/director/director-host";
 import { openDirector } from "@/components/director/open-director";
+import { useCharacterDetail } from "@/store/character-detail";
 import type { CanvasEdge, CanvasNode, FlowNode, NodeKind, UploadNotice } from "@/types";
 import { getModelOptions, pruneRemoteDefaults } from "@/utils/canvas/canvas";
 import { createCanvas } from "@/api/canvas";
@@ -93,8 +93,6 @@ import { collectPreviewItems, type PreviewItem } from "@/utils/canvas/preview-it
 import { groupMembers, isGroupNode } from "@/utils/canvas/group";
 
 import { AssetPickerDialog } from "@/components/assets/asset-picker-dialog";
-import { CharacterPickerDialog } from "@/components/characters/character-picker-dialog";
-import { useCharacterReselect } from "@/store/character-reselect";
 import { CanvasNodeView } from "./canvas-node";
 import { GroupDeleteDialog } from "./group-delete-dialog";
 import { GroupNodeView } from "./group-node";
@@ -150,7 +148,7 @@ export type CanvasEditorProps = {
   /**
    * 「添加节点」菜单有哪些条目，由页面决定（可用节点种类也由此限定）。
    * disabled 判断某种节点能不能点（拉线落空时只放行接得上的），页面一般直接转给条目的 disabled。
-   * 条目的 value 是节点种类，或 UPLOAD_ACTION / ASSET_LIBRARY_ACTION / CHARACTER_ACTION 三个动作之一，
+   * 条目的 value 是节点种类，或 UPLOAD_ACTION / ASSET_LIBRARY_ACTION 两个动作之一，
    * 动作由编辑器处理。要保持引用稳定（模块级函数或 useCallback）。
    */
   menuItems: (disabled: (kind: NodeKind) => boolean) => AddNodeMenuItem[];
@@ -604,6 +602,11 @@ export const CanvasEditor = memo(function CanvasEditor({
         openDirector(node.id, node.data);
         return;
       }
+      // 角色卡双击打开详情（角色名、形象名、补充图、音色），不进灯箱
+      if (node.data.kind === "character") {
+        useCharacterDetail.getState().open(node.id);
+        return;
+      }
       if (collectPreviewItems([node]).length === 0) return;
       startPreview(node.id, event.currentTarget.getBoundingClientRect());
     },
@@ -644,8 +647,6 @@ export const CanvasEditor = memo(function CanvasEditor({
     beginUploadAt,
     addUploadedNodes,
     addAssetNodes,
-    addCharacterNodes,
-    replaceCharacter,
     onConnect,
     onConnectEnd,
     onDoubleClick,
@@ -676,28 +677,6 @@ export const CanvasEditor = memo(function CanvasEditor({
   const openAssetPickerAtCenter = useCallback(
     () => setAssetPicker({ origin: viewportCenter() }),
     [viewportCenter],
-  );
-  /** 角色卡选择框：null 是关着，打开时记下节点落在哪（底栏按钮是视口中心，菜单是菜单位置） */
-  const [characterPicker, setCharacterPicker] = useState<{
-    origin: { x: number; y: number };
-  } | null>(null);
-  const openCharacterPickerAtCenter = useCallback(
-    () => setCharacterPicker({ origin: viewportCenter() }),
-    [viewportCenter],
-  );
-  /** 已失效的角色卡节点点「重新选择」：单选替换这个节点 */
-  const reselectNodeId = useCharacterReselect((state) => state.nodeId);
-  /** 当前画布上已有节点的角色卡 ID，选择框里标「画布中已有」；只在选择框打开时才算 */
-  const placedCharacterIds = useMemo(
-    () =>
-      new Set(
-        characterPicker || reselectNodeId
-          ? nodes.flatMap((node) =>
-              node.type === "canvas" && node.data.characterId ? [node.data.characterId] : [],
-            )
-          : [],
-      ),
-    [characterPicker, nodes, reselectNodeId],
   );
   const uploadAtCenter = useCallback(() => {
     beginUploadAt(viewportCenter());
@@ -795,7 +774,6 @@ export const CanvasEditor = memo(function CanvasEditor({
   );
   const openSettings = useCallback(() => setSettingsOpen(true), []);
   const openAssetPicker = openAssetPickerAtCenter;
-  const openCharacterPicker = openCharacterPickerAtCenter;
   /** 对外命令：引用稳定，读的都是最新数据（getNodes 直接取 xyflow 的当前节点表） */
   const commands = useMemo<CanvasEditorCommands>(
     () => ({ getNodes, focusNode, selectNode, locateNode, clearSelection }),
@@ -818,7 +796,6 @@ export const CanvasEditor = memo(function CanvasEditor({
     addAtCenter,
     uploadAtCenter,
     openAssetPicker,
-    openCharacterPicker,
     openSettings,
   };
 
@@ -1045,13 +1022,6 @@ export const CanvasEditor = memo(function CanvasEditor({
                                   return;
                                 }
 
-                                // 角色卡：落点是菜单位置；选完卡只建节点，连线用户自己拉
-                                if (value === CHARACTER_ACTION) {
-                                  if (menu) setCharacterPicker({ origin: menu.flow });
-                                  closeMenu();
-                                  return;
-                                }
-
                                 addNode(value as NodeKind);
                               }}
                             />
@@ -1060,27 +1030,6 @@ export const CanvasEditor = memo(function CanvasEditor({
                               onOpenChange={(open) => !open && setAssetPicker(null)}
                               onConfirm={(assets) => {
                                 if (assetPicker) addAssetNodes(assets, assetPicker.origin);
-                              }}
-                            />
-                            <CharacterPickerDialog
-                              open={characterPicker !== null}
-                              onOpenChange={(open) => !open && setCharacterPicker(null)}
-                              placedIds={placedCharacterIds}
-                              onConfirm={(cards) => {
-                                if (characterPicker)
-                                  addCharacterNodes(cards, characterPicker.origin);
-                              }}
-                            />
-                            {/* 已失效节点「重新选择」：单选，替换那个节点（连线保留） */}
-                            <CharacterPickerDialog
-                              open={reselectNodeId !== null}
-                              onOpenChange={(open) =>
-                                !open && useCharacterReselect.getState().close()
-                              }
-                              replace
-                              placedIds={placedCharacterIds}
-                              onConfirm={([card]) => {
-                                if (reselectNodeId && card) replaceCharacter(reselectNodeId, card);
                               }}
                             />
                           </div>

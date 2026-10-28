@@ -1,5 +1,6 @@
 import type { CanvasGraphDto } from "@/api/canvas/type";
-import type { NodeKind, NodeMediaType } from "@/types";
+import type { NodeCharacter, NodeKind, NodeMediaType } from "@/types";
+import { normalizeLegacyCharacter } from "@/utils/characters/node-character";
 
 /** 片段提示词里能 @ 的资产类型（短剧画布上拆解出来的三类） */
 export type DramaAssetType = "character" | "scene" | "prop";
@@ -28,8 +29,8 @@ export type RefAsset = {
   mediaType?: NodeMediaType;
   /** 素材记录 id（字符串） */
   assetId?: string;
-  /** 角色卡节点引用的角色卡 id */
-  characterId?: string;
+  /** 角色卡节点自带的角色数据（kind 为 character 时有）；主图就是本资产的 assetId / src */
+  character?: NodeCharacter;
   /** 节点正在生成：这时 assetId 还指着上一版，不能当参考图 */
   generating: boolean;
 };
@@ -41,7 +42,8 @@ export function assetsFromGraph(nodes: CanvasGraphDto["nodes"] | null | undefine
   const out: RefAsset[] = [];
   for (const node of nodes ?? []) {
     if (node.type === "group") continue;
-    const data = node.data;
+    // 旧画布里引用全局角色卡的节点先规整成内嵌数据（保留名字，其余为空）
+    const data = normalizeLegacyCharacter(node).data;
     const type = data.drama?.type;
     if (!type || !DRAMA_TYPES.has(type) || data.kind === "director") continue;
     const name = data.drama?.name?.trim() || data.label;
@@ -58,7 +60,7 @@ export function assetsFromGraph(nodes: CanvasGraphDto["nodes"] | null | undefine
       src,
       mediaType: data.mediaType,
       assetId: data.assetId,
-      characterId: data.characterId,
+      character: data.character,
       generating: data.status === "running",
     });
   }

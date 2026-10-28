@@ -31,7 +31,7 @@ describe("api/canvas：导出与导入", () => {
     get.mockResolvedValue({ document: {} });
     post.mockResolvedValue({
       canvas: { id: "7", title: "t", revision: 1 },
-      report: { assets: { total: 0, copied: 0 }, characters: { created: 0 }, edges_dropped: 0 },
+      report: { assets: { total: 0, copied: 0 }, edges_dropped: 0 },
     });
 
     await exportCanvas("42");
@@ -50,7 +50,7 @@ describe("api/canvas：导出与导入", () => {
     const document = { format: "video-canvas/canvas" };
     post.mockResolvedValue({
       canvas: { id: "7", title: "t", revision: 1 },
-      report: { assets: { total: 0, copied: 0 }, characters: { created: 0 }, edges_dropped: 0 },
+      report: { assets: { total: 0, copied: 0 }, edges_dropped: 0 },
     });
 
     await importCanvas(document);
@@ -59,7 +59,7 @@ describe("api/canvas：导出与导入", () => {
     expect(post.mock.calls[0]?.[1]).toEqual({ document });
   });
 
-  test("importCanvas 把报告 snake_case 映射成 camelCase", async () => {
+  test("importCanvas 把报告 snake_case 映射成 camelCase（报告里没有角色卡：角色数据随节点导入）", async () => {
     post.mockResolvedValue({
       canvas: { id: "7", title: "雨夜", revision: 3 },
       report: {
@@ -67,11 +67,6 @@ describe("api/canvas：导出与导入", () => {
           total: 5,
           copied: 4,
           missing: [{ node_id: "n1", file_name: "a.png" }],
-        },
-        characters: {
-          created: 2,
-          renamed: [{ from: "林夏", to: "林夏 2" }],
-          invalid: [{ node_id: "n2", name: "路人" }],
         },
         edges_dropped: 1,
       },
@@ -83,11 +78,6 @@ describe("api/canvas：导出与导入", () => {
       canvas: { id: "7", title: "雨夜", revision: 3 },
       report: {
         assets: { total: 5, copied: 4, missing: [{ nodeId: "n1", fileName: "a.png" }] },
-        characters: {
-          created: 2,
-          renamed: [{ from: "林夏", to: "林夏 2" }],
-          invalid: [{ nodeId: "n2", name: "路人" }],
-        },
         edgesDropped: 1,
       },
     });
@@ -98,7 +88,6 @@ describe("api/canvas：导出与导入", () => {
       canvas: { id: "7", title: "t", revision: 1 },
       report: {
         assets: { total: 1, copied: 1, missing: null },
-        characters: { created: 0 },
         edges_dropped: 0,
       },
     });
@@ -106,14 +95,14 @@ describe("api/canvas：导出与导入", () => {
     const { report } = await importCanvas({});
 
     expect(report.assets.missing).toEqual([]);
-    expect(report.characters.renamed).toEqual([]);
-    expect(report.characters.invalid).toEqual([]);
+    // 角色卡内嵌在画布里，导入报告里不再有角色卡一项
+    expect(report).not.toHaveProperty("characters");
   });
   test("exportCanvas / importCanvas 把取消信号透传给请求层，不传时不带 signal", async () => {
     get.mockResolvedValue({ document: {} });
     post.mockResolvedValue({
       canvas: { id: "7", title: "t", revision: 1 },
-      report: { assets: { total: 0, copied: 0 }, characters: { created: 0 }, edges_dropped: 0 },
+      report: { assets: { total: 0, copied: 0 }, edges_dropped: 0 },
     });
     const controller = new AbortController();
 

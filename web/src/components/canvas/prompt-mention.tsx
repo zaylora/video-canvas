@@ -38,7 +38,7 @@ import { NODE_META } from "@/constants/canvas";
 import { findPreset, type PresetKind } from "@/constants/presets";
 import { DURATION, EASE_OUT } from "@/lib/motion";
 import { cn } from "@/lib/utils";
-import { useCharactersStore } from "@/store/characters";
+import { characterDisplayName } from "@/utils/characters/node-character";
 import type { CanvasNode, CanvasNodeData, NodeKind, NodeMediaType } from "@/types";
 import { planPreset, type PresetPick, type PresetPlan } from "@/utils/canvas/preset-rules";
 import {
@@ -84,7 +84,7 @@ export type PromptMentionSource = {
 /** chip 要显示的素材信息：取自画布节点数据，或由调用方按 id 自己查 */
 export type ChipLive = Pick<
   CanvasNodeData,
-  "kind" | "label" | "src" | "mediaType" | "text" | "characterId"
+  "kind" | "label" | "src" | "mediaType" | "text" | "character"
 >;
 
 /** 按素材 id 查 chip 的信息；查不到（节点已删）返回 undefined。提供它后 chip 不再读 xyflow 的节点，能在画布之外用 */
@@ -208,15 +208,12 @@ function ChipBody({ node, live }: { node: NodeViewProps["node"]; live: ChipLive 
   const id = String(node.attrs.id ?? "");
   const saved = String(node.attrs.label ?? "");
   const refs = usePromptRefs();
-  // 角色卡节点自己没有素材，缩略图和名字取角色卡此刻的内容；读不到时退回占位图标和存下的名字
-  const card = useCharactersStore((state) =>
-    live?.characterId ? state.byId[live.characterId]?.card : undefined,
-  );
+  // 角色卡节点：名字显示「角色名 · 形象名」，缩略图就是它的主图（没有形象图时是占位图标）
   const isCharacter = live?.kind === "character";
   const gone = !live || !(refs?.linkedIds.has(id) ?? true);
   const lit = refs?.highlight === id;
-  const label = (isCharacter ? card?.name : undefined) ?? (live?.label || saved);
-  const src = isCharacter ? (card?.avatar?.url ?? null) : live?.src;
+  const label = (isCharacter ? characterDisplayName(live) : live?.label) || saved;
+  const src = live?.src;
   const mediaType = isCharacter ? "image" : live?.mediaType;
   // 悬停放大（设计稿 10.1）：已断开、文本、音频、没产出的不弹
   const { bind, peek } = useRefPeek(
