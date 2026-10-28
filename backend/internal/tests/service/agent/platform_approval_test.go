@@ -60,6 +60,34 @@ func TestProposeApproval_GenerateQuotesWithoutCreatingAnything(t *testing.T) {
 	}
 }
 
+// 申请生成默认要等：批准后 Agent 会等这批任务结束再继续。只有模型明确传 wait=false（用户说提交就行）才不等，
+// 这个决定随审批内容一起存下来，Agent 服务批准时据此决定要不要登记监听。
+func TestProposeApproval_GenerateWaitDefaultsToTrue(t *testing.T) {
+	e := newApprovalEnv(t, "all")
+	rc := platformCtx(900205, "all")
+	items := []map[string]string{{"nodeId": e.imgID(t)}}
+	waitOf := func(args map[string]any) bool {
+		p := propose(t, e, rc, "generate", args)
+		if p.IsError {
+			t.Fatalf("预估应成功：%+v", p)
+		}
+		var payload GeneratePayload
+		if err := json.Unmarshal(p.Payload, &payload); err != nil {
+			t.Fatal(err)
+		}
+		return payload.Wait
+	}
+	if !waitOf(map[string]any{"items": items}) {
+		t.Error("不传 wait：默认要等")
+	}
+	if !waitOf(map[string]any{"items": items, "wait": true}) {
+		t.Error("wait=true：要等")
+	}
+	if waitOf(map[string]any{"items": items, "wait": false}) {
+		t.Error("wait=false：不等")
+	}
+}
+
 func TestProposeApproval_GenerateExplainsWhyItCannotBeQuoted(t *testing.T) {
 	e := newApprovalEnv(t, "all")
 	rc := platformCtx(900202, "all")

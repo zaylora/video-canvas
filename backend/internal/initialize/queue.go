@@ -17,6 +17,7 @@ import (
 	"video-canvas/internal/provider/worker"
 	"video-canvas/internal/repository"
 	"video-canvas/internal/service"
+	agentsvc "video-canvas/internal/service/agent"
 	"video-canvas/pkg/version"
 )
 
@@ -36,12 +37,18 @@ func newTaskQueue(cfg *config.Config, db *gorm.DB, taskSvc *service.GenerationTa
 	if cfg.AI.Worker.Enabled {
 		handler = worker.New(taskSvc, executor, provider.AssetSaver(assetSvc), worker.Options{MaxDownloadBytes: cfg.Storage.MaxResult})
 	}
+	// Agent 启用时：任务终态的事务里入队“通知 Agent”的 job（API 实例上用户取消任务也要入队）；执行这些 job 的只有 worker 实例
+	var notifier provider.AgentNotifier
+	if cfg.Agent.Enabled && cfg.AI.Worker.Enabled {
+		notifier = &agentsvc.TaskNotifier{BaseURL: cfg.Agent.URL, ServiceToken: cfg.Agent.ServiceToken}
+	}
 	listener := newQueueListener(cfg.Database.DSN)
 	host, _ := os.Hostname()
 	rt, err := queue.New(queue.Config{
 		DB: sqlDB, ListenerPool: listener, Store: taskSvc, Handler: handler, Settings: settingsSvc,
 		Repo: repository.NewQueueRepository(db), Enabled: cfg.AI.Worker.Enabled,
-		HardCap: cfg.AI.Queue.MaxConcurrency,
+		HardCap:  cfg.AI.Queue.MaxConcurrency,
+		Notifier: notifier, AgentNotify: cfg.Agent.Enabled,
 		Version: version.Version, Hostname: host, StopTimeout: cfg.Server.ShutdownTimeout,
 	})
 	if err != nil {

@@ -26,6 +26,7 @@ func NewBridge(mode string, platform *agenthandler.PlatformHandler, serviceToken
 		p.POST("/model/chat/completions", platform.ChatCompletions)
 		p.GET("/agent/models", platform.AgentModels)
 		p.POST("/canvases/check", platform.CheckCanvas)
+		p.POST("/tasks/status", platform.TaskStatus) // Agent 补收任务结束的通知、取结果
 		p.POST("/messages/check", platform.CheckMessage)
 		p.POST("/attachments/check", platform.CheckAttachments)
 		p.POST("/runs/:run_id/undo", platform.UndoRun)

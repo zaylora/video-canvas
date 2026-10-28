@@ -411,6 +411,10 @@
         "reason": {
           "type": "string",
           "description": "给用户看的说明"
+        },
+        "wait": {
+          "type": "boolean",
+          "description": "批准后是否等这批任务全部结束再继续，默认 true：结束后系统会自动把结果发给你，你再验收和推进下一步。只有用户明确说提交就行、不用管结果时才传 false。"
         }
       }
     }

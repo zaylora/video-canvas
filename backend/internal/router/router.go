@@ -131,9 +131,11 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		agent.GET("/models", fwd)
 		agent.PATCH("/sessions/:sid", fwd)
 		agent.DELETE("/sessions/:sid", fwd)
-		agent.GET("/sessions/:sid/events", fwd)  // ?after=序号&limit=
-		agent.GET("/sessions/:sid/history", fwd) // ?before=序号&limit=，聊天记录从最新往回翻
-		agent.POST("/sessions/:sid/runs", fwd)   // 202
+		agent.GET("/sessions/:sid/events", fwd)          // ?after=序号&limit=
+		agent.GET("/sessions/:sid/history", fwd)         // ?before=序号&limit=，聊天记录从最新往回翻
+		agent.POST("/sessions/:sid/runs", fwd)           // 202
+		agent.GET("/sessions/:sid/watches", fwd)         // 后台等待生成的批（进行中的）
+		agent.POST("/sessions/:sid/watches/cancel", fwd) // 不用等了：只取消 Agent 的跟进，生成照常完成
 		agent.POST("/runs/:rid/interject", fwd)
 		agent.POST("/runs/:rid/cancel", fwd)
 		agent.POST("/runs/:rid/resume", fwd)

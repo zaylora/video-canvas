@@ -122,6 +122,7 @@ func (s *GenerationTaskService) createOne(ctx context.Context, task *model.Gener
 		canvasID := uint64(req.CanvasID)
 		task.CanvasProjectID = &canvasID
 	}
+	task.AgentRunID = req.AgentRunID
 	queueWait, err := s.queueMaxWait(ctx)
 	if err != nil {
 		return nil, err

@@ -24,6 +24,7 @@ type GenerateItem struct {
 type GeneratePayload struct {
 	Reason string         `json:"reason"` // Agent 给的理由
 	Items  []GenerateItem `json:"items"`  // 要生成的条目
+	Wait   bool           `json:"wait"`   // 批准后 Agent 是否等这批任务结束再继续（默认是；用户说提交就行时模型传 false）
 }
 
 // DeletePayload 是删除审批的内容。

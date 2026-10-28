@@ -47,6 +47,10 @@ func (p *platformStub) CheckCanvas(context.Context, uint64, uint64) error {
 	p.calls++
 	return nil
 }
+func (p *platformStub) PlatformTaskStates(context.Context, uint64, []uint64) ([]agentsvc.PlatformTaskState, error) {
+	p.calls++
+	return []agentsvc.PlatformTaskState{}, nil
+}
 func (p *platformStub) CheckAttachments(context.Context, uint64, []string) ([]agentsvc.AttachmentCheck, error) {
 	return nil, nil
 }
@@ -147,6 +151,7 @@ func TestNewBridge_ApprovalRoutesNeedTheServiceToken(t *testing.T) {
 	for path, body := range map[string]string{
 		"/internal/platform/v1/canvases/check":    `{"user_id":"1","canvas_id":"7"}`,
 		"/internal/platform/v1/messages/check":    `{"user_id":"1","canvas_id":"7","message":"x"}`,
+		"/internal/platform/v1/tasks/status":      `{"user_id":"1","task_ids":["5"]}`,
 		"/internal/platform/v1/runs/9/undo":       `{}`,
 		"/internal/platform/v1/runs/prepare":      `{}`,
 		"/internal/platform/v1/approvals/propose": `{"kind":"ask","args":{}}`,

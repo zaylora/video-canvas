@@ -79,6 +79,7 @@ func (b *AgentBridge) toolGenerate(ctx context.Context, tc *toolCall) (*toolOut,
 			NodeID string `json:"nodeId"`
 		} `json:"items"`
 		Reason string `json:"reason"`
+		Wait   *bool  `json:"wait"` // 不传按要等
 	}
 	if err := json.Unmarshal(tc.args, &a); err != nil {
 		return nil, fail("参数格式不对：%v", err)
@@ -97,7 +98,7 @@ func (b *AgentBridge) toolGenerate(ctx context.Context, tc *toolCall) (*toolOut,
 	if err != nil {
 		return nil, err
 	}
-	p := GeneratePayload{Reason: truncateRunes(a.Reason, 200)}
+	p := GeneratePayload{Reason: truncateRunes(a.Reason, 200), Wait: a.Wait == nil || *a.Wait}
 	total := 0
 	for _, src := range srcs {
 		it, err := b.precheck(ctx, src)
@@ -261,7 +262,8 @@ func (g *AgentGenerator) submit(ctx context.Context, run *model.AgentRun, approv
 	key := fmt.Sprintf("agent-%d-%d", approvalID, idx)
 	resp, err := g.tasks.Create(ctx, run.UserID, key, &model.CreateGenerationTaskReq{
 		Kind: snap.Model.Kind, ModelID: it.ModelKey, CanvasID: idcodec.ID(run.CanvasID), NodeID: it.NodeID,
-		Input: buildGenInput(snap.Model.Capabilities, src),
+		AgentRunID: run.ID, // 任务结束时据此通知 Agent；不从请求体读，只有这里能填
+		Input:      buildGenInput(snap.Model.Capabilities, src),
 	})
 	if err != nil {
 		return nil, userFacing(err)

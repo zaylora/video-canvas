@@ -72,10 +72,15 @@ type Config struct {
 	Settings SettingsSource
 	Repo     Repo
 
-	Enabled  bool // 本实例是否执行任务；为 false 时只能入队（API-only 实例）
-	HardCap  int  // 并发的硬上限（配置文件），后台调整不能超过
-	Version  string
-	Hostname string
+	Enabled bool // 本实例是否执行任务；为 false 时只能入队（API-only 实例）
+
+	// Notifier 非空时，本实例（Enabled）还会执行“通知 Agent”的 job；AgentNotify 为 true 时，任务终态的事务里会入队这种 job
+	//（API-only 实例也要入队：用户取消任务就发生在 API 实例上），两者通常同时由 Agent 是否启用决定。
+	Notifier    provider.AgentNotifier
+	AgentNotify bool
+	HardCap     int // 并发的硬上限（配置文件），后台调整不能超过
+	Version     string
+	Hostname    string
 
 	StopTimeout time.Duration // 优雅退出时等待在途任务的时间，默认 30 秒
 	Logger      *zap.Logger
@@ -87,6 +92,7 @@ type Config struct {
 	SweepEvery        time.Duration
 	SettingsEvery     time.Duration
 	FetchPollInterval time.Duration
+	NotifyBackoff     time.Duration // 通知重试退避的起点，默认 2 秒
 }
 
 // Runtime 是任务队列运行时：River 客户端、并发闸门、设置刷新、实例心跳、对账救回，以及后台的暂停 / 恢复 / 查看。
@@ -146,6 +152,7 @@ func New(cfg Config) (*Runtime, error) {
 		MaxAttempts:          jobMaxAttempts,
 		RescueStuckJobsAfter: rescueStuckJobsAfter,
 		FetchPollInterval:    cfg.FetchPollInterval,
+		RetryPolicy:          &retryPolicy{base: cmpOr(cfg.NotifyBackoff, defaultNotifyBackoff)},
 	}
 	if cfg.Enabled {
 		workers := river.NewWorkers()
@@ -153,6 +160,10 @@ func New(cfg Config) (*Runtime, error) {
 		rc.Workers = workers
 		// River 队列的 MaxWorkers 启动后改不了，所以取硬上限；实际并发由 gate 控制（后台调整立即生效）
 		rc.Queues = map[string]river.QueueConfig{riverQueue: {MaxWorkers: hardCap}}
+		if cfg.Notifier != nil {
+			river.AddWorker(workers, &notifyWorker{rt: rt})
+			rc.Queues[notifyQueue] = river.QueueConfig{MaxWorkers: notifyWorkers}
+		}
 	}
 	client, err := river.NewClient[*sql.Tx](driver, rc)
 	if err != nil {
@@ -160,6 +171,14 @@ func New(cfg Config) (*Runtime, error) {
 	}
 	rt.client = client
 	return rt, nil
+}
+
+// cmpOr 返回 v，v 为零值时返回 def。
+func cmpOr(v, def time.Duration) time.Duration {
+	if v == 0 {
+		return def
+	}
+	return v
 }
 
 // newClientID 生成本次启动的实例 id：主机名 + 随机后缀，重启后换新的（旧记录随心跳过期被清理）。

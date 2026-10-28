@@ -46,6 +46,8 @@ func exportFacts() *model.AgentExportFacts {
 			e(15, "run.undone", `{"reverted":3}`),
 			e(16, "feedback.set", `{"rating":-1,"reasons":["misread","slow"],"comment":"我要 6 个，它给了 12 个"}`),
 			e(17, "runtime.notice", `{"text":"丢弃了一条插话"}`),
+			e(171, "tasks.settled", `{"batch_ids":["b1"],"steer":false,"tasks":[{"task_id":"101","label":"镜头 1","task_status":"succeeded"}]}`),
+			e(172, "watch.updated", `{"batch_id":"b1","state":"delivered","total":1,"settled":1}`),
 			e(18, "run.status", `{"status":"succeeded"}`),
 		},
 		ToolCalls: []model.AgentToolCall{
@@ -100,6 +102,12 @@ func TestRenderRunMarkdown(t *testing.T) {
 		has("approvals_rejected: 1")
 		has("steer_count: 1")
 		has("tool_errors: 1")
+	})
+
+	t.Run("生成全部结束的系统唤醒单独标出，等待状态的抖动不进时间线", func(t *testing.T) {
+		has("系统唤醒")
+		has("batch_ids=[b1]")
+		lacks("watch.updated")
 	})
 
 	t.Run("用户请求取第一条非插话消息", func(t *testing.T) {

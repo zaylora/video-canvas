@@ -255,6 +255,10 @@ func eventStep(typ string, p map[string]any) (TimelineStep, bool) {
 		return TimelineStep{Kind: TimelineStatus, Label: "状态", Text: str(p["status"])}, true
 	case "run.usage":
 		return TimelineStep{}, false // 用量变化太频繁，且摘要里已有合计
+	case "watch.updated":
+		return TimelineStep{}, false // 后台等待的进度每个任务结束都变一次，只是界面状态；交付给 Agent 的那一刻由 tasks.settled 标出
+	case "tasks.settled":
+		return TimelineStep{Kind: TimelineNotice, Label: "系统唤醒（生成全部结束）", Text: compactPayload(p, "batch_ids", "steer")}, true
 	}
 	return TimelineStep{Kind: TimelineOther, Label: typ, Text: compactPayload(p)}, true
 }

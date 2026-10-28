@@ -47,6 +47,8 @@ type PlatformAPI interface {
 	AgentModels(ctx context.Context) ([]model.AgentModelView, error)
 	// CheckCanvas 确认画布属于这个用户。
 	CheckCanvas(ctx context.Context, userID, canvasID uint64) error
+	// PlatformTaskStates 读这个用户的一批生成任务的最新状态（Agent 补收任务结束的通知、取结果用）。
+	PlatformTaskStates(ctx context.Context, userID uint64, ids []uint64) ([]agentsvc.PlatformTaskState, error)
 	// CheckMessage 校验消息里的引用，返回去掉了不存在节点的选中列表。
 	CheckMessage(ctx context.Context, userID, canvasID uint64, message string, selection []string) ([]string, error)
 	// CheckAttachments 校验消息的图片附件（归属、格式、大小、数量），返回展示信息和交给模型的图。
@@ -364,6 +366,35 @@ func (h *PlatformHandler) CheckCanvas(c *gin.Context) {
 		return
 	}
 	response.OK(c, nil)
+}
+
+// taskStatusBody 是查任务状态的请求体。ID 是十进制字符串：雪花 ID 超过 2^53，用数字会在 JavaScript 里丢精度。
+type taskStatusBody struct {
+	UserID  uint64   `json:"user_id,string" binding:"required,min=1" label:"user_id"`
+	TaskIDs []string `json:"task_ids" binding:"required,min=1,max=50,dive,max=20" label:"task_ids"`
+}
+
+// TaskStatus 读这个用户的一批生成任务的最新状态；别人的和不存在的任务标 missing，不报错。
+func (h *PlatformHandler) TaskStatus(c *gin.Context) {
+	var req taskStatusBody
+	if !handler.BindJSON(c, &req) {
+		return
+	}
+	ids := make([]uint64, len(req.TaskIDs))
+	for i, raw := range req.TaskIDs {
+		id, err := strconv.ParseUint(raw, 10, 64)
+		if err != nil || id == 0 {
+			response.Fail(c, errcode.ErrInvalidParams.WithMsg("task_ids 里的每一项都必须是正整数（十进制字符串）"))
+			return
+		}
+		ids[i] = id
+	}
+	items, err := h.svc.PlatformTaskStates(c.Request.Context(), req.UserID, ids)
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, gin.H{"items": items})
 }
 
 // messageBody 是消息引用校验的请求体，字段上限与发起运行的请求一致。
