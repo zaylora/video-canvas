@@ -25,7 +25,7 @@ func TestDramaLedgerConservation(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newDramaMemory()
 			dramaAddEpisode(r, 1, "")
-			s, _ := dramaTestService(r, &dramaTextExecutor{outputs: tc.outputs}, nil)
+			s, _ := dramaTestService(r, &dramaTextStreamer{outputs: tc.outputs}, nil)
 			j, err := s.CreateJob(context.Background(), 7, 1, &model.DramaJobReq{Step: "scripts", Episodes: []int{1}})
 			if err != nil {
 				t.Fatal(err)
@@ -62,7 +62,7 @@ func TestDramaAssetPromptsRetryKeepsNewAssetList(t *testing.T) {
 	asset := drama.Asset{Type: "character", Name: "林川", Aliases: []string{}, Episodes: []int{1}, Description: "人物"}
 	raw, _ := json.Marshal(drama.BreakdownOutput{Assets: []drama.Asset{asset}})
 	good, _ := json.Marshal(drama.AssetPromptsOutput{Prompts: []drama.AssetPrompt{{NodeID: "new", Prompt: "角色正向描述"}}})
-	e := &dramaTextExecutor{outputs: []string{string(raw), `{bad`, `{bad`, string(good)}}
+	e := &dramaTextStreamer{outputs: []string{string(raw), `{bad`, `{bad`, string(good)}}
 	c := &dramaPipelineCanvas{created: []service.DramaCanvasAsset{{NodeID: "new", Asset: asset}}}
 	s, _ := dramaTestService(r, e, c)
 	ctx := context.Background()

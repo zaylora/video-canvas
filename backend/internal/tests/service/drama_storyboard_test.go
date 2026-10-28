@@ -46,7 +46,7 @@ func TestDramaStoryboardPipeline(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newDramaMemory()
 			storyboardReady(r)
-			e := &dramaTextExecutor{outputs: tc.outputs}
+			e := &dramaTextStreamer{outputs: tc.outputs}
 			s, _ := dramaTestService(r, e, nil)
 			job, err := s.CreateJob(context.Background(), 7, 1, storyboardRequest(t, 0, []int{1}))
 			if err != nil {
@@ -121,7 +121,7 @@ func TestDramaStoryboardPrerequisitesAndBounds(t *testing.T) {
 			if !tc.ready {
 				r.episodes[0].ScriptStatus = "empty"
 			}
-			s, _ := dramaTestService(r, &dramaTextExecutor{}, nil)
+			s, _ := dramaTestService(r, &dramaTextStreamer{}, nil)
 			req := storyboardRequest(t, tc.max, tc.scope)
 			_, err := s.Estimate(context.Background(), 7, 1, req)
 			if tc.code == 0 {
@@ -148,7 +148,7 @@ func TestDramaStoryboardHasTakes(t *testing.T) {
 		r := newDramaMemory()
 		storyboardReady(r)
 		r.hasTakes = true
-		s, _ := dramaTestService(r, &dramaTextExecutor{}, nil)
+		s, _ := dramaTestService(r, &dramaTextStreamer{}, nil)
 		req := storyboardRequest(t, 15, []int{1})
 		_, err := s.Estimate(context.Background(), 7, 1, req)
 		dramaCheckCode(t, err, 67013)
@@ -162,7 +162,7 @@ func TestDramaStoryboardHasTakes(t *testing.T) {
 		r := newDramaMemory()
 		storyboardReady(r)
 		r.segments = []model.DramaSegment{{BaseModel: model.BaseModel{ID: 99}, UserID: 7, EpisodeID: r.episodes[0].ID, Prompt: "旧片段", Seconds: 5, Revision: 1}}
-		e := &dramaTextExecutor{outputs: []string{storyboardValid}, onCall: func() { r.hasTakes = true }}
+		e := &dramaTextStreamer{outputs: []string{storyboardValid}, onCall: func() { r.hasTakes = true }}
 		s, _ := dramaTestService(r, e, nil)
 		j, err := s.CreateJob(context.Background(), 7, 1, storyboardRequest(t, 15, []int{1}))
 		if err != nil {
@@ -192,7 +192,7 @@ func TestDramaStoryboardCancelAndUpstreamFailure(t *testing.T) {
 			if tc.old {
 				r.segments = []model.DramaSegment{{BaseModel: model.BaseModel{ID: 99}, UserID: 7, EpisodeID: r.episodes[0].ID, Prompt: "旧片段", Seconds: 5, Revision: 1}}
 			}
-			e := &dramaTextExecutor{outputs: []string{storyboardValid}}
+			e := &dramaTextStreamer{outputs: []string{storyboardValid}}
 			if !tc.cancel {
 				e.failAt = 1
 			}
@@ -229,7 +229,7 @@ func TestDramaStoryboardExactDurationAndSummary(t *testing.T) {
 		t.Run(fmt.Sprintf("%d秒", seconds), func(t *testing.T) {
 			r := newDramaMemory()
 			storyboardReady(r)
-			e := &dramaTextExecutor{outputs: []string{strings.ReplaceAll(storyboardValid, `"seconds":15`, fmt.Sprintf(`"seconds":%d`, seconds))}}
+			e := &dramaTextStreamer{outputs: []string{strings.ReplaceAll(storyboardValid, `"seconds":15`, fmt.Sprintf(`"seconds":%d`, seconds))}}
 			s, _ := dramaTestService(r, e, nil)
 			j, err := s.CreateJob(context.Background(), 7, 1, storyboardRequest(t, seconds, []int{1}))
 			if err != nil {
@@ -266,7 +266,7 @@ func TestDramaStoryboardAtomicReplacementRetry(t *testing.T) {
 	r.segments = []model.DramaSegment{{BaseModel: model.BaseModel{ID: 99}, UserID: 7, EpisodeID: r.episodes[0].ID, Prompt: "旧片段", Seconds: 5, Revision: 1}}
 	failure := errors.New("写片段失败")
 	r.replaceErr = failure
-	e := &dramaTextExecutor{outputs: []string{storyboardValid, storyboardValid}}
+	e := &dramaTextStreamer{outputs: []string{storyboardValid, storyboardValid}}
 	s, _ := dramaTestService(r, e, nil)
 	j, err := s.CreateJob(context.Background(), 7, 1, storyboardRequest(t, 15, []int{1}))
 	if err != nil {

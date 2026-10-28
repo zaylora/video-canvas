@@ -217,12 +217,12 @@ func (s *DramaService) CancelJob(ctx context.Context, userID, dramaID, jobID uin
 	return &v, nil
 }
 
-// resolveModel 跟随后台文本模型排序；失效的选择回落至第一个仍启用的模型。
+// resolveModel 跟随后台 Agent 模型排序；失效的选择回落至第一个仍启用的模型。
 func (s *DramaService) resolveModel(ctx context.Context, key string) (*provider.Snapshot, error) {
 	if s.registry == nil {
 		return nil, errcode.ErrDramaNoTextModel
 	}
-	models, e := s.registry.ListModels(ctx, modelcfg.KindText)
+	models, e := s.registry.ListModels(ctx, modelcfg.KindAgent)
 	if e != nil {
 		return nil, e
 	}
@@ -245,7 +245,7 @@ func (s *DramaService) resolveModel(ctx context.Context, key string) (*provider.
 		if e != nil {
 			return nil, e
 		}
-		if snap != nil && snap.Model.Kind == modelcfg.KindText {
+		if snap != nil && snap.Model.Kind == modelcfg.KindAgent {
 			return snap, nil
 		}
 	}

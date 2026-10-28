@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"video-canvas/internal/drama"
+	"video-canvas/internal/llmgateway"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/pkg/idcodec"
@@ -60,11 +61,17 @@ type DramaSegmentSummary interface {
 	Summary(context.Context, uint64, uint64) (count, seconds, done int, err error)
 }
 
-// DramaDeps 短剧服务依赖，模型调用复用 Registry 和 Executor。
+// DramaModelStreamer 向 Agent 模型的渠道发一次对话请求（*llmgateway.Gateway 实现它）。
+type DramaModelStreamer interface {
+	Stream(ctx context.Context, tg llmgateway.Target, req llmgateway.Request, emit func(llmgateway.Event)) (*llmgateway.Result, error)
+}
+
+// DramaDeps 短剧服务依赖，文本步骤用后台的 Agent 模型：Registry 选模型，Streamer 经 LLM 网关请求渠道，Secrets 取渠道 Key。
 type DramaDeps struct {
 	Repo         DramaRepo
 	Registry     provider.Registry
-	Executor     provider.Executor
+	Streamer     DramaModelStreamer
+	Secrets      provider.SecretResolver
 	Canvas       DramaCanvasWriter
 	Broadcaster  ws.Broadcaster
 	Credits      DramaCreditPolicy
@@ -78,7 +85,8 @@ type DramaDeps struct {
 type DramaService struct {
 	repo         DramaRepo
 	registry     provider.Registry
-	executor     provider.Executor
+	streamer     DramaModelStreamer
+	secrets      provider.SecretResolver
 	canvas       DramaCanvasWriter
 	bc           ws.Broadcaster
 	credits      DramaCreditPolicy
@@ -90,7 +98,7 @@ type DramaService struct {
 
 // NewDramaService 创建短剧服务，不启动后台任务。
 func NewDramaService(d DramaDeps) *DramaService {
-	return &DramaService{repo: d.Repo, registry: d.Registry, executor: d.Executor, canvas: d.Canvas, bc: d.Broadcaster, credits: d.Credits, canvasAssets: d.CanvasAssets, segments: d.Segments, compose: d.Compose, assets: d.Assets}
+	return &DramaService{repo: d.Repo, registry: d.Registry, streamer: d.Streamer, secrets: d.Secrets, canvas: d.Canvas, bc: d.Broadcaster, credits: d.Credits, canvasAssets: d.CanvasAssets, segments: d.Segments, compose: d.Compose, assets: d.Assets}
 }
 
 // Create 校验原文和风格，在同一事务建立项目、画布与首个研读任务。
@@ -114,7 +122,7 @@ func (s *DramaService) Create(ctx context.Context, userID uint64, req *model.Cre
 	if err := checkDramaStyle(req.StyleKey, req.StyleCustom); err != nil {
 		return nil, err
 	}
-	// 2. 冻结已启用文本模型；项目创建时即可发现没有可用模型。
+	// 2. 冻结已启用的 Agent 模型；项目创建时即可发现没有可用模型。
 	snap, err := s.resolveModel(ctx, "")
 	if err != nil {
 		return nil, err

@@ -33,7 +33,7 @@ export type DramaWorkspace = {
   /** 重新读取详情（任务收尾、冲突后加载最新） */
   refresh: () => Promise<void>;
   /**
-   * 改短剧（标题、画风、比例、文本模型、大纲、人物）：串行排队，用最新 revision；返回保存后的 revision。
+   * 改短剧（标题、画风、比例、Agent 模型、大纲、人物）：串行排队，用最新 revision；返回保存后的 revision。
    * revision 冲突时提示并加载最新，再抛出错误让调用方知道没存上。
    */
   patch: (fields: Omit<UpdateDramaInput, "revision">) => Promise<number>;

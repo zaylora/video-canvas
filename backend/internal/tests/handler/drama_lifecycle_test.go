@@ -19,10 +19,10 @@ import (
 type httpDramaRegistry struct{}
 
 func (httpDramaRegistry) ListModels(context.Context, string) ([]provider.ModelInfo, error) {
-	return []provider.ModelInfo{{Key: "http-text", Kind: "text"}}, nil
+	return []provider.ModelInfo{{Key: "http-text", Kind: "agent"}}, nil
 }
 func (httpDramaRegistry) Snapshot(context.Context, string) (*provider.Snapshot, error) {
-	return &provider.Snapshot{ModelRevisionID: 1, Model: provider.ModelSnapshot{Key: "http-text", Kind: "text", Pricing: modelcfg.Pricing{Billing: modelcfg.BillingPerCall, Unit: 2}}}, nil
+	return &provider.Snapshot{ModelRevisionID: 1, Model: provider.ModelSnapshot{Key: "http-text", Kind: "agent", Pricing: modelcfg.Pricing{Billing: modelcfg.BillingPerCall, Unit: 2}}}, nil
 }
 func (r *httpDramaRepo) InsertProject(_ context.Context, p *model.DramaProject) error {
 	p.ID = 7

@@ -30,7 +30,7 @@ describe("短剧错误码映射（契约 §8）", () => {
     expect(dramaErrorMessage(err(DRAMA_ERR.sourceTooLong, 400))).toContain("30 万字");
     expect(dramaErrorMessage(err(DRAMA_ERR.jobBusy, 409))).toContain("进行中");
     expect(dramaErrorMessage(err(DRAMA_ERR.episodeLocked, 409))).toContain("锁定");
-    expect(dramaErrorMessage(err(DRAMA_ERR.noTextModel, 400))).toContain("文本模型");
+    expect(dramaErrorMessage(err(DRAMA_ERR.noTextModel, 400))).toContain("Agent 模型");
     expect(dramaErrorMessage(err(DRAMA_ERR.outputInvalid, 502))).toContain("不扣积分");
   });
 

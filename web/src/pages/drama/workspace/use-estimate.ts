@@ -13,7 +13,7 @@ export type Estimate =
 /**
  * 积分估算（POST /estimate）：输入变化后停 250ms 才请求，旧请求的结果作废。
  * input 为 null 表示不需要估算（如还没选集）。
- * 估算失败（如 67006 前置未完成、67007 没有文本模型）把原因交给界面展示。
+ * 估算失败（如 67006 前置未完成、67007 没有 Agent 模型）把原因交给界面展示。
  */
 export function useEstimate(dramaId: string, input: DramaJobInput | null): Estimate {
   const key = input

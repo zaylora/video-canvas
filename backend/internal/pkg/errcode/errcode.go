@@ -253,7 +253,7 @@ var (
 	ErrDramaJobBusy             = New(67004, "已有进行中的任务，完成后再试", http.StatusConflict)
 	ErrDramaEpisodeLocked       = New(67005, "这一集已拆解资产，剧本已锁定", http.StatusConflict)
 	ErrDramaStepNotReady        = New(67006, "前置步骤未完成", http.StatusBadRequest)
-	ErrDramaNoTextModel         = New(67007, "没有可用的文本模型", http.StatusBadRequest)
+	ErrDramaNoTextModel         = New(67007, "没有可用的 Agent 模型", http.StatusBadRequest)
 	ErrDramaOutputInvalid       = New(67008, "模型输出无法解析", http.StatusBadGateway)
 	ErrDramaSegmentNotFound     = New(67009, "片段不存在", http.StatusNotFound)
 	ErrDramaNothingToCompose    = New(67010, "这一集还没有可合成的片段", http.StatusBadRequest)

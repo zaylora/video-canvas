@@ -14,7 +14,7 @@ export const DRAMA_ERR = {
   episodeLocked: 67005,
   /** 前置步骤未完成（Msg 写缺什么） */
   stepNotReady: 67006,
-  /** 没有可用的文本模型 */
+  /** 没有可用的 Agent 模型 */
   noTextModel: 67007,
   /** 模型输出无法解析 */
   outputInvalid: 67008,
@@ -38,7 +38,7 @@ const FALLBACK: Record<number, string> = {
   [DRAMA_ERR.jobBusy]: "已有进行中的任务，完成后再试",
   [DRAMA_ERR.episodeLocked]: "这一集已拆解资产，剧本已锁定",
   [DRAMA_ERR.stepNotReady]: "前置步骤未完成",
-  [DRAMA_ERR.noTextModel]: "没有可用的文本模型，请联系管理员启用",
+  [DRAMA_ERR.noTextModel]: "没有可用的 Agent 模型，请联系管理员启用",
   [DRAMA_ERR.outputInvalid]: "模型输出无法解析，失败不扣积分，可以重试",
   [DRAMA_ERR.segmentNotFound]: "片段不存在，可能已被删除",
   [DRAMA_ERR.nothingToCompose]: "这一集还没有可合成的片段",

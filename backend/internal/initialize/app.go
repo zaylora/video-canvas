@@ -20,6 +20,7 @@ import (
 	"video-canvas/internal/config"
 	"video-canvas/internal/handler"
 	agenthandler "video-canvas/internal/handler/agent"
+	"video-canvas/internal/llmgateway"
 	"video-canvas/internal/mailer"
 	"video-canvas/internal/middleware"
 	"video-canvas/internal/model"
@@ -166,13 +167,13 @@ func NewApp(cfg *config.Config) (*App, error) {
 		Covers:      canvasProjectRepo,                                  // 任务成功时把第一张图写成画布封面
 	})
 
-	// 短剧流水线复用文本插件与账户计价；拆解写画布与角色卡由同一事务提交。
+	// 短剧流水线的文本步骤用后台的 Agent 模型（经 LLM 网关直接请求渠道）与账户计价；拆解写画布与角色卡由同一事务提交。
 	dramaRepo := repository.NewDramaRepository(db)
 	dramaCanvasSvc := service.NewDramaCanvasService(repository.NewDramaCanvasRepository(db), hub)
 	dramaSegments := service.NewDramaSegmentService(service.DramaSegmentDeps{Repo: dramaRepo, Tasks: taskSvc, Assets: assetSvc, Broadcaster: hub})
 	taskSvc.SetTaskObserver(dramaSegments)
 	dramaSvc := service.NewDramaService(service.DramaDeps{
-		Repo: dramaRepo, Registry: aiCfgSvc, Executor: executor, Canvas: dramaCanvasSvc, Broadcaster: hub, Credits: settingsSvc,
+		Repo: dramaRepo, Registry: aiCfgSvc, Streamer: llmgateway.New(llmgateway.Options{IPAllowed: outboundIPPolicy(cfg)}), Secrets: aiCfgSvc, Canvas: dramaCanvasSvc, Broadcaster: hub, Credits: settingsSvc,
 		Segments: dramaSegments, CanvasAssets: canvasProjectRepo,
 		Compose: videoframe.New(videoframe.Options{Timeout: 10 * time.Minute}), Assets: assetSvc,
 	})

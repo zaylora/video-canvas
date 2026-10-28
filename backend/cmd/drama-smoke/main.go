@@ -21,6 +21,7 @@ import (
 
 	"video-canvas/internal/config"
 	"video-canvas/internal/handler"
+	"video-canvas/internal/llmgateway"
 	"video-canvas/internal/middleware"
 	"video-canvas/internal/migration"
 	"video-canvas/internal/model"
@@ -40,10 +41,10 @@ type creditPolicy struct{}
 
 func (creditPolicy) InitialCredits(context.Context) (int, error) { return 100, nil }
 func (registry) ListModels(context.Context, string) ([]provider.ModelInfo, error) {
-	return []provider.ModelInfo{{Key: "smoke-text", Kind: "text"}}, nil
+	return []provider.ModelInfo{{Key: "smoke-text", Kind: "agent"}}, nil
 }
 func (registry) Snapshot(_ context.Context, key string) (*provider.Snapshot, error) {
-	snap := &provider.Snapshot{ModelRevisionID: 1, Model: provider.ModelSnapshot{Key: key, Kind: "text", Pricing: modelcfg.Pricing{Billing: modelcfg.BillingPerCall, Unit: 1}, Capabilities: modelcfg.Capabilities{Prompt: modelcfg.PromptSpec{MaxLength: 100000}, Context: &modelcfg.ContextSpec{Window: 128000, Output: 4000}}}}
+	snap := &provider.Snapshot{ModelRevisionID: 1, Channel: provider.ChannelSnapshot{Key: "smoke"}, Model: provider.ModelSnapshot{Key: key, Kind: "agent", Pricing: modelcfg.Pricing{Billing: modelcfg.BillingPerCall, Unit: 1}, Capabilities: modelcfg.Capabilities{Context: &modelcfg.ContextSpec{Window: 128000, Output: 4000}}}}
 	if key == "smoke-video" || key == "smoke-image" {
 		snap.Model.Kind = strings.TrimPrefix(key, "smoke-")
 		snap.Model.Capabilities.Context = nil
@@ -62,10 +63,21 @@ type executor struct {
 }
 
 func (e executor) Submit(ctx context.Context, snap *provider.Snapshot, in provider.SubmitInput) (*provider.SubmitResult, error) {
-	if snap.Model.Kind != model.KindText {
-		return smokeMediaOutput(ctx, e.db, e.mediaDir, snap.Model.Kind, in.Task, !strings.Contains(fmt.Sprint(in.Input["prompt"]), "静音"))
-	}
-	prompt := in.Input["prompt"].(string)
+	return smokeMediaOutput(ctx, e.db, e.mediaDir, snap.Model.Kind, in.Task, !strings.Contains(fmt.Sprint(in.Input["prompt"]), "静音"))
+}
+
+// textStreamer 冒充 LLM 网关，按提示词里的输出契约给出固定的短剧文本。
+type textStreamer struct{}
+
+type smokeSecrets struct{}
+
+func (smokeSecrets) Get(context.Context, string) (string, error) { return "smoke-key", nil }
+
+func (textStreamer) Stream(_ context.Context, _ llmgateway.Target, req llmgateway.Request, _ func(llmgateway.Event)) (*llmgateway.Result, error) {
+	return &llmgateway.Result{Text: smokeText(req.Messages[0].Text), UsageMissing: true}, nil
+}
+
+func smokeText(prompt string) string {
 	start := strings.Index(prompt, "```json\n") + len("```json\n")
 	end := strings.Index(prompt[start:], "\n```") + start
 	var vars map[string]json.RawMessage
@@ -100,7 +112,7 @@ func (e executor) Submit(ctx context.Context, snap *provider.Snapshot, in provid
 		must(e)
 		output = string(raw)
 	}
-	return &provider.SubmitResult{Immediate: &provider.QueryResult{Status: provider.StatusSucceeded, Outputs: []provider.Output{{Type: provider.OutputText, Text: output}}}}, nil
+	return output
 }
 func must(err error) {
 	if err != nil {
@@ -206,7 +218,7 @@ func startServer(ctx context.Context, db *gorm.DB, sqlDB *sql.DB, schema string,
 	tasks := service.NewGenerationTaskService(service.GenerationTaskDeps{Repo: tasksRepo, Registry: registry{}, Executor: exec, Assets: assets, Broadcaster: events})
 	segments := service.NewDramaSegmentService(service.DramaSegmentDeps{Repo: repo, Tasks: tasks, Assets: assets, Broadcaster: events})
 	tasks.SetTaskObserver(segments)
-	svc := service.NewDramaService(service.DramaDeps{Repo: repo, Registry: registry{}, Executor: exec, Canvas: service.NewDramaCanvasService(repository.NewDramaCanvasRepository(db), nil), Credits: creditPolicy{}, Segments: segments, CanvasAssets: canvases, Broadcaster: events, Assets: assets, Compose: videoframe.New(videoframe.Options{Timeout: time.Minute})})
+	svc := service.NewDramaService(service.DramaDeps{Repo: repo, Registry: registry{}, Streamer: textStreamer{}, Secrets: smokeSecrets{}, Canvas: service.NewDramaCanvasService(repository.NewDramaCanvasRepository(db), nil), Credits: creditPolicy{}, Segments: segments, CanvasAssets: canvases, Broadcaster: events, Assets: assets, Compose: videoframe.New(videoframe.Options{Timeout: time.Minute})})
 	rt, e := queue.New(queue.Config{DB: sqlDB, Schema: schema, Repo: repository.NewQueueRepository(db), Drama: svc, Store: tasks, Handler: worker.New(tasks, exec, nil, worker.Options{Logger: zap.NewNop()}), Enabled: true, HardCap: 2, FetchPollInterval: 100 * time.Millisecond, Logger: zap.NewNop()})
 	must(e)
 	repo.SetEnqueuer(rt)

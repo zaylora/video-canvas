@@ -122,13 +122,13 @@ function StyleChip() {
   );
 }
 
-/** 文本模型：列后台「文本」类别的模型，第一个标默认；留空表示跟随默认 */
+/** Agent 模型：列后台「Agent」类别的模型，第一个标默认；留空表示跟随默认 */
 function ModelChip() {
   const { drama, patch } = useWorkspace();
-  const remote = useRemoteModels("text");
+  const remote = useRemoteModels("agent");
   const first = remote.models[0];
   const selected = drama.textModel ? remote.models.find((m) => m.key === drama.textModel) : first;
-  const label = selected?.label ?? (drama.textModel || first?.label || "文本模型");
+  const label = selected?.label ?? (drama.textModel || first?.label || "Agent 模型");
   const stale = !!drama.textModel && remote.status === "ready" && !selected;
 
   return (
@@ -136,17 +136,17 @@ function ModelChip() {
       variant="bar"
       icon={<Type />}
       label={stale ? `${drama.textModel}（已停用）` : label}
-      title="跟随后台「文本」类别"
+      title="跟随后台「Agent」类别"
       width="w-72"
     >
       {(close) => (
         <>
           <div className="text-muted-foreground px-1.5 pt-1 text-xs">
-            文本模型 · 跟随后台「文本」类别
+            Agent 模型 · 跟随后台「Agent」类别
           </div>
           {remote.models.length === 0 && (
             <div className="text-muted-foreground px-2 py-3 text-sm">
-              {remote.status === "loading" ? "加载中…" : "暂无可用的文本模型"}
+              {remote.status === "loading" ? "加载中…" : "暂无可用的 Agent 模型"}
             </div>
           )}
           {remote.models.map((model, index) => {

@@ -6,12 +6,16 @@ import (
 	"encoding/json"
 	"errors"
 	"slices"
-	"strings"
 	"time"
+	"unicode/utf8"
+
+	"go.uber.org/zap"
 
 	"video-canvas/internal/drama"
+	"video-canvas/internal/llmgateway"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
+	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/provider"
 	"video-canvas/internal/provider/modelcfg"
 )
@@ -30,16 +34,15 @@ func (s *DramaService) callDrama(ctx context.Context, j *model.DramaJob, snap *p
 		if e != nil {
 			return nil, 0, e
 		}
-		input, issues := modelcfg.ValidateInput(modelcfg.KindText, snap.Model.Capabilities, map[string]any{"prompt": prompt})
-		if len(issues) > 0 {
-			return nil, 0, errcode.ErrDramaStepNotReady.WithMsg("模型上下文或参数不足以执行当前步骤")
+		chars := utf8.RuneCountInString(prompt)
+		if c := snap.Model.Capabilities.Context; c != nil && c.Window > 0 && chars > c.Window {
+			return nil, 0, errcode.ErrDramaStepNotReady.WithMsg("模型上下文不足以执行当前步骤")
 		}
-		result, e := s.submitDramaText(ctx, j, snap, input)
+		result, e := s.streamDramaText(ctx, j, snap, prompt)
 		if e != nil {
 			return nil, 0, e
 		}
-		text, usage := dramaTextOutput(result)
-		decoded, e := drama.DecodeOutput(step, []byte(text))
+		decoded, e := drama.DecodeOutput(step, []byte(result.Text))
 		if e == nil && validate != nil {
 			e = validate(decoded)
 		}
@@ -47,71 +50,67 @@ func (s *DramaService) callDrama(ctx context.Context, j *model.DramaJob, snap *p
 			invalid = e
 			continue
 		}
-		quoted := modelcfg.Quote(snap.Model.Pricing, snap.Model.Capabilities, modelcfg.SpecFromInput(input, snap.Model.Capabilities.System))
+		var usage *modelcfg.Usage
+		if !result.UsageMissing {
+			usage = &modelcfg.Usage{InputTokens: max(0, result.Usage.InputTokens), OutputTokens: max(0, result.Usage.OutputTokens)}
+		}
+		quoted := modelcfg.Quote(snap.Model.Pricing, snap.Model.Capabilities, modelcfg.Spec{PromptChars: chars, Params: map[string]any{}})
 		return decoded, modelcfg.Settle(snap.Model.Pricing, quoted, usage), nil
 	}
 	return nil, 0, errcode.ErrDramaOutputInvalid
 }
 
-// submitDramaText 复用插件Submit/Query文本路径，异步文本结果也遵守取消。
-func (s *DramaService) submitDramaText(ctx context.Context, j *model.DramaJob, snap *provider.Snapshot, input map[string]any) (*provider.QueryResult, error) {
-	if s.executor == nil {
+// streamDramaText 经LLM网关向Agent模型的渠道发一次对话请求；请求期间任务被取消会中断上游调用。
+func (s *DramaService) streamDramaText(ctx context.Context, j *model.DramaJob, snap *provider.Snapshot, prompt string) (*llmgateway.Result, error) {
+	if s.streamer == nil || s.secrets == nil {
 		return nil, errcode.ErrInternal
 	}
-	result, e := s.executor.Submit(ctx, snap, provider.SubmitInput{Task: provider.TaskRef{ID: j.ID, UserID: j.UserID}, Input: input})
+	key, e := s.secrets.Get(ctx, model.ChannelSecretName(snap.Channel.Key))
+	if e != nil {
+		logger.Warn("短剧模型渠道Key读取失败", zap.String("channel", snap.Channel.Key), zap.Error(e))
+		return nil, errcode.ErrDramaNoTextModel.WithMsg("模型渠道暂不可用")
+	}
+	tg := llmgateway.Target{ChannelKey: snap.Channel.Key, BaseURL: snap.Channel.BaseURL, APIKey: key, Headers: snap.Channel.Headers, UpstreamModel: snap.Model.UpstreamModel,
+		Format: snap.Model.APIFormat, RPS: snap.Channel.RateLimit.RPS, MaxConcurrency: snap.Channel.RateLimit.MaxConcurrency, IdleTimeout: snap.Model.IdleTimeout.D()}
+	req := llmgateway.Request{Messages: []llmgateway.Message{{Role: "user", Text: prompt}}}
+	if c := snap.Model.Capabilities.Context; c != nil {
+		req.MaxTokens = c.Output
+	}
+
+	// 1. 每秒确认任务仍有效，被取消就中断上游请求，不再等它出完。
+	callCtx, cancel := context.WithCancel(ctx)
+	watched := make(chan struct{})
+	go func() {
+		defer close(watched)
+		tick := time.NewTicker(time.Second)
+		defer tick.Stop()
+		for {
+			select {
+			case <-callCtx.Done():
+				return
+			case <-tick.C:
+				if s.ensureDramaActive(callCtx, j) != nil {
+					cancel()
+					return
+				}
+			}
+		}
+	}()
+	res, e := s.streamer.Stream(callCtx, tg, req, func(llmgateway.Event) {})
+	cancel()
+	<-watched
+
+	// 2. 取消造成的上游中断按取消处理，其余按上游失败。
+	if stop := s.ensureDramaActive(ctx, j); stop != nil {
+		return nil, stop
+	}
 	if e != nil {
 		return nil, e
 	}
-	if result == nil {
+	if res == nil {
 		return nil, errcode.ErrInternal
 	}
-	query := result.Immediate
-	task := provider.TaskRef{ID: j.ID, UserID: j.UserID, ProviderTaskID: result.ProviderTaskID, State: result.State}
-	for query == nil || query.Status == provider.StatusRunning || query.Status == provider.StatusQueued {
-		if e := s.ensureDramaActive(ctx, j); e != nil {
-			_ = s.executor.Cancel(ctx, snap, task)
-			return nil, e
-		}
-		timer := time.NewTimer(time.Second)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return nil, ctx.Err()
-		case <-timer.C:
-		}
-		query, e = s.executor.Query(ctx, snap, task)
-		if e != nil {
-			return nil, e
-		}
-		if query != nil && len(query.State) > 0 {
-			task.State = query.State
-		}
-	}
-	if query.Status != provider.StatusSucceeded {
-		return nil, errcode.ErrInternal.WithMsg("文本模型调用失败")
-	}
-	return query, nil
-}
-
-// dramaTextOutput 合并文本与实际Token用量，忽略非文本产物。
-func dramaTextOutput(result *provider.QueryResult) (string, *modelcfg.Usage) {
-	var text strings.Builder
-	var usage *modelcfg.Usage
-	for _, out := range result.Outputs {
-		if out.Type != provider.OutputText {
-			continue
-		}
-		text.WriteString(out.Text)
-		if out.Usage == nil {
-			continue
-		}
-		if usage == nil {
-			usage = &modelcfg.Usage{}
-		}
-		usage.InputTokens += max(0, out.Usage.InputTokens)
-		usage.OutputTokens += max(0, out.Usage.OutputTokens)
-	}
-	return text.String(), usage
+	return res, nil
 }
 
 // ensureDramaActive 取消后停止后续网络调用与写入。

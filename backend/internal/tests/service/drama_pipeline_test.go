@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"video-canvas/internal/drama"
+	"video-canvas/internal/llmgateway"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/provider"
@@ -268,8 +269,14 @@ type dramaRegistry struct {
 	requested   []string
 }
 
-func (r *dramaRegistry) ListModels(context.Context, string) ([]provider.ModelInfo, error) {
-	return r.models, nil
+func (r *dramaRegistry) ListModels(_ context.Context, kind string) ([]provider.ModelInfo, error) {
+	var out []provider.ModelInfo
+	for _, m := range r.models {
+		if m.Kind == kind {
+			out = append(out, m)
+		}
+	}
+	return out, nil
 }
 func (r *dramaRegistry) Snapshot(_ context.Context, key string) (*provider.Snapshot, error) {
 	r.requested = append(r.requested, key)
@@ -279,18 +286,21 @@ func (r *dramaRegistry) Snapshot(_ context.Context, key string) (*provider.Snaps
 	return r.snap, nil
 }
 
-type dramaTextExecutor struct {
-	provider.Executor
+// dramaTextStreamer 冒充 LLM 网关：按顺序吐出预置文本，并记下每次请求的目标渠道与提示词。
+type dramaTextStreamer struct {
 	outputs []string
 	prompts []string
+	targets []llmgateway.Target
+	usage   llmgateway.Usage
 	calls   int
 	failAt  int
 	onCall  func()
 }
 
-func (e *dramaTextExecutor) Submit(_ context.Context, _ *provider.Snapshot, in provider.SubmitInput) (*provider.SubmitResult, error) {
+func (e *dramaTextStreamer) Stream(_ context.Context, tg llmgateway.Target, req llmgateway.Request, _ func(llmgateway.Event)) (*llmgateway.Result, error) {
 	e.calls++
-	e.prompts = append(e.prompts, in.Input["prompt"].(string))
+	e.targets = append(e.targets, tg)
+	e.prompts = append(e.prompts, req.Messages[0].Text)
 	if e.onCall != nil {
 		e.onCall()
 	}
@@ -302,7 +312,16 @@ func (e *dramaTextExecutor) Submit(_ context.Context, _ *provider.Snapshot, in p
 	}
 	text := e.outputs[0]
 	e.outputs = e.outputs[1:]
-	return &provider.SubmitResult{Immediate: &provider.QueryResult{Status: provider.StatusSucceeded, Outputs: []provider.Output{{Type: provider.OutputText, Text: text}}}}, nil
+	return &llmgateway.Result{Text: text, Usage: e.usage, UsageMissing: e.usage == llmgateway.Usage{}}, nil
+}
+
+type dramaSecrets map[string]string
+
+func (s dramaSecrets) Get(_ context.Context, name string) (string, error) {
+	if v, ok := s[name]; ok {
+		return v, nil
+	}
+	return "", errors.New("没有这个密钥")
 }
 
 type dramaPipelineCanvas struct {
@@ -319,10 +338,11 @@ func (c *dramaPipelineCanvas) ApplyPrompts(context.Context, uint64, uint64, uint
 	c.prompted++
 	return nil
 }
-func dramaTestService(r *dramaMemory, e *dramaTextExecutor, c *dramaPipelineCanvas) (*service.DramaService, *dramaRegistry) {
-	snap := &provider.Snapshot{ModelRevisionID: 9, Model: provider.ModelSnapshot{Key: "text", Kind: "text", Pricing: modelcfg.Pricing{Billing: modelcfg.BillingPerCall, Unit: 5}, Capabilities: modelcfg.Capabilities{Prompt: modelcfg.PromptSpec{MaxLength: 100000}, Context: &modelcfg.ContextSpec{Window: 100000, Output: 5000}}}}
-	registry := &dramaRegistry{snap: snap, models: []provider.ModelInfo{{Key: "text", Kind: "text"}}}
-	return service.NewDramaService(service.DramaDeps{Repo: r, Registry: registry, Executor: e, Canvas: c, CanvasAssets: r, Segments: r}), registry
+func dramaTestService(r *dramaMemory, e *dramaTextStreamer, c *dramaPipelineCanvas) (*service.DramaService, *dramaRegistry) {
+	snap := &provider.Snapshot{ModelRevisionID: 9, Channel: provider.ChannelSnapshot{Key: "chan", BaseURL: "https://llm.example"}, Model: provider.ModelSnapshot{Key: "text", Kind: "agent", UpstreamModel: "upstream-chat", APIFormat: "openai", Pricing: modelcfg.Pricing{Billing: modelcfg.BillingPerCall, Unit: 5}, Capabilities: modelcfg.Capabilities{Context: &modelcfg.ContextSpec{Window: 100000, Output: 5000}}}}
+	registry := &dramaRegistry{snap: snap, models: []provider.ModelInfo{{Key: "text", Kind: "agent"}}}
+	secrets := dramaSecrets{model.ChannelSecretName("chan"): "sk-test"}
+	return service.NewDramaService(service.DramaDeps{Repo: r, Registry: registry, Streamer: e, Secrets: secrets, Canvas: c, CanvasAssets: r, Segments: r}), registry
 }
 func dramaCheckCode(t *testing.T, err error, code int) {
 	t.Helper()
@@ -350,7 +370,7 @@ func TestDramaPipelineJSONRetryAndNoCharge(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newDramaMemory()
 			dramaAddEpisode(r, 1, "")
-			e := &dramaTextExecutor{outputs: tc.outputs}
+			e := &dramaTextStreamer{outputs: tc.outputs}
 			s, _ := dramaTestService(r, e, nil)
 			j, err := s.CreateJob(context.Background(), 7, 1, &model.DramaJobReq{Step: "scripts", Episodes: []int{1}})
 			if err != nil {
@@ -374,7 +394,7 @@ func TestDramaPipelineJSONRetryAndNoCharge(t *testing.T) {
 }
 func TestDramaJobPrerequisitesBusyAndIsolation(t *testing.T) {
 	r := newDramaMemory()
-	s, registry := dramaTestService(r, &dramaTextExecutor{}, nil)
+	s, registry := dramaTestService(r, &dramaTextStreamer{}, nil)
 	_, err := s.CreateJob(context.Background(), 7, 1, &model.DramaJobReq{Step: "scripts"})
 	dramaCheckCode(t, err, 67006)
 	_, err = s.Get(context.Background(), 8, 1)
@@ -405,7 +425,7 @@ func TestDramaEpisodeLockedAndRevision(t *testing.T) {
 	dramaAddEpisode(r, 1, "正文")
 	now := time.Now()
 	r.episodes[0].LockedAt = &now
-	s, _ := dramaTestService(r, &dramaTextExecutor{}, nil)
+	s, _ := dramaTestService(r, &dramaTextStreamer{}, nil)
 	text := "修改"
 	for _, req := range []*model.UpdateDramaEpisodeReq{{Revision: 1, ScriptMD: &text}, {Revision: 1, Synopsis: &text}} {
 		_, err := s.UpdateEpisode(context.Background(), 7, 1, 1, req)
@@ -430,7 +450,7 @@ func TestDramaScriptsSerialContinuationAndPartialSuccess(t *testing.T) {
 	dramaAddEpisode(r, 3, "")
 	ending := strings.Repeat("甲", 900) + "最后一句"
 	raw, _ := json.Marshal(drama.ScriptOutput{ScriptMD: ending})
-	e := &dramaTextExecutor{outputs: []string{string(raw)}, failAt: 2}
+	e := &dramaTextStreamer{outputs: []string{string(raw)}, failAt: 2}
 	s, _ := dramaTestService(r, e, nil)
 	j, err := s.CreateJob(context.Background(), 7, 1, &model.DramaJobReq{Step: "scripts"})
 	if err != nil {
@@ -453,7 +473,7 @@ func TestDramaAnalyzeAutomaticallyOutlinesMarkedSource(t *testing.T) {
 	r := newDramaMemory()
 	r.project.SourceText = "第一集 开端\n原文甲\n第2集 继续\n原文乙"
 	r.project.SourceSummary = ""
-	e := &dramaTextExecutor{outputs: []string{`{"source_kind":"script","summary":"故事摘要","characters_md":"人物设定"}`}}
+	e := &dramaTextStreamer{outputs: []string{`{"source_kind":"script","summary":"故事摘要","characters_md":"人物设定"}`}}
 	s, _ := dramaTestService(r, e, nil)
 	j, err := s.CreateJob(context.Background(), 7, 1, &model.DramaJobReq{Step: "analyze"})
 	if err != nil {
@@ -480,8 +500,8 @@ func TestDramaModelFallbackAndEstimate(t *testing.T) {
 	r.project.TextModel = "disabled"
 	dramaAddEpisode(r, 1, "")
 	dramaAddEpisode(r, 2, "")
-	s, registry := dramaTestService(r, &dramaTextExecutor{}, nil)
-	registry.models = []provider.ModelInfo{{Key: "unavailable", Kind: "text"}, {Key: "text", Kind: "text"}}
+	s, registry := dramaTestService(r, &dramaTextStreamer{}, nil)
+	registry.models = []provider.ModelInfo{{Key: "unavailable", Kind: "agent"}, {Key: "text", Kind: "agent"}}
 	registry.unavailable = map[string]bool{"unavailable": true}
 	credits, err := s.Estimate(context.Background(), 7, 1, &model.DramaJobReq{Step: "scripts"})
 	if err != nil {
@@ -504,7 +524,7 @@ func TestDramaBreakdownAutomaticallyPromptsNewAssets(t *testing.T) {
 	asset := drama.Asset{Type: "character", Name: "林川", Aliases: []string{}, Episodes: []int{1}, Description: "人物", VoicePrompt: "低沉"}
 	raw, _ := json.Marshal(drama.BreakdownOutput{Assets: []drama.Asset{asset}})
 	prompts, _ := json.Marshal(drama.AssetPromptsOutput{Prompts: []drama.AssetPrompt{{NodeID: "new", Prompt: "角色正向描述"}}})
-	e := &dramaTextExecutor{outputs: []string{string(raw), string(prompts)}}
+	e := &dramaTextStreamer{outputs: []string{string(raw), string(prompts)}}
 	c := &dramaPipelineCanvas{created: []service.DramaCanvasAsset{{NodeID: "new", Asset: asset}}}
 	s, _ := dramaTestService(r, e, c)
 	j, err := s.CreateJob(context.Background(), 7, 1, &model.DramaJobReq{Step: "breakdown", Episodes: []int{1}})
