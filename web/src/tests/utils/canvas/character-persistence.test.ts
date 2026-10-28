@@ -34,6 +34,21 @@ describe("角色卡节点的存取：数据内嵌在画布里", () => {
     expect(graph.nodes[0].data).toMatchObject({ kind: "character", assetId: "10", character });
   });
 
+  test("存档带上正在生成的声音任务 id，刷新后还能认领结果；没有就不写", () => {
+    const withTask = serializeGraph(
+      [node("c1", { character: emptyCharacter("林晚"), voiceTaskId: "9" })],
+      [],
+      viewport,
+    );
+    expect(withTask.nodes[0].data).toMatchObject({ voiceTaskId: "9" });
+    const without = serializeGraph(
+      [node("c1", { character: emptyCharacter("林晚") })],
+      [],
+      viewport,
+    );
+    expect(without.nodes[0].data).not.toHaveProperty("voiceTaskId");
+  });
+
   test("存档不再写旧字段 characterId / labelCache", () => {
     const graph = serializeGraph(
       [

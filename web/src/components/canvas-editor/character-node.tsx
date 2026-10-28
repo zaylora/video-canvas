@@ -5,10 +5,10 @@ import {
   AudioLines,
   Ellipsis,
   FolderOpen,
+  Loader2,
   Pause,
   Play,
   Plus,
-  Type,
   Upload,
   VolumeX,
 } from "lucide-react";
@@ -22,6 +22,7 @@ import { NODE_META } from "@/constants/canvas";
 import { useCharacterMedia } from "@/hooks/use-character-media";
 import { useTaskGeneration } from "@/hooks/use-task-generation";
 import { useTaskNode } from "@/hooks/use-task-node";
+import { useVoiceBackfill } from "@/hooks/use-voice-backfill";
 import { cn } from "@/lib/utils";
 import { useCharacterDetail } from "@/store/character-detail";
 import type { CanvasNode, CanvasNodeData } from "@/types";
@@ -88,7 +89,7 @@ export function CharacterCanvasNode({
   );
 }
 
-/** 音色格里的音频试听：圆形按钮，点一下播放 / 暂停（全站同一时刻只放一条） */
+/** 声音格里的音频试听：圆形按钮，点一下播放 / 暂停（全站同一时刻只放一条） */
 function AudioCell({
   asset,
   ignored,
@@ -103,7 +104,7 @@ function AudioCell({
     <button
       type="button"
       title={title}
-      aria-label={playing ? "暂停试听" : "试听音色"}
+      aria-label={playing ? "暂停试听" : "试听声音"}
       aria-pressed={playing}
       onClick={(event) => {
         event.stopPropagation();
@@ -121,7 +122,7 @@ function AudioCell({
 }
 
 /**
- * 节点正文：封面（空 / 生成中 / 失败 / 主图）、音色格 + 补充图格、形象名与状态标签、「…」菜单入口。
+ * 节点正文：封面（空 / 生成中 / 失败 / 主图）、声音格 + 补充图格、形象名与状态标签、「…」菜单入口。
  * 连到不收参考音频的目标时，「声音未生效」标签挂在节点名旁。
  */
 function CharacterNodeBody({
@@ -144,13 +145,15 @@ function CharacterNodeBody({
 
   const outgoing = useNodeConnections({ id, handleType: "source" });
   const targets = useNodesData<CanvasNode>(outgoing.map((connection) => connection.target));
-  const hasAudio = character.voice?.mode === "audio";
-  /** 连着的某个目标收图片却不收参考音频：音频音色在那里不生效 */
+  const hasAudio = !!character.voice;
+  /** 连着的某个目标收图片却不收参考音频：声音在那里不生效 */
   const voiceIgnored = useMemo(
     () => hasAudio && targets.some((target) => ignoresVoice(target.data)),
     [hasAudio, targets],
   );
-  const cell = voiceCell(character, voiceIgnored);
+  // 声音任务的结果由这里回填（节点始终挂载，详情页关着也能收到）
+  const voiceTask = useVoiceBackfill(id, data);
+  const cell = voiceCell(character, voiceIgnored, voiceTask.phase === "generating");
 
   /** 拿到素材后写进节点：主图落在节点自己的 assetId / src，补充图、音频落在 character 里 */
   const apply = (
@@ -240,7 +243,7 @@ function CharacterNodeBody({
         </div>
 
         <div className="flex items-center gap-1.5 px-2.5 pt-2.5">
-          {cell.kind === "audio" && character.voice?.mode === "audio" ? (
+          {cell.kind === "audio" && character.voice ? (
             <AudioCell
               asset={{ id: character.voice.assetId, url: character.voice.src } as AssetDto}
               ignored={cell.ignored}
@@ -250,14 +253,14 @@ function CharacterNodeBody({
             <button
               type="button"
               title={cell.title}
-              aria-label="音色：打开详情设置"
+              aria-label="声音：打开详情设置"
               onClick={() => setDetailOpen(true)}
               className={cn(
                 "bg-muted text-muted-foreground hover:bg-accent focus-visible:ring-ring/60 grid size-9 shrink-0 place-items-center rounded-[10px] outline-none focus-visible:ring-2 [&_svg]:size-4",
-                cell.kind === "text" && "bg-info/15 text-info",
+                cell.kind === "generating" && "bg-info/15 text-info",
               )}
             >
-              {cell.kind === "text" ? <Type /> : <AudioLines />}
+              {cell.kind === "generating" ? <Loader2 className="animate-spin" /> : <AudioLines />}
             </button>
           )}
           {character.extras.map((extra) => (

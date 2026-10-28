@@ -265,19 +265,20 @@ func newDramaNode(opt Options, asset DramaAsset) Node {
 }
 
 // newCharacterMeta 构造角色节点内嵌的 character 元数据：角色数据只属于当前画布，
-// 主图与补充图在拆解时为空（extras 为 []），音色描述非空才写成文本音色，否则 voice 为 null。
+// 主图与补充图在拆解时为空（extras 为 []）。声音只有音频一种，拆解不会生成音频，所以 voice 恒为 null；
+// 拆解给出的音色描述写在 voicePrompt，作为用户日后在详情页生成声音时的提示词（没有描述就不写这个键）。
 // 全部使用 JSON 原生类型（[]any / map[string]any），避免 Clone 后差异比较出现无效改动。
 func newCharacterMeta(asset DramaAsset) map[string]any {
 	look := asset.Look
 	if look == "" {
 		look = defaultCharacterLook
 	}
-	var voice any
-	if text := strings.TrimSpace(asset.VoicePrompt); text != "" {
-		voice = map[string]any{"mode": "text", "text": text}
-	}
-	return map[string]any{
+	meta := map[string]any{
 		"name": asset.Name, "look": look, "description": strings.TrimSpace(asset.Description),
-		"extras": []any{}, "voice": voice,
+		"extras": []any{}, "voice": nil,
 	}
+	if text := strings.TrimSpace(asset.VoicePrompt); text != "" {
+		meta["voicePrompt"] = text
+	}
+	return meta
 }

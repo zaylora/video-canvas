@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useReactFlow } from "@xyflow/react";
-import { AudioLines, FolderOpen, Sparkles, Upload, X } from "lucide-react";
+import { AudioLines, FolderOpen, Loader2, Sparkles, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 
 import type { AssetDto } from "@/api/asset/type";
@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useCharacterMedia } from "@/hooks/use-character-media";
-import { cn } from "@/lib/utils";
+import { useVoiceGeneration } from "@/hooks/use-voice-generation";
 import type { CanvasNode, CanvasNodeData } from "@/types";
 import {
   applyPickedAssets,
@@ -33,15 +33,16 @@ import {
   MAX_TEXT,
   renameCharacter,
   roleNames,
-  setVoiceMode,
 } from "@/utils/characters/node-character";
+
+import { priceLabel } from "@/utils/pricing/quote";
 
 import { LibraryPickerForCharacter } from "./character-library-picker";
 
 /** 详情里的小标题 */
 const LABEL = "text-[13px] font-medium";
 
-/** 音频音色的试听行：播放键 + 文件来源说明 */
+/** 声音的试听行：播放键 + 文件来源说明 */
 function AudioRow({ assetId, src, origin }: { assetId: string; src: string; origin: string }) {
   const playing = useVoicePlaying(assetId);
   const label = { upload: "上传的音频", generated: "AI 生成的音频", library: "素材库里的音频" }[
@@ -65,7 +66,7 @@ function AudioRow({ assetId, src, origin }: { assetId: string; src: string; orig
 
 /**
  * 角色卡详情（设计 §6.1）：左边大图 + 补充图（可移除）+「上传源素材」，右边角色名称（可选画布里的已有角色）、
- * 形象名称、出现集数（短剧画布，只读，改集数用节点上方的功能条）、形象音色。
+ * 形象名称、出现集数（短剧画布，只读，改集数用节点上方的功能条）、声音（上传 / 绑定已有 / AI 生成）。
  * 所有修改直接写回节点，没有「保存」按钮：连着打字合并成一步撤销，和画布里改节点是同一套。
  */
 export function CharacterDetailDialog({
@@ -83,22 +84,14 @@ export function CharacterDetailDialog({
   const character = data.character ?? emptyCharacter(data.label);
   /** 角色名输入框：允许暂时清空，失焦时空名恢复原名；有内容就实时写回 */
   const [name, setName] = useState(character.name);
-  const [text, setText] = useState(character.voice?.mode === "text" ? character.voice.text : "");
-  /** 切到文本音色前绑过的音频：切回音频时沿用，不让用户重新选 */
-  const [keptAudio, setKeptAudio] = useState(
-    character.voice?.mode === "audio" ? character.voice : undefined,
-  );
-  const mode: "text" | "audio" = character.voice?.mode === "audio" ? "audio" : "text";
-
   // 打开时以节点当前数据为准（节点在别处被改过、撤销过都要跟上）
   useEffect(() => {
     if (!open) return;
     setName(character.name);
-    setText(character.voice?.mode === "text" ? character.voice.text : "");
-    setKeptAudio(character.voice?.mode === "audio" ? character.voice : undefined);
     // 只在打开的那一刻同步；之后的输入由本组件自己持有
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+  const voiceGen = useVoiceGeneration(id, data);
 
   const apply = (
     assets: AssetDto[],
@@ -107,9 +100,6 @@ export function CharacterDetailDialog({
   ) => {
     const { patch, warnings } = applyPickedAssets(data, assets, purpose, origin);
     if (Object.keys(patch).length > 0) updateNodeData(id, patch);
-    if (purpose === "voice" && patch.character?.voice?.mode === "audio") {
-      setKeptAudio(patch.character.voice);
-    }
     if (warnings.length > 0) toast.warning([...new Set(warnings)].join("；"));
   };
   const media = useCharacterMedia((asset, purpose) => apply([asset], purpose, "upload"));
@@ -119,7 +109,11 @@ export function CharacterDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[calc(100dvh-4rem)] gap-0 overflow-y-auto p-0 sm:max-w-3xl">
+      <DialogContent
+        // 弹框渲染在节点组件里，React 事件会沿组件树冒泡到画布：不拦的话弹框里的双击会被当成双击空白画布，弹出「添加节点」菜单
+        onDoubleClick={(event) => event.stopPropagation()}
+        className="max-h-[calc(100dvh-4rem)] gap-0 overflow-y-auto p-0 sm:max-w-3xl"
+      >
         <DialogHeader className="sr-only">
           <DialogTitle>角色卡详情</DialogTitle>
           <DialogDescription>修改角色名称、形象名称、补充图和音色</DialogDescription>
@@ -273,94 +267,112 @@ export function CharacterDetailDialog({
             )}
 
             <div className="flex flex-col gap-2">
-              <span className={LABEL}>形象音色</span>
-              <div role="group" aria-label="音色类型" className="bg-muted flex rounded-lg p-0.5">
-                {(
-                  [
-                    ["text", "文本音色"],
-                    ["audio", "音频音色"],
-                  ] as const
-                ).map(([key, label]) => (
-                  <button
-                    key={key}
-                    type="button"
-                    aria-pressed={mode === key}
-                    onClick={() =>
-                      updateNodeData(id, {
-                        character: setVoiceMode(character, key, text, keptAudio),
-                      })
-                    }
-                    className={cn(
-                      "focus-visible:ring-ring/50 h-8 flex-1 rounded-md text-sm outline-none focus-visible:ring-2",
-                      mode === key
-                        ? "bg-background font-medium shadow-sm"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-              {mode === "text" ? (
-                <>
-                  <Textarea
-                    value={text}
-                    maxLength={MAX_TEXT}
-                    placeholder="请输入音色描述，例如：年轻女声，偏低，语速慢，句尾轻"
-                    className="min-h-24"
-                    onChange={(event) => {
-                      setText(event.target.value);
-                      updateNodeData(id, {
-                        character: setVoiceMode(character, "text", event.target.value),
-                      });
-                    }}
-                  />
-                  <p className="text-muted-foreground text-xs">
-                    文本音色只作展示，不会当作参考音频带入视频生成。
-                  </p>
-                </>
+              <span className={LABEL}>声音</span>
+              {character.voice ? (
+                <AudioRow
+                  assetId={character.voice.assetId}
+                  src={character.voice.src}
+                  origin={character.voice.origin}
+                />
               ) : (
-                <>
-                  {character.voice?.mode === "audio" ? (
-                    <AudioRow
-                      assetId={character.voice.assetId}
-                      src={character.voice.src}
-                      origin={character.voice.origin}
-                    />
-                  ) : (
-                    <p className="text-muted-foreground bg-muted rounded-lg px-3 py-2 text-sm">
-                      还没有音频，请上传、绑定已有音频
-                    </p>
-                  )}
-                  <div className="grid grid-cols-3 gap-2">
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      disabled={media.uploading === "voice"}
-                      onClick={() => media.pickFile("audio", "voice")}
+                <p className="text-muted-foreground bg-muted rounded-lg px-3 py-2 text-sm">
+                  还没有声音，可以上传、绑定已有音频，或用下面的提示词生成
+                </p>
+              )}
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={media.uploading === "voice"}
+                  onClick={() => media.pickFile("audio", "voice")}
+                >
+                  <Upload />
+                  {media.uploading === "voice" ? "上传中…" : "上传音频"}
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => media.openLibrary("audio", "voice")}
+                >
+                  <FolderOpen />
+                  绑定已有
+                </Button>
+              </div>
+              <p className="text-muted-foreground text-xs">
+                有声音时，连到视频节点会作为参考音频和形象一起带入；声音只能接近参考，不保证完全一致。
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <label className={LABEL} htmlFor={`${id}-voice-prompt`}>
+                AI 生成声音
+              </label>
+              <Textarea
+                id={`${id}-voice-prompt`}
+                value={character.voicePrompt ?? ""}
+                maxLength={MAX_TEXT}
+                disabled={voiceGen.task.phase === "generating"}
+                placeholder="音色描述加一句试音台词，例如：年轻女声，偏低，语速慢，句尾轻：“我回来了。”"
+                className="min-h-20"
+                onChange={(event) =>
+                  updateNodeData(id, {
+                    character: { ...character, voicePrompt: event.target.value },
+                  })
+                }
+              />
+              <div className="flex items-center gap-2">
+                <Select
+                  value={voiceGen.model?.key ?? null}
+                  onValueChange={(value) => value && voiceGen.selectModel(value)}
+                  disabled={voiceGen.task.phase === "generating" || voiceGen.models.length === 0}
+                >
+                  <SelectTrigger className="min-w-0 flex-1" aria-label="选择音频模型">
+                    <SelectValue
+                      placeholder={voiceGen.modelsStatus === "loading" ? "加载中…" : "没有音频模型"}
                     >
-                      <Upload />
-                      {media.uploading === "voice" ? "上传中…" : "上传音频"}
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      disabled
-                      title="AI 生成音色还没有接入（音频生成任务怎么提交待确认），先上传或绑定已有音频"
-                    >
-                      <Sparkles />
-                      AI 生成
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => media.openLibrary("audio", "voice")}
-                    >
-                      <FolderOpen />
-                      绑定已有
-                    </Button>
-                  </div>
-                </>
+                      {(value: string) =>
+                        voiceGen.models.find((item) => item.key === value)?.label ?? value
+                      }
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {voiceGen.models.map((item) => (
+                      <SelectItem key={item.key} value={item.key}>
+                        {item.label} · {priceLabel(item.pricing)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {voiceGen.task.phase === "generating" ? (
+                  <Button variant="outline" onClick={() => void voiceGen.cancel()}>
+                    <Loader2 className="animate-spin" />
+                    取消
+                  </Button>
+                ) : (
+                  <Button
+                    disabled={voiceGen.submitting || !voiceGen.model}
+                    onClick={() => void voiceGen.submit(character.voicePrompt ?? "")}
+                  >
+                    <Sparkles />
+                    {voiceGen.task.phase === "failed"
+                      ? "重试"
+                      : character.voice
+                        ? "重新生成"
+                        : "生成声音"}
+                  </Button>
+                )}
+              </div>
+              {voiceGen.task.phase === "generating" && (
+                <p className="text-muted-foreground text-xs">
+                  声音生成中，可以先关掉详情，完成后会自动绑定
+                  {voiceGen.task.progress !== null && `（${voiceGen.task.progress}%）`}
+                </p>
+              )}
+              {(voiceGen.error || voiceGen.task.phase === "failed") && (
+                <p className="text-destructive text-xs" role="alert">
+                  {voiceGen.error ??
+                    (voiceGen.task.phase === "failed" ? voiceGen.task.reason : null)}
+                </p>
               )}
             </div>
           </div>

@@ -37,9 +37,9 @@ describe("structureKey / contentKey", () => {
     expect(contentKey({ nodes: [card({ ...base, look: "礼服" })], edges: [] })).not.toBe(
       contentKey(a),
     );
-    expect(
-      contentKey({ nodes: [card({ ...base, voice: { mode: "text", text: "x" } })], edges: [] }),
-    ).not.toBe(contentKey(a));
+    expect(contentKey({ nodes: [card({ ...base, voicePrompt: "x" })], edges: [] })).not.toBe(
+      contentKey(a),
+    );
     expect(
       contentKey({
         nodes: [card({ ...base, extras: [{ assetId: "1", src: "/1.png" }] })],
@@ -110,6 +110,13 @@ describe("restoreNodes", () => {
       [node("n1", { status: "done" })],
     );
     expect(dropped.data.pendingTaskIds).toBeUndefined();
+  });
+
+  test("声音生成任务 id 属于任务字段：撤销不倒回它，否则任务结果没人认领", () => {
+    const [kept] = restoreNodes([node("n1")], [node("n1", { voiceTaskId: "9" })]);
+    expect(kept.data.voiceTaskId).toBe("9");
+    const [dropped] = restoreNodes([node("n1", { voiceTaskId: "9" })], [node("n1")]);
+    expect(dropped.data.voiceTaskId).toBeUndefined();
   });
 
   test("快照里没有、眼下才有的任务字段会被带上", () => {

@@ -130,20 +130,6 @@ describe("planSegmentInput：@ 解析与参考素材组装（契约 §13）", ()
     expect(plan.refs[0].voice).toBe("none");
   });
 
-  test("文本音色只展示：不当参考音频带入，也不标「声音未生效」", () => {
-    const plan = planSegmentInput({
-      ...base,
-      caps: video(),
-      prompt: "@[林川](n1)",
-      assets: [
-        character("n1", { character: roleData({ voice: { mode: "text", text: "年轻女声" } }) }),
-      ],
-    });
-    expect(plan.input.audios).toBeUndefined();
-    expect(plan.refs[0].voice).toBe("none");
-    expect(plan.notices).toEqual([]);
-  });
-
   test("没有图的资产只保留文字：空角色节点（没有形象图）、场景没有素材都不进参考图，也不算失效", () => {
     const plan = planSegmentInput({
       ...base,

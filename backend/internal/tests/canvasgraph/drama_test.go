@@ -147,7 +147,7 @@ func TestMergeDramaCreatesCharacterNodeWithMetadata(t *testing.T) {
 	withVoice := r.Graph.Node(r.Created[0].NodeID).Data()
 	want := map[string]any{
 		"name": "林夏", "look": "童年", "description": "九岁，扎双马尾", "extras": []any{},
-		"voice": map[string]any{"mode": "text", "text": "清脆的童声"},
+		"voice": nil, "voicePrompt": "清脆的童声",
 	}
 	if !reflect.DeepEqual(withVoice["character"], want) {
 		t.Fatalf("character = %#v", withVoice["character"])
@@ -157,13 +157,17 @@ func TestMergeDramaCreatesCharacterNodeWithMetadata(t *testing.T) {
 			t.Errorf("角色节点不应带 %s: %+v", key, withVoice)
 		}
 	}
-	// 形象名为空取默认「基础形象」；没有音色描述时 voice 为 null（键存在、值为 nil）。
+	// 形象名为空取默认「基础形象」；声音只有音频一种，拆解不生成音频，voice 恒为 null（键存在、值为 nil），
+	// 音色描述写在 voicePrompt 里作为生成声音的提示词，没有描述就没有这个键。
 	plain := r.Graph.Node(r.Created[1].NodeID).Data()["character"].(map[string]any)
 	if plain["look"] != "基础形象" || plain["description"] != "" {
 		t.Errorf("默认形象名/设定不对: %#v", plain)
 	}
 	if v, ok := plain["voice"]; !ok || v != nil {
-		t.Errorf("无音色描述时 voice 应为 null: %#v", plain)
+		t.Errorf("voice 应为 null: %#v", plain)
+	}
+	if _, ok := plain["voicePrompt"]; ok {
+		t.Errorf("无音色描述时不应写 voicePrompt: %#v", plain)
 	}
 	if _, ok := r.Graph.Node(r.Created[2].NodeID).Data()["character"]; ok {
 		t.Error("场景节点不应带 character 元数据")

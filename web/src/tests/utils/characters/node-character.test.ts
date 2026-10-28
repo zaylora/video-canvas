@@ -15,7 +15,6 @@ import {
   normalizeLegacyCharacters,
   renameCharacter,
   roleNames,
-  setVoiceMode,
   takeCharacterFile,
 } from "@/utils/characters/node-character";
 
@@ -91,12 +90,8 @@ describe("characterRefsOfNode：节点自带的数据 → 绑定要用的素材�
     expect(characterRefsOfNode("n1", data({ status: "running" }))).toBeNull();
   });
 
-  test("文本音色只展示，不当参考音频", () => {
-    const refs = characterRefsOfNode(
-      "n1",
-      data({ character: character({ voice: { mode: "text", text: "年轻女声" } }) }),
-    );
-    expect(refs?.voiceAssetId).toBeNull();
+  test("没有声音：voiceAssetId 为 null", () => {
+    expect(characterRefsOfNode("n1", data())?.voiceAssetId).toBeNull();
   });
 
   test("没有 character 元数据（异常数据）：返回 null", () => {
@@ -211,27 +206,54 @@ describe("addExtra：补充图最多 4 张、去重、不含主图、不接受�
   });
 });
 
-describe("setVoiceMode：文本音色与音频音色互斥切换", () => {
-  const audio = {
-    mode: "audio" as const,
-    assetId: "20",
-    src: "/a/20.mp3",
-    origin: "upload" as const,
-  };
-
-  test("切到文本：有描述就是文本音色，没描述就是没有音色", () => {
-    expect(setVoiceMode(character({ voice: audio }), "text", "年轻女声").voice).toEqual({
-      mode: "text",
-      text: "年轻女声",
-    });
-    expect(setVoiceMode(character({ voice: audio }), "text", "  ").voice).toBeNull();
+describe("旧版文本音色：声音只剩音频，描述变成生成声音的提示词", () => {
+  const withText = (text: string, extra: Partial<CanvasNodeData> = {}) => ({
+    id: "n1",
+    type: "canvas" as const,
+    position: { x: 0, y: 0 },
+    data: data({
+      character: {
+        ...character(),
+        voice: { mode: "text", text },
+      } as unknown as NodeCharacter,
+      ...extra,
+    }),
   });
 
-  test("切到音频：沿用之前绑定过的音频；没有就是没有音色", () => {
-    expect(setVoiceMode(character({ voice: null }), "audio", "", audio).voice).toEqual(audio);
-    expect(
-      setVoiceMode(character({ voice: { mode: "text", text: "x" } }), "audio", "x").voice,
-    ).toBeNull();
+  test("没有声音：voice 变成 null，描述搬进 voicePrompt，不丢内容", () => {
+    const [out] = normalizeLegacyCharacters([withText("年轻女声，偏低")]);
+    expect(out.data.character?.voice).toBeNull();
+    expect(out.data.character?.voicePrompt).toBe("年轻女声，偏低");
+  });
+
+  test("已经有 voicePrompt：不覆盖", () => {
+    const node = withText("旧描述");
+    node.data.character = { ...node.data.character!, voicePrompt: "新写的" };
+    const [out] = normalizeLegacyCharacters([node]);
+    expect(out.data.character?.voicePrompt).toBe("新写的");
+    expect(out.data.character?.voice).toBeNull();
+  });
+
+  test("空白描述：不写 voicePrompt", () => {
+    const [out] = normalizeLegacyCharacters([withText("   ")]);
+    expect(out.data.character?.voice).toBeNull();
+    expect(out.data.character).not.toHaveProperty("voicePrompt");
+  });
+
+  test("音频音色原样保留，节点是同一个对象", () => {
+    const audio = {
+      mode: "audio" as const,
+      assetId: "20",
+      src: "/a/20.mp3",
+      origin: "upload" as const,
+    };
+    const node = {
+      id: "n1",
+      type: "canvas" as const,
+      position: { x: 0, y: 0 },
+      data: data({ character: character({ voice: audio }) }),
+    };
+    expect(normalizeLegacyCharacters([node])[0]).toBe(node);
   });
 });
 

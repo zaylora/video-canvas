@@ -59,35 +59,32 @@ describe("characterNodeView：角色卡节点的封面状态", () => {
   });
 });
 
-describe("voiceCell：封面下方音色格", () => {
-  test("没有音色：空格，点开详情设置", () => {
+describe("voiceCell：封面下方声音格", () => {
+  test("没有声音：空格，点开详情设置", () => {
     expect(voiceCell(character(), false)).toEqual({
       kind: "none",
-      title: "还没有音色，点开详情设置",
+      title: "还没有声音，点开详情设置",
     });
   });
 
-  test("文本音色：显示文本图标，提示是文本音色（只展示）", () => {
-    expect(voiceCell(character({ voice: { mode: "text", text: "年轻女声" } }), false)).toEqual({
-      kind: "text",
-      title: "文本音色：年轻女声",
+  test("正在生成声音：显示生成中，哪怕之前绑过音频", () => {
+    expect(voiceCell(character(), false, true)).toEqual({
+      kind: "generating",
+      title: "声音生成中…",
     });
+    expect(voiceCell(character({ voice: audio }), false, true).kind).toBe("generating");
   });
 
-  test("音频音色：可试听；目标模型不收参考音频时标「声音未生效」", () => {
+  test("有声音：可试听；目标模型不收参考音频时标「声音未生效」", () => {
     expect(voiceCell(character({ voice: audio }), false)).toEqual({
       kind: "audio",
-      title: "音频音色",
+      title: "声音",
       ignored: false,
     });
     expect(voiceCell(character({ voice: audio }), true)).toEqual({
       kind: "audio",
-      title: "音频音色（目标模型不收参考音频，声音未生效）",
+      title: "声音（目标模型不收参考音频，声音未生效）",
       ignored: true,
     });
-  });
-
-  test("文本音色不会被标成未生效：它本来就不带入", () => {
-    expect(voiceCell(character({ voice: { mode: "text", text: "x" } }), true).kind).toBe("text");
   });
 });

@@ -180,7 +180,7 @@ func TestDramaCanvasBreakdownCreatesAndMergesAtomically(t *testing.T) {
 	n := g.Node(created[0].NodeID)
 	wantCharacter := map[string]any{
 		"name": "林川", "look": "童年", "description": "勇敢的少年", "extras": []any{},
-		"voice": map[string]any{"mode": "text", "text": "明亮少年声"},
+		"voice": nil, "voicePrompt": "明亮少年声",
 	}
 	if n.Kind() != "character" || !reflect.DeepEqual(n.Data()["character"], wantCharacter) {
 		t.Fatalf("node=%+v", n)

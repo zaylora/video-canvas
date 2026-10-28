@@ -20,7 +20,7 @@ const exportPayload = `{
   "nodes": [
     {"id":"g1","type":"group","position":{"x":0,"y":0},"width":800,"height":600,"data":{"label":"第一场","color":"blue"}},
     {"id":"n2","type":"canvas","parentId":"g1","position":{"x":20,"y":40},
-     "data":{"kind":"character","label":"林夏","assetId":"90471","src":"/files/u1/lin.png","mediaType":"image",
+     "data":{"kind":"character","label":"林夏","voiceTaskId":"77006","assetId":"90471","src":"/files/u1/lin.png","mediaType":"image",
        "character":{"name":"林夏","look":"基础形象","description":"短发，黑色风衣",
          "extras":[{"assetId":"90472","src":"/files/u1/lin2.png"}],
          "voice":{"mode":"audio","assetId":"90473","src":"/files/u1/lin.mp3","origin":"upload"}}}},
@@ -242,8 +242,8 @@ func TestBuild_NoLeak(t *testing.T) {
 	out := string(raw)
 	banned := []string{
 		`/files/`, `"taskId"`, `"pendingTaskIds"`, `"revision"`, `"viewport"`, `"src"`, `"activeOutputId"`,
-		`"errorTaskRef"`, `"labelCache"`, `"assetId"`, `"characterId"`, `"characterRef"`, `"thumb"`, `"url"`,
-		`77001`, `77002`, `77003`, `77004`, `77005`,
+		`"errorTaskRef"`, `"voiceTaskId"`, `"labelCache"`, `"assetId"`, `"characterId"`, `"characterRef"`, `"thumb"`, `"url"`,
+		`77001`, `77002`, `77003`, `77004`, `77005`, `77006`,
 		legacyCardID,
 	}
 	for _, id := range allFixtureIDs {

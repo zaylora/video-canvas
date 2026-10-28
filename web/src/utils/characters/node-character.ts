@@ -19,7 +19,7 @@ export const MAX_EXTRAS = 4;
 /** 角色名、形象名的长度上限（字） */
 export const MAX_NAME = 64;
 
-/** 角色设定、文本音色描述的长度上限（字） */
+/** 角色设定、生成声音的提示词的长度上限（字） */
 export const MAX_TEXT = 500;
 
 /**
@@ -50,7 +50,7 @@ export function newCharacterData(existingLabels: Iterable<string>): {
  * 节点自带的数据换成绑定用的素材引用（取代旧版「按 characterId 读缓存」）。
  * 没有主图（空节点）、或正在生成（这时 assetId 还指着上一版）返回 null：不带入任何参考，
  * 但这不是「失效」——节点可以继续连线，下游只是少一份参考。补充图要有主图才带。
- * 文本音色只展示，不当参考音频，所以 voiceAssetId 为 null。
+ * 没有声音时 voiceAssetId 为 null。
  * @param id 节点 id，连线展开出的虚拟连线靠它定位
  * @param data 节点数据
  */
@@ -89,20 +89,42 @@ type LegacyCharacterData = {
   drama?: { name?: string; look?: string };
 };
 
+/** 旧版的文本音色：声音现在只有音频，打开画布时规整掉 */
+type LegacyTextVoice = { mode: "text"; text: string };
+
+/**
+ * 旧版文本音色换成「没有声音 + 生成声音的提示词」：描述不丢，留给用户日后生成声音时用；
+ * 已经写过提示词的不覆盖。没有文本音色的原样返回同一个对象。
+ */
+function dropTextVoice(character: NodeCharacter): NodeCharacter {
+  const voice = character.voice as CharacterVoice | LegacyTextVoice | null;
+  if (voice?.mode !== "text") return character;
+  const text = [...voice.text.trim()].slice(0, MAX_TEXT).join("");
+  const keep = !character.voicePrompt?.trim() && text;
+  return { ...character, voice: null, ...(keep ? { voicePrompt: text } : {}) };
+}
+
 /**
  * 把一个旧版角色卡节点规整成新数据（打开画布、Agent 补丁新建节点都经过它）。
  * 旧节点只存一个全局角色卡 ID（characterId）和缓存的名字（labelCache）；全局角色卡已经下线，
  * 且不迁移（用户决定），所以变成空角色节点：保留位置、连线和名字，其余为空。
  * 短剧里的旧节点名字和造型取 data.drama，已生成的主图（assetId / src）本来就在节点上，保持不动；
  * labelCache.coverAssetId 不会变成主图。已经是新数据的节点原样返回（同一个对象），残留的旧字段去掉。
+ * 旧版文本音色同样规整：voice 变成 null，描述搬进 voicePrompt（见 dropTextVoice）。
  * @param node 一个节点
  */
 export function normalizeLegacyCharacter<T extends { data: LegacyCharacterData }>(node: T): T {
   const data = node.data;
   if (data.kind !== "character") return node;
-  if (data.characterId === undefined && data.labelCache === undefined) return node;
+  if (data.characterId === undefined && data.labelCache === undefined) {
+    if (!data.character) return node;
+    const character = dropTextVoice(data.character);
+    return character === data.character ? node : ({ ...node, data: { ...data, character } } as T);
+  }
   const { characterId: _id, labelCache, ...rest } = data;
-  if (data.character) return { ...node, data: rest } as T;
+  if (data.character) {
+    return { ...node, data: { ...rest, character: dropTextVoice(data.character) } } as T;
+  }
   const name = data.drama?.name?.trim() || labelCache?.name?.trim() || data.label?.trim();
   const character = emptyCharacter(name || DEFAULT_ROLE_NAME);
   const look = data.drama?.look?.trim();
@@ -137,28 +159,6 @@ export function addExtra(
     return { ok: false, reason: "已添加过这张图" };
   }
   return { ok: true, character: { ...character, extras: [...character.extras, extra] } };
-}
-
-/**
- * 切换音色模式（详情页的单选）：文本和音频互斥。
- * 切到文本：有描述就是文本音色，没描述就是没有音色；
- * 切到音频：沿用之前绑定过的音频（keep），没有就是没有音色。
- * @param character 当前角色数据
- * @param mode 目标模式
- * @param text 文本音色输入框里的描述
- * @param keep 之前绑定过的音频音色（切到文本时保留在界面状态里，切回来还在）
- */
-export function setVoiceMode(
-  character: NodeCharacter,
-  mode: "text" | "audio",
-  text: string,
-  keep?: Extract<CharacterVoice, { mode: "audio" }>,
-): NodeCharacter {
-  if (mode === "text") {
-    return { ...character, voice: text.trim() ? { mode: "text", text } : null };
-  }
-  const audio = keep ?? (character.voice?.mode === "audio" ? character.voice : null);
-  return { ...character, voice: audio };
 }
 
 /**
@@ -203,7 +203,7 @@ export function applyMainImage(
 }
 
 /**
- * 绑定一段音频作为音色（上传、素材库、AI 生成都走这里），会取代之前的文本音色。
+ * 绑定一段音频作为声音（上传、素材库、AI 生成都走这里），会取代之前的声音。
  * @param character 当前角色数据
  * @param asset 音频素材
  * @param origin 来源，只用于展示和排查
@@ -211,7 +211,7 @@ export function applyMainImage(
 export function applyVoiceAudio(
   character: NodeCharacter,
   asset: Pick<AssetDto, "id" | "url">,
-  origin: Extract<CharacterVoice, { mode: "audio" }>["origin"],
+  origin: CharacterVoice["origin"],
 ): NodeCharacter {
   return { ...character, voice: { mode: "audio", assetId: asset.id, src: asset.url, origin } };
 }
@@ -240,7 +240,7 @@ export type PickedResult = { patch: Partial<CanvasNodeData>; warnings: string[] 
 /**
  * 素材库选择或上传完成后，把素材按用途写回节点（节点和详情页共用）：
  * 主图取第一张；补充图一次可以来多张，按顺序加，已是主图 / 重复 / 超过 4 张的跳过并记下原因；
- * 音色绑定成音频音色。什么都没改时 patch 为空对象，调用方可以不写节点。
+ * 声音绑定成音频。什么都没改时 patch 为空对象，调用方可以不写节点。
  * @param data 节点数据
  * @param assets 选中（或传好）的素材，按选择顺序
  * @param purpose 用途
@@ -250,7 +250,7 @@ export function applyPickedAssets(
   data: CanvasNodeData,
   assets: ReadonlyArray<Pick<AssetDto, "id" | "url">>,
   purpose: "main" | "extra" | "voice",
-  origin: Extract<CharacterVoice, { mode: "audio" }>["origin"] = "library",
+  origin: CharacterVoice["origin"] = "library",
 ): PickedResult {
   if (assets.length === 0) return { patch: {}, warnings: [] };
   const character = data.character ?? emptyCharacter(data.label);

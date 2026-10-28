@@ -114,7 +114,7 @@ func (e *exporter) resolveValue(v any) (string, bool) {
 func (e *exporter) rewriteData(data map[string]any) {
 	// 1. 只在原环境有意义的字段：任务、文件地址，以及旧版角色卡节点遗留的 characterId / labelCache
 	//    （角色卡已下线，这两个字段不再有任何含义）；activeOutputId 在 rewriteOutputs 里处理
-	for _, key := range []string{"src", "taskId", "pendingTaskIds", "errorTaskRef", "characterId", "labelCache"} {
+	for _, key := range []string{"src", "taskId", "pendingTaskIds", "voiceTaskId", "errorTaskRef", "characterId", "labelCache"} {
 		delete(data, key)
 	}
 	// 2. 任务不会跟过来，生成中的节点导出为空闲
@@ -262,7 +262,7 @@ func (e *exporter) rewriteCharacter(data map[string]any) {
 
 // leakKeys 是改写后不应再出现在节点和连线任何层级里的字段名：它们携带原环境的素材 ID、文件地址或任务 ID。
 var leakKeys = map[string]bool{
-	"assetId": true, "src": true, "url": true, "taskId": true, "pendingTaskIds": true,
+	"assetId": true, "src": true, "url": true, "taskId": true, "pendingTaskIds": true, "voiceTaskId": true,
 	"errorTaskRef": true, "characterId": true, "activeOutputId": true, "labelCache": true,
 }
 

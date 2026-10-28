@@ -48,6 +48,11 @@ export type CanvasNodeData = {
    * 任务到达终态时回填把它移出，空了就删掉这个字段；taskId 是其中第一个，保持原语义。
    */
   pendingTaskIds?: string[];
+  /**
+   * 角色卡节点上正在（或刚刚）生成声音的任务 id，只有 kind 为 character 时才有。声音生成不占节点的主图，
+   * 任务 node_id 是 voice:{节点id}；成功时回填把音频绑成角色的声音并删掉这个字段，失败时留着让详情页显示原因和重试。
+   */
+  voiceTaskId?: string;
   /** 按所选模型 capabilities 存的参数值：提示词 params.prompt（兼容旧的 prompt 字段）、生成方式 params.op、生成参数按参数名、手动添加的参考素材 params.images / videos / audios（素材 id 数组） */
   params?: Record<string, unknown>;
   /** params 里媒体字段所选素材的展示信息，字段名 -> 素材 */
@@ -79,14 +84,17 @@ export type CharacterAssetRef = {
 };
 
 /**
- * 角色音色：文本描述和音频二选一。
- * 文本音色只展示，不会当作参考音频带入下游；音频音色会展开成参考音频。
+ * 角色音色：一段音频素材，来源是上传、AI 生成或从素材库绑定。
+ * 连到视频节点时展开成参考音频。声音只有音频一种：旧版的文本音色已去掉，
+ * 其描述改存在 NodeCharacter.voicePrompt，作为生成声音的提示词。
+ * mode 字段保留是为了和已经存档、导出的数据保持一致。
  */
-export type CharacterVoice =
-  /** 文本音色：一段音色描述，≤500 字 */
-  | { mode: "text"; text: string }
-  /** 音频音色：一段音频素材，来源是上传、AI 生成或从素材库绑定 */
-  | { mode: "audio"; assetId: string; src: string; origin: "upload" | "generated" | "library" };
+export type CharacterVoice = {
+  mode: "audio";
+  assetId: string;
+  src: string;
+  origin: "upload" | "generated" | "library";
+};
 
 /**
  * 角色卡节点自带的数据（设计 docs/design/角色卡/画布角色卡重设计.md §8.1）：
@@ -101,8 +109,10 @@ export type NodeCharacter = {
   description: string;
   /** 补充图，≤4 张，去重，不含主图，必须是图片 */
   extras: CharacterAssetRef[];
-  /** 音色；null 表示没有 */
+  /** 声音；null 表示没有 */
   voice: CharacterVoice | null;
+  /** 生成声音用的提示词（音色描述加一句试音台词），≤500 字；只是下次生成的输入，不会带入下游 */
+  voicePrompt?: string;
 };
 
 /**

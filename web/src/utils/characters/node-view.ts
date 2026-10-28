@@ -46,20 +46,20 @@ export function characterNodeView(
   return { phase: "empty", tag: "待补充" };
 }
 
-/** 封面下方音色格的内容 */
+/** 封面下方声音格的内容 */
 export type VoiceCell =
   | {
-      /** 还没有音色 */
+      /** 还没有声音 */
       kind: "none";
       title: string;
     }
   | {
-      /** 文本音色：只展示，不带入下游 */
-      kind: "text";
+      /** 正在生成声音（任务在跑） */
+      kind: "generating";
       title: string;
     }
   | {
-      /** 音频音色：可试听，会展开成参考音频 */
+      /** 有声音：可试听，连到视频时会展开成参考音频 */
       kind: "audio";
       title: string;
       /** 连着的目标模型不收参考音频，声音在那里不生效 */
@@ -67,18 +67,22 @@ export type VoiceCell =
     };
 
 /**
- * 音色格显示什么。文本音色本来就不带入下游，所以不会被标成「声音未生效」；
- * 只有音频音色会遇到目标模型不收参考音频的情况。
+ * 声音格显示什么：生成中 > 有声音 > 没有。
+ * 目标模型不收参考音频时标「声音未生效」，只带形象、不阻断。
  * @param character 角色数据
  * @param ignored 连着的某个目标收图片却不收参考音频
+ * @param generating 这个节点正在生成声音
  */
-export function voiceCell(character: NodeCharacter, ignored: boolean): VoiceCell {
-  const voice = character.voice;
-  if (!voice) return { kind: "none", title: "还没有音色，点开详情设置" };
-  if (voice.mode === "text") return { kind: "text", title: `文本音色：${voice.text}` };
+export function voiceCell(
+  character: NodeCharacter,
+  ignored: boolean,
+  generating = false,
+): VoiceCell {
+  if (generating) return { kind: "generating", title: "声音生成中…" };
+  if (!character.voice) return { kind: "none", title: "还没有声音，点开详情设置" };
   return {
     kind: "audio",
-    title: ignored ? "音频音色（目标模型不收参考音频，声音未生效）" : "音频音色",
+    title: ignored ? "声音（目标模型不收参考音频，声音未生效）" : "声音",
     ignored,
   };
 }
