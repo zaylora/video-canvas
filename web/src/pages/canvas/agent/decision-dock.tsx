@@ -14,7 +14,7 @@ import { SPRING } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { useAgentHighlight } from "@/store/agent-highlight";
 import { useCreditsStore } from "@/store/credits";
-import { editPayload } from "@/utils/agent/drama";
+import { editChanges, editPayload, type EditPayload } from "@/utils/agent/drama";
 
 import { approvalTitle, deletePayload } from "./approval-row";
 
@@ -54,6 +54,65 @@ const ICON = {
 /** 不认识的审批种类按通用修改卡（edit）处理 */
 const kindOf = (kind: string): keyof typeof TONE =>
   kind in TONE ? (kind as keyof typeof TONE) : "edit";
+
+/**
+ * 修改审批的前后对比：后端给的是整个对象的 JSON，这里只列真正改动的字段，
+ * 每个字段一组「修改前（删除线、红）/ 修改后（绿）」；解析不了的原文照旧显示。
+ */
+function EditDiff({ edit }: { edit: EditPayload }) {
+  const changes = editChanges(edit);
+  const line = "rounded-md px-2 py-1.5 leading-5 wrap-anywhere whitespace-pre-wrap";
+  if (changes && changes.length === 0) {
+    return <p className="text-muted-foreground text-xs">没有实际改动</p>;
+  }
+  if (changes) {
+    return (
+      <div aria-label="修改前后" className="flex max-h-56 flex-col gap-2.5 overflow-y-auto text-xs">
+        {changes.map((change) => (
+          <div key={change.label} className="flex flex-col gap-1">
+            <span className="text-muted-foreground font-medium">{change.label}</span>
+            {change.before && (
+              <p
+                className={cn(
+                  line,
+                  "bg-destructive/10 border-destructive text-foreground/70 border-l-2 line-through decoration-(--decoration)",
+                )}
+                style={
+                  {
+                    "--decoration": "color-mix(in oklab, var(--destructive) 55%, transparent)",
+                  } as CSSProperties
+                }
+              >
+                {change.before}
+              </p>
+            )}
+            {change.after && (
+              <p className={cn(line, "bg-status-success/10 border-status-success border-l-2")}>
+                {change.after}
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  }
+  return (
+    <div aria-label="修改前后" className="flex max-h-44 flex-col gap-1 overflow-y-auto text-xs">
+      {edit.before && (
+        <p className={cn(line, "bg-destructive/10 text-foreground/80")}>
+          <span className="text-destructive mr-1.5 font-medium">修改前</span>
+          {edit.before}
+        </p>
+      )}
+      {edit.after && (
+        <p className={cn(line, "bg-status-success/10 text-foreground")}>
+          <span className="text-status-success mr-1.5 font-medium">修改后</span>
+          {edit.after}
+        </p>
+      )}
+    </div>
+  );
+}
 
 /**
  * 决定框：等你批准生成 / 删除、或回答提问时，替换输入框钉在原位，不会被滚到看不见的地方。
@@ -250,22 +309,7 @@ export function DecisionDock({
         )}
       </div>
       {reason && <p className="text-muted-foreground -mt-1 text-[12.5px]">{reason}</p>}
-      {edit && (edit.before || edit.after) && (
-        <div aria-label="修改前后" className="flex max-h-44 flex-col gap-1 overflow-y-auto text-xs">
-          {edit.before && (
-            <p className="bg-destructive/10 text-foreground/80 rounded-md px-2 py-1.5 leading-5 wrap-anywhere whitespace-pre-wrap">
-              <span className="text-destructive mr-1.5 font-medium">修改前</span>
-              {edit.before}
-            </p>
-          )}
-          {edit.after && (
-            <p className="bg-status-success/10 text-foreground rounded-md px-2 py-1.5 leading-5 wrap-anywhere whitespace-pre-wrap">
-              <span className="text-status-success mr-1.5 font-medium">修改后</span>
-              {edit.after}
-            </p>
-          )}
-        </div>
-      )}
+      {edit && (edit.before || edit.after) && <EditDiff edit={edit} />}
 
       {items > 0 && (
         <>

@@ -47,3 +47,56 @@ export function editPayload(raw: unknown): EditPayload {
 
 /** 修改审批的一句话标题 */
 export const editTitle = (payload: EditPayload): string => payload.title || "申请修改";
+
+/** 修改审批里一个字段的前后对比 */
+export type EditChange = {
+  /** 字段的中文名 */
+  label: string;
+  before: string;
+  after: string;
+};
+
+/** 短剧助手写工具的审批里认识的字段（按展示顺序）：后端把整个对象序列化成 JSON 放进 before / after */
+const FIELD_LABELS: readonly [key: string, label: string, unit?: string][] = [
+  ["title", "标题"],
+  ["synopsis", "梗概"],
+  ["script_md", "剧本"],
+  ["outline_md", "故事大纲"],
+  ["characters_md", "人物传记"],
+  ["prompt", "提示词"],
+  ["seconds", "时长", " 秒"],
+];
+
+/** 解析成普通对象；不是 JSON 或不是对象返回 null */
+function parseObject(text: string): Record<string, unknown> | null {
+  try {
+    const value: unknown = JSON.parse(text);
+    return value !== null && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 把修改审批的 before / after 拆成改动字段清单，只列真正变了的字段（后端连没改的字段也带着）。
+ * 不是 JSON、或里面没有认识的字段（如提交任务的审批）返回 null，调用方照旧显示原文；
+ * 认识的字段都没变返回空数组。
+ */
+export function editChanges(payload: Pick<EditPayload, "before" | "after">): EditChange[] | null {
+  const before = parseObject(payload.before);
+  const after = parseObject(payload.after);
+  if (!before || !after) return null;
+  const known = FIELD_LABELS.filter(([key]) => key in before || key in after);
+  if (known.length === 0) return null;
+  const show = (value: unknown, unit = "") =>
+    value === undefined || value === null ? "" : `${String(value)}${unit}`;
+  return known
+    .filter(([key]) => show(before[key]) !== show(after[key]))
+    .map(([key, label, unit]) => ({
+      label,
+      before: show(before[key], unit),
+      after: show(after[key], unit),
+    }));
+}
