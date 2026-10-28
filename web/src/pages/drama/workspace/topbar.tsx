@@ -214,6 +214,8 @@ function RatioChip() {
 /**
  * 工作台顶栏：左边返回列表 + 项目名（可改）+ 保存状态，中间是工序标签，
  * 右边是画风 / 比例 / Agent 模型、明暗、积分、右栏开关。
+ * 三列：右列至少是自己的内容宽度（minmax(max-content,1fr)），宽屏时和左列等宽、标签居中；
+ * 窗口变窄时由左列（项目名）让位。左右强制等宽的话，右列装不下就会向左溢出、压在标签上。
  */
 export function Topbar({
   sideOpen,
@@ -233,7 +235,7 @@ export function Topbar({
   const { save } = useWorkspace();
   const status = SAVE_LABEL[save];
   return (
-    <header className="border-border bg-chrome relative z-30 grid h-14 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 border-b px-3 backdrop-blur-xl">
+    <header className="border-border bg-chrome relative z-30 grid h-14 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(max-content,1fr)] items-center gap-3 border-b px-3 backdrop-blur-xl">
       <div className="flex min-w-0 items-center gap-1">
         <Button
           variant="ghost"
@@ -268,7 +270,7 @@ export function Topbar({
           aria-label="命令面板"
           title="命令面板（⌘K）"
           onClick={onPalette}
-          className="text-muted-foreground max-md:hidden"
+          className="text-muted-foreground max-2xl:hidden"
         >
           <Search />
           <kbd className="bg-muted rounded px-1 font-mono text-[11px]">⌘K</kbd>
