@@ -62,6 +62,8 @@ type agentRuntime struct {
 type agentDeps struct {
 	tasks  agentsvc.AgentGenTasks
 	assets provider.AssetStore
+	// assetLinks 给素材算稳定访问地址（消息附件落库用）；nil 时用 /files/<key>
+	assetLinks agentsvc.AssetLinker
 	// frames / frameStore 是看视频和截帧要用的抽帧器和帧图存储；nil 表示没有视频处理能力
 	frames     agentsvc.VideoFrames
 	frameStore agentsvc.FrameStore
@@ -117,7 +119,7 @@ func newAgentRuntime(cfg *config.Config, d agentDeps) (*agentRuntime, error) {
 	web, _ := AgentWebAccess(ac, d.ipAllowed)
 	bridge := agentsvc.NewAgentBridge(agentsvc.BridgeDeps{
 		Repo: d.repo, Canvas: d.canvas, Agent: d.agent, Billing: agentsvc.NewAgentBilling(d.repo),
-		Registry: d.registry, Secrets: d.secrets, Tasks: d.tasks, Assets: d.assets, Frames: d.frames, FrameStore: d.frameStore, Streamer: llmgateway.New(llmgateway.Options{IPAllowed: d.ipAllowed}), Skills: d.skills, Web: web, RunUsage: d.repo,
+		Registry: d.registry, Secrets: d.secrets, Tasks: d.tasks, Assets: d.assets, AssetLinks: d.assetLinks, Frames: d.frames, FrameStore: d.frameStore, Streamer: llmgateway.New(llmgateway.Options{IPAllowed: d.ipAllowed}), Skills: d.skills, Web: web, RunUsage: d.repo,
 	})
 	bridge.SetDisabledTools(AgentDisabledTools(ac))
 	if d.toolCalls != nil {

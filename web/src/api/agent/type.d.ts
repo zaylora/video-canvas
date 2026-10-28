@@ -237,6 +237,27 @@ export interface CreateAgentSessionReq {
   model_key?: string;
 }
 
+/** 随用户消息发出的图片附件（请求里只带素材 id） */
+export interface AgentAttachmentReq {
+  /** 素材 ID（先用 uploadAsset 上传得到） */
+  asset_id: string;
+}
+
+/** 用户消息事件（message.user）里记录的图片附件：只存引用和展示信息，不存图片内容 */
+export interface AgentAttachmentDto {
+  /** 素材 ID */
+  asset_id: string;
+  /** 展示名 */
+  name: string;
+  /** 图片类型：png / jpeg / webp / gif */
+  mime_type: string;
+  /** 宽高（像素），没有为 0 或缺省 */
+  width?: number;
+  height?: number;
+  /** 素材的稳定访问地址（/files/*，不会过期） */
+  url: string;
+}
+
 /** 发起一轮运行 */
 export interface StartAgentRunReq {
   /** 用户的消息，行内 chip 序列化为 @[名字](类型:id) */
@@ -249,6 +270,8 @@ export interface StartAgentRunReq {
   viewport?: { x: number; y: number; zoom: number };
   /** Agent 模型 key，不传沿用会话的 */
   agent_model_key?: string;
+  /** 图片附件，最多 9 张；当前模型不能看图时不能带 */
+  attachments?: AgentAttachmentReq[];
 }
 
 /** 对审批里某一项的决定 */

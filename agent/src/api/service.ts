@@ -5,6 +5,7 @@
  *
  * 所有 id 参数都是十进制字符串；路径里的编码串由 HTTP 层先解码。
  */
+import type { AttachmentCheck } from "../attachments.ts";
 import type { AgentEngine, ApprovalView } from "../engine/engine.ts";
 import { fromPlatform } from "../engine/engine.ts";
 import { AgentError, Err } from "../engine/errors.ts";
@@ -49,7 +50,12 @@ export interface StartRunRequest {
   viewport?: unknown;
   budget_credits?: number | null;
   agent_model_key?: string;
+  /** 图片附件：只带素材 id，归属、格式、大小由 Go 校验 */
+  attachments?: Array<{ asset_id: string }>;
 }
+
+/** 一条消息最多几张图片附件（和 Go、前端一致） */
+const MAX_ATTACHMENTS = 9;
 
 /** 首条消息 / 标题：空白压成一个空格，最多 40 字；清空后返回 def */
 export function cleanTitle(raw: string, def: string): string {
@@ -149,19 +155,21 @@ export class AgentApiService {
     // 消息里的引用（节点、模型、技能）必须有效；选中的节点里已不存在的去掉
     const selection = await this.#platform(() => this.#o.platform.checkMessage(userId, sess.canvasId, message, req.selection ?? []));
     const modelKey = await this.#pickModel(req.agent_model_key || sess.modelKey);
+    const attachments = await this.#checkAttachments(userId, req.attachments, modelKey);
     const run = await this.#o.engine.startRun({
-      userId, sessionId, message, mode: req.mode || undefined, modelKey, selection, budgetCredits: req.budget_credits ?? 0,
+      userId, sessionId, message, mode: req.mode || undefined, modelKey, selection, attachments, budgetCredits: req.budget_credits ?? 0,
     });
     return runView(this.#o.codec, run);
   }
 
-  async interject(userId: string, runId: string, message: string): Promise<void> {
+  async interject(userId: string, runId: string, message: string, attachments?: Array<{ asset_id: string }>): Promise<void> {
     const run = this.#run(userId, runId);
     const msg = message.trim();
     if (!msg) throw Err.invalidParams("消息不能为空");
     if (run.status !== "running") throw Err.state();
     await this.#platform(() => this.#o.platform.checkMessage(userId, run.canvasId, msg, []));
-    await this.#o.engine.interject(userId, runId, msg);
+    const checked = await this.#checkAttachments(userId, attachments, this.#session(userId, run.sessionId).modelKey);
+    await this.#o.engine.interject(userId, runId, msg, checked);
   }
 
   async cancel(userId: string, runId: string): Promise<RunView> {
@@ -262,6 +270,22 @@ export class AgentApiService {
   // ---- 内部 ----
 
   /** 选本轮用的 Agent 模型：优先 want，其次清单第一个；want 不在已发布清单里是 60002 */
+  /**
+   * 校验消息的图片附件：格式、数量、当前模型能不能看图都在这里先拦住（不创建运行），
+   * 素材的归属、图片格式和大小再交给 Go。没带附件就什么都不做。
+   */
+  async #checkAttachments(userId: string, raw: unknown, modelKey: string): Promise<AttachmentCheck[]> {
+    if (raw === undefined || raw === null) return [];
+    if (!Array.isArray(raw)) throw Err.invalidParams("附件格式不对");
+    if (raw.length === 0) return [];
+    if (raw.length > MAX_ATTACHMENTS) throw Err.invalidParams(`一条消息最多 ${MAX_ATTACHMENTS} 张图片`);
+    const ids = raw.map((a) => (a && typeof a === "object" && typeof (a as { asset_id?: unknown }).asset_id === "string" ? (a as { asset_id: string }).asset_id.trim() : ""));
+    if (ids.some((id) => !id || id.length > 32)) throw Err.invalidParams("附件格式不对");
+    const model = (await this.models()).find((m) => m.key === modelKey);
+    if (!model?.vision) throw Err.invalidParams("当前模型不能看图，换一个能看图的模型或移除图片");
+    return this.#platform(() => this.#o.platform.checkAttachments(userId, ids));
+  }
+
   async #pickModel(want: string): Promise<string> {
     const list = await this.models();
     if (list.length === 0) throw Err.modelNA();

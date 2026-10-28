@@ -274,6 +274,65 @@ describe("消息流", () => {
     );
     expect(items.at(-1)).toMatchObject({ type: "assistant", text: "你好", streaming: true });
   });
+
+  describe("助手消息的 key 从流式到落库保持不变（结束时不重建、不重播入场动画）", () => {
+    const streamKey = (events: AgentEventDto[]) => {
+      const last = buildTimeline(fold(events)).at(-1);
+      expect(last).toMatchObject({ type: "assistant", streaming: true });
+      return last?.key;
+    };
+    const assistants = (events: AgentEventDto[]) =>
+      buildTimeline(fold(events)).filter((i) => i.type === "assistant");
+
+    test("流式项的 key 等于随后落库那条消息的 key", () => {
+      reset();
+      const head = [ev("message.user", { text: "hi" }), ev("run.status", { status: "running" })];
+      const before = streamKey([...head, ev("message.delta", { text: "你好" }, "r1", 0)]);
+      const done = assistants([...head, ev("message.done", { text: "你好" })]);
+      expect(done).toHaveLength(1);
+      expect(done[0].key).toBe(before!);
+    });
+
+    test("同一轮里第二条消息：流式项和落库项也一致，且和第一条不同", () => {
+      reset();
+      const head = [
+        ev("message.user", { text: "hi" }),
+        ev("run.status", { status: "running" }),
+        ev("message.done", { text: "先读画布" }),
+        ev("tool.start", { id: "c1", name: "canvas_get_state" }),
+        ev("tool.end", { id: "c1", name: "canvas_get_state", is_error: false, summary: "ok" }),
+      ];
+      const before = streamKey([...head, ev("message.delta", { text: "读完了" }, "r1", 0)]);
+      const done = assistants([...head, ev("message.done", { text: "读完了" })]);
+      expect(done).toHaveLength(2);
+      expect(done[1].key).toBe(before!);
+      expect(done[0].key).not.toBe(done[1].key);
+    });
+
+    test("前面有一条没有文字的 message.done（不成项）：序号照样对得上", () => {
+      reset();
+      const head = [
+        ev("message.user", { text: "hi" }),
+        ev("run.status", { status: "running" }),
+        ev("message.done", { text: "", thinking: "" }),
+      ];
+      const before = streamKey([...head, ev("message.delta", { text: "好" }, "r1", 0)]);
+      const done = assistants([...head, ev("message.done", { text: "好" })]);
+      expect(done[0].key).toBe(before!);
+    });
+
+    test("不同轮的回复 key 不同", () => {
+      reset();
+      const done = assistants([
+        ev("message.user", { text: "a" }, "r1"),
+        ev("message.done", { text: "一" }, "r1"),
+        ev("run.status", { status: "succeeded" }, "r1"),
+        ev("message.user", { text: "b" }, "r2"),
+        ev("message.done", { text: "二" }, "r2"),
+      ]);
+      expect(new Set(done.map((i) => i.key)).size).toBe(2);
+    });
+  });
 });
 
 describe("本轮改动摘要", () => {
@@ -894,6 +953,116 @@ describe("压缩提示", () => {
     expect(buildStatusLine(compacting)?.since).toBe(Date.parse(at(1)));
     const after = applyAgentEvent(compacting, ev("context.compacted", { before: 80_000 }));
     expect(buildStatusLine(after)?.text).toBe("思考中…");
+  });
+});
+
+describe("用户消息的图片附件", () => {
+  const att = (id: string, name = `图片 ${id}`) => ({
+    asset_id: id,
+    name,
+    mime_type: "image/png",
+    width: 800,
+    height: 600,
+    url: `/files/${id}.png`,
+  });
+
+  test("message.user 带附件：用户消息项带上它们，保持顺序", () => {
+    reset();
+    const items = buildTimeline(
+      fold([ev("message.user", { text: "照这个色调改", attachments: [att("1"), att("2")] })]),
+    );
+    expect(items[0]).toMatchObject({ type: "user", text: "照这个色调改" });
+    expect((items[0] as { attachments: unknown[] }).attachments).toEqual([att("1"), att("2")]);
+  });
+
+  test("旧事件没有附件字段、或字段不合法：附件为空数组，不报错", () => {
+    reset();
+    const items = buildTimeline(
+      fold([
+        ev("message.user", { text: "旧消息" }),
+        ev("message.user", {
+          text: "坏数据",
+          attachments: [null, 3, { name: "没有素材 id" }, att("9")],
+        }),
+      ]),
+    );
+    expect((items[0] as { attachments: unknown[] }).attachments).toEqual([]);
+    expect((items[1] as { attachments: unknown[] }).attachments).toEqual([att("9")]);
+  });
+
+  test("插话带附件：排队时和被读到之后都带着", () => {
+    reset();
+    const queued = ev("message.user", {
+      id: "s1",
+      text: "再看这张",
+      steer: true,
+      attachments: [att("5")],
+    });
+    const waiting = buildTimeline(
+      fold([ev("message.user", { text: "开始" }), ev("run.status", { status: "running" }), queued]),
+    );
+    const w = waiting.find((i) => i.type === "user" && i.queued === "waiting");
+    expect((w as { attachments: unknown[] }).attachments).toEqual([att("5")]);
+
+    const read = buildTimeline(
+      fold([
+        ev("message.user", { text: "开始" }),
+        ev("run.status", { status: "running" }),
+        queued,
+        ev("steer.read", { ids: ["s1"] }),
+      ]),
+    );
+    const r = read.find((i) => i.type === "user" && i.steer);
+    expect((r as { attachments: unknown[] }).attachments).toEqual([att("5")]);
+  });
+});
+
+describe("活动块的说明（activity.summarized）", () => {
+  const call = (id: string, name = "canvas_get_state") => [
+    ev("tool.start", { id, name }),
+    ev("tool.end", { id, name, is_error: false, summary: "ok" }),
+  ];
+
+  test("groupId 是这一段第一个工具调用的 id", () => {
+    reset();
+    const items = buildTimeline(
+      fold([ev("message.user", { text: "hi" }), ...call("c1"), ...call("c2")]),
+    );
+    expect(activity(items[1]).groupId).toBe("c1");
+    expect(activity(items[1]).summary).toBeUndefined();
+  });
+
+  test("说明按 group_id 挂到对应的活动块，别的块不受影响", () => {
+    reset();
+    const items = buildTimeline(
+      fold([
+        ev("message.user", { text: "hi" }),
+        ...call("c1"),
+        ...call("c2"),
+        ev("message.done", { text: "中间说一句" }),
+        ...call("c3"),
+        ev("activity.summarized", { group_id: "c1", text: "读了两次画布" }),
+      ]),
+    );
+    const blocks = items.filter((i) => i.type === "activity").map(activity);
+    expect(blocks.map((b) => b.groupId)).toEqual(["c1", "c3"]);
+    expect(blocks.map((b) => b.summary)).toEqual(["读了两次画布", undefined]);
+  });
+
+  test("运行结束之后才到的说明也会挂上；空文字和找不到的 group_id 被忽略", () => {
+    reset();
+    const items = buildTimeline(
+      fold([
+        ev("message.user", { text: "hi" }),
+        ...call("c1"),
+        ...call("c2"),
+        ev("run.status", { status: "succeeded" }),
+        ev("activity.summarized", { group_id: "c1", text: "" }),
+        ev("activity.summarized", { group_id: "nope", text: "别处的" }),
+        ev("activity.summarized", { group_id: "c1", text: "读完了画布" }),
+      ]),
+    );
+    expect(activity(items[1]).summary).toBe("读完了画布");
   });
 });
 

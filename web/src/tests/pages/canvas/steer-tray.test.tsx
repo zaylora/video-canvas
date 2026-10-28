@@ -43,6 +43,19 @@ describe("插话队列", () => {
     expect(out).not.toContain("第 4 条");
   });
 
+  test("排队的插话带了图片：行尾写「N 张图」；没带图的不写", () => {
+    const out = renderToStaticMarkup(
+      <SteerTray
+        items={[
+          { key: "a", text: "再看这个", images: 2 },
+          { key: "b", text: "没有图" },
+        ]}
+      />,
+    );
+    expect(out).toContain("2 张图");
+    expect(out.match(/张图/g)).toHaveLength(1);
+  });
+
   test("消息原文里的节点引用显示成名字，不露出 @[名字](类型:id)", () => {
     const out = renderToStaticMarkup(
       <SteerTray items={[{ key: "a", text: "把 @[主角](node:n1) 换成夜景" }]} />,

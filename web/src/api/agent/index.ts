@@ -1,6 +1,7 @@
 import service from "@/utils/requests/service";
 import type {
   AgentApprovalDto,
+  AgentAttachmentReq,
   AgentEventDto,
   AgentFeedbackDto,
   AgentHistoryDto,
@@ -94,8 +95,15 @@ export const startAgentRun = (sessionId: string, data: StartAgentRunReq) =>
  * @param runId 运行 ID
  * @param message 补充的要求
  */
-export const interjectAgentRun = (runId: string, message: string) =>
-  service.post<void>(`/agent/runs/${runId}/interject`, { message });
+export const interjectAgentRun = (
+  runId: string,
+  message: string,
+  attachments?: AgentAttachmentReq[],
+) =>
+  service.post<void>(`/agent/runs/${runId}/interject`, {
+    message,
+    ...(attachments?.length && { attachments }),
+  });
 
 /**
  * 停止运行

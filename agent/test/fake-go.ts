@@ -46,10 +46,14 @@ export interface FakeGoOptions {
   summary?: string | ((body: any, n: number) => string | { error: { status: number; message: string } });
   /** 会话命名请求（X-Agent-Purpose: title）的回答；函数形式可以按请求变化或出错。不消耗 turns */
   title?: string | ((body: any, n: number) => string | { error: { status: number; message: string } });
+  /** 活动摘要请求（X-Agent-Purpose: activity）的回答；函数形式可以按请求变化或出错。不消耗 turns */
+  activity?: string | ((body: any, n: number) => string | { error: { status: number; message: string } });
   /** 会话侧：模型清单、画布归属、消息引用、撤销 */
   models?: unknown[];
   checkCanvas?: (body: any) => { error: { status: number; code: number; msg: string } } | void;
   checkMessage?: (body: any) => { selection: string[] } | { error: { status: number; code: number; msg: string } };
+  /** 附件校验：默认每个素材 id 都通过，给一张 800×600 的 PNG（本地存储，image 是 base64 QUJD） */
+  checkAttachments?: (body: any) => { attachments: unknown[] } | { error: { status: number; code: number; msg: string } };
   undo?: (runId: string) => Record<string, unknown> | { error: { status: number; code: number; msg: string } };
   /** 运行准备的出参覆盖项 */
   setup?: Partial<RunSetup>;
@@ -74,7 +78,7 @@ export const DECLS: ToolDecl[] = Object.keys(LABELS).map((name) => ({
 
 export async function fakeGo(opts: FakeGoOptions) {
   const seen: GoSeen[] = [];
-  const callLog: Array<{ callId: string; purpose: "main" | "summary" | "title" }> = [];
+  const callLog: Array<{ callId: string; purpose: "main" | "summary" | "title" | "activity" }> = [];
   let prepareError = opts.prepareError;
   const turns = [...opts.turns];
   let nextCallId = 7_000_000_000_000_000_001n;
@@ -128,6 +132,11 @@ export async function fakeGo(opts: FakeGoOptions) {
           if (r && isFailure(r)) return json(res, r.error.status, { code: r.error.code, msg: r.error.msg });
           return ok(res, null);
         }
+        if (path === `${base}/attachments/check`) {
+          const r = opts.checkAttachments?.(body) ?? { attachments: (body.asset_ids as string[]).map((id, i) => ({ asset_id: id, name: `图片 ${i + 1}`, mime_type: "image/png", width: 800, height: 600, url: `/files/u1/${id}.png`, image: { mime_type: "image/png", data: "QUJD" } })) };
+          if (isFailure(r)) return json(res, r.error.status, { code: r.error.code, msg: r.error.msg });
+          return ok(res, r);
+        }
         if (path === `${base}/messages/check`) {
           const r = opts.checkMessage?.(body) ?? { selection: body.selection ?? [] };
           if (isFailure(r)) return json(res, r.error.status, { code: r.error.code, msg: r.error.msg });
@@ -156,7 +165,7 @@ export async function fakeGo(opts: FakeGoOptions) {
           return ok(res, u);
         }
         if (req.method === "DELETE" && path.startsWith(`${base}/runs/`)) return ok(res, null);
-        if (path === `${base}/model/chat/completions`) return await (req.headers["x-agent-purpose"] === "summary" ? summarize(res, body) : req.headers["x-agent-purpose"] === "title" ? nameSession(res, body) : model(res, body));
+        if (path === `${base}/model/chat/completions`) return await (req.headers["x-agent-purpose"] === "summary" ? summarize(res, body) : req.headers["x-agent-purpose"] === "title" ? nameSession(res, body) : req.headers["x-agent-purpose"] === "activity" ? summarizeActivity(res, body) : model(res, body));
         json(res, 404, { code: 10002, msg: "资源不存在：" + path });
       } catch (e) {
         json(res, 500, { code: 50000, msg: String(e) });
@@ -166,14 +175,18 @@ export async function fakeGo(opts: FakeGoOptions) {
 
   let summaries = 0;
   let titles = 0;
+  let activities = 0;
   async function summarize(res: ServerResponse, body: any) {
     return sideCall(res, "summary", typeof opts.summary === "function" ? opts.summary(body, ++summaries) : (opts.summary ?? "## 目标\n摘要正文"));
   }
   async function nameSession(res: ServerResponse, body: any) {
     return sideCall(res, "title", typeof opts.title === "function" ? opts.title(body, ++titles) : (opts.title ?? "默认标题"));
   }
-  /** 摘要、命名这类不是助手说的话的调用：不消耗 turns，照常计费 */
-  function sideCall(res: ServerResponse, purpose: "summary" | "title", r: string | { error: { status: number; message: string } }) {
+  async function summarizeActivity(res: ServerResponse, body: any) {
+    return sideCall(res, "activity", typeof opts.activity === "function" ? opts.activity(body, ++activities) : (opts.activity ?? "默认活动说明"));
+  }
+  /** 摘要、命名、活动说明这类不是助手说的话的调用：不消耗 turns，照常计费 */
+  function sideCall(res: ServerResponse, purpose: "summary" | "title" | "activity", r: string | { error: { status: number; message: string } }) {
     if (typeof r !== "string") {
       res.writeHead(r.error.status, { "content-type": "application/json" });
       return void res.end(JSON.stringify({ error: { message: r.error.message, type: "upstream_error" } }));
@@ -230,7 +243,9 @@ export async function fakeGo(opts: FakeGoOptions) {
     /** 之后的运行准备都失败（null 恢复） */
     setPrepareError: (e: FakeGoOptions["prepareError"] | null) => { prepareError = e ?? undefined; },
     /** 模型请求（按顺序） */
-    get modelRequests() { return seen.filter((s) => s.path.endsWith("/model/chat/completions") && s.headers["x-agent-purpose"] !== "summary" && s.headers["x-agent-purpose"] !== "title"); },
+    get modelRequests() { return seen.filter((s) => s.path.endsWith("/model/chat/completions") && s.headers["x-agent-purpose"] !== "summary" && s.headers["x-agent-purpose"] !== "title" && s.headers["x-agent-purpose"] !== "activity"); },
+    /** 活动摘要请求（按顺序） */
+    get activityRequests() { return seen.filter((s) => s.path.endsWith("/model/chat/completions") && s.headers["x-agent-purpose"] === "activity"); },
     /** 会话命名请求（按顺序） */
     get titleRequests() { return seen.filter((s) => s.path.endsWith("/model/chat/completions") && s.headers["x-agent-purpose"] === "title"); },
     /** 摘要请求（按顺序） */

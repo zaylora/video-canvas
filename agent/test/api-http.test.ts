@@ -151,3 +151,14 @@ test("评价的接口：PUT 记下并返回服务端记的，DELETE 取消；校
     await bad({ rating: -1, reasons: ["x".repeat(33)] }, /原因\[0\]长度不能超过32个字符/);
     await bad({ rating: 1, comment: "字".repeat(2001) }, /说明长度不能超过2000个字符/);
   }));
+
+test("发起运行和插话的请求体里的 attachments 不会被校验白名单丢掉", () =>
+  withHttp({ turns: [{ text: "好" }] }, async (h, e) => {
+    const started = await h.call("POST", "/agent/sessions/" + enc(e.sessionId) + "/runs", { message: "看图", attachments: [{ asset_id: "11" }] });
+    assert.equal(started.status, 202);
+    await e.engine.idle();
+    assert.deepEqual(e.persisted("message.user")[0].attachments?.map((a: { asset_id: string }) => a.asset_id), ["11"]);
+    // 附件格式不对：10001，不是 500
+    const bad = await h.call("POST", "/agent/sessions/" + enc(e.sessionId) + "/runs", { message: "看图", attachments: "abc" });
+    assert.deepEqual([bad.status, bad.body.code], [400, 10001]);
+  }));

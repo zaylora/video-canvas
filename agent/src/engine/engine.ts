@@ -16,6 +16,8 @@ import {
 import { SUMMARY_SYSTEM_PROMPT, buildPrompt, compactionLimits, serializeMessages, summaryMaxTokens } from "../compaction.ts";
 import { createCodemode } from "../codemode.ts";
 import { TITLE_SYSTEM_PROMPT, buildTitlePrompt, draftTitle, parseTitle, stripMentions } from "../title.ts";
+import { attachmentViews, inputContent, type AttachmentCheck } from "../attachments.ts";
+import { ACTIVITY_CONCURRENCY, ACTIVITY_MIN_TOOLS, ACTIVITY_SYSTEM_PROMPT, buildActivityPrompt, type GroupTool } from "../activity-summary.ts";
 import { createToolsExtension, type ToolHost, type ToolRun } from "../durable-tools.ts";
 import type { IdCodec } from "../ids.ts";
 import { PROVIDER_ID, createModelRegistry, createRunContexts, runContextExtension, type RunContexts } from "../model-provider.ts";
@@ -56,6 +58,11 @@ const TITLE_TIMEOUT_MS = 20_000;
 const TITLE_MAX_TOKENS = 512;
 /** 命名只看开头的几条事件：第一轮的用户消息和助手回答都在里面 */
 const TITLE_EVENT_SCAN = 60;
+/** 活动说明请求的超时和最大输出：只是一句话，不能拖着运行的收尾 */
+const ACTIVITY_TIMEOUT_MS = 8_000;
+const ACTIVITY_MAX_TOKENS = 64;
+/** 运行收尾时最多等多久，让还没写完的说明写完；超过就放弃剩下的（前端一直显示动作短语） */
+const ACTIVITY_DRAIN_MS = 10_000;
 
 /** 引擎发出的事件。seq 为 0 表示临时事件（文字增量），不落库、不参与回放 */
 export interface PublishedEvent {
@@ -92,6 +99,8 @@ export interface EngineOptions {
   resumeWindowMs?: number;
   /** 首轮运行成功后，用用户当前选的模型给会话起标题（默认开）；false 关闭，标题就是首条消息截出来的草稿 */
   autoTitle?: boolean;
+  /** 一段连续的工具调用结束后，用同一个模型写一句说明（默认开）；false 关闭，前端只显示动作短语 */
+  activitySummary?: boolean;
 }
 
 export interface StartRunRequest {
@@ -103,6 +112,8 @@ export interface StartRunRequest {
   /** 调用方（REST 层）已经选好的 Agent 模型 */
   modelKey: string;
   selection?: string[];
+  /** 图片附件（Go 校验通过的）：记进 message.user 事件，图片随这条消息交给模型 */
+  attachments?: AttachmentCheck[];
   /** 本轮积分预算，不传或 0 表示不限制 */
   budgetCredits?: number;
   maxSteps?: number;
@@ -137,6 +148,18 @@ interface Active {
   unread: Map<string, string>;
   modelError?: { code?: number; status?: number; message?: string };
   drive?: Promise<void>;
+  /** 正在进行的一段连续工具调用（第一个调用的 id 当 group_id，和前端活动块的 groupId 对应） */
+  group?: ActivityGroup;
+  /** 等着写说明的段、正在写的数量；运行收尾时的取消开关 */
+  activityQueue: Array<{ groupId: string; tools: GroupTool[] }>;
+  activityActive: number;
+  activityAbort: AbortController;
+}
+
+/** 一段连续的工具调用：按调用 id 记下每个调用的情况，段结束时据此决定要不要写说明 */
+interface ActivityGroup {
+  id: string;
+  tools: Map<string, GroupTool & { ended: boolean }>;
 }
 
 const truncate = (s: string, n: number) => (Array.from(s).length > n ? Array.from(s).slice(0, n).join("") : s);
@@ -366,6 +389,117 @@ export class AgentEngine {
     }
     const rec = this.#o.store.appendEvent(run.sessionId, run.id, type, payload);
     this.#o.onEvent?.({ id: rec.id, sessionId: run.sessionId, runId: run.id, userId: run.userId, canvasId: run.canvasId, seq: rec.seq, type, payload, createdAt: rec.createdAt });
+    this.#trackActivity(run.id, type, payload);
+  }
+
+  /**
+   * 活动说明：按已经落库的事件分出「一段连续的工具调用」，规则和前端的 groupTools 一致。
+   * 工具调用开始时开一段（第一个调用的 id 就是 group_id）；模型说了话、请求审批、收下插话、压缩上下文、运行不再进行时，这一段结束。
+   */
+  #trackActivity(runId: string, type: string, payload: unknown): void {
+    const a = this.#byRun.get(runId);
+    if (!a) return;
+    const p = (payload && typeof payload === "object" ? payload : {}) as Record<string, unknown>;
+    const s = (v: unknown) => (typeof v === "string" ? v : "");
+    switch (type) {
+      case "tool.start": {
+        const id = s(p.id);
+        if (!id) return;
+        a.group ??= { id, tools: new Map() };
+        a.group.tools.set(id, { label: s(p.label) || s(p.name), summary: "", failed: false, ended: false });
+        return;
+      }
+      case "tool.end": {
+        const t = a.group?.tools.get(s(p.id));
+        if (!t) return;
+        if (s(p.label)) t.label = s(p.label);
+        t.summary = s(p.summary);
+        t.failed = p.is_error === true;
+        t.ended = true;
+        return;
+      }
+      case "message.done":
+        // 只有工具调用、没有文字的回答不会在前端排出一项，不断开这一段
+        if (s(p.text) || s(p.thinking)) this.#closeActivity(a);
+        return;
+      case "approval.created":
+      case "steer.read":
+      case "context.compacted":
+        this.#closeActivity(a);
+        return;
+      case "run.status":
+        if (!["running", "queued", "recovering"].includes(s(p.status))) this.#closeActivity(a);
+        return;
+    }
+  }
+
+  /** 一段结束：至少两个调用、都有结果（没被中止）的才排队写说明 */
+  #closeActivity(a: Active): void {
+    const g = a.group;
+    a.group = undefined;
+    if (!g || this.#o.activitySummary === false || this.#closing) return;
+    const tools = [...g.tools.values()];
+    if (tools.length < ACTIVITY_MIN_TOOLS || tools.some((t) => !t.ended)) return;
+    a.activityQueue.push({ groupId: g.id, tools: tools.map(({ label, summary, failed }) => ({ label, summary, failed })) });
+    this.#pumpActivity(a);
+  }
+
+  /** 同一轮最多同时写 ACTIVITY_CONCURRENCY 个说明，其余排队 */
+  #pumpActivity(a: Active): void {
+    while (a.activityActive < ACTIVITY_CONCURRENCY && a.activityQueue.length > 0) {
+      const job = a.activityQueue.shift()!;
+      a.activityActive++;
+      void this.#summarizeActivity(a, job).finally(() => {
+        a.activityActive--;
+        this.#pumpActivity(a);
+      });
+    }
+  }
+
+  /**
+   * 用用户当前选的模型给一段工具调用写一句说明，成功就推 activity.summarized（落库）。
+   * 和会话命名一样：请求走平台的模型代理（带运行上下文和用途，Go 计费），失败不重试、不影响运行，前端继续显示动作短语。
+   */
+  async #summarizeActivity(a: Active, job: { groupId: string; tools: GroupTool[] }): Promise<void> {
+    try {
+      const model = this.#models.models.getModel(PROVIDER_ID, a.rc.model_key!);
+      const question = this.#runQuestion(a);
+        if (!model || !question) return;
+      const sessionId = `activity:${a.run.id}`;
+      this.#contexts.bindSession(sessionId, a.convId);
+      const msg = await this.#models.models.completeSimple(
+        model,
+        { systemPrompt: ACTIVITY_SYSTEM_PROMPT, messages: [{ role: "user", content: [{ type: "text", text: buildActivityPrompt(question, job.tools) }], timestamp: Date.now() }] },
+        { signal: AbortSignal.any([AbortSignal.timeout(ACTIVITY_TIMEOUT_MS), a.activityAbort.signal]), maxTokens: ACTIVITY_MAX_TOKENS, sessionId, headers: { "X-Agent-Purpose": "activity" } },
+      );
+      if (msg.stopReason === "error" || msg.stopReason === "aborted") return;
+      const text = parseTitle(msg.content.map((p) => (p.type === "text" ? p.text : "")).join(""));
+      if (text) this.#emit(this.#ev(a), "activity.summarized", { group_id: job.groupId, text });
+    } catch {
+      // 说明只是锦上添花：任何失败都不影响运行
+    } finally {
+      await this.#settleSummaries(a).catch(() => {}); // 说明调用照常计费：先发说明，再结算
+    }
+  }
+
+  /** 这一轮用户自己发的第一条消息（不是插话），给说明当上下文；没有返回空串 */
+  #runQuestion(a: Active): string {
+    const hit = this.#o.store.listRunEvents(a.run.id).find((e) => e.type === "message.user" && !(e.payload as { steer?: boolean }).steer);
+    return truncate(String((hit?.payload as { text?: string } | undefined)?.text ?? ""), 800);
+  }
+
+  /** 运行收尾时等还没写完的说明写完；最多等 ACTIVITY_DRAIN_MS，超时就取消剩下的 */
+  async #drainActivity(a: Active): Promise<void> {
+    const deadline = this.#now() + ACTIVITY_DRAIN_MS;
+    while (a.activityActive > 0 || a.activityQueue.length > 0) {
+      if (this.#closing) return;
+      if (this.#now() >= deadline) {
+        a.activityQueue.length = 0;
+        a.activityAbort.abort();
+        return;
+      }
+      await sleep(20);
+    }
   }
 
   /** 只推送不落库的临时事件 */
@@ -404,12 +538,13 @@ export class AgentEngine {
     store.updateSession(req.userId, sess.id, { mode, modelKey: req.modelKey, ...(draft && { title: draft }) });
     const ev = { id: run.id, userId: req.userId, sessionId: sess.id, canvasId: sess.canvasId };
     if (draft) this.#push(ev, "session.titled", { title: draft }); // 面板标题马上跟上，不用等刷新会话列表
-    this.#emit(ev, "message.user", { text: message, mode, selection });
+    const attachments = req.attachments ?? [];
+    this.#emit(ev, "message.user", { text: message, mode, selection, ...(attachments.length > 0 && { attachments: attachmentViews(attachments) }) });
     this.#emit(ev, "run.status", statusEvent("queued"));
 
     await this.#launch(run, this.#session(req.userId, sess.id), {
       selection, prepare: { message, max_steps: maxSteps }, recordHarness: true, fresh: true,
-      kickoff: (a, setup) => a.conv.submit({ type: "input", content: setup.first_message ?? message }, context),
+      kickoff: (a, setup) => a.conv.submit({ type: "input", content: inputContent(setup.first_message ?? message, attachments) }, context),
     });
     return { ...run, status: "queued" };
   }
@@ -453,7 +588,7 @@ export class AgentEngine {
     const convId = String(conv.id);
     await this.#watch(conv, convId);
     this.#contexts.set(convId, rc);
-    const a: Active = { run, convId, rc, conv, paused: false, finishing: false, steps: run.steps, maxSteps: run.maxSteps, callIds: [], summaryCallIds: [], compactionDisabled: false, recovering: false, startedBefore: new Set(), steers: new Map(), unread: new Map(loadUnread ? this.#unreadSteers(run) : []), lock: Promise.resolve() };
+    const a: Active = { run, convId, rc, conv, paused: false, finishing: false, steps: run.steps, maxSteps: run.maxSteps, callIds: [], summaryCallIds: [], compactionDisabled: false, recovering: false, startedBefore: new Set(), steers: new Map(), unread: new Map(loadUnread ? this.#unreadSteers(run) : []), lock: Promise.resolve(), activityQueue: [], activityActive: 0, activityAbort: new AbortController() };
     this.#active.set(convId, a);
     this.#answered.set(convId, 0);
     this.#byRun.set(run.id, a);
@@ -524,12 +659,16 @@ export class AgentEngine {
       await this.#untilQuiet(a);
       const rec = sub ? await sub.wait(context) : undefined;
       await this.#finalize(a, rec?.status === "unanswered" ? `运行中断：${rec.reason}` : undefined);
+      await this.#drainActivity(a); // 最后一段的说明在运行收尾后才排上队，要在释放运行之前写完
       await this.#autoTitle(a);
     } catch (e) {
       if (this.#closing) return; // 正常停机：运行留在原状态，下次启动按窗口判断
       await this.#finalize(a, String((e as Error)?.message ?? e));
     } finally {
-      if (!this.#closing) await this.#release(a);
+      if (!this.#closing) {
+        await this.#drainActivity(a);
+        await this.#release(a);
+      }
     }
   }
 
@@ -819,7 +958,7 @@ export class AgentEngine {
     return store.getRun(userId, runId);
   }
 
-  async interject(userId: string, runId: string, text: string): Promise<void> {
+  async interject(userId: string, runId: string, text: string, attachments: AttachmentCheck[] = []): Promise<void> {
     const run = this.#run(userId, runId);
     const msg = text.trim();
     if (!msg) throw Err.invalidParams("消息不能为空");
@@ -831,11 +970,11 @@ export class AgentEngine {
       if (this.#o.store.getRun(userId, runId).status !== "running") throw Err.state(); // 刚好进入等待回答 / 等审批
       // 先落库再交给 Pi：Pi 在边界放进记录时 steer.read 要跟在 message.user 后面。id 同时当 Pi 的请求 id，重启后靠它找回这条提交
       const id = randomUUID();
-      this.#emit(this.#ev(a), "message.user", { id, text: msg, steer: true });
+      this.#emit(this.#ev(a), "message.user", { id, text: msg, steer: true, ...(attachments.length > 0 && { attachments: attachmentViews(attachments) }) });
       a.unread.set(id, msg);
       try {
         // 官方效果：工具跑完后、下一次请求前一起带上；不打断正在进行的步骤。本轮要用户回答时由 #withdrawSteers 撤回，等回答后再交
-        a.steers.set(id, await a.conv.submit({ type: "input", content: msg, whenBusy: "steer", requestId: id }, context));
+        a.steers.set(id, await a.conv.submit({ type: "input", content: inputContent(msg, attachments), whenBusy: "steer", requestId: id }, context));
       } catch (e) {
         a.unread.delete(id);
         this.#emit(this.#ev(a), "steer.dropped", { ids: [id], reason: "failed" });

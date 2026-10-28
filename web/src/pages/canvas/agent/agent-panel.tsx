@@ -22,7 +22,8 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { DURATION, EASE_OUT, SPRING } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { DOCK_WIDTH, useAgentSettings } from "@/store/agent-settings";
-import type { Chip } from "@/utils/agent/chips";
+import { useAgentAttachments } from "@/hooks/use-agent-attachments";
+import { toAttachmentsPayload } from "@/utils/agent/attachments";
 
 import { AgentComposer } from "./agent-composer";
 import type { RefNode } from "@/utils/agent/selection-refs";
@@ -69,7 +70,6 @@ export function AgentPanel({
   selection,
   nodes,
   refNodes,
-  onAttachImages,
   onClose,
 }: {
   ctl: AgentController;
@@ -80,8 +80,6 @@ export function AgentPanel({
   nodes: NodeOption[];
   /** 解析选中节点标题用：含组（nodes 是输入框 @ 的候选，不含组） */
   refNodes: RefNode[];
-  /** 把图片传到画布，返回新建节点的 chip */
-  onAttachImages: (files: File[]) => Promise<Chip[]>;
   onClose: () => void;
 }) {
   const mobile = useIsMobile();
@@ -94,6 +92,9 @@ export function AgentPanel({
   const docked = wantDock && canDock && !mobile;
 
   const [text, setText] = useState("");
+  const attachments = useAgentAttachments();
+  /** 当前模型能不能看图；没选模型时按会话默认（清单第一个）算 */
+  const vision = (models.find((m) => m.key === ctl.modelKey) ?? models[0])?.vision ?? true;
   const [scrolled, setScrolled] = useState(false);
   const editor = useRef<AgentEditorHandle>(null);
   const bounds = useRef<HTMLDivElement>(null);
@@ -139,9 +140,12 @@ export function AgentPanel({
 
   const send = async (message: string, mode = ctl.mode) => {
     if (mode !== ctl.mode) ctl.setMode(mode);
-    const ok = await ctl.send(message);
-    // 发出去了才清空输入框；没发出去（接口报错）保留原文，用户可以改了再发
-    if (ok) editor.current?.clear();
+    const ok = await ctl.send(message, toAttachmentsPayload(attachments.items));
+    // 发出去了才清空输入框和托盘；没发出去（接口报错）保留原文和图片，用户可以改了再发
+    if (ok) {
+      editor.current?.clear();
+      attachments.clear();
+    }
     return ok;
   };
 
@@ -157,7 +161,9 @@ export function AgentPanel({
   const empty = ctl.timeline.length === 0 && !ctl.busy && !loading;
   /** 还没被 Agent 读到的插话，排在输入框顶部 */
   const steerQueue = ctl.timeline.flatMap((item) =>
-    item.type === "user" && item.queued === "waiting" ? [{ key: item.key, text: item.text }] : [],
+    item.type === "user" && item.queued === "waiting"
+      ? [{ key: item.key, text: item.text, images: item.attachments.length }]
+      : [],
   );
   const enter = reduce
     ? { opacity: 0 }
@@ -253,7 +259,8 @@ export function AgentPanel({
             refNodes={refNodes}
             editorRef={editor}
             nodes={nodes}
-            onAttachImages={onAttachImages}
+            attachments={attachments}
+            vision={vision}
           />
         </div>
       </motion.div>

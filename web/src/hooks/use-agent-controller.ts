@@ -13,6 +13,7 @@ import {
   undoAgentRun,
 } from "@/api/agent";
 import type {
+  AgentAttachmentReq,
   AgentMode,
   AgentModelDto,
   AgentSessionDto,
@@ -154,14 +155,14 @@ export function useAgentController({
 
   /** 发送：运行中就是插话，否则发起新一轮。返回是否发出去了（没发出去输入框要保留原文） */
   const send = useCallback(
-    async (text: string) => {
+    async (text: string, attachments?: AgentAttachmentReq[]) => {
       const message = text.trim();
       if (!message || sendingRef.current) return false;
       sendingRef.current = true;
       setSending(true);
       try {
         if (activeRun) {
-          await interjectAgentRun(activeRun, message);
+          await interjectAgentRun(activeRun, message, attachments);
           return true;
         }
         const target = await ensureSession();
@@ -171,6 +172,7 @@ export function useAgentController({
           // 选中的节点不再整批带上：要引用哪个，就在输入框里变成消息里的 node: chip
           viewport: getViewport(),
           agent_model_key: modelKey || undefined,
+          ...(attachments?.length && { attachments }),
         });
         useAgentStore.getState().ingestRun(run);
         void useCreditsStore.getState().refresh();

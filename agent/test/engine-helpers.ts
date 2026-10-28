@@ -25,7 +25,7 @@ export interface Env {
   run(id: string): Run;
 }
 
-export async function withEngine(go: FakeGoOptions, fn: (e: Env) => Promise<void>, opts: { approvalTtlMs?: number; canvasId?: string; autoTitle?: boolean } = {}) {
+export async function withEngine(go: FakeGoOptions, fn: (e: Env) => Promise<void>, opts: { approvalTtlMs?: number; canvasId?: string; autoTitle?: boolean; activitySummary?: boolean } = {}) {
   const g = await fakeGo(go);
   let skew = 0; // advanceClock 往后拨的量；平时用真实时间，时间戳才会随时间前进
   const clock = () => Date.now() + skew;
@@ -36,6 +36,7 @@ export async function withEngine(go: FakeGoOptions, fn: (e: Env) => Promise<void
     store, platform, baseUrl: g.url, serviceToken: TOKEN,
     storage: new MemoryStorage(), codec, onEvent: (ev) => events.push(ev), now: clock, approvalTtlMs: opts.approvalTtlMs,
     autoTitle: opts.autoTitle ?? false, // 默认不命名：命名多一次模型调用，会改变别的用例数的调用次数和用量；要测命名的用例自己打开
+    activitySummary: opts.activitySummary ?? false, // 同理：活动说明也是额外的模型调用，要测的用例自己打开
   });
   const session = store.createSession({ userId: "1", canvasId: opts.canvasId ?? "7", title: "新对话", mode: "all", modelKey: "" });
   const env: Env = {

@@ -146,7 +146,7 @@ func (s *AgentCanvasService) ApplyOps(ctx context.Context, run *model.AgentRun, 
 	//    模型的生成方式在重试之前取一次：mode 要按它校验，写入后还要据它检查提醒
 	lookup := s.modelOpsLookup(ctx)
 	res, extra, err := s.mutate(ctx, run, toolCallID, model.MutationApplyOps, 0, func(g *canvasgraph.Graph) (*edit, error) {
-		r, err := canvasgraph.Apply(g, ops, canvasgraph.Options{ModelOps: lookup})
+		r, err := canvasgraph.Apply(g, ops, canvasgraph.Options{ModelOps: lookup, Assets: opAssetsFrom(ctx)})
 		if err != nil {
 			return nil, err
 		}
@@ -161,6 +161,18 @@ func (s *AgentCanvasService) ApplyOps(ctx context.Context, run *model.AgentRun, 
 		res.Warnings = w
 	}
 	return res, err
+}
+
+type opAssetsKey struct{}
+
+// withOpAssets 把这批操作里 assetId 指向的、已校验过归属的素材带进应用操作的上下文。
+func withOpAssets(ctx context.Context, assets map[string]canvasgraph.AssetRef) context.Context {
+	return context.WithValue(ctx, opAssetsKey{}, assets)
+}
+
+func opAssetsFrom(ctx context.Context) map[string]canvasgraph.AssetRef {
+	m, _ := ctx.Value(opAssetsKey{}).(map[string]canvasgraph.AssetRef)
+	return m
 }
 
 // touchedNodeIDs 取出这批改动涉及的节点：新建、修改的节点，以及新连线的两端。

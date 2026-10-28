@@ -94,17 +94,24 @@ func frameNode(id string, f FrameSpec) Node {
 	if label == "" {
 		label = "视频帧"
 	}
-	data := map[string]any{
-		"kind": KindImage, "label": label, "status": "done",
-		"src": f.URL, "assetId": f.AssetID, "mediaType": "image", "uploaded": true,
-	}
-	if f.FileName != "" {
-		data["fileName"] = f.FileName
-	}
-	if f.Width > 0 && f.Height > 0 {
-		data["mediaAspect"] = float64(f.Width) / float64(f.Height)
-	}
+	data := uploadedImageData(AssetRef{ID: f.AssetID, URL: f.URL, FileName: f.FileName, Width: f.Width, Height: f.Height})
+	data["label"] = label
 	return Node{"id": id, "type": "canvas", "data": data}
+}
+
+// uploadedImageData 是一个已有素材的上传型图片节点的数据（已完成、带素材地址和 id），不含标题。
+func uploadedImageData(r AssetRef) map[string]any {
+	data := map[string]any{
+		"kind": KindImage, "status": "done",
+		"src": r.URL, "assetId": r.ID, "mediaType": "image", "uploaded": true,
+	}
+	if r.FileName != "" {
+		data["fileName"] = r.FileName
+	}
+	if r.Width > 0 && r.Height > 0 {
+		data["mediaAspect"] = float64(r.Width) / float64(r.Height)
+	}
+	return data
 }
 
 // linkFrame 把帧图连到目标节点作参考。目标要存在、不是组，并且图片能连到它（图片的下游是图片和视频）。

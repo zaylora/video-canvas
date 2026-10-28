@@ -49,6 +49,8 @@ type PlatformAPI interface {
 	CheckCanvas(ctx context.Context, userID, canvasID uint64) error
 	// CheckMessage 校验消息里的引用，返回去掉了不存在节点的选中列表。
 	CheckMessage(ctx context.Context, userID, canvasID uint64, message string, selection []string) ([]string, error)
+	// CheckAttachments 校验消息的图片附件（归属、格式、大小、数量），返回展示信息和交给模型的图。
+	CheckAttachments(ctx context.Context, userID uint64, assetIDs []string) ([]agentsvc.AttachmentCheck, error)
 	// UndoPlatformRun 撤销某运行对画布的全部改动。
 	UndoPlatformRun(ctx context.Context, rc agentsvc.RunContext) (*agentsvc.UndoResult, error)
 	// PrepareRun 给 Agent 服务一次运行（或续跑）需要的、由平台决定的内容：模型规格、系统提示词、工具声明、第一条消息、版本。
@@ -386,6 +388,29 @@ func (h *PlatformHandler) CheckMessage(c *gin.Context) {
 		sel = []string{}
 	}
 	response.OK(c, map[string]any{"selection": sel})
+}
+
+// attachmentsBody 是附件校验的请求体：素材 id 是十进制字符串（雪花 ID 超过 2^53），一条消息最多 9 张。
+type attachmentsBody struct {
+	UserID   uint64   `json:"user_id,string" binding:"required,min=1" label:"user_id"`
+	AssetIDs []string `json:"asset_ids" binding:"max=9,dive,max=32" label:"asset_ids"`
+}
+
+// CheckAttachments 校验消息的图片附件：素材必须是该用户的、支持的图片格式。不合法返回 10001 并点名第几张。
+func (h *PlatformHandler) CheckAttachments(c *gin.Context) {
+	var req attachmentsBody
+	if !handler.BindJSON(c, &req) {
+		return
+	}
+	list, err := h.svc.CheckAttachments(c.Request.Context(), req.UserID, req.AssetIDs)
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	if list == nil {
+		list = []agentsvc.AttachmentCheck{}
+	}
+	response.OK(c, map[string]any{"attachments": list})
 }
 
 // UndoRun 撤销某运行对画布的全部改动。路径里的运行必须和上下文里声明的一致。

@@ -1,0 +1,1066 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agent 聊天框改进</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+    <style>
+      :root {
+        --radius: 0.625rem;
+        --background: 0 0% 100%;
+        --foreground: 240 10% 3.9%;
+        --card: 0 0% 100%;
+        --muted: 240 4.8% 95.9%;
+        --muted-foreground: 240 3.8% 46.1%;
+        --primary: 240 5.9% 10%;
+        --primary-foreground: 0 0% 98%;
+        --accent: 240 4.8% 95.9%;
+        --border: 240 5.9% 90%;
+        --panel: 0 0% 99%;
+        --canvas: 240 5% 96.5%;
+        --ok: 5 150 105;
+        --bad: 220 38 38;
+        --warn: 180 83 9;
+        --info: 2 132 199;
+        --violet: 124 58 237;
+        --beam: 217 119 6;
+        color-scheme: light;
+      }
+      .dark {
+        --background: 240 10% 3.9%;
+        --foreground: 0 0% 98%;
+        --card: 240 10% 5.5%;
+        --muted: 240 3.7% 15.9%;
+        --muted-foreground: 240 5% 64.9%;
+        --primary: 0 0% 98%;
+        --primary-foreground: 240 5.9% 10%;
+        --accent: 240 3.7% 15.9%;
+        --border: 240 3.7% 17%;
+        --panel: 240 8% 7%;
+        --canvas: 240 6% 9%;
+        --ok: 52 211 153;
+        --bad: 248 113 113;
+        --warn: 251 191 36;
+        --info: 56 189 248;
+        --violet: 167 139 250;
+        --beam: 251 191 36;
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        font-family: Geist, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        background: hsl(var(--background));
+        color: hsl(var(--foreground));
+        -webkit-font-smoothing: antialiased;
+        line-height: 1.55;
+      }
+      code, .mono { font-family: "Geist Mono", "SF Mono", Consolas, monospace; }
+      code { font-size: 0.92em; background: hsl(var(--muted)); padding: 1px 5px; border-radius: 5px; }
+      [data-lucide], svg.lucide { width: 1em; height: 1em; flex: none; }
+      h1, h2, h3, h4, p { margin: 0; }
+      button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+      table { border-collapse: collapse; width: 100%; }
+      th { font-weight: 500; text-align: left; }
+      [hidden] { display: none !important; }
+      .muted { color: hsl(var(--muted-foreground)); }
+      .row { display: flex; align-items: center; gap: 8px; }
+      .wrapflex { flex-wrap: wrap; }
+      .spacer { margin-left: auto; }
+
+      .top { position: sticky; top: 0; z-index: 30; background: hsl(var(--background) / 0.92); backdrop-filter: blur(8px); border-bottom: 1px solid hsl(var(--border)); }
+      .top-in { max-width: 1160px; margin: 0 auto; padding: 0 20px; display: flex; align-items: center; gap: 16px; height: 56px; }
+      .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; white-space: nowrap; }
+      .logo { width: 28px; height: 28px; border-radius: 8px; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; }
+      .tabs { display: flex; gap: 2px; margin-left: 8px; overflow-x: auto; }
+      .tab { height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13px; font-weight: 500; color: hsl(var(--muted-foreground)); white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; transition: background 0.15s, color 0.15s; }
+      .tab:hover { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+      .tab[aria-selected="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn { height: 32px; padding: 0 10px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; }
+      .btn:hover { background: hsl(var(--accent)); }
+      .btn-primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn-primary:hover { background: hsl(var(--primary) / 0.9); }
+      .btn-outline { border: 1px solid hsl(var(--border)); }
+      .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+      .switch { width: 34px; height: 20px; border-radius: 999px; background: hsl(var(--border)); position: relative; transition: background 0.15s; }
+      .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+      .switch[aria-checked="true"] { background: rgb(var(--violet)); }
+      .switch[aria-checked="true"]::after { transform: translateX(14px); }
+
+      .wrap { max-width: 1160px; margin: 0 auto; padding: 32px 20px 80px; }
+      .h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+      .lead { margin-top: 10px; max-width: 840px; font-size: 15px; color: hsl(var(--muted-foreground)); }
+      .lead b { color: hsl(var(--foreground)); }
+      .sec { margin-top: 36px; }
+      .sec > h2 { font-size: 18px; font-weight: 600; }
+      .sec > .sub { margin: 4px 0 14px; max-width: 840px; font-size: 13.5px; color: hsl(var(--muted-foreground)); }
+      .card { border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: var(--radius); padding: 16px; }
+      .grid { display: grid; gap: 12px; }
+      .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      @media (max-width: 820px) { .g2, .g3 { grid-template-columns: 1fr; } .top-in { padding: 0 12px; } .wrap { padding: 24px 16px 64px; } }
+      ul.list { margin: 0; padding-left: 18px; font-size: 13.5px; }
+
+      .tag { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 999px; font-size: 11.5px; font-weight: 500; white-space: nowrap; }
+      .t-ok { background: rgb(var(--ok) / 0.12); color: rgb(var(--ok)); }
+      .t-bad { background: rgb(var(--bad) / 0.12); color: rgb(var(--bad)); }
+      .t-warn { background: rgb(var(--warn) / 0.12); color: rgb(var(--warn)); }
+      .t-info { background: rgb(var(--info) / 0.12); color: rgb(var(--info)); }
+      .t-vio { background: rgb(var(--violet) / 0.12); color: rgb(var(--violet)); }
+      .t-mute { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
+
+      .callout { display: flex; gap: 10px; padding: 12px 14px; border-radius: var(--radius); font-size: 13.5px; border: 1px solid; }
+      .callout > i, .callout > svg { margin-top: 3px; }
+      .c-info { background: rgb(var(--info) / 0.07); border-color: rgb(var(--info) / 0.3); }
+      .c-info > :first-child { color: rgb(var(--info)); }
+      .c-warn { background: rgb(var(--warn) / 0.07); border-color: rgb(var(--warn) / 0.3); }
+      .c-warn > :first-child { color: rgb(var(--warn)); }
+      .c-ok { background: rgb(var(--ok) / 0.07); border-color: rgb(var(--ok) / 0.3); }
+      .c-ok > :first-child { color: rgb(var(--ok)); }
+
+      .flow { display: flex; align-items: stretch; gap: 6px; flex-wrap: wrap; padding: 14px; border-radius: var(--radius); }
+      .flow .node { flex: 1 1 140px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 12px; font-size: 12.5px; }
+      .flow .node b { display: block; font-size: 13px; margin-bottom: 2px; }
+      .flow .node.hl { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+      .flow .arrow { display: grid; place-items: center; color: hsl(var(--muted-foreground)); }
+
+      .cmp-wrap { overflow-x: auto; border: 1px solid hsl(var(--border)); border-radius: var(--radius); }
+      .cmp th, .cmp td { padding: 9px 12px; font-size: 13px; vertical-align: top; border-bottom: 1px solid hsl(var(--border)); }
+      .cmp tr:last-child th, .cmp tr:last-child td { border-bottom: 0; }
+      .cmp thead th { background: hsl(var(--muted)); font-size: 12.5px; white-space: nowrap; }
+      .cmp tbody th { width: 150px; color: hsl(var(--muted-foreground)); font-weight: 500; }
+      .cmp .y { color: rgb(var(--ok)); }
+      .cmp .m { color: rgb(var(--warn)); font-weight: 500; }
+
+      .steps { list-style: none; counter-reset: s; display: grid; gap: 12px; }
+      .steps li { counter-increment: s; position: relative; padding-left: 32px; font-size: 13.5px; }
+      .steps li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 22px; height: 22px; border-radius: 50%; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; font-size: 12px; font-weight: 600; }
+      .steps li small { display: block; color: hsl(var(--muted-foreground)); font-size: 12.5px; }
+
+      .codeblock { background: hsl(var(--muted)); border-radius: var(--radius); padding: 14px; font-family: "Geist Mono", "SF Mono", Consolas, monospace; font-size: 12.5px; overflow-x: auto; }
+
+      .frame { border: 1px solid hsl(var(--border)); border-radius: 12px; overflow: hidden; background: hsl(var(--background)); }
+      .frame-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: hsl(var(--muted)); font-size: 12px; color: hsl(var(--muted-foreground)); }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: hsl(var(--border)); }
+
+      .note { outline: 1.5px dashed rgb(var(--violet)); outline-offset: 3px; position: relative; }
+      .note-txt { display: none; margin-top: 6px; font-size: 11.5px; line-height: 1.5; color: rgb(var(--violet)); }
+      .show-notes .note-txt { display: block; }
+      body:not(.show-notes) .note { outline: none; }
+      .note-only { display: none !important; }
+      .show-notes .note-only { display: inline-flex !important; }
+
+      .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 60; pointer-events: none; }
+      .toast > div { display: flex; align-items: center; gap: 8px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 14px; font-size: 13px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); }
+
+      /* ---------- 原型：画布 + Agent 面板 ---------- */
+      .proto-grid { display: grid; grid-template-columns: minmax(0, 1fr) 400px; height: 680px; }
+      @media (max-width: 900px) { .proto-grid { grid-template-columns: 1fr; height: auto; } .canvas-area { min-height: 200px; } .panel { height: 640px; } }
+      .canvas-area { background: hsl(var(--canvas)); background-image: radial-gradient(hsl(var(--border)) 1px, transparent 1px); background-size: 18px 18px; position: relative; padding: 18px; overflow: hidden; }
+      .canvas-count { position: absolute; left: 14px; top: 12px; font-size: 12px; display: inline-flex; gap: 6px; align-items: center; background: hsl(var(--card)); border: 1px solid hsl(var(--border)); padding: 4px 10px; border-radius: 999px; }
+      .cnodes { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 42px; }
+      .cnode { width: 132px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 6px; font-size: 11.5px; }
+      .cnode .ph { height: 74px; border-radius: 6px; margin-bottom: 5px; }
+      .cnode.new { box-shadow: 0 0 0 2px rgb(var(--beam)); animation: pop 0.4s ease-out; }
+      @keyframes pop { from { transform: scale(0.92); opacity: 0; } to { transform: none; opacity: 1; } }
+
+      .panel { border-left: 1px solid hsl(var(--border)); background: hsl(var(--panel)); display: flex; flex-direction: column; min-height: 0; }
+      .p-head { height: 44px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-bottom: 1px solid hsl(var(--border)); font-size: 13px; font-weight: 600; }
+      .p-list { flex: 1; overflow-y: auto; padding: 12px 14px 8px; display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+      .enter { animation: enter 0.22s ease-out; }
+      @keyframes enter { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+      .fadein { animation: fadein 0.2s ease-out; }
+      @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+
+      .u-wrap { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+      .u-atts { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+      .u-att { width: 48px; height: 48px; border-radius: 8px; border: 1px solid hsl(var(--border)); cursor: zoom-in; position: relative; overflow: hidden; }
+      .u-att.dead { cursor: default; background: hsl(var(--muted)); display: grid; place-items: center; font-size: 9.5px; color: hsl(var(--muted-foreground)); text-align: center; line-height: 1.2; padding: 3px; }
+      .u-bub { max-width: 86%; background: hsl(var(--muted)); border-radius: 12px; padding: 8px 12px; font-size: 13px; white-space: pre-wrap; word-break: break-word; }
+
+      .a-msg { font-size: 13.5px; line-height: 1.7; position: relative; }
+      .think { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: hsl(var(--muted-foreground)); margin-left: -6px; padding: 1px 6px; border-radius: 8px; }
+      .shimmer { background: linear-gradient(90deg, hsl(var(--muted-foreground)) 30%, hsl(var(--foreground)) 50%, hsl(var(--muted-foreground)) 70%); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: shim 1.4s linear infinite; }
+      @keyframes shim { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+      .cursor { display: inline-block; width: 2px; height: 14px; margin-left: 2px; background: hsl(var(--foreground) / 0.6); vertical-align: -2px; animation: blink 1s steps(2) infinite; transition: opacity 0.12s; }
+      @keyframes blink { 50% { opacity: 0.2; } }
+
+      .act-head { display: inline-flex; align-items: center; gap: 8px; height: 28px; padding: 0 8px; margin-left: -8px; border-radius: 8px; font-size: 12.5px; color: hsl(var(--muted-foreground)); max-width: 100%; white-space: nowrap; }
+      .act-head:hover { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+      .act-head .sum { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+      .act-head .secs { font-variant-numeric: tabular-nums; opacity: 0.8; }
+      .act-head .chev { transition: transform 0.12s; opacity: 0.7; }
+      .act-head[aria-expanded="true"] .chev { transform: rotate(90deg); }
+      .spin { animation: spin 0.9s linear infinite; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      .act-body { margin: 4px 0 0 6px; padding-left: 12px; border-left: 1px solid hsl(var(--foreground) / 0.1); display: flex; flex-direction: column; gap: 1px; }
+      .trow { display: flex; align-items: center; gap: 8px; font-size: 12px; color: hsl(var(--muted-foreground)); padding: 3px 8px; margin-left: -8px; border-radius: 8px; text-align: left; width: 100%; }
+      .trow .nm { color: hsl(var(--foreground)); font-weight: 500; flex: none; }
+      .trow .sm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.85; min-width: 0; }
+      .trow .rt { margin-left: auto; flex: none; font-size: 11.5px; }
+      .trow.loc:hover { background: hsl(var(--accent)); color: hsl(var(--foreground)); cursor: pointer; }
+      .trow .locate { opacity: 0; }
+      .trow.loc:hover .locate { opacity: 1; }
+      .trow.err .ic { color: rgb(var(--warn)); }
+      .trow.abort .ic { opacity: 0.5; }
+      .src-tag { margin-left: 4px; }
+
+      .footer-row { display: flex; align-items: center; gap: 10px; font-size: 12px; color: hsl(var(--muted-foreground)); }
+      .footer-row .chip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid hsl(var(--border)); border-radius: 999px; padding: 2px 8px; }
+      .status-line { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+      .orb { width: 8px; height: 8px; border-radius: 50%; background: rgb(var(--beam)); box-shadow: 0 0 8px rgb(var(--beam)); animation: pulse 1.2s ease-in-out infinite; }
+      @keyframes pulse { 50% { opacity: 0.4; } }
+
+      .composer { margin: 8px 12px 12px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 14px; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+      .composer.drag { box-shadow: 0 0 0 2px rgb(var(--info)); }
+      .tray { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
+      .tile { width: 56px; height: 56px; border-radius: 8px; position: relative; flex: none; border: 1px solid hsl(var(--border)); overflow: hidden; }
+      .tile .x { position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; border-radius: 50%; background: rgb(0 0 0 / 0.6); color: #fff; display: grid; place-items: center; opacity: 0; transition: opacity 0.12s; font-size: 11px; }
+      .tile:hover .x, .tile:focus-within .x { opacity: 1; }
+      .tile .veil { position: absolute; inset: 0; background: rgb(0 0 0 / 0.4); display: grid; place-items: center; color: #fff; }
+      .tile.err { border-color: rgb(var(--warn)); box-shadow: 0 0 0 1px rgb(var(--warn)); }
+      .tile.err .veil { background: rgb(0 0 0 / 0.5); cursor: pointer; }
+      .tile.blind { opacity: 0.45; }
+      .ring { width: 22px; height: 22px; }
+      .tray-warn { font-size: 11.5px; color: rgb(var(--warn)); display: flex; gap: 5px; align-items: center; }
+      .ctx-chip { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 7px; border-radius: 6px; font-size: 11.5px; background: hsl(var(--foreground) / 0.06); border: 1px solid hsl(var(--border)); }
+      .composer textarea { border: 0; outline: 0; resize: none; background: transparent; font: inherit; font-size: 13.5px; color: inherit; min-height: 44px; padding: 2px 4px; }
+      .c-bar { display: flex; align-items: center; gap: 4px; }
+      .ibtn { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; color: hsl(var(--muted-foreground)); }
+      .ibtn:hover { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+      .send { width: 30px; height: 30px; border-radius: 50%; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; }
+      .send:disabled { opacity: 0.35; cursor: not-allowed; }
+      .msel { font: inherit; font-size: 12px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); color: inherit; border-radius: 8px; height: 26px; padding: 0 4px; }
+      .pop { position: absolute; bottom: 36px; left: 0; width: 210px; background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: 10px; box-shadow: 0 10px 30px rgb(0 0 0 / 0.15); padding: 4px; z-index: 5; }
+      .pop button { width: 100%; display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 7px; font-size: 12.5px; text-align: left; }
+      .pop button:hover:not(:disabled) { background: hsl(var(--accent)); }
+      .pop button:disabled { opacity: 0.5; cursor: not-allowed; }
+      .send-err { font-size: 11.5px; color: rgb(var(--bad)); display: flex; gap: 5px; align-items: center; padding: 0 4px; }
+      .hint-line { font-size: 11px; color: hsl(var(--muted-foreground)); padding: 0 4px; }
+
+      .ctrls { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; font-size: 12.5px; }
+      .ctrls label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+      .preset { border: 1px solid hsl(var(--border)); border-radius: 999px; padding: 3px 10px; font-size: 12px; }
+      .preset:hover { background: hsl(var(--accent)); }
+
+      .lightbox { position: fixed; inset: 0; background: rgb(0 0 0 / 0.6); display: grid; place-items: center; z-index: 70; }
+      .lightbox > div { width: min(420px, 86vw); aspect-ratio: 4 / 3; border-radius: 12px; display: grid; place-items: end start; padding: 10px; color: #fff; font-size: 12px; }
+
+      /* ---------- 交互演示：刷新感对比 ---------- */
+      .cmp-pane { border: 1px solid hsl(var(--border)); border-radius: 12px; background: hsl(var(--panel)); display: flex; flex-direction: column; height: 380px; overflow: hidden; }
+      .cmp-pane .p-list { padding: 14px; }
+      .metrics { display: flex; gap: 8px; flex-wrap: wrap; padding: 8px 12px; border-top: 1px solid hsl(var(--border)); font-size: 12px; }
+      .copyrow { height: 24px; display: flex; align-items: center; color: hsl(var(--muted-foreground)); font-size: 12px; }
+      .copy-abs { position: absolute; right: 0; bottom: -2px; opacity: 0; transition: opacity 0.12s; }
+      .a-msg:hover .copy-abs { opacity: 1; }
+      .flash { outline: 2px solid rgb(var(--bad) / 0.7); outline-offset: 3px; border-radius: 6px; }
+      .slow .enter { animation-duration: 0.9s; }
+      .slow .fadein { animation-duration: 0.8s; }
+    </style>
+  </head>
+
+  <body class="show-notes">
+    <header class="top">
+      <div class="top-in">
+        <div class="brand"><span class="logo"><i data-lucide="sparkles"></i></span>Agent 聊天框改进</div>
+        <div class="tabs" role="tablist">
+          <button class="tab" role="tab" data-tab="overview" aria-selected="true"><i data-lucide="map"></i>总览</button>
+          <button class="tab" role="tab" data-tab="demo" aria-selected="false"><i data-lucide="mouse-pointer-click"></i>刷新感对比</button>
+          <button class="tab" role="tab" data-tab="proto" aria-selected="false"><i data-lucide="layout-dashboard"></i>可点击原型</button>
+          <button class="tab" role="tab" data-tab="impl" aria-selected="false"><i data-lucide="database"></i>数据与接口</button>
+        </div>
+        <div class="spacer row">
+          <label class="row muted" style="font-size: 12px">设计标注<button class="switch" id="notesSw" role="switch" aria-checked="true" onclick="toggleNotes()"></button></label>
+          <button class="btn" onclick="document.documentElement.classList.toggle('dark')" aria-label="切换明暗主题"><i data-lucide="sun-moon"></i></button>
+        </div>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <!-- ================= 总览 ================= -->
+      <section id="tab-overview">
+        <h1 class="h1">画布 Agent 聊天框的三处改进</h1>
+        <p class="lead">
+          ① 聊天框里加的图片<b>不再落到画布</b>，作为附件显示在输入框上方，随消息发给模型；② 每段工具调用收起后有<b>一句模型写的说明</b>，每条操作有自己的图标；③ 修掉回答结束时消息<b>闪一下、跳一下</b>的问题。三件事互相独立，可以分开上线。
+        </p>
+
+        <div class="callout c-info" style="margin-top: 16px">
+          <i data-lucide="info"></i>
+          <div>
+            <b>阅读说明。</b>现状来自代码（master <code>5a06833</code>）。原型里的图片、耗时、模型说明都是示意，所有调用都是模拟的，刷新页面就复原。设计还<b>没有实现</b>。完整的依据和细节见 <code>Agent聊天框改进.md</code>。<br />
+            <span class="muted">核实度图例：</span>
+            <span class="tag t-ok">已核对代码</span>
+            <span class="tag t-info">调研未复核</span>
+            <span class="tag t-warn">未验证 · 需实测</span>
+            <span class="tag t-vio">提案</span>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>主线：一张附件图从加入到被 Agent 用上</h2>
+          <p class="sub">需求 1 的数据流。和现在最大的不同：<b>画布只在 Agent 真要拿它当参考时才变</b>。</p>
+          <div class="flow note">
+            <div class="node"><b>加图</b>粘贴、拖入或 ＋ 上传；走 <code>uploadAsset</code>，不建节点</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>托盘</b>输入框上方显示缩略图，上传中、失败、不能看图三种状态</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>发送</b>请求带 <code>attachments</code>；Go 校验归属、格式、大小</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>模型看到</b>图片作为这条用户消息的图片块交给模型</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>按需落画布</b>要当参考时，Agent 用「修改画布」带 <code>assetId</code> 建节点</div>
+          </div>
+          <div class="note-txt">设计：附件和画布节点分开。附件属于对话，节点属于作品。现在的做法（先落节点再引用）把对话里的临时参考变成了作品的一部分，用户还得手动删掉。</div>
+          <div class="callout c-warn" style="margin-top: 10px">
+            <i data-lucide="corner-down-right"></i>
+            <div><b>兜底：</b>上传失败可以重试或移除；当前模型不能看图时托盘图片变暗、禁用发送，并提示换模型；发送时校验失败会点名是哪张图，文字和托盘都保留；附件链接失效时，历史里显示「图片已失效」，对话不受影响。</div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>三个需求各改什么</h2>
+          <p class="sub">每张卡片一句话说清现状和改动。</p>
+          <div class="grid g3">
+            <div class="card">
+              <div class="row"><i data-lucide="image-plus"></i><b>① 图片附件</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-ok">现状已核对</span><span class="tag t-vio">提案</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>现状：</b>加图会在画布中心建图片节点，再以 <code>@节点</code> 引用（<code>flow.tsx:681</code>）；后端拒绝素材附件（<code>refs.go:90</code>）。<b>改为：</b>输入框上方的附件托盘，最多 9 张。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="list-collapse"></i><b>② 活动行</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-ok">现状已核对</span><span class="tag t-vio">提案</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>现状：</b>收起后是「✓ 69s 📖2 ✎1」，只有图标和数字；展开后每行只有 ✓。<b>改为：</b>主图标加一句模型说明，没到之前先显示动作短语；展开行用动作图标打头。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="refresh-cw-off"></i><b>③ 刷新感</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-ok">根因已核对</span><span class="tag t-warn">手感需实测</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>根因：</b>流式消息结束时 key 从 <code>stream</code> 变成 <code>e{seq}</code>，被重建并重播淡入；「已思考」插到正文上方。<b>改为：</b>稳定 key，结束后才出现的东西提前占位或不占位。</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>改前 / 改后</h2>
+          <p class="sub">逐项对照用户能感受到的差别。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th></th><th>现在</th><th>改后</th></tr></thead>
+              <tbody>
+                <tr><th>加一张图</th><td class="m">画布中心多出一个图片节点</td><td class="y">只在输入框上方出现缩略图，画布不变</td></tr>
+                <tr><th>模型看图</th><td class="m">要模型自己决定调用「查看图片」，可能不看就回答</td><td class="y">随消息直接交给模型，一定看过</td></tr>
+                <tr><th>附件当生成参考</th><td>本来就在画布上，可以直接连</td><td>Agent 用「修改画布」带 <code>assetId</code> 落成节点再连（新增能力），能撤销</td></tr>
+                <tr><th>模型不能看图</th><td class="m">节点照样建，模型看不到</td><td class="y">托盘提示，禁用发送，提示换模型</td></tr>
+                <tr><th>活动行收起</th><td class="m">✓ 69s 📖2 ✎1（图标加数字）</td><td class="y">✨ 确认了角色设定并搭好 6 个镜头 · 12s</td></tr>
+                <tr><th>活动行展开</th><td class="m">✓ 读取画布 …（只有状态图标）</td><td class="y">📖 读取画布 …（动作图标；失败改颜色并在右侧写「失败」）</td></tr>
+                <tr><th>回答结束</th><td class="m">正文变透明再上浮；「已思考」插到上方把正文往下推；复制行闪一下</td><td class="y">同一个元素原地定稿，不位移</td></tr>
+                <tr><th>额外成本</th><td>—</td><td>每段 ≥2 个工具时多一次短的模型调用（复用会话模型，≤64 token 输出，<b>和会话命名一样计入用户用量</b>）</td></tr>
+                <tr><th>核实度</th><td><span class="tag t-ok">已核对代码</span></td><td><span class="tag t-vio">提案</span> <span class="tag t-warn">手感需实测</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>用户贴一张角色照片，说「用这张图当参考生成三视图」，会发生什么</h2>
+          <p class="sub">把三个改动串起来走一遍，以及要提前说清的一条边界。</p>
+          <div class="grid g2">
+            <div class="card">
+              <ol class="steps" style="margin: 0; padding: 0">
+                <li><b>粘贴图片</b><small>托盘出现缩略图并显示上传进度；画布节点数不变。</small></li>
+                <li><b>发送</b><small>托盘清空，用户气泡上方显示这张图；Go 校验通过，模型收到文字和图片。</small></li>
+                <li><b>Agent 回答「先看下画布」，并调用读取画布、查看图片</b><small>活动行运行中展开，每行是动作图标；这段结束后先显示「读取了画布、查看了图片」，约 1 秒后换成模型写的说明。</small></li>
+                <li><b>Agent 用「修改画布」带 assetId 建参考图节点，再申请生成</b><small>画布上出现一个已完成的图片节点（来自附件），连到三视图节点。</small></li>
+                <li><b>回答结束</b><small>正文原地定稿，状态行换成底栏，没有闪动。</small></li>
+              </ol>
+            </div>
+            <div class="card">
+              <div class="callout c-warn">
+                <i data-lucide="triangle-alert"></i>
+                <div>
+                  <b>边界：附件本身不进画布，落到画布的是 Agent 新建的节点</b>
+                  <ul class="list" style="margin-top: 6px">
+                    <li>撤销本轮时，这个节点随其他改动一起撤销；素材本身不删。</li>
+                    <li>Agent 只能用<b>用户自己的图片素材</b>建节点（Go 靠素材归属把关；别人的素材和不存在一样报错）。</li>
+                    <li>模型的说明可能比动作短语晚 1–2 秒到；失败时一直显示动作短语。</li>
+                    <li>本地磁盘存储下，单张图片超过 5 MB 发不出去（沿用「查看图片」的限制）。</li>
+                  </ul>
+                </div>
+              </div>
+              <p class="muted" style="font-size: 12.5px; margin-top: 10px">上线时要告诉用户：聊天框加的图不会再出现在画布上；想把它放到画布上，可以让 Agent 放，或者自己拖进画布。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= 刷新感对比 ================= -->
+      <section id="tab-demo" hidden>
+        <h1 class="h1">回答结束时为什么「刷一下」</h1>
+        <p class="lead">
+          左边按<b>现在的代码</b>重现，右边是<b>修复后</b>的行为。点「播放回答结束」，看最后那一刻。打开「慢放」更容易看清；左边被重建的元素会闪红框。<b>这是对代码行为的模拟，不是真实录屏</b>，修完后需要真机确认手感。
+        </p>
+        <div class="row wrapflex" style="margin-top: 18px; gap: 12px">
+          <button class="btn btn-primary" onclick="playBoth()"><i data-lucide="play"></i>播放回答结束</button>
+          <label class="row" style="font-size: 13px; cursor: pointer"><input type="checkbox" id="slowmo" /> 慢放</label>
+        </div>
+        <div class="grid g2" style="margin-top: 14px">
+          <div>
+            <div class="row" style="margin-bottom: 6px"><b style="font-size: 14px">现在</b><span class="tag t-ok">按代码重现</span></div>
+            <div class="cmp-pane" id="paneA"><div class="p-list"></div><div class="metrics"></div></div>
+          </div>
+          <div>
+            <div class="row" style="margin-bottom: 6px"><b style="font-size: 14px">修复后</b><span class="tag t-vio">提案</span></div>
+            <div class="cmp-pane note" id="paneB"><div class="p-list"></div><div class="metrics"></div></div>
+            <div class="note-txt">设计：同一段文字从流式到落库是同一个元素（F1）；「思考中 → 已思考」在同一位置变字（F2）；复制按钮浮在消息上不占位（F3）；底栏只做透明度过渡、直接接在状态行的位置（F4）；去掉流式光标，文字自己在增长，不需要光标提示（F5）。</div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>四个根因，对应四个修法</h2>
+          <p class="sub">按对观感的影响排序。根因都已在代码里核对过。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>根因</th><th>证据</th><th>修法</th></tr></thead>
+              <tbody>
+                <tr><th>1. 结束时重新挂载并淡入</th><td>流式项 <code>key:"stream"</code>（<code>timeline.ts:398</code>），落库项 <code>key:e{seq}</code>（<code>timeline.ts:263</code>）；新 key 不在 <code>historyKeys</code> 里，于是从 <code>opacity 0, y 6</code> 淡入（<code>message-list.tsx:189-200</code>）</td><td><b>F1</b> key 改为 <code>a:{runId}:{n}</code>，流式项和落库项用同一个</td></tr>
+                <tr><th>2. 「已思考」插到上方</th><td><code>Assistant</code> 里只有 <code>!item.streaming</code> 才渲染「已思考」，位置在正文上方（<code>message-list.tsx:508</code>）</td><td><b>F2</b> 流式中有 thinking 就显示「思考中」，结束时原地变成「已思考」</td></tr>
+                <tr><th>3. 复制行闪一下</th><td><code>message.done</code> 先到、<code>run.status</code> 后到，中间 <code>copied=false</code>，正文下方多出一行 <code>h-6</code>（<code>message-list.tsx:536</code>）</td><td><b>F3</b> 复制按钮绝对定位，悬停才出现；运行中不渲染</td></tr>
+                <tr><th>4. 状态行和底栏叠加</th><td>状态行退场，底栏从 <code>y 6</code> 淡入，贴底滚动连调两次</td><td><b>F4</b> 底栏只做透明度过渡；状态行 <code>popLayout</code> 退场</td></tr>
+                <tr><th>核实度</th><td><span class="tag t-ok">已核对代码</span></td><td><span class="tag t-vio">提案</span> <span class="tag t-warn">手感需实测</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout c-ok" style="margin-top: 12px">
+            <i data-lucide="circle-check"></i>
+            <div><b>排除项：</b>回答结束时<b>不会</b>重新拉取会话、画布或视口。只有 <code>canvas.patch</code> 断号或保存冲突（409）才会 <code>fetchLatest</code>。「刷一下」的感觉只发生在 Agent 面板里。</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= 可点击原型 ================= -->
+      <section id="tab-proto" hidden>
+        <h1 class="h1">Agent 面板原型</h1>
+        <p class="lead">
+          数据都在内存里，刷新页面就复原。面板里预置了一段历史：其中一张附件已经失效，一个活动行显示的是模型说明。<b>试试：</b>点「模拟粘贴图片」加两张图，再点下面的预设句子发送，看活动行怎样从兜底短语换成模型说明。想看失败的样子，用上方的模拟开关；把模型切成「DeepSeek V4（不能看图）」可以看到托盘的禁用状态。
+        </p>
+
+        <div class="card" style="margin-top: 16px">
+          <div class="ctrls">
+            <b style="font-size: 12.5px">模拟开关</b>
+            <label><input type="checkbox" id="swUp" /> 下一张上传失败</label>
+            <label><input type="checkbox" id="swCheck" /> 发送时校验失败（图片超过 5 MB）</label>
+            <label><input type="checkbox" id="swSum" /> 模型总结失败</label>
+            <label><input type="checkbox" id="swGen" /> 申请生成失败</label>
+            <span class="tag t-mute">都是模拟，不是真实调用</span>
+          </div>
+        </div>
+
+        <div class="frame" style="margin-top: 12px">
+          <div class="frame-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span style="margin-left: 8px">canvas.example.com / 我的画布 / 雨夜短片</span></div>
+          <div class="proto-grid">
+            <div class="canvas-area">
+              <div class="canvas-count note"><i data-lucide="shapes"></i>画布节点 <b id="cCount">3</b></div>
+              <div class="cnodes" id="cNodes"></div>
+              <div class="note-txt" style="position: absolute; left: 14px; bottom: 12px; max-width: 360px">加附件不会改变节点数。只有 Agent 判断要拿附件当参考时，才会新建一个带琥珀描边的节点（来自附件）。</div>
+            </div>
+            <div class="panel">
+              <div class="p-head"><i data-lucide="sparkles" style="color: rgb(var(--beam))"></i>照这个色调改分镜<span class="spacer"></span><span class="muted" style="font-weight: 400; font-size: 12px">Agent</span></div>
+              <div class="p-list" id="pList"></div>
+              <div id="statusSlot" style="padding: 0 14px"></div>
+              <div class="composer note" id="composer">
+                <div id="tray" class="tray"></div>
+                <div id="trayWarn"></div>
+                <div class="row wrapflex" style="gap: 4px"><span class="ctx-chip"><i data-lucide="image"></i>镜头 3</span><span class="muted" style="font-size: 11px">（画布选中的节点引用，不变）</span></div>
+                <textarea id="ta" rows="2" placeholder="描述你想做的，粘贴或拖入图片作为附件…"></textarea>
+                <div id="sendErr"></div>
+                <div class="c-bar" style="position: relative">
+                  <button class="ibtn" id="plusBtn" aria-label="添加" onclick="togglePop(event)"><i data-lucide="plus"></i></button>
+                  <div class="pop" id="pop" hidden>
+                    <button onclick="addImages(1); closePop()"><i data-lucide="image-up"></i>上传图片<span class="spacer muted" style="font-size: 11px">最多 9 张</span></button>
+                    <button disabled title="演示里不做，行为不变"><i data-lucide="file-text"></i>导入剧本 / 文本</button>
+                  </div>
+                  <button class="ibtn" aria-label="模拟粘贴图片" title="模拟粘贴两张图片" onclick="addImages(2)"><i data-lucide="clipboard-paste"></i></button>
+                  <select class="msel" id="msel" onchange="setModel(this.value)">
+                    <option value="s">Claude Sonnet</option>
+                    <option value="d">DeepSeek V4（不能看图）</option>
+                  </select>
+                  <span class="spacer"></span>
+                  <button class="btn" id="stopBtn" style="height: 28px; font-size: 12px" hidden onclick="stopRun()"><i data-lucide="square"></i>停止</button>
+                  <button class="send" id="sendBtn" aria-label="发送" onclick="send()"><i data-lucide="arrow-up"></i></button>
+                </div>
+              </div>
+              <div class="note-txt" style="margin: -4px 14px 10px">托盘在输入框内、编辑区上方，和选中节点引用分开：附件属于这条消息，节点引用指向画布。发送按钮禁用时，悬停可以看到原因。</div>
+            </div>
+          </div>
+        </div>
+        <div class="row wrapflex" style="margin-top: 10px; gap: 8px">
+          <span class="muted" style="font-size: 12.5px">预设句子：</span>
+          <button class="preset" onclick="preset('照这张图的色调重写 6 个镜头的提示词')">照这张图的色调重写 6 个镜头的提示词</button>
+          <button class="preset" onclick="preset('用这张图当参考生成林夏的三视图')">用这张图当参考生成林夏的三视图（会落画布）</button>
+          <button class="btn btn-outline" style="height: 26px; font-size: 12px" onclick="resetProto()"><i data-lucide="rotate-ccw"></i>复原</button>
+        </div>
+      </section>
+
+      <!-- ================= 数据与接口 ================= -->
+      <section id="tab-impl" hidden>
+        <h1 class="h1">数据与接口（提案）</h1>
+        <p class="lead">下面都是设计提案，尚未实现。对应 Markdown 设计文档第 6 节和第 8 节。三个需求可以按 <b>③ → ② → ①</b> 的顺序独立上线。</p>
+
+        <div class="sec">
+          <h2>关系</h2>
+          <p class="sub">附件、节点、活动段各自属于谁。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>对象</th><th>属于</th><th>为什么</th></tr></thead>
+              <tbody>
+                <tr><th>附件</th><td>一条用户消息（<code>message.user.attachments</code>），引用素材 <code>asset_id</code></td><td>附件是对话里的临时参考，不是作品的一部分</td></tr>
+                <tr><th>附件落成的节点</th><td>本轮运行的画布改动</td><td>能和其他改动一起撤销；只能用本会话出现过的附件</td></tr>
+                <tr><th>活动段说明</th><td>一段连续工具调用，<code>group_id</code> = 第一个工具调用的 id</td><td>前后端都能从事件里算出同一个 id，不用另外分配</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>数据模型</h2>
+          <p class="sub">都放在现有的 <code>agent_events.payload</code>（SQLite）里，不新建表、不改结构。</p>
+          <div class="grid g2">
+            <div class="cmp-wrap">
+              <table class="cmp">
+                <thead><tr><th colspan="2"><code>AgentAttachment</code>（<code>message.user.attachments[]</code>，0–9 项）</th></tr></thead>
+                <tbody>
+                  <tr><th>asset_id</th><td>string，素材 id；同一条消息里不重复</td></tr>
+                  <tr><th>name</th><td>string，展示名（原文件名或「图片 N」）</td></tr>
+                  <tr><th>mime_type</th><td>png / jpeg / webp / gif</td></tr>
+                  <tr><th>width / height</th><td>number，可选，缩略图占位用</td></tr>
+                  <tr><th>url</th><td>string，素材的稳定路径 <code>/files/*</code>（后端 302 现签名，<b>不过期</b>）；缩略图加 <code>?v=thumb</code>。不存签名直链</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="cmp-wrap">
+              <table class="cmp">
+                <thead><tr><th colspan="2"><code>activity.summarized</code>（新的持久化事件）</th></tr></thead>
+                <tbody>
+                  <tr><th>group_id</th><td>string，本段第一个 <code>tool.start.data.id</code></td></tr>
+                  <tr><th>text</th><td>string，清洗后 1–24 字，没有结尾标点</td></tr>
+                  <tr><th>何时发</th><td>段闭合，并且工具数 ≥ 2、没有中止、总结成功；失败时不发</td></tr>
+                  <tr><th>前端</th><td><code>ActivityItem</code> 加 <code>groupId</code> 和 <code>summary?</code>；没有就用兜底短语</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>接口</h2>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>接口</th><th>变化与业务错误</th></tr></thead>
+              <tbody>
+                <tr><th><code>POST /agent/sessions/:sid/runs</code></th><td>请求体加 <code>attachments?: {asset_id}[]</code>，0–9 项。错误 10001：「图 N：素材不存在」「图 N：只支持 png/jpeg/webp/gif」「图 N：图片超过 5 MB」「当前模型不能看图」「一条消息最多 9 张图片」；报错时不创建运行</td></tr>
+                <tr><th>插话 <code>interject</code></th><td>同上</td></tr>
+                <tr><th>Go 平台 <code>checkMessage</code></th><td>参数加 <code>attachments</code>；返回落库用的 <code>AgentAttachment[]</code>，以及给模型用的 <code>{mime_type, url | data}</code>（复用 <code>inspect.go loadImage</code>）</td></tr>
+                <tr><th>工具 <code>canvas_inspect_image</code></th><td>加 <code>assetIds?: string[]</code>，和 <code>nodeIds</code> 合计 1–4 张；只能看本会话的附件</td></tr>
+                <tr><th>工具 <code>canvas_apply_ops</code></th><td>新建图片节点时可以带 <code>assetId</code>，节点直接是已完成状态；素材不属于当前用户、不存在、格式不支持时报错。带 <code>assetId</code> 的节点不能再写提示词、模型、生成方式和参数；<code>update_node</code> 不认 <code>assetId</code></td></tr>
+                <tr><th>前端删除</th><td><code>flow.tsx attachImagesForAgent</code>，以及 <code>onAttachImages</code> 的属性链</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>核心逻辑伪代码</h2>
+          <div class="codeblock"><pre style="margin: 0; font: inherit; white-space: pre-wrap">// ① Agent 服务 startRun（提案）
+const checked = await platform.checkMessage(userId, canvasId, message, selection, attachments)
+//   → { attachments: AgentAttachment[], images: {mime_type, url|data}[] }
+emit("message.user", { text: message, mode, selection, attachments: checked.attachments })
+const content = [{ type: "text", text: message + "\n附件图片：" + ids(checked) }]
+if (model.vision) content.push(...checked.images.map(toImageBlock))
+pi.prompt({ role: "user", content })   // 发给模型前只保留最近 2 条带图消息的图片（context.ts pruneOldImages，新写）
+
+// ② 引擎：段闭合 → 异步总结（提案，仿 #autoTitle）
+onToolStart(ev) { if (!openGroup) openGroup = { id: ev.id, tools: [] }; openGroup.tools.push(ev) }
+onBoundary()  { // message.done / approval / ask / 运行结束
+  const g = openGroup; openGroup = null
+  if (!g || g.tools.length &lt; 2 || g.aborted) return
+  void summarize(g).then(text =&gt; text &amp;&amp; emit("activity.summarized", { group_id: g.id, text }))
+}
+summarize(g) = completeSimple(sessionModel, prompt(userMsg200, g.tools.map(label+summary+isError)),
+                              { timeout: 8s, maxTokens: 64, headers: { "X-Agent-Purpose": "activity-summary" } })
+               .then(clean)        // 取第一行、去引号和结尾标点、最多 24 字
+               .catch(() =&gt; "")    // 失败不重试
+
+// ③ 前端 timeline：稳定 key（提案）
+case "message.done": items.push({ type: "assistant", key: `a:${runId}:${n[runId]++}`, ... })
+stream item:         key = `a:${state.stream.runId}:${n[state.stream.runId] ?? 0}`</pre></div>
+        </div>
+
+        <div class="sec">
+          <h2>已确认的决定</h2>
+          <div class="card">
+            <ol class="list" style="padding-left: 18px">
+              <li><b>图片作为附件上传，显示在聊天框上方，随消息带上 URL</b>：不再落到画布。</li>
+              <li><b>附件当生成参考时，由 Agent 自己落到画布</b>：需要给「修改画布」加上 <code>assetId</code>。</li>
+              <li><b>每段工具调用各自折叠</b>（和截图一样）：保留文字和工具交错的结构。<span class="muted">已搁置：整轮过程折成一行。</span></li>
+              <li><b>收起时用一句自然语言说明</b>：写的是「做成了什么」。</li>
+              <li><b>说明由每段结束后的异步总结生成</b>：到达前、只有一个工具时、失败时，都用动作短语兜底。</li>
+              <li><b>展开行用动作图标打头，状态靠颜色和右侧文字表示</b>：成功不再画对勾。</li>
+              <li><b>附件地址用后端重定向路径 <code>/files/*</code></b>：签名直链会过期，重定向路径不会。</li>
+              <li><b>上下文图片只保留最近 2 条带图的消息</b>：实现时确认仓库里没有现成逻辑，改为新写（Agent 服务发请求前裁剪）。</li>
+              <li><b>活动段总结复用当前会话模型，计入用量</b>：和自动命名一致，照常计费（先前写成「不计入」，已更正）。</li>
+              <li><b>去掉流式输出时的闪烁光标</b>（F5）：文字自己在增长，不需要光标。</li>
+              <li><b>主文档已回写</b>：Markdown 6.1.2、6.1.3、6.2.3、6.3.2、8.2、8.5、11 节。</li>
+            </ol>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast"></div>
+    <div id="lb"></div>
+
+    <script>
+      const $ = (s, r = document) => r.querySelector(s);
+      const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const icons = () => { if (window.lucide) lucide.createIcons(); };
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      const ic = (name, cls = "") => `<i data-lucide="${name}" class="${cls}"></i>`;
+
+      function toggleNotes() {
+        const on = document.body.classList.toggle("show-notes");
+        $("#notesSw").setAttribute("aria-checked", String(on));
+      }
+      let toastTimer;
+      function toast(msg, kind = "ok") {
+        const icon = { ok: "circle-check", bad: "circle-x", warn: "triangle-alert" }[kind] || "info";
+        $("#toast").innerHTML = `<div><i data-lucide="${icon}" style="color: rgb(var(--${kind}))"></i>${esc(msg)}</div>`;
+        icons();
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => ($("#toast").innerHTML = ""), 2400);
+      }
+      function showTab(id) {
+        document.querySelectorAll("main > section").forEach((s) => (s.hidden = s.id !== "tab-" + id));
+        document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === id)));
+        window.scrollTo(0, 0);
+      }
+      document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab)));
+
+      /* ================= 动作表（与 Markdown 6.2.2 一致） ================= */
+      const VERBS = {
+        读取: { icon: "book-open", phrase: "读取了画布" },
+        修改: { icon: "pencil-line", phrase: "修改了画布" },
+        整理: { icon: "layout-grid", phrase: "整理了布局" },
+        删除: { icon: "trash-2", phrase: "申请了删除" },
+        看图: { icon: "scan-eye", phrase: "查看了图片" },
+        计划: { icon: "list-checks", phrase: "更新了计划" },
+        提问: { icon: "message-circle-question", phrase: "向你提了问题" },
+        查模型: { icon: "clapperboard", phrase: "查看了可用模型" },
+        生成: { icon: "wand-sparkles", phrase: "申请了生成" },
+        查任务: { icon: "list-todo", phrase: "查询了任务" },
+        技能: { icon: "lightbulb", phrase: "查阅了技能" },
+        脚本: { icon: "terminal", phrase: "运行了脚本" },
+        看视频: { icon: "film", phrase: "查看了视频" },
+        截帧: { icon: "camera", phrase: "截取了视频帧" },
+        搜索: { icon: "search", phrase: "搜索了网页" },
+        读网页: { icon: "globe", phrase: "读取了网页" },
+      };
+      const PRIORITY = ["生成", "删除", "修改", "截帧", "整理", "看视频", "看图", "搜索", "读网页", "脚本", "提问", "计划", "技能", "查模型", "查任务", "读取"];
+      const verbIcon = (v) => (VERBS[v] ? VERBS[v].icon : "wrench");
+      function fallbackPhrase(tools) {
+        const counts = new Map();
+        for (const t of tools) counts.set(t.verb, (counts.get(t.verb) || 0) + 1);
+        const parts = [...counts].map(([v, n]) => (VERBS[v] ? VERBS[v].phrase : `调用了「${v}」`) + (n > 1 ? ` ${n} 次` : ""));
+        return parts.length > 3 ? parts.slice(0, 3).join("、") + `等 ${parts.length} 项` : parts.join("、");
+      }
+      function mainVerb(tools) {
+        const vs = new Set(tools.map((t) => t.verb));
+        return PRIORITY.find((v) => vs.has(v)) || tools[0]?.verb;
+      }
+      const fmtSecs = (s) => (s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`);
+
+      /* ================= 原型状态（内存） ================= */
+      const GRADS = [
+        "linear-gradient(135deg,#0e7490,#f97316)", "linear-gradient(135deg,#1e293b,#22d3ee)", "linear-gradient(135deg,#7c2d12,#fbbf24)",
+        "linear-gradient(135deg,#312e81,#ec4899)", "linear-gradient(135deg,#14532d,#a3e635)", "linear-gradient(135deg,#3f3f46,#e4e4e7)",
+      ];
+      let S;
+      function initState() {
+        S = {
+          vision: true, tray: [], imgSeq: 2, keySeq: 0, run: 0, busy: false, abort: false, status: null, popOpen: false,
+          canvas: [
+            { name: "林夏 · 三视图", grad: GRADS[3] }, { name: "镜头 3 · 街角", grad: GRADS[1] }, { name: "镜头 4 · 雨夜", grad: GRADS[0] },
+          ],
+          items: [
+            { type: "user", key: "h1", text: "参考这两张图，把整体色调定一下", atts: [{ name: "图片 1", grad: GRADS[0] }, { name: "图片 2", dead: true }] },
+            { type: "activity", key: "h2", status: "done", manual: null, secs: 14, summary: "对比了两张参考图并定下冷青橙色调",
+              tools: [ { verb: "读取", label: "读取画布", summary: "画布目录（3 个节点）", status: "done" },
+                       { verb: "看图", label: "查看图片", summary: "查看 1 张图片", status: "done" },
+                       { verb: "修改", label: "修改画布", summary: "更新 2 个节点的提示词", status: "done", nodes: true } ] },
+            { type: "assistant", key: "h3", text: "色调定为冷青 + 暖橙的对比：阴影偏青、霓虹偏橙。第二张图链接已失效，我只参考了第一张。", thinking: "用户给了两张图…", streaming: false },
+            { type: "footer", key: "h4" },
+          ],
+        };
+      }
+
+      /* ---------- 托盘 ---------- */
+      function addImages(n) {
+        let clipped = 0;
+        for (let i = 0; i < n; i++) {
+          if (S.tray.length >= 9) { clipped++; continue; }
+          const fail = $("#swUp").checked;
+          if (fail) $("#swUp").checked = false;
+          const t = { id: ++S.keySeq, name: `图片 ${++S.imgSeq}`, grad: GRADS[S.imgSeq % GRADS.length], status: "uploading", progress: 0, fail };
+          S.tray.push(t);
+          simulateUpload(t);
+        }
+        if (clipped) toast(`一条消息最多 9 张，多出的 ${clipped} 张没加`, "warn");
+        renderTray();
+      }
+      function simulateUpload(t) {
+        const tick = () => {
+          if (!S.tray.includes(t) || t.status !== "uploading") return;
+          t.progress = Math.min(100, t.progress + 18 + Math.random() * 14);
+          if (t.progress >= 100) { t.status = t.fail ? "error" : "done"; renderTray(); return; }
+          renderTray();
+          setTimeout(tick, 160);
+        };
+        setTimeout(tick, 160);
+      }
+      function retryTile(id) { const t = S.tray.find((x) => x.id === id); if (!t) return; t.status = "uploading"; t.progress = 0; t.fail = false; renderTray(); simulateUpload(t); }
+      function removeTile(id) { S.tray = S.tray.filter((x) => x.id !== id); renderTray(); }
+      function ringSvg(p) {
+        const c = 2 * Math.PI * 9;
+        return `<svg class="ring" viewBox="0 0 22 22"><circle cx="11" cy="11" r="9" fill="none" stroke="rgb(255 255 255 / .3)" stroke-width="2.5"/><circle cx="11" cy="11" r="9" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - p / 100)}" transform="rotate(-90 11 11)"/></svg>`;
+      }
+      function sendBlock() {
+        const text = $("#ta").value.trim();
+        if (S.busy && !text && !S.tray.length) return "运行中，可以输入插话";
+        if (!text && !S.tray.length) return "先输入内容或添加图片";
+        if (S.tray.some((t) => t.status === "uploading")) return "图片上传中…";
+        if (S.tray.some((t) => t.status === "error")) return "有图片上传失败，重试或移除后再发送";
+        if (S.tray.length && !S.vision) return "当前模型看不到图片，换一个能看图的模型或移除图片";
+        return null;
+      }
+      function renderTray() {
+        $("#tray").innerHTML = S.tray
+          .map((t) => {
+            const blind = !S.vision && t.status === "done";
+            let inner = "";
+            if (t.status === "uploading") inner = `<div class="veil">${ringSvg(t.progress)}</div>`;
+            if (t.status === "error") inner = `<div class="veil" title="上传失败：网络中断（示意），点击重试" onclick="retryTile(${t.id})">${ic("rotate-cw")}</div>`;
+            return `<div class="tile ${t.status === "error" ? "err" : ""} ${blind ? "blind" : ""}" style="background:${t.grad}" title="${esc(t.name)}${t.status === "uploading" ? " · 上传中" : ""}">${inner}<button class="x" aria-label="移除 ${esc(t.name)}" onclick="removeTile(${t.id})">${ic("x")}</button></div>`;
+          })
+          .join("");
+        $("#tray").style.display = S.tray.length ? "flex" : "none";
+        const blind = S.tray.length && !S.vision;
+        $("#trayWarn").innerHTML = blind ? `<div class="tray-warn">${ic("eye-off")}当前模型看不到图片，换一个能看图的模型或移除图片</div>` : "";
+        renderSend();
+        icons();
+      }
+      function renderSend() {
+        const why = sendBlock();
+        const b = $("#sendBtn");
+        b.disabled = !!why;
+        b.title = why || (S.busy ? "发送插话" : "发送");
+      }
+      function setModel(v) { S.vision = v === "s"; renderTray(); }
+      function togglePop(e) { e.stopPropagation(); S.popOpen = !S.popOpen; $("#pop").hidden = !S.popOpen; }
+      function closePop() { S.popOpen = false; $("#pop").hidden = true; }
+      document.addEventListener("click", (e) => { if (S && S.popOpen && !$("#pop").contains(e.target)) closePop(); });
+      function preset(t) { $("#ta").value = t; renderSend(); $("#ta").focus(); }
+
+      /* ---------- 消息列表：按 key 增量更新，模拟修复后的稳定 key ---------- */
+      function itemHtml(it) {
+        if (it.type === "user") {
+          const atts = (it.atts || [])
+            .map((a) => (a.dead ? `<div class="u-att dead" title="图片已失效">图片已失效</div>` : `<div class="u-att" style="background:${a.grad}" title="${esc(a.name)}" onclick="lightbox('${a.grad}','${esc(a.name)}')"></div>`))
+            .join("");
+          return `<div class="u-wrap">${atts ? `<div class="u-atts">${atts}</div>` : ""}${it.text ? `<div class="u-bub">${esc(it.text)}</div>` : ""}</div>`;
+        }
+        if (it.type === "assistant") {
+          let think = "";
+          if (it.thinking) think = it.streaming ? `<div><span class="think"><span class="shimmer">思考中</span></span></div>` : `<div><button class="think" title="展开思考（演示里不展开）">${ic("chevron-right")}已思考</button></div>`;
+          const copy = !it.streaming && !it.last ? `<button class="ibtn copy-abs" style="width:22px;height:22px" title="复制">${ic("copy")}</button>` : "";
+          return `<div class="a-msg">${think}<div>${esc(it.text)}</div>${copy}</div>`;
+        }
+        if (it.type === "activity") return activityHtml(it);
+        if (it.type === "footer")
+          return `<div class="footer-row fadein"><span class="chip">${ic("pencil-line")}改动 2 个节点</span><span class="chip">${ic("undo-2")}撤销本轮</span><span class="spacer"></span>${ic("copy")}${ic("thumbs-up")}${ic("thumbs-down")}</div>`;
+        return "";
+      }
+      function activityHtml(it) {
+        const running = it.status === "running";
+        const open = it.manual ?? running;
+        const errors = it.tools.filter((t) => t.status === "error").length;
+        let head;
+        if (running) head = `${ic("loader-2", "spin")}<span>处理中</span>`;
+        else {
+          const aborted = it.status === "aborted";
+          const icon = aborted ? "circle-stop" : verbIcon(mainVerb(it.tools));
+          const useModel = !aborted && it.summary;
+          const text = aborted ? "已中止 · " + fallbackPhrase(it.tools) : useModel ? it.summary : fallbackPhrase(it.tools);
+          const src = aborted ? "" : `<span class="tag ${useModel ? "t-vio" : "t-mute"} note-only src-tag">${useModel ? "模型说明" : "兜底短语"}</span>`;
+          head = `${ic(icon)}<span class="sum ${it.justSummarized ? "fadein" : ""}" title="${esc(text)}">${esc(text)}</span>${src}${errors ? `<span style="color:rgb(var(--warn))">· ${errors} 项失败</span>` : ""}<span class="secs">${fmtSecs(it.secs)}</span>`;
+        }
+        const rows = open
+          ? `<div class="act-body">${it.tools
+              .map((t) => {
+                const iconName = t.status === "running" ? "loader-2" : verbIcon(t.verb);
+                const rt = t.status === "error" ? `<span class="rt" style="color:rgb(var(--warn))">失败</span>` : t.status === "aborted" ? `<span class="rt">已中止</span>` : t.nodes ? `<span class="rt locate" title="在画布上定位">${ic("locate-fixed")}</span>` : "";
+                return `<div class="trow ${t.nodes ? "loc" : ""} ${t.status === "error" ? "err" : ""} ${t.status === "aborted" ? "abort" : ""}">${ic(iconName, "ic " + (t.status === "running" ? "spin" : ""))}<span class="nm">${esc(t.label)}</span><span class="sm">${esc(t.summary || "")}</span>${rt}</div>`;
+              })
+              .join("")}</div>`
+          : "";
+        return `<div><button class="act-head" aria-expanded="${open}" onclick="toggleAct('${it.key}')">${head}${ic("chevron-right", "chev")}</button>${rows}</div>`;
+      }
+      function toggleAct(key) {
+        const it = S.items.find((x) => x.key === key);
+        if (!it) return;
+        const open = it.manual ?? it.status === "running";
+        it.manual = !open;
+        renderList();
+      }
+      const elByKey = new Map();
+      function renderList(initial) {
+        const list = $("#pList");
+        const stuck = list.scrollHeight - list.scrollTop - list.clientHeight < 40;
+        const keys = new Set(S.items.map((i) => i.key));
+        for (const [k, el] of elByKey) if (!keys.has(k)) { el.remove(); elByKey.delete(k); }
+        let prev = null;
+        for (const it of S.items) {
+          const html = itemHtml(it);
+          let el = elByKey.get(it.key);
+          if (!el) {
+            el = document.createElement("div");
+            if (!initial && it.type !== "footer") el.className = "enter";
+            elByKey.set(it.key, el);
+          }
+          if (el._html !== html) { el.innerHTML = html; el._html = html; }
+          const want = prev ? prev.nextSibling : list.firstChild;
+          if (want !== el) list.insertBefore(el, want);
+          prev = el;
+        }
+        for (const it of S.items) it.justSummarized = false;
+        $("#statusSlot").innerHTML = S.status ? `<div class="status-line fadein" style="padding: 4px 0 2px"><span class="orb"></span><span class="shimmer">${esc(S.status)}</span><span class="spacer"></span><span style="font-size:11px">Esc 停止</span></div>` : "";
+        $("#stopBtn").hidden = !S.busy;
+        icons();
+        if (stuck || initial) list.scrollTop = list.scrollHeight;
+      }
+      function renderCanvas() {
+        $("#cCount").textContent = S.canvas.length;
+        $("#cNodes").innerHTML = S.canvas.map((n) => `<div class="cnode ${n.isNew ? "new" : ""}"><div class="ph" style="background:${n.grad}"></div>${esc(n.name)}${n.fromAtt ? '<div class="muted" style="font-size:10.5px">来自附件</div>' : ""}</div>`).join("");
+        S.canvas.forEach((n) => (n.isNew = false));
+      }
+      function lightbox(grad, name) {
+        $("#lb").innerHTML = `<div class="lightbox" onclick="this.remove()"><div style="background:${grad}">${esc(name)} · 点击任意处关闭（示意）</div></div>`;
+      }
+
+      /* ---------- 发送与脚本化的运行（模拟） ---------- */
+      function send() {
+        const why = sendBlock();
+        if (why) return;
+        $("#sendErr").innerHTML = "";
+        if ($("#swCheck").checked && S.tray.length) {
+          const idx = S.tray.length;
+          $("#sendErr").innerHTML = `<div class="send-err">${ic("circle-x")}图 ${idx}：图片超过 5 MB，换一张或压缩后再发（已保留文字和图片）</div>`;
+          icons();
+          return;
+        }
+        const text = $("#ta").value.trim();
+        const atts = S.tray.map((t) => ({ name: t.name, grad: t.grad }));
+        S.items = S.items.map((i) => (i.type === "assistant" ? { ...i, last: false } : i));
+        S.items.push({ type: "user", key: "u" + ++S.keySeq, text, atts });
+        S.tray = [];
+        $("#ta").value = "";
+        renderTray();
+        renderList();
+        if (S.busy) { toast("插话已发出，会在下一步之前读到（示意）"); return; }
+        runScript(text, atts);
+      }
+      function stopRun() { if (S.busy) S.abort = true; }
+      document.addEventListener("keydown", (e) => { if (e.key === "Escape" && S && S.busy) stopRun(); });
+
+      async function runScript(text, atts) {
+        const run = ++S.run;
+        let n = 0;
+        S.busy = true; S.abort = false;
+        const useRef = /参考|三视图/.test(text) && atts.length > 0;
+        const hasImg = atts.length > 0;
+        const plan = [
+          { say: hasImg ? "我先看下画布和你发的图。" : "我先看下画布。" },
+          { tools: [ { verb: "读取", label: "读取画布", summary: "画布目录（3 个节点）" }, ...(hasImg ? [] : [ { verb: "读取", label: "读取画布", summary: "镜头 1–6 的详情" } ]), { verb: "搜索", label: "搜索网页", summary: "「冷青橙 电影调色 参考」5 条" } ],
+            summary: hasImg ? "看过画布并搜了几张调色参考" : "读了 6 个镜头并找了调色参考" },
+        ];
+        if (useRef) {
+          plan.push({ say: "你的图很适合当林夏的参考，我把它放到画布上再生成三视图。" });
+          plan.push({ tools: [ { verb: "修改", label: "修改画布", summary: "新建参考图节点（来自附件）并连线", nodes: true, canvas: true }, { verb: "生成", label: "申请生成", summary: "林夏 · 三视图 × 1", gen: true } ],
+            summary: "把附件放到画布并申请生成三视图" });
+          plan.push({ say: "参考图已放在画布上并连到「林夏 · 三视图」，生成申请已提交，批准后开始出图。", thinking: true, final: true });
+        } else {
+          plan.push({ say: "色调方向明确了，开始改 6 个镜头的提示词。" });
+          plan.push({ tools: [ { verb: "修改", label: "修改画布", summary: "更新镜头 1–3 的提示词", nodes: true }, { verb: "修改", label: "修改画布", summary: "更新镜头 4–6 的提示词", nodes: true }, { verb: "整理", label: "整理布局", summary: "6 个镜头排成一行", nodes: true } ],
+            summary: "重写了 6 个镜头的提示词并排好布局" });
+          plan.push({ say: "6 个镜头的提示词都改成了冷青阴影 + 暖橙霓虹，镜头 4 的雨夜加了路面反光。", thinking: true, final: true });
+        }
+        for (const step of plan) {
+          if (S.abort) break;
+          if (step.say) await streamSay(run, n++, step);
+          else await doTools(run, step);
+        }
+        S.status = null;
+        S.busy = false;
+        if (S.abort) {
+          S.items.push({ type: "assistant", key: "x" + ++S.keySeq, text: "已停止。已经做的改动保留，可以撤销本轮。", streaming: false, last: true });
+          S.abort = false;
+        }
+        S.items.push({ type: "footer", key: "f" + ++S.keySeq });
+        renderList();
+        renderSend();
+      }
+      async function streamSay(run, n, step) {
+        // 修复后的行为：流式项和落库项是同一个 key，元素不重建
+        const it = { type: "assistant", key: `a:${run}:${n}`, text: "", thinking: !!step.thinking, streaming: true, last: !!step.final };
+        S.items.push(it);
+        S.status = step.thinking ? "思考中…" : "正在回答…";
+        renderList();
+        if (step.thinking) await sleep(900);
+        S.status = "正在回答…";
+        for (const ch of step.say) {
+          if (S.abort) break;
+          it.text += ch;
+          renderList();
+          await sleep(28);
+        }
+        it.streaming = false;
+        renderList();
+      }
+      async function doTools(run, step) {
+        const g = { type: "activity", key: "g" + ++S.keySeq, status: "running", manual: null, tools: [], secs: 0, summary: null };
+        const t0 = Date.now();
+        S.items.push(g);
+        for (const spec of step.tools) {
+          if (S.abort) break;
+          const t = { ...spec, status: "running" };
+          g.tools.push(t);
+          S.status = `正在${spec.label}…`;
+          renderList();
+          await sleep(700 + Math.random() * 500);
+          if (S.abort) { t.status = "aborted"; break; }
+          if (spec.gen && $("#swGen").checked) { t.status = "error"; t.summary = "模型暂不可用（示意）"; }
+          else t.status = "done";
+          if (spec.canvas) { S.canvas.push({ name: "林夏 · 参考图", grad: GRADS[2], fromAtt: true, isNew: true }); renderCanvas(); }
+          renderList();
+        }
+        g.status = S.abort ? "aborted" : "done";
+        g.secs = Math.max(1, Math.round(((Date.now() - t0) / 1000) * 4));
+        renderList();
+        // 段闭合 → 异步总结（模拟延迟 1.4s）；≥2 个工具、没中止、开关没开「总结失败」
+        if (g.status === "done" && g.tools.length >= 2 && !$("#swSum").checked) {
+          setTimeout(() => { g.summary = step.summary; g.justSummarized = true; renderList(); }, 1400);
+        }
+      }
+      function resetProto() {
+        initState();
+        elByKey.clear();
+        $("#pList").innerHTML = "";
+        $("#ta").value = "";
+        $("#msel").value = "s";
+        $("#sendErr").innerHTML = "";
+        renderTray(); renderCanvas(); renderList(true);
+      }
+      $("#ta").addEventListener("input", renderSend);
+      $("#ta").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } });
+      $("#ta").addEventListener("paste", (e) => {
+        const files = [...(e.clipboardData?.files || [])].filter((f) => f.type.startsWith("image/"));
+        if (files.length) { e.preventDefault(); addImages(files.length); }
+      });
+      const comp = $("#composer");
+      comp.addEventListener("dragover", (e) => { e.preventDefault(); comp.classList.add("drag"); });
+      comp.addEventListener("dragleave", () => comp.classList.remove("drag"));
+      comp.addEventListener("drop", (e) => {
+        e.preventDefault(); comp.classList.remove("drag");
+        const files = [...(e.dataTransfer?.files || [])];
+        const imgs = files.filter((f) => f.type.startsWith("image/"));
+        if (files.length > imgs.length) toast("只能添加图片，其他文件已忽略", "warn");
+        if (imgs.length) addImages(imgs.length);
+      });
+
+      /* ================= 刷新感对比 ================= */
+      const ANSWER = "6 个镜头都改成了冷青阴影 + 暖橙霓虹，镜头 4 加了路面反光。";
+      function paneSetup(pane, fixed) {
+        const list = $(".p-list", pane);
+        list.innerHTML = `<div class="u-wrap"><div class="u-bub">把 6 个镜头改成冷色调</div></div>
+          <div class="a-msg" data-k="stream">${fixed ? '<div class="thinkslot"><span class="think"><span class="shimmer">思考中</span></span></div><div class="txt"></div>' : '<div><span class="txt"></span><span class="cursor"></span></div>'}</div>
+          <div class="status-line sl"><span class="orb"></span><span class="shimmer">正在回答…</span></div>`;
+        $(".metrics", pane).innerHTML = `<span class="tag t-mute">等待播放</span>`;
+      }
+      function resetPanes() { paneSetup($("#paneA"), false); paneSetup($("#paneB"), true); }
+      let playing = false;
+      async function playBoth() {
+        if (playing) return;
+        playing = true;
+        resetPanes();
+        const slow = $("#slowmo").checked;
+        document.querySelectorAll(".cmp-pane").forEach((p) => p.classList.toggle("slow", slow));
+        const k = slow ? 4 : 1;
+        const A = $("#paneA"), B = $("#paneB");
+        for (const ch of ANSWER) {
+          $(".txt", A).textContent += ch; $(".txt", B).textContent += ch;
+          await sleep(30);
+        }
+        await sleep(250);
+        const topA = $(".txt", A).getBoundingClientRect().top;
+        const topB = $(".txt", B).getBoundingClientRect().top;
+        // ---- 现在：message.done → 卸载流式项，挂载新 key 的项（淡入上浮）+ 已思考插到上方 + 复制行
+        const listA = $(".p-list", A);
+        const old = $('[data-k="stream"]', A);
+        const fresh = document.createElement("div");
+        fresh.className = "a-msg enter flash";
+        fresh.innerHTML = `<div><button class="think">${ic("chevron-right")}已思考</button></div><div class="txt">${esc(ANSWER)}</div><div class="copyrow">${ic("copy")}</div>`;
+        old.replaceWith(fresh);
+        icons();
+        const shiftA = Math.round($(".txt", A).getBoundingClientRect().top - topA);
+        // ---- 修复后：同一元素原地定稿
+        const msgB = $('[data-k="stream"]', B);
+        $(".thinkslot", msgB).innerHTML = `<button class="think">${ic("chevron-right")}已思考</button>`;
+        const copy = document.createElement("button");
+        copy.className = "ibtn copy-abs"; copy.style.cssText = "width:22px;height:22px"; copy.innerHTML = ic("copy");
+        msgB.appendChild(copy);
+        icons();
+        const shiftB = Math.round($(".txt", B).getBoundingClientRect().top - topB);
+        await sleep(60 * k);
+        // ---- run.status 到达：状态行退场 + 底栏
+        const slA = $(".sl", A);
+        slA.style.transition = `opacity ${0.2 * k}s`; slA.style.opacity = "0";
+        await sleep(200 * k);
+        slA.remove();
+        $(".copyrow", fresh)?.remove(); // 底栏出现后复制行消失
+        const fA = document.createElement("div");
+        fA.className = "enter";
+        fA.innerHTML = itemHtml({ type: "footer" }).replace("fadein", "");
+        listA.appendChild(fA);
+        const slB = $(".sl", B);
+        const fB = document.createElement("div");
+        fB.innerHTML = itemHtml({ type: "footer" });
+        slB.replaceWith(fB);
+        icons();
+        setTimeout(() => fresh.classList.remove("flash"), 900 * k);
+        $(".metrics", A).innerHTML = `<span class="tag t-bad">元素重建 1 次</span><span class="tag t-bad">正文先透明再上浮</span><span class="tag t-warn">正文下移 ${shiftA}px</span><span class="tag t-warn">复制行闪现 24px</span>`;
+        $(".metrics", B).innerHTML = `<span class="tag t-ok">元素重建 0 次</span><span class="tag t-ok">正文下移 ${shiftB}px</span><span class="tag t-ok">底栏原位淡入</span>`;
+        icons();
+        playing = false;
+      }
+
+      initState();
+      resetPanes();
+      renderTray(); renderCanvas(); renderList(true);
+      icons();
+    </script>
+  </body>
+</html>

@@ -128,6 +128,10 @@
                 "type": "string",
                 "description": "create_node：放进这个组（id 或 tempId）"
               },
+              "assetId": {
+                "type": "string",
+                "description": "create_node：用用户随消息发来的图片附件（消息里「附件图片」一行的 asset:后面的数字）建一个已有画面的图片节点，只用于图片节点，不能再写提示词、模型、生成方式和参数。要拿附件当生成参考时：先这样落成节点，再连线到要生成的节点"
+              },
               "position": {
                 "type": "object",
                 "required": [
@@ -461,19 +465,23 @@
   },
   {
     "name": "canvas_inspect_image",
-    "description": "查看图片节点当前的图片内容（最多 4 张）。标题和提示词不等于画面：判断画面是否符合要求、人物是否一致、要不要重做之前，先看图。只能看已经有图片的图片节点。",
+    "description": "查看图片的内容（最多 4 张）。标题和提示词不等于画面：判断画面是否符合要求、人物是否一致、要不要重做之前，先看图。可以看已经有图片的图片节点（nodeIds），也可以重新看用户随消息发来的图片附件（assetIds，更早的附件图片会被省略，需要时用它再看一遍）。两种可以一起传，合计 1 到 4 张。",
     "parameters": {
       "type": "object",
-      "required": [
-        "nodeIds"
-      ],
       "properties": {
         "nodeIds": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "description": "图片节点 id，1 到 4 个"
+          "description": "图片节点 id"
+        },
+        "assetIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "附件图片的素材 id（消息里「附件图片」一行 asset: 后面的数字）"
         }
       }
     }

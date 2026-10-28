@@ -11,11 +11,13 @@ import { vendorOf } from "@/constants/vendors";
 import { TAP } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { useAgentSettings } from "@/store/agent-settings";
-import type { Chip } from "@/utils/agent/chips";
+import type { AgentAttachments } from "@/hooks/use-agent-attachments";
+import { attachmentBlockReason } from "@/utils/agent/attachments";
 import type { RefNode } from "@/utils/agent/selection-refs";
 
 import { AgentEditor, type AgentEditorHandle, type NodeOption } from "./agent-editor";
 import { AttachPopover } from "./attach-popover";
+import { AttachmentTray } from "./attachment-tray";
 import { ContextRing } from "./context-ring";
 import { ModelPopover } from "./model-popover";
 import { SkillPopover } from "./skill-popover";
@@ -165,7 +167,8 @@ export function AgentComposer({
   refNodes,
   editorRef,
   nodes,
-  onAttachImages,
+  attachments,
+  vision,
 }: {
   /** 编辑器里现在的消息文本 */
   text: string;
@@ -191,21 +194,27 @@ export function AgentComposer({
   editorRef: Ref<AgentEditorHandle>;
   /** 画布上能用 @ 引用的节点 */
   nodes: NodeOption[];
-  /** 把图片传到画布并引用：返回新建节点的 chip */
-  onAttachImages: (files: File[]) => Promise<Chip[]>;
+  /** 图片附件托盘：加图直接上传成素材，不进画布 */
+  attachments: AgentAttachments;
+  /** 当前模型能不能看图：不能看图时托盘里有图就不能发送 */
+  vision: boolean;
 }) {
   const handle = editorRef as { current: AgentEditorHandle | null };
   const empty = text.trim() === "";
   const stopMode = busy && empty;
-  const ready = !stopMode && !empty;
+  /** 托盘里的图片让发送不能点的原因（上传中、失败、模型不能看图）；停止不受影响 */
+  const blocked = stopMode ? null : attachmentBlockReason(attachments.items, vision);
+  const ready = !stopMode && !empty && !blocked;
 
-  const sendLabel = stopMode ? "停止" : busy ? "插话" : "发送";
-  /** ＋ 菜单、粘贴、拖入三处共用：图片先落到画布成为节点，再作为 chip 插进输入框 */
-  const attachImages = async (files: File[]) => {
-    for (const chip of await onAttachImages(files)) handle.current?.insertChip(chip);
-  };
+  const sendLabel = stopMode ? "停止" : (blocked ?? (busy ? "插话" : "发送"));
   return (
     <div className="flex flex-col gap-1.5 p-2.5">
+      <AttachmentTray
+        items={attachments.items}
+        vision={vision}
+        onRetry={attachments.retry}
+        onRemove={attachments.remove}
+      />
       <AgentEditor
         handleRef={editorRef}
         nodes={nodes}
@@ -215,14 +224,14 @@ export function AgentComposer({
           busy ? "补充要求，Agent 会在下一步看到" : "描述你的想法，@ 引用节点，/ 插入技能"
         }
         onChange={onTextChange}
-        onSubmit={() => !empty && !sending && onSend()}
-        onImages={(files) => void attachImages(files)}
+        onSubmit={() => !empty && !sending && !blocked && onSend()}
+        onImages={attachments.add}
       />
       {/* 底栏永远一行：放不下时先截断模型名、再截断模式名，窄到 360px 以下只留模型 logo */}
       <div className="flex min-w-0 flex-nowrap items-center gap-0.5">
         <AttachPopover
           onInsertText={(t) => handle.current?.insertText(t)}
-          onAttachImages={attachImages}
+          onAttachImages={attachments.add}
         />
         <ModeMenu mode={mode} onChange={onModeChange} disabled={busy} />
         <span aria-hidden className="bg-foreground/8 mx-1 h-3.5 w-px shrink-0" />
@@ -235,7 +244,7 @@ export function AgentComposer({
           <motion.button
             type="button"
             aria-label={sendLabel}
-            disabled={!stopMode && (empty || sending)}
+            disabled={!stopMode && (empty || sending || !!blocked)}
             whileTap={TAP}
             onClick={stopMode ? onStop : onSend}
             className={cn(

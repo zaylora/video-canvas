@@ -677,19 +677,6 @@ export const Flow = memo(function Flow({
     beginUploadAt(viewportCenter());
     uploadInputRef.current?.click();
   }, [beginUploadAt, viewportCenter]);
-  /** 给 Agent 的图片附件：先在画布中心落成图片节点（走现有上传），再把新建的节点作为 chip 引用 */
-  const attachImagesForAgent = useCallback(
-    async (files: File[]) => {
-      const before = new Set(nodesRef.current.map((node) => node.id));
-      beginUploadAt(viewportCenter());
-      showUploadNotice(await addUploadedNodes(files));
-      return nodesRef.current
-        .filter((node): node is CanvasNode => node.type === "canvas" && !before.has(node.id))
-        .map((node) => ({ type: "node" as const, id: node.id, name: node.data.label }));
-    },
-    [addUploadedNodes, beginUploadAt, viewportCenter],
-  );
-
   /**
    * 粘贴来的外部内容落到画布：文件走和「上传素材」一样的流程（本地预览、上传、换正式地址），
    * 文字直接落成文本节点，正文就是粘贴的内容。落点是指针处，指针不在画布上就落在视口中心。
@@ -1081,7 +1068,6 @@ export const Flow = memo(function Flow({
                           selection={agentSelection}
                           nodes={agentNodeOptions}
                           refNodes={agentRefOptions}
-                          onAttachImages={attachImagesForAgent}
                           onClose={toggleAgent}
                         />
                       )}

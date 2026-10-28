@@ -27,6 +27,7 @@ func NewBridge(mode string, platform *agenthandler.PlatformHandler, serviceToken
 		p.GET("/agent/models", platform.AgentModels)
 		p.POST("/canvases/check", platform.CheckCanvas)
 		p.POST("/messages/check", platform.CheckMessage)
+		p.POST("/attachments/check", platform.CheckAttachments)
 		p.POST("/runs/:run_id/undo", platform.UndoRun)
 		p.GET("/ids/:n", platform.EncodeID) // Agent 服务启动时核对 ID 编码密钥
 		p.POST("/runs/prepare", platform.PrepareRun)

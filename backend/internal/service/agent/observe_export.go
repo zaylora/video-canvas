@@ -518,6 +518,8 @@ func writeModelCalls(sb *strings.Builder, f *model.AgentExportFacts) {
 			purpose = "摘要"
 		case ModelPurposeTitle:
 			purpose = "命名"
+		case ModelPurposeActivity:
+			purpose = "活动说明"
 		}
 		fmt.Fprintf(sb, "- 第 %d 次（%s）· %s · 输入 %d / 输出 %d token", i+1, purpose, firstNonEmpty(m.UpstreamModel, m.ModelKey), m.InputTokens, m.OutputTokens)
 		if m.StopReason != "" {

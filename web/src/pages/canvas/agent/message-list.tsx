@@ -34,6 +34,7 @@ import type { NodeOption } from "./agent-editor";
 import { SelectionRefs } from "./selection-refs";
 import { ApprovalRow } from "./approval-row";
 import { Markdown } from "./markdown";
+import { MessageAttachments } from "./message-attachments";
 import { RunFeedback } from "./run-feedback";
 import { ChangesPanel, ChangesPill, useRunChanges } from "./run-summary";
 import { ShimmerText } from "./shimmer-text";
@@ -180,7 +181,7 @@ export function MessageList({
           if (canLoadOlder && el.scrollTop < LOAD_MORE_PX) ctl.loadOlder();
         }}
       >
-        <div ref={content} className="flex flex-col gap-3 px-4 pt-3 pb-2">
+        <div ref={content} className="relative flex flex-col gap-3 px-4 pt-3 pb-2">
           {entries.map((entry) => {
             if (entry.kind === "item") {
               const { item } = entry;
@@ -194,7 +195,10 @@ export function MessageList({
             return (
               <motion.div
                 key={entry.key}
-                initial={fresh ? { opacity: 0, y: 6 } : false}
+                // 底栏接在状态行刚退场的位置：只淡入、不位移，回答结束时不再有东西上下跳
+                initial={
+                  fresh ? (entry.kind === "footer" ? { opacity: 0 } : { opacity: 0, y: 6 }) : false
+                }
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: DURATION.base, ease: EASE_OUT }}
               >
@@ -217,7 +221,8 @@ export function MessageList({
               </motion.div>
             );
           })}
-          <AnimatePresence>
+          {/* popLayout：状态行退场时不再占位，上面的底栏直接接在它的位置，内容高度不会先多后少 */}
+          <AnimatePresence mode="popLayout">
             {ctl.statusLine && <StatusLine key={ctl.statusLine.runId} line={ctl.statusLine} />}
           </AnimatePresence>
         </div>
@@ -345,6 +350,7 @@ function Item({
         <div className="flex flex-col items-end gap-1">
           {item.steer && <span className="text-muted-foreground text-[11px]">插话</span>}
           <SelectionRefs ids={item.selection} nodes={refNodes} />
+          <MessageAttachments items={item.attachments} />
           <div className="agent-inset bg-foreground/7 max-w-[88%] rounded-2xl rounded-br-sm px-3 py-2 text-[13.5px] leading-[1.7] break-words whitespace-pre-wrap">
             <MessageText text={item.text} />
           </div>
@@ -462,7 +468,12 @@ function Steer({
               {" · "}
               <button
                 type="button"
-                onClick={() => void ctl.send(item.text)}
+                onClick={() =>
+                  void ctl.send(
+                    item.text,
+                    item.attachments.map((a) => ({ asset_id: a.asset_id })),
+                  )
+                }
                 className="text-foreground decoration-foreground/35 hover:decoration-foreground focus-visible:ring-node-ring/60 rounded-sm underline underline-offset-3 outline-none focus-visible:ring-2"
               >
                 作为新消息发送
@@ -471,6 +482,7 @@ function Steer({
           )}
         </span>
       )}
+      <MessageAttachments items={item.attachments} />
       <motion.div
         layoutId={reduce ? undefined : `steer-${item.key}`}
         transition={SPRING}
@@ -488,10 +500,10 @@ function Steer({
 }
 
 /**
- * 助手的回复：正文不加气泡。思考过程只在结束后出现（「› 已思考」，进行中由状态行表示）；
- * 悬停或聚焦时下方出现复制。
+ * 助手的回复：正文不加气泡。思考标签在正文上方：流式中是不可点的流光「思考中」，结束后原地变成可展开的「› 已思考」；
+ * 悬停或聚焦时右下角浮出复制（不占布局高度）。
  */
-function Assistant({
+export function Assistant({
   item,
   showThinking,
   copied,
@@ -502,9 +514,17 @@ function Assistant({
   copied: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const reduce = useReducedMotion();
   return (
-    <div className="group/msg flex flex-col gap-1">
+    <div className="group/msg relative flex flex-col gap-1">
+      {/* 思考标签从流式阶段就在正文上方：结束时只是「思考中」变「已思考」，不会再插进一行把正文往下推 */}
+      {showThinking && item.thinking && item.streaming && (
+        <div className="text-muted-foreground text-[13px]">
+          <span className="-ml-2 inline-flex items-center gap-1.5 px-2 py-0.5">
+            <ChevronRight aria-hidden className="size-3.5 opacity-0" />
+            <ShimmerText>思考中</ShimmerText>
+          </span>
+        </div>
+      )}
       {showThinking && item.thinking && !item.streaming && (
         <div className="text-muted-foreground text-[13px]">
           <button
@@ -528,29 +548,25 @@ function Assistant({
       {item.text && (
         <div className="text-foreground/92 text-[13.5px] leading-[1.7] break-words">
           <Markdown text={item.text} />
-          {item.streaming && !reduce && (
-            <span className="bg-foreground/60 ml-0.5 inline-block h-3.5 w-0.5 translate-y-0.5 animate-pulse" />
-          )}
         </div>
       )}
+      {/* 复制按钮浮在消息右下角、悬停才出现，不占布局高度：回答结束时不会因为它多出一行 */}
       {item.text && !item.streaming && !copied && (
-        <div className="flex h-6 opacity-0 transition-opacity duration-120 group-focus-within/msg:opacity-100 group-hover/msg:opacity-100">
-          <ChromeTooltip label="复制">
-            <button
-              type="button"
-              aria-label="复制"
-              onClick={() =>
-                void navigator.clipboard
-                  .writeText(item.text)
-                  .then(() => toast.success("已复制"))
-                  .catch(() => toast.error("复制失败"))
-              }
-              className="text-muted-foreground hover:bg-chrome-hover hover:text-foreground focus-visible:ring-node-ring/60 grid size-6 place-items-center rounded-md outline-none focus-visible:ring-2"
-            >
-              <Copy className="size-3.5" />
-            </button>
-          </ChromeTooltip>
-        </div>
+        <ChromeTooltip label="复制">
+          <button
+            type="button"
+            aria-label="复制"
+            onClick={() =>
+              void navigator.clipboard
+                .writeText(item.text)
+                .then(() => toast.success("已复制"))
+                .catch(() => toast.error("复制失败"))
+            }
+            className="text-muted-foreground hover:bg-chrome-hover hover:text-foreground focus-visible:ring-node-ring/60 bg-background/80 absolute right-0 bottom-0 grid size-6 place-items-center rounded-md opacity-0 outline-none backdrop-blur-sm transition-opacity duration-120 group-focus-within/msg:opacity-100 group-hover/msg:opacity-100 focus-visible:ring-2"
+          >
+            <Copy className="size-3.5" />
+          </button>
+        </ChromeTooltip>
       )}
     </div>
   );

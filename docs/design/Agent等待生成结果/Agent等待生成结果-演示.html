@@ -1,0 +1,842 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agent 等待生成结果</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+    <style>
+      /* 颜色全走变量，明暗主题只换变量。仓库已有演示或前端令牌时，改用同一套。 */
+      :root {
+        --radius: 0.625rem;
+        --background: 0 0% 100%;
+        --foreground: 240 10% 3.9%;
+        --card: 0 0% 100%;
+        --muted: 240 4.8% 95.9%;
+        --muted-foreground: 240 3.8% 46.1%;
+        --primary: 240 5.9% 10%;
+        --primary-foreground: 0 0% 98%;
+        --accent: 240 4.8% 95.9%;
+        --border: 240 5.9% 90%;
+        --ok: 5 150 105;
+        --bad: 220 38 38;
+        --warn: 180 83 9;
+        --info: 2 132 199;
+        --violet: 124 58 237;
+        color-scheme: light;
+      }
+      .dark {
+        --background: 240 10% 3.9%;
+        --foreground: 0 0% 98%;
+        --card: 240 10% 5.5%;
+        --muted: 240 3.7% 15.9%;
+        --muted-foreground: 240 5% 64.9%;
+        --primary: 0 0% 98%;
+        --primary-foreground: 240 5.9% 10%;
+        --accent: 240 3.7% 15.9%;
+        --border: 240 3.7% 17%;
+        --ok: 52 211 153;
+        --bad: 248 113 113;
+        --warn: 251 191 36;
+        --info: 56 189 248;
+        --violet: 167 139 250;
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        font-family: Geist, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        background: hsl(var(--background));
+        color: hsl(var(--foreground));
+        -webkit-font-smoothing: antialiased;
+        line-height: 1.55;
+      }
+      code, .mono { font-family: "Geist Mono", "SF Mono", Consolas, monospace; }
+      code { font-size: 0.92em; background: hsl(var(--muted)); padding: 1px 5px; border-radius: 5px; }
+      [data-lucide] { width: 1em; height: 1em; flex: none; }
+      h1, h2, h3, h4, p { margin: 0; }
+      button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+      table { border-collapse: collapse; width: 100%; }
+      th { font-weight: 500; text-align: left; }
+      [hidden] { display: none !important; }
+      .muted { color: hsl(var(--muted-foreground)); }
+      .row { display: flex; align-items: center; gap: 8px; }
+      .wrapflex { flex-wrap: wrap; }
+      .spacer { margin-left: auto; }
+
+      /* ---- 顶栏与标签页 ---- */
+      .top {
+        position: sticky; top: 0; z-index: 30;
+        background: hsl(var(--background) / 0.92);
+        backdrop-filter: blur(8px);
+        border-bottom: 1px solid hsl(var(--border));
+      }
+      .top-in { max-width: 1160px; margin: 0 auto; padding: 0 20px; display: flex; align-items: center; gap: 16px; height: 56px; }
+      .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; white-space: nowrap; }
+      .logo { width: 28px; height: 28px; border-radius: 8px; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; }
+      .tabs { display: flex; gap: 2px; margin-left: 8px; overflow-x: auto; }
+      .tab {
+        height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13px; font-weight: 500;
+        color: hsl(var(--muted-foreground)); white-space: nowrap; display: inline-flex; align-items: center; gap: 6px;
+        transition: background 0.15s, color 0.15s;
+      }
+      .tab:hover { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+      .tab[aria-selected="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn { height: 32px; padding: 0 10px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; }
+      .btn:hover { background: hsl(var(--accent)); }
+      .btn-primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn-primary:hover { background: hsl(var(--primary) / 0.9); }
+      .btn-outline { border: 1px solid hsl(var(--border)); }
+      .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+      .switch { width: 34px; height: 20px; border-radius: 999px; background: hsl(var(--border)); position: relative; transition: background 0.15s; }
+      .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+      .switch[aria-checked="true"] { background: rgb(var(--violet)); }
+      .switch[aria-checked="true"]::after { transform: translateX(14px); }
+
+      /* ---- 页面内容 ---- */
+      .wrap { max-width: 1160px; margin: 0 auto; padding: 32px 20px 80px; }
+      .h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+      .lead { margin-top: 10px; max-width: 820px; font-size: 15px; color: hsl(var(--muted-foreground)); }
+      .lead b { color: hsl(var(--foreground)); }
+      .sec { margin-top: 36px; }
+      .sec > h2 { font-size: 18px; font-weight: 600; }
+      .sec > .sub { margin: 4px 0 14px; max-width: 820px; font-size: 13.5px; color: hsl(var(--muted-foreground)); }
+      .card { border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: var(--radius); padding: 16px; }
+      .grid { display: grid; gap: 12px; }
+      .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      @media (max-width: 820px) { .g2, .g3 { grid-template-columns: 1fr; } .top-in { padding: 0 12px; } .wrap { padding: 24px 16px 64px; } }
+      ul.list { margin: 0; padding-left: 18px; font-size: 13.5px; }
+
+      /* ---- 标签：核实度、状态 ---- */
+      .tag { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 999px; font-size: 11.5px; font-weight: 500; }
+      .t-ok { background: rgb(var(--ok) / 0.12); color: rgb(var(--ok)); }
+      .t-bad { background: rgb(var(--bad) / 0.12); color: rgb(var(--bad)); }
+      .t-warn { background: rgb(var(--warn) / 0.12); color: rgb(var(--warn)); }
+      .t-info { background: rgb(var(--info) / 0.12); color: rgb(var(--info)); }
+      .t-mute { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
+
+      /* ---- 提示框 ---- */
+      .callout { display: flex; gap: 10px; padding: 12px 14px; border-radius: var(--radius); font-size: 13.5px; border: 1px solid; }
+      .callout > i { margin-top: 3px; }
+      .c-info { background: rgb(var(--info) / 0.07); border-color: rgb(var(--info) / 0.3); }
+      .c-info > i { color: rgb(var(--info)); }
+      .c-warn { background: rgb(var(--warn) / 0.07); border-color: rgb(var(--warn) / 0.3); }
+      .c-warn > i { color: rgb(var(--warn)); }
+      .c-bad { background: rgb(var(--bad) / 0.07); border-color: rgb(var(--bad) / 0.3); }
+      .c-bad > i { color: rgb(var(--bad)); }
+      .c-ok { background: rgb(var(--ok) / 0.07); border-color: rgb(var(--ok) / 0.3); }
+      .c-ok > i { color: rgb(var(--ok)); }
+
+      /* ---- 主线流程图 ---- */
+      .flow { display: flex; align-items: stretch; gap: 6px; flex-wrap: wrap; padding: 14px; border-radius: var(--radius); }
+      .flow .node { flex: 1 1 140px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 12px; font-size: 12.5px; }
+      .flow .node b { display: block; font-size: 13px; margin-bottom: 2px; }
+      .flow .node.hl { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+      .flow .arrow { display: grid; place-items: center; color: hsl(var(--muted-foreground)); }
+
+      /* ---- 对比表 ---- */
+      .cmp-wrap { overflow-x: auto; border: 1px solid hsl(var(--border)); border-radius: var(--radius); }
+      .cmp th, .cmp td { padding: 9px 12px; font-size: 13px; vertical-align: top; border-bottom: 1px solid hsl(var(--border)); }
+      .cmp tr:last-child th, .cmp tr:last-child td { border-bottom: 0; }
+      .cmp thead th { background: hsl(var(--muted)); font-size: 12.5px; white-space: nowrap; }
+      .cmp tbody th { width: 120px; color: hsl(var(--muted-foreground)); font-weight: 500; }
+      .cmp .y { color: rgb(var(--ok)); }
+      .cmp .m { color: rgb(var(--warn)); }
+      .cmp .m b, .cmp .m { font-weight: 500; }
+
+      /* ---- 有序步骤 ---- */
+      .steps { list-style: none; counter-reset: s; display: grid; gap: 12px; }
+      .steps li { counter-increment: s; position: relative; padding-left: 32px; font-size: 13.5px; }
+      .steps li::before {
+        content: counter(s); position: absolute; left: 0; top: 0; width: 22px; height: 22px; border-radius: 50%;
+        background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; font-size: 12px; font-weight: 600;
+      }
+      .steps li small { display: block; color: hsl(var(--muted-foreground)); font-size: 12.5px; }
+
+      /* ---- 代码块（提案伪代码） ---- */
+      .codeblock { background: hsl(var(--muted)); border-radius: var(--radius); padding: 14px; font-family: "Geist Mono", "SF Mono", Consolas, monospace; font-size: 12.5px; overflow-x: auto; }
+
+      /* ---- 假浏览器框（原型） ---- */
+      .frame { border: 1px solid hsl(var(--border)); border-radius: 12px; overflow: hidden; background: hsl(var(--background)); }
+      .frame-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: hsl(var(--muted)); font-size: 12px; color: hsl(var(--muted-foreground)); }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: hsl(var(--border)); }
+      .proto { min-height: 360px; position: relative; }
+
+      /* ---- 设计标注层：顶栏开关控制显隐 ---- */
+      .note { outline: 1.5px dashed rgb(var(--violet)); outline-offset: 3px; position: relative; }
+      .note-txt { display: none; margin-top: 6px; font-size: 11.5px; line-height: 1.5; color: rgb(var(--violet)); }
+      .show-notes .note-txt { display: block; }
+      body:not(.show-notes) .note { outline: none; }
+
+      /* ---- 轻提示 ---- */
+      .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 60; pointer-events: none; }
+      .toast > div { display: flex; align-items: center; gap: 8px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 14px; font-size: 13px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); }
+      /* ---- 本文档追加：原型聊天面板 ---- */
+      .chat { display: grid; grid-template-columns: minmax(0, 1fr) 360px; min-height: 520px; }
+      @media (max-width: 820px) { .chat { grid-template-columns: 1fr; } }
+      .canvas-area { background: hsl(var(--muted) / 0.5); padding: 16px; display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; align-content: start; }
+      .cnode { border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 8px; font-size: 12px; }
+      .cnode .thumb { height: 64px; border-radius: 6px; background: hsl(var(--muted)); display: grid; place-items: center; margin-top: 6px; color: hsl(var(--muted-foreground)); }
+      .cnode .thumb.ok { background: rgb(var(--ok) / 0.15); color: rgb(var(--ok)); }
+      .cnode .thumb.bad { background: rgb(var(--bad) / 0.12); color: rgb(var(--bad)); }
+      .cnode .thumb.run { background: rgb(var(--info) / 0.12); color: rgb(var(--info)); }
+      .panel { border-left: 1px solid hsl(var(--border)); display: flex; flex-direction: column; }
+      .panel-h { padding: 10px 12px; border-bottom: 1px solid hsl(var(--border)); font-size: 13px; font-weight: 600; }
+      .msgs { flex: 1; padding: 12px; display: grid; gap: 8px; align-content: start; overflow-y: auto; max-height: 440px; font-size: 13px; }
+      .msg { padding: 8px 10px; border-radius: 10px; max-width: 92%; }
+      .msg.u { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); justify-self: end; }
+      .msg.a { background: hsl(var(--muted)); }
+      .msg.sys { justify-self: center; font-size: 12px; color: hsl(var(--muted-foreground)); background: none; padding: 2px; }
+      .appr { border: 1px solid rgb(var(--warn) / 0.5); background: rgb(var(--warn) / 0.06); border-radius: 10px; padding: 10px; }
+      .watch { margin: 0 12px 8px; border: 1px solid rgb(var(--info) / 0.4); background: rgb(var(--info) / 0.06); border-radius: 10px; padding: 8px 10px; font-size: 12.5px; }
+      .inputbar { border-top: 1px solid hsl(var(--border)); padding: 10px; display: flex; gap: 6px; }
+      .inputbar input { flex: 1; min-width: 0; height: 32px; border: 1px solid hsl(var(--border)); border-radius: 8px; padding: 0 10px; background: hsl(var(--background)); color: inherit; font: inherit; font-size: 13px; }
+      .tabtitle { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 6px 6px 0 0; background: hsl(var(--background)); font-size: 12px; margin-left: 10px; }
+      .notif { position: absolute; right: 12px; top: 12px; z-index: 5; width: 280px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 12px; font-size: 12.5px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.15); }
+      .ctrl { display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 12px; border-top: 1px dashed hsl(var(--border)); background: hsl(var(--muted) / 0.4); font-size: 12px; align-items: center; }
+      .log { font-family: "Geist Mono", Consolas, monospace; font-size: 12px; display: grid; gap: 4px; }
+      .log div { padding: 4px 8px; border-radius: 6px; background: hsl(var(--muted)); }
+      .log .w { background: rgb(var(--ok) / 0.12); }
+      .log .e { background: rgb(var(--bad) / 0.1); }
+      .log .q { background: rgb(var(--warn) / 0.12); }
+      .opt { text-align: left; border: 1px solid hsl(var(--border)); border-radius: 10px; padding: 10px 12px; font-size: 13px; }
+      .opt[aria-pressed="true"] { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+      .chk { display: flex; gap: 8px; align-items: center; font-size: 13px; padding: 4px 0; }
+    </style>
+  </head>
+
+  <body class="show-notes">
+    <header class="top">
+      <div class="top-in">
+        <div class="brand">
+          <span class="logo"><i data-lucide="hourglass"></i></span>Agent 等待生成结果
+        </div>
+        <div class="tabs" role="tablist">
+          <button class="tab" role="tab" data-tab="overview" aria-selected="true"><i data-lucide="map"></i>总览</button>
+          <button class="tab" role="tab" data-tab="demo" aria-selected="false"><i data-lucide="mouse-pointer-click"></i>出意外时</button>
+          <button class="tab" role="tab" data-tab="proto" aria-selected="false"><i data-lucide="layout-dashboard"></i>可点击原型</button>
+          <button class="tab" role="tab" data-tab="impl" aria-selected="false"><i data-lucide="database"></i>数据与接口</button>
+        </div>
+        <div class="spacer row">
+          <label class="row muted" style="font-size: 12px">
+            设计标注
+            <button class="switch" id="notesSw" role="switch" aria-checked="true" onclick="toggleNotes()"></button>
+          </label>
+          <button class="btn" onclick="document.documentElement.classList.toggle('dark')" aria-label="切换明暗主题">
+            <i data-lucide="sun-moon"></i>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <!-- ============ 1. 总览 ============ -->
+      <section id="tab-overview">
+        <h1 class="h1">生成跑完，Agent 自己醒来接着干</h1>
+        <p class="lead">
+          现在 Agent 申请的生成被批准后，这一轮就结束了，图和视频出来它并不知道，要你手动发消息叫它。改成：
+          <b>本轮照常结束、画布空出来；系统在后台盯着这批任务，全部结束后在同一个会话里自动开一轮，Agent 验收结果并提出下一步。</b>
+          每次花积分仍然要你点批准，<b>等待期间不占画布、不占会话、不花 token</b>。
+        </p>
+
+        <div class="callout c-info" style="margin-top: 16px">
+          <i data-lucide="info"></i>
+          <div>
+            <b>阅读说明。</b>项目事实来自 2026-10-28 读取的代码（分支 <code>release/v0.5.4</code>），文件位置见 Markdown §2.1；方案是提案，尚未实现。原型和「出意外时」页的数据都是示意，在内存里，刷新复原。<br />
+            <span class="muted">核实度图例：</span>
+            <span class="tag t-ok">已核对代码</span>
+            <span class="tag t-info">调研检索，未逐条复核</span>
+            <span class="tag t-warn">未验证 · 需实测</span>
+            <span class="tag t-mute">提案</span>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>一批生成从批准到 Agent 醒来</h2>
+          <p class="sub">谁负责「知道任务结束」，谁负责「叫醒 Agent」。</p>
+          <div class="flow note">
+            <div class="node"><b>你批准生成</b>Go 创建任务，记下是哪次 Agent 运行发起的</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>登记后台监听</b>一次 Pi 提交：写会话文档 <code>app.watches</code> + 建 Pi 后台任务 <code>app.task-watch</code>；本轮照常结束，画布释放</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>River 门铃</b>任务进终态的同一个事务里入队一个通知 job，发给 Agent</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>全部结束 → 唤醒</b>取结果摘要，同一会话自动开一轮</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>验收、推进</b>看图 / 看视频，提出下一批申请等你批准</div>
+          </div>
+          <div class="note-txt">
+            设计：任务状态的唯一事实在 Go 的数据库，所以「任务结束」由 Go 在结算事务里发出，不会漏发；门铃只说「某任务结束了」，结果醒来时再查，所以门铃重复、乱序都没关系。pi-durable 管三件事：监听状态存在会话文档里（和对话记录原子提交）；每批一个后台任务用持久睡眠做兜底和交付重试，重启自动续上；结果作为带 requestId 的输入投回会话，重放不会叫醒两次。Pi 任务不能被外部提前叫醒，所以秒级的快速路径靠 River 门铃。监听不用 LLM：等状态不需要模型。
+          </div>
+          <div class="callout c-warn" style="margin-top: 10px">
+            <i data-lucide="corner-down-right"></i>
+            <div>
+              <b>门铃丢了、Agent 宕机、画布被占时（兜底）：</b>每批的 Pi 后台任务在登记 2 分钟后醒来，之后每 60 秒一次，向 Go 查还没收到门铃的任务，所以最多晚两三分钟；Agent 重启后它按睡眠时间自动续上。Agent 不在线时 River 会退避重试门铃。你正在同一会话里聊天时，结果直接插进当前这一轮；画布被另一个会话占着，就等那次运行结束马上唤醒。
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>批准时有三种去向</h2>
+          <p class="sub">默认一定会等；只有你明确说「不用管」时 Agent 才会放行。</p>
+          <div class="grid g3">
+            <div class="card">
+              <div class="row"><i data-lucide="hourglass"></i><b>后台等待（默认）</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-mute">wait=true</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>本批全部结束才醒一次。</b>会话里显示「后台等待生成 2/6」，可以点「不用等了」。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="send"></i><b>提交就走</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-warn">仅限你明确说不用管</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>Agent 申请时传 <code>wait=false</code>。</b>不登记监听，和今天的行为一样。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="circle-off"></i><b>不用等了</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-mute">你中途取消</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>只取消唤醒，不取消生成。</b>图和视频照常回填节点、照常扣费。</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>为什么选「后台监听、本轮结束」</h2>
+          <p class="sub">访谈中先选了「运行不结束」，后来改成后台监听。下表是两者和另外两个被放弃方案的差别。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th></th><th>后台监听 + 唤醒新一轮（采用）</th><th>运行不结束（已搁置）</th><th>纯 Pi 轮询（去掉门铃）</th><th>LLM 子代理监听</th></tr></thead>
+              <tbody>
+                <tr><th>等待期间</th><td class="y">画布、会话都空闲</td><td class="m">占着画布，同画布其它会话开不了运行</td><td class="y">空闲</td><td class="y">空闲</td></tr>
+                <tr><th>醒来延迟</th><td class="y">秒级（门铃）</td><td class="y">秒级</td><td class="m">等于轮询间隔 30–60 秒：pi-durable 不能被外部提前叫醒</td><td class="m">等于轮询间隔</td></tr>
+                <tr><th>花费</th><td class="y">不花 token</td><td class="y">不花 token</td><td class="y">不花 token</td><td class="m">每次检查都花 token</td></tr>
+                <tr><th>链条连续</th><td><span class="m">同一会话上下文连续；预算和步数每轮重算</span></td><td class="y">一次运行到底</td><td>同采用方案</td><td>同采用方案</td></tr>
+                <tr><th>重启 / 丢消息</th><td class="y">事务内入队 + Pi 任务兜底</td><td class="y">同左</td><td class="y">任务持久化</td><td class="m">依赖模型持续在跑</td></tr>
+                <tr><th>核实度</th><td><span class="tag t-ok">已核对代码可行</span></td><td><span class="tag t-ok">已核对代码</span></td><td><span class="tag t-ok">已核对 API</span></td><td><span class="tag t-mute">推断</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>你要做 6 个镜头的图，再都做成视频时，会发生什么</h2>
+          <p class="sub">全程你只需要点两次批准。</p>
+          <div class="grid g2">
+            <div class="card">
+              <ol class="steps" style="margin: 0; padding: 0">
+                <li><b>Agent 建 6 个节点、写提示词，申请出图</b><small>审批卡显示预估积分；页面在后台时会收到浏览器通知</small></li>
+                <li><b>你批准，本轮结束</b><small>会话显示「后台等待生成 0/6」；你可以继续聊别的，或去开另一个会话</small></li>
+                <li><b>6 张图都结束，自动开新一轮</b><small>消息流里出现「生成全部结束，Agent 继续」，Agent 逐张看图验收</small></li>
+                <li><b>Agent 申请：重做 1 张不合格的 + 5 张合格的做图生视频</b><small>新的审批卡，标签页标题变成「⏸ 待批准」</small></li>
+                <li><b>你批准，再次后台等待</b><small>视频可能要十几分钟（示意）</small></li>
+                <li><b>全部结束，自动开新一轮，Agent 验收视频并汇报</b><small>没有要做的就简短汇报，结束</small></li>
+              </ol>
+            </div>
+            <div class="card">
+              <div class="callout c-warn">
+                <i data-lucide="triangle-alert"></i>
+                <div>
+                  <b>边界：每一步花钱都要你批准，链条会停在审批卡上等你。</b>
+                  <ul class="list" style="margin-top: 6px">
+                    <li>审批不会过期失效；等审批时你在输入框发消息，就当作「<b>拒绝这次申请 + 补充说明</b>」交给 Agent，不会报「画布已有运行」。</li>
+                    <li>提醒只有标签页标题和浏览器通知，<b>关了页面就收不到</b>，回来时审批卡还在。</li>
+                    <li>醒来是在同一个会话里开新一轮，<b>每一轮的预算和步数重新算</b>。</li>
+                    <li>你正在同一会话里和 Agent 聊时，结果<b>直接插进当前这一轮</b>（学 Claude Code）；画布被另一个会话占着、或本会话在等审批时，等那次运行结束马上唤醒。</li>
+                  </ul>
+                </div>
+              </div>
+              <p class="muted" style="font-size: 12.5px; margin-top: 10px">上线说明里要告诉用户：「不用等了」只取消 Agent 的跟进，不会取消已批准的生成，也不会退积分。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 2. 出意外时 ============ -->
+      <section id="tab-demo" hidden>
+        <h1 class="h1">出意外时，唤醒会不会丢、会不会重复</h1>
+        <p class="lead">
+          左边选一个情况，右边逐步播放 Go、River、Agent 之间发生的事。<b>时间和顺序是示意</b>，用来说明每种情况最后都只唤醒一次。
+        </p>
+        <div class="grid g2" style="margin-top: 20px; grid-template-columns: 260px minmax(0, 1fr)">
+          <div id="optList" class="grid" style="align-content: start"></div>
+          <div id="optPanel" class="card"></div>
+        </div>
+      </section>
+
+      <!-- ============ 3. 可点击原型 ============ -->
+      <section id="tab-proto" hidden>
+        <h1 class="h1">在画布里走一遍链条</h1>
+        <p class="lead">
+          可点击原型，数据在内存里，刷新复原。已预置：你让 Agent「把两个镜头出图，确认后做成视频」，Agent 正在等你批准。用底部灰色控制条模拟任务结束：<b>点「失败」看失败如何被验收</b>；打开「另一会话占着画布」看唤醒排队；打开「页面在后台」看通知；等审批时在输入框发消息看「拒绝 + 说明」；<b>后台等待时发一句话，趁 Agent 回答的 1 秒内点最后一个「成功」</b>，看结果插进当前这一轮。
+        </p>
+        <div class="frame note" style="margin-top: 18px">
+          <div class="frame-bar">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            <span class="tabtitle" id="tabTitle">画布 · 雨夜短片</span>
+            <span style="margin-left: 8px">app.example.com / 画布 / 雨夜短片</span>
+          </div>
+          <div class="proto" id="proto"></div>
+        </div>
+        <div class="note-txt">
+          设计：监听条放在会话里而不是画布上，因为监听属于会话（醒来在同一个会话里）；「不用等了」只取消唤醒，生成照常完成——生成是你批准过的，取消要去节点上单独操作。等审批时的输入框占位文字直接说明「发送会拒绝这次申请」，避免误以为是普通聊天。
+        </div>
+      </section>
+
+      <!-- ============ 4. 数据与接口（提案） ============ -->
+      <section id="tab-impl" hidden>
+        <h1 class="h1">数据与接口（提案）</h1>
+        <p class="lead">下面都是设计提案，尚未实现。对应 Markdown 设计文档 §6、§8。<b>不新增运行状态，不新建监听表</b>，活跃运行唯一索引不动；pi-durable 的 <code>defineDoc</code> / <code>defineTask</code> 本项目还没用过 <span class="tag t-warn">未实测</span>。</p>
+
+        <div class="sec">
+          <h2>谁记什么</h2>
+          <p class="sub">任务归 Go，会话和运行归 Agent，所以两边各记一半。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>记录</th><th>放在哪</th><th>为什么</th></tr></thead>
+              <tbody>
+                <tr><th>任务属于哪次运行</th><td><code>generation_tasks.agent_run_id</code>（Go / PostgreSQL）</td><td>结算事务里要据此决定发不发门铃；现在只能从幂等键反推，不可靠（用户请求也能带幂等键）</td></tr>
+                <tr><th>门铃</th><td>River job <code>agent.task_settled</code>（同一事务入队）</td><td>和积分结算同生共死，不会「任务结束了但没通知」</td></tr>
+                <tr><th>会话在等哪些任务</th><td>会话级 Pi 文档 <code>app.watches</code>（Agent / pi-durable）</td><td>运行和会话都在 Agent；文档和对话记录同库原子提交，登记监听与建监听任务一次提交完成</td></tr>
+                <tr><th>兜底轮询与交付重试</th><td>Pi 后台任务 <code>app.task-watch</code>，每批一个</td><td>持久睡眠、重启续上、崩溃循环自动挂起都由 pi-durable 管；不让会话变忙</td></tr>
+                <tr><th>唤醒去重</th><td>Pi <code>submit</code> 的 <code>requestId = wake:{会话}:{批}</code></td><td>pi-durable 已保证会话内同一 requestId 只提交一次，重启有效</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>数据模型</h2>
+          <p class="sub">Go 侧走 <code>backend/internal/migration</code> 现有迁移；Agent 侧走 <code>agent/src/store/migrations.ts</code>。</p>
+          <div class="grid g2">
+            <div class="cmp-wrap">
+              <table class="cmp">
+                <thead><tr><th colspan="2"><code>generation_tasks</code> 新增（Go）</th></tr></thead>
+                <tbody>
+                  <tr><th><code>agent_run_id</code></th><td><code>varchar(32) not null default ''</code>；部分索引 <code>WHERE agent_run_id &lt;&gt; ''</code>。只由 <code>AgentGenerator.submit</code> 写，用户请求无法设置（<code>json:"-"</code>）</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="cmp-wrap">
+              <table class="cmp">
+                <thead><tr><th colspan="2">River 新 job（Go）</th></tr></thead>
+                <tbody>
+                  <tr><th>队列 / kind</th><td><code>agent_notify</code> / <code>agent.task_settled</code>，并发 4，不占生成名额</td></tr>
+                  <tr><th>args</th><td><code>{ task_id, run_id }</code>，按 args 唯一</td></tr>
+                  <tr><th>重试</th><td><code>MaxAttempts=25</code>，River 默认退避 <span class="tag t-warn">退避曲线未核实</span></td></tr>
+                  <tr><th>入队条件</th><td><code>finish()</code> 事务内、<code>agent_run_id ≠ ''</code>、非试跑、Agent 已启用</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="cmp-wrap" style="margin-top: 12px">
+            <table class="cmp">
+              <thead><tr><th colspan="2">Pi 文档 <code>app.watches</code>（会话级，<code>defineDoc</code>，version 1，fork: initial）</th></tr></thead>
+              <tbody>
+                <tr><th><code>batches[审批 id]</code></th><td>一批 = 一次审批批准的任务；全部结束才可交付</td></tr>
+                <tr><th><code>.runId / .createdAt</code></th><td>发起它的运行、登记时间</td></tr>
+                <tr><th><code>.watcherTaskId</code></th><td>这批的 Pi 后台任务 id，取消时用它 <code>abortTask</code></td></tr>
+                <tr><th><code>.state</code></th><td><code>waiting → deliverable → delivered</code>，或 <code>canceled</code>；Pi 提交串行原子</td></tr>
+                <tr><th><code>.deliveredRunId</code></th><td>交付给哪次运行（新开的唤醒运行，或插话时的当前运行）</td></tr>
+                <tr><th><code>.tasks[任务 id]</code></th><td><code>{ nodeId, status: pending|settled, taskStatus: succeeded|failed|expired|canceled|missing, settledAt }</code></td></tr>
+                <tr><th>清理</th><td>已结束超过 7 天的批，在下次写文档时清掉</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="cmp-wrap" style="margin-top: 12px">
+            <table class="cmp">
+              <thead><tr><th colspan="2">Pi 任务 <code>app.task-watch</code>（<code>defineTask</code>，<code>background: true</code>，属于会话）</th></tr></thead>
+              <tbody>
+                <tr><th><code>wait</code>（初始）</th><td><code>sleepUntil(登记 + 2 分钟)</code>，给门铃留宽限</td></tr>
+                <tr><th><code>check</code></th><td>已交付或已取消 → 结束；否则向 Go 查仍 pending 的任务并写回文档；整批结束 → <code>tryWake</code>；没交付成 → <code>sleepUntil(+60s)</code></td></tr>
+                <tr><th>abort</th><td>无外部副作用，直接结束</td></tr>
+                <tr><th>安装</th><td>引擎扩展 <code>engine-watch</code> 的 <code>tasks</code>；重启时先装扩展再 <code>resume()</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="muted" style="font-size: 12.5px; margin-top: 8px"><code>agent_runs</code> 新增 <code>trigger</code>（<code>user | wake</code>，默认 user）和 <code>wake_of</code>（来源运行 id）。</p>
+        </div>
+
+        <div class="sec">
+          <h2>接口</h2>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>方法与路径</th><th>方向</th><th>说明</th></tr></thead>
+              <tbody>
+                <tr><th><code>POST /internal/v1/watches/task-settled</code></th><td>Go → Agent</td><td>门铃。body <code>{ task_id, run_id, status }</code>，头 <code>X-Agent-Service-Token</code>。按 run_id 找会话，在 Pi 文档里记账。200 已记账；404 没有对应监听（已取消或 wait=false），job 视为完成；5xx / 连不上由 River 重试</td></tr>
+                <tr><th><code>POST /internal/platform/v1/tasks/status</code></th><td>Agent → Go</td><td>Pi 监听任务兜底用。<code>{ task_ids: ≤50 }</code> → <code>{ items: [{ task_id, status, finished_at }] }</code>，不存在或不属于该用户的返回 <code>missing</code>；400 参数错</td></tr>
+                <tr><th><code>POST /internal/platform/v1/tasks/digest</code></th><td>Agent → Go</td><td>唤醒用。返回 <code>{ text, items: [{ task_id, node_id, node_title, kind, status, error_message, outputs }] }</code>；400 参数错</td></tr>
+                <tr><th><code>GET /agent/sessions/:id/watches</code></th><td>前端 → Agent（经 Go 代理）</td><td>监听条数据：总数、已结束数、状态 <code>waiting | queued | delivered | canceled</code>、每个任务</td></tr>
+                <tr><th><code>POST /agent/sessions/:id/watches/cancel</code></th><td>前端 → Agent</td><td>不用等了：文档里未交付的批置 <code>canceled</code>，<code>abortTask</code> 收掉监听任务；不取消生成</td></tr>
+                <tr><th>事件 <code>watch.updated</code></th><td>Agent → 前端（现有事件推送）</td><td><code>{ total, settled, state }</code></td></tr>
+                <tr><th><code>generate_media</code> 参数 <code>wait</code></th><td>模型</td><td>布尔，默认 true；用户明确说「不用管结果」才传 false</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>核心流程伪代码</h2>
+          <div class="codeblock"><pre style="margin: 0; font: inherit; white-space: pre-wrap">// Go：GenerationTaskService.finish()（提案）
+WithTx(tx =&gt; {
+  t = tx.UpdateIf(id, from, {status: target, ...})
+  settleLedger(tx, t, target)
+  if t.AgentRunID != "" &amp;&amp; !t.IsTest &amp;&amp; agentEnabled:
+    tx.EnqueueAgentNotify({task_id: t.ID, run_id: t.AgentRunID})   // 同一事务；失败整笔回滚
+})
+
+// Agent：登记，在 decide 批准执行之后（提案）
+conv.commit(tx =&gt; {
+  doc = tx.doc(Watches, conv.id)
+  task = tx.createTask(TaskWatch, {batchId: approvalId, sessionId}, {background: true})
+  doc.batches[approvalId] = {runId, watcherTaskId: task.id, state: "waiting", tasks: {...pending}}
+})
+
+// Agent：门铃和监听任务共用的记账（提案）
+settle(task_id, status):
+  conv.commit(tx =&gt; doc.tasks[task_id]: pending → settled)   // 重复门铃：已 settled，无副作用
+  if 整批无 pending: batch.state = "deliverable"; tryWake(session)
+
+onTaskSettled(task_id, run_id, status):        // POST /internal/v1/watches/task-settled
+  if 文档里没有该任务 或 该批已 canceled: return 404
+  settle(task_id, status); return 200
+
+// Agent：唤醒，按会话加锁（提案）
+tryWake(session):
+  batches = watches.deliverable(session)            // 整批 settled、未交付、未取消
+  if batches.empty: return
+  active = canvasActiveRun(session.canvas)
+  if active &amp;&amp; active.session == session &amp;&amp; active.status == "running":
+    digest = platform.tasksDigest(batches.taskIds)
+    conv.submit({type: "input", whenBusy: "steer", content: wakeText(digest), requestId: ...})
+    return markDelivered(batches, active.id)          // 插进当前这一轮
+  if active: return                                  // 排队；任一运行终态时再调 tryWake
+  digest = platform.tasksDigest(batches.taskIds)    // 失败：留给监听任务下次醒来
+  run = startRun(session, {trigger: "wake", wakeOf: batches.runId})   // 撞 60001 → return
+  conv.submit({type: "input", content: wakeText(digest),
+               requestId: "wake:" + session + ":" + batches.minId,   // 重放不重复
+               entry: {kind: "app.tasks_settled", data: {batchIds, taskIds}}})
+  watches.markDelivered(batches, run.id)
+
+// Agent：Pi 后台任务 app.task-watch（提案）
+TaskWatch = defineTask({ name: "app.task-watch", version: 1, initial: () =&gt; ({phase: "wait"}),
+  phases: {
+    wait:  (task, rt, ctx) =&gt; rt.sleepUntil(batch.createdAt + 2min, {phase: "check"}, ctx),
+    check: async (task, rt, ctx) =&gt; {
+      if batch.state in ["delivered", "canceled"]: return complete
+      for st in platform.tasksStatus(pendingIds): if terminal(st): settle(st.id, st.status)
+      if batch.state == "delivered": return complete     // settle 里的 tryWake 已交付
+      return rt.sleepUntil(now + 60s, {phase: "check"}, ctx)   // 重启后按时间续上
+    },
+  },
+  abort: () =&gt; {},                                    // 无外部副作用
+})</pre></div>
+        </div>
+
+        <div class="sec">
+          <h2>已确认的决定</h2>
+          <div class="card">
+            <ol class="list" style="padding-left: 18px">
+              <li><b>目标是链式推进多步</b>：生成完自动验收，自动提出下一批申请。</li>
+              <li><b>每次生成都审批</b>：不做预算内自动批准。</li>
+              <li><b>后台监听、本轮结束</b>：等待期间不占画布和会话，结束后在同一会话自动开新一轮；监听不用 LLM。（取代了先前「运行不结束、可插话」的决定，见 Markdown §9.3）</li>
+              <li><b>系统自动等，模型可放行</b>：<code>wait=false</code> 仅限用户明确说不用管。</li>
+              <li><b>一批全部结束才唤醒一次</b>。</li>
+              <li><b>提醒 = 标签页标题 + 浏览器通知</b>，纯前端。</li>
+              <li><b>审批不收尾</b>：等审批时发新消息 = 拒绝并补充说明。</li>
+              <li><b>只停 Agent，生成任务继续</b>：对应「不用等了」和唤醒运行里的停止。</li>
+              <li><b>同会话正在回答时，结果插进当前这一轮</b>（参考 Claude Code）；另一会话占着画布或本会话在等审批时仍排队。</li>
+              <li><b>监听用 pi-durable 原生</b>：状态放会话级 Pi 文档，兜底轮询和交付重试由 Pi 后台任务做；River 门铃保留为快速路径。</li>
+              <li><b>已搁置</b>：预算内自动批准、时间窗合并唤醒、站内通知、审批超时结束运行、子代理验收（列入后续）、自建监听表 + 引擎定时器。</li>
+              <li><b>主文档已回写</b>：§1、§4.3、§6.4、§6.5、§8.2、§9.2、§11。</li>
+            </ol>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+      const $ = (s, r = document) => r.querySelector(s);
+      const esc = (s) =>
+        String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const icons = () => {
+        if (window.lucide) lucide.createIcons();
+      };
+
+      function toggleNotes() {
+        const on = document.body.classList.toggle("show-notes");
+        $("#notesSw").setAttribute("aria-checked", String(on));
+      }
+
+      let toastTimer;
+      function toast(msg, kind = "ok") {
+        const icon = { ok: "circle-check", bad: "circle-x", warn: "triangle-alert" }[kind] || "info";
+        $("#toast").innerHTML = `<div><i data-lucide="${icon}" style="color: rgb(var(--${kind}))"></i>${esc(msg)}</div>`;
+        icons();
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => ($("#toast").innerHTML = ""), 2200);
+      }
+
+      function showTab(id) {
+        document.querySelectorAll("main > section").forEach((s) => (s.hidden = s.id !== "tab-" + id));
+        document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === id)));
+        window.scrollTo(0, 0);
+      }
+      document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab)));
+
+      /* ================= 出意外时：逐步播放（示意） ================= */
+      // 每行：[时间, 类别(n 普通 / w 唤醒 / e 出错 / q 排队), 文本]
+      const SCEN = [
+        { id: "ok", name: "一切正常", desc: "两张图先后完成，门铃都送到。", lines: [
+          ["00:00", "n", "用户批准 → Go 创建任务 T1、T2（agent_run_id=R1）"],
+          ["00:00", "n", "Agent 登记监听：批 A1 = {T1, T2}；R1 回答完毕 → succeeded，画布释放"],
+          ["01:40", "n", "T1 成功：finish() 事务里结算积分 + 入队 agent.task_settled(T1)"],
+          ["01:40", "n", "River → Agent 门铃 T1：pending→settled；批 A1 还差 T2"],
+          ["02:10", "n", "T2 成功：同上，门铃 T2：批 A1 全部结束"],
+          ["02:10", "w", "画布空闲 → 取摘要 → 新开运行 R2(trigger=wake) → submit(requestId=wake:S1:A1)"],
+          ["02:11", "n", "Agent 看图验收，提出下一批申请（审批卡）"],
+        ]},
+        { id: "down", name: "Agent 宕机", desc: "任务结束时 Agent 容器在重启。", lines: [
+          ["01:40", "n", "T1 成功，入队门铃 T1"],
+          ["01:40", "e", "River → Agent：连接被拒绝 → job 出错，River 退避重试"],
+          ["02:10", "n", "T2 成功，入队门铃 T2；同样失败，等重试"],
+          ["02:30", "n", "Agent 启动：先装好扩展再 resume；批 A1 的 Pi 监听任务睡眠已到点，醒来向 Go 查 T1、T2 → 都已终态 → 写进会话文档"],
+          ["02:30", "w", "批 A1 全部结束 → 唤醒 R2，requestId=wake:S1:A1"],
+          ["02:45", "n", "River 重试门铃 T1、T2 → 已是 settled，无副作用，返回 200，job 完成"],
+        ]},
+        { id: "lost", name: "门铃丢失", desc: "比如门铃 worker 所在实例被关掉、job 迟迟没执行。", lines: [
+          ["01:40", "n", "T1 成功，门铃送达：settled"],
+          ["02:10", "n", "T2 成功，入队门铃 T2……但 job 一直没被执行"],
+          ["04:00", "n", "批 A1 的 Pi 监听任务醒来（登记后 2 分钟起、每 60 秒）：T2 仍 pending → 向 Go 查 → 已成功"],
+          ["04:00", "w", "批 A1 全部结束 → 唤醒 R2（比正常晚约 2 分钟）"],
+          ["之后", "n", "门铃 T2 终于执行 → 已 settled，无副作用"],
+        ]},
+        { id: "chat", name: "你正在同一会话聊天", desc: "批 A1 结束时，Agent 正在回答你的另一句话。", lines: [
+          ["02:05", "n", "你在会话 S1 发消息，运行 R5 正在回答"],
+          ["02:10", "n", "批 A1 全部结束；画布上的活跃运行是本会话的 R5，状态 running"],
+          ["02:10", "w", "取摘要 → submit(whenBusy=steer, requestId=wake:S1:A1)：在当前工具步之后插进 R5"],
+          ["02:12", "n", "Agent 在同一轮里接着验收；文档标记 delivered(R5)；监听任务下次醒来看到已交付就结束自己"],
+        ]},
+        { id: "busy", name: "画布被另一个会话占着", desc: "唤醒时同画布的另一个会话正在运行。", lines: [
+          ["02:10", "n", "批 A1 全部结束"],
+          ["02:10", "q", "画布上有活跃运行 R9（另一会话）→ 不唤醒，监听条显示「已全部完成，等当前运行结束后 Agent 继续」"],
+          ["03:30", "n", "R9 结束 → 引擎的运行结束钩子对该画布调用 tryWake"],
+          ["03:30", "w", "唤醒 R2"],
+        ]},
+        { id: "crash", name: "唤醒到一半崩溃", desc: "已经 submit 给 Pi，还没来得及标记已交付。", lines: [
+          ["02:10", "n", "批 A1 全部结束 → 新开 R2 → submit(requestId=wake:S1:A1)"],
+          ["02:10", "e", "进程崩溃，watches 还没标记 delivered"],
+          ["02:30", "n", "重启：现有启动恢复逻辑接管 R2；批 A1 的 Pi 监听任务重跑 check，发现文档里还是 deliverable"],
+          ["02:30", "n", "tryWake：画布被 R2 占着 → 不新开运行（排队）；R2 结束后再试"],
+          ["之后", "w", "再次 submit 同一 requestId → Pi 返回原提交，不会重复唤醒；补标 delivered"],
+        ]},
+        { id: "cancel", name: "你点了「不用等了」", desc: "生成还在跑时取消监听。", lines: [
+          ["01:00", "n", "用户点「不用等了」→ 文档里批 A1 标记 canceled，abortTask 收掉它的 Pi 监听任务"],
+          ["01:40", "n", "T1 成功：照常回填节点、照常扣费；门铃 T1 → Agent 返回 404 → job 完成"],
+          ["02:10", "n", "T2 同上"],
+          ["—", "n", "Agent 不会醒；这批生成和平常一样出现在画布上"],
+        ]},
+      ];
+      let scen = "ok", played = 0;
+      function renderDemo() {
+        $("#optList").innerHTML = SCEN.map((s) =>
+          `<button class="opt" aria-pressed="${s.id === scen}" onclick="pick('${s.id}')"><b>${esc(s.name)}</b><div class="muted" style="font-size:12px;margin-top:2px">${esc(s.desc)}</div></button>`).join("");
+        const s = SCEN.find((x) => x.id === scen);
+        const lines = s.lines.slice(0, played).map(([t, k, x]) => `<div class="${k}"><span class="muted">${esc(t)}</span>  ${esc(x)}</div>`).join("");
+        const done = played >= s.lines.length;
+        $("#optPanel").innerHTML = `
+          <div class="row"><b>${esc(s.name)}</b><span class="tag t-mute">示意</span><span class="spacer"></span>
+            <button class="btn btn-outline" onclick="played=0;renderDemo()"><i data-lucide="rotate-ccw"></i>重来</button>
+            <button class="btn btn-primary" ${done ? "disabled" : ""} onclick="played++;renderDemo()"><i data-lucide="step-forward"></i>下一步</button>
+            <button class="btn btn-outline" ${done ? "disabled" : ""} onclick="played=${s.lines.length};renderDemo()">全部</button></div>
+          <div class="log" style="margin-top:12px">${lines || '<span class="muted" style="font-size:13px">点「下一步」开始。</span>'}</div>
+          ${done ? `<div class="callout c-ok" style="margin-top:12px"><i data-lucide="circle-check"></i><div>${s.id === "cancel" ? "结果：没有唤醒，生成照常完成。" : "结果：只唤醒了一次。"}</div></div>` : ""}`;
+        icons();
+      }
+      function pick(id) { scen = id; played = 0; renderDemo(); }
+      renderDemo();
+
+      /* ================= 可点击原型（内存状态，示意） ================= */
+      const P = {};
+      function resetProto() {
+        Object.assign(P, {
+          phase: "approval", // idle | running | approval | done
+          stage: 0, // 0 出图 1 做视频
+          nodes: [
+            { id: "n1", title: "镜头1 · 街口", kind: "图片", st: "empty" },
+            { id: "n2", title: "镜头2 · 窗边", kind: "图片", st: "empty" },
+          ],
+          msgs: [
+            { r: "u", t: "把两个镜头出图，确认后做成视频。" },
+            { r: "a", t: "两个镜头的提示词已写好，用「图灵二代」出图，需要你批准。" },
+          ],
+          approval: { items: ["n1", "n2"], credits: 4 },
+          watch: null, // { ids, state: waiting|queued|delivered|canceled }
+          busy: false, hidden: false, notif: null, notifAsked: false, steer: null,
+        });
+        renderProto();
+      }
+      const node = (id) => P.nodes.find((n) => n.id === id);
+      const say = (r, t) => P.msgs.push({ r, t });
+      function notify(t) { if (P.hidden) P.notif = t; }
+      function title() {
+        let pre = "";
+        if (P.phase === "approval") pre = "⏸ 待批准 · ";
+        else if (P.watch && P.watch.state === "waiting") pre = `⏳ ${settledCount()}/${P.watch.ids.length} · `;
+        return pre + "画布 · 雨夜短片";
+      }
+      const settledCount = () => P.watch.ids.filter((id) => ["ok", "bad"].includes(node(id).st)).length;
+
+      function approve() {
+        const ids = P.approval.items;
+        P.approval = null; P.phase = "running";
+        if (!P.notifAsked) { P.notifAsked = true; toast("首次批准时请求浏览器通知权限（示意）", "warn"); }
+        ids.forEach((id) => (node(id).st = "run"));
+        say("sys", "已批准 · 预估积分已冻结");
+        renderProto();
+        setTimeout(() => {
+          say("a", "已提交，这批结束后我会自动接着看结果，你可以先忙别的。");
+          P.phase = "idle";
+          P.watch = { ids, state: "waiting" };
+          say("sys", "本轮结束 · 后台等待生成");
+          tryWake(); // 登记前就结束的任务：登记后立刻判定（门铃已记账，见 §6.4）
+          renderProto();
+        }, 800);
+      }
+      function rejectWith(text) {
+        P.approval = null; P.phase = "running";
+        say("u", text);
+        say("sys", "已拒绝这次申请，并把你的说明交给 Agent");
+        renderProto();
+        setTimeout(() => {
+          say("a", "好的，先不做视频。已出的图保留在画布上，需要时再叫我。");
+          P.phase = "done"; renderProto();
+        }, 800);
+      }
+      function settle(id, ok) {
+        const n = node(id);
+        if (n.st !== "run") return;
+        n.st = ok ? "ok" : "bad";
+        toast(`${n.title} ${ok ? "成功" : "失败"} → 门铃已发（示意）`, ok ? "ok" : "bad");
+        tryWake();
+        renderProto();
+      }
+      function tryWake() {
+        const w = P.watch;
+        if (!w || w.state === "canceled" || w.state === "delivered") return;
+        if (settledCount() < w.ids.length) return;
+        if (P.busy) { w.state = "queued"; return; }
+        if (P.phase === "running") { w.state = "delivered"; P.steer = w.ids; return; } // 同会话正在回答：等当前工具步结束后插进这一轮
+        w.state = "delivered";
+        wake(w.ids);
+      }
+      function wake(ids, steer = false) {
+        P.phase = "running";
+        say("sys", steer ? "生成全部结束 · 插进当前这一轮" : "生成全部结束，Agent 继续（新一轮）");
+        notify("雨夜短片：生成已完成，Agent 正在验收");
+        renderProto();
+        setTimeout(() => {
+          const ok = ids.filter((id) => node(id).st === "ok"), bad = ids.filter((id) => node(id).st === "bad");
+          if (P.stage === 0) {
+            let t = `看了 ${ok.length} 张成功的图：构图和人物一致，可以做视频。`;
+            if (bad.length) t += ` ${bad.map((id) => node(id).title).join("、")} 失败了（内容审核未通过），我改了提示词重新申请。`;
+            say("a", t);
+            const vids = ok.map((id, i) => {
+              const v = { id: "v" + id, title: node(id).title.replace("镜头", "视频"), kind: "视频", st: "empty" };
+              P.nodes.push(v); return v.id;
+            });
+            bad.forEach((id) => (node(id).st = "empty"));
+            const items = [...bad, ...vids];
+            P.stage = 1;
+            P.approval = { items, credits: bad.length * 2 + vids.length * 20 };
+            say("a", `申请：${bad.length ? "重做 " + bad.length + " 张图、" : ""}图生视频 ${vids.length} 段，需要你批准。`);
+            P.phase = "approval";
+            notify(`雨夜短片：Agent 需要你批准一批生成（预估 ${P.approval.credits} 积分）`);
+          } else {
+            say("a", `验收完成：${ok.length} 个结果合格${bad.length ? `，${bad.length} 个失败（已在节点上标出原因，要重做告诉我）` : ""}。这一组镜头做完了。`);
+            P.phase = "done";
+          }
+          P.watch = null;
+          renderProto();
+        }, 1000);
+      }
+      function cancelWatch() {
+        P.watch.state = "canceled";
+        say("sys", "已取消后台等待 · 生成照常进行，不会再叫醒 Agent");
+        renderProto();
+      }
+      function send() {
+        const el = $("#protoInput");
+        const text = el.value.trim();
+        if (!text) return;
+        el.value = "";
+        if (P.phase === "approval") return rejectWith(text);
+        if (P.phase === "running") { toast("Agent 正在回答，插话会在这一步之后交给它（现有行为）", "warn"); return; }
+        P.phase = "running"; say("u", text); renderProto();
+        setTimeout(() => {
+          say("a", "收到。（这一轮是你发起的普通对话；后台等待不受影响）");
+          if (P.steer) { const ids = P.steer; P.steer = null; wake(ids, true); return; }
+          P.phase = "idle";
+          if (P.watch && P.watch.state === "queued") { P.watch.state = "waiting"; tryWake(); }
+          renderProto();
+        }, 1200);
+      }
+      function toggleBusy() {
+        P.busy = !P.busy;
+        if (!P.busy && P.watch && P.watch.state === "queued") { P.watch.state = "waiting"; tryWake(); }
+        renderProto();
+      }
+
+      function renderProto() {
+        $("#tabTitle").textContent = title();
+        const th = (n) => ({ empty: ["image", ""], run: ["loader", "run"], ok: ["check", "ok"], bad: ["x", "bad"] })[n.st];
+        const canvas = P.nodes.map((n) => {
+          const [ic, cls] = th(n);
+          return `<div class="cnode"><b>${esc(n.title)}</b><div class="muted">${esc(n.kind)}</div><div class="thumb ${cls}"><i data-lucide="${ic}"></i></div></div>`;
+        }).join("");
+        const msgs = P.msgs.map((m) => `<div class="msg ${m.r}">${esc(m.t)}</div>`).join("");
+        const appr = P.approval ? `<div class="appr"><b>申请生成</b><div class="muted" style="font-size:12px;margin:4px 0 8px">${P.approval.items.map((id) => esc(node(id).title)).join("、")} · 预估 ${P.approval.credits} 积分</div>
+            <div class="row"><button class="btn btn-primary" onclick="approve()">批准</button><button class="btn btn-outline" onclick="rejectWith('不要了')">拒绝</button></div></div>` : "";
+        const typing = P.phase === "running" ? `<div class="msg a muted">Agent 正在处理…</div>` : "";
+        let watch = "";
+        if (P.watch && P.watch.state !== "delivered") {
+          const w = P.watch, k = settledCount();
+          const label = { waiting: `后台等待生成 · ${k}/${w.ids.length} 已结束`, queued: "已全部结束，等当前运行结束后 Agent 继续", canceled: "已取消等待 · 生成照常进行" }[w.state];
+          const items = w.ids.map((id) => { const n = node(id); return `<div class="row" style="font-size:12px"><i data-lucide="${th(n)[0]}"></i>${esc(n.title)}<span class="muted spacer">${{ run: "生成中", ok: "成功", bad: "失败", empty: "" }[n.st]}</span></div>`; }).join("");
+          watch = `<div class="watch"><div class="row"><i data-lucide="hourglass"></i><b>${esc(label)}</b>${w.state === "waiting" ? `<button class="btn spacer" style="height:24px" onclick="cancelWatch()">不用等了</button>` : ""}</div><div style="margin-top:6px;display:grid;gap:2px">${items}</div></div>`;
+        }
+        const ph = P.phase === "approval" ? "发送会拒绝这次申请并告诉 Agent 你的想法" : "和 Agent 说点什么";
+        const running = P.nodes.filter((n) => n.st === "run");
+        const ctrl = running.map((n) => `<span>${esc(n.title)}：</span><button class="btn btn-outline" style="height:26px" onclick="settle('${n.id}',true)">成功</button><button class="btn btn-outline" style="height:26px" onclick="settle('${n.id}',false)">失败</button>`).join("");
+        $("#proto").innerHTML = `
+          ${P.notif ? `<div class="notif"><div class="row"><i data-lucide="bell"></i><b>浏览器通知（示意）</b><button class="btn spacer" style="height:22px" onclick="P.notif=null;renderProto()"><i data-lucide="x"></i></button></div><div style="margin-top:4px">${esc(P.notif)}</div></div>` : ""}
+          <div class="chat">
+            <div class="canvas-area">${canvas}</div>
+            <div class="panel">
+              <div class="panel-h row"><i data-lucide="sparkles"></i>Agent · 会话 1 ${P.busy ? '<span class="tag t-warn spacer">会话 2 正在运行</span>' : ""}</div>
+              <div class="msgs">${msgs}${appr}${typing}</div>
+              ${watch}
+              <div class="inputbar"><input id="protoInput" placeholder="${esc(ph)}" onkeydown="if(event.key==='Enter')send()" /><button class="btn btn-primary" onclick="send()"><i data-lucide="send"></i></button></div>
+            </div>
+          </div>
+          <div class="ctrl"><b>模拟控制（不属于产品界面）</b>
+            ${ctrl || '<span class="muted">没有进行中的生成</span>'}
+            <span class="spacer"></span>
+            <label class="chk"><input type="checkbox" ${P.busy ? "checked" : ""} onchange="toggleBusy()" />另一会话占着画布</label>
+            <label class="chk"><input type="checkbox" ${P.hidden ? "checked" : ""} onchange="P.hidden=!P.hidden;renderProto()" />页面在后台</label>
+            <button class="btn btn-outline" style="height:26px" onclick="resetProto()"><i data-lucide="rotate-ccw"></i>重来</button>
+          </div>`;
+        icons();
+      }
+      resetProto();
+
+      icons();
+    </script>
+  </body>
+</html>

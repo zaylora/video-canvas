@@ -47,6 +47,10 @@ func (p *platformStub) CheckCanvas(context.Context, uint64, uint64) error {
 	p.calls++
 	return nil
 }
+func (p *platformStub) CheckAttachments(context.Context, uint64, []string) ([]agentsvc.AttachmentCheck, error) {
+	return nil, nil
+}
+
 func (p *platformStub) CheckMessage(context.Context, uint64, uint64, string, []string) ([]string, error) {
 	p.calls++
 	return nil, nil

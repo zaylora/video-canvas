@@ -24,6 +24,11 @@ import (
 
 // fakePlatform 记录平台 handler 传给业务层的参数。
 type fakePlatform struct {
+	// 附件校验
+	attUser     uint64
+	attIDs      []string
+	attachments []agentsvc.AttachmentCheck
+
 	rc      agentsvc.RunContext
 	callID  string
 	name    string
@@ -76,6 +81,14 @@ func (f *fakePlatform) AgentModels(context.Context) ([]model.AgentModelView, err
 func (f *fakePlatform) CheckCanvas(_ context.Context, userID, canvasID uint64) error {
 	f.checkedUser, f.checkedCanvas = userID, canvasID
 	return f.err
+}
+
+func (f *fakePlatform) CheckAttachments(_ context.Context, userID uint64, ids []string) ([]agentsvc.AttachmentCheck, error) {
+	f.attUser, f.attIDs = userID, ids
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.attachments, nil
 }
 
 func (f *fakePlatform) CheckMessage(_ context.Context, userID, canvasID uint64, msg string, sel []string) ([]string, error) {
@@ -174,6 +187,7 @@ func newPlatformRouter(api PlatformAPI) *gin.Engine {
 	g.GET("/agent/models", h.AgentModels)
 	g.POST("/canvases/check", h.CheckCanvas)
 	g.POST("/messages/check", h.CheckMessage)
+	g.POST("/attachments/check", h.CheckAttachments)
 	g.POST("/runs/:run_id/undo", h.UndoRun)
 	g.POST("/approvals/propose", h.ProposeApproval)
 	g.POST("/approvals/resolve", h.ResolveApproval)
@@ -712,6 +726,40 @@ func TestPlatformHandler_CheckMessage(t *testing.T) {
 	w = platformCall(newPlatformRouter(&fakePlatform{err: errcode.ErrInvalidParams.WithMsg("引用的节点「幽灵」不可用")}), http.MethodPost, "/internal/platform/v1/messages/check", `{"user_id":"1","canvas_id":"7","message":"x"}`, nil)
 	if w.Code != 400 || !strings.Contains(w.Body.String(), "幽灵") {
 		t.Errorf("引用不合法的说明原样返回: %d %s", w.Code, w.Body)
+	}
+}
+
+func TestPlatformHandler_CheckAttachments(t *testing.T) {
+	api := &fakePlatform{attachments: []agentsvc.AttachmentCheck{{AssetID: "11", Name: "参考.png", MimeType: "image/png", URL: "/files/u1/a.png", Image: agentsvc.ToolImage{MimeType: "image/png", Data: "QUJD"}}}}
+	w := platformCall(newPlatformRouter(api), http.MethodPost, "/internal/platform/v1/attachments/check", `{"user_id":"1","asset_ids":["11"]}`, nil)
+	if w.Code != 200 || api.attUser != 1 || len(api.attIDs) != 1 || api.attIDs[0] != "11" {
+		t.Fatalf("%d %s %+v", w.Code, w.Body, api)
+	}
+	for _, want := range []string{`"asset_id":"11"`, `"name":"参考.png"`, `"url":"/files/u1/a.png"`, `"data":"QUJD"`} {
+		if !strings.Contains(w.Body.String(), want) {
+			t.Errorf("响应里要有 %s: %s", want, w.Body)
+		}
+	}
+	// 没有附件：响应里是空数组，不是 null
+	w = platformCall(newPlatformRouter(&fakePlatform{}), http.MethodPost, "/internal/platform/v1/attachments/check", `{"user_id":"1","asset_ids":[]}`, nil)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"attachments":[]`) {
+		t.Errorf("空附件是 []: %d %s", w.Code, w.Body)
+	}
+	for name, body := range map[string]string{
+		"缺 user_id": `{"asset_ids":["1"]}`,
+		"附件太多":      `{"user_id":"1","asset_ids":[` + strings.TrimSuffix(strings.Repeat(`"1",`, 10), ",") + `]}`,
+		"素材 id 太长":  `{"user_id":"1","asset_ids":["` + strings.Repeat("9", 33) + `"]}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			w := platformCall(newPlatformRouter(&fakePlatform{}), http.MethodPost, "/internal/platform/v1/attachments/check", body, nil)
+			if w.Code != 400 {
+				t.Errorf("应 400: %d %s", w.Code, w.Body)
+			}
+		})
+	}
+	w = platformCall(newPlatformRouter(&fakePlatform{err: errcode.ErrInvalidParams.WithMsg("图 2：图片素材不存在或已删除")}), http.MethodPost, "/internal/platform/v1/attachments/check", `{"user_id":"1","asset_ids":["1","2"]}`, nil)
+	if w.Code != 400 || !strings.Contains(w.Body.String(), "图 2：图片素材不存在或已删除") {
+		t.Errorf("校验不通过的说明原样返回: %d %s", w.Code, w.Body)
 	}
 }
 

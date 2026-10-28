@@ -7,6 +7,7 @@
  * 请求被 signal 中止时抛出的是原来的中止错误，不包装：调用方要分得清「被取消」和「出错」。
  */
 import { createHash } from "node:crypto";
+import type { AttachmentCheck } from "./attachments.ts";
 import type { RelayEvent } from "./event-pusher.ts";
 import { parseDecimal } from "./ids.ts";
 
@@ -248,6 +249,9 @@ export function createPlatform({ baseUrl, serviceToken, fetchImpl = fetch }: Pla
     /** 校验消息里的引用（节点、模型、技能），返回去掉了已不存在节点的选中列表 */
     checkMessage: async (userId: string, canvasId: string, message: string, selection: string[] = [], signal?: AbortSignal): Promise<string[]> =>
       (await call<{ selection: string[] }>("POST", "/messages/check", undefined, { ...userCanvas(userId, canvasId), message, selection }, { signal })).selection,
+    /** 校验消息的图片附件（归属、格式、大小、数量），返回展示信息和交给模型的图；不合法抛业务错误（10001，点名第几张） */
+    checkAttachments: async (userId: string, assetIds: string[], signal?: AbortSignal): Promise<AttachmentCheck[]> =>
+      (await call<{ attachments: AttachmentCheck[] }>("POST", "/attachments/check", undefined, { user_id: userId, asset_ids: assetIds }, { signal })).attachments,
     /** 撤销某运行对画布的全部改动（改动记录在 Go）。运行是不是自己的、是否已结束由调用方校验 */
     undo: (rc: RunContext, signal?: AbortSignal) => call<UndoResult>("POST", `/runs/${rc.run_id}/undo`, rc, undefined, { signal }),
     /** 执行一次工具调用。工具层的失败是 is_error 的普通结果；调用本身出错才抛 PlatformError */

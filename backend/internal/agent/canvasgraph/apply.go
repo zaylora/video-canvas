@@ -17,6 +17,17 @@ type Options struct {
 	NewID func(prefix string) string
 	// ModelOps 按模型 key 查它支持的生成方式，用来校验 mode；不传就只检查 mode 与节点种类是否相符
 	ModelOps ModelOpsFunc
+	// Assets 是 create_node 里 assetId 指向的素材（调用方先校验归属并解析好）；没有的 assetId 一律不可用
+	Assets map[string]AssetRef
+}
+
+// AssetRef 是已经解析好的一份图片素材：建已完成的图片节点要的信息。
+type AssetRef struct {
+	ID       string
+	URL      string // 稳定访问地址 /files/*
+	FileName string
+	Width    int
+	Height   int
 }
 
 // newID 生成带前缀的 id。
@@ -231,6 +242,10 @@ func (a *applier) createNode(op Op) error {
 	if err := checkParams(op.Params); err != nil {
 		return err
 	}
+	ref, err := a.assetFor(op)
+	if err != nil {
+		return err
+	}
 	var parent Node
 	if op.ParentGroup != "" {
 		var err error
@@ -243,6 +258,14 @@ func (a *applier) createNode(op Op) error {
 		return err
 	}
 	n := Node{"id": id, "type": "canvas", "data": map[string]any{"kind": op.Kind, "label": a.uniqueLabel(op.Label, kindLabel[op.Kind])}}
+	if ref != nil {
+		// 已有素材：节点直接是已完成的上传型图片，字段和前端从素材创建节点时一致
+		for k, v := range uploadedImageData(*ref) {
+			if k != "label" {
+				n.Data()[k] = v
+			}
+		}
+	}
 	if op.Prompt != nil {
 		setContent(n, *op.Prompt)
 	}
@@ -283,8 +306,30 @@ func (a *applier) createNode(op Op) error {
 	return nil
 }
 
+// assetFor 取 create_node 的 assetId 对应的素材。没带 assetId 返回 nil；带了的只能是图片节点，
+// 素材必须已由调用方解析好，且节点是已有素材，不再有提示词、模型、生成方式和参数。
+func (a *applier) assetFor(op Op) (*AssetRef, error) {
+	if op.AssetID == "" {
+		return nil, nil
+	}
+	if op.Kind != KindImage {
+		return nil, errors.New("assetId 只能用在图片节点上")
+	}
+	if op.Prompt != nil || op.Model != nil || op.Mode != nil || len(op.Params) > 0 {
+		return nil, errors.New("带 assetId 的节点是已有素材，不需要提示词、模型、生成方式和参数")
+	}
+	ref, ok := a.opt.Assets[op.AssetID]
+	if !ok {
+		return nil, fmt.Errorf("素材 %q 不可用：只能使用用户随消息发来的图片附件", op.AssetID)
+	}
+	return &ref, nil
+}
+
 // updateNode 修改普通节点的标题、提示词、模型和生成参数（params 浅合并）。产物字段不在 Op 里，写不了。
 func (a *applier) updateNode(op Op) error {
+	if op.AssetID != "" {
+		return errors.New("assetId 只能用在新建图片节点上")
+	}
 	n, err := a.resolve(op.ID)
 	if err != nil {
 		return err

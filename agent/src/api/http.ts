@@ -34,8 +34,12 @@ const START_RUN: FieldSpec[] = [
   { key: "viewport", label: "视口", kind: "any" },
   { key: "budget_credits", label: "本轮预算", kind: "int", nullable: true, ...BUDGET },
   { key: "agent_model_key", label: "Agent 模型", kind: "string", max: 128 },
+  { key: "attachments", label: "附件", kind: "any" },
 ];
-const INTERJECT: FieldSpec[] = [{ key: "message", label: "消息", kind: "string", required: true, max: 20000 }];
+const INTERJECT: FieldSpec[] = [
+  { key: "message", label: "消息", kind: "string", required: true, max: 20000 },
+  { key: "attachments", label: "附件", kind: "any" },
+];
 const RESUME: FieldSpec[] = [{ key: "add_budget", label: "追加预算", kind: "int", ...BUDGET }];
 const DECIDE: FieldSpec[] = [
   { key: "decision", label: "决定", kind: "string", required: true, oneof: ["approve", "reject"] },
@@ -173,7 +177,8 @@ export function createApiApp(o: ApiOptions): FastifyInstance {
     });
     app.post("/agent/runs/:rid/interject", async (req: Req, reply) => {
       const rid = id(req, "rid");
-      await service.interject(user(req), rid, validateBody(body(req), INTERJECT).message);
+      const b = validateBody(body(req), INTERJECT);
+      await service.interject(user(req), rid, b.message, b.attachments);
       return ok(reply);
     });
     app.post("/agent/runs/:rid/cancel", async (req: Req, reply) => ok(reply, await service.cancel(user(req), id(req, "rid"))));

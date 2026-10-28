@@ -1,5 +1,6 @@
 import type {
   AgentApprovalDto,
+  AgentAttachmentDto,
   AgentDeletePayload,
   AgentEventDto,
   AgentRunStatus,
@@ -41,6 +42,8 @@ export type TimelineItem =
       steer: boolean;
       /** 发送这条消息时画布上选中的节点 id（后端校验过、确实在画布上）；没选、插话、旧事件都是空数组 */
       selection: string[];
+      /** 随消息发出的图片附件（显示在气泡上方）；没有、旧事件都是空数组 */
+      attachments: AgentAttachmentDto[];
       /** 插话的 id（后端收下它时给的）；旧事件的插话没有，也不排队 */
       steerId?: string;
       /** 插话属于哪一轮运行 */
@@ -69,6 +72,10 @@ export type TimelineItem =
       type: "activity";
       key: string;
       runId: string;
+      /** 这一块第一个工具调用的 id：服务端给这一块写说明（activity.summarized）时用它指认 */
+      groupId: string;
+      /** 模型写的一句说明；还没到、没有（只有一个工具、总结失败、旧会话）时为 undefined，显示时用动作短语 */
+      summary?: string;
       tools: ToolCall[];
       /** 有调用还在进行、或运行还在跑时的最后一块就是 running；有被中止的就是 aborted；否则 done */
       status: "running" | "done" | "aborted";
@@ -171,6 +178,8 @@ export const planFinished = (steps: AgentPlanStep[] | undefined) =>
 /** 收集中的一次工具调用：比 ToolCall 多了归属的运行和起止时间，合并成活动块时用 */
 type RawTool = ToolCall & {
   type: "tool";
+  /** 事件里的调用 id：活动块用第一个调用的 id 当 groupId */
+  callId: string;
   runId: string;
   startedAt: number | null;
   endedAt: number | null;
@@ -183,8 +192,31 @@ function toolNames(d: Record<string, unknown>): { label?: string; verb?: string 
   return { ...(label && { label }), ...(verb && { verb }) };
 }
 
+/** 事件里的图片附件：只留字段齐全的（旧事件没有、数据损坏的都当没有），不让坏数据把消息流弄崩 */
+function attachmentsOf(v: unknown): AgentAttachmentDto[] {
+  if (!Array.isArray(v)) return [];
+  const out: AgentAttachmentDto[] = [];
+  for (const raw of v) {
+    if (!raw || typeof raw !== "object") continue;
+    const a = raw as Record<string, unknown>;
+    if (!str(a.asset_id) || !str(a.url)) continue;
+    out.push({
+      asset_id: str(a.asset_id),
+      name: str(a.name),
+      mime_type: str(a.mime_type),
+      ...(typeof a.width === "number" && { width: a.width }),
+      ...(typeof a.height === "number" && { height: a.height }),
+      url: str(a.url),
+    });
+  }
+  return out;
+}
+
 /** 一轮运行的画布改动，按节点去重 */
 type RunChanges = { created: Set<string>; updated: Set<string> };
+
+/** 助手消息的 key：运行 id + 这一轮的第几条回复。流式中和落库后用同一个，列表据此认出是同一条消息 */
+const assistantKey = (runId: string, n: number) => `a:${runId}:${n}`;
 
 /**
  * 从会话事件推出消息流。
@@ -201,19 +233,30 @@ export function buildTimeline(state: AgentSessionState): TimelineItem[] {
   const wrote = new Set<string>();
   const changes = new Map<string, RunChanges>();
   /** 收下了、还没读到也没丢掉的插话（id → 内容），按收下的顺序 */
-  const pending = new Map<string, { seq: number; text: string; runId: string }>();
+  const pending = new Map<
+    string,
+    { seq: number; text: string; runId: string; attachments: AgentAttachmentDto[] }
+  >();
   /** 没读到的插话，和「之后有没有发过新消息」要比的序号：丢掉它的事件的序号，没有就取它自己的 */
   const missed: Array<{ item: UserItem; after: number }> = [];
   /** 最后一条用户自己发的（不是插话）消息的序号 */
   let lastUserSeq = 0;
+  /** 每轮运行已经收到几条 message.done（不管有没有文字）：助手消息按它编号，流式中的那条也用下一个号 */
+  const doneCount = new Map<string, number>();
+  /** 活动块的说明：group_id（第一个工具调用的 id）→ 一句话，可能在运行结束之后才到 */
+  const summaries = new Map<string, string>();
   /** 还在等压缩后第一条用量的分隔行（按运行分开） */
   const awaitingUsage = new Map<string, CompactionItem[]>();
-  const steerItem = (id: string, p: { seq: number; text: string; runId: string }): UserItem => ({
+  const steerItem = (
+    id: string,
+    p: { seq: number; text: string; runId: string; attachments: AgentAttachmentDto[] },
+  ): UserItem => ({
     type: "user",
     key: `e${p.seq}`,
     text: p.text,
     steer: true,
     selection: [],
+    attachments: p.attachments,
     steerId: id,
     runId: p.runId,
   });
@@ -226,7 +269,12 @@ export function buildTimeline(state: AgentSessionState): TimelineItem[] {
       case "message.user":
         // 带 id 的插话先排队，等 steer.read 才进入时间线（Agent 实际读到它的时候），steer.dropped 变成没读到
         if (d.steer === true && str(d.id)) {
-          pending.set(str(d.id), { seq: ev.seq, text: str(d.text), runId });
+          pending.set(str(d.id), {
+            seq: ev.seq,
+            text: str(d.text),
+            runId,
+            attachments: attachmentsOf(d.attachments),
+          });
           break;
         }
         if (d.steer !== true) lastUserSeq = ev.seq;
@@ -236,6 +284,7 @@ export function buildTimeline(state: AgentSessionState): TimelineItem[] {
           text: str(d.text),
           steer: d.steer === true,
           selection: strs(d.selection).filter(Boolean),
+          attachments: attachmentsOf(d.attachments),
         });
         break;
       case "steer.read":
@@ -256,16 +305,22 @@ export function buildTimeline(state: AgentSessionState): TimelineItem[] {
           items.push(item);
         }
         break;
-      case "message.done":
+      case "message.done": {
+        const n = doneCount.get(runId) ?? 0;
+        doneCount.set(runId, n + 1);
         if (str(d.text) || str(d.thinking)) {
           items.push({
             type: "assistant",
-            key: `e${ev.seq}`,
+            key: assistantKey(runId, n),
             text: str(d.text),
             thinking: str(d.thinking),
             streaming: false,
           });
         }
+        break;
+      }
+      case "activity.summarized":
+        if (str(d.group_id) && str(d.text)) summaries.set(str(d.group_id), str(d.text));
         break;
       case "tool.start": {
         const id = str(d.id) || `e${ev.seq}`;
@@ -273,6 +328,7 @@ export function buildTimeline(state: AgentSessionState): TimelineItem[] {
         items.push({
           type: "tool",
           key: `t${id}`,
+          callId: id,
           runId,
           name: str(d.name),
           ...toolNames(d),
@@ -301,6 +357,7 @@ export function buildTimeline(state: AgentSessionState): TimelineItem[] {
           items.push({
             type: "tool",
             key: `t${id}`,
+            callId: id,
             runId,
             ...patch,
             startedAt: time(ev),
@@ -390,12 +447,13 @@ export function buildTimeline(state: AgentSessionState): TimelineItem[] {
     items.splice((lastAt.get(runId) ?? 0) + 1, 0, ...extra);
   }
 
-  const out = groupTools(items);
+  const out = groupTools(items, summaries);
   keepLastActivityOpen(out, state);
   if (state.stream.text || state.stream.thinking) {
     out.push({
       type: "assistant",
-      key: "stream",
+      // 和落库后的那条消息同一个 key：结束时是同一个元素，不重建、不重播入场动画
+      key: assistantKey(state.stream.runId ?? "", doneCount.get(state.stream.runId ?? "") ?? 0),
       text: state.stream.text,
       thinking: state.stream.thinking,
       streaming: true,
@@ -454,7 +512,10 @@ function runSummary(
 }
 
 /** 把同一轮里连续的工具调用合成活动块 */
-function groupTools(items: (TimelineItem | RawTool)[]): TimelineItem[] {
+function groupTools(
+  items: (TimelineItem | RawTool)[],
+  summaries: ReadonlyMap<string, string>,
+): TimelineItem[] {
   const out: TimelineItem[] = [];
   let block: ActivityItem | null = null;
   for (const item of items) {
@@ -463,12 +524,15 @@ function groupTools(items: (TimelineItem | RawTool)[]): TimelineItem[] {
       out.push(item);
       continue;
     }
-    const { type: _type, runId, startedAt, endedAt, ...call } = item;
+    const { type: _type, callId, runId, startedAt, endedAt, ...call } = item;
     if (!block || block.runId !== runId) {
+      const summary = summaries.get(callId);
       block = {
         type: "activity",
         key: `g${item.key}`,
         runId,
+        groupId: callId,
+        ...(summary && { summary }),
         tools: [],
         status: "done",
         errors: 0,
