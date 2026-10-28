@@ -27,7 +27,7 @@ const (
 	KindImage     = "image"     // 图片
 	KindVideo     = "video"     // 视频
 	KindAudio     = "audio"     // 音频
-	KindCharacter = "character" // 短剧角色卡引用，由短剧事务创建
+	KindCharacter = "character" // 角色节点（数据内嵌在 data.character），Agent 不能建，由短剧拆解创建
 	// KindDirector 是导演台（3D 摆位与运镜预演）：只在画布上手动建，Agent 能读到但不能建、不能改、不能连线。
 	KindDirector = "director"
 )

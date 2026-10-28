@@ -60,7 +60,6 @@ func All() []any {
 		&ConversationRecord{},
 		&AssetFolder{},
 		&AssetLibraryItem{},
-		&CharacterCard{},
 		&DramaProject{},
 		&DramaEpisode{},
 		&DramaJob{},

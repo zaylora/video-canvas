@@ -32,7 +32,6 @@ type Handlers struct {
 	WS             *handler.WSHandler                  // 用户级 WebSocket 推送
 	Asset          *handler.AssetHandler               // 素材上传与查询
 	AssetLibrary   *handler.AssetLibraryHandler        // 资产库：文件夹、库归属、生成历史
-	CharacterCard  *handler.CharacterCardHandler       // 用户私有角色卡 CRUD 与批量读取
 	Drama          *handler.DramaHandler               // 短剧项目、分集剧本、资产流水线
 	DramaSegment   *handler.DramaSegmentHandler        // 分集片段编辑、排序与视频/首帧生成
 	Files          gin.HandlerFunc                     // 素材稳定地址 /files/*：本地存储直出，对象存储签名后 302
@@ -179,14 +178,6 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		auth.POST("/asset-library/items", h.AssetLibrary.AddItem)
 		auth.PATCH("/asset-library/items/:id", h.AssetLibrary.MoveItem)
 		auth.DELETE("/asset-library/items/:id", h.AssetLibrary.RemoveItem)
-
-		// 角色卡：ID 为十六进制串，素材 ID 为数字；所有操作按当前用户隔离。
-		characters := auth.Group("/characters")
-		characters.GET("", h.CharacterCard.List)
-		characters.GET("/:id", h.CharacterCard.Get)
-		characters.POST("", h.CharacterCard.Create)
-		characters.PATCH("/:id", h.CharacterCard.Update)
-		characters.DELETE("/:id", h.CharacterCard.Delete)
 
 		// 短剧工作室：项目与任务 ID 沿用十六进制编码，分集按从 1 起的集号定位。
 		auth.GET("/drama-styles", h.Drama.Styles)

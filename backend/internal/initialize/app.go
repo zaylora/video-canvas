@@ -94,7 +94,6 @@ func NewApp(cfg *config.Config) (*App, error) {
 
 	// 画布
 	canvasProjectRepo := repository.NewCanvasProjectRepository(db)
-	characterCardRepo := repository.NewCharacterCardRepository(db) // 角色卡 CRUD 与画布导出共用
 
 	// AI 配置（平台协议 / 模型 / 凭证）：service 同时是 provider.Registry 与 provider.SecretResolver
 	aiConfigRepo := repository.NewAIConfigRepository(db)
@@ -293,7 +292,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 		Drama:         handler.NewDramaHandler(dramaSvc),
 		DramaSegment:  handler.NewDramaSegmentHandler(dramaSegments),
 		CanvasTransfer: handler.NewCanvasTransferHandler(service.NewCanvasTransferService(service.CanvasTransferDeps{
-			Canvases: canvasProjectRepo, Assets: assetSvc, Characters: characterCardRepo,
+			Canvases: canvasProjectRepo, Assets: assetSvc,
 			Tx: repository.NewCanvasTransferRepository(db), AppVersion: version.Version,
 			Limits: canvasdoc.DefaultLimits(), // 不能留零值：零值上限会拒绝所有导入文件
 			Now:    time.Now,
@@ -314,9 +313,6 @@ func NewApp(cfg *config.Config) (*App, error) {
 		AssetLibrary: handler.NewAssetLibraryHandler(service.NewAssetLibraryService(service.AssetLibraryDeps{
 			Folders: repository.NewAssetFolderRepository(db), Items: repository.NewAssetLibraryRepository(db),
 			Assets: assetRepo, Canvases: canvasProjectRepo, Views: assetSvc,
-		})),
-		CharacterCard: handler.NewCharacterCardHandler(service.NewCharacterCardService(service.CharacterCardDeps{
-			Cards: characterCardRepo, Assets: assetRepo, Views: assetSvc,
 		})),
 		Files:        handler.NewFilesHandler(assetSvc),
 		AIModel:      handler.NewAIModelHandler(aiCfgSvc),

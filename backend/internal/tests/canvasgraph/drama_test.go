@@ -9,7 +9,7 @@ import (
 )
 
 func TestMergeDramaMergesAliasesAndPreservesUnclassified(t *testing.T) {
-	g, err := canvasgraph.Parse([]byte(`{"nodes":[{"id":"old","type":"canvas","position":{"x":0,"y":0},"data":{"kind":"character","label":"保留标题","characterId":"abc","params":{"prompt":"保留提示"},"drama":{"type":"character","name":"Alice","look":"Young","episodes":[1]}}},{"id":"manual","type":"canvas","position":{"x":700,"y":0},"data":{"kind":"image","label":"手动"}}],"edges":[],"viewport":{"zoom":1}}`))
+	g, err := canvasgraph.Parse([]byte(`{"nodes":[{"id":"old","type":"canvas","position":{"x":0,"y":0},"data":{"kind":"character","label":"保留标题","character":{"name":"Alice","look":"Young","description":"原设定","extras":[],"voice":null},"params":{"prompt":"保留提示"},"drama":{"type":"character","name":"Alice","look":"Young","episodes":[1]}}},{"id":"manual","type":"canvas","position":{"x":700,"y":0},"data":{"kind":"image","label":"手动"}}],"edges":[],"viewport":{"zoom":1}}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -27,7 +27,7 @@ func TestMergeDramaMergesAliasesAndPreservesUnclassified(t *testing.T) {
 		t.Fatalf("created=%+v nodes=%+v", r.Created, r.Graph.Nodes)
 	}
 	d := r.Graph.Node("old").Data()
-	if d["label"] != "保留标题" || d["characterId"] != "abc" {
+	if d["label"] != "保留标题" || !reflect.DeepEqual(d["character"], map[string]any{"name": "Alice", "look": "Young", "description": "原设定", "extras": []any{}, "voice": nil}) {
 		t.Fatalf("existing node overwritten: %+v", d)
 	}
 	b, _ := json.Marshal(d["drama"])
@@ -127,5 +127,66 @@ func TestDramaGraphRejectsInvalidBatchWithoutChangingInput(t *testing.T) {
 		if len(g.Nodes) != 0 {
 			t.Fatal("invalid asset changed input")
 		}
+	}
+}
+
+// 拆解新建的角色节点直接内嵌 character 元数据：设定写入 description，音色描述写成文本音色。
+func TestMergeDramaCreatesCharacterNodeWithMetadata(t *testing.T) {
+	g, _ := canvasgraph.Parse([]byte(`{"nodes":[],"edges":[]}`))
+	r, err := canvasgraph.MergeDrama(g, []canvasgraph.DramaAsset{
+		{Type: "character", Name: "林夏", Look: "童年", Episodes: []int{1}, Description: " 九岁，扎双马尾 ", VoicePrompt: "清脆的童声"},
+		{Type: "character", Name: "老王", Episodes: []int{1}},
+		{Type: "scene", Name: "街道", Description: "不该出现在场景节点上", Episodes: []int{1}},
+	}, canvasgraph.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Created) != 3 {
+		t.Fatalf("created=%+v", r.Created)
+	}
+	withVoice := r.Graph.Node(r.Created[0].NodeID).Data()
+	want := map[string]any{
+		"name": "林夏", "look": "童年", "description": "九岁，扎双马尾", "extras": []any{},
+		"voice": map[string]any{"mode": "text", "text": "清脆的童声"},
+	}
+	if !reflect.DeepEqual(withVoice["character"], want) {
+		t.Fatalf("character = %#v", withVoice["character"])
+	}
+	for _, key := range []string{"characterId", "labelCache", "assetId", "src"} {
+		if _, ok := withVoice[key]; ok {
+			t.Errorf("角色节点不应带 %s: %+v", key, withVoice)
+		}
+	}
+	// 形象名为空取默认「基础形象」；没有音色描述时 voice 为 null（键存在、值为 nil）。
+	plain := r.Graph.Node(r.Created[1].NodeID).Data()["character"].(map[string]any)
+	if plain["look"] != "基础形象" || plain["description"] != "" {
+		t.Errorf("默认形象名/设定不对: %#v", plain)
+	}
+	if v, ok := plain["voice"]; !ok || v != nil {
+		t.Errorf("无音色描述时 voice 应为 null: %#v", plain)
+	}
+	if _, ok := r.Graph.Node(r.Created[2].NodeID).Data()["character"]; ok {
+		t.Error("场景节点不应带 character 元数据")
+	}
+	// drama 元数据保持不变：look 仍是原值（用于去重），不被默认形象名污染。
+	if look := r.Graph.Node(r.Created[1].NodeID).Data()["drama"].(map[string]any)["look"]; look != "" {
+		t.Errorf("drama.look = %v", look)
+	}
+}
+
+// 再次拆解到已有角色节点：只追加集数，不覆盖用户改过的 character 元数据。
+func TestMergeDramaKeepsExistingCharacterMetadata(t *testing.T) {
+	g, _ := canvasgraph.Parse([]byte(`{"nodes":[{"id":"old","type":"canvas","position":{"x":0,"y":0},"data":{"kind":"character","label":"林夏","assetId":"9","src":"/files/a.png","character":{"name":"小夏","look":"成年","description":"用户改过","extras":[{"assetId":"1","src":"/files/b.png"}],"voice":null},"drama":{"type":"character","name":"林夏","look":"","episodes":[1]}}}],"edges":[]}`))
+	r, err := canvasgraph.MergeDrama(g, []canvasgraph.DramaAsset{{Type: "character", Name: "林夏", Episodes: []int{2}, Description: "新设定", VoicePrompt: "新音色"}}, canvasgraph.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Created) != 0 {
+		t.Fatalf("created=%+v", r.Created)
+	}
+	d := r.Graph.Node("old").Data()
+	c := d["character"].(map[string]any)
+	if c["name"] != "小夏" || c["description"] != "用户改过" || c["voice"] != nil || len(c["extras"].([]any)) != 1 || d["assetId"] != "9" {
+		t.Fatalf("已有角色数据被覆盖: %#v", d)
 	}
 }

@@ -30,15 +30,15 @@ var (
 	ErrLimit = errors.New("画布文件超出限制")
 )
 
-// Document 是一份完整的画布导出文件。
+// Document 是一份完整的画布导出文件。角色数据内嵌在角色节点里（data.character），文件里没有单独的角色字典；
+// 角色卡下线前导出的旧文件里的顶层 characters 字典解析时被忽略。
 type Document struct {
-	Format     string                   `json:"format"`
-	Version    int                      `json:"version"`
-	ExportedAt string                   `json:"exportedAt"`
-	AppVersion string                   `json:"appVersion"`
-	Canvas     CanvasPart               `json:"canvas"`
-	Assets     map[string]AssetInfo     `json:"assets"`
-	Characters map[string]CharacterInfo `json:"characters"`
+	Format     string               `json:"format"`
+	Version    int                  `json:"version"`
+	ExportedAt string               `json:"exportedAt"`
+	AppVersion string               `json:"appVersion"`
+	Canvas     CanvasPart           `json:"canvas"`
+	Assets     map[string]AssetInfo `json:"assets"`
 }
 
 // CanvasPart 是画布本体：标题、节点（含组节点）和连线。
@@ -58,15 +58,6 @@ type AssetInfo struct {
 	Height     int    `json:"height"`
 	DurationMs int64  `json:"durationMs"`
 	FileName   string `json:"fileName"`
-}
-
-// CharacterInfo 是一张角色卡的内容，素材引用都是 assets 里的哈希。
-type CharacterInfo struct {
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	Avatar      string   `json:"avatar"`
-	Extras      []string `json:"extras"`
-	Voice       *string  `json:"voice"`
 }
 
 // Limits 是导入文件的体量上限。
@@ -124,17 +115,14 @@ func Parse(raw []byte) (*Document, error) {
 		return nil, fmt.Errorf("%w: 文件末尾有多余内容", ErrInvalid)
 	}
 
-	// 3. null 或缺省的 assets / characters 规整成空 map，后续代码可以直接读写
+	// 3. null 或缺省的 assets 规整成空 map，后续代码可以直接读写
 	if doc.Assets == nil {
 		doc.Assets = map[string]AssetInfo{}
-	}
-	if doc.Characters == nil {
-		doc.Characters = map[string]CharacterInfo{}
 	}
 	return &doc, nil
 }
 
-// Validate 检查文档的内容：素材哈希格式、体量上限，以及节点和角色卡里的每个引用都能在文件内找到。
+// Validate 检查文档的内容：素材哈希格式、体量上限，以及节点里的每个素材引用（含角色节点内嵌的补充图和音频音色）都能在文件内找到。
 // 引用不全返回 ErrInvalid，超出体量返回 ErrLimit。
 func (d *Document) Validate(l Limits) error {
 	// 1. 体量上限放在最前面：超大文件不必再逐项检查
@@ -147,14 +135,13 @@ func (d *Document) Validate(l Limits) error {
 			return fmt.Errorf("%w: 素材编号 %q 不是 64 位小写十六进制哈希", ErrInvalid, hash)
 		}
 	}
-	// 3. 节点：每个都必须是对象；它引用的哈希必须在 assets 里，角色卡引用必须在 characters 里
+	// 3. 节点：每个都必须是对象；它引用的哈希必须在 assets 里
 	for i, node := range d.Canvas.Nodes {
 		if err := d.checkNode(i, node); err != nil {
 			return err
 		}
 	}
-	// 4. 角色卡：主图必填，主图、补充图、声音都必须在 assets 里
-	return d.checkCharacters()
+	return nil
 }
 
 // CheckLimits 检查节点数、素材数和素材总大小是否超出上限（ErrLimit），素材大小为负时返回 ErrInvalid。
@@ -185,7 +172,7 @@ func (d *Document) CheckLimits(l Limits) error {
 	return nil
 }
 
-// checkNode 检查第 i 个节点的素材引用和角色卡引用。
+// checkNode 检查第 i 个节点的素材引用。
 func (d *Document) checkNode(i int, node map[string]any) error {
 	if node == nil {
 		return fmt.Errorf("%w: 第 %d 个节点不是对象", ErrInvalid, i+1)
@@ -196,42 +183,13 @@ func (d *Document) checkNode(i int, node map[string]any) error {
 			return fmt.Errorf("%w: 节点 %q 引用的素材 %s 不在文件的素材清单里", ErrInvalid, id, shortHash(h))
 		}
 	}
-	if ref, ok := characterRef(node); ok {
-		if _, exists := d.Characters[ref]; !exists {
-			return fmt.Errorf("%w: 节点 %q 引用的角色卡 %q 不在文件里", ErrInvalid, id, ref)
-		}
-	}
-	return nil
-}
-
-// checkCharacters 检查每张角色卡的素材引用。按编号排序遍历，让多处出错时报错稳定。
-func (d *Document) checkCharacters() error {
-	refs := make([]string, 0, len(d.Characters))
-	for ref := range d.Characters {
-		refs = append(refs, ref)
-	}
-	sort.Strings(refs)
-	for _, ref := range refs {
-		c := d.Characters[ref]
-		if c.Avatar == "" {
-			return fmt.Errorf("%w: 角色卡 %q 缺少主图", ErrInvalid, ref)
-		}
-		all := append([]string{c.Avatar}, c.Extras...)
-		if c.Voice != nil {
-			all = append(all, *c.Voice)
-		}
-		for _, h := range all {
-			if _, ok := d.Assets[h]; !ok {
-				return fmt.Errorf("%w: 角色卡 %q 引用的素材 %s 不在文件的素材清单里", ErrInvalid, ref, shortHash(h))
-			}
-		}
-	}
 	return nil
 }
 
 // hashRefs 取出一个节点里出现的所有素材哈希引用（含重复，不校验格式）：
 // data.assetHash、data.outputs[].assetHash、data.params.images / videos / audios 的每一项、
-// data.paramAssets 的键、data.scene.thumbHash。
+// data.paramAssets 的键、data.scene.thumbHash，以及角色节点的 data.character.extras[].assetHash 和
+// （mode=audio 的）data.character.voice.assetHash。
 // 校验、导出后的扫描和导入时的改写都靠它统一找引用，新增引用位置只改这里。
 func hashRefs(node map[string]any) []string {
 	data, _ := node["data"].(map[string]any)
@@ -262,57 +220,36 @@ func hashRefs(node map[string]any) []string {
 	sort.Strings(keys)
 	refs = append(refs, keys...)
 	scene, _ := data["scene"].(map[string]any)
-	return appendString(refs, scene["thumbHash"])
-}
-
-// ReferencedSets 返回画布节点真正用到的素材哈希和角色卡编号，供导入只复制、只建这些（设计 §8.4）：
-// 素材 = 各节点的 hashRefs + 被引用角色卡的主图、补充图、声音；角色卡 = 节点上的 characterRef。
-// 只保留在 assets / characters 里存在的条目（Validate 通过后两者一致），都去重；
-// 哈希按字典序，编号按长度再按字典序（c10 排在 c9 之后，与导出时的编号顺序一致）。没有引用时返回空切片。
-func ReferencedSets(doc *Document) (hashes []string, characterRefs []string) {
-	seenHash := map[string]bool{}
-	addHash := func(h string) {
-		if _, ok := doc.Assets[h]; ok && !seenHash[h] {
-			seenHash[h] = true
-			hashes = append(hashes, h)
+	refs = appendString(refs, scene["thumbHash"])
+	character, _ := data["character"].(map[string]any)
+	extras, _ := character["extras"].([]any)
+	for _, e := range extras {
+		if m, ok := e.(map[string]any); ok {
+			refs = appendString(refs, m["assetHash"])
 		}
 	}
-	seenRef := map[string]bool{}
-	characterRefs = []string{}
+	if voice, ok := character["voice"].(map[string]any); ok && voice["mode"] == voiceModeAudio {
+		refs = appendString(refs, voice["assetHash"])
+	}
+	return refs
+}
+
+// ReferencedSets 返回画布节点真正用到的素材哈希，供导入只复制这些（设计 §8.4）：
+// 即各节点的 hashRefs（含角色节点内嵌的补充图和音频音色）。
+// 只保留在 assets 里存在的条目（Validate 通过后两者一致），去重并按字典序。没有引用时返回空切片。
+func ReferencedSets(doc *Document) []string {
+	seen := map[string]bool{}
+	hashes := []string{}
 	for _, node := range doc.Canvas.Nodes {
 		for _, h := range hashRefs(node) {
-			addHash(h)
-		}
-		if ref, ok := characterRef(node); ok && !seenRef[ref] {
-			if _, exists := doc.Characters[ref]; exists {
-				seenRef[ref] = true
-				characterRefs = append(characterRefs, ref)
+			if _, ok := doc.Assets[h]; ok && !seen[h] {
+				seen[h] = true
+				hashes = append(hashes, h)
 			}
 		}
 	}
-	// 被引用的角色卡要能重建，它们的素材也算被引用
-	for _, ref := range characterRefs {
-		c := doc.Characters[ref]
-		addHash(c.Avatar)
-		for _, h := range c.Extras {
-			addHash(h)
-		}
-		if c.Voice != nil {
-			addHash(*c.Voice)
-		}
-	}
-	if hashes == nil {
-		hashes = []string{}
-	}
 	sort.Strings(hashes)
-	sort.Slice(characterRefs, func(i, j int) bool {
-		a, b := characterRefs[i], characterRefs[j]
-		if len(a) != len(b) {
-			return len(a) < len(b)
-		}
-		return a < b
-	})
-	return hashes, characterRefs
+	return hashes
 }
 
 // appendString 在 v 是字符串时把它追加到 refs，否则原样返回。
@@ -321,13 +258,6 @@ func appendString(refs []string, v any) []string {
 		return append(refs, s)
 	}
 	return refs
-}
-
-// characterRef 取出节点引用的角色卡局部编号（data.characterRef）。
-func characterRef(node map[string]any) (string, bool) {
-	data, _ := node["data"].(map[string]any)
-	ref, ok := data["characterRef"].(string)
-	return ref, ok
 }
 
 // isHash 判断 s 是否是 64 位小写十六进制（SHA-256）。

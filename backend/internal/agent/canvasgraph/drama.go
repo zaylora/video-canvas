@@ -7,16 +7,22 @@ import (
 	"strings"
 )
 
-// DramaAsset 是拆解产生的资产身份；角色卡由调用方在画布事务中绑定。
+// DramaAsset 是拆解产生的资产：身份（类型、名称、造型、别名、集号）用于合并，
+// Description / VoicePrompt 只在新建角色节点时写入节点内嵌的 character 元数据。
 type DramaAsset struct {
-	Type     string   `json:"type"`
-	Name     string   `json:"name"`
-	Look     string   `json:"look"`
-	Aliases  []string `json:"aliases,omitempty"`
-	Episodes []int    `json:"episodes"`
+	Type        string   `json:"type"`
+	Name        string   `json:"name"`
+	Look        string   `json:"look"`
+	Aliases     []string `json:"aliases,omitempty"`
+	Episodes    []int    `json:"episodes"`
+	Description string   `json:"description,omitempty"`
+	VoicePrompt string   `json:"voice_prompt,omitempty"`
 }
 
-// DramaNode 标识本次新建节点与原始资产下标，供调用方建卡和继续生成提示词。
+// defaultCharacterLook 是角色节点没有形象名时的默认形象名，与前端空节点默认值一致。
+const defaultCharacterLook = "基础形象"
+
+// DramaNode 标识本次新建节点与原始资产下标，供调用方继续生成提示词。
 type DramaNode struct {
 	NodeID     string
 	AssetIndex int
@@ -253,7 +259,25 @@ func newDramaNode(opt Options, asset DramaAsset) Node {
 		},
 	}}
 	if kind == KindCharacter {
-		n.Data()["labelCache"] = map[string]any{"name": asset.Name}
+		n.Data()["character"] = newCharacterMeta(asset)
 	}
 	return n
+}
+
+// newCharacterMeta 构造角色节点内嵌的 character 元数据：角色数据只属于当前画布，
+// 主图与补充图在拆解时为空（extras 为 []），音色描述非空才写成文本音色，否则 voice 为 null。
+// 全部使用 JSON 原生类型（[]any / map[string]any），避免 Clone 后差异比较出现无效改动。
+func newCharacterMeta(asset DramaAsset) map[string]any {
+	look := asset.Look
+	if look == "" {
+		look = defaultCharacterLook
+	}
+	var voice any
+	if text := strings.TrimSpace(asset.VoicePrompt); text != "" {
+		voice = map[string]any{"mode": "text", "text": text}
+	}
+	return map[string]any{
+		"name": asset.Name, "look": look, "description": strings.TrimSpace(asset.Description),
+		"extras": []any{}, "voice": voice,
+	}
 }

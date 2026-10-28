@@ -13,7 +13,6 @@ import (
 	"video-canvas/internal/drama"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
-	"video-canvas/internal/pkg/idcodec"
 	"video-canvas/internal/repository"
 	"video-canvas/internal/service"
 )
@@ -21,7 +20,7 @@ import (
 func TestDramaCanvasRepositoryAtomicWrites(t *testing.T) {
 	for _, scenario := range []string{"commit", "stale CAS", "late failure", "canceled"} {
 		t.Run(scenario, func(t *testing.T) {
-			db := isolatedDB(t, &model.CanvasProject{}, &model.DramaProject{}, &model.DramaEpisode{}, &model.DramaJob{}, &model.CharacterCard{})
+			db := isolatedDB(t, &model.CanvasProject{}, &model.DramaProject{}, &model.DramaEpisode{}, &model.DramaJob{})
 			ctx := context.Background()
 			canvas := model.CanvasProject{UserID: 11, Title: "短剧画布", PayloadJSON: datatypes.JSON(`{"nodes":[],"edges":[]}`)}
 			if err := db.Create(&canvas).Error; err != nil {
@@ -56,13 +55,6 @@ func TestDramaCanvasRepositoryAtomicWrites(t *testing.T) {
 				if len(created) != 1 {
 					t.Fatalf("created=%+v", created)
 				}
-				var cards []model.CharacterCard
-				if err := db.Find(&cards).Error; err != nil {
-					t.Fatal(err)
-				}
-				if len(cards) != 1 || cards[0].DramaID == nil || *cards[0].DramaID != project.ID || cards[0].AvatarAssetID != nil || cards[0].LookName != "童年" || cards[0].VoicePrompt != "少年声" {
-					t.Fatalf("cards=%+v", cards)
-				}
 				saved, err := repo.GetCanvas(ctx, 11, canvas.ID)
 				if err != nil {
 					t.Fatal(err)
@@ -71,8 +63,12 @@ func TestDramaCanvasRepositoryAtomicWrites(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if saved.Revision != canvas.Revision+1 || g.Node(created[0].NodeID).Data()["characterId"] != idcodec.Encode(cards[0].ID) {
-					t.Fatalf("canvas/card mismatch: %+v", saved)
+				wantCharacter := map[string]any{
+					"name": "林川", "look": "童年", "description": "少年", "extras": []any{},
+					"voice": map[string]any{"mode": "text", "text": "少年声"},
+				}
+				if saved.Revision != canvas.Revision+1 || !reflect.DeepEqual(g.Node(created[0].NodeID).Data()["character"], wantCharacter) {
+					t.Fatalf("角色数据没有内嵌进画布节点: %+v", saved)
 				}
 				if err := db.First(&episode, episode.ID).Error; err != nil {
 					t.Fatal(err)
@@ -94,12 +90,10 @@ func TestDramaCanvasRepositoryAtomicWrites(t *testing.T) {
 				if err != nil || !reflect.DeepEqual(replayed, created) {
 					t.Fatalf("replay=%+v err=%v", replayed, err)
 				}
-				var count int64
-				if err := db.Model(&model.CharacterCard{}).Count(&count).Error; err != nil {
-					t.Fatal(err)
-				}
-				if count != 1 {
-					t.Fatalf("duplicate card after replay: %d", count)
+				// 重放不再写第二次：画布 revision 仍只加了 1。
+				again, err := repo.GetCanvas(ctx, 11, canvas.ID)
+				if err != nil || again.Revision != canvas.Revision+1 {
+					t.Fatalf("replay changed canvas: %+v err=%v", again, err)
 				}
 				return
 			}
@@ -125,10 +119,6 @@ func TestDramaCanvasRepositoryAtomicWrites(t *testing.T) {
 					if len(rows) != 1 {
 						t.Fatal("episode not locked")
 					}
-					card := model.CharacterCard{UserID: 11, DramaID: &project.ID, Name: "待回滚", LookName: "童年", ExtraAssetIDs: []uint64{}}
-					if err := tx.CreateCharacter(ctx, &card); err != nil {
-						return err
-					}
 					if err := tx.LockEpisodes(ctx, 11, project.ID, []int{1}); err != nil {
 						return err
 					}
@@ -151,13 +141,6 @@ func TestDramaCanvasRepositoryAtomicWrites(t *testing.T) {
 				if !errors.Is(err, want) {
 					t.Fatalf("transaction err=%v want=%v", err, want)
 				}
-			}
-			var count int64
-			if err := db.Model(&model.CharacterCard{}).Count(&count).Error; err != nil {
-				t.Fatal(err)
-			}
-			if count != 0 {
-				t.Fatalf("orphan cards after rollback: %d", count)
 			}
 			saved, err := repo.GetCanvas(ctx, 11, canvas.ID)
 			if err != nil {

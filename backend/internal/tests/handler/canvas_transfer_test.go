@@ -41,13 +41,6 @@ func (fakeTransferHandlerAssets) DiscardCopies(context.Context, []*model.Asset) 
 
 func (fakeTransferHandlerAssets) FileURL(key string) string { return "/files/" + key }
 
-// fakeTransferHandlerCharacters 没有任何角色卡。
-type fakeTransferHandlerCharacters struct{}
-
-func (fakeTransferHandlerCharacters) ListByIDs(context.Context, uint64, []uint64) ([]model.CharacterCard, error) {
-	return nil, nil
-}
-
 // fakeTransferHandlerTx 是内存事务：只关心画布写入。
 type fakeTransferHandlerTx struct{ canvases []*model.CanvasProject }
 
@@ -57,15 +50,6 @@ func (f *fakeTransferHandlerTx) WithTx(_ context.Context, fn func(tx service.Tra
 
 func (f *fakeTransferHandlerTx) CreateAsset(_ context.Context, a *model.Asset) error {
 	a.ID = 500
-	return nil
-}
-
-func (f *fakeTransferHandlerTx) CountCharacters(context.Context, uint64) (int64, error) {
-	return 0, nil
-}
-
-func (f *fakeTransferHandlerTx) CreateCharacter(_ context.Context, c *model.CharacterCard) error {
-	c.ID = 600
 	return nil
 }
 
@@ -86,7 +70,7 @@ func newTransferRouter() (*gin.Engine, *fakeTransferHandlerTx) {
 	}}
 	tx := &fakeTransferHandlerTx{}
 	svc := service.NewCanvasTransferService(service.CanvasTransferDeps{
-		Canvases: repo, Assets: fakeTransferHandlerAssets{}, Characters: fakeTransferHandlerCharacters{},
+		Canvases: repo, Assets: fakeTransferHandlerAssets{},
 		Tx: tx, AppVersion: "v1", Limits: canvasdoc.DefaultLimits(),
 		Now: func() time.Time { return time.Date(2026, 10, 24, 8, 0, 0, 0, time.UTC) },
 	})

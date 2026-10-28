@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -14,7 +15,6 @@ import (
 	"video-canvas/internal/canvasdoc"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
-	"video-canvas/internal/pkg/idcodec"
 	"video-canvas/internal/service"
 )
 
@@ -81,10 +81,9 @@ func (f *fakeImportAssets) DiscardCopies(ctx context.Context, assets []*model.As
 
 func (f *fakeImportAssets) FileURL(key string) string { return "/files/" + key }
 
-// importStore 是内存里的「数据库」：素材、角色卡、画布。
+// importStore 是内存里的「数据库」：素材、画布。
 type importStore struct {
 	assets   []*model.Asset
-	cards    []*model.CharacterCard
 	canvases []*model.CanvasProject
 	nextID   uint64
 }
@@ -94,8 +93,6 @@ type fakeImportTx struct {
 	st importStore
 	// failCanvas 非空时 CreateCanvas 返回它
 	failCanvas error
-	// failCharacter 非空时插入角色卡失败，整个导入应回滚。
-	failCharacter error
 }
 
 func newFakeImportTx() *fakeImportTx {
@@ -104,7 +101,7 @@ func newFakeImportTx() *fakeImportTx {
 
 func (f *fakeImportTx) WithTx(_ context.Context, fn func(tx service.TransferTx) error) error {
 	snapshot := importStore{
-		assets: slices.Clone(f.st.assets), cards: slices.Clone(f.st.cards),
+		assets:   slices.Clone(f.st.assets),
 		canvases: slices.Clone(f.st.canvases), nextID: f.st.nextID,
 	}
 	if err := fn(f); err != nil {
@@ -122,25 +119,6 @@ func (f *fakeImportTx) id() uint64 {
 func (f *fakeImportTx) CreateAsset(_ context.Context, a *model.Asset) error {
 	a.ID = f.id()
 	f.st.assets = append(f.st.assets, a)
-	return nil
-}
-
-func (f *fakeImportTx) CountCharacters(_ context.Context, userID uint64) (int64, error) {
-	var n int64
-	for _, c := range f.st.cards {
-		if c.UserID == userID && c.DramaID == nil {
-			n++
-		}
-	}
-	return n, nil
-}
-
-func (f *fakeImportTx) CreateCharacter(_ context.Context, c *model.CharacterCard) error {
-	if f.failCharacter != nil {
-		return f.failCharacter
-	}
-	c.ID = f.id()
-	f.st.cards = append(f.st.cards, c)
 	return nil
 }
 
@@ -170,16 +148,10 @@ func newImportEnv(t *testing.T, limits canvasdoc.Limits) *importEnv {
 	return e
 }
 
-// addCard 给用户预置一张角色卡。
-func (e *importEnv) addCard(userID uint64, name string) {
-	e.tx.st.nextID++
-	e.tx.st.cards = append(e.tx.st.cards, &model.CharacterCard{ID: e.tx.st.nextID, UserID: userID, Name: name, AvatarAssetID: new(uint64(1))})
-}
-
 // importPayload 是原环境里一张真实形状的画布：图片节点 n1（主素材 101 同时是产物、参考图 102）、
-// 角色卡节点 n2、导演台 n3（缩略图也是 101）、组节点 g1，以及 n1→n2 的连线。
-func importPayload(cardHex string) string {
-	return fmt.Sprintf(`{
+// 内嵌角色数据的角色节点 n2（主图 201、补充图 202、音频音色 203）、导演台 n3（缩略图也是 101）、组节点 g1，以及 n1→n2 的连线。
+func importPayload() string {
+	return `{
   "nodes": [
     {"id":"g1","type":"group","position":{"x":0,"y":0},"data":{"label":"第一场"}},
     {"id":"n1","type":"canvas","position":{"x":10,"y":20},"data":{
@@ -188,19 +160,21 @@ func importPayload(cardHex string) string {
       "paramAssets":{"102":{"url":"/files/u1/r.png","fileName":"参考.png","mediaType":"image"}},
       "outputs":[{"id":"101","src":"/files/u1/a.png","assetId":"101","mediaType":"image","createdAt":1761300000000}],
       "activeOutputId":"101"}},
-    {"id":"n2","type":"canvas","position":{"x":300,"y":20},"data":{"kind":"character","characterId":%q}},
+    {"id":"n2","type":"canvas","position":{"x":300,"y":20},"data":{"kind":"character","label":"林夏","assetId":"201","src":"/files/u1/201","mediaType":"image",
+      "character":{"name":"林夏","look":"基础形象","description":"短发，黑色风衣",
+        "extras":[{"assetId":"202","src":"/files/u1/202"}],
+        "voice":{"mode":"audio","assetId":"203","src":"/files/u1/203","origin":"upload"}}}},
     {"id":"n3","type":"canvas","position":{"x":600,"y":20},"data":{"kind":"director",
       "scene":{"version":1,"thumb":{"assetId":"101","url":"/files/u1/a.png"}}}}
   ],
   "edges": [{"id":"e1","source":"n1","target":"n2"}],
   "viewport": {"x":5,"y":6,"zoom":2}
-}`, cardHex)
+}`
 }
 
 // importFixture 描述一份导出文档的原始内容，build 用 canvasdoc.Build 把它导出成文件字节。
 type importFixture struct {
 	title string
-	card  canvasdoc.CharacterEntry
 	// mutate 非空时在序列化前改写导出的文档，模拟手改过的文件
 	mutate func(doc *canvasdoc.Document)
 }
@@ -208,16 +182,11 @@ type importFixture struct {
 func defaultImportFixture() importFixture {
 	return importFixture{
 		title: "雨夜短片",
-		card: canvasdoc.CharacterEntry{
-			Name: "林夏", Description: "短发，黑色风衣", AvatarAssetID: "201",
-			ExtraAssetIDs: []string{"202"}, VoiceAssetID: "203",
-		},
 	}
 }
 
 func (fx importFixture) build(t *testing.T) []byte {
 	t.Helper()
-	cardHex := idcodec.Encode(7)
 	assets := map[string]canvasdoc.AssetEntry{}
 	for _, id := range []uint64{101, 102, 201, 202, 203} {
 		kind := "image"
@@ -229,8 +198,7 @@ func (fx importFixture) build(t *testing.T) []byte {
 		}}
 	}
 	doc, _, err := canvasdoc.Build(canvasdoc.ExportInput{
-		Title: fx.title, Payload: []byte(importPayload(cardHex)), Assets: assets,
-		Characters: map[string]canvasdoc.CharacterEntry{cardHex: fx.card},
+		Title: fx.title, Payload: []byte(importPayload()), Assets: assets,
 		AppVersion: "v1", Now: time.Date(2026, 10, 24, 0, 0, 0, 0, time.UTC),
 	})
 	if err != nil {
@@ -270,6 +238,18 @@ func importedNodes(t *testing.T, p *model.CanvasProject) map[string]map[string]a
 	return out
 }
 
+// assetKey 返回导入后哈希对应的新素材存储 key（FileURL 的入参）。
+func (e *importEnv) assetKey(t *testing.T, hash string) string {
+	t.Helper()
+	for _, a := range e.tx.st.assets {
+		if a.Sha256 == hash {
+			return a.StorageKey
+		}
+	}
+	t.Fatalf("没有为哈希 %s 建素材", hash[:8])
+	return ""
+}
+
 // newAssetID 返回导入后哈希对应的新素材 ID。
 func (e *importEnv) newAssetID(t *testing.T, hash string) uint64 {
 	t.Helper()
@@ -280,17 +260,6 @@ func (e *importEnv) newAssetID(t *testing.T, hash string) uint64 {
 	}
 	t.Fatalf("没有为哈希 %s 建素材", hash[:8])
 	return 0
-}
-
-// cardsOf 返回用户的全部角色卡。
-func (e *importEnv) cardsOf(userID uint64) []*model.CharacterCard {
-	var out []*model.CharacterCard
-	for _, c := range e.tx.st.cards {
-		if c.UserID == userID {
-			out = append(out, c)
-		}
-	}
-	return out
 }
 
 func TestImport_Success(t *testing.T) {
@@ -338,23 +307,26 @@ func TestImport_Success(t *testing.T) {
 		t.Errorf("导演台缩略图应换成新 ID: %v", thumb)
 	}
 
-	// 角色卡：复制成导入者的新卡，素材都指向新素材
-	cards := e.cardsOf(importUser)
-	if len(cards) != 1 || res.Report.Characters.Created != 1 || len(res.Report.Characters.Renamed) != 0 || len(res.Report.Characters.Invalid) != 0 {
-		t.Fatalf("角色卡结果不对: cards=%v report=%+v", cards, res.Report.Characters)
+	// 角色节点：数据随节点还原，主图、补充图、音频音色都指向新素材，没有任何角色卡行
+	char := nodes["n2"]
+	if char["assetId"] != fmt.Sprint(e.newAssetID(t, transferHash(201))) || char["src"] != "/files/"+e.assetKey(t, transferHash(201)) {
+		t.Errorf("角色节点主图应是新素材: %v", char)
 	}
-	c := cards[0]
-	if c.Name != "林夏" || c.Description != "短发，黑色风衣" || c.AvatarAssetID == nil || *c.AvatarAssetID != e.newAssetID(t, transferHash(201)) {
-		t.Errorf("角色卡内容不对: %+v", c)
+	wantChar := map[string]any{
+		"name": "林夏", "look": "基础形象", "description": "短发，黑色风衣",
+		"extras": []any{map[string]any{
+			"assetId": fmt.Sprint(e.newAssetID(t, transferHash(202))), "src": "/files/" + e.assetKey(t, transferHash(202)),
+		}},
+		"voice": map[string]any{
+			"mode": "audio", "assetId": fmt.Sprint(e.newAssetID(t, transferHash(203))),
+			"src": "/files/" + e.assetKey(t, transferHash(203)), "origin": "upload",
+		},
 	}
-	if !slices.Equal([]uint64(c.ExtraAssetIDs), []uint64{e.newAssetID(t, transferHash(202))}) {
-		t.Errorf("补充图不对: %v", c.ExtraAssetIDs)
+	if !reflect.DeepEqual(char["character"], wantChar) {
+		t.Errorf("角色数据不对: %#v，期望 %#v", char["character"], wantChar)
 	}
-	if c.VoiceAssetID == nil || *c.VoiceAssetID != e.newAssetID(t, transferHash(203)) {
-		t.Errorf("声音不对: %v", c.VoiceAssetID)
-	}
-	if nodes["n2"]["characterId"] != idcodec.Encode(c.ID) {
-		t.Errorf("角色卡节点应指向新卡: %v", nodes["n2"])
+	if _, ok := char["characterId"]; ok {
+		t.Errorf("角色节点不应带 characterId: %v", char)
 	}
 	if res.Report.EdgesDropped != 0 || len(e.assets.discarded) != 0 {
 		t.Errorf("不应丢连线或回收副本: %+v %v", res.Report, e.assets.discarded)
@@ -362,10 +334,13 @@ func TestImport_Success(t *testing.T) {
 
 	// 报告的 JSON 键是 snake_case，空列表输出 [] 而不是 null
 	raw, _ := json.Marshal(res)
-	for _, want := range []string{`"edges_dropped":0`, `"missing":[]`, `"renamed":[]`, `"invalid":[]`, `"revision":1`} {
+	for _, want := range []string{`"edges_dropped":0`, `"missing":[]`, `"revision":1`} {
 		if !strings.Contains(string(raw), want) {
 			t.Errorf("结果 JSON 缺少 %s: %s", want, raw)
 		}
+	}
+	if strings.Contains(string(raw), `"characters"`) {
+		t.Errorf("导入报告不应再有 characters: %s", raw)
 	}
 }
 
@@ -400,101 +375,24 @@ func TestImport_MissingAssetReported(t *testing.T) {
 	}
 }
 
-func TestImport_CharacterNames(t *testing.T) {
-	t.Run("同名保留原名，重复导入仍保留", func(t *testing.T) {
-		e := newDefaultImportEnv(t)
-		e.addCard(importUser, "林夏")
-		e.addCard(importUser+1, "林夏") // 他人的卡不影响导入
-		doc := defaultImportFixture().build(t)
-
-		res, err := e.svc.Import(context.Background(), importUser, doc)
-		if err != nil {
-			t.Fatalf("Import: %v", err)
-		}
-		if len(res.Report.Characters.Renamed) != 0 || e.cardsOf(importUser)[1].Name != "林夏" {
-			t.Errorf("同名应保留：%+v", res.Report.Characters)
-		}
-		res, err = e.svc.Import(context.Background(), importUser, doc)
-		if err != nil {
-			t.Fatalf("第二次 Import: %v", err)
-		}
-		if len(res.Report.Characters.Renamed) != 0 || e.cardsOf(importUser)[2].Name != "林夏" {
-			t.Errorf("重复导入应保留原名：%+v", res.Report.Characters)
-		}
-	})
-
-	t.Run("大小写近似的名字同样保留", func(t *testing.T) {
-		e := newDefaultImportEnv(t)
-		e.addCard(importUser, "alice")
-		fx := defaultImportFixture()
-		fx.card.Name = "Alice"
-		res, err := e.svc.Import(context.Background(), importUser, fx.build(t))
-		if err != nil {
-			t.Fatalf("Import: %v", err)
-		}
-		if r := res.Report.Characters.Renamed; len(r) != 0 || e.cardsOf(importUser)[1].Name != "Alice" {
-			t.Errorf("renamed = %+v", r)
-		}
-	})
-
-	t.Run("64 字同名仍保留完整名字", func(t *testing.T) {
-		e := newDefaultImportEnv(t)
-		long := strings.Repeat("长", 64)
-		e.addCard(importUser, long)
-		fx := defaultImportFixture()
-		fx.card.Name = long
-		res, err := e.svc.Import(context.Background(), importUser, fx.build(t))
-		if err != nil {
-			t.Fatalf("Import: %v", err)
-		}
-		got := e.cardsOf(importUser)[1].Name
-		if len(res.Report.Characters.Renamed) != 0 || got != long {
-			t.Errorf("导入名字 %q（%d 字）", got, utf8.RuneCountInString(got))
-		}
-	})
-
-	t.Run("角色插入失败保留错误并回滚", func(t *testing.T) {
-		e := newDefaultImportEnv(t)
-		boom := errors.New("角色插入失败")
-		e.tx.failCharacter = boom
-		res, err := e.svc.Import(context.Background(), importUser, defaultImportFixture().build(t))
-		if !errors.Is(err, boom) || res != nil || len(e.tx.st.cards) != 0 || len(e.tx.st.assets) != 0 || len(e.tx.st.canvases) != 0 {
-			t.Fatalf("应保留失败且整体回滚：%+v %v", res, err)
-		}
-	})
-
-	t.Run("超长名字和设定截断", func(t *testing.T) {
-		e := newDefaultImportEnv(t)
-		fx := defaultImportFixture()
-		fx.card.Name = "  " + strings.Repeat("名", 70) + "  "
-		fx.card.Description = strings.Repeat("设", 600)
-		if _, err := e.svc.Import(context.Background(), importUser, fx.build(t)); err != nil {
-			t.Fatalf("Import: %v", err)
-		}
-		c := e.cardsOf(importUser)[0]
-		if c.Name != strings.Repeat("名", 64) || utf8.RuneCountInString(c.Description) != 500 {
-			t.Errorf("名字 %d 字、设定 %d 字", utf8.RuneCountInString(c.Name), utf8.RuneCountInString(c.Description))
-		}
-	})
-}
-
-func TestImport_CharacterAvatarMissing(t *testing.T) {
-	t.Run("主图找不到不建卡", func(t *testing.T) {
+func TestImport_CharacterAssetsMissing(t *testing.T) {
+	t.Run("主图找不到：节点保留、角色数据保留，主图引用去掉并报告缺失", func(t *testing.T) {
 		e := newDefaultImportEnv(t)
 		e.assets.missing[transferHash(201)] = true
 		res, err := e.svc.Import(context.Background(), importUser, defaultImportFixture().build(t))
 		if err != nil {
 			t.Fatalf("Import: %v", err)
 		}
-		if len(e.cardsOf(importUser)) != 0 || res.Report.Characters.Created != 0 {
-			t.Errorf("不应建卡: %+v", res.Report.Characters)
+		char := importedNodes(t, e.tx.st.canvases[0])["n2"]
+		if _, ok := char["assetId"]; ok {
+			t.Errorf("主图缺失时不应有 assetId: %v", char)
 		}
-		want := []service.ImportInvalidCharacter{{NodeID: "n2", Name: "林夏"}}
-		if !slices.Equal(res.Report.Characters.Invalid, want) {
-			t.Errorf("invalid = %+v，期望 %+v", res.Report.Characters.Invalid, want)
+		if c := char["character"].(map[string]any); c["name"] != "林夏" || len(c["extras"].([]any)) != 1 {
+			t.Errorf("其余角色数据应保留: %v", c)
 		}
-		if _, ok := importedNodes(t, e.tx.st.canvases[0])["n2"]["characterId"]; ok {
-			t.Error("失效的角色卡节点不应带 characterId")
+		want := []service.ImportMissingAsset{{NodeID: "n2", FileName: "f201"}}
+		if !slices.Equal(res.Report.Assets.Missing, want) {
+			t.Errorf("missing = %+v，期望 %+v", res.Report.Assets.Missing, want)
 		}
 	})
 
@@ -505,51 +403,57 @@ func TestImport_CharacterAvatarMissing(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Import: %v", err)
 		}
-		cards := e.cardsOf(importUser)
-		if len(cards) != 1 || len(cards[0].ExtraAssetIDs) != 0 || cards[0].VoiceAssetID == nil || res.Report.Characters.Created != 1 {
-			t.Errorf("卡应照建、只少补充图: %+v", cards)
+		c := importedNodes(t, e.tx.st.canvases[0])["n2"]["character"].(map[string]any)
+		if extras, ok := c["extras"].([]any); !ok || len(extras) != 0 || c["voice"] == nil {
+			t.Errorf("应只少补充图: %v", c)
+		}
+		if len(res.Report.Assets.Missing) != 1 || res.Report.Assets.Missing[0].FileName != "f202" {
+			t.Errorf("missing = %+v", res.Report.Assets.Missing)
 		}
 	})
 
-	t.Run("声音找不到时声音为空", func(t *testing.T) {
+	t.Run("音频音色找不到时按无音色", func(t *testing.T) {
 		e := newDefaultImportEnv(t)
 		e.assets.missing[transferHash(203)] = true
 		if _, err := e.svc.Import(context.Background(), importUser, defaultImportFixture().build(t)); err != nil {
 			t.Fatalf("Import: %v", err)
 		}
-		if cards := e.cardsOf(importUser); len(cards) != 1 || cards[0].VoiceAssetID != nil {
-			t.Errorf("声音应为空: %+v", cards)
-		}
-	})
-
-	t.Run("主图不是图片视为失效", func(t *testing.T) {
-		e := newDefaultImportEnv(t)
-		e.assets.kinds[transferHash(201)] = "video"
-		res, err := e.svc.Import(context.Background(), importUser, defaultImportFixture().build(t))
-		if err != nil {
-			t.Fatalf("Import: %v", err)
-		}
-		if len(e.cardsOf(importUser)) != 0 || len(res.Report.Characters.Invalid) != 1 {
-			t.Errorf("主图种类不对不应建卡: %+v", res.Report.Characters)
+		c := importedNodes(t, e.tx.st.canvases[0])["n2"]["character"].(map[string]any)
+		if v, ok := c["voice"]; !ok || v != nil {
+			t.Errorf("voice = %#v，缺失时应为 null", c["voice"])
 		}
 	})
 }
 
-func TestImport_CharacterLimit(t *testing.T) {
+// 角色卡下线前导出的旧文件：顶层带 characters 字典、节点带 characterRef。仍能导入，字典被忽略，节点保留且不带 characterId。
+func TestImport_LegacyCharacterFileStillImports(t *testing.T) {
 	e := newDefaultImportEnv(t)
-	for i := range 100 {
-		e.addCard(importUser, fmt.Sprintf("卡%d", i))
+	var doc map[string]any
+	if err := json.Unmarshal(defaultImportFixture().build(t), &doc); err != nil {
+		t.Fatal(err)
 	}
-	res, err := e.svc.Import(context.Background(), importUser, defaultImportFixture().build(t))
+	doc["characters"] = map[string]any{"c1": map[string]any{
+		"name": "林夏", "description": "", "avatar": transferHash(201), "extras": []string{}, "voice": nil,
+	}}
+	for _, n := range doc["canvas"].(map[string]any)["nodes"].([]any) {
+		if node := n.(map[string]any); node["id"] == "n2" {
+			data := node["data"].(map[string]any)
+			delete(data, "character")
+			data["characterRef"] = "c1"
+		}
+	}
+	raw, err := json.Marshal(doc)
 	if err != nil {
-		t.Fatalf("Import: %v", err)
+		t.Fatal(err)
 	}
-	if len(e.cardsOf(importUser)) != 100 || res.Report.Characters.Created != 0 {
-		t.Errorf("已满 100 张不应再建卡: %d 张", len(e.cardsOf(importUser)))
+	if _, err := e.svc.Import(context.Background(), importUser, raw); err != nil {
+		t.Fatalf("旧文件应能导入: %v", err)
 	}
-	want := []service.ImportInvalidCharacter{{NodeID: "n2", Name: "林夏"}}
-	if !slices.Equal(res.Report.Characters.Invalid, want) {
-		t.Errorf("invalid = %+v，期望 %+v", res.Report.Characters.Invalid, want)
+	n2 := importedNodes(t, e.tx.st.canvases[0])["n2"]
+	for _, key := range []string{"characterRef", "characterId"} {
+		if _, ok := n2[key]; ok {
+			t.Errorf("旧角色节点不应带 %s: %v", key, n2)
+		}
 	}
 }
 
@@ -564,7 +468,7 @@ func TestImport_TxFailureDiscardsCopies(t *testing.T) {
 		if len(e.assets.discarded) != 1 || !slices.Equal(e.assets.discarded[0], e.assets.copies) || len(e.assets.copies) != 5 {
 			t.Errorf("应回收本次复制出的 5 份副本: discarded=%v copies=%v", e.assets.discarded, e.assets.copies)
 		}
-		if len(e.tx.st.canvases) != 0 || len(e.tx.st.assets) != 0 || len(e.tx.st.cards) != 0 {
+		if len(e.tx.st.canvases) != 0 || len(e.tx.st.assets) != 0 {
 			t.Errorf("事务失败后不应留下任何行: %+v", e.tx.st)
 		}
 	})
@@ -612,7 +516,7 @@ func TestImport_RejectsBadDocuments(t *testing.T) {
 		{"非 JSON", []byte("not json"), canvasdoc.DefaultLimits(), 30005},
 		{"format 不对", replace(`"format":"video-canvas/canvas"`, `"format":"other"`), canvasdoc.DefaultLimits(), 30005},
 		{"版本过高", replace(`"version":1`, `"version":2`), canvasdoc.DefaultLimits(), 30006},
-		{"引用悬空", replace(`"characterRef":"c1"`, `"characterRef":"c9"`), canvasdoc.DefaultLimits(), 30005},
+		{"角色补充图引用悬空", replace(transferHash(202), transferHash(999)), canvasdoc.DefaultLimits(), 30005},
 		{"夹带原环境字段", replace(`"kind":"director"`, `"kind":"director","x-extra":{"assetId":"42"}`), canvasdoc.DefaultLimits(), 30005},
 		{"节点超限", valid, small, 30007},
 		{"原文超过大小上限", valid, tiny, 30007},
@@ -661,27 +565,20 @@ func TestImport_TitleTruncation(t *testing.T) {
 func TestImport_IgnoresUnreferencedEntries(t *testing.T) {
 	e := newDefaultImportEnv(t)
 	fx := defaultImportFixture()
-	// 手改文件：多塞一个没人引用的素材，和一张没有节点引用的角色卡（它的主图也只有它用）
-	unrefAsset, unrefAvatar := transferHash(901), transferHash(902)
+	// 手改文件：多塞一个没人引用的素材
+	unrefAsset := transferHash(901)
 	fx.mutate = func(doc *canvasdoc.Document) {
 		doc.Assets[unrefAsset] = canvasdoc.AssetInfo{Kind: "image", MimeType: "image/png", ByteSize: 901, FileName: "x.png"}
-		doc.Assets[unrefAvatar] = canvasdoc.AssetInfo{Kind: "image", MimeType: "image/png", ByteSize: 902, FileName: "y.png"}
-		doc.Characters["c2"] = canvasdoc.CharacterInfo{Name: "无人引用", Avatar: unrefAvatar, Extras: []string{}}
 	}
 	res, err := e.svc.Import(context.Background(), importUser, fx.build(t))
 	if err != nil {
 		t.Fatalf("Import: %v", err)
 	}
-	for _, h := range []string{unrefAsset, unrefAvatar} {
-		if n := e.assets.calls[h]; n != 0 {
-			t.Errorf("未被引用的素材 %s 不应复制，实际复制 %d 次", h[60:], n)
-		}
+	if n := e.assets.calls[unrefAsset]; n != 0 {
+		t.Errorf("未被引用的素材 %s 不应复制，实际复制 %d 次", unrefAsset[60:], n)
 	}
 	if len(e.assets.calls) != 5 || len(e.tx.st.assets) != 5 {
 		t.Errorf("应只复制、入库被引用的 5 个素材: calls=%v rows=%d", e.assets.calls, len(e.tx.st.assets))
-	}
-	if cards := e.cardsOf(importUser); len(cards) != 1 || cards[0].Name != "林夏" || res.Report.Characters.Created != 1 {
-		t.Errorf("应只建被引用的角色卡: %+v created=%d", cards, res.Report.Characters.Created)
 	}
 	if a := res.Report.Assets; a.Total != 5 || a.Copied != 5 {
 		t.Errorf("素材总数应只算被引用的: %+v", a)
@@ -750,7 +647,7 @@ func TestImport_CancelledMidwayLeavesNothing(t *testing.T) {
 		if len(e.assets.discardCtxErr) != 1 || e.assets.discardCtxErr[0] != nil {
 			t.Errorf("回收副本应拿到未取消的 ctx，实际 %v", e.assets.discardCtxErr)
 		}
-		if len(e.tx.st.canvases) != 0 || len(e.tx.st.assets) != 0 || len(e.tx.st.cards) != 0 {
+		if len(e.tx.st.canvases) != 0 || len(e.tx.st.assets) != 0 {
 			t.Errorf("取消后不应留下任何行: %+v", e.tx.st)
 		}
 	})

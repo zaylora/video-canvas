@@ -236,15 +236,6 @@ var (
 	ErrPayUpstream         = New(65015, "渠道请求失败，请稍后重试", http.StatusBadGateway)
 )
 
-// 角色卡 66xxx
-var (
-	ErrCharacterNameDup      = New(66001, "已有同名角色卡", http.StatusConflict)
-	ErrCharacterLimit        = New(66002, "角色卡数量已达上限", http.StatusConflict)
-	ErrCharacterAssetInvalid = New(66003, "引用的素材不可用", http.StatusBadRequest)
-	ErrCharacterNotFound     = New(66004, "角色卡不存在", http.StatusNotFound)
-	ErrCharacterInvalid      = New(66005, "角色卡参数不合法", http.StatusBadRequest)
-)
-
 // 短剧工作室 67xxx。
 var (
 	ErrDramaNotFound            = New(67001, "短剧不存在", http.StatusNotFound)

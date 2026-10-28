@@ -139,12 +139,10 @@ func (r *DramaRepository) UpdateProject(ctx context.Context, userID, id uint64, 
 	return nil
 }
 
-// DeleteProject 软删同一用户的项目、画布与短剧角色。
+// DeleteProject 软删同一用户的项目、画布与各集。角色数据内嵌在画布 payload 里，随画布一起软删，没有需要另行清理的角色卡。
 func (r *DramaRepository) DeleteProject(ctx context.Context, userID, id uint64) error {
-	for _, m := range []any{&model.CanvasProject{}, &model.CharacterCard{}} {
-		if err := r.db.WithContext(ctx).Where("user_id = ? AND drama_id = ?", userID, id).Delete(m).Error; err != nil {
-			return err
-		}
+	if err := r.db.WithContext(ctx).Where("user_id = ? AND drama_id = ?", userID, id).Delete(&model.CanvasProject{}).Error; err != nil {
+		return err
 	}
 	if err := r.db.WithContext(ctx).Where("user_id = ? AND drama_id = ?", userID, id).Delete(&model.DramaEpisode{}).Error; err != nil {
 		return err

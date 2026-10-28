@@ -10,22 +10,20 @@ import (
 	"video-canvas/internal/canvasdoc"
 )
 
-// 角色卡十六进制 ID：cardLinXia 存在，cardDeleted 已被删除，
-// cardNoAvatar 默认也不存在，个别用例里把它补成主图读不到的卡。
-const (
-	cardLinXia   = "0123456789abcdef0123456789abcdef"
-	cardDeleted  = "deaddeaddeaddeaddeaddeaddeaddead"
-	cardNoAvatar = "feedfeedfeedfeedfeedfeedfeedfeed"
-)
+// legacyCardID 是旧版画布节点上遗留的 characterId（角色卡已下线，导出时必须被丢弃）。
+const legacyCardID = "0123456789abcdef0123456789abcdef"
 
-// exportPayload 是一份 serializeGraph 形状的画布内容：组节点 g1、角色卡节点 n2、
-// 覆盖所有素材引用位置的富节点 n3、引用已删除角色卡的 n4、引用主图读不到的角色卡的 n5。
+// exportPayload 是一份 serializeGraph 形状的画布内容：组节点 g1、带图片/补充图/音频音色的角色节点 n2、
+// 覆盖所有素材引用位置的富节点 n3、只有文本音色的角色节点 n4、带遗留 characterId 的旧角色节点 n5。
 // 素材 ID 用 904xx 这种不会和别的数字撞上的值，便于做泄漏扫描。
 const exportPayload = `{
   "nodes": [
     {"id":"g1","type":"group","position":{"x":0,"y":0},"width":800,"height":600,"data":{"label":"第一场","color":"blue"}},
     {"id":"n2","type":"canvas","parentId":"g1","position":{"x":20,"y":40},
-     "data":{"kind":"character","label":"林夏","characterId":"` + cardLinXia + `","labelCache":{"name":"林夏","coverAssetId":"90471"}}},
+     "data":{"kind":"character","label":"林夏","assetId":"90471","src":"/files/u1/lin.png","mediaType":"image",
+       "character":{"name":"林夏","look":"基础形象","description":"短发，黑色风衣",
+         "extras":[{"assetId":"90472","src":"/files/u1/lin2.png"}],
+         "voice":{"mode":"audio","assetId":"90473","src":"/files/u1/lin.mp3","origin":"upload"}}}},
     {"id":"n3","type":"canvas","position":{"x":420,"y":140},
      "data":{
        "kind":"image","label":"街角镜头","prompt":"@[林夏](n2) 站在霓虹灯下","model":"image-model-a",
@@ -45,13 +43,13 @@ const exportPayload = `{
        "activeOutputId":"90417",
        "scene":{"version":1,"duration":5,"activeCameraId":"cam1","characters":[],"props":[],"cameras":[],
                 "thumb":{"assetId":"90451","url":"/files/u1/thumb.png"}},
-       "characterId":"` + cardLinXia + `",
        "x-extra":{"keep":"me","n":12345678901234567}
      }},
     {"id":"n4","type":"canvas","position":{"x":0,"y":700},
-     "data":{"kind":"character","label":"老王","characterId":"` + cardDeleted + `","labelCache":{"name":"老王"}}},
+     "data":{"kind":"character","label":"老王","character":{"name":"老王","look":"中年","description":"",
+       "extras":[],"voice":{"mode":"text","text":"沙哑的中年男声"}}}},
     {"id":"n5","type":"canvas","position":{"x":300,"y":700},
-     "data":{"kind":"character","label":"阿杰","characterId":"` + cardNoAvatar + `"}}
+     "data":{"kind":"character","label":"阿杰","characterId":"` + legacyCardID + `","labelCache":{"name":"阿杰","coverAssetId":"90481"}}}
   ],
   "edges":[{"id":"e1","source":"n2","target":"n3","sourceHandle":"out","targetHandle":"in"}],
   "viewport":{"x":10,"y":20,"zoom":1.5}
@@ -70,7 +68,7 @@ var hashOf = map[string]string{
 	"90473": strings.Repeat("9", 64),
 }
 
-// allFixtureIDs 是夹具里出现过的全部素材 ID（包括只在非选中产物、labelCache 里的），用于泄漏扫描。
+// allFixtureIDs 是夹具里出现过的全部素材 ID（包括只在非选中产物、遗留 labelCache 里的），用于泄漏扫描。
 var allFixtureIDs = []string{
 	"90411", "90412", "90417", "90421", "90422", "90431", "90441", "90451", "90471", "90472", "90473", "90481",
 }
@@ -87,15 +85,9 @@ func exportInput(drop ...string) canvasdoc.ExportInput {
 		delete(assets, id)
 	}
 	return canvasdoc.ExportInput{
-		Title:   "雨夜短片",
-		Payload: []byte(exportPayload),
-		Assets:  assets,
-		Characters: map[string]canvasdoc.CharacterEntry{
-			cardLinXia: {
-				Name: "林夏", Description: "短发，黑色风衣", AvatarAssetID: "90471",
-				ExtraAssetIDs: []string{"90472"}, VoiceAssetID: "90473",
-			},
-		},
+		Title:      "雨夜短片",
+		Payload:    []byte(exportPayload),
+		Assets:     assets,
 		AppVersion: "0.4.16",
 		Now:        time.Date(2026, 10, 24, 16, 0, 0, 0, time.FixedZone("CST", 8*3600)),
 	}
@@ -132,14 +124,37 @@ func TestCollectRefs_FindsEveryAssetField(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CollectRefs 返回错误: %v", err)
 	}
-	// 非选中的产物 90411 / 90412 不导出，也就不必收集；labelCache 里的 90471 不是引用位置
-	wantAssets := []string{"90417", "90421", "90422", "90431", "90441", "90451"}
+	// 非选中的产物 90411 / 90412 不导出，也就不必收集；遗留 labelCache 里的 90481 不是引用位置。
+	// 角色节点 n2 的主图、补充图（extras[].assetId）和音频音色（voice.assetId）都要收集，否则导出会漏文件。
+	wantAssets := []string{"90471", "90472", "90473", "90417", "90421", "90422", "90431", "90441", "90451"}
 	if !reflect.DeepEqual(refs.AssetIDs, wantAssets) {
 		t.Errorf("AssetIDs = %v，期望 %v", refs.AssetIDs, wantAssets)
 	}
-	wantChars := []string{cardLinXia, cardDeleted, cardNoAvatar}
-	if !reflect.DeepEqual(refs.CharacterIDs, wantChars) {
-		t.Errorf("CharacterIDs = %v，期望 %v", refs.CharacterIDs, wantChars)
+}
+
+func TestCollectRefs_CharacterEmbeddedAssets(t *testing.T) {
+	cases := []struct {
+		name string
+		data string
+		want []string
+	}{
+		{"补充图和音频音色", `{"kind":"character","character":{"extras":[{"assetId":"11","src":"/a"},{"assetId":12,"src":"/b"}],"voice":{"mode":"audio","assetId":"13","src":"/c","origin":"generated"}}}`, []string{"11", "12", "13"}},
+		{"文本音色不是素材引用", `{"kind":"character","character":{"extras":[],"voice":{"mode":"text","text":"沙哑"}}}`, nil},
+		{"voice 为 null、缺省 extras", `{"kind":"character","character":{"name":"x","voice":null}}`, nil},
+		{"没有 character", `{"kind":"character"}`, nil},
+		{"字段类型错乱时忽略而不是 panic", `{"kind":"character","character":{"extras":"oops","voice":"oops"}}`, nil},
+		{"extras 里混入非对象和缺 assetId 的项", `{"kind":"character","character":{"extras":[null,"x",{"src":"/a"},{"assetId":"21"}]}}`, []string{"21"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			refs, err := canvasdoc.CollectRefs([]byte(`{"nodes":[{"id":"n1","type":"canvas","data":` + tc.data + `}],"edges":[]}`))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(refs.AssetIDs, tc.want) {
+				t.Errorf("AssetIDs = %v，期望 %v", refs.AssetIDs, tc.want)
+			}
+		})
 	}
 }
 
@@ -209,7 +224,7 @@ func TestBuild_ReplacesAssetIDsWithHashes(t *testing.T) {
 	if scene["activeCameraId"] != "cam1" {
 		t.Error("scene 的其余字段应原样保留")
 	}
-	// 用到的素材按哈希去重：n3 的 6 个 + 林夏卡的 3 个
+	// 用到的素材按哈希去重：n3 的 6 个 + 角色节点 n2 的 3 个（主图、补充图、音频音色）
 	if len(doc.Assets) != 9 {
 		t.Errorf("Assets 有 %d 条，期望 9", len(doc.Assets))
 	}
@@ -227,9 +242,9 @@ func TestBuild_NoLeak(t *testing.T) {
 	out := string(raw)
 	banned := []string{
 		`/files/`, `"taskId"`, `"pendingTaskIds"`, `"revision"`, `"viewport"`, `"src"`, `"activeOutputId"`,
-		`"errorTaskRef"`, `"labelCache"`, `"assetId"`, `"characterId"`, `"thumb"`, `"url"`,
+		`"errorTaskRef"`, `"labelCache"`, `"assetId"`, `"characterId"`, `"characterRef"`, `"thumb"`, `"url"`,
 		`77001`, `77002`, `77003`, `77004`, `77005`,
-		cardLinXia, cardDeleted, cardNoAvatar,
+		legacyCardID,
 	}
 	for _, id := range allFixtureIDs {
 		banned = append(banned, `"`+id+`"`)
@@ -392,57 +407,90 @@ func TestBuild_UnresolvedThumbIsDropped(t *testing.T) {
 	}
 }
 
-func TestBuild_EmbedsCharacter(t *testing.T) {
-	in := exportInput()
-	// 主图 90481 不在 Assets 里
-	in.Characters[cardNoAvatar] = canvasdoc.CharacterEntry{Name: "阿杰", AvatarAssetID: "90481"}
-	doc, report := mustBuild(t, in)
-	if len(doc.Characters) != 1 {
-		t.Fatalf("Characters 有 %d 张，期望 1: %v", len(doc.Characters), doc.Characters)
+func TestBuild_RewritesCharacterNode(t *testing.T) {
+	doc, report := mustBuild(t, exportInput())
+	if report.SkippedAssets != 0 {
+		t.Errorf("SkippedAssets = %d，期望 0", report.SkippedAssets)
 	}
-	voice := hashOf["90473"]
-	want := canvasdoc.CharacterInfo{
-		Name: "林夏", Description: "短发，黑色风衣", Avatar: hashOf["90471"],
-		Extras: []string{hashOf["90472"]}, Voice: &voice,
+	data := nodeData(t, doc, "n2")
+	// 主图沿用图片节点规则
+	if data["assetHash"] != hashOf["90471"] {
+		t.Errorf("assetHash = %v", data["assetHash"])
 	}
-	if !reflect.DeepEqual(doc.Characters["c1"], want) {
-		t.Errorf("c1 = %+v，期望 %+v", doc.Characters["c1"], want)
+	// 角色数据随节点导出：补充图和音频音色只留哈希，不带原环境的 assetId / src
+	want := map[string]any{
+		"name": "林夏", "look": "基础形象", "description": "短发，黑色风衣",
+		"extras": []any{map[string]any{"assetHash": hashOf["90472"]}},
+		"voice":  map[string]any{"mode": "audio", "assetHash": hashOf["90473"], "origin": "upload"},
+	}
+	if !reflect.DeepEqual(data["character"], want) {
+		t.Errorf("character = %#v，期望 %#v", data["character"], want)
 	}
 	for _, h := range []string{hashOf["90471"], hashOf["90472"], hashOf["90473"]} {
 		if _, ok := doc.Assets[h]; !ok {
-			t.Errorf("角色卡素材 %s 不在 Assets 里", h[:8])
+			t.Errorf("角色素材 %s 不在 Assets 里", h[:8])
 		}
 	}
-	// n2、n3 引用同一张卡，共用 c1
-	for _, id := range []string{"n2", "n3"} {
-		data := nodeData(t, doc, id)
-		if data["characterRef"] != "c1" {
-			t.Errorf("节点 %s 的 characterRef = %v，期望 c1", id, data["characterRef"])
-		}
+	// 文本音色原样保留
+	text := nodeData(t, doc, "n4")["character"].(map[string]any)
+	if !reflect.DeepEqual(text["voice"], map[string]any{"mode": "text", "text": "沙哑的中年男声"}) {
+		t.Errorf("文本音色 = %#v", text["voice"])
 	}
-	// 已删除的卡、主图读不到的卡：节点不带 characterRef
-	for _, id := range []string{"n4", "n5"} {
-		data := nodeData(t, doc, id)
-		if _, ok := data["characterRef"]; ok {
-			t.Errorf("节点 %s 不应有 characterRef", id)
+	// 旧画布遗留的 characterId / labelCache 导出时丢弃，不残留原环境的角色卡 ID
+	legacy := nodeData(t, doc, "n5")
+	for _, key := range []string{"characterId", "labelCache", "characterRef"} {
+		if _, ok := legacy[key]; ok {
+			t.Errorf("遗留节点不应有 %s: %v", key, legacy)
 		}
-		if _, ok := data["characterId"]; ok {
-			t.Errorf("节点 %s 的 characterId 应当被删除", id)
-		}
-	}
-	// 读不到的主图 90481 计入跳过
-	if report.SkippedAssets != 1 {
-		t.Errorf("SkippedAssets = %d，期望 1", report.SkippedAssets)
 	}
 }
 
-func TestBuild_CharacterWithoutVoiceOrExtras(t *testing.T) {
+func TestBuild_CharacterUnreadableAssets(t *testing.T) {
+	// 补充图 90472 和音频音色 90473 读不到：补充图去掉，音色按「无音色」导出，节点和主图保留
+	doc, report := mustBuild(t, exportInput("90472", "90473"))
+	data := nodeData(t, doc, "n2")
+	c := data["character"].(map[string]any)
+	if extras, ok := c["extras"].([]any); !ok || len(extras) != 0 {
+		t.Errorf("extras = %#v，读不到的补充图应去掉", c["extras"])
+	}
+	if v, ok := c["voice"]; !ok || v != nil {
+		t.Errorf("voice = %#v，读不到的音频音色应为 null", c["voice"])
+	}
+	if c["name"] != "林夏" || data["assetHash"] != hashOf["90471"] {
+		t.Errorf("其余角色数据应保留: %v", data)
+	}
+	if report.SkippedAssets != 2 {
+		t.Errorf("SkippedAssets = %d，期望 2", report.SkippedAssets)
+	}
+	raw, _ := json.Marshal(doc)
+	for _, id := range []string{`"90472"`, `"90473"`} {
+		if strings.Contains(string(raw), id) {
+			t.Errorf("文档里不应出现读不到的素材 ID %s", id)
+		}
+	}
+}
+
+func TestBuild_CharacterMalformedFieldsDoNotPanic(t *testing.T) {
 	in := exportInput()
-	in.Characters[cardLinXia] = canvasdoc.CharacterEntry{Name: "林夏", AvatarAssetID: "90471"}
+	in.Payload = []byte(`{"nodes":[
+	  {"id":"a","type":"canvas","data":{"kind":"character","label":"a"}},
+	  {"id":"b","type":"canvas","data":{"kind":"character","label":"b","character":{"name":"b"}}},
+	  {"id":"c","type":"canvas","data":{"kind":"character","label":"c","character":{"name":"c","extras":[null,"x",{"assetId":"90472"}],"voice":{"mode":"audio"}}}}
+	],"edges":[]}`)
 	doc, _ := mustBuild(t, in)
-	c := doc.Characters["c1"]
-	if c.Voice != nil || c.Extras == nil || len(c.Extras) != 0 {
-		t.Errorf("没有声音和补充图时应为 voice=null、extras=[]，实际 %+v", c)
+	if _, ok := nodeData(t, doc, "a")["character"]; ok {
+		t.Error("没有 character 的节点不应凭空生成")
+	}
+	if !reflect.DeepEqual(nodeData(t, doc, "b")["character"], map[string]any{"name": "b"}) {
+		t.Errorf("缺省字段的 character 应原样保留: %v", nodeData(t, doc, "b")["character"])
+	}
+	c := nodeData(t, doc, "c")["character"].(map[string]any)
+	if !reflect.DeepEqual(c["extras"], []any{map[string]any{"assetHash": hashOf["90472"]}}) {
+		t.Errorf("extras = %#v", c["extras"])
+	}
+	// 没有 assetId 的音频音色无素材可带，按无音色处理
+	if v, ok := c["voice"]; !ok || v != nil {
+		t.Errorf("voice = %#v", c["voice"])
 	}
 }
 
@@ -450,14 +498,14 @@ func TestBuild_EmptyCanvas(t *testing.T) {
 	in := exportInput()
 	in.Payload = []byte(`{"nodes":[],"edges":[],"viewport":{"x":0,"y":0,"zoom":1}}`)
 	doc, report := mustBuild(t, in)
-	if doc.Assets == nil || doc.Characters == nil {
-		t.Fatal("Assets / Characters 应为非 nil map")
+	if doc.Assets == nil {
+		t.Fatal("Assets 应为非 nil map")
 	}
 	if report.SkippedAssets != 0 {
 		t.Errorf("SkippedAssets = %d", report.SkippedAssets)
 	}
 	raw, _ := json.Marshal(doc)
-	for _, s := range []string{`"assets":{}`, `"characters":{}`, `"nodes":[]`, `"edges":[]`} {
+	for _, s := range []string{`"assets":{}`, `"nodes":[]`, `"edges":[]`} {
 		if !strings.Contains(string(raw), s) {
 			t.Errorf("序列化结果缺少 %s: %s", s, raw)
 		}

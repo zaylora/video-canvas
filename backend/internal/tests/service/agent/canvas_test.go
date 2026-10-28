@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -709,7 +710,13 @@ func TestAgentApplyOps_ConcurrentDuplicatesWriteOnce(t *testing.T) {
 
 func TestAgentDramaNodeRetainsReadIdempotencyUndoAndOwnership(t *testing.T) {
 	e := newAgentCanvasEnv(t)
-	e.repo.canvas.PayloadJSON = datatypes.JSON(`{"nodes":[{"id":"role","type":"canvas","position":{"x":0,"y":0},"data":{"kind":"character","characterId":"0000000000000064","label":"角色","params":{"prompt":"原提示词"},"drama":{"type":"character","name":"林川","look":"童年","episodes":[1]}}}],"edges":[]}`)
+	e.repo.canvas.PayloadJSON = datatypes.JSON(`{"nodes":[{"id":"role","type":"canvas","position":{"x":0,"y":0},"data":{"kind":"character","label":"角色","assetId":"9","src":"/files/u1/9.png","character":{"name":"林川","look":"童年","description":"勇敢的少年","extras":[{"assetId":"10","src":"/files/u1/10.png"}],"voice":{"mode":"text","text":"明亮少年声"}},"params":{"prompt":"原提示词"},"drama":{"type":"character","name":"林川","look":"童年","episodes":[1]}}}],"edges":[]}`)
+	// 角色数据内嵌在节点里，Agent 改画布时必须原样保留（含主图 assetId 以外的补充图和音色）
+	wantRoleCharacter := map[string]any{
+		"name": "林川", "look": "童年", "description": "勇敢的少年",
+		"extras": []any{map[string]any{"assetId": "10", "src": "/files/u1/10.png"}},
+		"voice":  map[string]any{"mode": "text", "text": "明亮少年声"},
+	}
 	ctx := context.Background()
 	ops := []byte(`[{"op":"update_node","id":"role","prompt":"新的形象提示词"}]`)
 	if _, err := e.svc.ApplyOps(ctx, e.run, "unread", ops); err == nil {
@@ -736,14 +743,14 @@ func TestAgentDramaNodeRetainsReadIdempotencyUndoAndOwnership(t *testing.T) {
 		t.Fatalf("replay committed twice: first=%+v replay=%+v", first, replayed)
 	}
 	n := e.payload(t).Node("role")
-	if n.Data()["characterId"] != "0000000000000064" || n.Data()["drama"].(map[string]any)["name"] != "林川" {
-		t.Fatalf("Agent edit overwrote drama binding: %+v", n)
+	if !reflect.DeepEqual(n.Data()["character"], wantRoleCharacter) || n.Data()["drama"].(map[string]any)["name"] != "林川" {
+		t.Fatalf("Agent edit overwrote character/drama data: %+v", n)
 	}
 	if _, err := e.svc.UndoRun(ctx, e.run); err != nil {
 		t.Fatal(err)
 	}
 	n = e.payload(t).Node("role")
-	if n.Data()["params"].(map[string]any)["prompt"] != "原提示词" || n.Data()["characterId"] != "0000000000000064" {
+	if n.Data()["params"].(map[string]any)["prompt"] != "原提示词" || !reflect.DeepEqual(n.Data()["character"], wantRoleCharacter) {
 		t.Fatalf("undo failed to preserve role: %+v", n)
 	}
 	foreign := *e.run
@@ -755,5 +762,21 @@ func TestAgentDramaNodeRetainsReadIdempotencyUndoAndOwnership(t *testing.T) {
 		if !errors.As(err, &business) || business.Code != errcode.ErrCanvasNotFound.Code {
 			t.Fatalf("ownership error=%v", err)
 		}
+	}
+}
+
+// Agent 不能新建角色节点：角色节点要通过短剧拆解创建，报错文案不再提角色卡。
+func TestAgentCreateCharacterNodeRejected(t *testing.T) {
+	e := newAgentCanvasEnv(t)
+	before := len(e.payload(t).Nodes)
+	_, err := e.svc.ApplyOps(context.Background(), e.run, "make-role", []byte(`[{"op":"create_node","tempId":"a","kind":"character","label":"林川"}]`))
+	if err == nil {
+		t.Fatal("create_node 不应能建角色节点")
+	}
+	if !strings.Contains(err.Error(), "短剧拆解") || strings.Contains(err.Error(), "角色卡") {
+		t.Fatalf("报错应提示通过短剧拆解创建且不再提角色卡: %v", err)
+	}
+	if len(e.payload(t).Nodes) != before || e.repo.commits != 0 {
+		t.Fatalf("被拒绝的操作不应写画布: nodes=%d commits=%d", len(e.payload(t).Nodes), e.repo.commits)
 	}
 }

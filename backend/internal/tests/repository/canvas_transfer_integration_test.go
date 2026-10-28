@@ -9,10 +9,10 @@ import (
 	. "video-canvas/internal/repository"
 )
 
-// 导入事务：任何一步失败都整体回滚，成功时素材、角色卡、画布三类行都落库。
+// 导入事务：任何一步失败都整体回滚，成功时素材、画布两类行都落库。
 func TestCanvasTransferRepository_WithTx_RollsBackEverything(t *testing.T) {
 	ctx := context.Background()
-	db := isolatedDB(t, &model.Asset{}, &model.CharacterCard{}, &model.CanvasProject{})
+	db := isolatedDB(t, &model.Asset{}, &model.CanvasProject{})
 	r := NewCanvasTransferRepository(db)
 	const user = uint64(7)
 	count := func(m any) int64 {
@@ -39,7 +39,7 @@ func TestCanvasTransferRepository_WithTx_RollsBackEverything(t *testing.T) {
 		}
 	})
 
-	t.Run("成功时三类行都落库，同名角色卡共存", func(t *testing.T) {
+	t.Run("成功时素材和画布都落库", func(t *testing.T) {
 		var asset model.Asset
 		var canvas model.CanvasProject
 		err := r.WithTx(ctx, func(tx CanvasTransferTx) error {
@@ -50,22 +50,6 @@ func TestCanvasTransferRepository_WithTx_RollsBackEverything(t *testing.T) {
 			if asset.ID == 0 {
 				t.Error("CreateAsset 应回填 ID")
 			}
-			card := &model.CharacterCard{UserID: user, Name: "林夏", AvatarAssetID: new(uint64(asset.ID))}
-			if err := tx.CreateCharacter(ctx, card); err != nil {
-				return err
-			}
-			dup := &model.CharacterCard{UserID: user, Name: "林夏", AvatarAssetID: new(uint64(asset.ID))}
-			if err := tx.CreateCharacter(ctx, dup); err != nil {
-				t.Errorf("重名应允许创建，实际 %v", err)
-			}
-			renamed := &model.CharacterCard{UserID: user, Name: "林夏 (2)", AvatarAssetID: new(uint64(asset.ID))}
-			if err := tx.CreateCharacter(ctx, renamed); err != nil {
-				return err
-			}
-			n, err := tx.CountCharacters(ctx, user)
-			if err != nil || n != 3 {
-				t.Errorf("CountCharacters = %d, %v，期望 3", n, err)
-			}
 			canvas = model.CanvasProject{UserID: user, Title: "导入的画布", PayloadJSON: []byte(`{"nodes":[]}`), Revision: 1}
 			return tx.CreateCanvas(ctx, &canvas)
 		})
@@ -75,9 +59,8 @@ func TestCanvasTransferRepository_WithTx_RollsBackEverything(t *testing.T) {
 		if canvas.ID == 0 {
 			t.Error("CreateCanvas 应回填 ID")
 		}
-		if count(&model.Asset{}) != 1 || count(&model.CharacterCard{}) != 3 || count(&model.CanvasProject{}) != 1 {
-			t.Fatalf("落库行数不对：素材 %d、角色卡 %d、画布 %d",
-				count(&model.Asset{}), count(&model.CharacterCard{}), count(&model.CanvasProject{}))
+		if count(&model.Asset{}) != 1 || count(&model.CanvasProject{}) != 1 {
+			t.Fatalf("落库行数不对：素材 %d、画布 %d", count(&model.Asset{}), count(&model.CanvasProject{}))
 		}
 	})
 }

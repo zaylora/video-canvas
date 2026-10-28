@@ -4,18 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"strings"
 
 	"video-canvas/internal/agent/canvasgraph"
 	"video-canvas/internal/drama"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
-	"video-canvas/internal/pkg/idcodec"
 	"video-canvas/internal/pkg/ws"
 	"video-canvas/internal/repository"
 )
 
-// DramaCanvasRepo 是短剧对公共画布读写的依赖，事务中原子写入集锁、角色卡和画布。
+// DramaCanvasRepo 是短剧对公共画布读写的依赖，事务中原子写入集锁和画布。
 type DramaCanvasRepo interface {
 	CanvasReader
 	// WithTx 在同一事务执行 fn，任何错误都回滚关联写入。
@@ -54,9 +52,9 @@ type dramaScope struct {
 	selected                         map[int]bool
 }
 
-// ApplyBreakdown 合并资产并原子锁定选择集；只有新增角色建无头像卡，只返回本次新增节点。
+// ApplyBreakdown 合并资产并原子锁定选择集；新增角色直接写成带 character 元数据的节点，只返回本次新增节点。
 func (s *DramaCanvasService) ApplyBreakdown(ctx context.Context, userID, dramaID, canvasID, jobID uint64, episodes []int, assets []drama.Asset) ([]DramaCanvasAsset, error) {
-	// 1. 先校验真实模型结果与选择范围，避免非法输出造成部分建卡或锁集。
+	// 1. 先校验真实模型结果与选择范围，避免非法输出造成部分写画布或锁集。
 	if err := (drama.BreakdownOutput{Assets: assets}).Validate(); err != nil {
 		return nil, errcode.ErrDramaOutputInvalid
 	}
@@ -65,7 +63,8 @@ func (s *DramaCanvasService) ApplyBreakdown(ctx context.Context, userID, dramaID
 		return nil, err
 	}
 	sc := dramaScope{userID: userID, dramaID: dramaID, canvasID: canvasID, jobID: jobID, episodes: episodes, selected: selected}
-	// 2. CAS 冲突重读重放整个事务；失败尝试创建的角色卡与集锁一起回滚，不能留下孤儿卡。
+	// 2. CAS 冲突重读重放整个事务；失败尝试里的集锁一起回滚。角色数据内嵌在画布 payload 里，
+	//    随画布 CAS 一起提交或丢弃，不再有需要单独回滚的角色卡。
 	out, err := WriteCanvas(ctx, s.repo, userID, canvasID, func(g *canvasgraph.Graph, revision uint64) (breakdownAttempt, error) {
 		attempt := breakdownAttempt{created: []DramaCanvasAsset{}, before: revision, revision: revision}
 		err := s.repo.WithTx(ctx, func(tx repository.DramaCanvasTx) error {
@@ -115,7 +114,7 @@ func lockedJobCheckpoint(ctx context.Context, tx repository.DramaCanvasTx, userI
 	return job, checkpoint, err
 }
 
-// breakdownTx 在单个事务里完成任务校验、集锁校验、合并建卡、画布 CAS、锁集与提交标记。
+// breakdownTx 在单个事务里完成任务校验、集锁校验、合并、画布 CAS、锁集与提交标记。
 func breakdownTx(ctx context.Context, tx repository.DramaCanvasTx, g *canvasgraph.Graph, revision uint64, attempt *breakdownAttempt, sc dramaScope, assets []drama.Asset) error {
 	job, checkpoint, err := lockedJobCheckpoint(ctx, tx, sc.userID, sc.canvasID, sc.jobID, "breakdown")
 	if err != nil {
@@ -136,16 +135,13 @@ func breakdownTx(ctx context.Context, tx repository.DramaCanvasTx, g *canvasgrap
 	}
 	graphAssets := make([]canvasgraph.DramaAsset, len(assets))
 	for i, a := range assets {
-		graphAssets[i] = canvasgraph.DramaAsset{Type: a.Type, Name: a.Name, Look: a.Look, Aliases: a.Aliases, Episodes: a.Episodes}
+		graphAssets[i] = canvasgraph.DramaAsset{Type: a.Type, Name: a.Name, Look: a.Look, Aliases: a.Aliases, Episodes: a.Episodes, Description: a.Description, VoicePrompt: a.VoicePrompt}
 	}
 	merged, err := canvasgraph.MergeDrama(g, graphAssets, canvasgraph.Options{})
 	if err != nil {
 		return errcode.ErrDramaOutputInvalid
 	}
-	if attempt.created, err = createDramaCharacters(ctx, tx, sc, merged, assets); err != nil {
-		return err
-	}
-	// 绑定角色 id 后再计算差异，patch 必须和提交的 payload 完全一致。
+	attempt.created = createdAssets(merged, assets)
 	attempt.changes = canvasgraph.Diff(g, merged.Graph)
 	if attempt.revision, err = commitCanvas(ctx, tx, sc.userID, sc.canvasID, revision, merged.Graph, attempt.changes); err != nil {
 		return err
@@ -195,25 +191,13 @@ func checkEpisodesLockable(ctx context.Context, tx repository.DramaCanvasTx, sc 
 	return nil
 }
 
-// createDramaCharacters 为本次新增的角色节点建无主图角色卡并回填 characterId。
-func createDramaCharacters(ctx context.Context, tx repository.DramaCanvasTx, sc dramaScope, merged *canvasgraph.DramaResult, assets []drama.Asset) ([]DramaCanvasAsset, error) {
-	created := []DramaCanvasAsset{}
+// createdAssets 把合并结果里本次新增的节点与模型原始资产配对返回，供后续 asset_prompts 精确处理新增范围。
+func createdAssets(merged *canvasgraph.DramaResult, assets []drama.Asset) []DramaCanvasAsset {
+	created := make([]DramaCanvasAsset, 0, len(merged.Created))
 	for _, c := range merged.Created {
-		asset := assets[c.AssetIndex]
-		if asset.Type == "character" {
-			dramaID := sc.dramaID
-			card := &model.CharacterCard{UserID: sc.userID, DramaID: &dramaID, Name: strings.TrimSpace(asset.Name),
-				LookName: strings.TrimSpace(asset.Look), Description: asset.Description, VoicePrompt: asset.VoicePrompt,
-				AvatarAssetID: nil, ExtraAssetIDs: []uint64{},
-			}
-			if err := tx.CreateCharacter(ctx, card); err != nil {
-				return nil, err
-			}
-			merged.Graph.Node(c.NodeID).Data()["characterId"] = idcodec.Encode(card.ID)
-		}
-		created = append(created, DramaCanvasAsset{NodeID: c.NodeID, Asset: asset})
+		created = append(created, DramaCanvasAsset{NodeID: c.NodeID, Asset: assets[c.AssetIndex]})
 	}
-	return created, nil
+	return created
 }
 
 // ApplyPrompts 为本次新增资产写提示词，保留用户其他参数；CAS 冲突时在最新画布上重新应用。
@@ -274,7 +258,7 @@ type canvasCheckpoint struct {
 	NewAssets       []DramaCanvasAsset `json:"new_assets"`
 }
 
-// readCanvasCheckpoint 读取崩溃恢复标记，已提交的画布不能因重放再次建卡或锁集。
+// readCanvasCheckpoint 读取崩溃恢复标记，已提交的画布不能因重放再次写节点或锁集。
 func readCanvasCheckpoint(raw []byte) (canvasCheckpoint, error) {
 	var checkpoint canvasCheckpoint
 	if len(raw) == 0 {

@@ -18,7 +18,7 @@ func (dramaQueueFailure) EnqueueDramaTx(context.Context, *sql.Tx, uint64, uint64
 }
 
 func TestDramaRepository_CreateRollbackOnQueueFailure(t *testing.T) {
-	db := isolatedDB(t, &model.CanvasProject{}, &model.CharacterCard{}, &model.DramaProject{}, &model.DramaEpisode{}, &model.DramaJob{})
+	db := isolatedDB(t, &model.CanvasProject{}, &model.DramaProject{}, &model.DramaEpisode{}, &model.DramaJob{})
 	repo := repository.NewDramaRepository(db)
 	repo.SetEnqueuer(dramaQueueFailure{})
 	ctx := context.Background()
@@ -44,7 +44,7 @@ func TestDramaRepository_CreateRollbackOnQueueFailure(t *testing.T) {
 }
 
 func TestDramaRepository_OwnershipRevisionAndCascade(t *testing.T) {
-	db := isolatedDB(t, &model.CanvasProject{}, &model.CharacterCard{}, &model.DramaProject{}, &model.DramaEpisode{}, &model.DramaJob{})
+	db := isolatedDB(t, &model.CanvasProject{}, &model.DramaProject{}, &model.DramaEpisode{}, &model.DramaJob{})
 	repo := repository.NewDramaRepository(db)
 	ctx := context.Background()
 	p := &model.DramaProject{UserID: 1, Title: "甲剧", SourceText: "原文", StyleKey: "real_city_film", Revision: 1}
@@ -71,11 +71,6 @@ func TestDramaRepository_OwnershipRevisionAndCascade(t *testing.T) {
 	if e != nil || got.Title != "更新" || got.Revision != 2 {
 		t.Fatalf("更新状态错误：%+v %v", got, e)
 	}
-	for _, card := range []*model.CharacterCard{{UserID: 1, DramaID: &p.ID, Name: "母亲"}, {UserID: 2, DramaID: &second.ID, Name: "母亲"}, {UserID: 1, Name: "个人角色"}} {
-		if e := db.Create(card).Error; e != nil {
-			t.Fatal(e)
-		}
-	}
 	if e := repo.WithTx(ctx, func(tx repository.DramaTx) error { return tx.DeleteProject(ctx, 1, p.ID) }); e != nil {
 		t.Fatal(e)
 	}
@@ -85,10 +80,6 @@ func TestDramaRepository_OwnershipRevisionAndCascade(t *testing.T) {
 	var canvas model.CanvasProject
 	if e := db.Unscoped().First(&canvas, p.CanvasID).Error; e != nil || !canvas.DeletedAt.Valid {
 		t.Fatalf("短剧画布应软删：%+v %v", canvas, e)
-	}
-	var count int64
-	if e := db.Model(&model.CharacterCard{}).Count(&count).Error; e != nil || count != 2 {
-		t.Fatalf("只可连带删除本剧角色：count=%d err=%v", count, e)
 	}
 	if _, e := repo.Project(ctx, 2, second.ID, false); e != nil {
 		t.Fatalf("他人项目应保留：%v", e)

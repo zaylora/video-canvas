@@ -21,8 +21,6 @@ type RestoreInput struct {
 	Doc *Document
 	// Assets 的键是文档里的素材哈希；不在这里的哈希视为复制失败。
 	Assets map[string]RestoredAsset
-	// Characters 的键是文档里的角色卡编号（c1…），值是新角色卡的十六进制 ID；不在这里的编号视为角色卡失效。
-	Characters map[string]string
 }
 
 // MissingAsset 是一个节点里没能还原的素材。
@@ -33,20 +31,10 @@ type MissingAsset struct {
 	FileName string
 }
 
-// InvalidCharacter 是一个节点引用了、但没能还原的角色卡。
-type InvalidCharacter struct {
-	// NodeID 是节点 ID；文件里节点缺 id 时为空串。
-	NodeID string
-	// Name 取自文档 characters 里该卡的名称。
-	Name string
-}
-
 // RestoreReport 是导入还原过程中的情况汇总。
 type RestoreReport struct {
 	// MissingAssets 按节点顺序列出缺失的素材；同一节点里同一哈希只记一次。
 	MissingAssets []MissingAsset
-	// InvalidCharacters 按节点顺序列出失效的角色卡引用。
-	InvalidCharacters []InvalidCharacter
 	// EdgesDropped 是因 source / target 指向不存在的节点而丢弃的连线数。
 	EdgesDropped int
 }
@@ -67,11 +55,12 @@ type viewport struct {
 
 // Restore 是 Build 的逆过程：把导入文档还原成画布内容（payload_json）。
 // 素材哈希换成新素材 ID 并重建 src、outputs、activeOutputId、paramAssets.url、scene.thumb，
-// 角色卡编号换成新卡 ID；节点和连线的其余字段、顺序原样，组节点原样，视口写默认值。改写规则见设计 §6.3、§7.4。
+// 角色节点内嵌的补充图和音频音色同样换成新素材 ID 与地址；
+// 节点和连线的其余字段、顺序原样，组节点原样，视口写默认值。改写规则见设计 §6.3、§7.4。
 //
-// 哈希不在 in.Assets 里：去掉节点里对应的引用（主素材缺失时连同 src、outputs、activeOutputId 一起去掉），
-// 节点保留，记入 RestoreReport.MissingAssets；角色卡编号不在 in.Characters 里：节点不带 characterId，
-// 记入 InvalidCharacters；source / target 指向不存在节点的连线丢弃，计入 EdgesDropped。
+// 哈希不在 in.Assets 里：去掉节点里对应的引用（主素材缺失时连同 src、outputs、activeOutputId 一起去掉；
+// 补充图去掉该项，音频音色变成 null），节点保留，记入 RestoreReport.MissingAssets；
+// source / target 指向不存在节点的连线丢弃，计入 EdgesDropped。
 // in.Doc 为 nil 或序列化失败时返回错误。
 func Restore(in RestoreInput) ([]byte, RestoreReport, error) {
 	if in.Doc == nil {
@@ -83,7 +72,7 @@ func Restore(in RestoreInput) ([]byte, RestoreReport, error) {
 		return nil, RestoreReport{}, fmt.Errorf("还原画布: %w", err)
 	}
 
-	// 2. 逐个节点改写。组节点没有素材和角色卡字段，原样保留
+	// 2. 逐个节点改写。组节点没有素材字段，原样保留
 	r := &restorer{in: in}
 	out := restoredCanvas{Nodes: []map[string]any{}, Edges: []map[string]any{}, Viewport: viewport{Zoom: 1}}
 	nodeIDs := map[string]bool{}
@@ -167,7 +156,7 @@ func (r *restorer) restoreNode(id string, node map[string]any) {
 	r.nodeID = id
 	r.reported = map[string]bool{}
 
-	// 1. 合法文件不会带原环境字段；手改的文件若带了，先清掉，免得节点指向别人的素材、任务或角色卡
+	// 1. 合法文件不会带原环境字段；手改的文件若带了，先清掉，免得节点指向别人的素材或任务
 	for key := range leakKeys {
 		delete(data, key)
 	}
@@ -186,7 +175,9 @@ func (r *restorer) restoreNode(id string, node map[string]any) {
 	r.restoreParams(data)
 	r.restoreParamAssets(data)
 	r.restoreScene(data)
-	r.restoreCharacter(node, data)
+	r.restoreCharacter(data)
+	// 角色卡下线前导出的旧文件里节点带 characterRef，已没有对应的角色字典，只丢弃这个引用
+	delete(data, "characterRef")
 }
 
 // restoreOutputs 把产物还原成 {id, src, assetId, mediaType, model?, createdAt}，id 取新素材 ID，
@@ -289,18 +280,37 @@ func (r *restorer) restoreScene(data map[string]any) {
 	}
 }
 
-// restoreCharacter 把 characterRef 换成新角色卡 ID characterId；编号不在 in.Characters 里时只删 characterRef 并记入报告。
-func (r *restorer) restoreCharacter(node, data map[string]any) {
-	ref, ok := characterRef(node)
-	delete(data, "characterRef")
+// restoreCharacter 还原角色节点内嵌的 data.character：补充图 {assetHash} 换回 {assetId, src}，缺失的项去掉；
+// 音频音色 {mode:"audio", assetHash, origin} 换回 {mode, assetId, src, origin}，缺失时变成 null；
+// 文本音色和其余角色字段原样。
+func (r *restorer) restoreCharacter(data map[string]any) {
+	character, ok := data["character"].(map[string]any)
 	if !ok {
 		return
 	}
-	if id := r.in.Characters[ref]; id != "" {
-		data["characterId"] = id
-		return
+	if extras, ok := character["extras"].([]any); ok {
+		restored := make([]any, 0, len(extras))
+		for _, item := range extras {
+			m, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			if a, ok := r.lookup(m["assetHash"]); ok {
+				restored = append(restored, map[string]any{"assetId": a.ID, "src": a.URL})
+			}
+		}
+		character["extras"] = restored
 	}
-	r.rep.InvalidCharacters = append(r.rep.InvalidCharacters, InvalidCharacter{
-		NodeID: r.nodeID, Name: r.in.Doc.Characters[ref].Name,
-	})
+	if voice, ok := character["voice"].(map[string]any); ok && voice["mode"] == voiceModeAudio {
+		a, ok := r.lookup(voice["assetHash"])
+		if !ok {
+			character["voice"] = nil
+			return
+		}
+		out := map[string]any{"mode": voiceModeAudio, "assetId": a.ID, "src": a.URL}
+		if origin, exists := voice["origin"]; exists {
+			out["origin"] = origin
+		}
+		character["voice"] = out
+	}
 }

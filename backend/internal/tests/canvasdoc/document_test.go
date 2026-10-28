@@ -16,7 +16,7 @@ var (
 	h3 = strings.Repeat("c", 64)
 )
 
-// docJSON 生成一份带两个素材、一张角色卡的合法文档 JSON，nodes 由调用方给出。
+// docJSON 生成一份带两个素材的合法文档 JSON，nodes 由调用方给出。
 func docJSON(nodes string) string {
 	return `{
   "format": "video-canvas/canvas",
@@ -27,8 +27,7 @@ func docJSON(nodes string) string {
   "assets": {
     "` + h1 + `": {"kind":"image","mimeType":"image/png","byteSize":100,"width":1,"height":1,"durationMs":0,"fileName":"a.png"},
     "` + h2 + `": {"kind":"image","mimeType":"image/png","byteSize":200,"width":1,"height":1,"durationMs":0,"fileName":"b.png"}
-  },
-  "characters": {"c1": {"name":"林夏","description":"","avatar":"` + h2 + `","extras":[],"voice":null}}
+  }
 }`
 }
 
@@ -96,32 +95,39 @@ func TestParseKeepsNumbers(t *testing.T) {
 }
 
 func TestParseNormalizesNullMaps(t *testing.T) {
-	raw := `{"format":"video-canvas/canvas","version":1,"canvas":{"title":"t","nodes":[],"edges":[]},"assets":null,"characters":null}`
+	raw := `{"format":"video-canvas/canvas","version":1,"canvas":{"title":"t","nodes":[],"edges":[]},"assets":null}`
 	doc, err := canvasdoc.Parse([]byte(raw))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if doc.Assets == nil || doc.Characters == nil {
-		t.Fatalf("null 应规整成空 map: %v %v", doc.Assets, doc.Characters)
+	if doc.Assets == nil {
+		t.Fatalf("null 应规整成空 map: %v", doc.Assets)
 	}
 	raw = `{"format":"video-canvas/canvas","version":1,"canvas":{"title":"t"}}`
 	doc, err = canvasdoc.Parse([]byte(raw))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if doc.Assets == nil || doc.Characters == nil {
-		t.Fatalf("缺省应规整成空 map: %v %v", doc.Assets, doc.Characters)
+	if doc.Assets == nil {
+		t.Fatalf("缺省应规整成空 map: %v", doc.Assets)
 	}
 }
 
-func TestParseCharacterVoice(t *testing.T) {
-	raw := strings.Replace(docJSON(`[]`), `"voice":null`, `"voice":"`+h1+`"`, 1)
+// 角色卡下线前导出的旧文件带顶层 characters 字典和节点 characterRef：Parse 仍能读，字典被忽略。
+func TestParseIgnoresLegacyCharactersDictionary(t *testing.T) {
+	raw := strings.Replace(docJSON(nodeWithData(`{"kind":"character","characterRef":"c1"}`)), `"assets": {`,
+		`"characters": {"c1": {"name":"林夏","description":"","avatar":"`+h2+`","extras":[],"voice":null}},
+  "assets": {`, 1)
 	doc, err := canvasdoc.Parse([]byte(raw))
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("旧文件应能解析: %v", err)
 	}
-	if v := doc.Characters["c1"].Voice; v == nil || *v != h1 {
-		t.Fatalf("voice 解析不对: %v", v)
+	if err := doc.Validate(canvasdoc.DefaultLimits()); err != nil {
+		t.Fatalf("旧文件应能通过校验: %v", err)
+	}
+	out, _ := json.Marshal(doc)
+	if strings.Contains(string(out), `"characters"`) {
+		t.Errorf("文档不应再有 characters 字典: %s", out)
 	}
 }
 
@@ -132,7 +138,7 @@ func TestValidate(t *testing.T) {
 		wantErr error
 	}{
 		{"合法文档", docJSON(`[]`), nil},
-		{"空画布且 assets 为空", `{"format":"video-canvas/canvas","version":1,"canvas":{"title":"t","nodes":[],"edges":[]},"assets":{},"characters":{}}`, nil},
+		{"空画布且 assets 为空", `{"format":"video-canvas/canvas","version":1,"canvas":{"title":"t","nodes":[],"edges":[]},"assets":{}}`, nil},
 		{"节点引用都存在", docJSON(nodeWithData(`{"kind":"image","assetHash":"` + h1 + `"}`)), nil},
 
 		{"assets 键为大写 hex", strings.Replace(docJSON(`[]`), h1, strings.Repeat("A", 64), 1), canvasdoc.ErrInvalid},
@@ -149,14 +155,10 @@ func TestValidate(t *testing.T) {
 		{"scene.thumbHash 悬空", docJSON(nodeWithData(`{"scene":{"thumbHash":"` + h3 + `"}}`)), canvasdoc.ErrInvalid},
 		{"params 与 paramAssets 与 scene 都存在则通过", docJSON(nodeWithData(`{"params":{"ratio":"16:9","images":["` + h1 + `"]},"paramAssets":{"` + h1 + `":{"fileName":"a.png"}},"scene":{"thumbHash":"` + h2 + `"},"outputs":[{"assetHash":"` + h2 + `","createdAt":1761300000000}]}`)), nil},
 
-		{"角色卡 avatar 缺失", strings.Replace(docJSON(`[]`), `"avatar":"`+h2+`",`, ``, 1), canvasdoc.ErrInvalid},
-		{"角色卡 avatar 不在 assets", strings.Replace(docJSON(`[]`), `"avatar":"`+h2+`"`, `"avatar":"`+h3+`"`, 1), canvasdoc.ErrInvalid},
-		{"角色卡 extras 不在 assets", strings.Replace(docJSON(`[]`), `"extras":[]`, `"extras":["`+h3+`"]`, 1), canvasdoc.ErrInvalid},
-		{"角色卡 voice 不在 assets", strings.Replace(docJSON(`[]`), `"voice":null`, `"voice":"`+h3+`"`, 1), canvasdoc.ErrInvalid},
-		{"角色卡 extras 与 voice 都存在则通过", strings.Replace(strings.Replace(docJSON(`[]`), `"extras":[]`, `"extras":["`+h1+`"]`, 1), `"voice":null`, `"voice":"`+h1+`"`, 1), nil},
-
-		{"characterRef 指向不存在的角色卡", docJSON(nodeWithData(`{"kind":"character","characterRef":"c9"}`)), canvasdoc.ErrInvalid},
-		{"characterRef 指向存在的角色卡", docJSON(nodeWithData(`{"kind":"character","characterRef":"c1"}`)), nil},
+		{"角色补充图 assetHash 悬空", docJSON(nodeWithData(`{"kind":"character","character":{"extras":[{"assetHash":"` + h1 + `"},{"assetHash":"` + h3 + `"}],"voice":null}}`)), canvasdoc.ErrInvalid},
+		{"角色音频音色 assetHash 悬空", docJSON(nodeWithData(`{"kind":"character","character":{"extras":[],"voice":{"mode":"audio","assetHash":"` + h3 + `","origin":"upload"}}}`)), canvasdoc.ErrInvalid},
+		{"角色补充图与音频音色都存在则通过", docJSON(nodeWithData(`{"kind":"character","assetHash":"` + h1 + `","character":{"extras":[{"assetHash":"` + h2 + `"}],"voice":{"mode":"audio","assetHash":"` + h1 + `","origin":"library"}}}`)), nil},
+		{"文本音色没有素材引用", docJSON(nodeWithData(`{"kind":"character","character":{"extras":[],"voice":{"mode":"text","text":"x"}}}`)), nil},
 		{"节点是 null", docJSON(`[null]`), canvasdoc.ErrInvalid},
 	}
 	for _, tc := range cases {

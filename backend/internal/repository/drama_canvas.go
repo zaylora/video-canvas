@@ -21,8 +21,6 @@ type DramaCanvasTx interface {
 	EpisodesForUpdate(ctx context.Context, userID, dramaID, canvasID uint64, nos []int) ([]model.DramaEpisode, error)
 	// CheckCanvasRevision 锁定当前用户画布并检查 revision，即使没有图差异也不能提交旧快照的集锁。
 	CheckCanvasRevision(ctx context.Context, userID, canvasID, revision uint64) error
-	// CreateCharacter 插入本次新角色卡，成功后回填 ID。
-	CreateCharacter(ctx context.Context, card *model.CharacterCard) error
 	// UpdateCanvas 按用户、画布和 revision 写入，冲突返回 ErrRevisionConflict，不存在返回 ErrNotFound。
 	UpdateCanvas(ctx context.Context, userID, canvasID, revision uint64, payload []byte) error
 	// LockEpisodes 按用户、短剧、集号锁集并递增各集 revision。
@@ -42,7 +40,7 @@ func (r *DramaCanvasRepository) GetCanvas(ctx context.Context, userID, canvasID 
 	return NewCanvasProjectRepository(r.db).GetByID(ctx, userID, canvasID)
 }
 
-// WithTx 原子提交锁集、角色卡与画布，任何错误（包括 CAS 冲突）都回滚整次尝试。
+// WithTx 原子提交锁集与画布，任何错误（包括 CAS 冲突）都回滚整次尝试。
 func (r *DramaCanvasRepository) WithTx(ctx context.Context, fn func(DramaCanvasTx) error) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error { return fn(&dramaCanvasTx{db: tx}) })
 }
@@ -55,11 +53,6 @@ func (t *dramaCanvasTx) EpisodesForUpdate(ctx context.Context, userID, dramaID, 
 	err := t.db.WithContext(ctx).Clauses(clause.Locking{Strength: "UPDATE"}).
 		Where("drama_id = ? AND user_id = ? AND no IN ?", dramaID, userID, nos).Order("no ASC").Find(&episodes).Error
 	return episodes, err
-}
-
-// CreateCharacter 在当前事务写角色卡，画布 CAS 失败时也会回滚，不留下孤儿卡。
-func (t *dramaCanvasTx) CreateCharacter(ctx context.Context, card *model.CharacterCard) error {
-	return t.db.WithContext(ctx).Create(card).Error
 }
 
 // UpdateCanvas 复用画布现有 user_id + revision 乐观锁，返回 ErrNotFound 或 ErrRevisionConflict。

@@ -21,20 +21,18 @@ import (
 )
 
 type dramaCanvasFake struct {
-	canvas                                                                       model.CanvasProject
-	episodes                                                                     map[int]model.DramaEpisode
-	cards                                                                        []model.CharacterCard
-	jobs                                                                         map[uint64]model.DramaJob
-	reads, transactions, updates                                                 int
-	getErr, episodeErr, checkErr, cardErr, updateErr, lockErr, jobErr, markerErr error
-	beforeUpdate                                                                 func(*dramaCanvasFake)
+	canvas                                                              model.CanvasProject
+	episodes                                                            map[int]model.DramaEpisode
+	jobs                                                                map[uint64]model.DramaJob
+	reads, transactions, updates                                        int
+	getErr, episodeErr, checkErr, updateErr, lockErr, jobErr, markerErr error
+	beforeUpdate                                                        func(*dramaCanvasFake)
 }
 
 type dramaCanvasFakeTx struct {
 	parent   *dramaCanvasFake
 	canvas   model.CanvasProject
 	episodes map[int]model.DramaEpisode
-	cards    []model.CharacterCard
 	jobs     map[uint64]model.DramaJob
 }
 
@@ -65,7 +63,7 @@ func (f *dramaCanvasFake) GetCanvas(_ context.Context, userID, id uint64) (*mode
 
 func (f *dramaCanvasFake) WithTx(_ context.Context, fn func(repository.DramaCanvasTx) error) error {
 	f.transactions++
-	tx := &dramaCanvasFakeTx{parent: f, canvas: f.canvas, episodes: map[int]model.DramaEpisode{}, cards: append([]model.CharacterCard(nil), f.cards...), jobs: map[uint64]model.DramaJob{}}
+	tx := &dramaCanvasFakeTx{parent: f, canvas: f.canvas, episodes: map[int]model.DramaEpisode{}, jobs: map[uint64]model.DramaJob{}}
 	for no, ep := range f.episodes {
 		tx.episodes[no] = ep
 	}
@@ -75,7 +73,7 @@ func (f *dramaCanvasFake) WithTx(_ context.Context, fn func(repository.DramaCanv
 	if err := fn(tx); err != nil {
 		return err
 	}
-	f.canvas, f.episodes, f.cards = tx.canvas, tx.episodes, tx.cards
+	f.canvas, f.episodes = tx.canvas, tx.episodes
 	f.jobs = tx.jobs
 	return nil
 }
@@ -106,15 +104,6 @@ func (t *dramaCanvasFakeTx) CheckCanvasRevision(_ context.Context, userID, canva
 	if revision != t.parent.canvas.Revision {
 		return repository.ErrRevisionConflict
 	}
-	return nil
-}
-
-func (t *dramaCanvasFakeTx) CreateCharacter(_ context.Context, c *model.CharacterCard) error {
-	if t.parent.cardErr != nil {
-		return t.parent.cardErr
-	}
-	c.ID = uint64(len(t.cards) + 100)
-	t.cards = append(t.cards, *c)
 	return nil
 }
 
@@ -184,17 +173,20 @@ func TestDramaCanvasBreakdownCreatesAndMergesAtomically(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(created) != 2 || len(f.cards) != 1 || f.episodes[1].LockedAt == nil || f.episodes[1].Revision != 2 {
-		t.Fatalf("created=%+v cards=%+v episode=%+v", created, f.cards, f.episodes[1])
-	}
-	card := f.cards[0]
-	if card.DramaID == nil || *card.DramaID != 3 || card.AvatarAssetID != nil || card.LookName != "童年" || card.VoicePrompt != "明亮少年声" {
-		t.Fatalf("card=%+v", card)
+	if len(created) != 2 || f.episodes[1].LockedAt == nil || f.episodes[1].Revision != 2 {
+		t.Fatalf("created=%+v episode=%+v", created, f.episodes[1])
 	}
 	g := dramaGraph(t, f)
 	n := g.Node(created[0].NodeID)
-	if n.Kind() != "character" || n.Data()["characterId"] != idcodec.Encode(card.ID) {
+	wantCharacter := map[string]any{
+		"name": "林川", "look": "童年", "description": "勇敢的少年", "extras": []any{},
+		"voice": map[string]any{"mode": "text", "text": "明亮少年声"},
+	}
+	if n.Kind() != "character" || !reflect.DeepEqual(n.Data()["character"], wantCharacter) {
 		t.Fatalf("node=%+v", n)
+	}
+	if _, ok := n.Data()["characterId"]; ok {
+		t.Fatalf("角色节点不应再带 characterId: %+v", n.Data())
 	}
 	if len(bc.messages) != 1 || bc.channels[0] != "user:1" || bc.messages[0].Type != ws.TypeCanvasPatch {
 		t.Fatalf("messages=%+v", bc.messages)
@@ -207,8 +199,8 @@ func TestDramaCanvasBreakdownCreatesAndMergesAtomically(t *testing.T) {
 		t.Fatal("public write fabricated agent run")
 	}
 	changes := patch["changes"].([]canvasgraph.Change)
-	if changes[0].After["data.characterId"] != idcodec.Encode(card.ID) {
-		t.Fatalf("patch missing card binding: %+v", changes)
+	if !reflect.DeepEqual(changes[0].After["data.character"], wantCharacter) {
+		t.Fatalf("patch 缺少角色元数据: %+v", changes)
 	}
 	var checkpoint map[string]any
 	if err := json.Unmarshal(f.jobs[9].Output, &checkpoint); err != nil {
@@ -218,7 +210,7 @@ func TestDramaCanvasBreakdownCreatesAndMergesAtomically(t *testing.T) {
 		t.Fatalf("checkpoint lost model result or billing cost: %+v", checkpoint)
 	}
 	replayed, err := svc.ApplyBreakdown(ctx, 1, 3, 7, 9, []int{1}, dramaCanvasAssets(1))
-	if err != nil || !reflect.DeepEqual(replayed, created) || f.canvas.Revision != 2 || len(f.cards) != 1 || len(bc.messages) != 1 {
+	if err != nil || !reflect.DeepEqual(replayed, created) || f.canvas.Revision != 2 || len(bc.messages) != 1 {
 		t.Fatalf("durable replay changed canvas: replay=%+v err=%v", replayed, err)
 	}
 	if err := svc.ApplyPrompts(ctx, 1, 7, 10, []drama.AssetPrompt{{NodeID: created[0].NodeID, Prompt: "原有资产提示词"}}); err != nil {
@@ -232,8 +224,8 @@ func TestDramaCanvasBreakdownCreatesAndMergesAtomically(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(second) != 1 || second[0].Asset.Type != "prop" || len(f.cards) != 1 || len(dramaGraph(t, f).Nodes) != 3 {
-		t.Fatalf("second=%+v cards=%d", second, len(f.cards))
+	if len(second) != 1 || second[0].Asset.Type != "prop" || len(dramaGraph(t, f).Nodes) != 3 {
+		t.Fatalf("second=%+v", second)
 	}
 	n = dramaGraph(t, f).Node(created[0].NodeID)
 	if n.Data()["params"].(map[string]any)["prompt"] != "原有资产提示词" {
@@ -249,7 +241,7 @@ func TestDramaCanvasBreakdownCreatesAndMergesAtomically(t *testing.T) {
 	}
 }
 
-func TestDramaCanvasCASReplaysWithoutOrphanOrDuplicateCard(t *testing.T) {
+func TestDramaCanvasCASReplaysWithoutDuplicateNodes(t *testing.T) {
 	f := newDramaCanvasFake()
 	bc := &dramaCanvasBroadcast{}
 	f.beforeUpdate = func(f *dramaCanvasFake) {
@@ -260,8 +252,8 @@ func TestDramaCanvasCASReplaysWithoutOrphanOrDuplicateCard(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if f.reads != 2 || f.transactions != 2 || len(f.cards) != 1 || len(created) != 2 || f.canvas.Revision != 3 || dramaGraph(t, f).Node("manual") == nil || len(bc.messages) != 1 {
-		t.Fatalf("reads=%d tx=%d cards=%d created=%+v canvas=%+v broadcasts=%d", f.reads, f.transactions, len(f.cards), created, f.canvas, len(bc.messages))
+	if f.reads != 2 || f.transactions != 2 || len(created) != 2 || f.canvas.Revision != 3 || dramaGraph(t, f).Node("manual") == nil || len(bc.messages) != 1 {
+		t.Fatalf("reads=%d tx=%d created=%+v canvas=%+v broadcasts=%d", f.reads, f.transactions, created, f.canvas, len(bc.messages))
 	}
 }
 
@@ -290,7 +282,6 @@ func TestDramaCanvasFailureRollsBackEverything(t *testing.T) {
 		{name: "read failure", setup: func(f *dramaCanvasFake) { f.getErr = boom }, raw: boom},
 		{name: "episode read failure", setup: func(f *dramaCanvasFake) { f.episodeErr = boom }, raw: boom},
 		{name: "revision check failure", setup: func(f *dramaCanvasFake) { f.checkErr = boom }, raw: boom},
-		{name: "create card failure", setup: func(f *dramaCanvasFake) { f.cardErr = boom }, raw: boom},
 		{name: "canvas failure", setup: func(f *dramaCanvasFake) { f.updateErr = boom }, raw: boom},
 		{name: "lock failure after canvas", setup: func(f *dramaCanvasFake) { f.lockErr = boom }, raw: boom},
 		{name: "job read failure", setup: func(f *dramaCanvasFake) { f.jobErr = boom }, raw: boom},
@@ -330,7 +321,7 @@ func TestDramaCanvasFailureRollsBackEverything(t *testing.T) {
 					t.Fatalf("err=%v want code=%d", err, tc.code)
 				}
 			}
-			if len(f.cards) != 0 || f.canvas.Revision != 1 || string(f.canvas.PayloadJSON) != before || len(bc.messages) != 0 {
+			if f.canvas.Revision != 1 || string(f.canvas.PayloadJSON) != before || len(bc.messages) != 0 {
 				t.Fatalf("partial write leaked: %+v", f)
 			}
 			if tc.name != "locked" && f.episodes[1].LockedAt != nil {

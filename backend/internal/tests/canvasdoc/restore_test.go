@@ -12,9 +12,6 @@ import (
 	"video-canvas/internal/canvasdoc"
 )
 
-// newCardID 是导入端新建角色卡的十六进制 ID。
-const newCardID = "abcabcabcabcabcabcabcabcabcabcab"
-
 // restoredPayload 是 Restore 返回的画布内容，数字用 json.Number 解码以便逐字比较。
 type restoredPayload struct {
 	Nodes    []map[string]any `json:"nodes"`
@@ -92,11 +89,9 @@ func TestRestore_RoundTripWithBuild(t *testing.T) {
 	doc, _ := mustBuild(t, exportInput())
 	before, _ := json.Marshal(doc.Canvas)
 	assets := newAssets(doc)
-	p, raw, rep := mustRestore(t, canvasdoc.RestoreInput{
-		Doc: doc, Assets: assets, Characters: map[string]string{"c1": newCardID},
-	})
+	p, raw, rep := mustRestore(t, canvasdoc.RestoreInput{Doc: doc, Assets: assets})
 
-	if len(rep.MissingAssets) != 0 || len(rep.InvalidCharacters) != 0 || rep.EdgesDropped != 0 {
+	if len(rep.MissingAssets) != 0 || rep.EdgesDropped != 0 {
 		t.Errorf("报告应为空，实际 %+v", rep)
 	}
 	after, _ := json.Marshal(doc.Canvas)
@@ -175,13 +170,24 @@ func TestRestore_RoundTripWithBuild(t *testing.T) {
 		t.Errorf("x-extra = %s，应原样保留", extra)
 	}
 
-	// 3. 角色卡：n2、n3 指向新卡；导出时已失效的 n4、n5 仍然没有
-	for _, id := range []string{"n2", "n3"} {
-		if got := restoredData(t, p, id)["characterId"]; got != newCardID {
-			t.Errorf("节点 %s 的 characterId = %v，期望 %s", id, got, newCardID)
-		}
+	// 3. 角色节点：主图、补充图、音频音色换成新素材 ID 与地址，其余角色数据原样；文本音色原样
+	lin := restoredData(t, p, "n2")
+	if lin["assetId"] != newOf("90471").ID || lin["src"] != newOf("90471").URL {
+		t.Errorf("n2 主图 = %v/%v", lin["assetId"], lin["src"])
 	}
-	for _, id := range []string{"n4", "n5"} {
+	wantChar := map[string]any{
+		"name": "林夏", "look": "基础形象", "description": "短发，黑色风衣",
+		"extras": []any{map[string]any{"assetId": newOf("90472").ID, "src": newOf("90472").URL}},
+		"voice":  map[string]any{"mode": "audio", "assetId": newOf("90473").ID, "src": newOf("90473").URL, "origin": "upload"},
+	}
+	if !reflect.DeepEqual(lin["character"], wantChar) {
+		t.Errorf("n2 character = %#v，期望 %#v", lin["character"], wantChar)
+	}
+	text := restoredData(t, p, "n4")["character"].(map[string]any)
+	if !reflect.DeepEqual(text["voice"], map[string]any{"mode": "text", "text": "沙哑的中年男声"}) {
+		t.Errorf("n4 文本音色 = %#v", text["voice"])
+	}
+	for _, id := range []string{"n2", "n3", "n4", "n5"} {
 		if _, ok := restoredData(t, p, id)["characterId"]; ok {
 			t.Errorf("节点 %s 不应有 characterId", id)
 		}
@@ -205,30 +211,21 @@ func TestRestore_RoundTripWithBuild(t *testing.T) {
 		}
 	}
 
-	// 5. 往返不变：把还原结果按新 ID → 原哈希再导出一次，得到的画布、素材、角色卡和第一次导出完全相同
+	// 5. 往返不变：把还原结果按新 ID → 原哈希再导出一次，得到的画布和素材清单和第一次导出完全相同
 	idToHash := map[string]canvasdoc.AssetEntry{}
 	for h, a := range assets {
 		idToHash[a.ID] = canvasdoc.AssetEntry{Hash: h, Info: doc.Assets[h]}
 	}
-	c1 := doc.Characters["c1"]
-	card := canvasdoc.CharacterEntry{
-		Name: c1.Name, Description: c1.Description, AvatarAssetID: assets[c1.Avatar].ID,
-		VoiceAssetID: assets[*c1.Voice].ID,
-	}
-	for _, h := range c1.Extras {
-		card.ExtraAssetIDs = append(card.ExtraAssetIDs, assets[h].ID)
-	}
 	in2 := exportInput()
 	in2.Payload = raw
 	in2.Assets = idToHash
-	in2.Characters = map[string]canvasdoc.CharacterEntry{newCardID: card}
 	doc2, _ := mustBuild(t, in2)
 	again, _ := json.Marshal(doc2.Canvas)
 	if !bytes.Equal(before, again) {
 		t.Errorf("再次导出的画布与第一次不同:\n第一次 %s\n第二次 %s", before, again)
 	}
-	if !reflect.DeepEqual(doc2.Assets, doc.Assets) || !reflect.DeepEqual(doc2.Characters, doc.Characters) {
-		t.Error("再次导出的素材或角色卡与第一次不同")
+	if !reflect.DeepEqual(doc2.Assets, doc.Assets) {
+		t.Error("再次导出的素材与第一次不同")
 	}
 }
 
@@ -236,9 +233,7 @@ func TestRestore_MissingAssetKeepsNode(t *testing.T) {
 	doc, _ := mustBuild(t, exportInput())
 	// 主图和选中产物同为 90417，参考图 90421 同时在 params.images 和 paramAssets 里：各只报一次
 	assets := newAssets(doc, hashOf["90417"], hashOf["90421"])
-	p, raw, rep := mustRestore(t, canvasdoc.RestoreInput{
-		Doc: doc, Assets: assets, Characters: map[string]string{"c1": newCardID},
-	})
+	p, raw, rep := mustRestore(t, canvasdoc.RestoreInput{Doc: doc, Assets: assets})
 
 	if len(p.Nodes) != 5 {
 		t.Fatalf("节点数 = %d，缺素材的节点也应保留", len(p.Nodes))
@@ -257,7 +252,7 @@ func TestRestore_MissingAssetKeepsNode(t *testing.T) {
 	if _, ok := pa[assets[hashOf["90431"]].ID]; !ok || len(pa) != 1 {
 		t.Errorf("paramAssets = %v，缺失的那项应去掉", pa)
 	}
-	if restoredData(t, p, "n2")["characterId"] != newCardID {
+	if restoredData(t, p, "n2")["assetId"] != assets[hashOf["90471"]].ID {
 		t.Error("其他节点不应受影响")
 	}
 	want := []canvasdoc.MissingAsset{{NodeID: "n3", FileName: "90417.png"}, {NodeID: "n3", FileName: "90421.png"}}
@@ -271,7 +266,7 @@ func TestRestore_MissingAssetKeepsNode(t *testing.T) {
 	}
 }
 
-// sameHashDoc 里两个节点在每个素材位置都引用 h1，角色卡主图也是 h1。
+// sameHashDoc 里两个节点在每个素材位置都引用 h1，角色节点的补充图和音频音色也是 h1。
 func sameHashDoc(t *testing.T) *canvasdoc.Document {
 	t.Helper()
 	nodes := `[
@@ -280,20 +275,17 @@ func sameHashDoc(t *testing.T) *canvasdoc.Document {
 	    "params":{"images":["` + h1 + `"],"videos":[],"audios":["` + h1 + `"]},
 	    "paramAssets":{"` + h1 + `":{"fileName":"a.png","mediaType":"image"}},
 	    "scene":{"version":1,"thumbHash":"` + h1 + `"},
-	    "characterRef":"c1"}},
+	    "character":{"name":"a","extras":[{"assetHash":"` + h1 + `"}],"voice":{"mode":"audio","assetHash":"` + h1 + `","origin":"generated"}}}},
 	  {"id":"b","type":"canvas","data":{"kind":"image","label":"b","assetHash":"` + h1 + `"}}
 	]`
-	raw := strings.Replace(docJSON(nodes), `"avatar":"`+h2+`"`, `"avatar":"`+h1+`"`, 1)
-	return mustParseDoc(t, raw)
+	return mustParseDoc(t, docJSON(nodes))
 }
 
 func TestRestore_SameHashUsedEverywhereMapsToOneID(t *testing.T) {
 	doc := sameHashDoc(t)
 	a := canvasdoc.RestoredAsset{ID: "7001", URL: "/files/u2/7001.png"}
-	p, _, rep := mustRestore(t, canvasdoc.RestoreInput{
-		Doc: doc, Assets: map[string]canvasdoc.RestoredAsset{h1: a}, Characters: map[string]string{"c1": newCardID},
-	})
-	if len(rep.MissingAssets) != 0 || len(rep.InvalidCharacters) != 0 {
+	p, _, rep := mustRestore(t, canvasdoc.RestoreInput{Doc: doc, Assets: map[string]canvasdoc.RestoredAsset{h1: a}})
+	if len(rep.MissingAssets) != 0 {
 		t.Errorf("报告应为空，实际 %+v", rep)
 	}
 	data := restoredData(t, p, "a")
@@ -319,18 +311,34 @@ func TestRestore_SameHashUsedEverywhereMapsToOneID(t *testing.T) {
 	if !reflect.DeepEqual(thumb, map[string]any{"assetId": a.ID, "url": a.URL}) {
 		t.Errorf("scene.thumb = %v", thumb)
 	}
-	if data["characterId"] != newCardID {
-		t.Errorf("characterId = %v", data["characterId"])
+	wantChar := map[string]any{
+		"name":   "a",
+		"extras": []any{map[string]any{"assetId": a.ID, "src": a.URL}},
+		"voice":  map[string]any{"mode": "audio", "assetId": a.ID, "src": a.URL, "origin": "generated"},
+	}
+	if !reflect.DeepEqual(data["character"], wantChar) {
+		t.Errorf("character = %#v，期望 %#v", data["character"], wantChar)
 	}
 	if restoredData(t, p, "b")["assetId"] != a.ID {
 		t.Error("另一个节点引用同一哈希也应得到同一个新 ID")
 	}
 
 	// 同一哈希缺失：每个受影响的节点各报一次
-	_, _, rep = mustRestore(t, canvasdoc.RestoreInput{Doc: doc, Characters: map[string]string{"c1": newCardID}})
+	p, _, rep = mustRestore(t, canvasdoc.RestoreInput{Doc: doc})
 	want := []canvasdoc.MissingAsset{{NodeID: "a", FileName: "a.png"}, {NodeID: "b", FileName: "a.png"}}
 	if !reflect.DeepEqual(rep.MissingAssets, want) {
 		t.Errorf("MissingAssets = %+v，期望 %+v", rep.MissingAssets, want)
+	}
+	// 素材缺失时角色的补充图去掉、音频音色按「无音色」，其余角色数据保留
+	c := restoredData(t, p, "a")["character"].(map[string]any)
+	if extras, ok := c["extras"].([]any); !ok || len(extras) != 0 {
+		t.Errorf("extras = %#v，缺失的补充图应去掉", c["extras"])
+	}
+	if v, ok := c["voice"]; !ok || v != nil {
+		t.Errorf("voice = %#v，缺失的音频音色应为 null", c["voice"])
+	}
+	if c["name"] != "a" {
+		t.Errorf("character.name = %v", c["name"])
 	}
 }
 
@@ -353,24 +361,23 @@ func TestRestore_DropsDanglingEdges(t *testing.T) {
 	}
 }
 
-func TestRestore_InvalidCharacterRef(t *testing.T) {
+// 角色卡下线前导出的旧文件里，节点带 characterRef：导入时只丢弃这个引用，节点保留，不产生 characterId。
+func TestRestore_LegacyCharacterRefIsDropped(t *testing.T) {
 	doc := mustParseDoc(t, docJSON(`[
 	  {"id":"n1","type":"canvas","data":{"kind":"character","label":"林夏","characterRef":"c1"}},
-	  {"id":"n2","type":"canvas","data":{"kind":"character","label":"林夏 2","characterRef":"c1"}}
+	  {"id":"n2","type":"canvas","data":{"kind":"character","label":"林夏 2","characterRef":5}}
 	]`))
-	p, raw, rep := mustRestore(t, canvasdoc.RestoreInput{Doc: doc, Characters: map[string]string{}})
+	p, raw, rep := mustRestore(t, canvasdoc.RestoreInput{Doc: doc})
 	if len(p.Nodes) != 2 {
-		t.Fatalf("节点数 = %d，角色卡失效的节点也应保留", len(p.Nodes))
+		t.Fatalf("节点数 = %d，旧角色节点也应保留", len(p.Nodes))
 	}
-	if _, ok := restoredData(t, p, "n1")["characterId"]; ok {
-		t.Error("失效的角色卡不应产生 characterId")
+	for _, s := range []string{`"characterRef"`, `"characterId"`} {
+		if strings.Contains(string(raw), s) {
+			t.Errorf("%s 不应残留", s)
+		}
 	}
-	if strings.Contains(string(raw), `"characterRef"`) {
-		t.Error("characterRef 不应残留")
-	}
-	want := []canvasdoc.InvalidCharacter{{NodeID: "n1", Name: "林夏"}, {NodeID: "n2", Name: "林夏"}}
-	if !reflect.DeepEqual(rep.InvalidCharacters, want) {
-		t.Errorf("InvalidCharacters = %+v，期望 %+v", rep.InvalidCharacters, want)
+	if len(rep.MissingAssets) != 0 {
+		t.Errorf("报告应为空，实际 %+v", rep)
 	}
 }
 
@@ -403,7 +410,7 @@ func TestRestore_HandEditedNodesDoNotPanic(t *testing.T) {
 	  {"id":"d","type":"canvas","data":{"kind":"image","label":"d1"}},
 	  {"id":"d","type":"canvas","data":"oops"},
 	  {"id":"x","type":"canvas","data":{"kind":"image","label":"x",
-	    "assetId":"90417","src":"/files/u1/a.png","characterId":"`+cardLinXia+`","activeOutputId":"90417",
+	    "assetId":"90417","src":"/files/u1/a.png","characterId":"`+legacyCardID+`","activeOutputId":"90417",
 	    "taskId":"1","pendingTaskIds":["1"],"errorTaskRef":"r","labelCache":{"name":"n"},
 	    "outputs":"oops","params":{"images":[90417,"`+h1+`"]},"paramAssets":"oops",
 	    "scene":{"thumb":{"assetId":"90451","url":"/files/u1/t.png"}},"characterRef":5}}
@@ -416,7 +423,7 @@ func TestRestore_HandEditedNodesDoNotPanic(t *testing.T) {
 	if want := []canvasdoc.MissingAsset{{NodeID: "", FileName: "a.png"}, {NodeID: "x", FileName: "a.png"}}; !reflect.DeepEqual(rep.MissingAssets, want) {
 		t.Errorf("MissingAssets = %+v，期望 %+v", rep.MissingAssets, want)
 	}
-	for _, s := range []string{`90417`, `90451`, `/files/u1/`, cardLinXia, `"taskId"`, `"pendingTaskIds"`, `"errorTaskRef"`, `"labelCache"`, `"activeOutputId"`, `"outputs"`} {
+	for _, s := range []string{`90417`, `90451`, `/files/u1/`, legacyCardID, `"taskId"`, `"pendingTaskIds"`, `"errorTaskRef"`, `"labelCache"`, `"activeOutputId"`, `"outputs"`} {
 		if strings.Contains(string(raw), s) {
 			t.Errorf("还原结果里不应出现文件自带的原环境字段 %s", s)
 		}

@@ -276,8 +276,8 @@ func breakdownEachEpisode(base, id string) {
 	}
 }
 
-// verifyCanvas 校验画布合并结果、角色卡可见性与画布列表过滤，返回角色卡 ID。
-func verifyCanvas(ctx context.Context, e env, canvasID string) (uint64, uint64) {
+// verifyCanvas 校验画布合并结果（含角色节点内嵌的 character 元数据）与画布列表过滤，返回画布 ID。
+func verifyCanvas(ctx context.Context, e env, canvasID string) uint64 {
 	cvID, ok := idcodec.Decode(canvasID)
 	require(ok, "canvas id编码错误")
 	cv, err := e.canvasRepo.GetByID(ctx, 1, cvID)
@@ -287,28 +287,25 @@ func verifyCanvas(ctx context.Context, e env, canvasID string) (uint64, uint64) 
 	}
 	must(json.Unmarshal(cv.PayloadJSON, &payload))
 	require(len(payload.Nodes) == 3, fmt.Sprintf("资产重复: %s", cv.PayloadJSON))
-	var charID string
+	characters := 0
 	for _, n := range payload.Nodes {
 		dr := n.Data["drama"].(map[string]any)
 		require(len(dr["episodes"].([]any)) == 2, fmt.Sprint(n))
 		require(n.Data["params"].(map[string]any)["prompt"] != "", fmt.Sprint(n))
 		if n.Data["kind"] == "character" {
-			charID = n.Data["characterId"].(string)
+			characters++
+			_, legacy := n.Data["characterId"]
+			character, _ := n.Data["character"].(map[string]any)
+			voice, _ := character["voice"].(map[string]any)
+			require(!legacy && character["name"] == "母亲" && character["look"] == "基础形象" && character["description"] == "短发中年女性，白衬衫" &&
+				voice["mode"] == "text" && voice["text"] == "温柔低声", fmt.Sprint("角色节点缺少内嵌角色数据: ", n))
 		}
 	}
-	cards := repository.NewCharacterCardRepository(e.db)
-	personal, err := cards.List(ctx, 1, "")
-	must(err)
-	require(len(personal) == 0, "短剧角色泄漏个人列表")
-	cid, ok := idcodec.Decode(charID)
-	require(ok, "角色ID编码错误")
-	owned, err := cards.ListByIDs(ctx, 1, []uint64{cid})
-	must(err)
-	require(len(owned) == 1 && owned[0].AvatarAssetID == nil, "短剧角色无主图读取失败")
+	require(characters == 1, fmt.Sprint("角色节点数量错误: ", characters))
 	ordinary, total, err := e.canvasRepo.List(ctx, 1, "", 0, 20)
 	must(err)
 	require(total == 0 && len(ordinary) == 0, "短剧画布过滤失败")
-	return cvID, cid
+	return cvID
 }
 
 // verifyBilling 校验锁定后的 67005 与积分流水守恒。
@@ -324,16 +321,13 @@ func verifyBilling(ctx context.Context, e env, id string) {
 	require(rec.FrozenDiff() == 0 && rec.BalanceDiff() == 0, fmt.Sprintf("流水不守恒: %+v", rec))
 }
 
-// verifyCascade 删除短剧后短剧、角色卡和画布都不可再读。
-func verifyCascade(ctx context.Context, e env, id string, cvID, cid uint64) {
+// verifyCascade 删除短剧后短剧和画布（含内嵌的角色数据）都不可再读。
+func verifyCascade(ctx context.Context, e env, id string, cvID uint64) {
 	status, b := request(e.url, "DELETE", "/dramas/"+id, nil)
 	require(status == 204, fmt.Sprint(b))
 	status, b = request(e.url, "GET", "/dramas/"+id, nil)
 	require(status == 404, fmt.Sprint(b))
-	owned, err := repository.NewCharacterCardRepository(e.db).ListByIDs(ctx, 1, []uint64{cid})
-	must(err)
-	require(len(owned) == 0, "删除短剧未删角色卡")
-	_, err = e.canvasRepo.GetByID(ctx, 1, cvID)
+	_, err := e.canvasRepo.GetByID(ctx, 1, cvID)
 	require(err != nil, "删除短剧未软删画布")
 }
 
@@ -351,11 +345,11 @@ func main() {
 	id, canvasID := createDrama(ctx, e.url)
 	awaitReady(e.url, id)
 	breakdownEachEpisode(e.url, id)
-	cvID, cid := verifyCanvas(ctx, e, canvasID)
+	cvID := verifyCanvas(ctx, e, canvasID)
 	verifyBilling(ctx, e, id)
 	verifyStoryboardAndGeneration(ctx, e, id, canvasID)
 	verifyCompose(ctx, e, id)
 	verifyDramaAgent(ctx, e, id, cvID)
-	verifyCascade(ctx, e, id, cvID, cid)
+	verifyCascade(ctx, e, id, cvID)
 	_, _ = os.Stdout.WriteString("PASS: HTTP201→River analyze/outline→breakdown+asset_prompts→storyboard→segment CRUD/order/revision→keyframe+video worker→auto adoption+WS→67013→compose H264/AAC+silence/skips→final/stale/67010→zero-charge reconciliation→cascade204/404\n")
 }

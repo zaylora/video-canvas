@@ -3,7 +3,6 @@ package repository
 import (
 	"context"
 
-	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
 	"video-canvas/internal/model"
@@ -13,15 +12,11 @@ import (
 type CanvasTransferTx interface {
 	// CreateAsset 插入一条素材记录，成功后回填 id；storage_key 冲突返回 ErrDuplicate。
 	CreateAsset(ctx context.Context, a *model.Asset) error
-	// CountCharacters 返回该用户已有的角色卡数量，用于检查角色卡数量上限。
-	CountCharacters(ctx context.Context, userID uint64) (int64, error)
-	// CreateCharacter 插入一张角色卡，名称允许重复，成功后回填 id。
-	CreateCharacter(ctx context.Context, c *model.CharacterCard) error
 	// CreateCanvas 插入一张画布，成功后回填 id。
 	CreateCanvas(ctx context.Context, p *model.CanvasProject) error
 }
 
-// CanvasTransferRepository 是画布导入的事务仓储：素材、角色卡、画布在同一个事务里写入。
+// CanvasTransferRepository 是画布导入的事务仓储：素材、画布在同一个事务里写入。
 type CanvasTransferRepository struct {
 	db *gorm.DB
 }
@@ -49,21 +44,6 @@ func (r *CanvasTransferRepository) CreateAsset(ctx context.Context, a *model.Ass
 		return err
 	}
 	return nil
-}
-
-// CountCharacters 按 user_id 统计不属于短剧的个人角色卡数量。
-func (r *CanvasTransferRepository) CountCharacters(ctx context.Context, userID uint64) (int64, error) {
-	var n int64
-	err := r.db.WithContext(ctx).Model(&model.CharacterCard{}).Where("user_id = ? AND drama_id IS NULL", userID).Count(&n).Error
-	return n, err
-}
-
-// CreateCharacter 插入角色卡并回填 id；名称允许重复。
-func (r *CanvasTransferRepository) CreateCharacter(ctx context.Context, c *model.CharacterCard) error {
-	if c.ExtraAssetIDs == nil {
-		c.ExtraAssetIDs = datatypes.JSONSlice[uint64]{}
-	}
-	return r.db.WithContext(ctx).Create(c).Error
 }
 
 // CreateCanvas 插入一张画布并回填 id。

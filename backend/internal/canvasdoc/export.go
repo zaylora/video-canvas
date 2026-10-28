@@ -2,7 +2,6 @@ package canvasdoc
 
 import (
 	"fmt"
-	"strconv"
 	"time"
 )
 
@@ -12,25 +11,13 @@ type AssetEntry struct {
 	Info AssetInfo
 }
 
-// CharacterEntry 是调用方查好的一张角色卡，素材引用还是原环境的素材 ID。
-type CharacterEntry struct {
-	Name          string
-	Description   string
-	AvatarAssetID string
-	ExtraAssetIDs []string
-	// VoiceAssetID 为空串表示这张卡没有声音。
-	VoiceAssetID string
-}
-
 // ExportInput 是 Build 的输入。Now、AppVersion 由调用方传入，便于测试。
 type ExportInput struct {
 	Title   string
 	Payload []byte
 	// Assets 的键是素材 ID；不在这里的素材视为读不到，导出时跳过。
-	// 需要包含 CollectRefs 找到的素材，以及角色卡的主图、补充图和声音。
-	Assets map[string]AssetEntry
-	// Characters 的键是角色卡十六进制 ID；不在这里的卡视为已删除。
-	Characters map[string]CharacterEntry
+	// 需要包含 CollectRefs 找到的素材（含角色节点内嵌的补充图和音频音色）。
+	Assets     map[string]AssetEntry
 	AppVersion string
 	Now        time.Time
 }
@@ -41,11 +28,12 @@ type ExportReport struct {
 	SkippedAssets int
 }
 
-// Build 把画布内容改写成导出文档：素材 ID 换成内容哈希、角色卡 ID 换成文件内编号，
+// Build 把画布内容改写成导出文档：素材 ID 换成内容哈希，
 // 去掉只在原环境有意义的字段（任务、src 地址、视口等），其余字段原样透传。改写规则见设计 §7.4。
+// 角色数据内嵌在节点的 data.character 里，随节点导出：补充图和音频音色同样换成哈希。
 //
-// 读不到的素材：节点里对应的引用整体去掉，并按不同素材 ID 计入 ExportReport.SkippedAssets；
-// 已删除或主图读不到的角色卡：节点去掉 characterId，不产生 characterRef。
+// 读不到的素材：节点里对应的引用整体去掉（补充图去掉该项，音频音色按「无音色」导出为 null），
+// 并按不同素材 ID 计入 ExportReport.SkippedAssets；旧画布遗留的 characterId / labelCache 直接丢弃。
 // 画布内容解析失败、或改写后仍残留原环境字段时返回错误。
 func Build(in ExportInput) (*Document, ExportReport, error) {
 	// 1. 解析画布内容；顶层只取 nodes / edges，viewport 等视图状态自然丢弃
@@ -64,10 +52,8 @@ func Build(in ExportInput) (*Document, ExportReport, error) {
 			AppVersion: in.AppVersion,
 			Canvas:     CanvasPart{Title: in.Title, Nodes: []map[string]any{}, Edges: []map[string]any{}},
 			Assets:     map[string]AssetInfo{},
-			Characters: map[string]CharacterInfo{},
 		},
-		skipped:  map[string]bool{},
-		charRefs: map[string]string{},
+		skipped: map[string]bool{},
 	}
 	for _, node := range p.Nodes {
 		// null 节点不是合法节点，丢掉，免得 Validate 拒绝整份文件
@@ -99,8 +85,6 @@ type exporter struct {
 	doc *Document
 	// skipped 记录读不到的素材 ID，按不同 ID 计数
 	skipped map[string]bool
-	// charRefs 记录角色卡十六进制 ID → 文件内编号；空串表示这张卡不导出
-	charRefs map[string]string
 }
 
 // resolve 把素材 ID 换成哈希，并把元信息登记进 doc.Assets（按哈希去重，先到先得）。
@@ -128,8 +112,9 @@ func (e *exporter) resolveValue(v any) (string, bool) {
 
 // rewriteData 按设计 §7.4 就地改写一个节点的 data。
 func (e *exporter) rewriteData(data map[string]any) {
-	// 1. 只在原环境有意义的字段：任务、文件地址、占位缓存；activeOutputId 在 rewriteOutputs 里处理
-	for _, key := range []string{"src", "taskId", "pendingTaskIds", "errorTaskRef", "labelCache"} {
+	// 1. 只在原环境有意义的字段：任务、文件地址，以及旧版角色卡节点遗留的 characterId / labelCache
+	//    （角色卡已下线，这两个字段不再有任何含义）；activeOutputId 在 rewriteOutputs 里处理
+	for _, key := range []string{"src", "taskId", "pendingTaskIds", "errorTaskRef", "characterId", "labelCache"} {
 		delete(data, key)
 	}
 	// 2. 任务不会跟过来，生成中的节点导出为空闲
@@ -239,50 +224,40 @@ func (e *exporter) rewriteScene(data map[string]any) {
 	}
 }
 
-// rewriteCharacter 把 characterId 换成文件内编号 characterRef；卡已删除或主图读不到时只删 characterId。
+// rewriteCharacter 改写角色节点内嵌的 data.character：补充图 extras[] 从 {assetId, src} 换成 {assetHash}，
+// 读不到的项去掉；音频音色 {mode:"audio", assetId, src, origin} 换成 {mode, assetHash, origin}，
+// 读不到（或缺 assetId）时音色按「无音色」导出为 null；文本音色和其余角色字段原样。
+// 主图沿用 data.assetId 的规则，不在这里。
 func (e *exporter) rewriteCharacter(data map[string]any) {
-	v, exists := data["characterId"]
-	if !exists {
+	character, ok := data["character"].(map[string]any)
+	if !ok {
 		return
 	}
-	delete(data, "characterId")
-	id, _ := v.(string)
-	if ref := e.characterRef(id); ref != "" {
-		data["characterRef"] = ref
-	}
-}
-
-// characterRef 返回角色卡在文件内的编号（c1、c2… 按首次出现编号），首次遇到时把卡内容登记进 doc.Characters。
-// 卡不存在或主图读不到时返回空串：没有主图的卡导入端无法重建（Validate 要求主图必填）。
-// 读不到的补充图、声音只去掉那一项，卡照常导出。
-func (e *exporter) characterRef(id string) string {
-	if ref, seen := e.charRefs[id]; seen {
-		return ref
-	}
-	e.charRefs[id] = ""
-	card, ok := e.in.Characters[id]
-	if !ok {
-		return ""
-	}
-	avatar, ok := e.resolve(card.AvatarAssetID)
-	if !ok {
-		return ""
-	}
-	info := CharacterInfo{Name: card.Name, Description: card.Description, Avatar: avatar, Extras: []string{}}
-	for _, extraID := range card.ExtraAssetIDs {
-		if hash, ok := e.resolve(extraID); ok {
-			info.Extras = append(info.Extras, hash)
+	if extras, ok := character["extras"].([]any); ok {
+		kept := make([]any, 0, len(extras))
+		for _, item := range extras {
+			m, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			if hash, ok := e.resolveValue(m["assetId"]); ok {
+				kept = append(kept, map[string]any{"assetHash": hash})
+			}
 		}
+		character["extras"] = kept
 	}
-	if card.VoiceAssetID != "" {
-		if hash, ok := e.resolve(card.VoiceAssetID); ok {
-			info.Voice = &hash
+	if voice, ok := character["voice"].(map[string]any); ok && voice["mode"] == voiceModeAudio {
+		hash, ok := e.resolveValue(voice["assetId"])
+		if !ok {
+			character["voice"] = nil
+			return
 		}
+		out := map[string]any{"mode": voiceModeAudio, "assetHash": hash}
+		if origin, exists := voice["origin"]; exists {
+			out["origin"] = origin
+		}
+		character["voice"] = out
 	}
-	ref := "c" + strconv.Itoa(len(e.doc.Characters)+1)
-	e.doc.Characters[ref] = info
-	e.charRefs[id] = ref
-	return ref
 }
 
 // leakKeys 是改写后不应再出现在节点和连线任何层级里的字段名：它们携带原环境的素材 ID、文件地址或任务 ID。
