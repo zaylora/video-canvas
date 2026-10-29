@@ -30,14 +30,19 @@ export function useVoiceGeneration(id: string, data: CanvasNodeData) {
     remote.models.find((item) => item.key === modelKey) ?? remote.models[0];
   const task = voiceTaskView(data.voiceTaskId, useTask(data.voiceTaskId));
 
+  /** 提交：成功返回 null，失败返回原因（同时记在 error 上给详情页显示） */
   const submit = useCallback(
-    async (prompt: string) => {
-      if (lockRef.current) return;
+    async (prompt: string): Promise<string | null> => {
+      if (lockRef.current) return "正在提交";
+      const fail = (reason: string) => {
+        setError(reason);
+        return reason;
+      };
       setError(null);
-      if (!canvasId) return setError("画布信息缺失，请刷新页面重试");
-      if (!model) return setError("没有可用的音频模型");
+      if (!canvasId) return fail("画布信息缺失，请刷新页面重试");
+      if (!model) return fail("没有可用的音频模型");
       const built = buildVoiceInput(model.capabilities, prompt);
-      if (built.error) return setError(built.error);
+      if (built.error) return fail(built.error);
       lockRef.current = true;
       setSubmitting(true);
       try {
@@ -49,10 +54,11 @@ export function useVoiceGeneration(id: string, data: CanvasNodeData) {
           input: built.input,
         });
         const { taskIds, failures } = settleSubmission(items);
-        if (taskIds.length === 0) return setError(failures[0]?.message ?? "提交失败，请稍后重试");
+        if (taskIds.length === 0) return fail(failures[0]?.message ?? "提交失败，请稍后重试");
         updateNodeData(id, { voiceTaskId: taskIds[0] });
+        return null;
       } catch (caught) {
-        setError(describeSubmitError(caught).message);
+        return fail(describeSubmitError(caught).message);
       } finally {
         lockRef.current = false;
         setSubmitting(false);
@@ -77,3 +83,5 @@ export function useVoiceGeneration(id: string, data: CanvasNodeData) {
     cancel,
   };
 }
+
+export type VoiceGeneration = ReturnType<typeof useVoiceGeneration>;

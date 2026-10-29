@@ -25,8 +25,10 @@ import { useMediaAspect } from "@/hooks/use-media-aspect";
 import { useTaskGeneration } from "@/hooks/use-task-generation";
 import { useTaskNode } from "@/hooks/use-task-node";
 import { useVoiceBackfill } from "@/hooks/use-voice-backfill";
+import { useVoiceGeneration, type VoiceGeneration } from "@/hooks/use-voice-generation";
 import { cn } from "@/lib/utils";
 import { useCharacterDetail } from "@/store/character-detail";
+import { usePromptEditor } from "@/store/prompt-editor";
 import type { CanvasNode, CanvasNodeData } from "@/types";
 import { ignoresVoice } from "@/utils/canvas/link-rule";
 import { shouldRecordAspect } from "@/utils/canvas/media-aspect";
@@ -37,6 +39,7 @@ import { characterNodeAspect, characterNodeView, voiceCell } from "@/utils/chara
 
 import { CharacterDetailDialog } from "./character-detail-dialog";
 import { useRegisterNodeActions } from "./node-actions";
+import { PROMPT_DIALOG_PANEL_CLASS, PromptEditDialog } from "./prompt-edit-dialog";
 import { NodeOverlays, NodeOverlaysPresence } from "./node-overlays";
 import { useDragSelected } from "./overlay-gate";
 import { useMultiSelected } from "./selection-toolbar";
@@ -71,15 +74,27 @@ export function CharacterCanvasNode({
 }) {
   const generation = useTaskGeneration(id, "image");
   const vm = useTaskNode(id, data, "image", generation);
+  // 声音生成只在这里起一份：详情页和短剧列表的「生成含音色」共用，模型选择、提交锁都是同一份
+  const voiceGen = useVoiceGeneration(id, data);
+  const voicePrompt = data.character?.voicePrompt ?? "";
   useRegisterNodeActions(id, {
     blockedReason: () => vm.blockedReason,
     submit: () => vm.submit(),
+    voice: {
+      blockedReason: () =>
+        voiceGen.task.phase === "generating"
+          ? "音色正在生成"
+          : !voicePrompt.trim()
+            ? "还没有音色描述"
+            : null,
+      submit: () => voiceGen.submit(voicePrompt),
+    },
   });
   const multiSelected = useMultiSelected();
   const dragSelected = useDragSelected(id);
   return (
     <>
-      <CharacterNodeBody id={id} data={data} vm={vm} />
+      <CharacterNodeBody id={id} data={data} vm={vm} voiceGen={voiceGen} />
       <NodeOverlaysPresence multiSelected={multiSelected}>
         {selected && !dragSelected && (
           <NodeOverlays key="overlays" id={id} data={data}>
@@ -89,6 +104,34 @@ export function CharacterCanvasNode({
           </NodeOverlays>
         )}
       </NodeOverlaysPresence>
+      <PromptEditDialog
+        id={id}
+        title={data.label}
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              usePromptEditor.getState().close();
+              useCharacterDetail.getState().open(id);
+            }}
+          >
+            <AudioLines />
+            角色详情与音色
+          </Button>
+        }
+      >
+        {(width) => (
+          <TaskPromptPanel
+            vm={vm}
+            data={data}
+            kind="image"
+            nodeId={id}
+            width={width}
+            className={PROMPT_DIALOG_PANEL_CLASS}
+          />
+        )}
+      </PromptEditDialog>
     </>
   );
 }
@@ -133,10 +176,12 @@ function CharacterNodeBody({
   id,
   data,
   vm,
+  voiceGen,
 }: {
   id: string;
   data: CanvasNodeData;
   vm: ReturnType<typeof useTaskNode>;
+  voiceGen: VoiceGeneration;
 }) {
   const { updateNodeData } = useReactFlow<CanvasNode>();
   // 详情由「…」按钮、音色格、或编辑器里双击节点打开；同一时刻只开一个
@@ -352,7 +397,13 @@ function CharacterNodeBody({
         onClose={media.closeLibrary}
         onConfirm={(assets, purpose) => apply(assets, purpose, "library")}
       />
-      <CharacterDetailDialog id={id} data={data} open={detailOpen} onOpenChange={setDetailOpen} />
+      <CharacterDetailDialog
+        id={id}
+        data={data}
+        voiceGen={voiceGen}
+        open={detailOpen}
+        onOpenChange={setDetailOpen}
+      />
     </NodeCard>
   );
 }

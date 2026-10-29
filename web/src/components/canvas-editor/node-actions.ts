@@ -12,12 +12,19 @@ export type NodeActions = {
    * 不能靠事后读节点数据判断成败：画布节点是受控状态，提交刚结束时 status 还没同步过来。
    */
   submit: () => Promise<string | null>;
+  /** 生成音色（只有角色卡有）：语义同上，成功返回 null，否则返回原因 */
+  voice?: {
+    blockedReason: () => string | null;
+    submit: () => Promise<string | null>;
+  };
 };
 
 const registry = new Map<string, NodeActions>();
 
 /** 节点此刻还提供不了动作（没登记，或读到的动作为空）时给的原因 */
 const NOT_READY = "节点还没准备好";
+/** 节点没有音色动作（不是角色卡） */
+const NO_VOICE = "这个节点不能生成音色";
 
 /**
  * 登记一个节点的动作。每次触发都现读 read()，所以节点重新渲染后拿到的永远是最新状态。
@@ -33,6 +40,15 @@ export function registerNodeActions(id: string, read: () => NodeActions | null):
       return actions ? actions.blockedReason() : NOT_READY;
     },
     submit: () => read()?.submit() ?? Promise.resolve(NOT_READY),
+    // 音色动作同样现读；节点此刻读不到动作时按没准备好处理
+    voice: {
+      blockedReason: () => {
+        const actions = read();
+        if (!actions) return NOT_READY;
+        return actions.voice ? actions.voice.blockedReason() : NO_VOICE;
+      },
+      submit: () => read()?.voice?.submit() ?? Promise.resolve(NO_VOICE),
+    },
   });
   return () => {
     registry.delete(id);
@@ -69,4 +85,15 @@ export async function submitNodeById(id: string): Promise<string | null> {
   const blocked = actions.blockedReason();
   if (blocked) return blocked;
   return actions.submit();
+}
+
+/**
+ * 触发一个角色卡节点的音色生成：不能提交、或提交失败时返回原因，提交成功返回 null。
+ */
+export async function submitVoiceById(id: string): Promise<string | null> {
+  const voice = registry.get(id)?.voice;
+  if (!voice) return NOT_READY;
+  const blocked = voice.blockedReason();
+  if (blocked) return blocked;
+  return voice.submit();
 }

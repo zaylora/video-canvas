@@ -4,6 +4,7 @@ import {
   hasNodeActions,
   registerNodeActions,
   submitNodeById,
+  submitVoiceById,
   type NodeActions,
 } from "@/components/canvas-editor/node-actions";
 
@@ -69,5 +70,34 @@ describe("按节点 ID 触发生成 submitNodeById", () => {
     off();
     expect(hasNodeActions("n-off")).toBe(false);
     expect(await submitNodeById("n-off")).toBe("节点还没准备好");
+  });
+});
+
+describe("按节点 ID 生成音色 submitVoiceById", () => {
+  test("节点没有音色动作（不是角色卡）：返回原因，不报错", async () => {
+    const off = registerNodeActions("v-none", () => actions(null));
+    expect(await submitVoiceById("v-none")).toBe("这个节点不能生成音色");
+    off();
+  });
+
+  test("有音色动作：先看能否提交，能就提交", async () => {
+    let voiced = 0;
+    let blocked: string | null = "先写音色描述";
+    const off = registerNodeActions("v-ok", () => ({
+      ...actions(null),
+      voice: {
+        blockedReason: () => blocked,
+        submit: async () => {
+          voiced += 1;
+          return null;
+        },
+      },
+    }));
+    expect(await submitVoiceById("v-ok")).toBe("先写音色描述");
+    expect(voiced).toBe(0);
+    blocked = null;
+    expect(await submitVoiceById("v-ok")).toBeNull();
+    expect(voiced).toBe(1);
+    off();
   });
 });

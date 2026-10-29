@@ -7,6 +7,7 @@ import {
   Image as ImageIcon,
   Loader2,
   Mountain,
+  PencilLine,
   Type,
   UserRound,
   Video,
@@ -14,6 +15,7 @@ import {
 } from "lucide-react";
 
 import { DramaPoster } from "@/components/drama/poster";
+import { Button } from "@/components/ui/button";
 import { DURATION, STAGGER, STAGGER_MAX, TAP_CARD } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import type { AssetItem, AssetType } from "@/utils/drama/assets";
@@ -87,7 +89,8 @@ function EmptyFrame({
 
 /**
  * 资产卡（原型资产列表）：封面按状态显示——已完成（素材）、生成中、分析设定中、失败、待生成（角色显示「待生成形象」）。
- * 点整张卡进画布定位到对应节点（生成在画布里做，或在这里多选 / 框选后批量生成）；多选模式下点卡片是勾选。
+ * 点整张卡进画布定位到对应节点；名字旁的按钮弹框编辑提示词（角色卡还能打开详情改音色）；
+ * 多选 / 框选后批量生成，已生成的也能选上重新生成；多选模式下点卡片是勾选。
  * 根节点带 data-asset-id，列表框选按它量卡片位置。
  * 出现集数：全集一个小标，具体集号一串小点，未分类写「未分类」。
  */
@@ -98,6 +101,8 @@ export function AssetCard({
   selected,
   onToggle,
   onLocate,
+  onEditPrompt,
+  onEditCharacter,
 }: {
   item: AssetItem;
   index: number;
@@ -105,11 +110,16 @@ export function AssetCard({
   selected: boolean;
   onToggle: () => void;
   onLocate: () => void;
+  /** 弹框编辑提示词、模型和参数（角色 / 场景 / 道具） */
+  onEditPrompt: () => void;
+  /** 打开角色卡详情（角色名、形象、补充图、音色） */
+  onEditCharacter: () => void;
 }) {
   const Icon = TYPE_ICON[item.type];
+  const generated = item.type === "character" || item.type === "scene" || item.type === "prop";
+  // 已生成的也能勾选：再生成一次就是重新生成
   const canGenerate =
-    (item.type === "character" || item.type === "scene" || item.type === "prop") &&
-    (item.status === "idle" || item.status === "error");
+    generated && (item.status === "idle" || item.status === "error" || item.status === "done");
   const hasVoice = item.type === "character" && !!item.data.character?.voice;
 
   return (
@@ -196,9 +206,33 @@ export function AssetCard({
       </motion.div>
 
       <div className="px-0.5 pt-1.5">
-        <div className="truncate text-[13px] font-medium">
-          {item.name}
-          {item.look && <span className="text-muted-foreground font-normal"> · {item.look}</span>}
+        <div className="flex items-center gap-1">
+          <div className="min-w-0 flex-1 truncate text-[13px] font-medium">
+            {item.name}
+            {item.look && <span className="text-muted-foreground font-normal"> · {item.look}</span>}
+          </div>
+          {generated && (
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label={`编辑 ${item.name} 的提示词`}
+              title="提示词与生成设置"
+              onClick={onEditPrompt}
+            >
+              <PencilLine />
+            </Button>
+          )}
+          {item.type === "character" && (
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label={`编辑 ${item.name} 的角色详情与音色`}
+              title="角色详情与音色"
+              onClick={onEditCharacter}
+            >
+              <AudioLines />
+            </Button>
+          )}
         </div>
         <div className="text-muted-foreground flex items-center gap-1.5 text-[11px]">
           {hasVoice && <AudioLines className="size-3" aria-label="已设定音色" />}

@@ -149,6 +149,17 @@ export function pendingGenerate(items: readonly AssetItem[], type: AssetType): A
   );
 }
 
+/** 可框选生成的：角色 / 场景 / 道具里已分类、不在生成或分析中的；已生成的再生成一次就是重新生成 */
+export function generatable(items: readonly AssetItem[], type: AssetType): AssetItem[] {
+  if (!GENERATED_TYPES.includes(type)) return [];
+  return items.filter(
+    (item) =>
+      item.type === type &&
+      item.episodes !== null &&
+      (item.status === "idle" || item.status === "error" || item.status === "done"),
+  );
+}
+
 /** 勾选 / 取消勾选一集，保持升序去重 */
 export function toggleEpisode(episodes: readonly number[], no: number): number[] {
   const set = new Set(episodes);

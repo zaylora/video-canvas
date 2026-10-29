@@ -4,6 +4,7 @@ import { Check, Clapperboard, Combine, Download, Film, Loader2, TriangleAlert } 
 import { VideoPoster } from "@/components/canvas/media-preview";
 import { finalFileName } from "@/components/drama/final-file";
 import { Button } from "@/components/ui/button";
+import { VideoPlayer } from "@/components/video-player";
 import { cn } from "@/lib/utils";
 import { segmentKey, useDramaSegmentsStore } from "@/store/drama-segments";
 import { downloadMedia } from "@/utils/canvas/download";
@@ -112,15 +113,13 @@ export function FinalArea({
         </div>
 
         {final ? (
-          <video
-            key={final.id}
-            src={final.url}
-            controls
-            playsInline
-            preload="metadata"
+          // 和画布视频节点同一个播放器：先显示封面，点了才加载视频
+          <div
             style={{ aspectRatio: aspectOf(drama.ratio) }}
-            className="max-h-[66vh] min-h-0 max-w-full rounded-2xl bg-black shadow-[0_40px_80px_-30px_rgb(0_0_0/0.9)] ring-1 ring-white/10"
-          />
+            className="relative h-[66vh] max-w-full shrink-0 overflow-hidden rounded-2xl bg-black shadow-[0_40px_80px_-30px_rgb(0_0_0/0.9)] ring-1 ring-white/10"
+          >
+            <VideoPlayer key={final.id} src={final.url} durationMs={final.durationMs} />
+          </div>
         ) : (
           <div className="flex flex-col items-center gap-3 py-14 text-center">
             <span className="bg-muted text-muted-foreground grid size-16 place-items-center rounded-[20px]">

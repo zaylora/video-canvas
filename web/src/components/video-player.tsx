@@ -14,7 +14,7 @@ import {
   type FacadePhase,
 } from "@/utils/canvas/video-facade-state";
 
-import { VideoPoster } from "./media-preview";
+import { VideoPoster } from "@/components/canvas/media-preview";
 
 /** 全页面共用的 video 名额池：同时挂载的 video 受 WebMediaPlayer 数量限制 */
 const videoSlots = createVideoSlotPool();
@@ -209,23 +209,23 @@ function FacadeVideo({ src, phase, onFrame, onError, onRevoke }: FacadeVideoProp
   );
 }
 
-type VideoFacadeProps = {
+type VideoPlayerProps = {
   /** 视频地址（不带变体） */
   src: string;
-  /** 视频时长，毫秒；节点数据里没有就不传，不显示角标 */
+  /** 视频时长，毫秒；没有就不传，不显示角标 */
   durationMs?: number | null;
-  /** 所在节点是否被选中；失去选中会停止播放并退回封面，默认 true（不受选中状态约束） */
+  /** 是否处于激活状态（如所在节点被选中）；变成 false 会停止播放并退回封面，默认 true（不受约束） */
   active?: boolean;
 };
 
 /**
- * 视频节点的 facade：平时只显示封面、播放按钮和时长角标，不挂载 video，
- * 首屏零视频文件请求；点击后挂载 video，封面压暗、按钮变成加载环，
- * 首帧出来后 video 在封面上方淡入（设计稿 6.11）。
- * 节点失去选中、加载失败、被名额池回收时，视频停止并淡出，露出封面。
+ * 带封面的视频播放器（画布视频节点、短剧片场的版本轮播、成片页共用）：
+ * 平时只显示封面、播放按钮和时长角标，不挂载 video，首屏零视频文件请求；
+ * 点击后挂载 video，封面压暗、按钮变成加载环，首帧出来后 video 在封面上方淡入（设计稿 6.11）。
+ * 失去激活、加载失败、被名额池回收时，视频停止并淡出，露出封面。
  * 填满父级盒子，画幅由父级决定。
  */
-export function VideoFacade({ src, durationMs, active = true }: VideoFacadeProps) {
+export function VideoPlayer({ src, durationMs, active = true }: VideoPlayerProps) {
   const reduce = useReducedMotion();
   const [phase, setPhase] = useState<FacadePhase>("idle");
   const [frameReady, setFrameReady] = useState(false);

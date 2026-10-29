@@ -62,6 +62,7 @@ import { VersionBadge } from "@/components/canvas/version-badge";
 import { showVersionBadge } from "@/utils/canvas/versions";
 
 import { useRegisterNodeActions } from "./node-actions";
+import { PROMPT_DIALOG_PANEL_CLASS, PromptEditDialog } from "./prompt-edit-dialog";
 import { NodeOverlays, NodeOverlaysPresence } from "./node-overlays";
 import { useDragSelected } from "./overlay-gate";
 import { useMultiSelected } from "./selection-toolbar";
@@ -152,12 +153,15 @@ export function TaskPromptPanel({
   kind,
   nodeId,
   width,
+  className,
 }: {
   vm: TaskNodeModel;
   data: CanvasNodeData;
   kind: NodeKind;
   nodeId: string;
   width: number;
+  /** 面板外层的附加样式（放进弹框时去掉浮层自己的底和阴影） */
+  className?: string;
 }) {
   const meta = NODE_META.get(kind);
   // 连着图片 / 视频 / 音频节点，或手动加过参考素材，就算有参考素材（文本不算）
@@ -207,6 +211,7 @@ export function TaskPromptPanel({
     <>
       <NodePromptInput
         width={width}
+        className={className}
         value={typeof vm.params.prompt === "string" ? vm.params.prompt : ""}
         onValueChange={vm.setPrompt}
         models={vm.modelOptions}
@@ -457,6 +462,20 @@ function MediaTaskNode({
           </NodeOverlays>
         )}
       </NodeOverlaysPresence>
+      {!uploading && !uploadFailed && (
+        <PromptEditDialog id={id} title={data.label}>
+          {(width) => (
+            <TaskPromptPanel
+              vm={vm}
+              data={data}
+              kind={kind}
+              nodeId={id}
+              width={width}
+              className={PROMPT_DIALOG_PANEL_CLASS}
+            />
+          )}
+        </PromptEditDialog>
+      )}
     </>
   );
 }

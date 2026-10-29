@@ -10,6 +10,7 @@ import {
   dramaForNewAsset,
   episodesLabel,
   filterAssets,
+  generatable,
   matchesFilter,
   newNodeKindOf,
   pendingGenerate,
@@ -220,6 +221,20 @@ describe("资产状态", () => {
     ];
     expect(pendingGenerate(items, "character").map((i) => i.id)).toEqual(["a", "b"]);
     expect(pendingGenerate(items, "image")).toEqual([]);
+  });
+
+  test("可框选生成的：已生成的也算（重新生成），生成中、分析中、未分类的不算", () => {
+    const items = [
+      item("a", "character", [1], "idle"),
+      item("b", "character", [], "error"),
+      item("c", "character", [1], "done"),
+      item("d", "character", null, "done"),
+      item("e", "character", [1], "running"),
+      item("g", "character", [1], "analyzing"),
+      item("f", "scene", [1], "done"),
+    ];
+    expect(generatable(items, "character").map((i) => i.id)).toEqual(["a", "b", "c"]);
+    expect(generatable(items, "image")).toEqual([]);
   });
 });
 

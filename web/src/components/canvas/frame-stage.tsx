@@ -6,7 +6,7 @@ import { useFramePickStore } from "@/store/frame-pick";
 import { BaseNodeContent } from "./base-node";
 
 /**
- * 选帧模式下节点正文里的预览播放器：取代平时的 VideoFacade。
+ * 选帧模式下节点正文里的预览播放器：取代平时的 VideoPlayer。
  * 独立的 video，不占全页面的播放名额池；播放和定位都听 useFramePickStore 的：
  * 面板的播放键写 playing，点胶片条、方向键写 seek，播放时把进度写回 current 给播放头用。
  * 只负责「看」：截取走 Mediabunny 精确取帧，不从这里的 video 截。

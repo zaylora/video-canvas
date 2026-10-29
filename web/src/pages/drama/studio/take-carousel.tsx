@@ -11,7 +11,7 @@ import { CircleX, Loader2 } from "lucide-react";
 
 import type { SegmentTake } from "@/api/drama/type";
 import { VideoPoster } from "@/components/canvas/media-preview";
-import { VideoFacade } from "@/components/canvas/video-facade";
+import { VideoPlayer } from "@/components/video-player";
 import { cn } from "@/lib/utils";
 import { initialTakeIndex, snapTakeIndex } from "@/utils/drama/take-carousel";
 
@@ -113,7 +113,7 @@ function TakeCard({
       {playable && take.asset ? (
         focused ? (
           // 和画布视频节点同一个播放器：先显示封面、播放钮和时长，点了才加载；滑走时停播退回封面
-          <VideoFacade key={take.taskId} src={take.asset.url} durationMs={take.asset.durationMs} />
+          <VideoPlayer key={take.taskId} src={take.asset.url} durationMs={take.asset.durationMs} />
         ) : (
           <VideoPoster src={take.asset.url} />
         )

@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useCharacterMedia } from "@/hooks/use-character-media";
-import { useVoiceGeneration } from "@/hooks/use-voice-generation";
+import type { VoiceGeneration } from "@/hooks/use-voice-generation";
 import type { CanvasNode, CanvasNodeData } from "@/types";
 import {
   applyPickedAssets,
@@ -72,11 +72,14 @@ function AudioRow({ assetId, src, origin }: { assetId: string; src: string; orig
 export function CharacterDetailDialog({
   id,
   data,
+  voiceGen,
   open,
   onOpenChange,
 }: {
   id: string;
   data: CanvasNodeData;
+  /** 声音生成（节点持有的同一份，短剧列表的批量生成也用它） */
+  voiceGen: VoiceGeneration;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -91,7 +94,6 @@ export function CharacterDetailDialog({
     // 只在打开的那一刻同步；之后的输入由本组件自己持有
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
-  const voiceGen = useVoiceGeneration(id, data);
 
   const apply = (
     assets: AssetDto[],
@@ -110,7 +112,9 @@ export function CharacterDetailDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        // 弹框渲染在节点组件里，React 事件会沿组件树冒泡到画布：不拦的话弹框里的双击会被当成双击空白画布，弹出「添加节点」菜单
+        // 弹框渲染在节点组件里，React 事件会沿组件树冒泡到画布：不拦的话弹框里的双击会被当成双击空白画布，弹出「添加节点」菜单；
+        // 单击也拦下，从短剧资产列表打开时免得在列表后面把节点选中
+        onClick={(event) => event.stopPropagation()}
         onDoubleClick={(event) => event.stopPropagation()}
         className="max-h-[calc(100dvh-4rem)] gap-0 overflow-y-auto p-0 sm:max-w-3xl"
       >
