@@ -25,6 +25,10 @@ const ModelPurposeSummary = "summary"
 // 同样不是助手对用户说的话，也不算对话的上下文大小。
 const ModelPurposeTitle = "title"
 
+// ModelPurposeActivity 是 Agent 给一段连续的工具调用写一句说明发起的调用：用用户当前选的模型，
+// 和会话命名一样照常预检预算、计费，不是助手对用户说的话，也不算对话的上下文大小。
+const ModelPurposeActivity = "activity"
+
 // ModelPurposeVideo 标记视频理解子请求：照常计费，不计入主对话的上下文大小。
 const ModelPurposeVideo = "video"
 
@@ -32,7 +36,7 @@ const ModelPurposeVideo = "video"
 // 免得被用来藏起助手的回复。
 func ModelPurposeOf(header string) string {
 	switch header {
-	case ModelPurposeSummary, ModelPurposeTitle:
+	case ModelPurposeSummary, ModelPurposeTitle, ModelPurposeActivity:
 		return header
 	default:
 		return ""
@@ -62,19 +66,23 @@ type ModelStreamer interface {
 
 // BridgeDeps 是创建 AgentBridge 需要的依赖。
 type BridgeDeps struct {
-	Repo       AgentRepo               // 运行、会话的数据访问
-	Canvas     *AgentCanvasService     // 读写画布
-	Agent      *AgentService           // 审批规则、画布和消息引用的校验
-	Billing    *AgentBilling           // 对话计费
-	Registry   provider.Registry       // 模型注册表
-	Tasks      AgentGenTasks           // 生成任务（task_get 查进度）
-	Assets     provider.AssetStore     // 素材（看图、看视频）
-	Frames     VideoFrames             // 抽帧、截帧；为 nil 时不能抽帧，原视频理解不依赖它
-	FrameStore FrameStore              // 把截出的帧存成用户素材；为 nil 时截帧返回「不能处理视频」
-	Secrets    provider.SecretResolver // 渠道 Key
-	Streamer   ModelStreamer           // 大模型网关
-	Skills     SkillLibrary            // 技能库（内置 + 后台已启用）；为 nil 时只有内置技能
-	Web        provider.WebAccess      // 联网（搜索、抓网页）；为 nil 表示没有联网能力，联网工具返回「未启用」
+	Repo             AgentRepo               // 运行、会话的数据访问
+	Canvas           *AgentCanvasService     // 读写画布
+	Agent            *AgentService           // 审批规则、画布和消息引用的校验
+	Billing          *AgentBilling           // 对话计费
+	Registry         provider.Registry       // 模型注册表
+	Tasks            AgentGenTasks           // 生成任务（task_get 查进度）
+	Assets           provider.AssetStore     // 素材（看图、看视频）
+	AssetLinks       AssetLinker             // 素材的稳定访问地址（附件落库、落画布用）；为 nil 时用 /files/<key>
+	Frames           VideoFrames             // 抽帧、截帧；为 nil 时不能抽帧，原视频理解不依赖它
+	FrameStore       FrameStore              // 把截出的帧存成用户素材；为 nil 时截帧返回「不能处理视频」
+	Secrets          provider.SecretResolver // 渠道 Key
+	Streamer         ModelStreamer           // 大模型网关
+	Skills           SkillLibrary            // 技能库（内置 + 后台已启用）；为 nil 时只有内置技能
+	Web              provider.WebAccess      // 联网（搜索、抓网页）；为 nil 表示没有联网能力，联网工具返回「未启用」
+	Drama            AgentDramaService       // 短剧项目、分集和任务
+	DramaSegments    AgentDramaSegments      // 短剧片段编辑
+	DramaApprovalKey []byte                  // 使用现有服务令牌签名，审批重启重放仍可校验
 	// RunUsage 按调用记录汇总一个运行的用量（模型代理要用它算本轮已花的积分）；为 nil 时模型代理不可用
 	RunUsage RunUsageSource
 	Now      func() time.Time // 为 nil 取系统时间

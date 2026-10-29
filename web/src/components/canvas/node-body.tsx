@@ -10,7 +10,7 @@ import { GridReveal } from "@/components/ui/grid-reveal";
 
 import { MediaPreview } from "./media-preview";
 import { ImagePlaceholderIcon } from "./placeholder-icons";
-import { VideoFacade } from "./video-facade";
+import { VideoPlayer } from "@/components/video-player";
 
 /** 节点的产出进度：没跑过、生成中、已产出、调用失败 */
 export type NodeStatus = "idle" | "running" | "done" | "error";
@@ -250,7 +250,7 @@ export function NodeMediaBody({
           // 音频没有画面：波形播放器填满同一个盒子（画幅固定 1:1，设计 6.18）
           <AudioPlayer src={src} active={active} />
         ) : (
-          <VideoFacade src={src} durationMs={durationMs} active={active} />
+          <VideoPlayer src={src} durationMs={durationMs} active={active} />
         )}
       </div>
     </BaseNodeContent>

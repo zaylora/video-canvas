@@ -12,7 +12,7 @@ import {
   splitSelection,
 } from "@/utils/agent/selection-refs";
 
-import { useFocusNode } from "../chrome/use-focus-node";
+import { useFocusNode } from "@/components/canvas-editor/use-focus-node";
 
 /** 标签的外观：底色加内高光，和输入框里的行内引用 chip 区分开（这里只用来回看旧消息的 selection） */
 const CHIP =

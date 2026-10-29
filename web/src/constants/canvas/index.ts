@@ -69,9 +69,6 @@ export const UPLOAD_ACTION = "action:upload";
 /** 菜单里「从资产库添加」那项的标识，取值规则同 UPLOAD_ACTION */
 export const ASSET_LIBRARY_ACTION = "action:asset-library";
 
-/** 菜单里「角色卡」那项的标识：先选卡再建节点，所以是动作项而不是节点种类，取值规则同 UPLOAD_ACTION */
-export const CHARACTER_ACTION = "action:character";
-
 /** 文件选择框收的类型 */
 export const UPLOAD_ACCEPT = "image/*,video/*,audio/*";
 

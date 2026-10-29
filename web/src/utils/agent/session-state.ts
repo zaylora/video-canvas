@@ -1,4 +1,9 @@
-import type { AgentApprovalDto, AgentEventDto, AgentRunStatus } from "@/api/agent/type";
+import type {
+  AgentApprovalDto,
+  AgentEventDto,
+  AgentRunStatus,
+  AgentWatchBatchDto,
+} from "@/api/agent/type";
 
 import { normalizeFeedback, type AgentFeedback } from "./feedback";
 
@@ -61,6 +66,8 @@ export type AgentSessionState = {
   plans: Record<string, AgentPlanStep[]>;
   /** 各轮运行的用户反馈（没评价的轮没有这一项），由 feedback.set / feedback.cleared 事件和本地乐观更新维护 */
   feedback: Record<string, AgentFeedback>;
+  /** 后台等待生成的各批（批 ID → 最新状态），由 watch.updated 事件和打开会话时的快照维护 */
+  watches: Record<string, AgentWatchBatchDto>;
   /** 会话当前的上下文大小（Token）：最近一次对话调用送进模型的输入，压缩之后会变小；还没有调用过是 0 */
   contextTokens: number;
   /** 正在压缩较早对话的那一轮运行（context.compacting 临时事件置位；压缩结束、运行结束清除），没有为 null */
@@ -91,6 +98,7 @@ export const emptySession = (): AgentSessionState => ({
   approvals: {},
   plans: {},
   feedback: {},
+  watches: {},
   contextTokens: 0,
   compacting: null,
 });
@@ -156,6 +164,11 @@ function foldDerived(state: AgentSessionState, ev: AgentEventDto): AgentSessionS
       if (!runId || !(runId in state.feedback)) return state;
       const { [runId]: _cleared, ...feedback } = state.feedback;
       return { ...state, feedback };
+    }
+    case "watch.updated": {
+      const batch = data as unknown as AgentWatchBatchDto;
+      if (!batch.batch_id) return state;
+      return { ...state, watches: { ...state.watches, [batch.batch_id]: batch } };
     }
     case "message.done":
       return { ...state, stream: { runId: null, text: "", thinking: "" } };
@@ -263,6 +276,8 @@ export function applyHistoryPage(
     approvals: folded.approvals,
     plans: folded.plans,
     feedback: folded.feedback,
+    // 事件里没有的批（旧页没加载、只来自打开会话时的快照）保留，事件里有的以事件为准
+    watches: { ...state.watches, ...folded.watches },
     contextTokens: folded.contextTokens || state.contextTokens,
   };
 }

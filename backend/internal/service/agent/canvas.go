@@ -11,15 +11,12 @@ import (
 	"video-canvas/internal/agent/canvasgraph"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
-	"video-canvas/internal/pkg/idcodec"
 	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/pkg/ws"
 	"video-canvas/internal/provider"
 	"video-canvas/internal/repository"
+	"video-canvas/internal/service"
 )
-
-// maxWriteAttempts 是画布写入遇到版本冲突时最多尝试的次数：每次都会重读最新画布、重新校验并应用同一批操作。
-const maxWriteAttempts = 3
 
 // AgentCanvasRepo 是 Agent 改画布所需的数据访问。
 type AgentCanvasRepo interface {
@@ -146,7 +143,7 @@ func (s *AgentCanvasService) ApplyOps(ctx context.Context, run *model.AgentRun, 
 	//    模型的生成方式在重试之前取一次：mode 要按它校验，写入后还要据它检查提醒
 	lookup := s.modelOpsLookup(ctx)
 	res, extra, err := s.mutate(ctx, run, toolCallID, model.MutationApplyOps, 0, func(g *canvasgraph.Graph) (*edit, error) {
-		r, err := canvasgraph.Apply(g, ops, canvasgraph.Options{ModelOps: lookup})
+		r, err := canvasgraph.Apply(g, ops, canvasgraph.Options{ModelOps: lookup, Assets: opAssetsFrom(ctx)})
 		if err != nil {
 			return nil, err
 		}
@@ -161,6 +158,18 @@ func (s *AgentCanvasService) ApplyOps(ctx context.Context, run *model.AgentRun, 
 		res.Warnings = w
 	}
 	return res, err
+}
+
+type opAssetsKey struct{}
+
+// withOpAssets 把这批操作里 assetId 指向的、已校验过归属的素材带进应用操作的上下文。
+func withOpAssets(ctx context.Context, assets map[string]canvasgraph.AssetRef) context.Context {
+	return context.WithValue(ctx, opAssetsKey{}, assets)
+}
+
+func opAssetsFrom(ctx context.Context) map[string]canvasgraph.AssetRef {
+	m, _ := ctx.Value(opAssetsKey{}).(map[string]canvasgraph.AssetRef)
+	return m
 }
 
 // touchedNodeIDs 取出这批改动涉及的节点：新建、修改的节点，以及新连线的两端。
@@ -337,61 +346,57 @@ func (s *AgentCanvasService) load(ctx context.Context, run *model.AgentRun) (*ca
 }
 
 // mutate 是所有写画布操作的公共流程：读最新画布 → fn 修改 → 带乐观锁写入并记录改动、自建节点已读 → 推送 patch。
-// 写入时版本冲突（用户刚好保存了）就重读最新画布、重新执行 fn，最多 maxWriteAttempts 次，
+// 写入时版本冲突（用户刚好保存了）就由公共入口重读最新画布、重新执行 fn，最多三次，
 // 这样 Agent 的改动总是叠在用户最新的内容上，不会覆盖用户的保存。fn 没有产生任何变化时不写入。
 func (s *AgentCanvasService) mutate(ctx context.Context, run *model.AgentRun, toolCallID, kind string, undoRunID uint64, fn func(*canvasgraph.Graph) (*edit, error)) (*WriteResult, any, error) {
+	type outcome struct {
+		result *WriteResult
+		extra  any
+	}
 	idemKey := IdempotencyKeyFrom(ctx)
-	for attempt := 0; attempt < maxWriteAttempts; attempt++ {
-		g, revision, err := s.load(ctx, run)
-		if err != nil {
-			return nil, nil, err
-		}
-		// 带了幂等键，并且同一个 (运行, 键, 种类) 已经写过：这是崩溃后的重放，原样返回当初的结果，不再写画布、不再推送。
-		// 必须放在读画布之后：另一个相同的调用在两者之间提交时，要么这里看得到它的记录，要么下面提交会因 revision 变了而冲突、
-		// 重试时再走到这里；放在读之前，就会在新 revision 上再写一遍
+	out, err := service.WriteCanvas(ctx, s.repo, run.UserID, run.CanvasID, func(g *canvasgraph.Graph, revision uint64) (outcome, error) {
+		// 幂等查询必须在读取本次画布快照之后：并发提交会被 CAS 挡住，重读时才可安全重放。
 		prior, err := s.priorWrite(ctx, run.ID, idemKey, kind)
 		if err != nil {
-			return nil, nil, err
+			return outcome{}, err
 		}
 		if prior != nil {
 			res, extra := replayResult(prior)
-			return res, extra, nil
+			return outcome{result: res, extra: extra}, nil
 		}
 		ed, err := fn(g)
 		if err != nil {
-			return nil, nil, err
+			return outcome{}, err
 		}
 		if len(ed.changes) == 0 {
-			return &WriteResult{IDMap: ed.idMap, Revision: revision}, ed.extra, nil
+			return outcome{result: &WriteResult{IDMap: ed.idMap, Revision: revision}, extra: ed.extra}, nil
 		}
 		payload, err := ed.graph.Marshal()
 		if err != nil {
-			return nil, nil, err
+			return outcome{}, err
 		}
 		changesJSON, err := json.Marshal(ed.changes)
 		if err != nil {
-			return nil, nil, err
+			return outcome{}, err
 		}
 		mut := &model.AgentMutation{RunID: run.ID, ToolCallID: toolCallID, Kind: kind, ChangesJSON: changesJSON, IdemKey: idemKey, ResultJSON: resultJSON(ed)}
 		err = s.repo.CommitCanvasMutation(ctx, repository.CommitInput{
 			UserID: run.UserID, CanvasID: run.CanvasID, BaseRevision: revision, Payload: payload, Mutation: mut, UndoRunID: undoRunID,
 			CreatedReads: canvasReadRows(run, nodeIDsByOp(ed.changes, canvasgraph.ChangeCreate)),
 		})
-		switch {
-		case errors.Is(err, repository.ErrRevisionConflict):
-			continue
-		case errors.Is(err, repository.ErrNotFound):
-			return nil, nil, errcode.ErrCanvasNotFound
-		case err != nil:
-			return nil, nil, err
+		if err != nil {
+			return outcome{}, err
 		}
 		s.publishPatch(ctx, run, mut, ed.changes)
-		return &WriteResult{
+		return outcome{result: &WriteResult{
 			IDMap: ed.idMap, MutationID: mut.ID, Revision: mut.RevisionAfter, Changes: len(ed.changes),
-			Created: nodeIDsByOp(ed.changes, "create"), Updated: nodeIDsByOp(ed.changes, "update"),
-		}, ed.extra, nil
+			Created: nodeIDsByOp(ed.changes, canvasgraph.ChangeCreate), Updated: nodeIDsByOp(ed.changes, canvasgraph.ChangeUpdate),
+		}, extra: ed.extra}, nil
+	})
+	if errors.Is(err, repository.ErrRevisionConflict) {
+		err = errcode.ErrAgentWriteConflict
 	}
-	return nil, nil, errcode.ErrAgentWriteConflict
+	return out.result, out.extra, err
 }
 
 type idemKeyCtx struct{}
@@ -464,19 +469,9 @@ func replayResult(m *model.AgentMutation) (*WriteResult, any) {
 // publishPatch 在写入提交之后向用户推送改动，前端据此做三方合并。推送可以丢，前端会按 revision 对账。
 // 走用户频道（连接时自动订阅，不需要订阅授权），消息里带编码后的 canvas_id，前端按它过滤。
 func (s *AgentCanvasService) publishPatch(ctx context.Context, run *model.AgentRun, m *model.AgentMutation, changes []canvasgraph.Change) {
-	channel := ws.UserChannel(run.UserID)
-	s.bc.Publish(ctx, channel, ws.Message{
-		Type:    ws.TypeCanvasPatch,
-		Channel: channel,
-		Data: map[string]any{
-			"mutation_id":     idcodec.ID(m.ID),
-			"run_id":          idcodec.ID(run.ID),
-			"canvas_id":       idcodec.ID(run.CanvasID),
-			"kind":            m.Kind,
-			"revision_before": m.RevisionBefore,
-			"revision_after":  m.RevisionAfter,
-			"changes":         changes,
-		},
+	service.PublishCanvasPatch(ctx, s.bc, run.UserID, service.CanvasPatch{
+		MutationID: m.ID, RunID: run.ID, CanvasID: run.CanvasID, Kind: m.Kind,
+		RevisionBefore: m.RevisionBefore, RevisionAfter: m.RevisionAfter, Changes: changes,
 	})
 }
 

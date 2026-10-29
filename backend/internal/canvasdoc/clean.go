@@ -4,8 +4,9 @@ import "fmt"
 
 // foreignKeys 是合法导出文件里任何层级都不会出现的原环境字段：Build 把它们删掉或改名，
 // 并用 checkNoLeak 保证改写后一个不剩。url 不在其中，原因见 CheckDocumentClean。
+// characterId / labelCache 是已下线的角色卡留下的字段，不再有任何含义，仍按原环境字段拒绝。
 var foreignKeys = map[string]bool{
-	"assetId": true, "src": true, "taskId": true, "pendingTaskIds": true,
+	"assetId": true, "src": true, "taskId": true, "pendingTaskIds": true, "voiceTaskId": true,
 	"errorTaskRef": true, "characterId": true, "activeOutputId": true, "labelCache": true,
 }
 

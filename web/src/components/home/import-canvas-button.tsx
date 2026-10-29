@@ -36,8 +36,8 @@ export function ImportCanvasButton({
         onChange={handleChange}
       />
       <Button
-        variant="outline"
-        className="h-9 rounded-[10px]"
+        variant="ghost"
+        className="hover:bg-chrome-hover h-9 rounded-full px-3.5"
         disabled={importing}
         onClick={() => inputRef.current?.click()}
       >

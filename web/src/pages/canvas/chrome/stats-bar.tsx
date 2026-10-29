@@ -7,7 +7,7 @@ import { ChromeButton, ChromePill, ChromeTooltip } from "@/components/canvas/chr
 import { cn } from "@/lib/utils";
 import type { CanvasNode } from "@/types";
 
-import { useFocusNode } from "./use-focus-node";
+import { useFocusNode } from "@/components/canvas-editor/use-focus-node";
 
 /** 右下角：连线数、节点数、失败节点数（点一下依次定位到失败的节点） */
 export function StatsBar() {

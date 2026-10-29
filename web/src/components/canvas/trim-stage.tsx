@@ -10,7 +10,7 @@ import { BaseNodeContent } from "./base-node";
 const clock = (seconds: number) => formatMediaDuration(seconds * 1000) ?? "0:00";
 
 /**
- * 修剪模式下节点正文里的预览播放器：取代平时的 VideoFacade。
+ * 修剪模式下节点正文里的预览播放器：取代平时的 VideoPlayer。
  * 独立的 video，不占全页面的播放名额池（修剪中不能被别的视频开播时收走）。
  * 只在选区内播放：播到出点就暂停并回到入点；拖手柄时由仓库的 seek 请求把画面跳到被拖的那一端。
  * 进度条覆盖整段视频，选区外压暗、选区内高亮。
@@ -42,7 +42,7 @@ export function TrimStage({
     range.current = { start, end };
   }, [start, end]);
 
-  // src 手动设置，和 VideoFacade 一样：严格模式下清理会摘掉 src，JSX 属性写法补不回来
+  // src 手动设置，和 VideoPlayer 一样：严格模式下清理会摘掉 src，JSX 属性写法补不回来
   useEffect(() => {
     const el = videoRef.current;
     if (!el) return;

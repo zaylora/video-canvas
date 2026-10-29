@@ -21,9 +21,10 @@ export type SegmentedOption<T extends string> = {
  * 分段控件的三种外观：
  * flat 没有底，只有选中项的灰块（所有画布页的疏密切换）；
  * track 有一条灰色轨道，选中项是浮起的白块（资产页的范围切换）；
- * pill 是大号胶囊，选中块反色并带一抹琥珀光（创作页的「生成 / 画布」）。
+ * pill 是大号胶囊，选中块反色并带一抹琥珀光（创作页的「生成 / 画布」）；
+ * chrome 是半透明胶囊轨道，选中块是浅底加细描边（coding-standards 6.1，短剧创作卡的「上传 / 粘贴」）。
  */
-export type SegmentedVariant = "flat" | "track" | "pill";
+export type SegmentedVariant = "flat" | "track" | "pill" | "chrome";
 
 /** 各外观的外框、按钮、选中态和滑块样式 */
 const VARIANT = {
@@ -45,6 +46,12 @@ const VARIANT = {
     selected: "text-background font-medium",
     thumb:
       "bg-foreground rounded-full bg-[radial-gradient(ellipse_60%_120%_at_18%_50%,color-mix(in_oklch,var(--beam-bright)_55%,transparent),transparent_70%)]",
+  },
+  chrome: {
+    root: "bg-chrome-hover ring-chrome-border gap-0 rounded-full p-[3px] ring-1",
+    button: "h-8.5! rounded-full px-4 text-[13.5px]",
+    selected: "text-foreground font-medium",
+    thumb: "bg-background ring-chrome-border rounded-full shadow-sm ring-1 dark:bg-white/10",
   },
 } as const;
 

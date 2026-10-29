@@ -465,7 +465,14 @@ func (s *GenerationTaskService) finish(ctx context.Context, id uint64, from []st
 		if t.IsTest {
 			return nil
 		}
-		return settleLedger(ctx, tx, t, target)
+		if err := settleLedger(ctx, tx, t, target); err != nil {
+			return err
+		}
+		// Agent 发起的任务：结束的通知和结算同一个事务提交，不会出现“任务结束了但没人通知 Agent”
+		if t.AgentRunID != 0 {
+			return tx.EnqueueAgentNotify(ctx, t)
+		}
+		return nil
 	})
 	if errors.Is(err, repository.ErrStateConflict) {
 		return nil, false, nil

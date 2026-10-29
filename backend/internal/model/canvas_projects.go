@@ -13,6 +13,7 @@ import (
 type CanvasProject struct {
 	BaseModel
 	UserID      uint64         `gorm:"not null;index;" json:"user_id"`            //  所属用户
+	DramaID     *uint64        `gorm:"index" json:"drama_id"`                     // 所属短剧，普通画布为空
 	Title       string         `gorm:"size:255;not null;default:''" json:"title"` //  画布标题
 	PayloadJSON datatypes.JSON `gorm:"type:jsonb;not null;" json:"payload_json"`  //  完整画布内容
 	Revision    uint64         `gorm:"not null;default:1;" json:"revision"`       //  乐观锁版本号

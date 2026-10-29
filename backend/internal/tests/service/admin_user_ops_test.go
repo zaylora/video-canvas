@@ -37,6 +37,9 @@ func (s *fakeCreditStore) put(userID uint64, balance, frozen int) {
 
 // EnqueueTask 满足 GenerationTaskTx；积分账户测试不涉及队列。
 func (s *fakeCreditStore) EnqueueTask(context.Context, *model.GenerationTask) error { return nil }
+func (s *fakeCreditStore) EnqueueAgentNotify(context.Context, *model.GenerationTask) error {
+	return nil
+}
 
 func (s *fakeCreditStore) WithTx(_ context.Context, fn func(tx repository.GenerationTaskTx) error) error {
 	s.mu.Lock()

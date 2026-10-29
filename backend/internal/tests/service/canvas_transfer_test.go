@@ -14,7 +14,6 @@ import (
 	"video-canvas/internal/canvasdoc"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
-	"video-canvas/internal/pkg/idcodec"
 	"video-canvas/internal/repository"
 	"video-canvas/internal/service"
 )
@@ -71,45 +70,32 @@ func (f *fakeTransferAssets) DiscardCopies(context.Context, []*model.Asset) {}
 
 func (f *fakeTransferAssets) FileURL(key string) string { return "/files/" + key }
 
-// fakeTransferCharacters 是导出测试用的角色卡仓库，只返回属于该用户且存在的卡。
-type fakeTransferCharacters struct {
-	cards map[uint64]model.CharacterCard
-}
-
-func (f *fakeTransferCharacters) ListByIDs(_ context.Context, userID uint64, ids []uint64) ([]model.CharacterCard, error) {
-	var out []model.CharacterCard
-	for _, id := range ids {
-		if c, ok := f.cards[id]; ok && c.UserID == userID {
-			out = append(out, c)
-		}
-	}
-	return out, nil
-}
-
 const transferUser = uint64(1)
 
 // transferHash 返回素材 ID 对应的假 SHA-256：64 位小写十六进制，能通过文档校验。
 func transferHash(id uint64) string { return fmt.Sprintf("%064x", id) }
 
-// transferEnv 是一个导出测试环境：用户 1 有画布 5，里面一张图片节点（素材 101）、一个角色卡节点和一个组节点。
+// transferEnv 是一个导出测试环境：用户 1 有画布 5，里面一张图片节点（素材 101）、一个内嵌角色数据的角色节点（主图 201、补充图 202、音频音色 203）和一个组节点。
 type transferEnv struct {
-	svc        *service.CanvasTransferService
-	assets     *fakeTransferAssets
-	characters *fakeTransferCharacters
-	canvases   *fakeTransferCanvasRepo
+	svc      *service.CanvasTransferService
+	assets   *fakeTransferAssets
+	canvases *fakeTransferCanvasRepo
 }
 
 // 一份接近真实保存格式的画布内容：有 canvas / group 节点、连线和视口。
-func transferPayload(charHexID string) string {
-	return fmt.Sprintf(`{
+func transferPayload() string {
+	return `{
   "nodes": [
     {"id":"n1","type":"canvas","position":{"x":10,"y":20},"data":{"kind":"image","assetId":"101","src":"/files/u1/a.png","status":"success"}},
-    {"id":"n2","type":"canvas","position":{"x":300,"y":20},"data":{"kind":"character","characterId":%q}},
+    {"id":"n2","type":"canvas","position":{"x":300,"y":20},"data":{"kind":"character","label":"小明","assetId":"201","src":"/files/u1/201",
+      "character":{"name":"小明","look":"基础形象","description":"一个少年",
+        "extras":[{"assetId":"202","src":"/files/u1/202"}],
+        "voice":{"mode":"audio","assetId":"203","src":"/files/u1/203","origin":"upload"}}}},
     {"id":"g1","type":"group","position":{"x":0,"y":0},"data":{"label":"分组"}}
   ],
   "edges": [{"id":"e1","source":"n1","target":"n2"}],
   "viewport": {"x":0,"y":0,"zoom":1}
-}`, charHexID)
+}`
 }
 
 func newTransferEnv(t *testing.T, payload string) *transferEnv {
@@ -130,25 +116,15 @@ func newTransferEnv(t *testing.T, payload string) *transferEnv {
 			},
 			errs: map[uint64]error{},
 		},
-		characters: &fakeTransferCharacters{cards: map[uint64]model.CharacterCard{}},
 	}
 	e.svc = service.NewCanvasTransferService(service.CanvasTransferDeps{
 		Canvases:   e.canvases,
 		Assets:     e.assets,
-		Characters: e.characters,
 		AppVersion: "v1.2.3",
 		Limits:     canvasdoc.DefaultLimits(),
 		Now:        func() time.Time { return time.Date(2026, 10, 24, 8, 0, 0, 0, time.UTC) },
 	})
 	return e
-}
-
-func (e *transferEnv) addCard(id uint64) {
-	voice := uint64(203)
-	e.characters.cards[id] = model.CharacterCard{
-		ID: id, UserID: transferUser, Name: "小明", Description: "一个少年",
-		AvatarAssetID: 201, ExtraAssetIDs: datatypes.JSONSlice[uint64]{202}, VoiceAssetID: &voice,
-	}
 }
 
 func hashedSet(f *fakeTransferAssets) map[uint64]bool {
@@ -160,8 +136,7 @@ func hashedSet(f *fakeTransferAssets) map[uint64]bool {
 }
 
 func TestCanvasTransfer_Export_Success(t *testing.T) {
-	e := newTransferEnv(t, transferPayload(idcodec.Encode(7)))
-	e.addCard(7)
+	e := newTransferEnv(t, transferPayload())
 
 	res, err := e.svc.Export(context.Background(), transferUser, 5)
 	if err != nil {
@@ -185,14 +160,17 @@ func TestCanvasTransfer_Export_Success(t *testing.T) {
 	if info := doc.Assets[transferHash(101)]; info.Kind != "image" || info.MimeType != "image/png" || info.FileName != "f101" {
 		t.Errorf("素材元信息不对: %+v", info)
 	}
-	c1, ok := doc.Characters["c1"]
-	if !ok || c1.Name != "小明" || c1.Description != "一个少年" || c1.Avatar != transferHash(201) {
-		t.Errorf("角色卡不对: %+v", doc.Characters)
+	char := doc.Canvas.Nodes[1]["data"].(map[string]any)
+	if char["assetHash"] != transferHash(201) {
+		t.Errorf("角色节点主图应换成哈希: %v", char)
+	}
+	if c, _ := char["character"].(map[string]any); c["name"] != "小明" || c["description"] != "一个少年" {
+		t.Errorf("角色数据应随节点导出: %v", char)
 	}
 	if res.Report.SkippedAssets != 0 {
 		t.Errorf("skipped_assets = %d，want 0", res.Report.SkippedAssets)
 	}
-	// 画布里不能留下原环境的素材 ID、文件地址和角色卡 ID
+	// 画布里不能留下原环境的素材 ID、文件地址
 	node := doc.Canvas.Nodes[0]["data"].(map[string]any)
 	if node["assetHash"] != transferHash(101) {
 		t.Errorf("图片节点应带 assetHash: %v", node)
@@ -203,20 +181,19 @@ func TestCanvasTransfer_Export_Success(t *testing.T) {
 }
 
 func TestCanvasTransfer_Export_NoOriginalIDsLeak(t *testing.T) {
-	e := newTransferEnv(t, transferPayload(idcodec.Encode(7)))
-	e.addCard(7)
+	e := newTransferEnv(t, transferPayload())
 
 	res, err := e.svc.Export(context.Background(), transferUser, 5)
 	if err != nil {
 		t.Fatalf("Export: %v", err)
 	}
-	// 序列化后的整份文档里不能出现原环境的素材 ID（101/201/202/203）和角色卡十六进制 ID
+	// 序列化后的整份文档里不能出现原环境的素材 ID（101/201/202/203）
 	b, err := json.Marshal(res.Document)
 	if err != nil {
 		t.Fatalf("序列化文档: %v", err)
 	}
 	raw := string(b)
-	for _, leak := range []string{`"101"`, `"201"`, `"202"`, `"203"`, "assetId", "characterId", idcodec.Encode(7), "/files/"} {
+	for _, leak := range []string{`"101"`, `"201"`, `"202"`, `"203"`, "assetId", "characterId", "/files/"} {
 		if strings.Contains(raw, leak) {
 			t.Errorf("文档里残留了原环境内容 %s", leak)
 		}
@@ -229,7 +206,7 @@ func TestCanvasTransfer_Export_NoOriginalIDsLeak(t *testing.T) {
 }
 
 func TestCanvasTransfer_Export_OtherUsersCanvas(t *testing.T) {
-	e := newTransferEnv(t, transferPayload(idcodec.Encode(7)))
+	e := newTransferEnv(t, transferPayload())
 
 	_, err := e.svc.Export(context.Background(), 2, 5)
 	var ec *errcode.Error
@@ -247,8 +224,7 @@ func TestCanvasTransfer_Export_OtherUsersCanvas(t *testing.T) {
 }
 
 func TestCanvasTransfer_Export_UnreadableAssetIsSkipped(t *testing.T) {
-	e := newTransferEnv(t, transferPayload(idcodec.Encode(7)))
-	e.addCard(7)
+	e := newTransferEnv(t, transferPayload())
 	e.assets.errs[101] = fmt.Errorf("%w: 文件丢了", service.ErrAssetUnreadable)
 
 	res, err := e.svc.Export(context.Background(), transferUser, 5)
@@ -268,8 +244,7 @@ func TestCanvasTransfer_Export_UnreadableAssetIsSkipped(t *testing.T) {
 }
 
 func TestCanvasTransfer_Export_NonUnreadableHashErrorFailsExport(t *testing.T) {
-	e := newTransferEnv(t, transferPayload(idcodec.Encode(7)))
-	e.addCard(7)
+	e := newTransferEnv(t, transferPayload())
 	dbErr := errors.New("数据库连接断开")
 	e.assets.errs[101] = dbErr
 
@@ -282,65 +257,61 @@ func TestCanvasTransfer_Export_NonUnreadableHashErrorFailsExport(t *testing.T) {
 	}
 }
 
-func TestCanvasTransfer_Export_DeletedCharacter(t *testing.T) {
-	// 节点引用了角色卡 7，但库里已查不到
-	e := newTransferEnv(t, transferPayload(idcodec.Encode(7)))
-
-	res, err := e.svc.Export(context.Background(), transferUser, 5)
-	if err != nil {
-		t.Fatalf("Export: %v", err)
-	}
-	if res.Document.Characters == nil || len(res.Document.Characters) != 0 {
-		t.Errorf("characters 应是空 map: %#v", res.Document.Characters)
-	}
-	data := res.Document.Canvas.Nodes[1]["data"].(map[string]any)
-	if _, ok := data["characterRef"]; ok {
-		t.Errorf("已删除的角色卡节点不该有 characterRef: %v", data)
-	}
-	if _, ok := data["characterId"]; ok {
-		t.Errorf("节点不该残留 characterId: %v", data)
-	}
-
-	// 解不开的角色卡 ID 同样按已删除处理，不报错
-	e2 := newTransferEnv(t, transferPayload("not-a-valid-id"))
-	res, err = e2.svc.Export(context.Background(), transferUser, 5)
-	if err != nil {
-		t.Fatalf("无效角色卡 ID 不该让导出失败: %v", err)
-	}
-	if len(res.Document.Characters) != 0 {
-		t.Errorf("characters 应为空: %v", res.Document.Characters)
-	}
-}
-
 func TestCanvasTransfer_Export_CharacterAssetsAreHashed(t *testing.T) {
-	e := newTransferEnv(t, transferPayload(idcodec.Encode(7)))
-	e.addCard(7)
+	e := newTransferEnv(t, transferPayload())
 
 	res, err := e.svc.Export(context.Background(), transferUser, 5)
 	if err != nil {
 		t.Fatalf("Export: %v", err)
 	}
+	// 角色节点内嵌的主图、补充图（extras[].assetId）和音频音色（voice.assetId）都要经过 EnsureSha256，否则导出漏文件
 	hashed := hashedSet(e.assets)
 	for _, id := range []uint64{201, 202, 203} {
 		if !hashed[id] {
-			t.Errorf("角色卡素材 %d 应经过 EnsureSha256", id)
+			t.Errorf("角色素材 %d 应经过 EnsureSha256", id)
 		}
 	}
-	c1 := res.Document.Characters["c1"]
-	if c1.Avatar != transferHash(201) || len(c1.Extras) != 1 || c1.Extras[0] != transferHash(202) || c1.Voice == nil || *c1.Voice != transferHash(203) {
-		t.Errorf("角色卡素材引用不对: %+v", c1)
+	c := res.Document.Canvas.Nodes[1]["data"].(map[string]any)["character"].(map[string]any)
+	extras, _ := c["extras"].([]any)
+	if len(extras) != 1 || extras[0].(map[string]any)["assetHash"] != transferHash(202) {
+		t.Errorf("补充图引用不对: %v", c["extras"])
+	}
+	voice, _ := c["voice"].(map[string]any)
+	if voice["mode"] != "audio" || voice["assetHash"] != transferHash(203) || voice["origin"] != "upload" {
+		t.Errorf("音频音色引用不对: %v", c["voice"])
 	}
 	for _, hash := range []string{transferHash(201), transferHash(202), transferHash(203)} {
 		if _, ok := res.Document.Assets[hash]; !ok {
-			t.Errorf("assets 缺少角色卡素材 %s", hash)
+			t.Errorf("assets 缺少角色素材 %s", hash)
 		}
+	}
+}
+
+func TestCanvasTransfer_Export_UnreadableCharacterAssetsDegrade(t *testing.T) {
+	e := newTransferEnv(t, transferPayload())
+	e.assets.errs[202] = fmt.Errorf("%w: 文件丢了", service.ErrAssetUnreadable)
+	e.assets.errs[203] = fmt.Errorf("%w: 文件丢了", service.ErrAssetUnreadable)
+
+	res, err := e.svc.Export(context.Background(), transferUser, 5)
+	if err != nil {
+		t.Fatalf("角色素材读不到不该让导出失败: %v", err)
+	}
+	c := res.Document.Canvas.Nodes[1]["data"].(map[string]any)["character"].(map[string]any)
+	if extras, _ := c["extras"].([]any); len(extras) != 0 {
+		t.Errorf("读不到的补充图应去掉: %v", c["extras"])
+	}
+	if v, ok := c["voice"]; !ok || v != nil {
+		t.Errorf("读不到的音频音色应为 null: %v", c["voice"])
+	}
+	if res.Report.SkippedAssets != 2 {
+		t.Errorf("skipped_assets = %d，want 2", res.Report.SkippedAssets)
 	}
 }
 
 // withLimits 用给定上限重建导出服务，其余依赖不变。
 func (e *transferEnv) withLimits(l canvasdoc.Limits) *transferEnv {
 	e.svc = service.NewCanvasTransferService(service.CanvasTransferDeps{
-		Canvases: e.canvases, Assets: e.assets, Characters: e.characters, AppVersion: "v1.2.3", Limits: l,
+		Canvases: e.canvases, Assets: e.assets, AppVersion: "v1.2.3", Limits: l,
 		Now: func() time.Time { return time.Date(2026, 10, 24, 8, 0, 0, 0, time.UTC) },
 	})
 	return e
@@ -367,8 +338,7 @@ func TestCanvasTransfer_Export_ChecksImportLimits(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			e := newTransferEnv(t, transferPayload(idcodec.Encode(7)))
-			e.addCard(7)
+			e := newTransferEnv(t, transferPayload())
 			res, err := e.withLimits(tc.limits).svc.Export(context.Background(), transferUser, 5)
 			if tc.reason == "" {
 				if err != nil || res == nil {
@@ -387,5 +357,15 @@ func TestCanvasTransfer_Export_ChecksImportLimits(t *testing.T) {
 				t.Errorf("状态码 %d、结果 %v", ce.HTTPStatus(), res)
 			}
 		})
+	}
+}
+
+func TestCanvasTransfer_Export_DramaCanvasExcluded(t *testing.T) {
+	e := newTransferEnv(t, transferPayload())
+	e.canvases.canvases[5].DramaID = new(uint64(42))
+	res, err := e.svc.Export(context.Background(), transferUser, 5)
+	var businessErr *errcode.Error
+	if !errors.As(err, &businessErr) || businessErr.Code != errcode.ErrCanvasNotFound.Code || res != nil || len(e.assets.hashed) != 0 {
+		t.Fatalf("短剧画布不应可导出：%+v %v", res, err)
 	}
 }

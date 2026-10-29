@@ -48,6 +48,11 @@ export type CanvasNodeData = {
    * 任务到达终态时回填把它移出，空了就删掉这个字段；taskId 是其中第一个，保持原语义。
    */
   pendingTaskIds?: string[];
+  /**
+   * 角色卡节点上正在（或刚刚）生成声音的任务 id，只有 kind 为 character 时才有。声音生成不占节点的主图，
+   * 任务 node_id 是 voice:{节点id}；成功时回填把音频绑成角色的声音并删掉这个字段，失败时留着让详情页显示原因和重试。
+   */
+  voiceTaskId?: string;
   /** 按所选模型 capabilities 存的参数值：提示词 params.prompt（兼容旧的 prompt 字段）、生成方式 params.op、生成参数按参数名、手动添加的参考素材 params.images / videos / audios（素材 id 数组） */
   params?: Record<string, unknown>;
   /** params 里媒体字段所选素材的展示信息，字段名 -> 素材 */
@@ -60,10 +65,70 @@ export type CanvasNodeData = {
   outpaintFrom?: string;
   /** 导演台节点的 3D 场景，只有 kind 为 director 时才有；编辑器里改动后自动写回 */
   scene?: DirectorScene;
-  /** 角色卡节点引用的角色卡 ID（十六进制串），只有 kind 为 character 时才有；内容实时取自角色卡，不随画布保存 */
+  /** 角色卡节点自带的角色数据，只有 kind 为 character 时才有；主图沿用本节点的 assetId / src，数据只属于当前画布 */
+  character?: NodeCharacter;
+  /** @deprecated 旧版角色卡节点引用的全局角色卡 ID。角色卡已改为画布内嵌，打开画布时由 normalizeLegacyCharacters 规整掉，不再写回 */
   characterId?: string;
-  /** 角色卡节点上次读到的名称和主图素材 ID，只在加载前或读取失败时占位，不作为事实来源 */
+  /** @deprecated 旧版角色卡节点缓存的名称和主图，同上，规整时只取名字 */
   labelCache?: { name: string; coverAssetId?: string };
+  /** 短剧资产元数据，只有短剧专属画布里的节点才有；没有这个字段的节点在短剧里算「未分类」 */
+  drama?: NodeDrama;
+};
+
+/** 角色卡节点上的一份素材引用（补充图、音频音色）：只存素材 id 和地址，不复制文件 */
+export type CharacterAssetRef = {
+  /** 素材 id（字符串） */
+  assetId: string;
+  /** 素材地址，展示用 */
+  src: string;
+};
+
+/**
+ * 角色音色：一段音频素材，来源是上传、AI 生成或从素材库绑定。
+ * 连到视频节点时展开成参考音频。声音只有音频一种：旧版的文本音色已去掉，
+ * 其描述改存在 NodeCharacter.voicePrompt，作为生成声音的提示词。
+ * mode 字段保留是为了和已经存档、导出的数据保持一致。
+ */
+export type CharacterVoice = {
+  mode: "audio";
+  assetId: string;
+  src: string;
+  origin: "upload" | "generated" | "library";
+};
+
+/**
+ * 角色卡节点自带的数据（设计 docs/design/角色卡/画布角色卡重设计.md §8.1）：
+ * 一个节点 = 一个角色的一个形象，主图是节点自己的 assetId / src，数据只属于当前画布。
+ */
+export type NodeCharacter = {
+  /** 角色名，1–64 字，允许重复；相同的名字把同一角色的多个形象归在一起 */
+  name: string;
+  /** 形象（造型）名，≤64 字，默认「基础形象」 */
+  look: string;
+  /** 角色设定，≤500 字，只展示，不注入提示词 */
+  description: string;
+  /** 补充图，≤4 张，去重，不含主图，必须是图片 */
+  extras: CharacterAssetRef[];
+  /** 声音；null 表示没有 */
+  voice: CharacterVoice | null;
+  /** 生成声音用的提示词（音色描述加一句试音台词），≤500 字；只是下次生成的输入，不会带入下游 */
+  voicePrompt?: string;
+};
+
+/**
+ * 短剧资产元数据（契约 §4，后端拆解时写入、前端「出现集数」读写）。
+ * 其余未知字段（如别名）原样保留，改集数时不能丢。
+ */
+export type NodeDrama = {
+  /** 资产类型；文本 / 图片 / 视频 / 音频这类普通节点可以没有 */
+  type?: "character" | "scene" | "prop";
+  /** 资产名，合并与 @ 候选用 */
+  name?: string;
+  /** 造型 / 变体名，可空串 */
+  look?: string;
+  /** 出现的集号；空数组 = 全集；null = 未分类（所在的集被删了，保留类型和名字等用户重新归类） */
+  episodes: number[] | null;
+  [extra: string]: unknown;
 };
 
 /** 节点的一版生成产物 */

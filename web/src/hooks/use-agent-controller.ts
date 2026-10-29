@@ -13,6 +13,7 @@ import {
   undoAgentRun,
 } from "@/api/agent";
 import type {
+  AgentAttachmentReq,
   AgentMode,
   AgentModelDto,
   AgentSessionDto,
@@ -22,11 +23,16 @@ import type {
 import { useAgentSettings } from "@/store/agent-settings";
 import { useAgentStore } from "@/store/agent";
 import { useCreditsStore } from "@/store/credits";
+import { visibleSessions } from "@/utils/agent/drama";
 import { activeRunId, emptySession } from "@/utils/agent/session-state";
 import { buildRunStrip, buildStatusLine, buildTimeline } from "@/utils/agent/timeline";
+import { activeWatches, ensureNotificationPermission, summarizeWatches } from "@/utils/agent/watch";
 
 /** 没有会话时共用的空数组，免得每次渲染都是新引用 */
 const NO_SESSIONS: AgentSessionDto[] = [];
+
+/** 输入框不再提供任务模式切换：画布按全能创作运行（后端的另外几种模式和接口保留）；短剧助手传 drama */
+const DEFAULT_MODE: AgentMode = "all";
 
 /** 可用的 Agent 模型：打开浮窗时拉一次；没有已发布的模型时入口按钮变淡 */
 export function useAgentModels() {
@@ -47,21 +53,25 @@ export function useAgentModels() {
  * 画布 Agent 浮窗的全部状态和动作：会话列表与当前会话、发送 / 停止 / 插话、审批决定、撤销本轮、继续。
  * 数据都来自 agent store（WebSocket 推送 + HTTP 回放）；这里只管「现在看哪个会话」和调用接口。
  * 接口失败的提示由全局请求拦截器弹出，这里只恢复状态。
+ * 同一个控制器也驱动短剧助手：传 mode: "drama"，会话建在短剧画布上，只列 drama 会话，不带视口。
  */
 export function useAgentController({
   canvasId,
   models,
   getViewport,
+  mode = DEFAULT_MODE,
 }: {
   canvasId: string;
   models: AgentModelDto[];
-  /** 当前视口 */
-  getViewport: () => { x: number; y: number; zoom: number };
+  /** 当前视口；没有画布视口的入口（短剧助手）不传 */
+  getViewport?: () => { x: number; y: number; zoom: number };
+  /** 会话与运行的任务模式，默认全能创作 */
+  mode?: AgentMode;
 }) {
   const settings = useAgentSettings();
-  const sessions = useAgentStore((s) => s.sessionsByCanvas[canvasId]) ?? NO_SESSIONS;
+  const allSessions = useAgentStore((s) => s.sessionsByCanvas[canvasId]) ?? NO_SESSIONS;
+  const sessions = useMemo(() => visibleSessions(allSessions, mode), [allSessions, mode]);
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [mode, setMode] = useState<AgentMode>("all");
   const [sending, setSending] = useState(false);
   /** 用户点 ✕ 隐藏了计划的那几轮运行 */
   const [hiddenPlans, setHiddenPlans] = useState<ReadonlySet<string>>(new Set());
@@ -83,10 +93,10 @@ export function useAgentController({
   const openSession = useCallback((target: AgentSessionDto | null) => {
     setSessionId(target?.id ?? null);
     if (target) {
-      setMode(target.mode);
-      void useAgentStore.getState().loadLatest(target.id);
-    } else {
-      setMode("all");
+      void useAgentStore
+        .getState()
+        .loadLatest(target.id)
+        .then(() => useAgentStore.getState().loadWatches(target.id));
     }
   }, []);
 
@@ -99,13 +109,13 @@ export function useAgentController({
       .then((list) => {
         if (!active) return;
         setLoadedCanvas(canvasId);
-        openSession(list[0] ?? null);
+        openSession(visibleSessions(list, mode)[0] ?? null);
       })
       .catch(() => active && setLoadedCanvas(canvasId));
     return () => {
       active = false;
     };
-  }, [canvasId, openSession]);
+  }, [canvasId, mode, openSession]);
 
   /** 正在打开：会话列表或这个会话最近一页聊天记录还在加载（新建的会话没有历史，不算） */
   const opening =
@@ -137,6 +147,17 @@ export function useAgentController({
     );
     return list.at(-1) ?? null;
   }, [activeRun, state.approvals]);
+  /** 会话里进行中的后台等待（多批合并），没有为 null：监听条据此显示，标签页标题也用它 */
+  const watch = useMemo(() => summarizeWatches(activeWatches(state)), [state]);
+  /** 不用等了：取消还没交给 Agent 的等待，生成照常完成；接口失败的提示由全局请求拦截器弹出 */
+  const cancelWatch = useCallback(async () => {
+    if (!sessionId) return;
+    try {
+      await useAgentStore.getState().cancelWatches(sessionId);
+    } catch {
+      // 全局提示已经弹了
+    }
+  }, [sessionId]);
   /** 当前会话的上下文用量：已用取最近一次对话调用的输入（新一轮开始前沿用上一轮的），上限是当前模型的窗口 */
   const context = {
     tokens: state.contextTokens,
@@ -146,7 +167,10 @@ export function useAgentController({
   /** 确保有会话可发：没有就按当前模式和模型新建一个 */
   const ensureSession = useCallback(async () => {
     if (session) return session;
-    const created = await createAgentSession(canvasId, { mode, model_key: modelKey || undefined });
+    const created = await createAgentSession(canvasId, {
+      mode,
+      model_key: modelKey || undefined,
+    });
     useAgentStore.getState().upsertSession(created);
     setSessionId(created.id);
     return created;
@@ -154,14 +178,14 @@ export function useAgentController({
 
   /** 发送：运行中就是插话，否则发起新一轮。返回是否发出去了（没发出去输入框要保留原文） */
   const send = useCallback(
-    async (text: string) => {
+    async (text: string, attachments?: AgentAttachmentReq[]) => {
       const message = text.trim();
       if (!message || sendingRef.current) return false;
       sendingRef.current = true;
       setSending(true);
       try {
         if (activeRun) {
-          await interjectAgentRun(activeRun, message);
+          await interjectAgentRun(activeRun, message, attachments);
           return true;
         }
         const target = await ensureSession();
@@ -169,8 +193,9 @@ export function useAgentController({
           message,
           mode,
           // 选中的节点不再整批带上：要引用哪个，就在输入框里变成消息里的 node: chip
-          viewport: getViewport(),
+          viewport: getViewport?.(),
           agent_model_key: modelKey || undefined,
+          ...(attachments?.length && { attachments }),
         });
         useAgentStore.getState().ingestRun(run);
         void useCreditsStore.getState().refresh();
@@ -205,6 +230,10 @@ export function useAgentController({
   /** 对审批做决定；接口失败的提示由全局请求拦截器弹出，返回是否成功 */
   const decide = useCallback(
     async (approvalId: string, req: DecideAgentApprovalReq): Promise<"ok" | "failed"> => {
+      // 第一次批准生成时顺带问一次系统通知权限：之后生成结束、需要批准时页面在后台也能提醒；拒绝或不支持就算了
+      if (req.decision === "approve" && state.approvals[approvalId]?.kind === "generate") {
+        ensureNotificationPermission();
+      }
       try {
         await decideAgentApproval(approvalId, req);
         void useCreditsStore.getState().refresh();
@@ -213,7 +242,7 @@ export function useAgentController({
         return "failed";
       }
     },
-    [],
+    [state.approvals],
   );
 
   /** 撤销本轮；返回结果（成功）或 null */
@@ -270,13 +299,14 @@ export function useAgentController({
       }
       useAgentStore.getState().removeSession(canvasId, target.id);
       if (target.id === sessionId) {
-        const rest = (useAgentStore.getState().sessionsByCanvas[canvasId] ?? []).filter(
-          (s) => s.id !== target.id,
-        );
+        const rest = visibleSessions(
+          useAgentStore.getState().sessionsByCanvas[canvasId] ?? [],
+          mode,
+        ).filter((s) => s.id !== target.id);
         openSession(rest[0] ?? null);
       }
     },
-    [canvasId, openSession, sessionId],
+    [canvasId, mode, openSession, sessionId],
   );
 
   const hidePlan = useCallback(
@@ -292,6 +322,8 @@ export function useAgentController({
     strip,
     statusLine,
     pending,
+    watch,
+    cancelWatch,
     context,
     activeRun,
     busy: activeRun !== null,
@@ -303,8 +335,6 @@ export function useAgentController({
     loadingOlder: state.loading === "older",
     olderFailed: state.historyReady && state.loadError,
     loadOlder,
-    mode,
-    setMode,
     modelKey,
     undone,
     send,

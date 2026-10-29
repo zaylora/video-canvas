@@ -1,6 +1,7 @@
 import service from "@/utils/requests/service";
 import type {
   AgentApprovalDto,
+  AgentAttachmentReq,
   AgentEventDto,
   AgentFeedbackDto,
   AgentHistoryDto,
@@ -8,6 +9,7 @@ import type {
   AgentRunDto,
   AgentSessionDto,
   AgentUndoResult,
+  AgentWatchBatchDto,
   CreateAgentSessionReq,
   DecideAgentApprovalReq,
   SetAgentFeedbackReq,
@@ -94,8 +96,15 @@ export const startAgentRun = (sessionId: string, data: StartAgentRunReq) =>
  * @param runId 运行 ID
  * @param message 补充的要求
  */
-export const interjectAgentRun = (runId: string, message: string) =>
-  service.post<void>(`/agent/runs/${runId}/interject`, { message });
+export const interjectAgentRun = (
+  runId: string,
+  message: string,
+  attachments?: AgentAttachmentReq[],
+) =>
+  service.post<void>(`/agent/runs/${runId}/interject`, {
+    message,
+    ...(attachments?.length && { attachments }),
+  });
 
 /**
  * 停止运行
@@ -153,3 +162,29 @@ export const setAgentFeedback = async (
  */
 export const deleteAgentFeedback = (runId: string) =>
   service.delete<void>(`/agent/runs/${runId}/feedback`, { silent: true });
+
+/**
+ * 读会话里进行中的后台等待（等待中、已全部结束待继续的批）：打开会话时取一次作为初始状态，之后靠事件更新
+ * @param sessionId 会话 ID
+ * @returns 进行中的批
+ */
+export const getAgentWatches = async (sessionId: string): Promise<AgentWatchBatchDto[]> =>
+  (
+    await service.get<{ items: AgentWatchBatchDto[] | null } | null>(
+      `/agent/sessions/${sessionId}/watches`,
+      undefined,
+    )
+  )?.items ?? [];
+
+/**
+ * 不用等了：取消会话里所有还没交给 Agent 的等待。只取消 Agent 的跟进，已批准的生成照常完成、照常扣费
+ * @param sessionId 会话 ID
+ * @returns 被取消的批
+ */
+export const cancelAgentWatches = async (sessionId: string): Promise<AgentWatchBatchDto[]> =>
+  (
+    await service.post<{ items: AgentWatchBatchDto[] | null } | null>(
+      `/agent/sessions/${sessionId}/watches/cancel`,
+      undefined,
+    )
+  )?.items ?? [];

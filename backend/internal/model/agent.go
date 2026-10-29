@@ -13,12 +13,13 @@ const (
 	AgentModeScript     = "script"     // 剧本创编
 	AgentModeStoryboard = "storyboard" // 分镜搭建
 	AgentModePrompt     = "prompt"     // 提示词优化
+	AgentModeDrama      = "drama"      // 短剧助手
 )
 
 // ValidAgentMode 判断是不是认识的任务模式。
 func ValidAgentMode(m string) bool {
 	switch m {
-	case AgentModeAll, AgentModeScript, AgentModeStoryboard, AgentModePrompt:
+	case AgentModeAll, AgentModeScript, AgentModeStoryboard, AgentModePrompt, AgentModeDrama:
 		return true
 	}
 	return false
@@ -210,7 +211,7 @@ type AgentModelCall struct {
 	Credits        int        `gorm:"not null;default:0" json:"credits"`                  // 按用量算出的应收积分
 	Charged        int        `gorm:"not null;default:0" json:"charged"`                  // 实际扣的积分，用户余额不够时小于 Credits
 	Error          string     `gorm:"size:255;not null;default:''" json:"error"`          // 调用失败或中断的原因（已脱敏）
-	Purpose        string     `gorm:"size:16;not null;default:'main'" json:"purpose"`     // main 是对话调用，summary 是压缩上下文的摘要调用，title 是给会话起标题
+	Purpose        string     `gorm:"size:16;not null;default:'main'" json:"purpose"`     // main 是对话调用，summary 是压缩上下文的摘要调用，title 是给会话起标题，activity 是概括一段工具调用
 	ChannelKey     string     `gorm:"size:64;not null;default:''" json:"channel_key"`     // 实际走的渠道
 	UpstreamModel  string     `gorm:"size:128;not null;default:''" json:"upstream_model"` // 实际调用的上游模型
 	LatencyMs      int        `gorm:"not null;default:0" json:"latency_ms"`               // 从发出到收完的耗时（毫秒）

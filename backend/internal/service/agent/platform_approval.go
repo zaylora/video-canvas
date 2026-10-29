@@ -24,6 +24,10 @@ var approvalTools = map[string]string{
 	model.ApprovalGenerate: "generate_media",
 	model.ApprovalDelete:   "canvas_delete",
 	model.ApprovalAsk:      "ask_user",
+	"drama_update_outline": "drama_update_outline",
+	"drama_update_episode": "drama_update_episode",
+	"drama_update_segment": "drama_update_segment",
+	"drama_run_job":        "drama_run_job",
 }
 
 // ApprovalProposal 是一次预估的结果。校验不过时 IsError 为真，Content 是写给模型看的原因（和令牌模式下的工具错误一致），没有审批内容。
@@ -70,12 +74,14 @@ func (b *AgentBridge) ProposeApproval(ctx context.Context, rc RunContext, kind s
 
 // ApprovalOutcome 是用户的决定解析出来的结果：落库的状态、写进审批的决定、预估积分，以及批准后要执行的内容。
 type ApprovalOutcome struct {
-	Status       string         `json:"status"`             // approved 整体批准、partial 部分批准、rejected 拒绝
-	Decision     map[string]any `json:"decision"`           // 写进审批的决定（含实际批准的条目）
-	QuoteCredits int            `json:"quote_credits"`      // 按批准的内容重新算出的积分，只有生成不为 0
-	Items        []GenerateItem `json:"items,omitempty"`    // 批准的生成条目（张数已按批准的算）
-	NodeIDs      []string       `json:"node_ids,omitempty"` // 批准删除的节点
-	EdgeIDs      []string       `json:"edge_ids,omitempty"` // 批准删除的连线
+	Status         string                `json:"status"`                    // approved 整体批准、partial 部分批准、rejected 拒绝
+	Decision       map[string]any        `json:"decision"`                  // 写进审批的决定（含实际批准的条目）
+	QuoteCredits   int                   `json:"quote_credits"`             // 按批准的内容重新算出的积分，只有生成不为 0
+	Items          []GenerateItem        `json:"items,omitempty"`           // 批准的生成条目（张数已按批准的算）
+	NodeIDs        []string              `json:"node_ids,omitempty"`        // 批准删除的节点
+	EdgeIDs        []string              `json:"edge_ids,omitempty"`        // 批准删除的连线
+	Drama          *DramaApprovalPayload `json:"drama,omitempty"`           // 短剧审批原文和签名
+	DramaSignature string                `json:"drama_signature,omitempty"` // 绑定决定与预估积分，阻止执行前篡改
 }
 
 func (o *outcome) export() *ApprovalOutcome {
@@ -94,6 +100,9 @@ func (b *AgentBridge) ResolveApproval(ctx context.Context, rc RunContext, kind s
 	}
 	if !json.Valid(payload) {
 		return nil, errcode.ErrInvalidParams.WithMsg("审批内容不是合法的 JSON")
+	}
+	if isDramaApproval(kind) {
+		return b.resolveDramaApproval(ctx, rc, kind, payload, req)
 	}
 	run, err := b.platformRunState(ctx, rc)
 	if err != nil {
@@ -141,6 +150,9 @@ func (b *AgentBridge) ExecuteApproval(ctx context.Context, rc RunContext, kind s
 	case model.ApprovalApproved, model.ApprovalPartial, model.ApprovalRejected:
 	default:
 		return nil, errcode.ErrInvalidParams.WithMsg("审批状态不对")
+	}
+	if isDramaApproval(kind) {
+		return b.executeDramaApproval(ctx, rc, kind, approvalID, o)
 	}
 	out := &outcome{status: o.Status, decision: o.Decision, quote: o.QuoteCredits, gen: o.Items, nodeIDs: o.NodeIDs, edgeIDs: o.EdgeIDs}
 	ctx = WithIdempotencyKey(ctx, fmt.Sprintf("approval-%d", approvalID))

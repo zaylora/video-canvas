@@ -26,7 +26,21 @@ import (
 const (
 	riverQueue = "generation"
 	kindTask   = "gen.task"
+
+	// 通知 Agent 的 job 单独一个队列：它只发一个很快的 HTTP 请求，不占生成并发的名额，也不被生成任务的排队拖慢
+	notifyQueue = "agent_notify"
+	kindNotify  = "agent.task_settled"
 )
+
+// notifyWorkers 是通知队列的并发：每个 job 只是一次 HTTP 调用，4 个足够。
+const notifyWorkers = 4
+
+// notifyMaxAttempts 是通知的最大尝试次数。退避从 NotifyBackoff 起翻倍、封顶 provider.AgentNotifyRetryCap，
+// 默认起点 2 秒时 25 次约覆盖 3 小时：Agent 服务重启、发版期间不会丢通知，更久的缺口由 Agent 自己的兜底查询补上。
+const notifyMaxAttempts = 25
+
+// defaultNotifyBackoff 是通知重试退避的起点。
+const defaultNotifyBackoff = 2 * time.Second
 
 // jobTimeout 是单个 job 一次执行的时限：覆盖任务从拿到名额到终态的全程（模型的任务超时 + 转存宽限期）。
 // 超时只会让 job 被取消后重试，重试时从任务行记录的状态接着走，所以取一个宽松的值即可。
@@ -59,6 +73,24 @@ func (TaskArgs) InsertOpts() river.InsertOpts {
 	return river.InsertOpts{
 		Queue:       riverQueue,
 		MaxAttempts: jobMaxAttempts,
+		UniqueOpts:  river.UniqueOpts{ByArgs: true, ByState: liveStates},
+	}
+}
+
+// NotifyArgs 是“通知 Agent 任务结束了”的 job 参数。
+type NotifyArgs struct {
+	TaskID     uint64 `json:"task_id"`
+	AgentRunID uint64 `json:"agent_run_id"`
+}
+
+// Kind 实现 river.JobArgs。
+func (NotifyArgs) Kind() string { return kindNotify }
+
+// InsertOpts 实现 river.JobArgsWithInsertOpts：同一任务同时只存在一个活着的通知。
+func (NotifyArgs) InsertOpts() river.InsertOpts {
+	return river.InsertOpts{
+		Queue:       notifyQueue,
+		MaxAttempts: notifyMaxAttempts,
 		UniqueOpts:  river.UniqueOpts{ByArgs: true, ByState: liveStates},
 	}
 }

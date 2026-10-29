@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import { configFromEnv, startDurable, type DurableConfig } from "../src/durable.ts";
 import { createIdCodec } from "../src/ids.ts";
 import { fakeGo } from "./fake-go.ts";
@@ -122,7 +123,9 @@ test("服务入口（真起进程）：启动、/health、收到 SIGTERM 正常�
   const go = await fakeGo({ turns: [] });
   try {
     const env = { PATH: process.env.PATH ?? "", ...base, AGENT_DB_PATH: join(dir, "agent.sqlite"), AGENT_BRIDGE_URL: go.url, AGENT_LISTEN: "127.0.0.1:0" };
-    const child = spawn("node", ["--disable-warning=ExperimentalWarning", new URL("../src/serve.ts", import.meta.url).pathname], { env, stdio: ["ignore", "ignore", "pipe"] });
+    // Windows 的 kill(SIGTERM) 会直接终止进程；测试预加载通过 IPC 在子进程触发同一停机处理器。
+    const signalShim = process.platform === "win32" ? ["--import", "data:text/javascript,process.on('message',()=>process.emit('SIGTERM'))"] : [];
+    const child = spawn("node", ["--disable-warning=ExperimentalWarning", ...signalShim, fileURLToPath(new URL("../src/serve.ts", import.meta.url))], { env, stdio: ["ignore", "ignore", "pipe", "ipc"] });
     let err = "";
     child.stderr!.on("data", (c) => (err += c));
     const exited = new Promise<number | null>((r) => child.on("close", r));
@@ -135,7 +138,8 @@ test("服务入口（真起进程）：启动、/health、收到 SIGTERM 正常�
     assert.ok(addr, "没有启动：" + err);
     assert.match(err, /Agent 服务已启动/);
     assert.equal((await fetch(`http://${addr}/health`)).status, 200);
-    child.kill("SIGTERM");
+    if (process.platform === "win32") child.send("SIGTERM");
+    else child.kill("SIGTERM");
     assert.equal(await exited, 0);
     assert.ok(!err.includes(TOKEN) && !err.includes(ID_KEY), "日志里不能出现令牌和密钥");
   } finally {
@@ -145,7 +149,7 @@ test("服务入口（真起进程）：启动、/health、收到 SIGTERM 正常�
 });
 
 test("服务入口：durable 模式缺配置时直接退出并说清楚", async () => {
-  const child = spawn("node", ["--disable-warning=ExperimentalWarning", new URL("../src/serve.ts", import.meta.url).pathname], {
+  const child = spawn("node", ["--disable-warning=ExperimentalWarning", fileURLToPath(new URL("../src/serve.ts", import.meta.url))], {
     env: { PATH: process.env.PATH ?? "", AGENT_SERVICE_TOKEN: TOKEN, AGENT_DB_PATH: "/tmp/x.sqlite" }, stdio: ["ignore", "ignore", "pipe"],
   });
   let err = "";

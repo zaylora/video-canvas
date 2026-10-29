@@ -1,6 +1,6 @@
 import type { ComponentType, SVGProps } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
-import { Clapperboard, Compass, FolderOpen, ShieldCheck, Workflow } from "lucide-react";
+import { Clapperboard, Compass, Film, FolderOpen, ShieldCheck, Workflow } from "lucide-react";
 
 import { CanvasCover } from "@/components/home/canvas-cover";
 import { ConversationList } from "@/components/home/conversation-list";
@@ -21,7 +21,6 @@ import {
   SidebarGroup,
   SidebarHeader,
   SidebarMenu,
-  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
@@ -37,12 +36,15 @@ type NavItem = {
   icon: ComponentType<SVGProps<SVGSVGElement>>;
   /** 跳转地址；没有就是还没上线的入口 */
   to?: string;
+  /** 名字右侧的新功能角标 */
+  badge?: string;
 };
 
 const NAV: NavItem[] = [
   { label: "创作", icon: Clapperboard, to: "/" },
   { label: "探索", icon: Compass },
   { label: "资产", icon: FolderOpen, to: "/assets" },
+  { label: "短剧工作室", icon: Film, to: "/drama", badge: "New" },
 ];
 
 /** 每个分组最多列几项 */
@@ -54,7 +56,8 @@ function NavButton({ item, active }: { item: NavItem; active: boolean }) {
   const content = (
     <>
       <item.icon />
-      <span>{item.label}</span>
+      {/* 收起成图标栏时藏起文字；不能靠「最后一个子元素」规则，带角标的项最后一个是角标 */}
+      <span className="group-data-[collapsible=icon]:hidden">{item.label}</span>
     </>
   );
 
@@ -76,6 +79,11 @@ function NavButton({ item, active }: { item: NavItem; active: boolean }) {
     >
       {active && <NavActiveHighlight layoutId="home-nav-active" />}
       {content}
+      {item.badge && (
+        <span className="bg-beam/15 text-beam ml-auto rounded-full px-1.5 py-px text-[10px] leading-4 font-medium group-data-[collapsible=icon]:hidden">
+          {item.badge}
+        </span>
+      )}
     </SidebarMenuButton>
   );
 }
@@ -83,8 +91,9 @@ function NavButton({ item, active }: { item: NavItem; active: boolean }) {
 /**
  * 首页、资产、对话和画布列表共用的左侧侧栏（设计稿 docs/品牌包装/登录与首页改版原型）：
  * 连镜 Logo、导航（创作 / 探索 / 资产）、「对话」和「画布」两组最近记录，
- * 底部是管理后台入口（只给已确认的管理员）和账号菜单（退出登录）。
+ * 底部是账号菜单（个人中心、管理后台入口只给已确认的管理员、退出登录）。
  * 对话和画布都是真实数据：对话来自 store/conversations，画布是最近画布。
+ * 侧栏是底层，内容区是浮在上面的一张圆角页面（inset 变体）。
  * 桌面端可收起成图标栏（⌘B），和后台一样：收起按钮在顶栏左侧（SiteHeader），侧栏右边缘还有一条可点的 Rail；窄屏由 shadcn sidebar 换成从左滑出的抽屉。
  */
 export function AppSidebar() {
@@ -98,15 +107,15 @@ export function AppSidebar() {
   const navigate = useNavigate();
 
   return (
-    <Sidebar collapsible="icon" className="border-sidebar-border">
-      <SidebarHeader className="gap-3 px-2 pt-3">
+    <Sidebar variant="inset" collapsible="icon">
+      <SidebarHeader className="gap-3 px-2 pt-3 group-data-[collapsible=icon]:px-1">
         <div className="flex h-9 items-center pl-1.5 group-data-[collapsible=icon]:h-auto group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:pl-0">
           <SidebarBrand to="/" />
         </div>
       </SidebarHeader>
 
       <SidebarContent>
-        <SidebarGroup className="px-2">
+        <SidebarGroup className="px-2 group-data-[collapsible=icon]:px-1">
           <SidebarMenu className="gap-0.5">
             {NAV.map((item) => (
               <SidebarMenuItem key={item.label}>
@@ -151,24 +160,7 @@ export function AppSidebar() {
         </div>
       </SidebarContent>
 
-      <SidebarFooter className="px-2 pb-3">
-        <SidebarMenu className="gap-0.5">
-          {isAdmin && (
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                tooltip="管理后台"
-                className={NAV_ITEM_CLASS}
-                render={<Link to="/admin/ai" />}
-              >
-                <ShieldCheck />
-                <span>管理后台</span>
-              </SidebarMenuButton>
-              <SidebarMenuBadge className="bg-muted text-muted-foreground top-2.5! right-2 font-normal">
-                管理员
-              </SidebarMenuBadge>
-            </SidebarMenuItem>
-          )}
-        </SidebarMenu>
+      <SidebarFooter className="px-2 pb-3 group-data-[collapsible=icon]:px-1">
         <SidebarAccount>
           {isAdmin && (
             <DropdownMenuItem onClick={() => navigate("/admin/ai")}>

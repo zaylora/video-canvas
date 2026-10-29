@@ -10,23 +10,20 @@ import {
   type AssetsTab,
 } from "@/utils/assets/route-state";
 
-import { CharactersView } from "./characters-view";
 import { HistoryView } from "./history-view";
 import { LibraryView } from "./library-view";
 
-/** 三个范围从左到右的顺序，决定切换时内容滑入的方向 */
-const TAB_ORDER: readonly AssetsTab[] = ["history", "library", "characters"];
+/** 两个范围从左到右的顺序，决定切换时内容滑入的方向 */
+const TAB_ORDER: readonly AssetsTab[] = ["history", "library"];
 
 /**
- * 资产页（设计稿 docs/design/资产库、docs/design/角色卡）：「生成历史 / 个人资产库 / 角色卡」三个范围。
+ * 资产页（设计稿 docs/design/资产库）：大标题旁是「生成历史 / 个人资产库」两个范围。
  * 范围和个人资产库里的文件夹都写在地址栏（/assets?tab=library&folder=1f），刷新、后退能还原。
- * 各范围自己管内容和工具条；头部右侧留一个容器，各范围把自己的搜索框（和「新建」）用 portal 放进来，
- * 这样切换范围时顶部的分段控件不会重新挂载，滑块动画是连续的。
+ * 各范围自己管内容和下面那条半透明工具条（筛选、搜索、新建）；分段控件放在标题旁不随范围重新挂载，滑块动画是连续的。
  */
 export default function AssetsPage() {
   const [params, setParams] = useSearchParams();
   const route = parseAssetsParams(params);
-  const [searchSlot, setSearchSlot] = useState<HTMLElement | null>(null);
   // 范围变了就记下切换方向：往右边的范围切，内容从右往左滑入，反之亦然（文件夹切换不算）
   const [prev, setPrev] = useState({ tab: route.tab, from: 16 });
   if (prev.tab !== route.tab) {
@@ -46,8 +43,9 @@ export default function AssetsPage() {
   );
 
   return (
-    <div className="mx-auto w-full max-w-260 px-4 pb-24 md:px-6">
-      <div className="flex flex-wrap items-center gap-2 pt-1">
+    <div className="mx-auto w-full max-w-320 px-4 pb-24 md:px-10">
+      <div className="flex flex-wrap items-center gap-5 pt-6 md:pt-10">
+        <h1 className="text-[28px] font-semibold tracking-[-0.025em] md:text-[34px]">资产</h1>
         <Segmented<AssetsTab>
           variant="track"
           label="资产范围"
@@ -56,10 +54,8 @@ export default function AssetsPage() {
           options={[
             { value: "history", label: "生成历史" },
             { value: "library", label: "个人资产库" },
-            { value: "characters", label: "角色卡" },
           ]}
         />
-        <div ref={setSearchSlot} className="ml-auto flex items-center gap-2" />
       </div>
 
       <MotionConfig reducedMotion="user">
@@ -69,15 +65,10 @@ export default function AssetsPage() {
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
         >
-          {route.tab === "history" && <HistoryView searchSlot={searchSlot} />}
+          {route.tab === "history" && <HistoryView />}
           {route.tab === "library" && (
-            <LibraryView
-              searchSlot={searchSlot}
-              folder={route.folder}
-              onFolderChange={changeFolder}
-            />
+            <LibraryView folder={route.folder} onFolderChange={changeFolder} />
           )}
-          {route.tab === "characters" && <CharactersView searchSlot={searchSlot} />}
         </motion.div>
       </MotionConfig>
     </div>

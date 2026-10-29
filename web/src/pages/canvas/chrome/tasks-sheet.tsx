@@ -16,7 +16,7 @@ import { useTasksStore } from "@/store/tasks";
 import type { CanvasEdge, CanvasNode } from "@/types";
 import { taskKey } from "@/utils/tasks/status";
 
-import { useFocusNode } from "./use-focus-node";
+import { useFocusNode } from "@/components/canvas-editor/use-focus-node";
 
 const STATUS: Record<TaskStatus, { label: string; tone: string }> = {
   pending: { label: "等待中", tone: "text-muted-foreground" },

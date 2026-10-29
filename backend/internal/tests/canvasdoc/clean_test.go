@@ -30,6 +30,7 @@ func TestCheckDocumentClean_RejectsSmuggledFields(t *testing.T) {
 		{"params 里的 taskId", `{"id":"n1","type":"canvas","data":{"params":{"opt":{"taskId":"7"}}}}`, "", "taskId"},
 		{"scene 里的 characterId", `{"id":"n1","type":"canvas","data":{"scene":{"characters":[{"characterId":"abc"}]}}}`, "", "characterId"},
 		{"pendingTaskIds", `{"id":"n1","type":"canvas","data":{"pendingTaskIds":["1"]}}`, "", "pendingTaskIds"},
+		{"voiceTaskId", `{"id":"n1","type":"canvas","data":{"voiceTaskId":"1"}}`, "", "voiceTaskId"},
 		{"errorTaskRef", `{"id":"n1","type":"canvas","data":{"errorTaskRef":"r"}}`, "", "errorTaskRef"},
 		{"activeOutputId", `{"id":"n1","type":"canvas","data":{"activeOutputId":"1"}}`, "", "activeOutputId"},
 		{"labelCache", `{"id":"n1","type":"canvas","data":{"labelCache":{"name":"x"}}}`, "", "labelCache"},

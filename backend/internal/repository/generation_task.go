@@ -41,6 +41,9 @@ type GenerationTaskTx interface {
 	// EnqueueTask 在当前事务里把任务放进调度队列，必须在 WithTx 的回调里调用；没有配置队列（单元测试）时什么都不做。
 	// 任务行、积分冻结和队列里的 job 因此在同一个事务里提交或回滚。
 	EnqueueTask(ctx context.Context, t *model.GenerationTask) error
+	// EnqueueAgentNotify 在当前事务里为 Agent 发起的任务入队“任务结束了”的通知（job 与任务终态同一个事务提交或回滚）。
+	// 没有配置通知队列（Agent 未启用、单元测试）时什么都不做；必须在 WithTx 的回调里调用。
+	EnqueueAgentNotify(ctx context.Context, t *model.GenerationTask) error
 	// UpdateIf 是状态迁移的 CAS：UPDATE … WHERE id=? AND status IN (from) … RETURNING *。
 	// bumpVersion 为 true 时 version+1（状态或进度对用户可见地变化了）。没命中返回 ErrStateConflict。
 	UpdateIf(ctx context.Context, id uint64, from []string, fields map[string]any, bumpVersion bool) (*model.GenerationTask, error)
@@ -51,6 +54,8 @@ type TaskEnqueuer interface {
 	// EnqueueTx 用 sqlTx 所在的事务为任务入队：事务回滚时 job 也不存在。
 	// status 决定进哪个阶段的队列；runAt 为零表示立即执行。
 	EnqueueTx(ctx context.Context, sqlTx *sql.Tx, taskID uint64, status string, runAt time.Time) error
+	// EnqueueAgentNotifyTx 用 sqlTx 所在的事务为 Agent 入队任务结束的通知。
+	EnqueueAgentNotifyTx(ctx context.Context, sqlTx *sql.Tx, taskID, agentRunID uint64) error
 }
 
 // GenerationTaskRepository 是生成任务与积分的数据访问层，只做 SQL，不含业务规则。
@@ -77,6 +82,18 @@ func (r *GenerationTaskRepository) EnqueueTask(ctx context.Context, t *model.Gen
 		return errors.New("EnqueueTask 必须在事务里调用")
 	}
 	return r.enq.EnqueueTx(ctx, sqlTx, t.ID, t.Status, t.NextPollAt)
+}
+
+// EnqueueAgentNotify 在当前事务里为 Agent 入队任务结束的通知。没有配置队列时直接返回；不在事务里调用是编程错误。
+func (r *GenerationTaskRepository) EnqueueAgentNotify(ctx context.Context, t *model.GenerationTask) error {
+	if r.enq == nil {
+		return nil
+	}
+	sqlTx, ok := r.db.Statement.ConnPool.(*sql.Tx)
+	if !ok {
+		return errors.New("EnqueueAgentNotify 必须在事务里调用")
+	}
+	return r.enq.EnqueueAgentNotifyTx(ctx, sqlTx, t.ID, t.AgentRunID)
 }
 
 var _ GenerationTaskTx = (*GenerationTaskRepository)(nil)

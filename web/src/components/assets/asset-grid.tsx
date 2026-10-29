@@ -23,6 +23,24 @@ export function AssetGrid({ children, className }: { children: ReactNode; classN
 }
 
 /**
+ * 资产页的瀑布流：按列排（手机两列，桌面每列约 240px），卡片按素材真实画幅（卡片传 natural），不被拆到两列。
+ * @param children 卡片
+ */
+export function AssetMasonry({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <div
+      data-slot="asset-masonry"
+      className={cn(
+        "columns-2 gap-3 md:columns-[240px] md:gap-4 *:mb-3 *:break-inside-avoid md:*:mb-4",
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+/**
  * 首屏加载的骨架卡片，尺寸和真卡一致
  * @param count 骨架数量
  */

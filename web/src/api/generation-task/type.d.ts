@@ -1,5 +1,6 @@
 import type { PaymentWsUpdate } from "@/store/payment";
 import type { AgentEventDto, CanvasPatchDto } from "@/api/agent/type";
+import type { BackendJobView, DramaSegmentEvent } from "@/api/drama/type";
 /** 生成任务状态 */
 export type TaskStatus =
   /** 已创建，待入队 */
@@ -124,6 +125,10 @@ export type ServerMessage =
   | { type: "agent.event"; channel?: string; data: AgentEventDto }
   /** 支付订单状态变化（入账、关单……）：前端据此刷新商城面板和余额 */
   | { type: "payment.updated"; channel?: string; data: PaymentWsUpdate }
+  /** 短剧流水线任务状态 / 进度变化：前端并进该短剧的进度卡，收尾后重新拉详情 */
+  | { type: "drama.job"; channel?: string; data: { drama_id: string; job: BackendJobView } }
+  /** 短剧片段被改 / take 状态变化 / 首帧写入：前端并进该集的片段列表 */
+  | { type: "drama.segment"; channel?: string; data: DramaSegmentEvent }
   /** 心跳应答 */
   | { type: "pong" }
   /** 服务端错误 */

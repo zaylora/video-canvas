@@ -13,7 +13,7 @@
 
 - `backend/AGENTS.md`：后端分层、错误处理、依赖组装、敏感信息和测试要求。
 - `backend/docs/standards/`：后端架构、日志、复用、测试和工程化规范。
-- `web/docs/coding-standards.md`：前端注释、API、类型、错误处理和组件约定。
+- `web/docs/coding-standards.md`：前端注释、API、类型、错误处理和组件约定；界面视觉统一用半透明「清透」胶囊风格（见其 6.1 节），不在界面上加操作说明小字（见 6.2 节）。
 - `.agents/skills/ui-design/SKILL.md`：前端界面设计和交互改动流程。
 
 ## 工作方式

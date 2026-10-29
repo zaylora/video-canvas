@@ -21,7 +21,7 @@
   },
   {
     "name": "canvas_apply_ops",
-    "description": "对画布做一批编辑，一次最多 30 项，整批要么全部生效要么都不生效（失败时会列出每一项的问题）。可以新建节点和组、改标题提示词模型参数、连线、移动、增减组成员。修改已有节点的内容或参数前，须先调用 canvas_get_state 读取其详情（传 nodeIds 或 groupId）；本轮自建节点可直接修改。修改组名或颜色须用 nodeIds 读取组本身。产物字段（图片、视频地址）不能写；已有产物的重做请新建节点。连线规则：文本→全部；图片→图片/视频/音频；视频→视频；音频→视频。提示词里要用已连线的素材时写 @[素材名](节点id)（节点id 必须是真实 id，且该节点已连线到本节点），提交生成时会展开成素材编号，不要手写“图1”“图2”；本批新建的节点没有真实 id，要引用就先建好再用 update_node 写提示词。视频节点要用 mode 选对生成方式（文生 / 图生 / 全能参考），方式和已连的参考素材对不上时，结果里的 warnings 会提醒，按提醒改正。",
+    "description": "对画布做一批编辑，一次最多 30 项，整批要么全部生效要么都不生效（失败时会列出每一项的问题）。可以新建节点和组、改标题提示词模型参数、连线、移动、增减组成员。修改已有节点的内容或参数前，须先调用 canvas_get_state 读取其详情（传 nodeIds 或 groupId）；本轮自建节点可直接修改。修改组名或颜色须用 nodeIds 读取组本身。产物字段（图片、视频地址）不能写；已有产物的重做请新建节点。连线规则：文本→全部；图片和角色卡→图片/视频/音频；视频→视频；音频→视频。人物用角色卡（kind 为 character）：create_node 时写 character（至少 name），prompt 写主图（三视图）的提示词；改人物设定用 update_node 写 character，只改给了的字段。提示词里要用已连线的素材时写 @[素材名](节点id)（节点id 必须是真实 id，且该节点已连线到本节点），提交生成时会展开成素材编号，不要手写“图1”“图2”；本批新建的节点没有真实 id，要引用就先建好再用 update_node 写提示词。视频节点要用 mode 选对生成方式（文生 / 图生 / 全能参考），方式和已连的参考素材对不上时，结果里的 warnings 会提醒，按提醒改正。",
     "parameters": {
       "type": "object",
       "required": [
@@ -90,9 +90,13 @@
                   {
                     "type": "string",
                     "const": "audio"
+                  },
+                  {
+                    "type": "string",
+                    "const": "character"
                   }
                 ],
-                "description": "create_node：节点种类，script 是文本"
+                "description": "create_node：节点种类，script 是文本，character 是角色卡（要同时写 character）"
               },
               "label": {
                 "type": "string",
@@ -127,6 +131,10 @@
               "parentGroup": {
                 "type": "string",
                 "description": "create_node：放进这个组（id 或 tempId）"
+              },
+              "assetId": {
+                "type": "string",
+                "description": "create_node：用用户随消息发来的图片附件（消息里「附件图片」一行的 asset:后面的数字）建一个已有画面的图片节点，只用于图片节点和角色卡（作角色卡的主图），不能再写提示词、模型、生成方式和参数。要拿附件当生成参考时：先这样落成节点，再连线到要生成的节点"
               },
               "position": {
                 "type": "object",
@@ -179,6 +187,29 @@
               "target": {
                 "type": "string",
                 "description": "connect：终点节点"
+              },
+              "character": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "角色名，最多 64 字；新建角色卡必填"
+                  },
+                  "look": {
+                    "type": "string",
+                    "description": "形象名，如「雨夜造型」，最多 64 字；不写是「基础形象」。同一角色的不同造型各建一张卡"
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "外貌和设定（年龄、发型、服装、气质），最多 500 字"
+                  },
+                  "voicePrompt": {
+                    "type": "string",
+                    "description": "音色描述，用户之后在角色详情里生成声音时用，最多 500 字"
+                  }
+                },
+                "additionalProperties": false,
+                "description": "角色卡（kind 为 character）的人物数据：create_node 必填，update_node 只改给了的字段"
               }
             },
             "additionalProperties": false
@@ -407,6 +438,10 @@
         "reason": {
           "type": "string",
           "description": "给用户看的说明"
+        },
+        "wait": {
+          "type": "boolean",
+          "description": "批准后是否等这批任务全部结束再继续，默认 true：结束后系统会自动把结果发给你，你再验收和推进下一步。只有用户明确说提交就行、不用管结果时才传 false。"
         }
       }
     }
@@ -461,19 +496,23 @@
   },
   {
     "name": "canvas_inspect_image",
-    "description": "查看图片节点当前的图片内容（最多 4 张）。标题和提示词不等于画面：判断画面是否符合要求、人物是否一致、要不要重做之前，先看图。只能看已经有图片的图片节点。",
+    "description": "查看图片的内容（最多 4 张）。标题和提示词不等于画面：判断画面是否符合要求、人物是否一致、要不要重做之前，先看图。可以看已经有图片的图片节点（nodeIds），也可以重新看用户随消息发来的图片附件（assetIds，更早的附件图片会被省略，需要时用它再看一遍）。两种可以一起传，合计 1 到 4 张。",
     "parameters": {
       "type": "object",
-      "required": [
-        "nodeIds"
-      ],
       "properties": {
         "nodeIds": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "description": "图片节点 id，1 到 4 个"
+          "description": "图片节点 id"
+        },
+        "assetIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "附件图片的素材 id（消息里「附件图片」一行 asset: 后面的数字）"
         }
       }
     }

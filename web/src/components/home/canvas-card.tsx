@@ -30,15 +30,18 @@ import { formatCanvasTime } from "@/utils/home/home";
 /**
  * 画布卡的两种外观（设计稿 docs/design/首页 第 5 节）：
  * overlay 是首页最近画布的小卡，标题叠在封面底部的渐变上；
- * panel 是所有画布页的大卡，封面在上、标题在卡片底部。
+ * panel 是作品页的大卡，和短剧卡同一个样子：16:10 圆角封面（细描边），标题和时间在封面下面，没有外框。
  */
 export type CanvasCardVariant = "overlay" | "panel";
 
-/** 卡片外框：overlay 本身就是 4:3 封面，panel 是带内边距的卡片 */
+/** 卡片外框：overlay 本身就是 4:3 封面；panel 没有外框，封面和文字直接排在网格里 */
 const FRAME = {
   overlay: "aspect-[4/3] rounded-xl",
-  panel: "bg-card ring-border rounded-2xl p-1.5 ring-1",
+  panel: "",
 } as const;
+
+/** panel 的封面区：16:10、18px 圆角、细描边，和短剧卡一致 */
+const PANEL_COVER = "aspect-16/10 rounded-[18px]";
 
 /** 卡片删除时的退出淡出（不做入场动画，加载态由骨架屏承担） */
 const EXIT_MOTION = {
@@ -143,7 +146,7 @@ export function CanvasCard({
         aria-label={`打开画布 ${canvas.title}`}
         className={cn(
           "block outline-none",
-          variant === "overlay" ? "absolute inset-0" : "rounded-xl",
+          variant === "overlay" ? "absolute inset-0" : "rounded-[18px]",
           "focus-visible:ring-ring/60 focus-visible:ring-3",
           variant === "overlay" && "rounded-xl focus-visible:ring-inset",
         )}
@@ -151,7 +154,12 @@ export function CanvasCard({
         <div
           className={cn(
             "relative overflow-hidden",
-            variant === "overlay" ? "absolute inset-0" : "aspect-[4/3] rounded-xl",
+            variant === "overlay"
+              ? "absolute inset-0"
+              : cn(
+                  PANEL_COVER,
+                  "ring-chrome-border group-hover/card:ring-foreground/20 ring-1 transition-shadow duration-150",
+                ),
           )}
         >
           <div
@@ -167,13 +175,13 @@ export function CanvasCard({
             <div className="text-[11px] tabular-nums opacity-75">{time}</div>
           </div>
         ) : (
-          <div className="px-2 pt-2.5 pb-1.5">
-            <div className="truncate text-[15px] font-semibold">{canvas.title}</div>
-            <div className="text-muted-foreground text-xs tabular-nums">{time}</div>
+          <div className="px-1 pt-3">
+            <div className="truncate text-[15px] font-medium">{canvas.title}</div>
+            <div className="text-muted-foreground mt-1 text-[13px] tabular-nums">{time}</div>
           </div>
         )}
       </Link>
-      <div className={cn(variant === "panel" && "absolute inset-x-1.5 top-1.5")}>
+      <div className={cn(variant === "panel" && "absolute inset-x-0 top-0")}>
         <CardActions title={canvas.title} onDelete={onDelete} />
       </div>
     </motion.div>
@@ -183,9 +191,9 @@ export function CanvasCard({
 /** 两种卡片底部信息区的占位高度，新建卡和骨架屏靠它和真卡对齐 */
 function PanelInfoSpacer() {
   return (
-    <div aria-hidden className="invisible px-2 pt-2.5 pb-1.5">
+    <div aria-hidden className="invisible px-1 pt-3">
       <div className="text-[15px]">&nbsp;</div>
-      <div className="text-xs">&nbsp;</div>
+      <div className="mt-1 text-[13px]">&nbsp;</div>
     </div>
   );
 }
@@ -221,14 +229,19 @@ export function NewCanvasCard({
     >
       {variant === "panel" && (
         <>
-          <div className="aspect-[4/3]" />
+          <div className={PANEL_COVER} />
           <PanelInfoSpacer />
         </>
       )}
       <span
         className={cn(
-          "bg-muted/40 ring-border group-hover/new:bg-muted absolute flex flex-col items-center justify-center gap-2.5 ring-1 transition-colors duration-150 ring-inset",
-          variant === "overlay" ? "inset-0 rounded-xl" : "inset-1.5 rounded-xl",
+          "group-hover/new:bg-chrome-hover absolute flex flex-col items-center justify-center gap-2.5 transition-colors duration-150",
+          variant === "overlay"
+            ? "bg-muted/40 ring-border inset-0 rounded-xl ring-1 ring-inset"
+            : cn(
+                PANEL_COVER,
+                "inset-x-0 top-0 border border-dashed border-[color-mix(in_oklch,var(--foreground)_18%,transparent)]",
+              ),
         )}
       >
         <span
@@ -251,9 +264,9 @@ export function NewCanvasCard({
 export function CanvasCardSkeleton({ variant }: { variant: CanvasCardVariant }) {
   if (variant === "overlay") return <Skeleton className="aspect-[4/3] rounded-xl" />;
   return (
-    <div className={FRAME.panel}>
-      <Skeleton className="aspect-[4/3] rounded-xl" />
-      <div className="px-2 pt-3 pb-2">
+    <div>
+      <Skeleton className={cn(PANEL_COVER, "motion-reduce:animate-none")} />
+      <div className="px-1 pt-3">
         <Skeleton className="h-3.5 w-1/2" />
         <Skeleton className="mt-2 h-3 w-1/3" />
       </div>

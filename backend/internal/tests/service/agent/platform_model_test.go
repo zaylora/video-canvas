@@ -207,6 +207,37 @@ func TestProxyModelPlatform_TitlePurposeIsRecordedAndDoesNotCountAsContext(t *te
 	}
 }
 
+func TestProxyModelPlatform_ActivityPurposeIsRecordedAndDoesNotCountAsContext(t *testing.T) {
+	b := newBridgeEnv(t)
+	rc := platformCtx(900112, "all")
+	if _, _, err := proxyPlatform(WithModelPurpose(context.Background(), ModelPurposeActivity), b, rc); err != nil {
+		t.Fatal(err)
+	}
+	if b.bill.settled[0].Purpose != "activity" {
+		t.Errorf("活动说明调用要记成 activity: %q", b.bill.settled[0].Purpose)
+	}
+	u, err := b.br.PlatformRunUsage(context.Background(), rc, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.SpentCredits == 0 || u.ContextTokens != 0 {
+		t.Errorf("活动说明调用和命名一样照常计费，但不算对话的上下文大小: %+v", u)
+	}
+}
+
+func TestModelPurposeOf_OnlyKnownPurposesAreRecognized(t *testing.T) {
+	for _, known := range []string{ModelPurposeSummary, ModelPurposeTitle, ModelPurposeActivity} {
+		if got := ModelPurposeOf(known); got != known {
+			t.Errorf("%q 是已知用途，应原样返回: %q", known, got)
+		}
+	}
+	for _, unknown := range []string{"", "main", "video", "whatever"} {
+		if got := ModelPurposeOf(unknown); got != "" {
+			t.Errorf("%q 不是调用方能自己声明的用途，一律当普通对话: %q", unknown, got)
+		}
+	}
+}
+
 func TestProxyModelPlatform_SummaryPurposeIsRecordedAndDoesNotCountAsContext(t *testing.T) {
 	b := newBridgeEnv(t)
 	rc := platformCtx(900110, "all")

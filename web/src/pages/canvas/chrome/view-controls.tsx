@@ -19,10 +19,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useSettingsStore, type CanvasBackground } from "@/store";
 
-import { MOD } from "./keys";
-
-/** 视口动画时长，和设计稿的画布飞行保持一致 */
-export const VIEWPORT_DURATION = 300;
+import { MOD } from "@/components/canvas-editor/keys";
+import { VIEWPORT_DURATION } from "@/components/canvas-editor/viewport";
 
 /** 左下角：背景样式、缩放、小地图、快捷键帮助 */
 export function ViewControls({

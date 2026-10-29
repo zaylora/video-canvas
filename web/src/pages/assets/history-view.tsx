@@ -1,5 +1,4 @@
 import { useMemo, useState } from "react";
-import { createPortal } from "react-dom";
 import { toast } from "sonner";
 
 import { addToLibrary, moveLibraryItem, removeLibraryItem } from "@/api/asset-library";
@@ -7,9 +6,10 @@ import type { AssetKind, GeneratedItemDto } from "@/api/asset-library/type";
 import { AddToLibraryAction } from "@/components/assets/add-to-library-action";
 import { AssetKindTabs } from "@/components/assets/asset-kind-tabs";
 import { HistoryAssetCard } from "@/components/assets/asset-card";
-import { AssetGrid, AssetGridSkeleton, LoadMoreFooter } from "@/components/assets/asset-grid";
+import { AssetGridSkeleton, AssetMasonry, LoadMoreFooter } from "@/components/assets/asset-grid";
 import { AssetPreview, type AssetPreviewEntry } from "@/components/assets/asset-preview";
 import { AssetSearch } from "@/components/assets/asset-search";
+import { AssetsToolbar } from "@/components/assets/assets-toolbar";
 import { FilterMenu } from "@/components/assets/filter-menu";
 import { FolderPickerDialog } from "@/components/assets/folder-picker-dialog";
 import { EmptyMark } from "@/components/home/empty-mark";
@@ -47,9 +47,9 @@ const ORDER_OPTIONS = [
  * 资产页「生成历史」：首页对话与所有画布生成的素材，按图片 / 视频 / 音频分标签，
  * 可按来源、时间、排序、提示词筛选，滚动到底加载下一页。只读，不提供删除。
  * 点卡片用灯箱预览；已在资产库的显示角标；其余可「加入资产库…」。
- * @param searchSlot 页面头部右侧放搜索框的容器，搜索框用 portal 渲染进去
+ * 筛选和搜索都在一条半透明工具条里，素材按真实画幅排成瀑布流。
  */
-export function HistoryView({ searchSlot }: { searchSlot: HTMLElement | null }) {
+export function HistoryView() {
   const [kind, setKind] = useState<AssetKind>("image");
   const [source, setSource] = useState(DEFAULT_GENERATED_FILTER.source);
   const [range, setRange] = useState<TimeRange>("all");
@@ -97,15 +97,9 @@ export function HistoryView({ searchSlot }: { searchSlot: HTMLElement | null }) 
 
   return (
     <>
-      {searchSlot &&
-        createPortal(
-          <AssetSearch value={input} onChange={setInput} placeholder="搜索提示词" />,
-          searchSlot,
-        )}
-
-      <div className="mt-4 mb-4.5 flex flex-wrap items-center gap-1">
+      <AssetsToolbar className="mt-6 mb-7">
         <AssetKindTabs value={kind} onChange={setKind} />
-        <span aria-hidden className="bg-border mx-1.5 h-4 w-px" />
+        <span aria-hidden className="bg-chrome-border mx-1 h-4 w-px shrink-0" />
         <FilterMenu
           label="来源"
           value={sourceMenu.value}
@@ -129,7 +123,10 @@ export function HistoryView({ searchSlot }: { searchSlot: HTMLElement | null }) 
           groups={[{ options: ORDER_OPTIONS }]}
           onChange={(value) => setOrder(value as GeneratedFilter["order"])}
         />
-      </div>
+        <div className="ml-auto">
+          <AssetSearch value={input} onChange={setInput} placeholder="搜索提示词" />
+        </div>
+      </AssetsToolbar>
 
       {state.status === "loading" ? (
         <AssetGridSkeleton />
@@ -157,17 +154,18 @@ export function HistoryView({ searchSlot }: { searchSlot: HTMLElement | null }) 
         )
       ) : (
         <>
-          <AssetGrid>
+          <AssetMasonry>
             {items.map((item) => (
               <HistoryAssetCard
                 key={item.asset.id}
                 item={item}
+                natural
                 onPreview={() => setPreviewId(item.asset.id)}
                 onAddToLibrary={() => setAdding(item)}
                 onOpenCanvas={(id) => window.open(`/canvas/${id}`, "_blank", "noopener")}
               />
             ))}
-          </AssetGrid>
+          </AssetMasonry>
           <LoadMoreFooter
             hasMore={state.nextCursor !== ""}
             loading={state.loadingMore}

@@ -22,6 +22,7 @@ type fakeGenTasks struct {
 	errAt map[int]error // 第 i 次提交失败
 	next  uint64
 	task  *model.GenerationTaskView
+	views map[uint64]*model.GenerationTaskView // 按 id 预置的任务；没有的 Get 返回不存在
 	// onCreate 在每次提交开始时调用，用来模拟提交过程中请求被取消
 	onCreate func()
 }
@@ -40,6 +41,9 @@ func (f *fakeGenTasks) Create(_ context.Context, _ uint64, key string, req *mode
 }
 
 func (f *fakeGenTasks) Get(_ context.Context, _, id uint64) (*model.GenerationTaskView, error) {
+	if v, ok := f.views[id]; ok {
+		return v, nil
+	}
 	if f.task == nil || f.task.ID != id {
 		return nil, errcode.ErrNotFound
 	}
@@ -139,6 +143,9 @@ func TestAgentGenerator_Execute(t *testing.T) {
 		}
 		if e.tasks.keys[0] != "agent-77-0" {
 			t.Errorf("幂等键 = %s", e.tasks.keys[0])
+		}
+		if req.AgentRunID != e.run.ID {
+			t.Errorf("任务应记下发起它的运行 %d，实际 %d：任务结束时靠它通知 Agent", e.run.ID, req.AgentRunID)
 		}
 		if !strings.Contains(string(res), `"task_id":"101"`) {
 			t.Errorf("结果=%s", res)
@@ -252,4 +259,36 @@ func hasTool(ss []string, s string) bool {
 		}
 	}
 	return false
+}
+
+// Agent 查一批任务的状态：自己的任务给出状态、节点、产物；别人的和不存在的一律 missing，不泄露存在与否。
+func TestAgentBridge_PlatformTaskStates(t *testing.T) {
+	ctx := context.Background()
+	e := newGenEnv(t, "all")
+	progress := 60
+	e.tasks.views = map[uint64]*model.GenerationTaskView{
+		101: {ID: 101, NodeID: "n1", Kind: "image", Status: model.TaskSucceeded, Credits: 5,
+			Outputs: []model.TaskOutput{{MediaType: "image", AssetID: 42}, {MediaType: "text", Text: "说明"}}},
+		102: {ID: 102, NodeID: "n2", Kind: "video", Status: model.TaskRunning, Progress: &progress, Credits: 20},
+		103: {ID: 103, NodeID: "n3", Kind: "image", Status: model.TaskFailed, ErrorMessage: "触发内容安全风控", Credits: 5},
+	}
+	got, err := e.br.PlatformTaskStates(ctx, e.run.UserID, []uint64{101, 102, 103, 999})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 4 {
+		t.Fatalf("应按请求顺序返回 4 项：%+v", got)
+	}
+	if g := got[0]; g.TaskID != "101" || g.Status != "succeeded" || g.NodeID != "n1" || len(g.Outputs) != 2 || g.Outputs[0].AssetID != "42" || g.Outputs[0].MediaType != "image" {
+		t.Errorf("成功的任务带节点和产物：%+v", g)
+	}
+	if g := got[1]; g.Status != "running" || g.Progress == nil || *g.Progress != 60 {
+		t.Errorf("进行中的任务带进度：%+v", g)
+	}
+	if g := got[2]; g.Status != "failed" || g.Error != "触发内容安全风控" {
+		t.Errorf("失败的任务带原因：%+v", g)
+	}
+	if g := got[3]; g.TaskID != "999" || g.Status != "missing" {
+		t.Errorf("查不到的任务标 missing：%+v", g)
+	}
 }

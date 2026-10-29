@@ -66,6 +66,8 @@ func TestRouter_DurableForwardsAgentRoutesWithLoginUser(t *testing.T) {
 		{"GET", "/api/v1/agent/sessions/s1/events"},
 		{"GET", "/api/v1/agent/sessions/s1/history"},
 		{"POST", "/api/v1/agent/sessions/s1/runs"},
+		{"GET", "/api/v1/agent/sessions/s1/watches"},
+		{"POST", "/api/v1/agent/sessions/s1/watches/cancel"},
 		{"POST", "/api/v1/agent/runs/r1/interject"},
 		{"POST", "/api/v1/agent/runs/r1/cancel"},
 		{"POST", "/api/v1/agent/runs/r1/resume"},

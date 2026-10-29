@@ -23,17 +23,19 @@ export function adminPageTitle(pathname: string): string {
 /**
  * 画布页的标题：画布名称；没起名时用「未命名画布」
  * @param title 画布名称
+ * @param prefix 状态前缀（如「⏸ 待批准 · 」），没有为空串
  */
-export function canvasPageTitle(title: string): string {
-  return formatPageTitle(title.trim() || "未命名画布");
+export function canvasPageTitle(title: string, prefix = ""): string {
+  return prefix + formatPageTitle(title.trim() || "未命名画布");
 }
 
 /** 首页外壳下各一级页面的名称，首页（创作页）只显示应用名 */
 const HOME_SECTIONS: Record<string, string> = {
-  canvases: "画布",
+  canvases: "作品",
   assets: "资产",
   profile: "个人资料",
   conversations: "对话",
+  drama: "短剧工作室",
 };
 
 /**

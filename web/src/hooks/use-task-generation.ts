@@ -1,10 +1,10 @@
 import { useCallback, useRef, useState } from "react";
 import { useReactFlow } from "@xyflow/react";
-import { useParams } from "react-router";
 import { toast } from "sonner";
 
 import { REMOTE_KIND_OF_NODE } from "@/constants/canvas";
 import type { CanvasEdge, CanvasNode } from "@/types";
+import { useCurrentCanvasId } from "@/utils/canvas/canvas-id";
 import { releaseObjectUrl } from "@/utils/canvas/media";
 import { cancelTasks, submitCanvasTasks } from "@/utils/tasks/gateway";
 import {
@@ -33,7 +33,7 @@ export type TaskGeneration = ReturnType<typeof useTaskGeneration>;
  */
 export function useTaskGeneration(nodeId: string, nodeKind: TaskNodeKind) {
   const { updateNodeData } = useReactFlow<CanvasNode, CanvasEdge>();
-  const { id: canvasId } = useParams();
+  const canvasId = useCurrentCanvasId();
   const [submitting, setSubmitting] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const lockRef = useRef(false);

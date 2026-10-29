@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { Clock } from "lucide-react";
+import { Clock, ImageIcon } from "lucide-react";
 
 import { DURATION, EASE_OUT } from "@/lib/motion";
 import { parseMessage } from "@/utils/agent/chips";
@@ -8,7 +8,12 @@ import { parseMessage } from "@/utils/agent/chips";
 /** 队列最多直接显示几条，其余折叠成「还有 N 条」 */
 const MAX_SHOWN = 3;
 
-export type SteerTrayItem = { key: string; text: string };
+export type SteerTrayItem = {
+  key: string;
+  text: string;
+  /** 带了几张图片附件；没带或不传就不显示 */
+  images?: number;
+};
 
 /**
  * 队列里现在要画哪几条
@@ -62,6 +67,12 @@ export function SteerTray({ items }: { items: readonly SteerTrayItem[] }) {
             >
               <Clock className="text-status-running size-3 shrink-0" />
               <span className="min-w-0 flex-1 truncate">{text}</span>
+              {item.images ? (
+                <span className="text-muted-foreground flex shrink-0 items-center gap-1 text-[11.5px]">
+                  <ImageIcon aria-hidden className="size-3" />
+                  {item.images} 张图
+                </span>
+              ) : null}
             </motion.div>
           );
         })}

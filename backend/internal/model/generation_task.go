@@ -67,6 +67,7 @@ type GenerationTask struct {
 	ProviderResult  datatypes.JSON `gorm:"type:jsonb" json:"-"`                                                                                                                                                       // 同步接口的即时结果（[]provider.Output），转存前落库，重启后继续转存而不重复调用上游
 	TraceJSON       datatypes.JSON `gorm:"type:jsonb" json:"-"`                                                                                                                                                       // 仅 is_test：插件钩子与 HTTP 的执行追踪（已脱敏），管理端试跑面板展示
 	IsTest          bool           `gorm:"not null;default:false" json:"is_test"`                                                                                                                                     // 运营试跑：不扣积分、不推送
+	AgentRunID      uint64         `gorm:"not null;default:0;index:idx_generation_tasks_agent_run,where:agent_run_id <> 0" json:"-"`                                                                                  // 发起它的 Agent 运行 id，0 表示不是 Agent 发起的；任务进入终态时据此通知 Agent
 	NextPollAt      time.Time      `gorm:"not null" json:"-"`                                                                                                                                                         // worker 调度依据（部分索引由迁移补建）
 	PollAttempts    int            `gorm:"not null;default:0" json:"-"`                                                                                                                                               // 已轮询次数
 	LeaseUntil      *time.Time     `json:"-"`                                                                                                                                                                         // worker 租约
@@ -116,12 +117,13 @@ type GenerationTaskView struct {
 
 // CreateGenerationTaskReq 提交任务。Idempotency-Key 走请求头，不在 body 里。
 type CreateGenerationTaskReq struct {
-	Kind     string         `json:"kind" binding:"required,oneof=video image audio text" label:"生成种类"` // video / image / audio / text
-	ModelID  string         `json:"model_id" binding:"required,max=128" label:"模型"`                    // 模型 key
-	CanvasID idcodec.ID     `json:"canvas_id" label:"画布"`                                              // 所属画布（十六进制串），可不传
-	NodeID   string         `json:"node_id" binding:"max=64" label:"节点"`                               // 前端节点 id（只生成 1 个时可以只传它）
-	NodeIDs  []string       `json:"node_ids" binding:"omitempty,max=8,dive,max=64" label:"节点"`         // 每个任务绑定的节点，长度等于生成数量；第 i 个任务绑定第 i 个节点，允许重复（多个任务绑同一个节点）
-	Input    map[string]any `json:"input" binding:"required" label:"生成参数"`                             // 生成参数，按模型的 capabilities 校验
+	Kind       string         `json:"kind" binding:"required,oneof=video image audio text" label:"生成种类"` // video / image / audio / text
+	ModelID    string         `json:"model_id" binding:"required,max=128" label:"模型"`                    // 模型 key
+	CanvasID   idcodec.ID     `json:"canvas_id" label:"画布"`                                              // 所属画布（十六进制串），可不传
+	NodeID     string         `json:"node_id" binding:"max=64" label:"节点"`                               // 前端节点 id（只生成 1 个时可以只传它）
+	NodeIDs    []string       `json:"node_ids" binding:"omitempty,max=8,dive,max=64" label:"节点"`         // 每个任务绑定的节点，长度等于生成数量；第 i 个任务绑定第 i 个节点，允许重复（多个任务绑同一个节点）
+	Input      map[string]any `json:"input" binding:"required" label:"生成参数"`                             // 生成参数，按模型的 capabilities 校验
+	AgentRunID uint64         `json:"-"`                                                                 // 发起它的 Agent 运行 id，只由 Agent 的生成执行器填写，不接受请求体里的值
 }
 
 // CreateGenerationTaskResp 是提交的结果：按节点顺序逐项给出创建好的任务，或这个节点的错误。

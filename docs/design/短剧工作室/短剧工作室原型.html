@@ -1,0 +1,1362 @@
+<!doctype html>
+<html lang="zh-CN" class="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>短剧工作室原型</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+    <style>
+      /* 颜色全部抄自 web/src/index.css；动效参数抄自 web/src/lib/motion.ts */
+      :root {
+        color-scheme: light;
+        --background: oklch(1 0 0);
+        --foreground: oklch(0.145 0 0);
+        --card: oklch(1 0 0);
+        --popover: oklch(1 0 0);
+        --primary: oklch(0.205 0 0);
+        --primary-foreground: oklch(0.985 0 0);
+        --secondary: oklch(0.97 0 0);
+        --muted: oklch(0.97 0 0);
+        --muted-foreground: oklch(0.556 0 0);
+        --accent: oklch(0.97 0 0);
+        --destructive: oklch(0.577 0.245 27.325);
+        --border: oklch(0.922 0 0);
+        --input: oklch(0.922 0 0);
+        --ring: oklch(0.708 0 0);
+        --sidebar: oklch(0.985 0 0);
+        --sidebar-border: oklch(0.922 0 0);
+        --canvas-bg: oklch(0.975 0 0);
+        --canvas-dot: oklch(0 0 0 / 0.16);
+        --panel: oklch(1 0 0);
+        --menu: oklch(1 0 0);
+        --chrome: oklch(1 0 0 / 0.82);
+        --chrome-border: oklch(0 0 0 / 0.08);
+        --chrome-hover: oklch(0 0 0 / 0.05);
+        --node-ring: oklch(0.2 0 0 / 0.85);
+        --credit: oklch(0.72 0.15 75);
+        --preset: oklch(0.55 0.2 295);
+        --status-running: oklch(0.58 0.15 250);
+        --status-success: oklch(0.6 0.15 155);
+        --status-warning: oklch(0.7 0.16 70);
+        --elevation-near: oklch(0 0 0 / 0.06);
+        --elevation-far: oklch(0 0 0 / 0.18);
+        --beam: oklch(0.62 0.16 55);
+        --cover-scrim: oklch(0 0 0 / 0.62);
+        --cover-foreground: oklch(0.985 0 0);
+        --sheen: oklch(1 0 0 / 0.7);
+        --group-blue: oklch(0.55 0.18 255);
+        --group-green: oklch(0.6 0.17 150);
+        --group-orange: oklch(0.64 0.17 55);
+        --group-purple: oklch(0.55 0.2 295);
+        --radius: 0.625rem;
+        /* lib/motion.ts */
+        --ease: cubic-bezier(0.2, 0, 0, 1);
+        --d-fast: 120ms;
+        --d-base: 180ms;
+        --d-exit: 126ms;
+        --d-slow: 240ms;
+        --d-slow-exit: 168ms;
+      }
+      .dark {
+        color-scheme: dark;
+        --background: oklch(0.145 0 0);
+        --foreground: oklch(0.985 0 0);
+        --card: oklch(0.205 0 0);
+        --popover: oklch(0.205 0 0);
+        --primary: oklch(0.922 0 0);
+        --primary-foreground: oklch(0.205 0 0);
+        --secondary: oklch(0.269 0 0);
+        --muted: oklch(0.269 0 0);
+        --muted-foreground: oklch(0.708 0 0);
+        --accent: oklch(0.269 0 0);
+        --destructive: oklch(0.704 0.191 22.216);
+        --border: oklch(1 0 0 / 10%);
+        --input: oklch(1 0 0 / 15%);
+        --ring: oklch(0.556 0 0);
+        --sidebar: oklch(0.205 0 0);
+        --sidebar-border: oklch(1 0 0 / 10%);
+        --canvas-bg: oklch(0.13 0 0);
+        --canvas-dot: oklch(1 0 0 / 0.14);
+        --panel: oklch(0.243 0 0);
+        --menu: oklch(0.269 0 0);
+        --chrome: oklch(0.2 0 0 / 0.78);
+        --chrome-border: oklch(1 0 0 / 0.08);
+        --chrome-hover: oklch(1 0 0 / 0.07);
+        --node-ring: oklch(1 0 0 / 0.72);
+        --credit: oklch(0.82 0.15 85);
+        --preset: oklch(0.6 0.19 295);
+        --status-running: oklch(0.75 0.12 240);
+        --status-success: oklch(0.75 0.15 155);
+        --status-warning: oklch(0.8 0.15 75);
+        --elevation-near: oklch(0 0 0 / 0.1);
+        --elevation-far: oklch(0 0 0 / 0.42);
+        --beam: oklch(0.78 0.15 70);
+        --cover-scrim: oklch(0 0 0 / 0.7);
+        --sheen: oklch(1 0 0 / 0.09);
+        --group-blue: oklch(0.72 0.15 255);
+        --group-green: oklch(0.76 0.17 150);
+        --group-orange: oklch(0.76 0.16 55);
+        --group-purple: oklch(0.7 0.16 295);
+      }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; }
+      body { margin: 0; font-family: Geist, "PingFang SC", "Microsoft YaHei", sans-serif; background: var(--background); color: var(--foreground); font-size: 13px; line-height: 1.5; -webkit-font-smoothing: antialiased; overflow: hidden; }
+      button, input, select, textarea { font: inherit; color: inherit; }
+      button { background: none; border: 0; padding: 0; cursor: pointer; }
+      [data-lucide] { width: 16px; height: 16px; flex: none; stroke-width: 1.75; }
+      .i14 [data-lucide], [data-lucide].i14 { width: 14px; height: 14px; }
+      .num { font-variant-numeric: tabular-nums; }
+      .muted { color: var(--muted-foreground); }
+      .row { display: flex; align-items: center; gap: 8px; }
+      .col { display: flex; flex-direction: column; }
+      .grow { flex: 1; min-width: 0; }
+      .scroll { overflow: auto; min-height: 0; }
+      .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      ::-webkit-scrollbar { width: 8px; height: 8px; }
+      ::-webkit-scrollbar-thumb { background: var(--chrome-hover); border-radius: 8px; }
+      :focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+
+      /* ---------- 原型说明条 ---------- */
+      .proto-bar { position: fixed; top: 0; left: 0; right: 0; height: 32px; z-index: 100; display: flex; align-items: center; gap: 10px; padding: 0 12px; font-size: 12px; background: var(--preset); color: white; }
+      .proto-bar button { height: 22px; padding: 0 8px; border-radius: 6px; background: oklch(1 0 0 / 0.18); display: inline-flex; align-items: center; gap: 4px; }
+      .proto-bar button:hover { background: oklch(1 0 0 / 0.28); }
+      #app { position: fixed; inset: 32px 0 0 0; }
+
+      /* ---------- 通用控件 ---------- */
+      .btn { height: 32px; padding: 0 12px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-weight: 500; white-space: nowrap; transition: background var(--d-fast) var(--ease), transform var(--d-fast) var(--ease), opacity var(--d-fast); user-select: none; }
+      .btn:active:not(:disabled) { transform: scale(0.96); }
+      .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+      .btn-ghost:hover:not(:disabled) { background: var(--chrome-hover); }
+      .btn-primary { background: var(--primary); color: var(--primary-foreground); }
+      .btn-primary:hover:not(:disabled) { opacity: 0.9; }
+      .btn-outline { border: 1px solid var(--border); background: var(--card); }
+      .btn-outline:hover:not(:disabled) { background: var(--accent); }
+      .btn-sm { height: 28px; padding: 0 10px; font-size: 12px; border-radius: 7px; }
+      .btn-icon { width: 32px; padding: 0; }
+      .btn-sm.btn-icon { width: 28px; }
+      .credit { color: var(--credit); }
+      .pill { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 7px; border-radius: 999px; font-size: 11px; font-weight: 500; white-space: nowrap; background: var(--muted); color: var(--muted-foreground); }
+      .pill.run { background: color-mix(in oklch, var(--status-running) 16%, transparent); color: var(--status-running); }
+      .pill.ok { background: color-mix(in oklch, var(--status-success) 16%, transparent); color: var(--status-success); }
+      .pill.warn { background: color-mix(in oklch, var(--status-warning) 18%, transparent); color: var(--status-warning); }
+      .pill.bad { background: color-mix(in oklch, var(--destructive) 16%, transparent); color: var(--destructive); }
+      .pill.vio { background: color-mix(in oklch, var(--preset) 16%, transparent); color: var(--preset); }
+      .kbd { font-family: "Geist Mono", monospace; font-size: 10.5px; padding: 0 4px; border: 1px solid var(--border); border-radius: 4px; color: var(--muted-foreground); }
+      .chrome { background: var(--chrome); border: 1px solid var(--chrome-border); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); box-shadow: 0 1px 2px var(--elevation-near), 0 12px 32px var(--elevation-far); }
+      .input { height: 32px; border: 1px solid var(--input); border-radius: 8px; padding: 0 10px; background: transparent; outline: none; transition: border-color var(--d-fast); }
+      .input:focus { border-color: var(--ring); }
+      .shimmer { background: linear-gradient(90deg, var(--muted-foreground) 0%, var(--foreground) 50%, var(--muted-foreground) 100%); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: shimmer 1.6s linear infinite; }
+      @keyframes shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+      .spin { animation: spin 0.9s linear infinite; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      .fade-up { animation: fadeUp var(--d-base) var(--ease) both; }
+      @keyframes fadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+      .stagger > * { animation: fadeUp var(--d-base) var(--ease) both; }
+      .stagger > *:nth-child(1) { animation-delay: 0ms; } .stagger > *:nth-child(2) { animation-delay: 30ms; } .stagger > *:nth-child(3) { animation-delay: 60ms; } .stagger > *:nth-child(4) { animation-delay: 90ms; } .stagger > *:nth-child(5) { animation-delay: 120ms; } .stagger > *:nth-child(n + 6) { animation-delay: 150ms; }
+      .no-anim .stagger > *, .no-anim .fade-up { animation: none; }
+
+      /* 分段控件：滑块用 transform 移动（SPRING 的近似：base 时长 + ease-out） */
+      .seg { position: relative; display: inline-flex; padding: 2px; border-radius: 9px; background: var(--muted); }
+      .seg .knob { position: absolute; top: 2px; bottom: 2px; left: 2px; border-radius: 7px; background: var(--card); box-shadow: 0 1px 2px var(--elevation-near), 0 1px 3px var(--elevation-near); transition: transform var(--d-base) var(--ease), width var(--d-base) var(--ease); }
+      .seg button { position: relative; z-index: 1; height: 26px; padding: 0 10px; font-size: 12px; font-weight: 500; display: inline-flex; align-items: center; gap: 5px; color: var(--muted-foreground); border-radius: 7px; transition: color var(--d-fast); }
+      .seg button[aria-pressed="true"] { color: var(--foreground); }
+
+      /* 浮层（菜单 / popover）：从触发点方向出来，退出更快 */
+      .pop { position: fixed; z-index: 60; min-width: 200px; border-radius: 12px; padding: 6px; background: var(--menu); border: 1px solid var(--chrome-border); box-shadow: 0 1px 2px var(--elevation-near), 0 16px 40px var(--elevation-far); transform-origin: var(--origin, top left); animation: popIn var(--d-base) var(--ease) both; }
+      .pop.out { animation: popOut var(--d-exit) var(--ease) both; }
+      @keyframes popIn { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
+      @keyframes popOut { to { opacity: 0; transform: scale(0.96); } }
+      .menu-item { width: 100%; display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 7px; text-align: left; font-size: 12.5px; }
+      .menu-item:hover, .menu-item.active { background: var(--chrome-hover); }
+      .menu-label { padding: 6px 8px 4px; font-size: 11px; color: var(--muted-foreground); }
+
+      /* 对话框 */
+      .dlg-bg { position: fixed; inset: 32px 0 0 0; z-index: 70; background: oklch(0 0 0 / 0.5); display: grid; place-items: center; animation: fade var(--d-slow) var(--ease) both; }
+      .dlg-bg.out { animation: fadeOut var(--d-slow-exit) var(--ease) both; }
+      .dlg { width: min(600px, calc(100vw - 32px)); max-height: calc(100vh - 80px); overflow: auto; border-radius: 16px; background: var(--popover); border: 1px solid var(--chrome-border); box-shadow: 0 24px 64px var(--elevation-far); animation: dlgIn var(--d-slow) var(--ease) both; }
+      .dlg-bg.out .dlg { animation: dlgOut var(--d-slow-exit) var(--ease) both; }
+      @keyframes fade { from { opacity: 0; } }
+      @keyframes fadeOut { to { opacity: 0; } }
+      @keyframes dlgIn { from { opacity: 0; transform: scale(0.96) translateY(8px); } }
+      @keyframes dlgOut { to { opacity: 0; transform: scale(0.97); } }
+
+      /* toast */
+      #toasts { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 90; display: grid; gap: 8px; justify-items: center; pointer-events: none; }
+      .toast { display: flex; align-items: center; gap: 8px; padding: 9px 14px; border-radius: 10px; font-size: 12.5px; animation: toastIn var(--d-base) var(--ease) both; }
+      .toast.out { animation: toastOut var(--d-exit) var(--ease) both; }
+      @keyframes toastIn { from { opacity: 0; transform: translateY(10px); } }
+      @keyframes toastOut { to { opacity: 0; transform: translateY(6px); } }
+
+      /* 海报占位：素材的示意画面（不是 UI 颜色） */
+      .poster { position: relative; overflow: hidden; background: var(--g); }
+      .poster::after { content: ""; position: absolute; inset: 0; background: radial-gradient(120% 70% at 30% 20%, oklch(1 0 0 / 0.16), transparent 60%); pointer-events: none; }
+      .scrim { position: absolute; inset: auto 0 0 0; padding: 28px 10px 8px; background: linear-gradient(transparent, var(--cover-scrim)); color: var(--cover-foreground); }
+
+      /* ---------- 首页布局 ---------- */
+      .home { display: flex; height: 100%; }
+      .sidebar { width: 232px; flex: none; background: var(--sidebar); border-right: 1px solid var(--sidebar-border); display: flex; flex-direction: column; padding: 12px 10px; gap: 2px; }
+      .brand { display: flex; align-items: center; gap: 8px; padding: 4px 8px 14px; font-weight: 600; font-size: 14px; }
+      .brand-mark { width: 26px; height: 26px; border-radius: 8px; background: var(--primary); color: var(--primary-foreground); display: grid; place-items: center; }
+      .nav { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 8px; color: var(--muted-foreground); font-weight: 500; transition: background var(--d-fast), color var(--d-fast); }
+      .nav:hover { background: var(--chrome-hover); color: var(--foreground); }
+      .nav[aria-current="true"] { background: var(--accent); color: var(--foreground); }
+      .new-badge { margin-left: auto; font-size: 10px; padding: 0 5px; border-radius: 5px; background: color-mix(in oklch, var(--beam) 22%, transparent); color: var(--beam); font-weight: 600; }
+      .side-sec { margin-top: 14px; padding: 0 10px 4px; font-size: 11px; color: var(--muted-foreground); }
+      .side-item { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border-radius: 7px; color: var(--muted-foreground); font-size: 12.5px; }
+      .side-item:hover { background: var(--chrome-hover); color: var(--foreground); }
+      .home-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+      .site-header { height: 52px; flex: none; display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding: 0 20px; }
+      .avatar { width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg, var(--group-purple), var(--group-blue)); }
+      .hero { max-width: 860px; margin: 0 auto; width: 100%; padding: 28px 24px 0; }
+      .hero h1 { margin: 0; font-size: 30px; font-weight: 600; letter-spacing: -0.02em; text-align: center; }
+      .hero h1 .beam { background: linear-gradient(90deg, var(--beam), var(--credit)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+      .composer { margin-top: 22px; border-radius: 18px; background: var(--card); border: 1px solid var(--border); box-shadow: 0 1px 2px var(--elevation-near), 0 20px 50px var(--elevation-far); overflow: hidden; }
+      .composer-tabs { display: flex; gap: 2px; padding: 8px 8px 0; }
+      .ctab { height: 32px; padding: 0 14px; border-radius: 9px 9px 0 0; font-weight: 500; color: var(--muted-foreground); display: inline-flex; align-items: center; gap: 6px; }
+      .ctab[aria-selected="true"] { background: var(--muted); color: var(--foreground); }
+      .drop { margin: 0 8px; border-radius: 0 12px 12px 12px; background: var(--muted); min-height: 168px; display: grid; place-items: center; padding: 18px; border: 1.5px dashed transparent; transition: border-color var(--d-fast), background var(--d-fast); }
+      .drop.over { border-color: var(--ring); }
+      .drop textarea { width: 100%; height: 150px; border: 0; outline: none; background: transparent; resize: none; line-height: 1.7; }
+      .filechip { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 12px; background: var(--card); border: 1px solid var(--border); }
+      .filechip .ext { width: 34px; height: 40px; border-radius: 6px; display: grid; place-items: center; font-size: 10px; font-weight: 700; background: color-mix(in oklch, var(--group-blue) 18%, transparent); color: var(--group-blue); }
+      .composer-foot { display: flex; align-items: center; gap: 6px; padding: 10px 12px; flex-wrap: wrap; }
+      .cchip { height: 30px; padding: 0 10px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; color: var(--muted-foreground); font-weight: 500; transition: background var(--d-fast), color var(--d-fast); }
+      .cchip:hover { background: var(--chrome-hover); color: var(--foreground); }
+      .cchip.set { color: var(--foreground); }
+      .send { width: 36px; height: 36px; border-radius: 50%; background: var(--primary); color: var(--primary-foreground); display: grid; place-items: center; margin-left: auto; transition: transform var(--d-fast) var(--ease), opacity var(--d-fast); }
+      .send:active:not(:disabled) { transform: scale(0.96); }
+      .send:disabled { opacity: 0.35; cursor: not-allowed; }
+      .proj-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+      .proj { text-align: left; border-radius: 14px; transition: transform var(--d-fast) var(--ease); }
+      .proj:active { transform: scale(0.985); }
+      .proj .poster { aspect-ratio: 16/10; border-radius: 12px; }
+      .proj:hover .poster { box-shadow: 0 0 0 1px var(--node-ring); }
+      .stepper { display: flex; gap: 4px; margin-top: 6px; }
+      .stepper i { height: 3px; flex: 1; border-radius: 3px; background: var(--muted); }
+      .stepper i.on { background: var(--foreground); }
+      .stepper i.half { background: linear-gradient(90deg, var(--foreground) 50%, var(--muted) 50%); }
+      .style-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 4px; }
+      .style-card { text-align: left; border-radius: 9px; padding: 3px; border: 1.5px solid transparent; transition: border-color var(--d-fast); }
+      .style-card .poster { aspect-ratio: 4/5; border-radius: 7px; }
+      .style-card[aria-pressed="true"] { border-color: var(--foreground); }
+      .style-card span { display: block; font-size: 11px; padding: 3px 2px 1px; }
+
+      /* ---------- 工作台 ---------- */
+      .ws { display: flex; height: 100%; background: var(--background); }
+      .rail { width: 64px; flex: none; border-right: 1px solid var(--border); display: flex; flex-direction: column; align-items: center; padding: 10px 0; gap: 2px; position: relative; }
+      .rail-btn { width: 52px; padding: 7px 0 5px; border-radius: 10px; display: flex; flex-direction: column; align-items: center; gap: 3px; color: var(--muted-foreground); font-size: 10.5px; position: relative; z-index: 1; transition: color var(--d-fast); }
+      .rail-btn [data-lucide] { width: 18px; height: 18px; }
+      .rail-btn:hover { color: var(--foreground); }
+      .rail-btn[aria-current="true"] { color: var(--foreground); }
+      .rail-knob { position: absolute; left: 6px; width: 52px; height: 50px; border-radius: 10px; background: var(--accent); transition: transform var(--d-base) var(--ease); }
+      .rail-step { position: absolute; right: 7px; top: 6px; width: 7px; height: 7px; border-radius: 50%; }
+      .ws-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+      .topbar { height: 52px; flex: none; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 6px; padding: 0 12px; }
+      .title-input { height: 30px; border: 1px solid transparent; border-radius: 7px; padding: 0 8px; background: transparent; font-weight: 600; font-size: 14px; width: 180px; outline: none; transition: border-color var(--d-fast), background var(--d-fast); }
+      .title-input:hover { background: var(--chrome-hover); }
+      .title-input:focus { border-color: var(--ring); background: transparent; }
+      .saved { font-size: 11.5px; color: var(--muted-foreground); display: inline-flex; align-items: center; gap: 4px; }
+      .ws-body { flex: 1; min-height: 0; display: flex; }
+      .ws-content { flex: 1; min-width: 0; display: flex; position: relative; }
+      .side { width: 320px; flex: none; border-left: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; background: var(--background); }
+      .side-head { height: 48px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 12px; }
+
+      /* 剧本 */
+      .toc { width: 212px; flex: none; border-right: 1px solid var(--border); padding: 10px 8px; display: flex; flex-direction: column; gap: 1px; }
+      .toc-item { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px; border-radius: 8px; font-size: 12.5px; color: var(--muted-foreground); text-align: left; transition: background var(--d-fast), color var(--d-fast); }
+      .toc-item:hover { background: var(--chrome-hover); color: var(--foreground); }
+      .toc-item[aria-current="true"] { background: var(--accent); color: var(--foreground); font-weight: 500; }
+      .toc-item .st { margin-left: auto; }
+      .paper-wrap { flex: 1; min-width: 0; overflow: auto; position: relative; }
+      .paper { max-width: 720px; margin: 0 auto; padding: 32px 40px 120px; }
+      .paper h2 { margin: 0 0 4px; font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+      .doc { outline: none; font-size: 14px; line-height: 1.9; margin-top: 20px; }
+      .doc p { margin: 0 0 10px; }
+      .doc .scene { font-family: "Geist Mono", monospace; font-size: 12.5px; font-weight: 600; letter-spacing: 0.02em; margin-top: 22px; padding: 4px 8px; border-radius: 6px; background: var(--muted); display: inline-block; }
+      .doc .who { text-align: center; font-weight: 600; margin: 14px 0 0; font-size: 12.5px; letter-spacing: 0.06em; }
+      .doc .line { text-align: center; max-width: 420px; margin: 0 auto 10px; }
+      .doc .ref { color: var(--status-running); border-bottom: 1px dashed currentColor; }
+      .doc[contenteditable="false"] { color: var(--muted-foreground); }
+      .lockbar { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; font-size: 12.5px; background: color-mix(in oklch, var(--status-warning) 10%, transparent); border: 1px solid color-mix(in oklch, var(--status-warning) 28%, transparent); margin-top: 16px; }
+      .nextpill { position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; padding: 6px 6px 6px 16px; border-radius: 999px; white-space: nowrap; animation: pillIn var(--d-base) var(--ease) both; }
+      @keyframes pillIn { from { opacity: 0; transform: translate(-50%, 10px); } }
+      .skel { height: 12px; border-radius: 6px; background: linear-gradient(90deg, var(--muted) 0%, color-mix(in oklch, var(--muted) 60%, var(--sheen)) 50%, var(--muted) 100%); background-size: 200% 100%; animation: shimmerBg 1.6s linear infinite; }
+      @keyframes shimmerBg { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+      .analyze-steps { display: grid; gap: 10px; margin-top: 18px; }
+      .astep { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted-foreground); }
+      .astep.on { color: var(--foreground); }
+      .astep .dotc { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; border: 1.5px solid var(--border); }
+      .astep.done .dotc { background: var(--foreground); color: var(--background); border-color: var(--foreground); }
+
+      /* 资产 */
+      .assets { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+      .assets-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px; flex-wrap: wrap; }
+      .typetabs { display: flex; gap: 2px; padding: 0 16px; border-bottom: 1px solid var(--border); overflow-x: auto; }
+      .ttab { position: relative; height: 38px; padding: 0 12px; font-weight: 500; color: var(--muted-foreground); display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; transition: color var(--d-fast); }
+      .ttab:hover { color: var(--foreground); }
+      .ttab[aria-selected="true"] { color: var(--foreground); }
+      .ttab[aria-selected="true"]::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: -1px; height: 2px; border-radius: 2px; background: var(--foreground); animation: fade var(--d-base) var(--ease); }
+      .ttab .cnt { font-size: 11px; color: var(--muted-foreground); }
+      .banner { margin: 14px 16px 0; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; background: var(--muted); }
+      .acards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px; padding: 16px; }
+      .acard { position: relative; text-align: left; }
+      .acard .frame { position: relative; aspect-ratio: 3/4; border-radius: 12px; overflow: hidden; background: var(--muted); transition: box-shadow var(--d-fast); }
+      .acard.scene .frame, .acard.prop .frame { aspect-ratio: 4/3; }
+      .acard .frame:hover { box-shadow: 0 0 0 1px var(--node-ring); }
+      .acard.sel .frame { box-shadow: 0 0 0 2px var(--foreground); }
+      .acard .empty { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; color: var(--muted-foreground); font-size: 12px; border: 1.5px dashed var(--border); border-radius: 12px; }
+      .acard .hover { position: absolute; inset: auto 8px 8px 8px; display: flex; gap: 6px; opacity: 0; transform: translateY(4px); transition: opacity var(--d-base) var(--ease), transform var(--d-base) var(--ease); }
+      .acard .frame:hover .hover, .acard .frame:focus-within .hover { opacity: 1; transform: none; }
+      .acard .ck { position: absolute; top: 8px; left: 8px; width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid oklch(1 0 0 / 0.8); background: oklch(0 0 0 / 0.25); display: grid; place-items: center; color: white; z-index: 2; }
+      .acard.sel .ck { background: var(--primary); border-color: var(--primary); color: var(--primary-foreground); }
+      .acard .meta { padding: 8px 2px 0; }
+      .acard .name { font-weight: 500; font-size: 12.5px; }
+      .acard .sub { font-size: 11.5px; color: var(--muted-foreground); }
+      .ep-dots { display: inline-flex; gap: 3px; }
+      .ep-dots i { font-style: normal; font-size: 10px; min-width: 16px; height: 16px; padding: 0 3px; border-radius: 4px; background: var(--muted); color: var(--muted-foreground); display: grid; place-items: center; }
+      .ring-prog { width: 30px; height: 30px; }
+      .canvas { flex: 1; position: relative; overflow: hidden; background-color: var(--canvas-bg); background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px); background-size: 20px 20px; cursor: grab; }
+      .canvas.panning { cursor: grabbing; }
+      .world { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+      .world.ease { transition: transform var(--d-slow) var(--ease); }
+      .cnode { position: absolute; width: 168px; }
+      .cnode .lbl { font-size: 11.5px; color: var(--muted-foreground); padding: 0 2px 5px; display: flex; align-items: center; gap: 4px; }
+      .cnode .body { border-radius: 14px; background: var(--panel); border: 1px solid var(--chrome-border); overflow: hidden; box-shadow: 0 1px 2px var(--elevation-near), 0 8px 24px var(--elevation-near); transition: box-shadow var(--d-fast); cursor: pointer; }
+      .cnode .body .poster, .cnode .body .ph { aspect-ratio: 1; }
+      .cnode .body .ph { display: grid; place-items: center; color: var(--muted-foreground); }
+      .cnode.sel .body { box-shadow: 0 0 0 1.5px var(--node-ring), 0 8px 24px var(--elevation-far); }
+      .cnode.flash .body { animation: flash 900ms var(--ease); }
+      @keyframes flash { 0%, 60% { box-shadow: 0 0 0 4px color-mix(in oklch, var(--preset) 60%, transparent); } 100% { box-shadow: 0 0 0 1.5px var(--node-ring); } }
+      .node-bar { position: absolute; bottom: calc(100% + 30px); left: 50%; transform: translateX(-50%); display: flex; gap: 2px; padding: 4px; border-radius: 12px; white-space: nowrap; transform-origin: bottom center; animation: barIn var(--d-base) var(--ease) both; z-index: 5; }
+      @keyframes barIn { from { opacity: 0; transform: translate(-50%, 4px) scale(0.96); } }
+      /* 节点下方的生成面板：复用无限画布 TaskPromptPanel（NodePromptInput）的样式与结构 */
+      .gpanel { position: absolute; top: calc(100% + 12px); left: 50%; width: 440px; display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: 18px; background: var(--panel); box-shadow: 0 0 0 1px color-mix(in oklch, var(--foreground) 5%, transparent), 0 25px 50px -12px oklch(0 0 0 / 0.35); cursor: default; z-index: 6; transform: translateX(-50%); transform-origin: top center; animation: gpIn var(--d-base) var(--ease) both; }
+      @keyframes gpIn { from { opacity: 0; transform: translate(-50%, -4px) scale(0.96); } }
+      .no-anim .gpanel { animation: none; }
+      .gp-refs { display: flex; gap: 6px; align-items: center; flex: 1; min-width: 0; }
+      .gp-ref { width: 44px; height: 44px; border-radius: 10px; overflow: hidden; flex: none; position: relative; display: grid; place-items: center; background: var(--muted); color: var(--muted-foreground); }
+      .gp-ref.add { background: transparent; border: 1.5px dashed var(--border); transition: background var(--d-fast); }
+      .gp-ref.add:hover { background: var(--chrome-hover); color: var(--foreground); }
+      .gp-ref .tag { position: absolute; left: 2px; bottom: 2px; font-size: 9px; padding: 0 3px; border-radius: 3px; background: oklch(0 0 0 / 0.55); color: white; z-index: 1; }
+      .gp-icon { width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; color: var(--muted-foreground); flex: none; transition: background var(--d-fast), color var(--d-fast); }
+      .gp-icon:hover { background: var(--chrome-hover); color: var(--foreground); }
+      .gp-prompt { min-height: 66px; max-height: 160px; overflow: auto; outline: none; font-size: 13.5px; line-height: 1.75; }
+      .gp-prompt:empty::before { content: attr(data-ph); color: var(--muted-foreground); }
+      .gp-prompt[contenteditable="false"] { opacity: 0.6; }
+      .gp-count { align-self: flex-end; font-family: "Geist Mono", monospace; font-size: 11px; color: color-mix(in oklch, var(--muted-foreground) 60%, transparent); margin-top: -8px; }
+      .gp-tools { display: flex; align-items: center; gap: 4px; min-width: 0; }
+      .pchip { height: 32px; padding: 0 10px; border-radius: 8px; display: inline-flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 500; white-space: nowrap; min-width: 0; transition: background var(--d-fast), color var(--d-fast); }
+      .pchip:hover { background: var(--chrome-hover); }
+      .pchip [data-lucide="chevron-down"] { opacity: 0.5; width: 14px; height: 14px; }
+      .gp-credits { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 500; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+      .gp-credits [data-lucide] { width: 14px; height: 14px; color: var(--credit); fill: var(--credit); }
+      .gp-submit { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: var(--primary); color: var(--primary-foreground); margin-left: 10px; transition: transform var(--d-fast) var(--ease), opacity var(--d-fast); }
+      .gp-submit:active:not(:disabled) { transform: scale(0.96); }
+      .gp-submit:disabled { opacity: 0.4; cursor: not-allowed; }
+      .gp-notice { font-size: 12px; color: var(--destructive); }
+      .lib-float { position: absolute; left: 12px; top: 12px; bottom: 12px; width: 236px; border-radius: 14px; display: flex; flex-direction: column; z-index: 4; cursor: default; }
+      .lib-group { padding: 8px 10px 2px; font-size: 11px; color: var(--muted-foreground); display: flex; align-items: center; gap: 6px; }
+      .lib-item { display: flex; align-items: center; gap: 8px; padding: 5px 8px; margin: 0 4px; border-radius: 8px; font-size: 12px; cursor: pointer; transition: background var(--d-fast); }
+      .lib-item:hover { background: var(--chrome-hover); }
+      .lib-item[draggable="true"] { cursor: grab; }
+      .lib-thumb { width: 30px; height: 30px; border-radius: 7px; flex: none; overflow: hidden; display: grid; place-items: center; background: var(--muted); color: var(--muted-foreground); }
+
+      /* 分集 */
+      .eps-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; padding: 0 20px 24px; }
+      .ep-card { display: flex; gap: 14px; padding: 12px; border-radius: 16px; background: var(--card); border: 1px solid var(--border); transition: box-shadow var(--d-fast); }
+      .ep-card:hover { box-shadow: 0 0 0 1px var(--node-ring); }
+      .ep-card .poster, .ep-card .ph { width: 86px; aspect-ratio: 9/16; border-radius: 10px; flex: none; display: grid; place-items: center; }
+      .ep-card .ph { background: var(--muted); color: var(--muted-foreground); }
+
+      /* 片段工作区 */
+      .studio { display: flex; flex-direction: column; height: 100%; }
+      .studio-body { flex: 1; min-height: 0; display: flex; }
+      .slib { width: 240px; flex: none; border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+      .seditor { flex: 1; min-width: 0; overflow: auto; }
+      .seditor-in { max-width: 760px; margin: 0 auto; padding: 22px 28px 40px; }
+      .prompt { min-height: 150px; border-radius: 14px; border: 1px solid var(--border); background: var(--panel); padding: 14px 16px; line-height: 2.05; font-size: 13.5px; outline: none; transition: border-color var(--d-fast), box-shadow var(--d-fast); }
+      .prompt:focus { border-color: var(--ring); }
+      .prompt.over { box-shadow: 0 0 0 2px color-mix(in oklch, var(--status-running) 50%, transparent); }
+      .mchip { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 7px 0 3px; border-radius: 6px; vertical-align: 1px; font-size: 12.5px; background: color-mix(in oklch, var(--status-running) 14%, transparent); color: var(--status-running); user-select: all; white-space: nowrap; }
+      .mchip .mav { width: 16px; height: 16px; border-radius: 4px; overflow: hidden; }
+      .mchip.dead { background: color-mix(in oklch, var(--destructive) 14%, transparent); color: var(--destructive); text-decoration: line-through; }
+      .refs { display: flex; gap: 6px; flex-wrap: wrap; }
+      .ref { display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 8px 0 3px; border-radius: 8px; background: var(--muted); font-size: 12px; }
+      .ref .lib-thumb { width: 24px; height: 24px; border-radius: 6px; }
+      .shots { margin-top: 16px; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+      .shot { display: grid; grid-template-columns: 54px 48px 64px 1fr; gap: 10px; align-items: start; padding: 9px 12px; font-size: 12.5px; border-top: 1px solid var(--border); }
+      .shot:first-child { border-top: 0; }
+      .shot.head { background: var(--muted); font-size: 11px; color: var(--muted-foreground); padding: 6px 12px; }
+      .preview { width: 300px; flex: none; border-left: 1px solid var(--border); padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+      .player { position: relative; aspect-ratio: 9/16; max-height: 420px; border-radius: 14px; overflow: hidden; background: var(--muted); display: grid; place-items: center; margin: 0 auto; width: 100%; }
+      .player.wide { aspect-ratio: 16/9; }
+      .player .poster { position: absolute; inset: 0; }
+      .player.playing .poster { animation: kenburns 6s linear both; }
+      @keyframes kenburns { from { transform: scale(1); } to { transform: scale(1.12) translate(-3%, -2%); } }
+      .takes { display: flex; gap: 8px; }
+      .take { width: 52px; aspect-ratio: 9/16; border-radius: 8px; overflow: hidden; position: relative; border: 2px solid transparent; transition: border-color var(--d-fast); }
+      .take[aria-pressed="true"] { border-color: var(--foreground); }
+      .timeline { flex: none; border-top: 1px solid var(--border); padding: 8px 14px 12px; background: var(--background); }
+      .ruler { position: relative; height: 18px; font-size: 10px; color: var(--muted-foreground); font-family: "Geist Mono", monospace; }
+      .ruler span { position: absolute; top: 0; transform: translateX(-50%); }
+      .track { position: relative; display: flex; gap: 4px; height: 64px; align-items: stretch; }
+      .clip { position: relative; border-radius: 9px; overflow: hidden; background: var(--muted); text-align: left; border: 1.5px solid transparent; transition: border-color var(--d-fast), opacity var(--d-fast); flex: none; }
+      .clip .poster { position: absolute; inset: 0; }
+      .clip .cap { position: absolute; left: 6px; bottom: 4px; right: 6px; font-size: 10.5px; color: var(--cover-foreground); text-shadow: 0 1px 2px oklch(0 0 0 / 0.6); display: flex; justify-content: space-between; }
+      .clip .cap.dim { color: var(--muted-foreground); text-shadow: none; }
+      .clip[aria-current="true"] { border-color: var(--foreground); }
+      .clip.dragging { opacity: 0.4; }
+      .clip.drop-l { box-shadow: -3px 0 0 var(--status-running); }
+      .clip .cs { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted-foreground); }
+      .playhead { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--beam); border-radius: 2px; pointer-events: none; transition: left 100ms linear; }
+      .playhead::before { content: ""; position: absolute; top: -4px; left: -4px; width: 10px; height: 10px; border-radius: 50%; background: var(--beam); }
+      .addclip { width: 44px; flex: none; border-radius: 9px; border: 1.5px dashed var(--border); display: grid; place-items: center; color: var(--muted-foreground); transition: background var(--d-fast); }
+      .addclip:hover { background: var(--chrome-hover); color: var(--foreground); }
+
+      /* 右栏：进度 & 助手 */
+      .job { border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; display: grid; gap: 6px; background: var(--card); }
+      .bar { height: 4px; border-radius: 4px; background: var(--muted); overflow: hidden; }
+      .bar > i { display: block; height: 100%; background: var(--status-running); transform-origin: left; transition: transform 200ms linear; }
+      .msg { max-width: 92%; padding: 8px 12px; border-radius: 12px; font-size: 12.5px; line-height: 1.6; }
+      .msg.me { margin-left: auto; background: var(--primary); color: var(--primary-foreground); border-bottom-right-radius: 4px; }
+      .msg.ai { background: var(--muted); border-bottom-left-radius: 4px; }
+      .approve { border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; display: grid; gap: 8px; background: var(--card); }
+      .diff { font-size: 12px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
+      .diff div { padding: 5px 8px; }
+      .diff .del { background: color-mix(in oklch, var(--destructive) 10%, transparent); text-decoration: line-through; color: var(--muted-foreground); }
+      .diff .add { background: color-mix(in oklch, var(--status-success) 12%, transparent); }
+      .chatbox { margin: 10px; border: 1px solid var(--border); border-radius: 14px; padding: 8px 8px 8px 12px; display: flex; align-items: flex-end; gap: 8px; background: var(--card); }
+      .chatbox textarea { flex: 1; border: 0; outline: none; background: transparent; resize: none; height: 44px; }
+
+      /* 对话框内 */
+      .ratio-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+      .ratio { height: 72px; border-radius: 10px; border: 1.5px solid var(--border); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; font-size: 12px; transition: border-color var(--d-fast), background var(--d-fast); }
+      .ratio:hover:not(:disabled) { background: var(--chrome-hover); }
+      .ratio[aria-pressed="true"] { border-color: var(--foreground); background: var(--accent); }
+      .ratio:disabled { opacity: 0.4; cursor: not-allowed; }
+      .ratio .shape { border: 1.5px solid currentColor; border-radius: 3px; }
+      .ep-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+      .ep-opt { height: 36px; border-radius: 9px; border: 1px solid var(--border); display: flex; align-items: center; gap: 8px; padding: 0 10px; font-size: 12.5px; text-align: left; transition: border-color var(--d-fast), background var(--d-fast); }
+      .ep-opt:hover:not(:disabled) { background: var(--chrome-hover); }
+      .ep-opt[aria-pressed="true"] { border-color: var(--foreground); }
+      .ep-opt:disabled { opacity: 0.45; cursor: not-allowed; }
+      .cbox { width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid var(--border); display: grid; place-items: center; flex: none; }
+      [aria-pressed="true"] > .cbox { background: var(--primary); border-color: var(--primary); color: var(--primary-foreground); }
+      .fieldset { border: 1px solid var(--border); border-radius: 12px; padding: 14px; display: grid; gap: 10px; }
+
+      @media (max-width: 1100px) { .side { display: none; } .preview { width: 240px; } }
+      @media (max-width: 860px) { .sidebar { display: none; } .toc { width: 160px; } .slib { display: none; } .preview { display: none; } .lib-float { width: 180px; } .ratio-grid { grid-template-columns: repeat(3, 1fr); } .ep-grid { grid-template-columns: repeat(2, 1fr); } }
+      @media (max-width: 640px) { .toc { display: none; } .rail { width: 52px; } .rail-btn, .rail-knob { width: 44px; } .rail-knob { left: 4px; } }
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; transition-property: opacity, background, color, border-color !important; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="proto-bar">
+      <i data-lucide="flask-conical" class="i14"></i>
+      <b>短剧工作室 · 高保真原型</b>
+      <span style="opacity: 0.85" class="truncate">数据在内存里，刷新复原；所有生成都是模拟。失败演示：项目名含 <code>bad</code> 时拆解失败；片段提示词写「失败」再生成。</span>
+      <span style="margin-left: auto" class="row">
+        <button data-act="reset"><i data-lucide="rotate-ccw" class="i14"></i>重置</button>
+        <button data-act="theme"><i data-lucide="sun-moon" class="i14"></i>明暗</button>
+      </span>
+    </div>
+    <div id="app"></div>
+    <div id="toasts"></div>
+    <div id="layer"></div>
+
+    <script>
+      const $ = (s, r = document) => r.querySelector(s);
+      const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+      const icons = () => window.lucide && lucide.createIcons();
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+      /* 素材示意画面：按名字算出一个稳定的色相，生成电影感的渐变海报 */
+      function hue(s) { let h = 0; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) % 360; return h; }
+      function g(s, kind) {
+        const h = hue(s), h2 = (h + 40) % 360;
+        if (kind === "scene") return `radial-gradient(90% 60% at 70% 30%, oklch(0.72 0.12 ${h} / .9), transparent 60%), linear-gradient(180deg, oklch(0.42 0.08 ${h2}) 0%, oklch(0.22 0.05 ${h}) 70%, oklch(0.14 0.02 ${h}) 100%)`;
+        if (kind === "prop") return `radial-gradient(40% 40% at 50% 55%, oklch(0.82 0.12 ${h}) 0%, oklch(0.5 0.1 ${h}) 45%, transparent 60%), linear-gradient(160deg, oklch(0.3 0.03 ${h2}), oklch(0.16 0.02 ${h}))`;
+        return `radial-gradient(34% 26% at 50% 34%, oklch(0.78 0.06 ${h}) 0%, oklch(0.62 0.07 ${h}) 60%, transparent 62%), radial-gradient(60% 48% at 50% 100%, oklch(0.5 0.1 ${h2}) 0%, oklch(0.4 0.1 ${h2}) 70%, transparent 72%), linear-gradient(170deg, oklch(0.36 0.05 ${h}), oklch(0.18 0.03 ${h2}))`;
+      }
+      const poster = (s, kind, extra = "") => `<div class="poster ${extra}" style="--g:${g(s, kind)}"></div>`;
+
+      /* ================= 数据 ================= */
+      const GENRES = ["甜宠言情", "悬疑推理", "热血动作", "喜剧搞笑", "科幻末世", "都市职场", "古风仙侠", "历史史诗", "家庭温情", "青春成长", "恐怖灵异", "心理博弈"];
+      const STYLES = ["90年代日式动画", "国风二次元", "二维扁平", "都市言情动画", "三维动画渲染", "国风三维", "黏土定格", "国风赛博三维", "古风真人", "真人都市电影", "都市甜宠写实"];
+      const RATIOS = [["9:16", 9, 16], ["16:9", 16, 9], ["21:9", 21, 9], ["3:4", 3, 4], ["4:3", 4, 3], ["1:1", 1, 1]];
+      const TEXT_MODELS = ["DeepSeek V4", "Qwen 3.5 Max", "Kimi K3"];
+      const TYPES = [["character", "角色", "user-round"], ["scene", "场景", "mountain"], ["prop", "道具", "gem"], ["text", "文本", "type"], ["image", "图片", "image"], ["video", "视频", "clapperboard"], ["audio", "音频", "audio-lines"]];
+      const SCRIPT = (no) => `<p class="scene">场 1　EXT. 山村 · 村口 —— 黄昏 · 1974 年</p>
+<p>黑屏。远处传来孩子们嬉闹的声音。画面渐渐亮起。</p>
+<p>一个七八岁的男孩——<span class="ref">林川</span>，背着军绿色书包，从村口跑回来。村里的街道异常安静，几个男人坐在树下抽烟。</p>
+<p>街道两旁的屋里，隐约能看见女人的身影。她们几乎没有一个走出门。</p>
+<p class="who">林川</p><p class="line">（停下脚步）妈，她们为什么都不出来？</p>
+<p class="scene">场 2　INT. 林川的家 —— 夜</p>
+<p>煤油灯下，<span class="ref">母亲</span>低头缝补衣服，没有抬眼。</p>
+<p class="who">母亲</p><p class="line">小孩子别问。吃饭。</p>
+<p class="muted" style="font-size:12px">（第 ${no} 集剧本正文 · 示意）</p>`;
+
+      let S, uid = 100;
+      function seed() {
+        const ep = (no, title, o = {}) => ({ no, title, synopsis: "", html: SCRIPT(no), locked: false, scripted: true, sb: "empty", ...o });
+        S = {
+          route: "drama", area: "script", side: "progress", doc: "ep1",
+          assetView: "list", type: "character", epFilter: "all", multi: false, selected: new Set(), canvasSel: null, flash: null, pan: { x: 280, y: 60 },
+          curEp: 1, curSeg: 0, playing: false, playT: 0,
+          upload: { tab: "file", file: "_剧本原文.txt", text: "", genre: "悬疑推理", style: "真人都市电影", ratio: "", eps: "自动", secs: 60 },
+          project: { title: "双鱼玉佩", genre: "悬疑推理", style: "真人都市电影", ratio: "9:16", model: TEXT_MODELS[0], saved: true },
+          outline: `<p>1974 年，七岁的林川发现村里的女人一个接一个不再出门。多年后他回到故乡，在一枚双鱼玉佩的线索里，揭开村子用「复制体」替换女人的秘密……</p><p class="muted" style="font-size:12px">（故事大纲 · 示意）</p>`,
+          people: `<p><b>林川</b>：主角。童年目睹村中怪事，成年后成为记者回村调查。</p><p><b>沈月</b>：林川童年玩伴，第 5 集揭示为复制体。</p><p><b>母亲</b>：困于村规的恐惧母亲。</p><p class="muted" style="font-size:12px">（人物传记 · 示意）</p>`,
+          episodes: [ep(1, "村里的女人", { locked: true, sb: "ready" }), ep(2, "双鱼玉佩"), ep(3, "井"), ep(4, "回村"), ep(5, "复制体"), ep(6, "深渊", { scripted: false, html: "" })],
+          assets: [
+            { prompt: "七八岁男孩，瘦小黝黑，寸头，穿洗得发白的蓝布褂子，背军绿色帆布书包；眼神好奇又警觉。1974 年北方山村，写实电影质感。", id: "a1", type: "character", name: "林川", look: "童年", eps: [1, 2, 3], st: "done", x: 0, y: 0 },
+            { prompt: "三十岁男性记者，清瘦，短发，深色风衣，眉间一道浅疤；神情克制。写实电影质感。", id: "a2", type: "character", name: "林川", look: "成年", eps: [4, 5, 6], st: "idle", x: 200, y: 0 },
+            { prompt: "七岁女孩，扎两条细辫子，碎花棉袄，总躲在门框后偷看。写实电影质感。", id: "a3", type: "character", name: "沈月", look: "童年", eps: [1, 2], st: "done", x: 400, y: 0 },
+            { prompt: "三十多岁农村妇女，头发挽成髻，灰蓝色斜襟衣，面容憔悴、目光躲闪。写实电影质感。", id: "a4", type: "character", name: "母亲", look: "基础形象", eps: [], st: "idle", x: 600, y: 0, voice: true },
+            { prompt: "四十岁男性，粗壮，旧军装上衣，常叼旱烟；沉默寡言。写实电影质感。", id: "a5", type: "character", name: "父亲", look: "基础形象", eps: [1], st: "error", x: 800, y: 0 },
+            { prompt: "北方山村土路主街，两侧土坯房门窗紧闭，村口老槐树下有石墩；黄昏逆光，尘土飞扬。", id: "a6", type: "scene", name: "山村街道", look: "入口全景 · 黄昏", eps: [1, 2], st: "done", x: 0, y: 270 },
+            { prompt: "低矮土屋室内，煤油灯，木桌长凳，墙上贴旧年画；夜晚暖黄光，阴影很重。", id: "a7", type: "scene", name: "林川的家", look: "室内 · 夜", eps: [1], st: "done", x: 200, y: 270 },
+            { prompt: "七十年代军绿色帆布挎包，红色五角星刺绣，边角磨损，纯色背景。", id: "a8", type: "prop", name: "军绿色书包", look: "", eps: [1], st: "idle", x: 400, y: 270 },
+            { id: "a9", type: "image", name: "氛围参考", look: "", eps: null, st: "done", x: 620, y: 270 },
+          ],
+          jobs: [{ id: 1, step: "资产拆解 · 第 1 集", st: "ok", p: 100, at: "10:42" }, { id: 2, step: "分集剧本 · 6 集", st: "ok", p: 100, at: "10:31" }],
+          chat: [
+            { me: true, t: "第 3 集结尾太平了，加一个悬念" },
+            { me: false, t: "我读了第 3 集剧本和第 4 集梗概。建议把结尾改成：林川在井边捡到半枚双鱼玉佩，背面刻着母亲的名字。下面是改动，确认后写入第 3 集。" },
+          ],
+          approval: "pending",
+        };
+        S.segs = {
+            1: [
+              { id: "s1", sec: 12, html: `本片段场景设定在 ${chip("a6")}。生成一个由以下 2 个分镜组成的视频。<br>分镜 1（8s）：全景，横向构图，村口土路正面平视。画面从黑屏缓缓淡入，远处传来孩子们嬉闹的声音；${chip("a1")} 背着 ${chip("a8")} 从画面左侧远景沿土路跑回村中。<br>分镜 2（4s）：中景，他放慢脚步，望向两侧紧闭的门窗。`, takes: [1], chosen: 0, st: "done", key: false },
+              { id: "s2", sec: 15, html: `场景 ${chip("a7")}。分镜 1（6s）：近景，煤油灯下 ${chip("a4")} 低头缝补；分镜 2（9s）：${chip("a1")} 推门进来，问「她们为什么都不出来？」`, takes: [], chosen: -1, st: "idle", key: false },
+              { id: "s3", sec: 10, html: `${chip("a1")} 与 ${chip("a3")} 在 ${chip("a6")} 的树下对视，远处传来铜铃声。`, takes: [], chosen: -1, st: "idle", key: false },
+            ],
+        };
+      }
+      function chip(id) { const a = S.assets.find((x) => x.id === id); return a ? chipHtml(a) : ""; }
+      const label = (a) => a.name + (a.look ? " · " + a.look : "");
+      const chipHtml = (a) => `<span class="mchip" contenteditable="false" data-id="${a.id}"><span class="mav">${poster(a.name + a.look, a.type)}</span>${esc(a.name)}${a.look ? "·" + esc(a.look) : ""}</span>`;
+      const epText = (a) => (a.eps === null ? "未分类" : a.eps.length === 0 ? "全集" : a.eps.map((n) => "第" + n + "集").join(" "));
+      const inEp = (a, n) => a.eps !== null && (a.eps.length === 0 || a.eps.includes(n));
+      const E = (no) => S.episodes.find((e) => e.no === no);
+      const textBusy = () => S.jobs.some((j) => j.st === "run" && j.text);
+
+      /* ================= 渲染 ================= */
+      let lastSig = "";
+      const knobPos = {};
+      function render() {
+        const app = $("#app");
+        const sig = [S.route, S.area, S.assetView, S.type, S.epFilter, S.doc, S.curEp, S.analyzing].join("|");
+        app.classList.toggle("no-anim", sig === lastSig);
+        lastSig = sig;
+        app.innerHTML = S.route === "drama" ? viewHome() : S.route === "ws" ? viewWs() : viewStudio();
+        icons();
+        afterRender();
+      }
+      function afterRender() {
+        document.querySelectorAll(".seg").forEach((seg, i) => placeKnob(seg, "seg" + i + (seg.dataset.k || "")));
+        const knob = $(".rail-knob"), on = $('.rail-btn[aria-current="true"]');
+        if (knob && on) slide(knob, "rail", `translateY(${on.offsetTop - 10}px)`);
+      }
+      /* 新建的滑块先放在上次的位置，再过渡到新位置：重绘不会让它从 0 重新滑一遍 */
+      function slide(el, key, to, width) {
+        const prev = knobPos[key];
+        if (prev) { el.style.transition = "none"; el.style.transform = prev.t; if (prev.w) el.style.width = prev.w; el.offsetWidth; el.style.transition = ""; }
+        el.style.transform = to; if (width) el.style.width = width;
+        knobPos[key] = { t: to, w: width };
+      }
+      function placeKnob(seg, key) {
+        const on = seg.querySelector('button[aria-pressed="true"]'); const k = seg.querySelector(".knob"); if (!on || !k) return;
+        slide(k, key, `translateX(${on.offsetLeft - 2}px)`, on.offsetWidth + "px");
+      }
+
+      /* ---------- 首页：短剧工作室 ---------- */
+      function viewHome() {
+        const u = S.upload;
+        const canSend = u.tab === "file" ? !!u.file : u.text.trim().length > 0;
+        return `<div class="home">
+          <aside class="sidebar">
+            <div class="brand"><span class="brand-mark"><i data-lucide="aperture" class="i14"></i></span>连镜</div>
+            <a class="nav"><i data-lucide="clapperboard"></i>创作</a>
+            <a class="nav"><i data-lucide="compass"></i>探索</a>
+            <a class="nav"><i data-lucide="folder-open"></i>资产</a>
+            <a class="nav" aria-current="true"><i data-lucide="film"></i>短剧工作室<span class="new-badge">New</span></a>
+            <div class="side-sec">短剧</div>
+            <button class="side-item" data-act="open"><span class="lib-thumb" style="width:20px;height:20px;border-radius:5px">${poster("双鱼玉佩", "scene")}</span>${esc(S.project.title)}</button>
+            <div class="side-sec">画布</div>
+            <a class="side-item"><i data-lucide="frame" class="i14"></i>咖啡广告分镜</a>
+            <a class="side-item"><i data-lucide="frame" class="i14"></i>未命名画布</a>
+          </aside>
+          <main class="home-main">
+            <header class="site-header"><span class="row num credit" style="font-weight:600"><i data-lucide="sparkles" class="i14"></i>1,280</span><span class="avatar"></span></header>
+            <div class="scroll" style="flex:1">
+              <section class="hero fade-up">
+                <h1>把剧本交给 <span class="beam">短剧工作室</span></h1>
+                <p class="muted" style="text-align:center; margin:8px 0 0">上传剧本或小说，自动分集、拆资产、写分镜，一路做到每集成片</p>
+                <div class="composer">
+                  <div class="composer-tabs" role="tablist">
+                    <button class="ctab" role="tab" aria-selected="${u.tab === "file"}" data-act="utab" data-v="file"><i data-lucide="upload" class="i14"></i>上传剧本 / 小说</button>
+                    <button class="ctab" role="tab" aria-selected="${u.tab === "paste"}" data-act="utab" data-v="paste"><i data-lucide="clipboard-paste" class="i14"></i>粘贴文本</button>
+                  </div>
+                  <div class="drop" id="drop">
+                    ${u.tab === "paste" ? `<textarea id="pasteBox" placeholder="把剧本或小说正文粘贴到这里（≤ 30 万字）">${esc(u.text)}</textarea>`
+                      : u.file ? `<div class="filechip fade-up"><span class="ext">TXT</span><div><div style="font-weight:500">${esc(u.file)}</div><div class="muted num" style="font-size:11.5px">11.41 KB · 约 3,800 字 · 已识别为剧本</div></div><button class="btn btn-ghost btn-sm btn-icon" data-act="clearfile" aria-label="移除"><i data-lucide="x" class="i14"></i></button></div>`
+                      : `<div style="text-align:center"><div style="width:44px;height:44px;border-radius:12px;background:var(--card);display:grid;place-items:center;margin:0 auto 10px"><i data-lucide="file-up"></i></div><div>拖入文件，或 <button class="btn btn-outline btn-sm" data-act="pickfile">选择文件</button></div><div class="muted" style="font-size:11.5px;margin-top:6px">支持 txt / md / docx · 最多 30 万字 · PDF 暂不支持</div></div>`}
+                  </div>
+                  <div class="composer-foot">
+                    <button class="cchip ${u.genre ? "set" : ""}" data-act="pop" data-v="genre"><i data-lucide="drama" class="i14"></i>${esc(u.genre || "题材")}<i data-lucide="chevron-down" class="i14"></i></button>
+                    <button class="cchip set" data-act="pop" data-v="style"><i data-lucide="palette" class="i14"></i>${esc(u.style)}<i data-lucide="chevron-down" class="i14"></i></button>
+                    <button class="cchip ${u.ratio ? "set" : ""}" data-act="pop" data-v="ratio"><i data-lucide="ratio" class="i14"></i>${esc(u.ratio || "比例")}<i data-lucide="chevron-down" class="i14"></i></button>
+                    <button class="cchip set" data-act="pop" data-v="eps"><i data-lucide="list-ordered" class="i14"></i>${esc(u.eps)} 集 · ${u.secs}s/集<i data-lucide="chevron-down" class="i14"></i></button>
+                    <span class="muted" style="margin-left:auto;font-size:11.5px">研读 + 大纲约 <span class="credit num">10</span> 积分</span>
+                    <button class="send" style="margin-left:6px" data-act="create" ${canSend ? "" : "disabled title='先上传文件或粘贴文本'"} aria-label="开始"><i data-lucide="arrow-up"></i></button>
+                  </div>
+                </div>
+              </section>
+              <section style="max-width:1100px; margin:44px auto 40px; padding:0 24px">
+                <div class="row" style="margin-bottom:14px"><b style="font-size:15px">我的短剧</b><span class="muted num">2</span></div>
+                <div class="proj-grid stagger">
+                  ${projCard(S.project.title, `${S.episodes.length} 集 · 第 1 集已出片段`, [1, 0.5, 0.25], "open")}
+                  ${projCard("霸总的契约新娘", "30 集 · 剧本待审阅", [0.5, 0, 0], "")}
+                </div>
+              </section>
+            </div>
+          </main>
+        </div>`;
+      }
+      function projCard(t, sub, prog, act) {
+        const st = (p) => (p >= 1 ? "on" : p > 0 ? "half" : "");
+        return `<button class="proj" ${act ? `data-act="${act}"` : `data-act="toast" data-v="原型只预置了《双鱼玉佩》"`}>
+          <div class="poster" style="--g:${g(t, "scene")}"><div class="scrim"><b style="font-size:13px">${esc(t)}</b></div></div>
+          <div style="padding:8px 2px 0"><div class="muted" style="font-size:12px">${esc(sub)}</div>
+          <div class="stepper" title="剧本 · 资产 · 视频"><i class="${st(prog[0])}"></i><i class="${st(prog[1])}"></i><i class="${st(prog[2])}"></i></div></div></button>`;
+      }
+
+      /* ---------- 工作台外壳 ---------- */
+      function viewWs() {
+        const nav = [["script", "book-open", "剧本"], ["assets", "boxes", "资产"], ["episodes", "film", "分集"]];
+        const dot = { script: S.episodes.some((e) => e.scripted) ? "var(--status-success)" : "", assets: S.assets.some((a) => a.st === "idle" && a.eps !== null) ? "var(--status-warning)" : "var(--status-success)", episodes: "" };
+        const body = S.area === "script" ? viewScript() : S.area === "assets" ? viewAssets() : viewEpisodes();
+        return `<div class="ws">
+          <nav class="rail">
+            <div class="rail-knob" style="top:10px"></div>
+            ${nav.map(([k, ic, l]) => `<button class="rail-btn" aria-current="${S.area === k}" data-act="area" data-v="${k}"><i data-lucide="${ic}"></i>${l}${dot[k] ? `<span class="rail-step" style="background:${dot[k]}"></span>` : ""}</button>`).join("")}
+            <div style="flex:1"></div>
+            <button class="rail-btn" data-act="home" title="返回短剧列表"><i data-lucide="arrow-left"></i>返回</button>
+          </nav>
+          <div class="ws-main">
+            ${topbar()}
+            <div class="ws-body"><div class="ws-content">${body}</div>${sidePanel()}</div>
+          </div>
+        </div>`;
+      }
+      function topbar(extraLeft = "") {
+        const p = S.project;
+        return `<header class="topbar">
+          ${extraLeft || `<input class="title-input" id="titleInput" value="${esc(p.title)}" aria-label="项目名" title="项目名含 bad 时拆解会失败（演示）">`}
+          <span class="saved">${p.saved ? '<i data-lucide="cloud-check" class="i14"></i>已保存' : '<i data-lucide="loader-circle" class="i14 spin"></i>保存中'}</span>
+          <span style="flex:1"></span>
+          <button class="btn btn-ghost btn-sm" data-act="pop" data-v="wsStyle"><i data-lucide="palette" class="i14"></i>${esc(p.style)}</button>
+          <button class="btn btn-ghost btn-sm" data-act="pop" data-v="wsRatio"><i data-lucide="ratio" class="i14"></i>${esc(p.ratio || "比例未定")}</button>
+          <button class="btn btn-ghost btn-sm" data-act="pop" data-v="model" title="跟随后台「文本」类别"><i data-lucide="type" class="i14"></i>${esc(p.model)}<i data-lucide="chevron-down" class="i14"></i></button>
+          <span class="row num credit" style="font-weight:600; padding:0 8px"><i data-lucide="sparkles" class="i14"></i>1,280</span>
+          ${S.route === "ws" ? `<button class="btn btn-ghost btn-sm btn-icon" data-act="toggleSide" title="右栏"><i data-lucide="panel-right" class="i14"></i></button>` : ""}
+        </header>`;
+      }
+
+      /* ---------- 右栏：流水线进度 / 短剧助手 ---------- */
+      function sidePanel() {
+        if (S.sideHidden) return "";
+        return `<aside class="side">
+          <div class="side-head">
+            <div class="seg"><span class="knob"></span>
+              <button aria-pressed="${S.side === "progress"}" data-act="side" data-v="progress"><i data-lucide="list-checks" class="i14"></i>进度</button>
+              <button aria-pressed="${S.side === "assistant"}" data-act="side" data-v="assistant"><i data-lucide="bot" class="i14"></i>短剧助手</button>
+            </div>
+            ${S.side === "assistant" ? '<span class="pill vio" style="margin-left:auto">三期</span>' : ""}
+          </div>
+          ${S.side === "progress" ? progressPanel() : assistantPanel()}
+        </aside>`;
+      }
+      function progressPanel() {
+        return `<div class="scroll" style="flex:1; padding:4px 12px 12px; display:grid; gap:8px; align-content:start">
+          ${S.jobs.map((j) => `<div class="job ${j.fresh ? "fade-up" : ""}">
+            <div class="row"><span class="truncate" style="font-weight:500">${esc(j.step)}</span>
+              <span style="margin-left:auto" class="pill ${j.st === "run" ? "run" : j.st === "bad" ? "bad" : "ok"}">${j.st === "run" ? '<i data-lucide="loader-circle" class="i14 spin"></i>进行中' : j.st === "bad" ? "失败" : "完成"}</span></div>
+            ${j.st === "run" ? `<div class="bar"><i id="jb${j.id}" style="transform:scaleX(${j.p / 100})"></i></div><div class="muted num" style="font-size:11px">${esc(j.sub || "")}</div>` : ""}
+            ${j.st === "bad" ? `<div style="font-size:12px;color:var(--destructive)">${esc(j.err)}</div><div class="row"><button class="btn btn-outline btn-sm" data-act="retry" data-v="${j.id}"><i data-lucide="rotate-cw" class="i14"></i>重试</button><span class="muted" style="font-size:11px">失败不扣积分</span></div>` : ""}
+            ${j.st === "ok" ? `<div class="muted num" style="font-size:11px">${esc(j.at || "刚刚")}</div>` : ""}
+          </div>`).join("")}
+          <div class="muted" style="font-size:11px; padding:4px 2px">刷新或断线后自动对账恢复进度。</div>
+        </div>`;
+      }
+      function assistantPanel() {
+        const ep3 = E(3);
+        return `<div class="scroll" style="flex:1; padding:4px 12px; display:flex; flex-direction:column; gap:10px">
+          ${S.chat.map((m) => `<div class="msg ${m.me ? "me" : "ai"}">${esc(m.t)}</div>`).join("")}
+          ${S.approval === "pending" ? `<div class="approve fade-up">
+            <div class="row"><i data-lucide="file-pen" class="i14"></i><b style="font-size:12.5px">修改第 3 集剧本</b><span class="pill warn" style="margin-left:auto">待你确认</span></div>
+            <div class="diff"><div class="del">林川转身离开了井边。</div><div class="add">林川在井沿摸到半枚双鱼玉佩，背面刻着母亲的名字。</div></div>
+            ${ep3.locked ? `<div style="font-size:12px;color:var(--status-warning)">第 3 集已拆解资产，剧本已锁定，不能修改。</div>` : ""}
+            <div class="row"><button class="btn btn-primary btn-sm" data-act="approve" ${ep3.locked ? "disabled" : ""}>写入第 3 集</button><button class="btn btn-ghost btn-sm" data-act="reject">不用了</button></div>
+          </div>` : `<div class="muted" style="font-size:12px">${S.approval === "ok" ? "✓ 已写入第 3 集，可在剧本里撤销。" : "已放弃这次修改。"}</div>`}
+        </div>
+        <div class="chatbox"><textarea placeholder="说说想怎么改剧本、资产或分镜…" id="chatIn"></textarea><button class="send" style="width:30px;height:30px" data-act="chat" aria-label="发送"><i data-lucide="arrow-up" class="i14"></i></button></div>`;
+      }
+
+      /* ---------- 剧本 ---------- */
+      function viewScript() {
+        const e = S.doc.startsWith("ep") ? E(+S.doc.slice(2)) : null;
+        const analyzing = S.analyzing;
+        const unscripted = S.episodes.filter((x) => !x.scripted);
+        const title = S.doc === "outline" ? "故事大纲" : S.doc === "people" ? "人物传记" : e ? `第 ${e.no} 集 · ${e.title}` : "";
+        const html = S.doc === "outline" ? S.outline : S.doc === "people" ? S.people : e ? e.html : "";
+        let pill = "";
+        if (!analyzing && S.episodes.length) {
+          if (unscripted.length) pill = `<span>${unscripted.length} 集还没有剧本</span><span class="muted num">约 <span class="credit">${unscripted.length * 3}</span> 积分</span><button class="btn btn-primary btn-sm" data-act="genScripts" ${textBusy() ? "disabled title='有进行中的流水线任务'" : ""}><i data-lucide="sparkles" class="i14"></i>生成分集剧本</button>`;
+          else if (S.episodes.some((x) => !x.locked)) pill = `<span>剧本整理完毕，下一步拆解角色和场景</span><button class="btn btn-primary btn-sm" data-act="openBreakdown" ${textBusy() ? "disabled title='有进行中的流水线任务'" : ""}><i data-lucide="scan-search" class="i14"></i>资产拆解</button>`;
+        }
+        return `<div class="toc scroll">
+            <button class="toc-item" aria-current="${S.doc === "outline"}" data-act="doc" data-v="outline"><i data-lucide="list-tree" class="i14"></i>故事大纲</button>
+            <button class="toc-item" aria-current="${S.doc === "people"}" data-act="doc" data-v="people"><i data-lucide="users" class="i14"></i>人物传记</button>
+            <div class="row" style="padding:12px 8px 4px; font-size:11px" class="muted"><span class="muted">分集剧本</span><span class="muted num" style="margin-left:auto">${S.episodes.length} 集</span></div>
+            <div class="stagger" style="display:grid;gap:1px">${S.episodes.map((x) => `<button class="toc-item" aria-current="${S.doc === "ep" + x.no}" data-act="doc" data-v="ep${x.no}">
+              <span class="num muted" style="width:16px">${x.no}</span><span class="truncate">${esc(x.title)}</span>
+              <span class="st">${x.locked ? '<i data-lucide="lock" class="i14" style="color:var(--status-warning)"></i>' : x.gen ? '<i data-lucide="loader-circle" class="i14 spin"></i>' : x.scripted ? "" : '<span class="pill" style="height:18px">待生成</span>'}</span></button>`).join("")}</div>
+            ${analyzing ? `<div style="padding:8px; display:grid; gap:8px">${[80, 60, 70, 50].map((w) => `<div class="skel" style="width:${w}%"></div>`).join("")}</div>` : ""}
+          </div>
+          <div class="paper-wrap">
+            ${analyzing ? analyzingView() : `<div class="paper fade-up" key="${S.doc}">
+              <div class="row"><h2>${esc(title)}</h2>${e && e.locked ? '<span class="pill warn"><i data-lucide="lock" class="i14"></i>已锁定</span>' : ""}</div>
+              ${e ? `<div class="muted" style="font-size:12px">约 ${e.no === 1 ? 58 : 60} 秒 · ${e.scripted ? "2 场" : "—"}</div>` : ""}
+              ${e && e.locked ? `<div class="lockbar"><i data-lucide="lock" class="i14" style="color:var(--status-warning)"></i><div>这一集已经拆解资产，剧本已锁定。资产和分镜都以这一版为准。</div></div>` : ""}
+              ${e && !e.scripted ? `<div style="margin-top:40px; text-align:center" class="muted"><i data-lucide="file-pen-line" style="width:28px;height:28px"></i><div style="margin-top:8px">这一集还没有剧本</div><div style="font-size:12px">可以直接在下面手写，或用底部的「生成分集剧本」</div></div>` : ""}
+              <div class="doc" id="docEd" contenteditable="${!(e && e.locked)}" spellcheck="false">${html}</div>
+            </div>`}
+            ${pill ? `<div class="nextpill chrome">${pill}</div>` : ""}
+          </div>`;
+      }
+      function analyzingView() {
+        const steps = [["研读剧本", "判断是剧本还是小说，整理章节与人物"], ["故事大纲与人物传记", "提炼主线、人物关系和每集梗概"], ["按集拆分", "生成分集目录"]];
+        return `<div class="paper"><h2 class="shimmer">正在研读剧本…</h2><div class="muted" style="margin-top:4px">可以离开这个页面，完成后会通知你</div>
+          <div class="analyze-steps">${steps.map(([t, s], i) => `<div class="astep ${i < S.analyzeStep ? "done" : i === S.analyzeStep ? "on" : ""}"><span class="dotc">${i < S.analyzeStep ? '<i data-lucide="check" class="i14"></i>' : i === S.analyzeStep ? '<i data-lucide="loader-circle" class="i14 spin"></i>' : ""}</span><div><div style="font-weight:500">${t}</div><div class="muted" style="font-size:12px">${s}</div></div></div>`).join("")}</div>
+          <div style="margin-top:28px; display:grid; gap:10px">${[96, 88, 92, 70, 84].map((w) => `<div class="skel" style="width:${w}%"></div>`).join("")}</div></div>`;
+      }
+
+      /* ---------- 资产 ---------- */
+      function filtered() {
+        return S.assets.filter((a) => {
+          if (a.type !== S.type) return false;
+          if (S.epFilter === "none") return a.eps === null;
+          if (a.eps === null) return false;
+          return S.epFilter === "all" || inEp(a, +S.epFilter);
+        });
+      }
+      function viewAssets() {
+        const fl = S.epFilter === "all" ? "全集" : S.epFilter === "none" ? "未分类" : `第 ${S.epFilter} 集`;
+        return `<div class="assets">
+          <div class="assets-head">
+            <div class="seg"><span class="knob"></span>
+              <button aria-pressed="${S.assetView === "list"}" data-act="aview" data-v="list"><i data-lucide="layout-grid" class="i14"></i>列表</button>
+              <button aria-pressed="${S.assetView === "canvas"}" data-act="aview" data-v="canvas"><i data-lucide="frame" class="i14"></i>画布</button>
+            </div>
+            <span class="muted" style="font-size:12px">同一份资产，两种看法</span>
+            <span style="flex:1"></span>
+            <button class="btn btn-outline btn-sm" data-act="pop" data-v="epFilter"><i data-lucide="filter" class="i14"></i>${fl}<i data-lucide="chevron-down" class="i14"></i></button>
+            ${S.assetView === "list" ? `<button class="btn ${S.multi ? "btn-primary" : "btn-outline"} btn-sm" data-act="multi"><i data-lucide="list-checks" class="i14"></i>${S.multi ? "完成" : "多选"}</button>` : ""}
+            <button class="btn btn-outline btn-sm" data-act="openBreakdown" ${textBusy() ? "disabled" : ""}><i data-lucide="scan-search" class="i14"></i>资产拆解</button>
+          </div>
+          ${S.assetView === "list" ? assetList() : assetCanvas()}
+        </div>`;
+      }
+      function assetList() {
+        const items = filtered();
+        const t = TYPES.find((x) => x[0] === S.type);
+        const pending = S.assets.filter((a) => a.type === S.type && a.eps !== null && (a.st === "idle" || a.st === "error"));
+        const tabs = TYPES.map(([k, l]) => `<button class="ttab" role="tab" aria-selected="${S.type === k}" data-act="atype" data-v="${k}">${l}<span class="cnt num">${S.assets.filter((a) => a.type === k && (S.epFilter === "none" ? a.eps === null : a.eps !== null)).length}</span></button>`).join("");
+        return `<div class="typetabs" role="tablist">${tabs}</div>
+          <div class="scroll" style="flex:1">
+            ${pending.length && ["character", "scene", "prop"].includes(S.type) ? `<div class="banner fade-up"><i data-lucide="sparkles" class="i14" style="color:var(--credit)"></i>
+              <div class="grow"><b>还有 ${pending.length} 个${t[1]}没有图</b><span class="muted">　可以上传，或勾选后批量生成</span></div>
+              ${S.multi ? `<button class="btn btn-primary btn-sm" data-act="batchGen" ${S.selected.size ? "" : "disabled title='先勾选卡片'"}>生成 ${S.selected.size} 个 · <span class="num">${S.selected.size * 2}</span> 积分</button>`
+                : `<button class="btn btn-outline btn-sm" data-act="selectPending"><i data-lucide="wand-sparkles" class="i14"></i>全部生成</button>`}</div>` : ""}
+            <div class="acards stagger">
+              ${items.map(assetCard).join("")}
+              <button class="acard ${S.type}" data-act="newAsset"><div class="frame"><div class="empty"><div><i data-lucide="plus"></i><div style="margin-top:4px">新建${t[1]}</div></div></div></div>
+                <div class="meta"><div class="sub">${S.epFilter === "all" || S.epFilter === "none" ? "全集出现" : `出现在第 ${S.epFilter} 集`}</div></div></button>
+            </div>
+            ${!items.length ? `<div class="muted" style="text-align:center; padding:0 0 30px">${S.epFilter === "none" ? "画布里没有未分类的" + t[1] : "这个筛选下还没有" + t[1]}</div>` : ""}
+          </div>`;
+      }
+      function assetCard(a) {
+        const sel = S.selected.has(a.id);
+        const can = a.st === "idle" || a.st === "error";
+        let inner;
+        if (a.st === "done") inner = poster(a.name + a.look, a.type) + `<div class="scrim"><div style="font-weight:600;font-size:12.5px">${esc(a.name)}</div></div>`;
+        else if (a.st === "run") inner = `<div class="empty" style="border-style:solid"><div><svg class="ring-prog" viewBox="0 0 36 36"><circle cx="18" cy="18" r="15" fill="none" stroke="var(--muted)" stroke-width="3"/><circle cx="18" cy="18" r="15" fill="none" stroke="var(--status-running)" stroke-width="3" stroke-dasharray="94" stroke-dashoffset="${94 - (a.p || 10) * 0.94}" transform="rotate(-90 18 18)" style="transition:stroke-dashoffset 200ms linear"/></svg><div class="shimmer" style="margin-top:6px">生成中</div></div></div>`;
+        else if (a.st === "analyzing") inner = `<div class="empty"><div><i data-lucide="loader-circle" class="spin"></i><div class="shimmer" style="margin-top:6px">正在分析设定</div></div></div>`;
+        else if (a.st === "error") inner = `<div class="empty" style="border-color:color-mix(in oklch,var(--destructive) 40%,transparent)"><div style="color:var(--destructive)"><i data-lucide="circle-x"></i><div style="margin-top:4px">生成失败</div><div class="muted" style="font-size:11px">内容审核未通过</div></div></div>`;
+        else inner = `<div class="empty"><div><i data-lucide="${TYPES.find((t) => t[0] === a.type)[2]}"></i><div style="margin-top:4px">${a.type === "character" ? "待生成形象" : "待生成"}</div></div></div>`;
+        return `<div class="acard ${a.type} ${sel ? "sel" : ""}">
+          <div class="frame">${inner}
+            ${S.multi && can ? `<button class="ck" data-act="sel" data-v="${a.id}" aria-label="选择">${sel ? '<i data-lucide="check" class="i14"></i>' : ""}</button>` : ""}
+            ${!S.multi ? `<div class="hover">${can ? `<button class="btn btn-primary btn-sm" data-act="genOne" data-v="${a.id}"><i data-lucide="sparkles" class="i14"></i>${a.st === "error" ? "重试" : "生成"}</button>` : ""}<button class="btn btn-sm chrome" data-act="locate" data-v="${a.id}"><i data-lucide="locate-fixed" class="i14"></i>画布</button></div>` : ""}
+          </div>
+          <div class="meta"><div class="name truncate">${esc(a.name)}${a.look ? `<span class="muted" style="font-weight:400"> · ${esc(a.look)}</span>` : ""}</div>
+            <div class="sub row" style="gap:6px">${a.voice ? '<i data-lucide="audio-lines" class="i14" title="已绑定音色"></i>' : ""}${a.eps === null ? "未分类" : a.eps.length === 0 ? '<span class="pill" style="height:16px;font-size:10px">全集</span>' : `<span class="ep-dots">${a.eps.map((n) => `<i class="num">${n}</i>`).join("")}</span>`}</div></div>
+        </div>`;
+      }
+      function assetCanvas() {
+        const sel = S.assets.find((a) => a.id === S.canvasSel);
+        const groups = {};
+        S.assets.filter((a) => S.epFilter === "none" ? a.eps === null : a.eps !== null && (S.epFilter === "all" || inEp(a, +S.epFilter))).forEach((a) => ((groups[a.type] = groups[a.type] || []).push(a)));
+        return `<div class="canvas" id="cv">
+          <div class="world ${S.ease ? "ease" : ""}" id="world" style="transform:translate(${S.pan.x}px, ${S.pan.y}px)">
+            ${S.assets.map((a) => {
+              const isSel = a.id === S.canvasSel;
+              const t = TYPES.find((x) => x[0] === a.type);
+              return `<div class="cnode ${isSel ? "sel" : ""} ${S.flash === a.id ? "flash" : ""}" style="left:${a.x}px; top:${a.y}px">
+                ${isSel ? `<div class="node-bar chrome">
+                  <button class="btn btn-ghost btn-sm" data-act="pop" data-v="nodeEps"><i data-lucide="calendar-range" class="i14"></i>出现集数 · ${esc(epText(a))}</button>
+                  <button class="btn btn-ghost btn-sm" data-act="toList" data-v="${a.id}"><i data-lucide="layout-grid" class="i14"></i>列表</button></div>` : ""}
+                <div class="lbl"><i data-lucide="${a.type === "character" ? "contact-round" : t[2]}" class="i14"></i>${a.type === "character" ? "角色卡" : t[1]}${a.eps === null ? ' · <span style="color:var(--status-warning)">未分类</span>' : ""}</div>
+                <div class="body" data-act="nodeSel" data-v="${a.id}">
+                  ${a.st === "done" ? poster(a.name + a.look, a.type) : `<div class="ph">${a.st === "run" ? '<span class="shimmer">生成中…</span>' : a.st === "error" ? '<span style="color:var(--destructive)">生成失败</span>' : `<i data-lucide="${t[2]}"></i>`}</div>`}
+                  <div style="padding:8px 10px"><div style="font-weight:500" class="truncate">${esc(label(a))}</div>${a.type === "character" ? `<div class="muted row" style="font-size:11px;gap:4px"><i data-lucide="audio-lines" class="i14"></i>${a.voice ? "已绑定参考音频" : "音色：清亮少年音"}</div>` : ""}</div>
+                </div>
+                ${isSel ? genPanel(a) : ""}
+              </div>`;
+            }).join("")}
+          </div>
+          <div class="lib-float chrome" data-stop>
+            <div class="row" style="padding:10px 10px 4px"><b>资产库</b><span class="muted num" style="font-size:11px">${S.assets.length}</span><button class="btn btn-ghost btn-sm" style="margin-left:auto" data-act="pop" data-v="epFilter">${S.epFilter === "all" ? "全集" : S.epFilter === "none" ? "未分类" : "第 " + S.epFilter + " 集"}<i data-lucide="chevron-down" class="i14"></i></button></div>
+            <div style="padding:0 10px 6px"><input class="input" style="width:100%;height:30px;font-size:12px" placeholder="搜索资产"></div>
+            <div class="scroll" style="flex:1;padding-bottom:8px">${Object.entries(groups).map(([k, list]) => `<div class="lib-group"><i data-lucide="${TYPES.find((t) => t[0] === k)[2]}" class="i14"></i>${TYPES.find((t) => t[0] === k)[1]}<span class="num">${list.length}</span></div>${list.map((a) => `<div class="lib-item" data-act="locate" data-v="${a.id}"><span class="lib-thumb">${a.st === "done" ? poster(a.name + a.look, a.type) : `<i data-lucide="${TYPES.find((t) => t[0] === a.type)[2]}" class="i14"></i>`}</span><span class="truncate grow">${esc(label(a))}</span></div>`).join("")}`).join("") || `<div class="muted" style="padding:16px 12px;font-size:12px">这个筛选下没有资产</div>`}</div>
+          </div>
+          <div class="chrome row" style="position:absolute;right:12px;bottom:12px;border-radius:10px;padding:4px 10px;font-size:11.5px" data-stop><i data-lucide="hand" class="i14"></i>拖动空白处平移 · 点节点设置出现集数</div>
+        </div>`;
+      }
+
+      /* 节点生成面板：与无限画布同一个组件（TaskPromptPanel），默认带上拆解时写好的资产提示词 */
+      function genPanel(a) {
+        const locked = a.st === "run";
+        const preset = a.type === "character" ? (a.preset ?? "角色三视图") : a.type === "scene" ? (a.preset ?? "场景参考图") : a.type === "prop" ? (a.preset ?? "道具参考图") : "";
+        const len = (a.prompt || "").replace(/<[^>]+>/g, "").length;
+        return `<div class="gpanel" data-stop>
+          <div class="row" style="align-items:flex-start">
+            <div class="gp-refs">
+              ${a.type === "character" && a.st === "done" ? `<span class="gp-ref" title="当前形象">${poster(a.name + a.look, a.type)}<span class="tag">形象</span></span>` : ""}
+              ${a.voice ? `<span class="gp-ref" title="角色卡绑定的参考音频"><i data-lucide="audio-lines"></i><span class="tag">音色</span></span>` : ""}
+              <button class="gp-ref add" data-act="toast" data-v="上传参考图，或从画布连线 / @ 引用（同无限画布）" title="添加参考素材"><i data-lucide="plus"></i></button>
+              <span class="muted" style="font-size:11.5px; line-height:1.4">参考素材<br>连线、上传或 @</span>
+            </div>
+            <button class="gp-icon" data-act="toast" data-v="放大编辑提示词（同无限画布）" title="放大编辑"><i data-lucide="maximize-2" class="i14"></i></button>
+          </div>
+          <div class="gp-prompt" id="gprompt" data-asset="${a.id}" contenteditable="${!locked}" spellcheck="false" data-ph="写下你想要的画面，输入 @ 引用画布里的素材。">${a.prompt || ""}</div>
+          <span class="gp-count" id="gpcount" style="${len ? "" : "visibility:hidden"}">${len}/2000</span>
+          ${a.st === "error" ? `<div class="gp-notice">上次生成失败：内容审核未通过。改一下提示词再试，失败不扣积分。</div>` : ""}
+          <div class="gp-tools">
+            <button class="pchip" data-act="pop" data-v="imgModel"><span class="truncate">${esc(S.imgModel || "Seedream 4.0")}</span><i data-lucide="chevron-down"></i></button>
+            <button class="pchip" data-act="pop" data-v="imgParams"><span class="truncate num">${esc(a.type === "character" ? "3:4" : S.project.ratio || "16:9")} · ${esc(S.imgRes || "2K")}</span><i data-lucide="chevron-down"></i></button>
+            ${preset ? `<button class="pchip" data-act="pop" data-v="preset" style="color:var(--preset)"><i data-lucide="sparkle" class="i14"></i><span class="truncate">${esc(preset)}</span></button>` : ""}
+            <span class="gp-credits" title="生成 1 张"><i data-lucide="sparkle"></i>2</span>
+            <button class="gp-submit" data-act="genFromPanel" data-v="${a.id}" ${locked ? "disabled" : ""} title="${locked ? "生成中" : "开始生成 ⌘↵"}">${locked ? '<i data-lucide="loader-circle" class="i14 spin"></i>' : '<i data-lucide="arrow-up" class="i14" style="stroke-width:2.5"></i>'}</button>
+          </div>
+        </div>`;
+      }
+
+      /* ---------- 分集视频 ---------- */
+      function viewEpisodes() {
+        return `<div class="scroll" style="flex:1">
+          <div class="row" style="padding:22px 20px 16px; align-items:flex-end">
+            <div><div style="font-size:20px;font-weight:600">分集视频</div><div class="muted num" style="font-size:12px">共 ${S.episodes.length} 集 · 每集先生成分镜脚本，再逐片段出视频</div></div>
+            <span style="flex:1"></span>
+            <button class="btn btn-outline btn-sm" data-act="addEp"><i data-lucide="plus" class="i14"></i>新增一集</button>
+          </div>
+          <div class="eps-grid stagger">${S.episodes.map(epCard).join("")}</div>
+        </div>`;
+      }
+      function epCard(e) {
+        const chars = S.assets.filter((a) => a.type === "character" && inEp(a, e.no)).length;
+        const scenes = S.assets.filter((a) => a.type === "scene" && inEp(a, e.no)).length;
+        const segs = S.segs[e.no] || [];
+        const done = segs.filter((s) => s.chosen >= 0).length;
+        const st = e.sb === "ready" ? `<span class="pill ${done === segs.length && segs.length ? "ok" : "run"}">${done}/${segs.length} 片段已出视频</span>` : e.sb === "gen" ? '<span class="pill run"><i data-lucide="loader-circle" class="i14 spin"></i>生成脚本中</span>' : e.locked ? '<span class="pill">待生成脚本</span>' : '<span class="pill warn">需先资产拆解</span>';
+        const btn = e.sb === "ready" ? `<button class="btn btn-primary btn-sm" data-act="studio" data-v="${e.no}">进入制作<i data-lucide="arrow-right" class="i14"></i></button>`
+          : e.sb === "gen" ? `<button class="btn btn-outline btn-sm" disabled>生成中…</button>`
+          : e.locked ? `<button class="btn btn-outline btn-sm" data-act="genSb" data-v="${e.no}" ${textBusy() ? "disabled title='有进行中的流水线任务'" : ""}><i data-lucide="sparkles" class="i14"></i>生成脚本 · <span class="credit num">4</span></button>`
+          : `<button class="btn btn-outline btn-sm" data-act="area" data-v="script" title="先在剧本页对这一集做资产拆解">去拆解</button>`;
+        const sec = segs.reduce((t, s) => t + s.sec, 0);
+        return `<div class="ep-card">
+          ${e.sb === "ready" && done ? poster("ep" + e.no, "scene") : `<div class="ph"><i data-lucide="play"></i></div>`}
+          <div class="col grow" style="gap:6px">
+            <div class="row">${st}</div>
+            <div style="font-weight:600; font-size:14px">第 ${e.no} 集 · ${esc(e.title)}</div>
+            <div class="muted num" style="font-size:12px">角色 ${chars} · 场景 ${scenes}${segs.length ? ` · ${segs.length} 片段 · ${sec}s` : ""}</div>
+            <div style="flex:1"></div>
+            <div class="row">${btn}</div>
+          </div>
+        </div>`;
+      }
+
+      /* ---------- 片段工作区 ---------- */
+      function viewStudio() {
+        const segs = S.segs[S.curEp] || [];
+        const s = segs[S.curSeg];
+        const e = E(S.curEp);
+        const lib = S.assets.filter((a) => a.eps !== null && (S.libAll || inEp(a, S.curEp)));
+        const groups = {}; lib.forEach((a) => ((groups[a.type] = groups[a.type] || []).push(a)));
+        const refs = s ? [...new Set([...s.html.matchAll(/data-id="(\w+)"/g)].map((m) => m[1]))].map((id) => S.assets.find((a) => a.id === id)).filter(Boolean) : [];
+        const imgRefs = refs.length, maxRefs = 9;
+        const total = segs.reduce((t, x) => t + x.sec, 0);
+        const left = `<button class="btn btn-ghost btn-sm" data-act="backEps"><i data-lucide="chevron-left" class="i14"></i>分集视频</button><span class="muted">/</span><b style="padding:0 6px">第 ${e.no} 集 · ${esc(e.title)}</b>`;
+        const out = s && s.chosen >= 0;
+        return `<div class="studio">
+          <header class="topbar">${left}
+            <span class="saved"><i data-lucide="cloud-check" class="i14"></i>已保存</span><span style="flex:1"></span>
+            <button class="btn btn-ghost btn-sm" data-act="pop" data-v="vmodel"><i data-lucide="clapperboard" class="i14"></i>${esc(S.vmodel || "Seedance 2.0 Fast")}<i data-lucide="chevron-down" class="i14"></i></button>
+            <span class="muted" style="font-size:12px">720p · ${esc(S.project.ratio)}</span>
+            <span class="row num credit" style="font-weight:600; padding:0 8px"><i data-lucide="sparkles" class="i14"></i>1,280</span>
+            <button class="btn btn-primary btn-sm" data-act="compose" ${segs.some((x) => x.chosen >= 0) ? "" : "disabled title='至少一个片段有视频'"}><i data-lucide="combine" class="i14"></i>合成整集<span class="pill vio" style="height:16px;font-size:10px">三期</span></button>
+          </header>
+          <div class="studio-body">
+            <aside class="slib">
+              <div class="row" style="padding:12px 12px 8px"><b>资产库</b>
+                <div class="seg" style="margin-left:auto"><span class="knob"></span><button aria-pressed="${!S.libAll}" data-act="libAll" data-v="0">本集</button><button aria-pressed="${!!S.libAll}" data-act="libAll" data-v="1">全集</button></div></div>
+              <div class="muted" style="font-size:11px;padding:0 12px 6px">拖到提示词里，或在提示词里输入 <span class="kbd">@</span></div>
+              <div class="scroll" style="flex:1">${Object.entries(groups).map(([k, list]) => `<div class="lib-group"><i data-lucide="${TYPES.find((t) => t[0] === k)[2]}" class="i14"></i>${TYPES.find((t) => t[0] === k)[1]}</div>${list.map((a) => `<div class="lib-item" draggable="true" data-drag="${a.id}"><span class="lib-thumb">${a.st === "done" ? poster(a.name + a.look, a.type) : `<i data-lucide="${TYPES.find((t) => t[0] === a.type)[2]}" class="i14"></i>`}</span><span class="grow truncate">${esc(label(a))}</span>${a.st !== "done" ? '<span class="pill warn" style="height:16px;font-size:10px">无图</span>' : ""}<i data-lucide="grip-vertical" class="i14 muted"></i></div>`).join("")}`).join("")}</div>
+            </aside>
+            <section class="seditor">
+              ${s ? `<div class="seditor-in fade-up">
+                <div class="row" style="align-items:baseline"><div style="font-size:22px;font-weight:600" class="num">片段 ${String(S.curSeg + 1).padStart(2, "0")}</div>
+                  <button class="btn btn-ghost btn-sm num" data-act="pop" data-v="segSec">${s.sec}s<i data-lucide="chevron-down" class="i14"></i></button>
+                  <span style="flex:1"></span>
+                  ${s.st === "error" ? '<span class="pill bad">生成失败</span>' : s.st === "run" ? '<span class="pill run"><i data-lucide="loader-circle" class="i14 spin"></i>生成中</span>' : out ? '<span class="pill ok">已出视频</span>' : ""}
+                </div>
+                <div class="row" style="margin:12px 0 8px"><span class="muted" style="font-size:12px">参考素材</span><span class="pill num">${imgRefs}/${maxRefs}</span></div>
+                <div class="refs">${refs.map((a) => `<span class="ref"><span class="lib-thumb">${a.st === "done" ? poster(a.name + a.look, a.type) : `<i data-lucide="${TYPES.find((t) => t[0] === a.type)[2]}" class="i14"></i>`}</span>${esc(label(a))}${a.type === "character" && a.voice ? '<i data-lucide="audio-lines" class="i14 muted"></i>' : ""}${a.st !== "done" ? '<span class="pill warn" style="height:16px;font-size:10px">只用文字</span>' : ""}</span>`).join("") || '<span class="muted" style="font-size:12px">还没有引用，输入 @ 或从左侧拖入</span>'}</div>
+                <div class="prompt" id="prompt" contenteditable="true" spellcheck="false" style="margin-top:14px">${s.html}</div>
+                <div class="row" style="margin-top:12px">
+                  <button class="btn btn-outline btn-sm" data-act="mentionBtn"><i data-lucide="at-sign" class="i14"></i>引用</button>
+                  <button class="btn btn-outline btn-sm" data-act="keyframe"><i data-lucide="image" class="i14"></i>${s.key ? "首帧已生成 · 图生视频" : "生成首帧（可选）"}</button>
+                  <span style="flex:1"></span>
+                  <span class="muted num" style="font-size:12px">约 <span class="credit">${Math.round(s.sec * 1.5)}</span> 积分</span>
+                  <button class="btn btn-primary" data-act="genSeg" ${s.st === "run" ? "disabled" : ""}><i data-lucide="sparkles" class="i14"></i>${out ? "再生成一次" : "立即生成"}<span class="kbd" style="border-color:oklch(0.5 0 0 / 0.3);color:inherit">⌘↵</span></button>
+                </div>
+                ${s.st === "error" ? `<div class="lockbar fade-up" style="background:color-mix(in oklch,var(--destructive) 8%,transparent);border-color:color-mix(in oklch,var(--destructive) 28%,transparent)"><i data-lucide="circle-x" class="i14" style="color:var(--destructive)"></i><div>生成失败：供应商内容审核未通过（模拟）。改一下提示词再试，失败不扣积分。</div></div>` : ""}
+                <div class="shots">
+                  <div class="shot head"><span>分镜</span><span>时长</span><span>景别</span><span>动作与对白</span></div>
+                  <div class="shot"><span>分镜 1</span><span class="num">8s</span><span>全景</span><span>黑屏淡入，林川从远处沿土路跑回村中</span></div>
+                  <div class="shot"><span>分镜 2</span><span class="num">4s</span><span>中景</span><span>放慢脚步，望向两侧紧闭的门窗</span></div>
+                </div>
+                <div class="muted" style="font-size:11.5px;margin-top:6px">分镜表来自分镜脚本，供参考；真正提交的是上面的提示词。</div>
+              </div>` : `<div class="muted" style="text-align:center;margin-top:80px">这一集还没有片段，点下方「+」新建</div>`}
+            </section>
+            <aside class="preview">
+              <div class="row"><b>预览</b><span style="flex:1"></span>${S.playing ? '<span class="pill" style="background:color-mix(in oklch,var(--beam) 18%,transparent);color:var(--beam)">连播中</span>' : ""}</div>
+              <div class="player ${S.project.ratio === "16:9" ? "wide" : ""} ${S.playing || S.justGen ? "playing" : ""}" id="player">
+                ${out ? poster(s.id + "t" + s.chosen, "scene") + `<div class="scrim num" style="display:flex;justify-content:space-between"><span>片段 ${String(S.curSeg + 1).padStart(2, "0")}</span><span>00:${String(s.sec).padStart(2, "0")}</span></div><button class="btn chrome btn-icon" style="position:relative;z-index:2;width:44px;height:44px;border-radius:50%" data-act="play"><i data-lucide="${S.playing ? "pause" : "play"}"></i></button>`
+                  : s && s.st === "run" ? `<div style="text-align:center"><i data-lucide="loader-circle" class="spin"></i><div class="shimmer" style="margin-top:8px">生成中，约 1 分钟</div></div>`
+                  : `<div style="text-align:center" class="muted"><i data-lucide="clapperboard"></i><div style="margin-top:6px;font-size:12px">还没有生成内容</div></div>`}
+              </div>
+              ${s && s.takes.length ? `<div><div class="muted" style="font-size:11.5px;margin-bottom:6px">生成结果 · 点选即采用</div><div class="takes">${s.takes.map((_, i) => `<button class="take" aria-pressed="${s.chosen === i}" data-act="take" data-v="${i}">${poster(s.id + "t" + i, "scene")}</button>`).join("")}</div></div>` : ""}
+            </aside>
+          </div>
+          <div class="timeline">
+            <div class="row" style="margin-bottom:6px">
+              <button class="btn btn-ghost btn-sm btn-icon" data-act="play" title="连播（三期）"><i data-lucide="${S.playing ? "pause" : "play"}" class="i14"></i></button>
+              <span class="num muted" style="font-size:12px">${fmt(S.playT)} / ${fmt(total)}</span>
+              <span class="pill vio" style="height:16px;font-size:10px">连播 · 三期</span>
+              <span style="flex:1"></span>
+              <button class="btn btn-ghost btn-sm" data-act="batchSeg"><i data-lucide="layers" class="i14"></i>批量生成</button>
+              <span class="muted" style="font-size:11.5px">拖动片段可排序</span>
+            </div>
+            <div class="track" id="track">
+              ${segs.map((x, i) => `<button class="clip" draggable="true" data-clip="${i}" aria-current="${i === S.curSeg}" data-act="seg" data-v="${i}" style="width:${x.sec * 12}px">
+                ${x.chosen >= 0 ? poster(x.id + "t" + x.chosen, "scene") : `<div class="cs">${x.st === "run" ? '<i data-lucide="loader-circle" class="i14 spin"></i>' : x.st === "error" ? '<i data-lucide="circle-x" class="i14" style="color:var(--destructive)"></i>' : '<i data-lucide="film" class="i14"></i>'}</div>`}
+                <div class="cap ${x.chosen >= 0 ? "" : "dim"} num"><span>${String(i + 1).padStart(2, "0")}</span><span>${x.sec}s</span></div></button>`).join("")}
+              <button class="addclip" data-act="addSeg" title="新增片段"><i data-lucide="plus" class="i14"></i></button>
+              ${S.playing ? `<div class="playhead" id="ph" style="left:${playX()}px"></div>` : ""}
+            </div>
+          </div>
+        </div>`;
+      }
+      const fmt = (t) => `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
+      function playX() { const segs = S.segs[S.curEp]; let x = 0, t = S.playT; for (const s of segs) { if (t <= s.sec) return x + t * 12; t -= s.sec; x += s.sec * 12 + 4; } return x; }
+
+      /* ================= 浮层 ================= */
+      let popEl = null, popKey = "";
+      function closePop() {
+        if (!popEl) return; const el = popEl; popEl = null; popKey = "";
+        el.classList.add("out"); setTimeout(() => el.remove(), 126);
+      }
+      function openPop(anchor, key, html) {
+        if (popKey === key) return closePop();
+        closePop();
+        const r = anchor.getBoundingClientRect();
+        const el = document.createElement("div"); el.className = "pop"; el.innerHTML = html; document.body.appendChild(el);
+        const w = el.offsetWidth, h = el.offsetHeight;
+        let left = Math.min(r.left, innerWidth - w - 8), top = r.bottom + 6, origin = "top left";
+        if (top + h > innerHeight - 8) { top = r.top - h - 6; origin = "bottom left"; }
+        el.style.left = Math.max(8, left) + "px"; el.style.top = top + "px"; el.style.setProperty("--origin", origin);
+        popEl = el; popKey = key; icons();
+      }
+      function popContent(key) {
+        const u = S.upload;
+        if (key === "genre") return `<div class="menu-label">叙事题材 · 决定节奏和表达</div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:2px;width:300px">${GENRES.map((x) => `<button class="menu-item ${u.genre === x ? "active" : ""}" data-act="setU" data-k="genre" data-v="${x}">${x}</button>`).join("")}</div><button class="menu-item muted" data-act="setU" data-k="genre" data-v="">不指定</button>`;
+        if (key === "style" || key === "wsStyle") { const cur = key === "style" ? u.style : S.project.style; return `<div class="menu-label">画风 · 决定媒介、造型、配色与光影</div><div class="style-grid" style="width:420px">${STYLES.map((x) => `<button class="style-card" aria-pressed="${cur === x}" data-act="${key === "style" ? "setU" : "setP"}" data-k="style" data-v="${x}">${poster(x, "scene")}<span>${x}</span></button>`).join("")}<button class="style-card" aria-pressed="${cur === "自定义"}" data-act="${key === "style" ? "setU" : "setP"}" data-k="style" data-v="自定义"><div class="poster" style="--g:var(--muted);display:grid;place-items:center"><i data-lucide="pencil"></i></div><span>自定义</span></button></div>${key === "wsStyle" ? '<div class="muted" style="font-size:11px;padding:4px 8px">改画风只影响之后生成的内容</div>' : ""}`; }
+        if (key === "ratio" || key === "wsRatio") { const cur = key === "ratio" ? u.ratio : S.project.ratio; const locked = key === "wsRatio" && S.episodes.some((e) => e.locked); return `<div class="menu-label">成片比例${key === "ratio" ? " · 可以之后再定，拆解前必选" : ""}</div>${RATIOS.map(([r, w, h]) => `<button class="menu-item ${cur === r ? "active" : ""}" ${locked && cur !== r ? "disabled style='opacity:.4;cursor:not-allowed' title='已有资产按当前比例生成'" : ""} data-act="${key === "ratio" ? "setU" : "setP"}" data-k="ratio" data-v="${r}"><span style="width:${w * 1.1}px;max-width:22px;height:${h * 1.1}px;max-height:22px;aspect-ratio:${w}/${h};border:1.5px solid currentColor;border-radius:3px"></span>${r}${cur === r ? '<i data-lucide="check" class="i14" style="margin-left:auto"></i>' : ""}</button>`).join("")}${locked ? '<div class="muted" style="font-size:11px;padding:4px 8px">已拆解资产，比例已固定</div>' : ""}`; }
+        if (key === "eps") return `<div class="menu-label">目标集数</div>${["自动", "10", "16", "30", "60"].map((x) => `<button class="menu-item ${u.eps === x ? "active" : ""}" data-act="setU" data-k="eps" data-v="${x}">${x}${x === "自动" ? '<span class="muted" style="margin-left:auto;font-size:11px">按剧本已有分集</span>' : " 集"}</button>`).join("")}<div class="menu-label">单集时长</div><div class="row" style="padding:2px 6px 6px">${[60, 90, 120, 180].map((x) => `<button class="btn btn-sm ${u.secs === x ? "btn-primary" : "btn-outline"} num" data-act="setU" data-k="secs" data-v="${x}">${x}s</button>`).join("")}</div>`;
+        if (key === "model") return `<div class="menu-label">文本模型 · 跟随后台「文本」类别</div>${TEXT_MODELS.map((m, i) => `<button class="menu-item ${S.project.model === m ? "active" : ""}" data-act="setP" data-k="model" data-v="${m}"><i data-lucide="type" class="i14"></i>${m}${i === 0 ? '<span class="pill" style="margin-left:auto;height:16px;font-size:10px">默认</span>' : ""}</button>`).join("")}<button class="menu-item" disabled style="opacity:.4;cursor:not-allowed" title="后台已停用"><i data-lucide="type" class="i14"></i>GLM 5<span class="muted" style="margin-left:auto;font-size:11px">已停用</span></button>`;
+        if (key === "vmodel") return `<div class="menu-label">视频模型 · 片段要用参考图</div>${[["Seedance 2.0 Fast", "参考图 ≤9 · 参考音频 · ≤15s"], ["Kling 3.0", "参考图 ≤4 · ≤10s"]].map(([m, d]) => `<button class="menu-item ${(S.vmodel || "Seedance 2.0 Fast") === m ? "active" : ""}" data-act="vmodel" data-v="${m}"><i data-lucide="clapperboard" class="i14"></i><div><div>${m}</div><div class="muted" style="font-size:11px">${d}</div></div></button>`).join("")}<button class="menu-item" disabled style="opacity:.45;cursor:not-allowed"><i data-lucide="clapperboard" class="i14"></i><div><div>Veo Lite</div><div class="muted" style="font-size:11px">不支持参考图，片段里的 @ 资产会失效</div></div></button>`;
+        if (key === "epFilter") return `<button class="menu-item ${S.epFilter === "all" ? "active" : ""}" data-act="epf" data-v="all"><i data-lucide="layers" class="i14"></i>全集</button><div class="menu-label">按集</div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:2px">${S.episodes.map((e) => `<button class="menu-item ${S.epFilter == e.no ? "active" : ""} num" data-act="epf" data-v="${e.no}">第 ${e.no} 集</button>`).join("")}</div><button class="menu-item ${S.epFilter === "none" ? "active" : ""}" data-act="epf" data-v="none"><i data-lucide="inbox" class="i14"></i>未分类<span class="muted" style="margin-left:auto;font-size:11px">画布里随手建的</span></button>`;
+        if (key === "nodeEps") { const a = S.assets.find((x) => x.id === S.canvasSel); return `<div class="menu-label">资产类型</div><div class="row" style="padding:0 6px 6px">${[["character", "角色"], ["scene", "场景"], ["prop", "道具"], ["", "未分类"]].map(([k, l]) => `<button class="btn btn-sm ${(a.eps === null ? "" : a.type) === k ? "btn-primary" : "btn-outline"}" data-act="nodeType" data-v="${k}">${l}</button>`).join("")}</div><div class="menu-label">出现集数 · 都不勾 = 全集</div><div style="display:grid;grid-template-columns:repeat(6,1fr);gap:4px;padding:0 6px 6px;width:280px">${S.episodes.map((e) => `<button class="btn btn-sm num ${a.eps && a.eps.includes(e.no) ? "btn-primary" : "btn-outline"}" ${a.eps === null ? "disabled title='先选资产类型'" : ""} data-act="nodeEp" data-v="${e.no}">${e.no}</button>`).join("")}</div>`; }
+        if (key === "imgModel") return `<div class="menu-label">图片模型</div>${[["Seedream 4.0", "参考图 ≤10"], ["天才猴子 · 三代超清", "参考图 ≤4"], ["Nano Banana Pro", "参考图 ≤14"]].map(([m, d]) => `<button class="menu-item ${(S.imgModel || "Seedream 4.0") === m ? "active" : ""}" data-act="setImg" data-k="imgModel" data-v="${m}"><i data-lucide="image" class="i14"></i><div><div>${m}</div><div class="muted" style="font-size:11px">${d}</div></div></button>`).join("")}`;
+        if (key === "imgParams") return `<div class="menu-label">清晰度</div><div class="row" style="padding:0 6px 6px">${["1K", "2K", "4K"].map((r) => `<button class="btn btn-sm ${(S.imgRes || "2K") === r ? "btn-primary" : "btn-outline"}" data-act="setImg" data-k="imgRes" data-v="${r}">${r}</button>`).join("")}</div><div class="muted" style="font-size:11px;padding:0 8px 6px">比例：角色默认 3:4 立绘，场景 / 道具跟随项目比例</div>`;
+        if (key === "preset") { const a = S.assets.find((x) => x.id === S.canvasSel); const list = a.type === "character" ? ["角色三视图", "全身立绘", "表情九宫格"] : a.type === "scene" ? ["场景参考图", "多角度场景"] : ["道具参考图", "道具多视图"]; return `<div class="menu-label">预设 · 和无限画布同一套</div>${list.map((x) => `<button class="menu-item" data-act="setPreset" data-v="${x}"><i data-lucide="sparkle" class="i14" style="color:var(--preset)"></i>${x}</button>`).join("")}`; }
+        if (key === "segSec") return `<div class="menu-label">片段时长 · 模型上限 15s</div>${[5, 8, 10, 12, 15].map((x) => `<button class="menu-item num" data-act="segSec" data-v="${x}">${x}s</button>`).join("")}`;
+        if (key === "mention") { const list = S.assets.filter((a) => a.eps !== null).sort((p, q) => inEp(q, S.curEp) - inEp(p, S.curEp)); return `<div class="menu-label">引用资产 · 本集的排在前面</div>${list.map((a) => `<button class="menu-item" data-act="insertMention" data-v="${a.id}"><span class="lib-thumb" style="width:24px;height:24px">${a.st === "done" ? poster(a.name + a.look, a.type) : `<i data-lucide="${TYPES.find((t) => t[0] === a.type)[2]}" class="i14"></i>`}</span><span class="grow truncate">${esc(label(a))}</span><span class="muted" style="font-size:10.5px">${inEp(a, S.curEp) ? "本集" : esc(epText(a))}</span></button>`).join("")}`; }
+        return "";
+      }
+
+      /* ---------- 对话框：资产拆解 ---------- */
+      const bd = { ratio: "", eps: new Set() };
+      function openBreakdown() {
+        bd.ratio = S.project.ratio; bd.eps = new Set();
+        const first = S.episodes.find((x) => !x.locked && x.scripted); if (first) bd.eps.add(first.no);
+        showDlg(dlgBreakdown);
+      }
+      function dlgBreakdown() {
+        const n = bd.eps.size, ok = bd.ratio && n, fixed = S.episodes.some((e) => e.locked);
+        return `<div style="padding:22px 22px 18px; display:grid; gap:16px">
+          <div><div style="font-size:16px;font-weight:600">资产拆解</div><div class="muted" style="margin-top:2px">从所选集的剧本里找出角色、场景、道具，已有的资产只追加出现集数，不会重复新建。</div></div>
+          <div class="fieldset"><div class="row"><b>成片比例</b><span class="pill warn">必选</span>${fixed ? '<span class="muted" style="font-size:11.5px;margin-left:auto">已有资产按这个比例生成，不能再改</span>' : ""}</div>
+            <div class="ratio-grid">${RATIOS.map(([r, w, h]) => `<button class="ratio" aria-pressed="${bd.ratio === r}" data-act="bdRatio" data-v="${r}" ${fixed && S.project.ratio !== r ? "disabled" : ""}><span class="shape" style="width:${(w / Math.max(w, h)) * 26}px;height:${(h / Math.max(w, h)) * 26}px"></span>${r}</button>`).join("")}</div></div>
+          <div class="fieldset"><div class="row"><b>解析范围</b><span class="muted num" style="font-size:12px">已选 ${n} 集</span><button class="btn btn-ghost btn-sm" style="margin-left:auto" data-act="bdAll">全选可用</button></div>
+            <div class="ep-grid">${S.episodes.map((e) => `<button class="ep-opt" aria-pressed="${bd.eps.has(e.no)}" data-act="bdEp" data-v="${e.no}" ${e.locked || !e.scripted ? "disabled" : ""} title="${e.locked ? "已拆解" : !e.scripted ? "还没有剧本" : ""}"><span class="cbox">${bd.eps.has(e.no) ? '<i data-lucide="check" style="width:12px;height:12px"></i>' : e.locked ? '<i data-lucide="lock" style="width:10px;height:10px"></i>' : ""}</span><span class="num">${e.no}.</span><span class="truncate">${esc(e.title)}</span></button>`).join("")}</div>
+            <div class="muted" style="font-size:11.5px">带锁的已经拆解过；没有剧本的集不能拆解。</div></div>
+          <div class="lockbar" style="margin:0"><i data-lucide="lock" class="i14" style="color:var(--status-warning)"></i><div class="grow">拆解后这 <b class="num">${n}</b> 集的剧本会<b>锁定</b>，不能再修改。</div><div class="num">约 <b class="credit">${n * 5 + 2}</b> 积分</div></div>
+          <div class="row" style="justify-content:flex-end"><button class="btn btn-ghost" data-act="closeDlg">取消</button><button class="btn btn-primary" data-act="doBreakdown" ${ok ? "" : "disabled"}>${!bd.ratio ? "先选比例" : !n ? "至少选一集" : "开始拆解"}</button></div>
+        </div>`;
+      }
+      let dlgFn = null;
+      function showDlg(fn) {
+        dlgFn = fn; const old = $(".dlg-bg"); if (old) old.remove();
+        const bg = document.createElement("div"); bg.className = "dlg-bg"; bg.innerHTML = `<div class="dlg" role="dialog" aria-modal="true">${fn()}</div>`;
+        bg.addEventListener("mousedown", (e) => { if (e.target === bg) closeDlg(); });
+        $("#layer").appendChild(bg); icons();
+      }
+      function refreshDlg() { const d = $(".dlg"); if (d && dlgFn) { d.innerHTML = dlgFn(); icons(); } }
+      function closeDlg() { const bg = $(".dlg-bg"); dlgFn = null; if (!bg) return; bg.classList.add("out"); setTimeout(() => bg.remove(), 168); }
+
+      function toast(msg, kind = "ok") {
+        const ic = { ok: ["circle-check", "var(--status-success)"], bad: ["circle-x", "var(--destructive)"], warn: ["triangle-alert", "var(--status-warning)"], info: ["info", "var(--status-running)"] }[kind];
+        const el = document.createElement("div"); el.className = "toast chrome"; el.innerHTML = `<i data-lucide="${ic[0]}" style="color:${ic[1]}"></i>${esc(msg)}`;
+        $("#toasts").appendChild(el); icons();
+        setTimeout(() => { el.classList.add("out"); setTimeout(() => el.remove(), 126); }, 2600);
+      }
+
+      /* ================= 流水线模拟 ================= */
+      function runJob({ step, ms = 1800, text = true, done, fail, sub }) {
+        const j = { id: ++uid, step, st: "run", p: 0, text, fresh: true, sub };
+        S.jobs.unshift(j); if (S.route === "ws") render(); j.fresh = false;
+        const t0 = Date.now();
+        const tk = setInterval(() => {
+          j.p = Math.min(100, ((Date.now() - t0) / ms) * 100);
+          const b = document.getElementById("jb" + j.id); if (b) b.style.transform = `scaleX(${j.p / 100})`;
+          if (j.p >= 100) {
+            clearInterval(tk);
+            if (fail && fail()) { j.st = "bad"; j.err = "67008 · 模型输出无法解析（已自动重试 1 次）"; toast(step + " 失败", "bad"); }
+            else { j.st = "ok"; j.at = "刚刚"; done && done(); }
+            render();
+          }
+        }, 100);
+        return j;
+      }
+      async function createDrama() {
+        const u = S.upload;
+        const title = u.tab === "file" ? u.file.replace(/^_|\.\w+$/g, "") : "未命名短剧";
+        seed(); S.upload = u;
+        Object.assign(S.project, { title, style: u.style, genre: u.genre, ratio: u.ratio });
+        S.episodes = []; S.assets = []; S.segs = {}; S.jobs = []; S.doc = "outline"; S.outline = ""; S.people = "";
+        S.route = "ws"; S.area = "script"; S.analyzing = true; S.analyzeStep = 0;
+        runJob({ step: "研读剧本", ms: 1500, sub: "识别为剧本 · 已有 6 集分集标记", done: () => (S.analyzeStep = 1) });
+        render();
+        await sleep(1600);
+        runJob({ step: "大纲与人物", ms: 1600, sub: "按 6 集整理", done: () => {
+          S.analyzeStep = 3; S.analyzing = false;
+          S.outline = `<p>（模型生成的故事大纲 · 示意）</p>`; S.people = `<p>（模型生成的人物传记 · 示意）</p>`;
+          const titles = ["村里的女人", "双鱼玉佩", "井", "回村", "复制体", "深渊"];
+          S.episodes = titles.map((t, i) => ({ no: i + 1, title: t, html: i < 4 ? SCRIPT(i + 1) : "", locked: false, scripted: i < 4, sb: "empty" }));
+          toast("大纲和分集目录已生成，后 2 集还没有剧本");
+        } });
+        S.analyzeStep = 1; render();
+      }
+
+      /* ================= 事件 ================= */
+      const A = {
+        reset() { seed(); closePop(); closeDlg(); render(); toast("原型已重置", "info"); },
+        theme() { document.documentElement.classList.toggle("dark"); },
+        open() { S.route = "ws"; render(); },
+        home() { S.route = "drama"; S.playing = false; render(); },
+        toast(el) { toast(el.dataset.v, "info"); },
+        utab(el) { S.upload.tab = el.dataset.v; render(); },
+        pickfile() { S.upload.file = "_剧本原文.txt"; render(); },
+        clearfile() { S.upload.file = ""; render(); },
+        pop(el) { if (el.dataset.v === "nodeEps" && !S.canvasSel) return; openPop(el, el.dataset.v, popContent(el.dataset.v)); },
+        setU(el) { const k = el.dataset.k; S.upload[k] = k === "secs" ? +el.dataset.v : el.dataset.v; closePop(); render(); },
+        setP(el) { S.project[el.dataset.k] = el.dataset.v; closePop(); render(); if (el.dataset.k === "model") toast("之后的流水线任务改用 " + el.dataset.v, "info"); },
+        create() { closePop(); createDrama(); },
+        area(el) { S.area = el.dataset.v; closePop(); render(); },
+        side(el) { S.side = el.dataset.v; render(); },
+        toggleSide() { S.sideHidden = !S.sideHidden; render(); },
+        doc(el) { S.doc = el.dataset.v; render(); },
+        genScripts() {
+          const todo = S.episodes.filter((x) => !x.scripted); todo.forEach((x) => (x.gen = true));
+          runJob({ step: `分集剧本 · ${todo.length} 集`, ms: 2200, sub: "逐集生成，带上一集结尾做衔接", done: () => { todo.forEach((x) => { x.scripted = true; x.gen = false; x.html = SCRIPT(x.no); }); toast(`${todo.length} 集剧本已生成，可以逐集修改`); } });
+        },
+        openBreakdown() { openBreakdown(); },
+        bdRatio(el) { bd.ratio = el.dataset.v; refreshDlg(); },
+        bdEp(el) { const n = +el.dataset.v; bd.eps.has(n) ? bd.eps.delete(n) : bd.eps.add(n); refreshDlg(); },
+        bdAll() { S.episodes.filter((e) => !e.locked && e.scripted).forEach((e) => bd.eps.add(e.no)); refreshDlg(); },
+        closeDlg() { closeDlg(); },
+        doBreakdown() { S.project.ratio = bd.ratio; const eps = [...bd.eps].sort((a, b) => a - b); closeDlg(); breakdown(eps, false); },
+        retry(el) { const j = S.jobs.find((x) => x.id === +el.dataset.v); S.jobs = S.jobs.filter((x) => x !== j); if (j.eps) breakdown(j.eps, true); render(); },
+        aview(el) { S.assetView = el.dataset.v; S.multi = false; S.selected.clear(); render(); },
+        atype(el) { S.type = el.dataset.v; S.selected.clear(); render(); },
+        epf(el) { S.epFilter = el.dataset.v; closePop(); render(); },
+        multi() { S.multi = !S.multi; S.selected.clear(); render(); },
+        sel(el) { const id = el.dataset.v; S.selected.has(id) ? S.selected.delete(id) : S.selected.add(id); render(); },
+        selectPending() { S.multi = true; S.assets.filter((a) => a.type === S.type && a.eps !== null && (a.st === "idle" || a.st === "error")).forEach((a) => S.selected.add(a.id)); render(); },
+        batchGen() { const ids = [...S.selected]; S.selected.clear(); S.multi = false; ids.forEach(genAsset); },
+        genOne(el) { genAsset(el.dataset.v); },
+        newAsset() {
+          const eps = S.epFilter === "all" || S.epFilter === "none" ? [] : [+S.epFilter];
+          const t = TYPES.find((x) => x[0] === S.type);
+          const a = { id: "a" + ++uid, type: S.type, name: "未命名" + t[1], look: "", eps: S.epFilter === "none" ? null : eps, st: "idle", x: (S.assets.length % 5) * 200, y: 540 };
+          S.assets.push(a); render(); toast("已在短剧画布上新建节点，列表同步出现");
+        },
+        locate(el) { closePop(); locate(el.dataset.v); },
+        toList(el) { const a = S.assets.find((x) => x.id === el.dataset.v); S.assetView = "list"; S.type = a.type; S.canvasSel = null; render(); },
+        nodeSel(el) { S.canvasSel = el.dataset.v; closePop(); render(); },
+        nodeType(el) { const a = S.assets.find((x) => x.id === S.canvasSel); if (!el.dataset.v) a.eps = null; else { a.type = el.dataset.v; if (a.eps === null) a.eps = []; } closePop(); render(); },
+        nodeEp(el) { const a = S.assets.find((x) => x.id === S.canvasSel); const n = +el.dataset.v; const i = a.eps.indexOf(n); i >= 0 ? a.eps.splice(i, 1) : a.eps.push(n); a.eps.sort((p, q) => p - q); render(); if (popEl) { popEl.innerHTML = popContent("nodeEps"); icons(); } },
+        genFromPanel(el) {
+          const a = S.assets.find((x) => x.id === el.dataset.v);
+          if (!(a.prompt || "").replace(/<[^>]+>/g, "").trim()) return toast("先写提示词", "warn");
+          genAsset(a.id);
+        },
+        setImg(el) { S[el.dataset.k] = el.dataset.v; closePop(); render(); },
+        setPreset(el) { const a = S.assets.find((x) => x.id === S.canvasSel); a.preset = el.dataset.v; closePop(); render(); },
+        addEp() { const no = S.episodes.length + 1; S.episodes.push({ no, title: "新的一集", html: "", locked: false, scripted: false, sb: "empty" }); render(); toast(`已新增第 ${no} 集，去剧本页写内容`, "info"); },
+        genSb(el) {
+          const no = +el.dataset.v; E(no).sb = "gen";
+          runJob({ step: `分镜脚本 · 第 ${no} 集`, ms: 2000, sub: "切成 ≤15s 的片段，并标注引用资产", done: () => {
+            E(no).sb = "ready";
+            const ids = S.assets.filter((a) => inEp(a, no)).map((a) => a.id);
+            S.segs[no] = [12, 15, 9, 14].map((sec, i) => ({ id: "s" + ++uid, sec, html: `分镜 1：${["全景", "中景", "近景", "特写"][i]}，${ids[i % ids.length] ? chip(ids[i % ids.length]) : ""} 在 ${ids.find((id) => S.assets.find((a) => a.id === id).type === "scene") ? chip(ids.find((id) => S.assets.find((a) => a.id === id).type === "scene")) : "场景"} 中（模型生成 · 示意）。`, takes: [], chosen: -1, st: "idle", key: false }));
+            toast(`第 ${no} 集切成 4 个片段`);
+          } });
+          render();
+        },
+        studio(el) { S.route = "studio"; S.curEp = +el.dataset.v; S.curSeg = 0; render(); },
+        backEps() { S.route = "ws"; S.area = "episodes"; S.playing = false; render(); },
+        libAll(el) { S.libAll = el.dataset.v === "1"; render(); },
+        seg(el) { S.curSeg = +el.dataset.v; S.justGen = false; render(); },
+        addSeg() { const segs = S.segs[S.curEp]; segs.push({ id: "s" + ++uid, sec: 10, html: "", takes: [], chosen: -1, st: "idle", key: false }); S.curSeg = segs.length - 1; render(); $("#prompt") && $("#prompt").focus(); },
+        segSec(el) { curSeg().sec = +el.dataset.v; closePop(); render(); },
+        mentionBtn(el) { savedRange = null; mentionTarget = "prompt"; openPop(el, "mention", popContent("mention")); },
+        insertMention(el) { insertChip(el.dataset.v); closePop(); },
+        keyframe() { const s = curSeg(); if (s.key) return; toast("首帧生成中…（模拟）", "info"); setTimeout(() => { s.key = true; render(); toast("首帧已生成，这个片段改走图生视频"); }, 1200); },
+        genSeg() { genSeg(curSeg()); },
+        batchSeg() { const todo = S.segs[S.curEp].filter((s) => s.st !== "run" && s.chosen < 0); if (!todo.length) return toast("没有待生成的片段", "info"); todo.forEach(genSeg); toast(`已提交 ${todo.length} 个片段`, "info"); },
+        take(el) { curSeg().chosen = +el.dataset.v; render(); toast("已设为采用，合成整集时用它"); },
+        play() { togglePlay(); },
+        compose() { toast("合成整集在三期上线：服务端 ffmpeg 按片段顺序拼接（模拟）", "info"); },
+        vmodel(el) { S.vmodel = el.dataset.v; closePop(); render(); },
+        approve() { const e = E(3); e.html += `<p>林川在井沿摸到半枚双鱼玉佩，背面刻着母亲的名字。</p>`; S.approval = "ok"; render(); toast("已写入第 3 集"); },
+        reject() { S.approval = "no"; render(); },
+        chat() { const v = ($("#chatIn").value || "").trim(); if (!v) return; S.chat.push({ me: true, t: v }, { me: false, t: "（三期：助手会读取剧本和资产，改动前给出审批卡。这里只是示意。）" }); render(); },
+      };
+      document.addEventListener("click", (e) => {
+        const el = e.target.closest("[data-act]");
+        if (!el) { if (popEl && !e.target.closest(".pop")) closePop(); if (S.route === "ws" && S.area === "assets" && S.assetView === "canvas" && e.target.closest("#cv") && !e.target.closest("[data-stop]") && !e.target.closest(".cnode") && !panMoved) { S.canvasSel = null; render(); } return; }
+        if (el.disabled) return;
+        if (popEl && !e.target.closest(".pop") && el.dataset.act !== "pop" && el.dataset.act !== "mentionBtn") closePop();
+        A[el.dataset.act] && A[el.dataset.act](el, e);
+      });
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") { if (popEl) closePop(); else if (dlgFn) closeDlg(); }
+        if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && S.route === "studio") { e.preventDefault(); genSeg(curSeg()); }
+        if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && e.target.id === "gprompt") { e.preventDefault(); const b = $(".gp-submit"); b && b.click(); }
+      });
+      document.addEventListener("input", (e) => {
+        if (e.target.id === "pasteBox") { S.upload.text = e.target.value; const b = $(".send"); if (b) b.disabled = !e.target.value.trim(); }
+        if (e.target.id === "titleInput") { S.project.title = e.target.value; }
+        if (e.target.id === "docEd") {
+          const e2 = S.doc.startsWith("ep") ? E(+S.doc.slice(2)) : null;
+          if (S.doc === "outline") S.outline = e.target.innerHTML; else if (S.doc === "people") S.people = e.target.innerHTML; else if (e2) { e2.html = e.target.innerHTML; if (!e2.scripted && e.target.textContent.trim()) e2.scripted = true; }
+          markSaving();
+        }
+        if (e.target.id === "prompt") { curSeg().html = e.target.innerHTML; }
+        if (e.target.id === "gprompt") {
+          const a = S.assets.find((x) => x.id === e.target.dataset.asset); a.prompt = e.target.innerHTML;
+          const n = e.target.textContent.length, c = $("#gpcount"); if (c) { c.textContent = n + "/2000"; c.style.visibility = n ? "" : "hidden"; }
+        }
+      });
+      let saveT;
+      function markSaving() { S.project.saved = false; const s = $(".saved"); if (s) { s.innerHTML = '<i data-lucide="loader-circle" class="i14 spin"></i>保存中'; icons(); } clearTimeout(saveT); saveT = setTimeout(() => { S.project.saved = true; const s2 = $(".saved"); if (s2) { s2.innerHTML = '<i data-lucide="cloud-check" class="i14"></i>已保存'; icons(); } }, 1500); }
+
+      /* @ 输入：光标前是 @ 就在光标处弹出候选 */
+      let savedRange = null, mentionTarget = "prompt";
+      document.addEventListener("keyup", (e) => {
+        if (!["prompt", "gprompt"].includes(e.target.id) || e.key !== "@") return;
+        mentionTarget = e.target.id;
+        const sel = getSelection(); if (!sel.rangeCount) return;
+        const r = sel.getRangeAt(0); savedRange = r.cloneRange();
+        const rect = r.getBoundingClientRect();
+        const fake = { getBoundingClientRect: () => ({ left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom + 4 }) };
+        popKey = ""; openPop(fake, "mention", popContent("mention"));
+      });
+      function insertChip(id) {
+        const a = S.assets.find((x) => x.id === id); const ed = $("#" + mentionTarget); if (!a || !ed) return;
+        const tmp = document.createElement("span"); tmp.innerHTML = chipHtml(a) + "&nbsp;";
+        const frag = document.createDocumentFragment(); [...tmp.childNodes].forEach((n) => frag.appendChild(n));
+        if (savedRange && ed.contains(savedRange.startContainer)) {
+          const r = savedRange; const n = r.startContainer;
+          if (n.nodeType === 3 && r.startOffset > 0 && n.data[r.startOffset - 1] === "@") r.setStart(n, r.startOffset - 1);
+          r.deleteContents(); r.insertNode(frag);
+        } else ed.appendChild(frag);
+        savedRange = null;
+        if (mentionTarget === "gprompt") S.assets.find((x) => x.id === ed.dataset.asset).prompt = ed.innerHTML; else curSeg().html = ed.innerHTML;
+        render();
+      }
+
+      /* 拖资产进提示词 */
+      document.addEventListener("dragstart", (e) => {
+        const d = e.target.closest && e.target.closest("[data-drag]");
+        if (d) { e.dataTransfer.setData("text/asset", d.dataset.drag); e.dataTransfer.effectAllowed = "copy"; return; }
+        const c = e.target.closest && e.target.closest("[data-clip]");
+        if (c) { dragClip = +c.dataset.clip; e.dataTransfer.setData("text/clip", c.dataset.clip); c.classList.add("dragging"); }
+      });
+      let dragClip = null;
+      document.addEventListener("dragover", (e) => {
+        const dz = e.target.closest && e.target.closest("#drop");
+        if (dz && e.dataTransfer.types.includes("Files")) { e.preventDefault(); dz.classList.add("over"); }
+        if (e.target.closest && e.target.closest("#prompt")) { e.preventDefault(); $("#prompt").classList.add("over"); }
+        const c = e.target.closest && e.target.closest("[data-clip]");
+        if (c && dragClip !== null) { e.preventDefault(); document.querySelectorAll(".clip").forEach((x) => x.classList.remove("drop-l")); c.classList.add("drop-l"); }
+      });
+      document.addEventListener("dragleave", (e) => { if (e.target.id === "prompt") e.target.classList.remove("over"); });
+      document.addEventListener("drop", (e) => {
+        const dz = e.target.closest && e.target.closest("#drop");
+        if (dz && e.dataTransfer.files.length) {
+          e.preventDefault(); const f = e.dataTransfer.files[0];
+          if (!/\.(txt|md|markdown|docx)$/i.test(f.name)) { dz.classList.remove("over"); return toast("67002 · 只支持 txt / md / docx", "bad"); }
+          S.upload.tab = "file"; S.upload.file = f.name; render(); return;
+        }
+        const p = e.target.closest && e.target.closest("#prompt");
+        const id = e.dataTransfer.getData("text/asset");
+        if (p && id) {
+          e.preventDefault(); p.classList.remove("over");
+          const r = document.caretRangeFromPoint ? document.caretRangeFromPoint(e.clientX, e.clientY) : null;
+          savedRange = r && p.contains(r.startContainer) ? r : null;
+          insertChip(id); toast("已插入引用", "ok"); return;
+        }
+        const c = e.target.closest && e.target.closest("[data-clip]");
+        if (c && dragClip !== null) {
+          e.preventDefault(); const to = +c.dataset.clip; const segs = S.segs[S.curEp];
+          const [m] = segs.splice(dragClip, 1); segs.splice(to > dragClip ? to - 1 : to, 0, m);
+          S.curSeg = segs.indexOf(m); dragClip = null; render(); toast("片段顺序已调整", "info");
+        }
+      });
+      document.addEventListener("dragend", () => { dragClip = null; document.querySelectorAll(".clip").forEach((x) => x.classList.remove("dragging", "drop-l")); });
+
+      /* 画布平移 */
+      let panning = null, panMoved = false;
+      document.addEventListener("mousedown", (e) => {
+        const cv = e.target.closest && e.target.closest("#cv");
+        if (!cv || e.target.closest("[data-stop]") || e.target.closest(".cnode")) return;
+        panning = { x: e.clientX, y: e.clientY, px: S.pan.x, py: S.pan.y }; panMoved = false; cv.classList.add("panning"); S.ease = false; $("#world").classList.remove("ease");
+      });
+      document.addEventListener("mousemove", (e) => {
+        if (!panning) return; const dx = e.clientX - panning.x, dy = e.clientY - panning.y; if (Math.abs(dx) + Math.abs(dy) > 3) panMoved = true;
+        S.pan = { x: panning.px + dx, y: panning.py + dy }; const w = $("#world"); if (w) w.style.transform = `translate(${S.pan.x}px, ${S.pan.y}px)`;
+      });
+      document.addEventListener("mouseup", () => { if (panning) { const cv = $("#cv"); cv && cv.classList.remove("panning"); panning = null; setTimeout(() => (panMoved = false), 0); } });
+
+      /* ---------- 动作实现 ---------- */
+      function locate(id) {
+        S.area = "assets"; S.assetView = "canvas"; S.canvasSel = id; S.flash = id; S.ease = true;
+        render();
+        const cv = $("#cv"), a = S.assets.find((x) => x.id === id);
+        if (cv && a) { S.pan = { x: cv.clientWidth / 2 - a.x - 84 + 110, y: Math.max(40, cv.clientHeight * 0.18) - a.y }; requestAnimationFrame(() => { const w = $("#world"); if (w) w.style.transform = `translate(${S.pan.x}px, ${S.pan.y}px)`; }); }
+        setTimeout(() => { S.ease = false; const w = $("#world"); w && w.classList.remove("ease"); }, 260);
+        setTimeout(() => { S.flash = null; const n = document.querySelector(".cnode.flash"); n && n.classList.remove("flash"); }, 950);
+      }
+      function genAsset(id) {
+        const a = S.assets.find((x) => x.id === id); if (!a) return;
+        a.st = "run"; a.p = 5; render();
+        const tk = setInterval(() => {
+          a.p = Math.min(100, a.p + 7 + Math.random() * 6);
+          if (a.p >= 100) { clearInterval(tk); a.st = "done"; render(); if (a.type === "character") toast(`${label(a)} 已生成，并设为角色卡形象`); }
+        }, 160);
+        const repaint = setInterval(() => { if (a.st !== "run") return clearInterval(repaint); if (S.route === "ws" && S.area === "assets") render(); }, 480);
+      }
+      function breakdown(eps, isRetry) {
+        const willFail = /bad/i.test(S.project.title) && !isRetry;
+        const j = runJob({ step: `资产拆解 · 第 ${eps.join("、")} 集`, ms: 2200, sub: "识别角色、场景、道具，并与已有资产合并", fail: () => willFail, done: () => {
+          eps.forEach((n) => (E(n).locked = true));
+          const merged = [];
+          S.assets.filter((a) => a.name === "林川" || a.name === "沈月").forEach((a) => { if (a.eps) eps.forEach((n) => !a.eps.includes(n) && (a.eps.push(n), merged.push(a.name))); });
+          const add = (type, name, look) => { const k = S.assets.length; const a = { id: "a" + ++uid, type, name, look, eps: [...eps], st: "analyzing", x: (k % 5) * 200, y: 540 + Math.floor((k - 9) / 5) * 270 }; S.assets.push(a); return a; };
+          const fresh = [add("character", "老村长", "基础形象"), add("scene", "老井", "井边 · 黄昏"), add("prop", "双鱼玉佩", "半枚")];
+          fresh[0].prompt = "六十岁老人，佝偻，灰白胡子，黑布对襟褂，手持铜烟锅；目光阴沉。写实电影质感。"; fresh[1].prompt = "村后老井，青石井沿长满青苔，辘轳绳索断了一半；黄昏冷暖对比。"; fresh[2].prompt = "半枚青白玉佩，双鱼纹，断口参差，背面阴刻小字，纯色背景微距。";
+          toast(`拆解完成：新增 ${fresh.length} 个资产${merged.length ? "，已有角色只追加了出现集数" : ""}`);
+          runJob({ step: "资产提示词 · 3 个新资产", ms: 1400, sub: "按画风写图片提示词", done: () => fresh.forEach((a) => (a.st = "idle")) });
+        } });
+        j.eps = eps;
+      }
+      function curSeg() { return (S.segs[S.curEp] || [])[S.curSeg]; }
+      function genSeg(s) {
+        if (!s || s.st === "run") return;
+        const ids = [...s.html.matchAll(/data-id="(\w+)"/g)].map((m) => m[1]);
+        const noImg = [...new Set(ids)].map((id) => S.assets.find((a) => a.id === id)).filter((a) => a && a.st !== "done");
+        if (noImg.length) toast(`${noImg.map(label).join("、")} 还没有图，只按文字描述生成`, "warn");
+        s.st = "run"; S.justGen = false; render();
+        const fail = /失败/.test(s.html.replace(/<[^>]+>/g, ""));
+        setTimeout(() => {
+          if (fail) { s.st = "error"; toast("片段生成失败", "bad"); }
+          else { s.takes.push(Date.now()); s.chosen = s.takes.length - 1; s.st = "done"; if (s === curSeg()) S.justGen = true; toast("片段已生成，已设为采用"); }
+          if (S.route === "studio") render();
+        }, 1800);
+      }
+      let playTimer = null;
+      function togglePlay() {
+        const segs = S.segs[S.curEp] || [];
+        if (!segs.some((s) => s.chosen >= 0)) return toast("还没有可播放的片段", "info");
+        S.playing = !S.playing;
+        if (!S.playing) { clearInterval(playTimer); render(); return; }
+        const total = segs.reduce((t, s) => t + s.sec, 0);
+        if (S.playT >= total) S.playT = 0;
+        render();
+        playTimer = setInterval(() => {
+          S.playT += 0.4; // 4 倍速示意
+          let t = S.playT, idx = 0; for (; idx < segs.length; idx++) { if (t <= segs[idx].sec) break; t -= segs[idx].sec; }
+          if (S.playT >= total) { S.playing = false; clearInterval(playTimer); render(); toast("连播结束（没出视频的片段会跳过）", "info"); return; }
+          if (idx !== S.curSeg) { S.curSeg = idx; render(); }
+          else { const ph = $("#ph"); if (ph) ph.style.left = playX() + "px"; const tt = document.querySelector(".timeline .num.muted"); if (tt) tt.textContent = `${fmt(S.playT)} / ${fmt(total)}`; }
+        }, 100);
+      }
+
+      seed();
+      render();
+      addEventListener("resize", () => document.querySelectorAll(".seg").forEach(placeKnob));
+    </script>
+  </body>
+</html>

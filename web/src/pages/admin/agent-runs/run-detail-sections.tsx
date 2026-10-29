@@ -326,7 +326,12 @@ export function MutationsSection({
 }
 
 /** 模型调用用途的中文 */
-const PURPOSE_LABEL: Record<string, string> = { main: "对话", summary: "摘要" };
+const PURPOSE_LABEL: Record<string, string> = {
+  main: "对话",
+  summary: "摘要",
+  title: "命名",
+  activity: "活动说明",
+};
 
 /** 「模型调用」折叠区：用途、模型、渠道、上游模型、输入 / 输出 Token、耗时、首字、结束原因、错误 */
 export function ModelCallsSection({

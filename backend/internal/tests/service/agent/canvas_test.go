@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -704,5 +705,89 @@ func TestAgentApplyOps_ConcurrentDuplicatesWriteOnce(t *testing.T) {
 		if r.IDMap["a"] == "" || r.IDMap["a"] != results[0].IDMap["a"] || r.MutationID != results[0].MutationID {
 			t.Errorf("第 %d 个调用的结果和别的不一致: %+v / %+v", i, r, results[0])
 		}
+	}
+}
+
+func TestAgentDramaNodeRetainsReadIdempotencyUndoAndOwnership(t *testing.T) {
+	e := newAgentCanvasEnv(t)
+	e.repo.canvas.PayloadJSON = datatypes.JSON(`{"nodes":[{"id":"role","type":"canvas","position":{"x":0,"y":0},"data":{"kind":"character","label":"角色","assetId":"9","src":"/files/u1/9.png","character":{"name":"林川","look":"童年","description":"勇敢的少年","extras":[{"assetId":"10","src":"/files/u1/10.png"}],"voice":{"mode":"text","text":"明亮少年声"}},"params":{"prompt":"原提示词"},"drama":{"type":"character","name":"林川","look":"童年","episodes":[1]}}}],"edges":[]}`)
+	// 角色数据内嵌在节点里，Agent 改画布时必须原样保留（含主图 assetId 以外的补充图和音色）
+	wantRoleCharacter := map[string]any{
+		"name": "林川", "look": "童年", "description": "勇敢的少年",
+		"extras": []any{map[string]any{"assetId": "10", "src": "/files/u1/10.png"}},
+		"voice":  map[string]any{"mode": "text", "text": "明亮少年声"},
+	}
+	ctx := context.Background()
+	ops := []byte(`[{"op":"update_node","id":"role","prompt":"新的形象提示词"}]`)
+	if _, err := e.svc.ApplyOps(ctx, e.run, "unread", ops); err == nil {
+		t.Fatal("character nodes must retain Agent read-before-write requirement")
+	} else {
+		var business *errcode.Error
+		if !errors.As(err, &business) || business.Code != errcode.ErrAgentNodeUnread.Code {
+			t.Fatalf("unread error=%v", err)
+		}
+	}
+	if _, err := e.svc.ReadDetail(ctx, e.run, []string{"role"}); err != nil {
+		t.Fatal(err)
+	}
+	keyed := WithIdempotencyKey(ctx, "role-edit")
+	first, err := e.svc.ApplyOps(keyed, e.run, "edit", ops)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replayed, err := e.svc.ApplyOps(keyed, e.run, "edit-replay", ops)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.MutationID != replayed.MutationID || e.repo.commits != 1 || len(e.bc.msgs) != 1 {
+		t.Fatalf("replay committed twice: first=%+v replay=%+v", first, replayed)
+	}
+	n := e.payload(t).Node("role")
+	if !reflect.DeepEqual(n.Data()["character"], wantRoleCharacter) || n.Data()["drama"].(map[string]any)["name"] != "林川" {
+		t.Fatalf("Agent edit overwrote character/drama data: %+v", n)
+	}
+	if _, err := e.svc.UndoRun(ctx, e.run); err != nil {
+		t.Fatal(err)
+	}
+	n = e.payload(t).Node("role")
+	if n.Data()["params"].(map[string]any)["prompt"] != "原提示词" || !reflect.DeepEqual(n.Data()["character"], wantRoleCharacter) {
+		t.Fatalf("undo failed to preserve role: %+v", n)
+	}
+	foreign := *e.run
+	foreign.UserID = 2
+	if _, err := e.svc.ApplyOps(ctx, &foreign, "foreign", ops); err == nil {
+		t.Fatal("public canvas entry bypassed Agent ownership")
+	} else {
+		var business *errcode.Error
+		if !errors.As(err, &business) || business.Code != errcode.ErrCanvasNotFound.Code {
+			t.Fatalf("ownership error=%v", err)
+		}
+	}
+}
+
+// Agent 可以新建角色卡：带上人物数据（至少名字），写进画布并提交。
+func TestAgentCreateCharacterNode(t *testing.T) {
+	e := newAgentCanvasEnv(t)
+	before := len(e.payload(t).Nodes)
+	_, err := e.svc.ApplyOps(context.Background(), e.run, "make-role", []byte(`[{"op":"create_node","tempId":"a","kind":"character","character":{"name":"林川","description":"短发少年"},"prompt":"林川三视图"}]`))
+	if err != nil {
+		t.Fatalf("应能新建角色卡: %v", err)
+	}
+	nodes := e.payload(t).Nodes
+	if len(nodes) != before+1 || e.repo.commits != 1 {
+		t.Fatalf("角色卡应写进画布: nodes=%d commits=%d", len(nodes), e.repo.commits)
+	}
+}
+
+// 新建角色卡没写人物数据：整批拒绝，不写画布。
+func TestAgentCreateCharacterNodeRequiresName(t *testing.T) {
+	e := newAgentCanvasEnv(t)
+	before := len(e.payload(t).Nodes)
+	_, err := e.svc.ApplyOps(context.Background(), e.run, "make-role", []byte(`[{"op":"create_node","tempId":"a","kind":"character","label":"林川"}]`))
+	if err == nil || !strings.Contains(err.Error(), "名字") {
+		t.Fatalf("没写名字应报错: %v", err)
+	}
+	if len(e.payload(t).Nodes) != before || e.repo.commits != 0 {
+		t.Fatalf("被拒绝的操作不应写画布: nodes=%d commits=%d", len(e.payload(t).Nodes), e.repo.commits)
 	}
 }

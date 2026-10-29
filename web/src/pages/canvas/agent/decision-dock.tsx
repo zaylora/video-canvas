@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
 import { motion } from "motion/react";
-import { ChevronRight, MessageCircleQuestion, Sparkles, Trash2 } from "lucide-react";
+import { ChevronRight, FilePen, MessageCircleQuestion, Sparkles, Trash2 } from "lucide-react";
 
 import type {
   AgentApprovalDto,
@@ -14,6 +14,7 @@ import { SPRING } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { useAgentHighlight } from "@/store/agent-highlight";
 import { useCreditsStore } from "@/store/credits";
+import { editChanges, editPayload, type EditPayload } from "@/utils/agent/drama";
 
 import { approvalTitle, deletePayload } from "./approval-row";
 
@@ -40,9 +41,78 @@ const TONE = {
   generate: "var(--status-warning)",
   delete: "var(--destructive)",
   ask: "var(--status-warning)",
+  edit: "var(--status-warning)",
 } as const;
 
-const ICON = { generate: Sparkles, delete: Trash2, ask: MessageCircleQuestion } as const;
+const ICON = {
+  generate: Sparkles,
+  delete: Trash2,
+  ask: MessageCircleQuestion,
+  edit: FilePen,
+} as const;
+
+/** 不认识的审批种类按通用修改卡（edit）处理 */
+const kindOf = (kind: string): keyof typeof TONE =>
+  kind in TONE ? (kind as keyof typeof TONE) : "edit";
+
+/**
+ * 修改审批的前后对比：后端给的是整个对象的 JSON，这里只列真正改动的字段，
+ * 每个字段一组「修改前（删除线、红）/ 修改后（绿）」；解析不了的原文照旧显示。
+ */
+function EditDiff({ edit }: { edit: EditPayload }) {
+  const changes = editChanges(edit);
+  const line = "rounded-md px-2 py-1.5 leading-5 wrap-anywhere whitespace-pre-wrap";
+  if (changes && changes.length === 0) {
+    return <p className="text-muted-foreground text-xs">没有实际改动</p>;
+  }
+  if (changes) {
+    return (
+      <div aria-label="修改前后" className="flex max-h-56 flex-col gap-2.5 overflow-y-auto text-xs">
+        {changes.map((change) => (
+          <div key={change.label} className="flex flex-col gap-1">
+            <span className="text-muted-foreground font-medium">{change.label}</span>
+            {change.before && (
+              <p
+                className={cn(
+                  line,
+                  "bg-destructive/10 border-destructive text-foreground/70 border-l-2 line-through decoration-(--decoration)",
+                )}
+                style={
+                  {
+                    "--decoration": "color-mix(in oklab, var(--destructive) 55%, transparent)",
+                  } as CSSProperties
+                }
+              >
+                {change.before}
+              </p>
+            )}
+            {change.after && (
+              <p className={cn(line, "bg-status-success/10 border-status-success border-l-2")}>
+                {change.after}
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  }
+  return (
+    <div aria-label="修改前后" className="flex max-h-44 flex-col gap-1 overflow-y-auto text-xs">
+      {edit.before && (
+        <p className={cn(line, "bg-destructive/10 text-foreground/80")}>
+          <span className="text-destructive mr-1.5 font-medium">修改前</span>
+          {edit.before}
+        </p>
+      )}
+      {edit.after && (
+        <p className={cn(line, "bg-status-success/10 text-foreground")}>
+          <span className="text-status-success mr-1.5 font-medium">修改后</span>
+          {edit.after}
+        </p>
+      )}
+    </div>
+  );
+}
 
 /**
  * 决定框：等你批准生成 / 删除、或回答提问时，替换输入框钉在原位，不会被滚到看不见的地方。
@@ -63,6 +133,8 @@ export function DecisionDock({
   const gen = approval.kind === "generate" ? (approval.payload as AgentGeneratePayload) : null;
   const del = approval.kind === "delete" ? deletePayload(approval.payload) : null;
   const ask = approval.kind === "ask" ? (approval.payload as AgentAskPayload) : null;
+  const kind = kindOf(approval.kind);
+  const edit = kind === "edit" ? editPayload(approval.payload) : null;
   const items = gen?.items.length ?? del?.node_ids.length ?? 0;
   /** 每一项勾没勾 */
   const [picks, setPicks] = useState(() => Array.from({ length: items }, () => true));
@@ -112,6 +184,27 @@ export function DecisionDock({
         key: "explain",
         label: "保留，并告诉 Agent 怎么改…",
         input: "比如：只删空的那个文本节点",
+        decide: (answer) => ({ decision: "reject", answer }),
+      },
+    );
+  } else if (edit) {
+    // 短剧助手的修改：批准后才写入；提交任务带积分估价，余额不足时不能批准
+    const quote = approval.quote_credits;
+    const short = quote > 0 && credits !== null && quote > credits.available;
+    options.push(
+      {
+        key: "approve",
+        label: "批准修改",
+        meta: quote > 0 ? `✦ ${quote}` : undefined,
+        disabled: short,
+        note: short ? `余额不足（需要 ${quote}，可用 ${credits?.available}）` : undefined,
+        decide: () => ({ decision: "approve" }),
+      },
+      { key: "reject", label: "不用了", decide: () => ({ decision: "reject" }) },
+      {
+        key: "explain",
+        label: "不用了，并告诉 Agent 怎么改…",
+        input: "比如：只改结尾，保留前两段",
         decide: (answer) => ({ decision: "reject", answer }),
       },
     );
@@ -191,15 +284,15 @@ export function DecisionDock({
     }
   };
 
-  const Icon = ICON[approval.kind];
-  const reason = gen?.reason || del?.reason || "";
+  const Icon = ICON[kind];
+  const reason = gen?.reason || del?.reason || edit?.reason || "";
 
   return (
     <div
       role="group"
       aria-label={approvalTitle(approval)}
       onKeyDown={onKeyDown}
-      style={{ "--tone": TONE[approval.kind] } as CSSProperties}
+      style={{ "--tone": TONE[kind] } as CSSProperties}
       className="relative flex flex-col gap-2 bg-[linear-gradient(180deg,color-mix(in_oklab,var(--tone)_10%,transparent),transparent_72px)] p-3"
       onMouseEnter={() => del && useAgentHighlight.getState().setDanger(del.node_ids)}
       onMouseLeave={() => del && useAgentHighlight.getState().setDanger([])}
@@ -211,11 +304,12 @@ export function DecisionDock({
       <div className="flex items-center gap-2 text-[13.5px] font-semibold">
         <Icon className="size-4 shrink-0 text-(--tone)" />
         <span className="min-w-0 flex-1">{approvalTitle(approval)}</span>
-        {gen && (
-          <span className="text-credit shrink-0 font-medium tabular-nums">{options[0]?.meta}</span>
+        {(gen || edit) && options[0]?.meta && (
+          <span className="text-credit shrink-0 font-medium tabular-nums">{options[0].meta}</span>
         )}
       </div>
       {reason && <p className="text-muted-foreground -mt-1 text-[12.5px]">{reason}</p>}
+      {edit && (edit.before || edit.after) && <EditDiff edit={edit} />}
 
       {items > 0 && (
         <>

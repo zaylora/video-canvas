@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -154,6 +156,8 @@ func modeLabel(mode string) string {
 		return "分镜搭建"
 	case model.AgentModePrompt:
 		return "提示词优化"
+	case model.AgentModeDrama:
+		return "短剧助手"
 	}
 	return "全能创作"
 }
@@ -238,7 +242,11 @@ func (b *AgentBridge) toolApplyOps(ctx context.Context, tc *toolCall) (*toolOut,
 	if err := modeAllowsOps(tc.sess.mode, ops); err != nil {
 		return nil, err
 	}
-	res, err := b.d.Canvas.ApplyOps(ctx, tc.run, tc.id, a.Ops)
+	assets, err := b.resolveOpAssets(ctx, tc.run.UserID, ops)
+	if err != nil {
+		return nil, err
+	}
+	res, err := b.d.Canvas.ApplyOps(withOpAssets(ctx, assets), tc.run, tc.id, a.Ops)
 	if err != nil {
 		return nil, err
 	}
@@ -254,6 +262,43 @@ func (b *AgentBridge) toolApplyOps(ctx context.Context, tc *toolCall) (*toolOut,
 	// created / updated 给前端的「本轮改动」摘要分开计数
 	extra := map[string]any{"node_ids": ids, "created": res.Created, "updated": res.Updated}
 	return &toolOut{content: content, summary: fmt.Sprintf("应用 %d 项操作", len(ops)), extra: extra}, err
+}
+
+// resolveOpAssets 解析这批操作里 create_node 的 assetId：素材必须是该用户的、支持的图片格式。
+// 没有 assetId 返回 nil。Go 这边没有「本会话附件」的记录（消息事件在 Agent 服务里），所以靠素材归属把关：
+// 只能用到用户自己的素材，别人的和不存在的一样报「不存在」。
+func (b *AgentBridge) resolveOpAssets(ctx context.Context, userID uint64, ops []canvasgraph.Op) (map[string]canvasgraph.AssetRef, error) {
+	var out map[string]canvasgraph.AssetRef
+	for _, op := range ops {
+		if op.AssetID == "" {
+			continue
+		}
+		if _, done := out[op.AssetID]; done {
+			continue
+		}
+		if b.d.Assets == nil {
+			return nil, fail("暂时无法读取素材")
+		}
+		id, err := strconv.ParseUint(op.AssetID, 10, 64)
+		if err != nil {
+			return nil, fail("assetId %q 无效", op.AssetID)
+		}
+		asset, err := b.d.Assets.Get(ctx, userID, id)
+		if errors.Is(err, provider.ErrAssetNotFound) {
+			return nil, fail("素材 %s 不存在或已删除", op.AssetID)
+		}
+		if err != nil {
+			return nil, errcode.ErrInternal
+		}
+		if !slices.Contains(inspectMimes, asset.MimeType) {
+			return nil, fail("素材 %s 的格式 %s 不支持当图片节点", op.AssetID, asset.MimeType)
+		}
+		if out == nil {
+			out = map[string]canvasgraph.AssetRef{}
+		}
+		out[op.AssetID] = canvasgraph.AssetRef{ID: op.AssetID, URL: b.fileURL(asset.StorageKey), FileName: asset.FileName, Width: asset.Width, Height: asset.Height}
+	}
+	return out, nil
 }
 
 // toolArrange 整理布局。

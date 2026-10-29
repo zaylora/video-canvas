@@ -23,10 +23,11 @@ const (
 
 // 节点种类。
 const (
-	KindScript = "script" // 文本
-	KindImage  = "image"  // 图片
-	KindVideo  = "video"  // 视频
-	KindAudio  = "audio"  // 音频
+	KindScript    = "script"    // 文本
+	KindImage     = "image"     // 图片
+	KindVideo     = "video"     // 视频
+	KindAudio     = "audio"     // 音频
+	KindCharacter = "character" // 角色卡（数据内嵌在 data.character）：生成、参考、连线按图片节点处理；短剧里的由拆解创建
 	// KindDirector 是导演台（3D 摆位与运镜预演）：只在画布上手动建，Agent 能读到但不能建、不能改、不能连线。
 	KindDirector = "director"
 )
@@ -41,7 +42,7 @@ var downstream = map[string][]string{
 }
 
 // kindLabel 是节点的默认标题。
-var kindLabel = map[string]string{KindScript: "文本", KindImage: "图片", KindVideo: "视频", KindAudio: "音频", KindDirector: "导演台"}
+var kindLabel = map[string]string{KindScript: "文本", KindImage: "图片", KindVideo: "视频", KindAudio: "音频", KindCharacter: "角色", KindDirector: "导演台"}
 
 // hues 是组可选的颜色，与前端 GroupHue 一致。
 var hues = map[string]bool{"red": true, "orange": true, "yellow": true, "green": true, "cyan": true, "blue": true, "purple": true, "pink": true}
@@ -61,6 +62,7 @@ type Op struct {
 	Prompt        *string        `json:"prompt,omitempty"`        // 提示词
 	Model         *string        `json:"model,omitempty"`         // 模型 key
 	Params        map[string]any `json:"params,omitempty"`        // 生成参数，浅合并
+	AssetID       string         `json:"assetId,omitempty"`       // create_node：用已有的图片素材（用户随消息发来的附件）建一个已完成的图片节点，只对图片节点有效
 	Mode          *string        `json:"mode,omitempty"`          // 生成方式（视频 t2v / i2v / omni，图片 t2i / i2i），要先有模型；写入 params.op
 	ParentGroup   string         `json:"parentGroup,omitempty"`   // create_node：所属组
 	Position      *Point         `json:"position,omitempty"`      // 位置，成员是相对组的
@@ -71,6 +73,15 @@ type Op struct {
 	RemoveMembers []string       `json:"removeMembers,omitempty"` // set_group：移出的成员
 	Source        string         `json:"source,omitempty"`        // connect：起点
 	Target        string         `json:"target,omitempty"`        // connect：终点
+	Character     *CharacterOp   `json:"character,omitempty"`     // 角色卡的人物数据：create_node 必填（至少有名字），update_node 只改给了的字段
+}
+
+// CharacterOp 是角色卡的人物数据，对应节点的 data.character；字段为 nil 表示不改。
+type CharacterOp struct {
+	Name        *string `json:"name,omitempty"`        // 角色名，≤64 字
+	Look        *string `json:"look,omitempty"`        // 形象名（如「雨夜造型」），≤64 字，不写是「基础形象」
+	Description *string `json:"description,omitempty"` // 外貌和设定，≤500 字
+	VoicePrompt *string `json:"voicePrompt,omitempty"` // 生成声音用的音色描述，≤500 字
 }
 
 // Issue 是某一项操作的问题，Index 从 0 开始，对应 ops 数组下标。
@@ -112,6 +123,7 @@ func ParseOps(raw []byte) ([]Op, error) {
 
 // canLink 判断 from 种类的节点能不能连到 to 种类的节点。
 func canLink(from, to string) bool {
+	from, to = generationKind(from), generationKind(to)
 	for _, k := range downstream[from] {
 		if k == to {
 			return true
@@ -121,4 +133,12 @@ func canLink(from, to string) bool {
 }
 
 // validKind 判断是不是认识的节点种类。
-func validKind(k string) bool { _, ok := downstream[k]; return ok }
+func validKind(k string) bool { _, ok := downstream[generationKind(k)]; return ok }
+
+// generationKind 角色节点保留卡片身份，生成、参考和连线规则复用图片能力。
+func generationKind(kind string) string {
+	if kind == KindCharacter {
+		return KindImage
+	}
+	return kind
+}

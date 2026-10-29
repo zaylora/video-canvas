@@ -17,6 +17,7 @@ import (
 	"video-canvas/internal/provider/worker"
 	"video-canvas/internal/repository"
 	"video-canvas/internal/service"
+	agentsvc "video-canvas/internal/service/agent"
 	"video-canvas/pkg/version"
 )
 
@@ -27,7 +28,7 @@ const riverUIPrefix = "/api/v1/admin/river"
 // 队列用的数据库连接池与 GORM 共用（入队因此能进业务事务），另开一个很小的 pgx 连接池只用来 LISTEN 新任务通知，
 // 拿不到时（例如经过不支持 LISTEN 的连接池）退化成轮询，只是取任务慢一点。
 func newTaskQueue(cfg *config.Config, db *gorm.DB, taskSvc *service.GenerationTaskService, executor provider.Executor,
-	assetSvc *service.AssetService, settingsSvc *service.SettingsService) (*queue.Runtime, *pgxpool.Pool, error) {
+	assetSvc *service.AssetService, settingsSvc *service.SettingsService, dramaSvc queue.DramaHandler) (*queue.Runtime, *pgxpool.Pool, error) {
 	sqlDB, err := db.DB()
 	if err != nil {
 		return nil, nil, fmt.Errorf("取数据库连接池失败: %w", err)
@@ -36,12 +37,19 @@ func newTaskQueue(cfg *config.Config, db *gorm.DB, taskSvc *service.GenerationTa
 	if cfg.AI.Worker.Enabled {
 		handler = worker.New(taskSvc, executor, provider.AssetSaver(assetSvc), worker.Options{MaxDownloadBytes: cfg.Storage.MaxResult})
 	}
+	// Agent 启用时：任务终态的事务里入队“通知 Agent”的 job（API 实例上用户取消任务也要入队）；执行这些 job 的只有 worker 实例
+	var notifier provider.AgentNotifier
+	if cfg.Agent.Enabled && cfg.AI.Worker.Enabled {
+		notifier = &agentsvc.TaskNotifier{BaseURL: cfg.Agent.URL, ServiceToken: cfg.Agent.ServiceToken}
+	}
 	listener := newQueueListener(cfg.Database.DSN)
 	host, _ := os.Hostname()
 	rt, err := queue.New(queue.Config{
 		DB: sqlDB, ListenerPool: listener, Store: taskSvc, Handler: handler, Settings: settingsSvc,
 		Repo: repository.NewQueueRepository(db), Enabled: cfg.AI.Worker.Enabled,
-		HardCap: cfg.AI.Queue.MaxConcurrency,
+		Drama:    dramaSvc,
+		HardCap:  cfg.AI.Queue.MaxConcurrency,
+		Notifier: notifier, AgentNotify: cfg.Agent.Enabled,
 		Version: version.Version, Hostname: host, StopTimeout: cfg.Server.ShutdownTimeout,
 	})
 	if err != nil {

@@ -236,11 +236,19 @@ var (
 	ErrPayUpstream         = New(65015, "渠道请求失败，请稍后重试", http.StatusBadGateway)
 )
 
-// 角色卡 66xxx
+// 短剧工作室 67xxx。
 var (
-	ErrCharacterNameDup      = New(66001, "已有同名角色卡", http.StatusConflict)
-	ErrCharacterLimit        = New(66002, "角色卡数量已达上限", http.StatusConflict)
-	ErrCharacterAssetInvalid = New(66003, "引用的素材不可用", http.StatusBadRequest)
-	ErrCharacterNotFound     = New(66004, "角色卡不存在", http.StatusNotFound)
-	ErrCharacterInvalid      = New(66005, "角色卡参数不合法", http.StatusBadRequest)
+	ErrDramaNotFound            = New(67001, "短剧不存在", http.StatusNotFound)
+	ErrDramaSourceInvalid       = New(67002, "原文格式不支持或内容为空", http.StatusBadRequest)
+	ErrDramaSourceTooLong       = New(67003, "原文超过 30 万字", http.StatusBadRequest)
+	ErrDramaJobBusy             = New(67004, "已有进行中的任务，完成后再试", http.StatusConflict)
+	ErrDramaEpisodeLocked       = New(67005, "这一集已拆解资产，剧本已锁定", http.StatusConflict)
+	ErrDramaStepNotReady        = New(67006, "前置步骤未完成", http.StatusBadRequest)
+	ErrDramaNoTextModel         = New(67007, "没有可用的 Agent 模型", http.StatusBadRequest)
+	ErrDramaOutputInvalid       = New(67008, "模型输出无法解析", http.StatusBadGateway)
+	ErrDramaSegmentNotFound     = New(67009, "片段不存在", http.StatusNotFound)
+	ErrDramaNothingToCompose    = New(67010, "这一集还没有可合成的片段", http.StatusBadRequest)
+	ErrDramaTakeInvalid         = New(67011, "只能采用本片段已成功的结果", http.StatusBadRequest)
+	ErrDramaSegmentOrderInvalid = New(67012, "排序必须包含该集全部片段", http.StatusBadRequest)
+	ErrDramaStoryboardHasTakes  = New(67013, "这一集已有生成结果，重新生成分镜会清空片段", http.StatusConflict)
 )

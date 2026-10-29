@@ -28,7 +28,8 @@ func newUACreditStore() *uaCreditStore {
 }
 
 // EnqueueTask 满足 GenerationTaskTx；积分账户测试不涉及队列。
-func (s *uaCreditStore) EnqueueTask(context.Context, *model.GenerationTask) error { return nil }
+func (s *uaCreditStore) EnqueueTask(context.Context, *model.GenerationTask) error        { return nil }
+func (s *uaCreditStore) EnqueueAgentNotify(context.Context, *model.GenerationTask) error { return nil }
 
 func (s *uaCreditStore) WithTx(_ context.Context, fn func(tx repository.GenerationTaskTx) error) error {
 	return fn(s)

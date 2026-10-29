@@ -182,22 +182,32 @@ function Toolbar({ editor }: { editor: Editor }) {
  * @param props.text 节点现在的 Markdown 正文，只在挂载时读一次
  * @param props.editable 能否编辑；生成中为 false，只读查看
  * @param props.onReader 挂载后交出「读出当前 Markdown」的函数，卸载时交出 null；关闭弹窗时外层靠它取稿
+ * @param props.onChange 每次编辑后给出最新 Markdown（短剧剧本区的自动保存用）；弹窗不传
+ * @param props.autofocus 挂载时是否把光标放到末尾，默认放（弹窗）；页面内嵌时传 false
+ * @param props.className 追加到编辑区的类名，用来覆盖弹窗里的高度限制
  */
-function TextEditorPane({
+export function TextEditorPane({
   text,
   editable,
   onReader,
+  onChange,
+  autofocus = true,
+  className,
 }: {
   text: string;
   editable: boolean;
   onReader: (read: (() => string) | null) => void;
+  onChange?: (markdown: string) => void;
+  autofocus?: boolean;
+  className?: string;
 }) {
   const editor = useEditor({
     extensions: TEXT_EDITOR_EXTENSIONS,
     content: text,
     contentType: "markdown",
     editable,
-    autofocus: editable ? "end" : false,
+    autofocus: editable && autofocus ? "end" : false,
+    onUpdate: ({ editor: updated }) => onChange?.(updated.getMarkdown()),
     // 工具栏要跟着光标所在的格式刷新按下态
     shouldRerenderOnTransaction: true,
     editorProps: {
@@ -205,7 +215,7 @@ function TextEditorPane({
         "aria-label": "文本内容",
         "aria-multiline": "true",
         role: "textbox",
-        class: EDITOR_CLASS,
+        class: className ? cn(EDITOR_CLASS, className) : EDITOR_CLASS,
       },
     },
   });

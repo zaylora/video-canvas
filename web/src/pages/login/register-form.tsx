@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { ArrowRight, LoaderCircle } from "lucide-react";
+import { ArrowRight, LoaderCircle, LockKeyhole, Mail, ShieldCheck, UserRound } from "lucide-react";
 import { toast } from "sonner";
 
 import { register, sendRegisterCode } from "@/api/auth";
@@ -21,28 +21,36 @@ import {
   type RegisterValues,
 } from "@/utils/auth/register-rules";
 
+import { AUTH_ICON, AUTH_INPUT, AUTH_SUBMIT } from "./auth-panel";
 import { PasswordField } from "./password-field";
 
 const EMPTY: RegisterValues = { username: "", email: "", code: "", password: "", confirm: "" };
 
-/** 字段 + 标签 + 就地错误 */
+/** 字段：左侧图标的胶囊输入框 + 就地错误；标签只给读屏 */
 function Field({
   id,
   label,
+  icon: Icon,
   error,
   children,
 }: {
   id: string;
   label: string;
+  icon: typeof UserRound;
   error?: string;
   children: React.ReactNode;
 }) {
   return (
-    <div className="space-y-2">
-      <Label htmlFor={id}>{label}</Label>
-      {children}
+    <div className="space-y-1.5">
+      <Label htmlFor={id} className="sr-only">
+        {label}
+      </Label>
+      <div className="relative">
+        <Icon className={AUTH_ICON} />
+        {children}
+      </div>
       {error && (
-        <p id={`${id}-error`} role="alert" className="text-destructive text-xs">
+        <p id={`${id}-error`} role="alert" className="text-destructive pl-4 text-xs">
           {error}
         </p>
       )}
@@ -137,53 +145,52 @@ export function RegisterForm({
   });
 
   return (
-    <form className="space-y-4" onSubmit={handleSubmit} noValidate>
-      <Field id="reg-username" label="用户名" error={errors.username}>
+    <form className="space-y-3" onSubmit={handleSubmit} noValidate>
+      <Field id="reg-username" label="用户名" icon={UserRound} error={errors.username}>
         <Input
           id="reg-username"
           autoComplete="username"
-          autoFocus
           maxLength={64}
-          placeholder="3 到 64 个字符"
+          placeholder="用户名，3 到 64 个字符"
           value={values.username}
           onChange={(event) => set("username", event.target.value)}
           disabled={loading}
           aria-invalid={!!errors.username}
-          className="h-10"
+          className={AUTH_INPUT}
         />
       </Field>
-      <Field id="reg-email" label="邮箱" error={errors.email}>
+      <Field id="reg-email" label="邮箱" icon={Mail} error={errors.email}>
         <Input
           id="reg-email"
           type="email"
           autoComplete="email"
-          placeholder="name@example.com"
+          placeholder="邮箱"
           value={values.email}
           onChange={(event) => set("email", event.target.value)}
           disabled={loading}
           aria-invalid={!!errors.email}
-          className="h-10"
+          className={AUTH_INPUT}
         />
       </Field>
       {needCode && (
-        <Field id="reg-code" label="邮箱验证码" error={errors.code}>
+        <Field id="reg-code" label="邮箱验证码" icon={ShieldCheck} error={errors.code}>
           <div className="flex gap-2">
             <Input
               id="reg-code"
               inputMode="numeric"
               autoComplete="one-time-code"
               maxLength={6}
-              placeholder="6 位数字"
+              placeholder="6 位验证码"
               value={values.code}
               onChange={(event) => set("code", event.target.value.replace(/\D/g, ""))}
               disabled={loading}
               aria-invalid={!!errors.code}
-              className="h-10"
+              className={AUTH_INPUT}
             />
             <Button
               type="button"
               variant="outline"
-              className="h-10 w-32 shrink-0 tabular-nums"
+              className="bg-chrome-hover ring-chrome-border h-11 w-32 shrink-0 rounded-full border-0 tabular-nums ring-1"
               disabled={codeButton.disabled || loading}
               onClick={() => void sendCode()}
             >
@@ -192,38 +199,40 @@ export function RegisterForm({
           </div>
         </Field>
       )}
-      <Field id="reg-password" label="密码" error={errors.password}>
+      <Field id="reg-password" label="密码" icon={LockKeyhole} error={errors.password}>
         <PasswordField
           id="reg-password"
           autoComplete="new-password"
           maxLength={128}
-          placeholder="至少 8 位"
+          placeholder="密码，至少 8 位"
           value={values.password}
           onChange={(event) => set("password", event.target.value)}
           disabled={loading}
           aria-invalid={!!errors.password}
+          className={AUTH_INPUT}
         />
       </Field>
-      <Field id="reg-confirm" label="确认密码" error={errors.confirm}>
+      <Field id="reg-confirm" label="确认密码" icon={LockKeyhole} error={errors.confirm}>
         <PasswordField
           id="reg-confirm"
           autoComplete="new-password"
           maxLength={128}
-          placeholder="再输入一次密码"
+          placeholder="再次输入密码"
           value={values.confirm}
           onChange={(event) => set("confirm", event.target.value)}
           disabled={loading}
           aria-invalid={!!errors.confirm}
+          className={AUTH_INPUT}
         />
       </Field>
 
       {formError && (
-        <p role="alert" className="text-destructive text-sm">
+        <p role="alert" className="text-destructive text-center text-sm">
           {formError}
         </p>
       )}
 
-      <Button type="submit" size="lg" disabled={loading} className="h-10 w-full justify-center">
+      <Button type="submit" size="lg" disabled={loading} className={AUTH_SUBMIT}>
         {loading ? (
           <>
             <LoaderCircle className="size-4 animate-spin" /> 注册中...

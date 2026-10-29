@@ -24,6 +24,11 @@ import (
 
 // fakePlatform 记录平台 handler 传给业务层的参数。
 type fakePlatform struct {
+	// 附件校验
+	attUser     uint64
+	attIDs      []string
+	attachments []agentsvc.AttachmentCheck
+
 	rc      agentsvc.RunContext
 	callID  string
 	name    string
@@ -64,6 +69,11 @@ type fakePlatform struct {
 	checkedSel    []string
 	selection     []string
 	undo          *agentsvc.UndoResult
+
+	// 任务状态
+	taskUser  uint64
+	taskIDs   []uint64
+	taskState []agentsvc.PlatformTaskState
 }
 
 func (f *fakePlatform) AgentModels(context.Context) ([]model.AgentModelView, error) {
@@ -76,6 +86,22 @@ func (f *fakePlatform) AgentModels(context.Context) ([]model.AgentModelView, err
 func (f *fakePlatform) CheckCanvas(_ context.Context, userID, canvasID uint64) error {
 	f.checkedUser, f.checkedCanvas = userID, canvasID
 	return f.err
+}
+
+func (f *fakePlatform) PlatformTaskStates(_ context.Context, userID uint64, ids []uint64) ([]agentsvc.PlatformTaskState, error) {
+	f.taskUser, f.taskIDs = userID, ids
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.taskState, nil
+}
+
+func (f *fakePlatform) CheckAttachments(_ context.Context, userID uint64, ids []string) ([]agentsvc.AttachmentCheck, error) {
+	f.attUser, f.attIDs = userID, ids
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.attachments, nil
 }
 
 func (f *fakePlatform) CheckMessage(_ context.Context, userID, canvasID uint64, msg string, sel []string) ([]string, error) {
@@ -173,7 +199,9 @@ func newPlatformRouter(api PlatformAPI) *gin.Engine {
 	g.POST("/runs/prepare", h.PrepareRun)
 	g.GET("/agent/models", h.AgentModels)
 	g.POST("/canvases/check", h.CheckCanvas)
+	g.POST("/tasks/status", h.TaskStatus)
 	g.POST("/messages/check", h.CheckMessage)
+	g.POST("/attachments/check", h.CheckAttachments)
 	g.POST("/runs/:run_id/undo", h.UndoRun)
 	g.POST("/approvals/propose", h.ProposeApproval)
 	g.POST("/approvals/resolve", h.ResolveApproval)
@@ -715,6 +743,40 @@ func TestPlatformHandler_CheckMessage(t *testing.T) {
 	}
 }
 
+func TestPlatformHandler_CheckAttachments(t *testing.T) {
+	api := &fakePlatform{attachments: []agentsvc.AttachmentCheck{{AssetID: "11", Name: "参考.png", MimeType: "image/png", URL: "/files/u1/a.png", Kind: "image", Image: &agentsvc.ToolImage{MimeType: "image/png", Data: "QUJD"}}}}
+	w := platformCall(newPlatformRouter(api), http.MethodPost, "/internal/platform/v1/attachments/check", `{"user_id":"1","asset_ids":["11"]}`, nil)
+	if w.Code != 200 || api.attUser != 1 || len(api.attIDs) != 1 || api.attIDs[0] != "11" {
+		t.Fatalf("%d %s %+v", w.Code, w.Body, api)
+	}
+	for _, want := range []string{`"asset_id":"11"`, `"name":"参考.png"`, `"url":"/files/u1/a.png"`, `"data":"QUJD"`} {
+		if !strings.Contains(w.Body.String(), want) {
+			t.Errorf("响应里要有 %s: %s", want, w.Body)
+		}
+	}
+	// 没有附件：响应里是空数组，不是 null
+	w = platformCall(newPlatformRouter(&fakePlatform{}), http.MethodPost, "/internal/platform/v1/attachments/check", `{"user_id":"1","asset_ids":[]}`, nil)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"attachments":[]`) {
+		t.Errorf("空附件是 []: %d %s", w.Code, w.Body)
+	}
+	for name, body := range map[string]string{
+		"缺 user_id": `{"asset_ids":["1"]}`,
+		"附件太多":      `{"user_id":"1","asset_ids":[` + strings.TrimSuffix(strings.Repeat(`"1",`, 10), ",") + `]}`,
+		"素材 id 太长":  `{"user_id":"1","asset_ids":["` + strings.Repeat("9", 33) + `"]}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			w := platformCall(newPlatformRouter(&fakePlatform{}), http.MethodPost, "/internal/platform/v1/attachments/check", body, nil)
+			if w.Code != 400 {
+				t.Errorf("应 400: %d %s", w.Code, w.Body)
+			}
+		})
+	}
+	w = platformCall(newPlatformRouter(&fakePlatform{err: errcode.ErrInvalidParams.WithMsg("图 2：图片素材不存在或已删除")}), http.MethodPost, "/internal/platform/v1/attachments/check", `{"user_id":"1","asset_ids":["1","2"]}`, nil)
+	if w.Code != 400 || !strings.Contains(w.Body.String(), "图 2：图片素材不存在或已删除") {
+		t.Errorf("校验不通过的说明原样返回: %d %s", w.Code, w.Body)
+	}
+}
+
 func TestPlatformHandler_UndoRun(t *testing.T) {
 	hdr := map[string]string{"X-Agent-Context": ctxHeader(goodCtx)}
 	api := &fakePlatform{undo: &agentsvc.UndoResult{Reverted: 3, Skipped: []canvasgraph.Skip{}, Revision: 9}}
@@ -805,5 +867,47 @@ func TestPlatform_IDProbeEncodesWithGoKey(t *testing.T) {
 		if status, _ := canvasCall(t, r, "GET", "/internal/platform/v1/ids/"+bad, ""); status != http.StatusBadRequest {
 			t.Errorf("%q 应是 400：%d", bad, status)
 		}
+	}
+}
+
+func TestPlatformHandler_TaskStatus(t *testing.T) {
+	api := &fakePlatform{taskState: []agentsvc.PlatformTaskState{
+		{TaskID: "1152921504606846978", NodeID: "n1", Kind: "image", Status: "succeeded", Outputs: []agentsvc.PlatformTaskOutput{{MediaType: "image", AssetID: "42"}}},
+		{TaskID: "9", Status: "missing"},
+	}}
+	// 雪花大小的 id 必须是十进制字符串，不经过浮点数
+	w := platformCall(newPlatformRouter(api), http.MethodPost, "/internal/platform/v1/tasks/status", `{"user_id":"1152921504606846977","task_ids":["1152921504606846978","9"]}`, nil)
+	if w.Code != 200 || respCode(t, w) != 0 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if api.taskUser != 1152921504606846977 || len(api.taskIDs) != 2 || api.taskIDs[0] != 1152921504606846978 || api.taskIDs[1] != 9 {
+		t.Errorf("传给业务层的参数不对：user=%d ids=%v", api.taskUser, api.taskIDs)
+	}
+	var env struct {
+		Data struct {
+			Items []map[string]any `json:"items"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &env); err != nil || len(env.Data.Items) != 2 {
+		t.Fatalf("响应不对：%v %s", err, w.Body)
+	}
+	if first := env.Data.Items[0]; first["task_id"] != "1152921504606846978" || first["status"] != "succeeded" || first["node_id"] != "n1" {
+		t.Errorf("任务信息不对：%v", first)
+	}
+	if env.Data.Items[1]["status"] != "missing" {
+		t.Errorf("不存在的任务应标 missing：%v", env.Data.Items[1])
+	}
+
+	too := `{"user_id":"1","task_ids":[` + strings.Repeat(`"1",`, 50) + `"1"]}`
+	for name, body := range map[string]string{
+		"id 是数字": `{"user_id":1,"task_ids":["1"]}`, "缺用户": `{"task_ids":["1"]}`, "没有任务": `{"user_id":"1","task_ids":[]}`,
+		"任务 id 不是数字": `{"user_id":"1","task_ids":["abc"]}`, "任务 id 为 0": `{"user_id":"1","task_ids":["0"]}`, "超过 50 个": too, "不是 JSON": `x`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			w := platformCall(newPlatformRouter(&fakePlatform{}), http.MethodPost, "/internal/platform/v1/tasks/status", body, nil)
+			if w.Code != 400 || respCode(t, w) != errcode.ErrInvalidParams.Code {
+				t.Errorf("应 400 参数错误: %d %s", w.Code, w.Body)
+			}
+		})
 	}
 }

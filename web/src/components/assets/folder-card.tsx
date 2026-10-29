@@ -4,6 +4,7 @@ import { Folder, Pencil, Trash2 } from "lucide-react";
 import type { FolderDto } from "@/api/asset-library/type";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { TAP_CARD } from "@/lib/motion";
+import { cn } from "@/lib/utils";
 import { formatAssetDay } from "@/utils/assets/format";
 
 import { CardMenu } from "./card-menu";
@@ -15,13 +16,16 @@ import { CardMenu } from "./card-menu";
  * @param onOpen 进入文件夹
  * @param onRename 菜单里的「重命名」；和 onDelete 都不给就没有 ⋯ 菜单（画布资产库弹框里只能进入）
  * @param onDelete 菜单里的「删除」，由调用方弹确认框
+ * @param wide 资产页单独一排的文件夹用 16:10；默认正方形，和画布资产库弹框里的素材卡排齐
  */
 export function FolderCard({
   folder,
   onOpen,
   onRename,
   onDelete,
+  wide,
 }: {
+  wide?: boolean;
   folder: FolderDto;
   onOpen: () => void;
   onRename?: () => void;
@@ -31,7 +35,10 @@ export function FolderCard({
     <motion.div
       data-slot="folder-card"
       whileTap={TAP_CARD}
-      className="group/card bg-muted/50 ring-border hover:bg-muted relative aspect-square min-w-0 rounded-xl ring-1 transition-colors duration-150"
+      className={cn(
+        "group/card bg-chrome-hover ring-chrome-border hover:bg-muted relative min-w-0 ring-1 transition-colors duration-150",
+        wide ? "aspect-[16/10] rounded-2xl" : "aspect-square rounded-xl",
+      )}
     >
       <button
         type="button"

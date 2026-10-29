@@ -1,6 +1,7 @@
 import {
   Check,
   CornerDownRight,
+  FilePen,
   Hand,
   MessageCircleQuestion,
   Sparkles,
@@ -17,6 +18,7 @@ import type {
 import type { AgentController } from "@/hooks/use-agent-controller";
 import { cn } from "@/lib/utils";
 import { useAgentHighlight } from "@/store/agent-highlight";
+import { editPayload, editTitle } from "@/utils/agent/drama";
 
 /** 删除审批的内容；服务端的空列表可能是 null（旧数据），统一补成空数组 */
 export function deletePayload(raw: unknown): AgentDeletePayload {
@@ -41,6 +43,9 @@ export function approvalTitle(approval: AgentApprovalDto) {
     }
     case "ask":
       return (approval.payload as AgentAskPayload).question;
+    // 短剧助手的修改审批；不认识的种类也按它显示
+    default:
+      return editTitle(editPayload(approval.payload));
   }
 }
 
@@ -65,8 +70,10 @@ export function ApprovalRow({ approvalId, ctl }: { approvalId: string; ctl: Agen
       <Sparkles className="text-status-warning" />
     ) : approval.kind === "delete" ? (
       <Trash2 className="text-destructive" />
-    ) : (
+    ) : ask ? (
       <MessageCircleQuestion className="text-status-warning" />
+    ) : (
+      <FilePen className="text-status-warning" />
     )
   ) : (
     <Check />
@@ -96,7 +103,9 @@ export function ApprovalRow({ approvalId, ctl }: { approvalId: string; ctl: Agen
     }
   }
   const quote =
-    approval.kind === "generate" && approval.quote_credits > 0 ? approval.quote_credits : null;
+    approval.kind !== "ask" && approval.kind !== "delete" && approval.quote_credits > 0
+      ? approval.quote_credits
+      : null;
 
   // 答过的提问（设计稿 6.12）：「↳ 问题  答案」挂在过程轨上，问题淡、答案实
   if (ask && !pending && answer)

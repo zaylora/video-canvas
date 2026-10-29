@@ -31,11 +31,8 @@ export function StatusLine({ line }: { line: StatusLineModel }) {
       role="status"
       initial={reduce ? { opacity: 0 } : { opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={
-        reduce
-          ? { opacity: 0, transition: { duration: DURATION.exit } }
-          : { opacity: 0, y: 4, transition: { duration: DURATION.exit } }
-      }
+      // 退场只淡出、不位移：它退场时底栏正好在上方淡入，两处都动会让面板抖
+      exit={{ opacity: 0, transition: { duration: DURATION.exit } }}
       transition={{ duration: DURATION.base, ease: EASE_OUT }}
       className="text-muted-foreground flex min-h-5 items-center gap-1.5 text-[12.5px]"
     >

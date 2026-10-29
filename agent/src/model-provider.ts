@@ -12,17 +12,19 @@
 import { createModels, createProvider, type Api, type Model, type Provider, type ProviderResponse, type StreamOptions } from "@earendil-works/pi-ai";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { GenerationTask, ProviderDoc, defineExtension, hook, type Extension } from "@earendil-works/pi-durable";
-import { restoreImageUrls } from "./context.ts";
+import { pruneOldImages, restoreImageUrls } from "./context.ts";
 import { encodeRunContext, type RunContext } from "./platform-client.ts";
 
 export const PROVIDER_ID = "platform";
 const CALL_ID_HEADER = "x-agent-call-id";
 const ERROR_CODE_HEADER = "x-agent-error-code";
 const PURPOSE_HEADER = "X-Agent-Purpose";
+/** 发给模型时只保留最近几条带图片的消息里的图片（用户附件和工具结果一起算） */
+const KEEP_IMAGE_MESSAGES = 2;
 
-/** 模型调用的用途：对话是助手的话；摘要（压缩上下文）和命名（给会话起标题）是内部调用 */
-export type ModelPurpose = "main" | "summary" | "title";
-const purposeOf = (header: string | null | undefined): ModelPurpose => (header === "summary" || header === "title" ? header : "main");
+/** 模型调用的用途：对话是助手的话；摘要（压缩上下文）、命名（给会话起标题）、活动说明（概括一段工具调用）是内部调用 */
+export type ModelPurpose = "main" | "summary" | "title" | "activity";
+const purposeOf = (header: string | null | undefined): ModelPurpose => (header === "summary" || header === "title" || header === "activity" ? header : "main");
 
 /** 一个 Agent 模型的规格，来自运行准备接口（Go 的模型配置） */
 export interface ModelSpec {
@@ -77,7 +79,7 @@ export interface ModelCallInfo {
   sessionId: string | undefined;
   /** Go 给这次模型调用的 id（响应头，十进制字符串），事后据此查这次调用的积分 */
   callId: string;
-  /** 对话调用，还是压缩写摘要 / 给会话起标题的内部调用（请求头 X-Agent-Purpose: summary | title）：它们不是助手的话，没有对应的 message.done */
+  /** 对话调用，还是压缩写摘要 / 给会话起标题 / 概括一段工具调用的内部调用（请求头 X-Agent-Purpose: summary | title | activity）：它们不是助手的话，没有对应的 message.done */
   purpose: ModelPurpose;
 }
 
@@ -130,8 +132,8 @@ export function createModelRegistry(opts: ModelRegistryOptions) {
         }
         return res;
       },
-      // 对象存储里的图片只有地址：工具结果把地址放在 data 里，发出前还原成真正的地址
-      onPayload: async (payload: unknown, model: Model<Api>) => restoreImageUrls((await o.onPayload?.(payload, model)) ?? payload),
+      // 更早的图片省略掉；对象存储里的图片只有地址：工具结果和附件把地址放在 data 里，发出前还原成真正的地址
+      onPayload: async (payload: unknown, model: Model<Api>) => restoreImageUrls(pruneOldImages((await o.onPayload?.(payload, model)) ?? payload, KEEP_IMAGE_MESSAGES)),
       onResponse: async (res: ProviderResponse, model: Model<Api>) => {
         const callId = res.headers[CALL_ID_HEADER];
         if (callId) opts.onCall?.({ sessionId: o.sessionId, callId, purpose: purposeOf(o.headers?.[PURPOSE_HEADER]) });

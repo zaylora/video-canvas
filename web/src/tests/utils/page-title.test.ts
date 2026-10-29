@@ -27,7 +27,7 @@ describe("浏览器标签页标题", () => {
 
   test("首页各页面", () => {
     expect(homePageTitle("/")).toBe("连镜");
-    expect(homePageTitle("/canvases")).toBe("画布 - 连镜");
+    expect(homePageTitle("/canvases")).toBe("作品 - 连镜");
     expect(homePageTitle("/assets")).toBe("资产 - 连镜");
     expect(homePageTitle("/profile")).toBe("个人资料 - 连镜");
     expect(homePageTitle("/conversations/12")).toBe("对话 - 连镜");

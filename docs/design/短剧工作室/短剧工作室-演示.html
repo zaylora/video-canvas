@@ -1,0 +1,1060 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>短剧工作室演示</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+    <style>
+      :root {
+        --radius: 0.625rem;
+        --background: 0 0% 100%;
+        --foreground: 240 10% 3.9%;
+        --card: 0 0% 100%;
+        --muted: 240 4.8% 95.9%;
+        --muted-foreground: 240 3.8% 46.1%;
+        --primary: 240 5.9% 10%;
+        --primary-foreground: 0 0% 98%;
+        --accent: 240 4.8% 95.9%;
+        --border: 240 5.9% 90%;
+        --ok: 5 150 105;
+        --bad: 220 38 38;
+        --warn: 180 83 9;
+        --info: 2 132 199;
+        --violet: 124 58 237;
+        color-scheme: light;
+      }
+      .dark {
+        --background: 240 10% 3.9%;
+        --foreground: 0 0% 98%;
+        --card: 240 10% 5.5%;
+        --muted: 240 3.7% 15.9%;
+        --muted-foreground: 240 5% 64.9%;
+        --primary: 0 0% 98%;
+        --primary-foreground: 240 5.9% 10%;
+        --accent: 240 3.7% 15.9%;
+        --border: 240 3.7% 17%;
+        --ok: 52 211 153;
+        --bad: 248 113 113;
+        --warn: 251 191 36;
+        --info: 56 189 248;
+        --violet: 167 139 250;
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        font-family: Geist, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        background: hsl(var(--background));
+        color: hsl(var(--foreground));
+        -webkit-font-smoothing: antialiased;
+        line-height: 1.55;
+      }
+      code, .mono { font-family: "Geist Mono", "SF Mono", Consolas, monospace; }
+      code { font-size: 0.92em; background: hsl(var(--muted)); padding: 1px 5px; border-radius: 5px; }
+      [data-lucide] { width: 1em; height: 1em; flex: none; }
+      h1, h2, h3, h4, p { margin: 0; }
+      button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+      input, select, textarea { font: inherit; color: inherit; }
+      table { border-collapse: collapse; width: 100%; }
+      th { font-weight: 500; text-align: left; }
+      [hidden] { display: none !important; }
+      .muted { color: hsl(var(--muted-foreground)); }
+      .row { display: flex; align-items: center; gap: 8px; }
+      .wrapflex { flex-wrap: wrap; }
+      .spacer { margin-left: auto; }
+
+      .top { position: sticky; top: 0; z-index: 30; background: hsl(var(--background) / 0.92); backdrop-filter: blur(8px); border-bottom: 1px solid hsl(var(--border)); }
+      .top-in { max-width: 1240px; margin: 0 auto; padding: 0 20px; display: flex; align-items: center; gap: 16px; height: 56px; }
+      .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; white-space: nowrap; }
+      .logo { width: 28px; height: 28px; border-radius: 8px; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; }
+      .tabs { display: flex; gap: 2px; margin-left: 8px; overflow-x: auto; }
+      .tab { height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13px; font-weight: 500; color: hsl(var(--muted-foreground)); white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; transition: background 0.15s, color 0.15s; }
+      .tab:hover { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+      .tab[aria-selected="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn { height: 32px; padding: 0 10px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; white-space: nowrap; }
+      .btn:hover { background: hsl(var(--accent)); }
+      .btn-primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn-primary:hover { background: hsl(var(--primary) / 0.9); }
+      .btn-outline { border: 1px solid hsl(var(--border)); }
+      .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+      .btn-sm { height: 26px; padding: 0 8px; font-size: 12px; border-radius: 6px; }
+      .switch { width: 34px; height: 20px; border-radius: 999px; background: hsl(var(--border)); position: relative; transition: background 0.15s; }
+      .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+      .switch[aria-checked="true"] { background: rgb(var(--violet)); }
+      .switch[aria-checked="true"]::after { transform: translateX(14px); }
+
+      .wrap { max-width: 1240px; margin: 0 auto; padding: 32px 20px 80px; }
+      .h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+      .lead { margin-top: 10px; max-width: 860px; font-size: 15px; color: hsl(var(--muted-foreground)); }
+      .lead b { color: hsl(var(--foreground)); }
+      .sec { margin-top: 36px; }
+      .sec > h2 { font-size: 18px; font-weight: 600; }
+      .sec > .sub { margin: 4px 0 14px; max-width: 860px; font-size: 13.5px; color: hsl(var(--muted-foreground)); }
+      .card { border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: var(--radius); padding: 16px; }
+      .grid { display: grid; gap: 12px; }
+      .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      @media (max-width: 820px) { .g2, .g3 { grid-template-columns: 1fr; } .top-in { padding: 0 12px; } .wrap { padding: 24px 16px 64px; } .demo-grid { grid-template-columns: 1fr !important; } }
+      ul.list { margin: 0; padding-left: 18px; font-size: 13.5px; }
+
+      .tag { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 7px; border-radius: 999px; font-size: 11.5px; font-weight: 500; white-space: nowrap; }
+      .t-ok { background: rgb(var(--ok) / 0.12); color: rgb(var(--ok)); }
+      .t-bad { background: rgb(var(--bad) / 0.12); color: rgb(var(--bad)); }
+      .t-warn { background: rgb(var(--warn) / 0.12); color: rgb(var(--warn)); }
+      .t-info { background: rgb(var(--info) / 0.12); color: rgb(var(--info)); }
+      .t-vio { background: rgb(var(--violet) / 0.12); color: rgb(var(--violet)); }
+      .t-mute { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
+
+      .callout { display: flex; gap: 10px; padding: 12px 14px; border-radius: var(--radius); font-size: 13.5px; border: 1px solid; }
+      .callout > i { margin-top: 3px; }
+      .c-info { background: rgb(var(--info) / 0.07); border-color: rgb(var(--info) / 0.3); }
+      .c-info > i { color: rgb(var(--info)); }
+      .c-warn { background: rgb(var(--warn) / 0.07); border-color: rgb(var(--warn) / 0.3); }
+      .c-warn > i { color: rgb(var(--warn)); }
+      .c-bad { background: rgb(var(--bad) / 0.07); border-color: rgb(var(--bad) / 0.3); }
+      .c-bad > i { color: rgb(var(--bad)); }
+      .c-ok { background: rgb(var(--ok) / 0.07); border-color: rgb(var(--ok) / 0.3); }
+      .c-ok > i { color: rgb(var(--ok)); }
+
+      .flow { display: flex; align-items: stretch; gap: 6px; flex-wrap: wrap; padding: 14px; border-radius: var(--radius); }
+      .flow .node { flex: 1 1 120px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 12px; font-size: 12.5px; }
+      .flow .node b { display: block; font-size: 13px; margin-bottom: 2px; }
+      .flow .node.hl { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+      .flow .arrow { display: grid; place-items: center; color: hsl(var(--muted-foreground)); }
+      .phase { font-size: 11px; margin-top: 6px; }
+
+      .cmp-wrap { overflow-x: auto; border: 1px solid hsl(var(--border)); border-radius: var(--radius); }
+      .cmp th, .cmp td { padding: 9px 12px; font-size: 13px; vertical-align: top; border-bottom: 1px solid hsl(var(--border)); }
+      .cmp tr:last-child th, .cmp tr:last-child td { border-bottom: 0; }
+      .cmp thead th { background: hsl(var(--muted)); font-size: 12.5px; white-space: nowrap; }
+      .cmp tbody th { width: 150px; color: hsl(var(--muted-foreground)); font-weight: 500; }
+      .cmp .y { color: rgb(var(--ok)); }
+      .cmp .m { color: rgb(var(--warn)); font-weight: 500; }
+
+      .steps { list-style: none; counter-reset: s; display: grid; gap: 12px; }
+      .steps li { counter-increment: s; position: relative; padding-left: 32px; font-size: 13.5px; }
+      .steps li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 22px; height: 22px; border-radius: 50%; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; font-size: 12px; font-weight: 600; }
+      .steps li small { display: block; color: hsl(var(--muted-foreground)); font-size: 12.5px; }
+
+      .codeblock { background: hsl(var(--muted)); border-radius: var(--radius); padding: 14px; font-family: "Geist Mono", "SF Mono", Consolas, monospace; font-size: 12.5px; overflow-x: auto; }
+      .codeblock pre { margin: 0; font: inherit; white-space: pre-wrap; }
+
+      .frame { border: 1px solid hsl(var(--border)); border-radius: 12px; overflow: hidden; background: hsl(var(--background)); }
+      .frame-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: hsl(var(--muted)); font-size: 12px; color: hsl(var(--muted-foreground)); }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: hsl(var(--border)); }
+      .proto { height: 640px; position: relative; overflow: hidden; }
+
+      .note { outline: 1.5px dashed rgb(var(--violet)); outline-offset: 3px; position: relative; }
+      .note-txt { display: none; margin-top: 6px; font-size: 11.5px; line-height: 1.5; color: rgb(var(--violet)); }
+      .show-notes .note-txt { display: block; }
+      body:not(.show-notes) .note { outline: none; }
+
+      .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 80; pointer-events: none; }
+      .toast > div { display: flex; align-items: center; gap: 8px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 14px; font-size: 13px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); }
+
+      /* ---- 交互演示：流水线步骤 ---- */
+      .opt { text-align: left; border: 1px solid hsl(var(--border)); border-radius: 10px; padding: 9px 12px; font-size: 13px; background: hsl(var(--card)); }
+      .opt small { display: block; color: hsl(var(--muted-foreground)); font-size: 11.5px; }
+      .opt[aria-pressed="true"] { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+      .kv { display: grid; grid-template-columns: 110px 1fr; gap: 6px 12px; font-size: 13px; }
+      .kv > div:nth-child(odd) { color: hsl(var(--muted-foreground)); }
+
+      /* ---- 原型：产品界面 ---- */
+      .p-app { display: flex; height: 100%; font-size: 13px; }
+      .p-rail { width: 52px; border-right: 1px solid hsl(var(--border)); display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 0; flex: none; }
+      .p-rail button { width: 38px; height: 38px; border-radius: 9px; display: grid; place-items: center; color: hsl(var(--muted-foreground)); font-size: 16px; }
+      .p-rail button:hover { background: hsl(var(--accent)); }
+      .p-rail button[aria-current="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .p-rail .lbl { font-size: 10px; color: hsl(var(--muted-foreground)); margin-top: -2px; margin-bottom: 4px; }
+      .p-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+      .p-head { height: 46px; border-bottom: 1px solid hsl(var(--border)); display: flex; align-items: center; gap: 8px; padding: 0 12px; flex: none; }
+      .p-body { flex: 1; min-height: 0; display: flex; }
+      .p-side { width: 260px; border-left: 1px solid hsl(var(--border)); flex: none; display: flex; flex-direction: column; min-height: 0; }
+      .p-scroll { overflow: auto; min-height: 0; }
+      .p-toc { width: 180px; border-right: 1px solid hsl(var(--border)); padding: 8px; flex: none; }
+      .p-toc button { width: 100%; text-align: left; padding: 6px 8px; border-radius: 7px; display: flex; align-items: center; gap: 6px; font-size: 12.5px; }
+      .p-toc button:hover { background: hsl(var(--accent)); }
+      .p-toc button[aria-current="true"] { background: hsl(var(--accent)); font-weight: 600; }
+      .p-editor { flex: 1; min-width: 0; padding: 16px 20px; display: flex; flex-direction: column; gap: 8px; position: relative; }
+      .p-editor textarea { flex: 1; width: 100%; border: 1px solid hsl(var(--border)); border-radius: 10px; padding: 12px; background: hsl(var(--card)); resize: none; line-height: 1.7; font-size: 13px; }
+      .p-editor textarea[readonly] { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
+      .p-bar { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 14px; border-radius: 999px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); box-shadow: 0 6px 20px rgb(0 0 0 / 0.12); font-size: 12.5px; white-space: nowrap; }
+      .p-input { height: 32px; border: 1px solid hsl(var(--border)); border-radius: 8px; padding: 0 10px; background: hsl(var(--card)); width: 100%; }
+      .p-chiprow { display: flex; flex-wrap: wrap; gap: 6px; }
+      .p-chip { height: 28px; padding: 0 10px; border-radius: 8px; border: 1px solid hsl(var(--border)); font-size: 12px; display: inline-flex; align-items: center; gap: 5px; }
+      .p-chip[aria-pressed="true"] { border-color: hsl(var(--primary)); background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .p-chip:disabled { opacity: 0.45; cursor: not-allowed; }
+      .p-seg { display: inline-flex; padding: 2px; border-radius: 8px; background: hsl(var(--muted)); }
+      .p-seg button { height: 26px; padding: 0 10px; border-radius: 6px; font-size: 12px; display: inline-flex; align-items: center; gap: 4px; color: hsl(var(--muted-foreground)); }
+      .p-seg button[aria-pressed="true"] { background: hsl(var(--card)); color: hsl(var(--foreground)); box-shadow: 0 1px 2px rgb(0 0 0 / 0.1); }
+      .p-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; }
+      .p-acard { text-align: left; }
+      .p-thumb { aspect-ratio: 3/4; border-radius: 10px; background: hsl(var(--muted)); display: grid; place-items: center; color: hsl(var(--muted-foreground)); font-size: 11.5px; position: relative; overflow: hidden; border: 2px solid transparent; }
+      .p-thumb.sel { border-color: hsl(var(--primary)); }
+      .p-thumb.done { background: linear-gradient(135deg, rgb(var(--violet) / 0.35), rgb(var(--info) / 0.35)); color: hsl(var(--foreground)); }
+      .p-thumb .ck { position: absolute; top: 6px; left: 6px; }
+      .spin { width: 16px; height: 16px; border-radius: 50%; border: 2px solid hsl(var(--border)); border-top-color: hsl(var(--foreground)); animation: sp 0.8s linear infinite; margin: 0 auto 4px; }
+      @keyframes sp { to { transform: rotate(360deg); } }
+      .p-canvas { flex: 1; position: relative; overflow: hidden; background-image: radial-gradient(hsl(var(--border)) 1px, transparent 1px); background-size: 18px 18px; }
+      .p-node { position: absolute; width: 120px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 6px; font-size: 11.5px; text-align: left; transition: box-shadow 0.2s; }
+      .p-node .p-thumb { aspect-ratio: 1; margin-bottom: 4px; }
+      .p-node.sel { border-color: hsl(var(--primary)); box-shadow: 0 0 0 2px hsl(var(--primary)); }
+      .p-node.flash { box-shadow: 0 0 0 4px rgb(var(--violet) / 0.5); }
+      .p-modal-bg { position: absolute; inset: 0; background: rgb(0 0 0 / 0.45); display: grid; place-items: center; z-index: 20; }
+      .p-modal { width: min(560px, 92%); max-height: 92%; overflow: auto; background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: 14px; padding: 18px; display: grid; gap: 14px; }
+      .p-fieldset { border: 1px solid hsl(var(--border)); border-radius: 10px; padding: 12px; display: grid; gap: 8px; }
+      .p-fieldset > b { font-size: 12.5px; }
+      .p-job { border: 1px solid hsl(var(--border)); border-radius: 10px; padding: 8px 10px; font-size: 12px; display: grid; gap: 4px; }
+      .p-prog { height: 4px; border-radius: 4px; background: hsl(var(--muted)); overflow: hidden; }
+      .p-prog > i { display: block; height: 100%; background: hsl(var(--foreground)); transition: width 0.3s; }
+      .p-ep { border: 1px solid hsl(var(--border)); border-radius: 12px; padding: 10px; display: flex; gap: 10px; background: hsl(var(--card)); }
+      .p-ep .p-thumb { width: 72px; aspect-ratio: 9/16; flex: none; }
+      .p-prompt { min-height: 140px; border: 1px solid hsl(var(--border)); border-radius: 10px; padding: 10px 12px; background: hsl(var(--card)); line-height: 2; outline: none; }
+      .p-prompt:focus { border-color: hsl(var(--primary)); }
+      .mchip { display: inline-flex; align-items: center; gap: 3px; padding: 0 6px; border-radius: 6px; background: rgb(var(--info) / 0.12); color: rgb(var(--info)); font-size: 12px; line-height: 20px; margin: 0 2px; user-select: none; }
+      .mchip.dead { background: rgb(var(--bad) / 0.12); color: rgb(var(--bad)); text-decoration: line-through; }
+      .p-strip { border-top: 1px solid hsl(var(--border)); padding: 8px 12px; display: flex; gap: 8px; align-items: flex-end; overflow-x: auto; flex: none; }
+      .p-clip { width: 104px; flex: none; text-align: left; font-size: 11.5px; }
+      .p-clip .p-thumb { aspect-ratio: 16/10; margin-bottom: 3px; }
+      .p-preview { width: 240px; border-left: 1px solid hsl(var(--border)); padding: 12px; flex: none; display: flex; flex-direction: column; gap: 8px; }
+      .p-video { aspect-ratio: 9/16; max-height: 300px; border-radius: 10px; background: hsl(var(--muted)); display: grid; place-items: center; text-align: center; font-size: 12px; color: hsl(var(--muted-foreground)); padding: 10px; }
+      .p-video.done { background: linear-gradient(160deg, rgb(var(--violet) / 0.45), rgb(var(--ok) / 0.3)); color: hsl(var(--foreground)); }
+      .p-assetlib { width: 200px; border-right: 1px solid hsl(var(--border)); padding: 10px; flex: none; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+      .p-aitem { display: flex; align-items: center; gap: 6px; padding: 5px 6px; border-radius: 7px; font-size: 12px; cursor: grab; border: 1px solid transparent; }
+      .p-aitem:hover { background: hsl(var(--accent)); border-color: hsl(var(--border)); }
+      .p-av { width: 26px; height: 26px; border-radius: 6px; background: hsl(var(--muted)); flex: none; display: grid; place-items: center; font-size: 12px; }
+      .p-av.done { background: linear-gradient(135deg, rgb(var(--violet) / 0.45), rgb(var(--info) / 0.45)); }
+      .p-menu { position: absolute; z-index: 15; background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: 10px; padding: 4px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.15); min-width: 170px; max-height: 220px; overflow: auto; }
+      .p-menu button { width: 100%; text-align: left; padding: 5px 8px; border-radius: 6px; font-size: 12px; display: flex; gap: 6px; align-items: center; }
+      .p-menu button:hover { background: hsl(var(--accent)); }
+      .p-list-proj { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+      .p-drop { border: 1.5px dashed hsl(var(--border)); border-radius: 12px; padding: 16px; text-align: center; display: grid; gap: 6px; place-items: center; }
+      @media (max-width: 820px) { .p-side, .p-preview, .p-toc { display: none; } .p-assetlib { width: 150px; } }
+    </style>
+  </head>
+
+  <body class="show-notes">
+    <header class="top">
+      <div class="top-in">
+        <div class="brand"><span class="logo"><i data-lucide="clapperboard"></i></span>短剧工作室演示</div>
+        <div class="tabs" role="tablist">
+          <button class="tab" role="tab" data-tab="overview" aria-selected="true"><i data-lucide="map"></i>总览</button>
+          <button class="tab" role="tab" data-tab="demo" aria-selected="false"><i data-lucide="workflow"></i>流水线步骤</button>
+          <button class="tab" role="tab" data-tab="proto" aria-selected="false"><i data-lucide="mouse-pointer-click"></i>可点击原型</button>
+          <button class="tab" role="tab" data-tab="impl" aria-selected="false"><i data-lucide="database"></i>数据与接口</button>
+        </div>
+        <div class="spacer row">
+          <label class="row muted" style="font-size: 12px">设计标注<button class="switch" id="notesSw" role="switch" aria-checked="true" onclick="toggleNotes()"></button></label>
+          <button class="btn" onclick="document.documentElement.classList.toggle('dark')" aria-label="切换明暗主题"><i data-lucide="sun-moon"></i></button>
+        </div>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <!-- ============ 1. 总览 ============ -->
+      <section id="tab-overview">
+        <h1 class="h1">上传一份剧本，一路做到每集成片</h1>
+        <p class="lead">
+          首页侧栏新增「短剧工作室」。用户上传剧本或小说，系统按<b>固定流水线</b>一步步产出大纲、分集剧本、角色/场景/道具资产、分镜片段和视频；每一步都能审阅、修改、单独重试。资产就是这部短剧<b>专属画布上的节点</b>，列表只是另一种看法。<b>拆解过资产的集，剧本会锁定。</b>分三期交付。
+        </p>
+
+        <div class="callout c-info" style="margin-top: 16px">
+          <i data-lucide="info"></i>
+          <div>
+            <b>阅读说明。</b>本页对应 <code>短剧工作室.md</code>（准绳）。项目现状来自 2026-10-28 的代码扫描并抽查；竞品行为只来自需求文档里的即梦截图，没有实际操作；所有界面、接口都是<b>提案，尚未实现</b>。原型里的数字、积分、耗时都是示意。<br />
+            <span class="muted">核实度图例：</span>
+            <span class="tag t-ok">已核对代码</span>
+            <span class="tag t-info">调研检索，未逐条复核</span>
+            <span class="tag t-warn">未验证 · 需实测</span>
+            <span class="tag t-vio">提案</span>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>主线流程：一部剧怎么从剧本走到成片</h2>
+          <p class="sub">每个方框是一个后台任务或一次生成；高亮的是用户必须确认的关口。</p>
+          <div class="flow note">
+            <div class="node"><b>上传 / 粘贴</b>txt · md · docx，选题材、画风<div class="phase"><span class="tag t-mute">一期</span></div></div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>研读 → 大纲</b>剧本/小说判断、人物传记、每集梗概<div class="phase"><span class="tag t-mute">一期</span></div></div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>分集剧本</b>每集一个子任务，可改<div class="phase"><span class="tag t-mute">一期</span></div></div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>资产拆解</b>选比例和集数，确认后锁定这些集<div class="phase"><span class="tag t-mute">一期</span></div></div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>资产生成</b>角色形象、场景、道具图<div class="phase"><span class="tag t-mute">一期</span></div></div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>分镜脚本</b>每集切成 ≤15 秒的片段<div class="phase"><span class="tag t-mute">二期</span></div></div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>片段视频</b>@ 资产作参考生视频，首帧可选<div class="phase"><span class="tag t-mute">二期</span></div></div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>合成整集</b>连播预览 + 服务端 ffmpeg<div class="phase"><span class="tag t-mute">三期</span></div></div>
+          </div>
+          <div class="note-txt">设计：文本步骤（研读、大纲、剧本、拆解、分镜）都是固定提示词模板 + JSON 输出 + 校验的后台任务，不交给 Agent 自由发挥——长剧本下更稳、好计费、能单步重试。右侧短剧助手（三期）只负责对话式修改，复用画布 Agent。</div>
+          <div class="callout c-warn" style="margin-top: 10px">
+            <i data-lucide="corner-down-right"></i>
+            <div>
+              <b>回退与兜底：</b>模型输出不合法自动重试 1 次，仍失败就停在这一步（错误码 67008），可重试、不扣积分；单集失败只重试那一集；刷新或断线后靠任务对账恢复进度；项目选的文本模型被停用时，回落到后台「文本」类别第一个启用的模型；一个都没有时流水线按钮禁用。<b>任何一步都可以跳过 AI，直接手写或在画布里手建。</b>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>工作台的三个区</h2>
+          <p class="sub">左侧竖导航切换，右侧一期是流水线进度，三期换成短剧助手。</p>
+          <div class="grid g3">
+            <div class="card">
+              <div class="row"><i data-lucide="book-open"></i><b>剧本</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-warn">拆解后锁定</span><span class="tag t-vio">提案</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>大纲、人物传记、第 1…N 集。</b>Markdown 编辑、自动保存；拆解过的集变只读（同即梦）。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="boxes"></i><b>资产</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-info">列表 ⇄ 画布同源</span><span class="tag t-vio">提案</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>短剧专属画布上的节点。</b>列表按类型 × 集数过滤；点卡片跳画布定位；节点可设「出现集数」，空 = 全集。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="film"></i><b>分集视频</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-mute">二期起</span><span class="tag t-vio">提案</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>集卡片 → 片段工作区。</b>左资产库、中片段提示词（@ 或拖入）、右预览、底片段条；三期加连播与合成整集。</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>对比：为什么这样做</h2>
+          <p class="sub">把即梦（参照对象）、现在的纯画布手搭、和本方案放在一起看。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th></th><th>即梦 · 短剧工作室</th><th>现状：画布手搭</th><th>本方案</th></tr></thead>
+              <tbody>
+                <tr><th>长剧本处理</th><td class="y">按集处理</td><td class="m">无结构，全靠手工</td><td class="y">按集分批任务，单集可重试</td></tr>
+                <tr><th>角色一致性</th><td class="y">资产按集、@ 引用</td><td><span class="m">靠手工连线</span></td><td class="y">角色卡实时引用，改一次全剧生效</td></tr>
+                <tr><th>资产两种视图</th><td class="y">列表 ⇄ 画布</td><td>只有画布</td><td class="y">列表是画布节点的过滤视图，天然同步</td></tr>
+                <tr><th>拆解后改剧本</th><td>锁定</td><td>—</td><td>锁定（用户确认同即梦）</td></tr>
+                <tr><th>片段生成</th><td>参考生视频</td><td>手搭</td><td class="y">参考生视频 + 首帧可选</td></tr>
+                <tr><th>合成成片</th><td>「合成全集」</td><td class="m">没有拼接能力</td><td>前端连播 + 服务端 ffmpeg（三期）</td></tr>
+                <tr><th>多轨 / 字幕 / 配乐</th><td>有</td><td>无</td><td class="m">本期不做</td></tr>
+                <tr><th>核实度</th><td><span class="tag t-info">截图，未实操</span></td><td><span class="tag t-ok">已核对代码</span></td><td><span class="tag t-vio">提案</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>用户对第 2 集做资产拆解时，会发生什么</h2>
+          <p class="sub">这是最容易出意外的一步：要花积分、会锁剧本、会和第 1 集已有的资产合并。</p>
+          <div class="grid g2">
+            <div class="card">
+              <ol class="steps" style="margin: 0; padding: 0">
+                <li><b>点「资产拆解」，弹出确认框</b><small>比例必选（第一次拆解时定）；集数默认第一个未拆解的集；已锁定的集置灰写「已拆解」；显示积分估算。</small></li>
+                <li><b>确认 → 排队 breakdown 任务</b><small>同一部剧同时只能有一个文本流水线任务，其他流水线按钮置灰。</small></li>
+                <li><b>模型输出角色（含造型）、场景、道具和出现集数</b><small>校验不过自动重试 1 次。</small></li>
+                <li><b>和已有资产按名称 / 别名合并</b><small>第 1 集已有的「林川」不新建，只把 2 加进出现集数；新角色才建角色卡 + 节点。</small></li>
+                <li><b>自动接「资产提示词」任务</b><small>只给新资产写图片提示词；结果由后端写进短剧画布并推送，列表同时出现。</small></li>
+                <li><b>第 2 集剧本变只读</b><small>编辑器和助手都不能再改。</small></li>
+              </ol>
+            </div>
+            <div class="card">
+              <div class="callout c-warn">
+                <i data-lucide="triangle-alert"></i>
+                <div>
+                  <b>边界：拆解后该集剧本不可再改。</b>
+                  <ul class="list" style="margin-top: 6px">
+                    <li>发现错别字也改不了；需要改只能等将来「解锁」功能（已搁置，见 Markdown §11.2）。</li>
+                    <li>合并只按名称 / 别名；模型把同一人起了两个名字时会出现重复资产，需要用户在画布里删掉一个。</li>
+                    <li>拆解期间用户在画布里同时改节点，后端写入走同一把 <code>revision</code> 锁，前端三方合并。</li>
+                  </ul>
+                </div>
+              </div>
+              <p class="muted" style="font-size: 12.5px; margin-top: 10px">交付时要在确认框里写清：「拆解后这些集的剧本将锁定，将消耗约 N 积分」。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 2. 流水线步骤 ============ -->
+      <section id="tab-demo" hidden>
+        <h1 class="h1">流水线每一步吃什么、吐什么</h1>
+        <p class="lead">
+          每个文本步骤都按「<b>输入变量 → 提示词正文 → 输出结构 → 校验规则</b>」整理（需求文档 4.3 的建议）。左边选一步，右边看它的输入、输出、失败时怎么办。可以改「范围」看积分估算怎么变。<b>JSON 字段是提案，积分算法是示意。</b>
+        </p>
+        <div class="grid demo-grid" style="margin-top: 20px; grid-template-columns: 240px minmax(0, 1fr)">
+          <div id="optList" class="grid" style="align-content: start"></div>
+          <div id="optPanel" class="card"></div>
+        </div>
+      </section>
+
+      <!-- ============ 3. 可点击原型 ============ -->
+      <section id="tab-proto" hidden>
+        <h1 class="h1">可点击原型：从上传到片段视频</h1>
+        <p class="lead">
+          数据在内存里，刷新复原，所有异步都是 <b>setTimeout 模拟，非真实调用</b>。已预置一部 6 集的《双鱼玉佩》（第 1 集已拆解）。可以走：剧本 → 拆解第 2 集 → 资产列表/画布切换 → 批量生成 → 分集视频 → 片段工作区生成。
+          <b>想看失败：</b>拆解时把项目名改成包含 <code>bad</code>（剧本页顶栏可改）；片段提示词里写「失败」两个字再生成。
+        </p>
+        <div class="row wrapflex" style="margin-top: 12px">
+          <button class="btn btn-outline btn-sm" onclick="resetProto()"><i data-lucide="rotate-ccw"></i>重置原型</button>
+          <button class="btn btn-outline btn-sm" onclick="go('list')"><i data-lucide="list"></i>从项目列表开始</button>
+          <span class="muted" style="font-size: 12px">提示：窄屏会隐藏右栏和预览区。</span>
+        </div>
+        <div class="frame note" style="margin-top: 12px">
+          <div class="frame-bar">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            <span style="margin-left: 8px" id="crumb">video-canvas / 短剧工作室</span>
+          </div>
+          <div class="proto" id="proto"></div>
+        </div>
+        <div class="note-txt">设计：工作台全屏、不带首页侧栏（同 /canvas/:id）；左竖导航三段对应流水线的三个阶段；右栏一、二期放流水线进度，三期换成短剧助手——位置先占住，用户不用重新学习布局。</div>
+      </section>
+
+      <!-- ============ 4. 数据与接口 ============ -->
+      <section id="tab-impl" hidden>
+        <h1 class="h1">数据与接口（提案）</h1>
+        <p class="lead">下面都是设计提案，尚未实现，对应 Markdown 设计文档 §8。原则是<b>能复用就复用</b>：画布引擎和 <code>revision</code> 锁、<code>generation-tasks</code>、角色卡、River、Agent 写画布与 <code>canvas.patch</code>、后端 ffmpeg 全部沿用，只新增 4 张表和一组 <code>/dramas</code> 接口。</p>
+
+        <div class="sec">
+          <h2>关系</h2>
+          <p class="sub">谁是数据的真源，谁只是视图。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>对象</th><th>存在哪</th><th>为什么</th></tr></thead>
+              <tbody>
+                <tr><th>短剧项目</th><td><code>drama_projects</code> 1 : 1 <code>canvas_projects</code>（<code>drama_id</code>）</td><td>资产画布复用现有画布引擎、保存与冲突处理；短剧画布不出现在普通画布列表</td></tr>
+                <tr><th>集</th><td><code>drama_episodes</code>（剧本、梗概、锁定、成片）</td><td>剧本是长文本、按集编辑，不适合塞进画布 payload</td></tr>
+                <tr><th>资产</th><td>短剧画布的节点 + <code>data.drama</code></td><td>用户确认「以画布节点为准」，列表只是过滤视图</td></tr>
+                <tr><th>角色</th><td><code>character_cards</code>（加 <code>drama_id</code>、<code>look_name</code>）+ <code>character</code> 节点</td><td>复用角色卡的实时引用；一个造型一张卡</td></tr>
+                <tr><th>片段</th><td><code>drama_segments</code>；生成走 <code>generation_tasks</code>，<code>node_id = seg:{id}</code></td><td>片段工作区不是画布；前缀约定同首页对话的 <code>rec:</code></td></tr>
+                <tr><th>流水线任务</th><td><code>drama_jobs</code> + River job <code>drama_step</code></td><td>需要按集进度、取消、对账、记录原始输出</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>数据模型</h2>
+          <p class="sub">新迁移 <code>0017_drama.sql</code>（编号以实现时最新为准）；对外 ID 用 <code>idcodec</code> 十六进制，同角色卡。</p>
+          <div class="grid g2">
+            <div class="cmp-wrap"><table class="cmp">
+              <thead><tr><th colspan="2"><code>drama_projects</code></th></tr></thead>
+              <tbody>
+                <tr><th>user_id</th><td>bigint，索引 (user_id, updated_at desc)</td></tr>
+                <tr><th>canvas_project_id</th><td>bigint，唯一，短剧画布</td></tr>
+                <tr><th>source_kind</th><td><code>script | novel</code>，研读后填</td></tr>
+                <tr><th>source_text</th><td>text，≤ 30 万字（默认值）</td></tr>
+                <tr><th>genre / style_key / style_custom</th><td>题材 key、画风 key（<code>custom</code>=自定义）、自定义描述 ≤500 字</td></tr>
+                <tr><th>ratio</th><td><code>9:16|16:9|21:9|3:4|4:3|1:1</code>，空串=未定，拆解前必选</td></tr>
+                <tr><th>target_episodes / episode_seconds</th><td>0=自动 / 30–180，默认 60</td></tr>
+                <tr><th>text_model_id</th><td>可空；空=跟随「文本」类别第一个启用模型</td></tr>
+                <tr><th>outline_md / characters_md</th><td>大纲、人物传记</td></tr>
+                <tr><th>status</th><td><code>analyzing → outlined → scripting → ready</code></td></tr>
+                <tr><th>revision</th><td>乐观锁</td></tr>
+              </tbody>
+            </table></div>
+            <div class="cmp-wrap"><table class="cmp">
+              <thead><tr><th colspan="2"><code>drama_episodes</code></th></tr></thead>
+              <tbody>
+                <tr><th>drama_id + no</th><td>唯一；no 从 1 开始</td></tr>
+                <tr><th>title / synopsis / script_md</th><td>标题、梗概、分集剧本 Markdown</td></tr>
+                <tr><th>script_status</th><td><code>empty|generating|ready|failed</code></td></tr>
+                <tr><th>storyboard_status</th><td>同上</td></tr>
+                <tr><th>locked_at</th><td>非空=已拆解，剧本只读（PATCH 返回 67005）</td></tr>
+                <tr><th>final_asset_id</th><td>合成成片（三期）</td></tr>
+                <tr><th>revision</th><td>乐观锁，409 走冲突弹窗</td></tr>
+              </tbody>
+            </table></div>
+            <div class="cmp-wrap"><table class="cmp">
+              <thead><tr><th colspan="2"><code>drama_segments</code></th></tr></thead>
+              <tbody>
+                <tr><th>episode_id + seq</th><td>索引；重排整体重写 seq</td></tr>
+                <tr><th>prompt</th><td>含 <code>@[名](节点id)</code></td></tr>
+                <tr><th>shots</th><td>jsonb <code>[{seconds, shot_size, camera, action, dialogue}]</code></td></tr>
+                <tr><th>seconds</th><td>≤ 视频模型时长上限，缺省 15</td></tr>
+                <tr><th>keyframe_asset_id</th><td>首帧，可空；有则走 i2v</td></tr>
+                <tr><th>outputs / chosen</th><td>多次结果 <code>[{task_id, asset_id, url}]</code> / 采用下标，-1=无</td></tr>
+                <tr><th>status / revision</th><td><code>idle|running|done|error</code> / 乐观锁</td></tr>
+              </tbody>
+            </table></div>
+            <div class="cmp-wrap"><table class="cmp">
+              <thead><tr><th colspan="2"><code>drama_jobs</code></th></tr></thead>
+              <tbody>
+                <tr><th>step</th><td><code>analyze|outline|scripts|breakdown|asset_prompts|storyboard|compose</code></td></tr>
+                <tr><th>episodes</th><td>jsonb 集号数组</td></tr>
+                <tr><th>status / progress</th><td><code>queued|running|succeeded|failed|canceled</code> / 0–100</td></tr>
+                <tr><th>model_id / credits</th><td>实际模型 / 实际扣费（失败不扣）</td></tr>
+                <tr><th>error_code / error_message</th><td>67xxx</td></tr>
+                <tr><th>output</th><td>jsonb 原始结构化输出（审计、重放）</td></tr>
+              </tbody>
+            </table></div>
+          </div>
+          <div class="callout c-warn" style="margin-top: 12px">
+            <i data-lucide="pencil"></i>
+            <div><b>改动现有表：</b><code>canvas_projects</code> 加 <code>drama_id</code>（画布列表、最近画布、导出都排除它）；<code>character_cards</code> 加 <code>drama_id</code>、<code>look_name</code>、<code>voice_prompt</code>，<b>去掉名称唯一索引、主图改为可空</b>（用户决定）；资产页「角色卡」只列 <code>drama_id</code> 为空的卡。节点 payload 加 <code>data.drama = {type, episodes, name}</code>，不需要迁移。</div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>接口</h2>
+          <p class="sub">都在 <code>/api/v1</code> 下，鉴权、按 <code>user_id</code> 隔离；错误码新开 67xxx 段（已核对 60–66 已用）。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>方法与路径</th><th>说明</th><th>业务错误</th></tr></thead>
+              <tbody>
+                <tr><th><code>GET /drama-styles</code></th><td>内置 12 题材 + 11 画风</td><td>—</td></tr>
+                <tr><th><code>GET /dramas</code></th><td>项目列表（keyword / offset / limit）</td><td>—</td></tr>
+                <tr><th><code>POST /dramas</code></th><td>multipart：file 或 text + 设置；建项目 + 画布 + 排队 analyze，201</td><td>67002 格式不支持/空，67003 超长</td></tr>
+                <tr><th><code>GET / PATCH / DELETE /dramas/:id</code></th><td>详情（不含剧本全文）/ 改设置、大纲、人物（带 revision）/ 软删（连带画布与短剧角色卡）</td><td>67001，409</td></tr>
+                <tr><th><code>GET / PATCH /dramas/:id/episodes/:no</code></th><td>单集全文 / 改标题、梗概、剧本（带 revision）</td><td>67005 已锁定，409</td></tr>
+                <tr><th><code>POST /dramas/:id/episodes</code></th><td>末尾新增一集</td><td>—</td></tr>
+                <tr><th><code>POST /dramas/:id/estimate</code></th><td><code>{step, episodes}</code> → <code>{credits}</code></td><td>67006，67007</td></tr>
+                <tr><th><code>POST /dramas/:id/jobs</code></th><td><code>{step, episodes, options}</code>，202</td><td>67004 进行中，67006 前置未完成，67007 无文本模型，积分不足沿用现有码</td></tr>
+                <tr><th><code>GET /dramas/:id/jobs?status=active</code></th><td>对账</td><td>—</td></tr>
+                <tr><th><code>POST /dramas/:id/jobs/:jobId/cancel</code></th><td>取消</td><td>—</td></tr>
+                <tr><th><code>GET / POST /dramas/:id/episodes/:no/segments</code></th><td>片段列表 / 新增</td><td>—</td></tr>
+                <tr><th><code>PATCH / DELETE /drama-segments/:sid</code></th><td>改提示词、时长、采用（带 revision）/ 删除</td><td>67009，409</td></tr>
+                <tr><th><code>PUT /dramas/:id/episodes/:no/segments/order</code></th><td><code>{ids}</code> 重排</td><td>67009</td></tr>
+                <tr><th><code>POST /generation-tasks</code>（现有）</th><td>片段生成：<code>node_id = seg:{sid}</code>；worker 结束按前缀写回 <code>drama_segments.outputs</code>（新增钩子）</td><td>现有</td></tr>
+                <tr><th>WS <code>drama.job</code></th><td>新事件 <code>{drama_id, job}</code>；片段沿用 <code>task.status</code></td><td>—</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="muted" style="font-size: 12.5px; margin-top: 8px">67xxx：67001 不存在 · 67002 原文格式/空 · 67003 原文超长 · 67004 已有进行中任务 · 67005 集已锁定 · 67006 前置未完成 · 67007 无可用文本模型 · 67008 输出无法解析 · 67009 片段不存在 · 67010 无可合成片段</p>
+        </div>
+
+        <div class="sec">
+          <h2>核心流程伪代码</h2>
+          <div class="grid g2">
+            <div class="codeblock"><pre>// River job: drama_step（提案）
+func RunStep(job) {
+  model := resolveTextModel(drama.TextModelID)  // 不可用 → 回落「文本」类别第一个；没有 → 67007
+  for chunk in split(job) {                     // scripts 按集；analyze 按章节分块
+    tpl  := prompts[job.Step]                   // 输入变量 → 正文 → JSON Schema → 校验
+    out, err := callText(model, tpl.Render(vars(chunk)))
+    if !tpl.Validate(out) {                     // 自动重试 1 次，带上校验错误
+      out = callText(model, tpl.Repair(out, err))
+      if !tpl.Validate(out) { fail(67008); return }  // 不扣积分
+    }
+    persist(job.Step, chunk, out)               // 写库 / 写画布
+    progress(job, chunk)                        // 推 drama.job
+  }
+}</pre></div>
+            <div class="codeblock"><pre>// breakdown 落库（提案）
+existing := assetsOnCanvas(drama)               // data.drama 非空的节点
+for a in out.assets {
+  hit := match(existing, a.name, a.aliases)
+  if hit { hit.episodes = union(hit.episodes, a.episodes) }
+  else if a.type == "character" {
+    card := createCard(drama, a.name, a.look, a.voicePrompt) // 主图可空
+    ops += addNode(kind: "character", characterId: card.id, drama: {...})
+  } else {
+    ops += addNode(kind: "image", drama: {...})
+  }
+}
+canvasgraph.Apply(graph, ops)                   // 乐观锁冲突 → 重读重放
+pushCanvasPatch(); lockEpisodes(job.episodes)
+enqueue("asset_prompts", newAssets)</pre></div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>已确认的决定</h2>
+          <div class="card">
+            <ol class="list" style="padding-left: 18px; display: grid; gap: 4px">
+              <li><b>全流程设计，三期交付</b>：剧本 + 资产 → 分镜 + 视频 → 助手 + 合成。</li>
+              <li><b>固定流水线 + 助手辅助</b>：稳定、好计费、可单步重试。</li>
+              <li><b>资产以短剧画布节点为准</b>：列表是视图，天然同步。</li>
+              <li><b>输入 = 剧本或小说文件 + 粘贴文本</b>，不做一句话创意。</li>
+              <li><b>风格库 = 内置精选 + 自定义</b>，后台可配置放后续。</li>
+              <li><b>合成 = 前端连播预览 + 服务端 ffmpeg</b>。</li>
+              <li><b>入口 = 侧栏一级 + 全屏工作台</b>。</li>
+              <li><b>角色复用角色卡，扩展造型；去掉名称唯一与主图必填</b>。</li>
+              <li><b>短剧助手复用 Agent，加短剧工具</b>。</li>
+              <li><b>拆解后该集剧本锁定</b>（同即梦）。</li>
+              <li><b>片段 = 参考生视频，首帧可选</b>。</li>
+              <li><b>文本模型跟随后台「文本」类别</b>，默认第一个，用户可在项目里换。</li>
+              <li><b>已搁置</b>：后台风格库、一句话创意、拆解后解锁（见 Markdown §11.2）。</li>
+            </ol>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+      const $ = (s, r = document) => r.querySelector(s);
+      const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const icons = () => { if (window.lucide) lucide.createIcons(); };
+      function toggleNotes() { const on = document.body.classList.toggle("show-notes"); $("#notesSw").setAttribute("aria-checked", String(on)); }
+      let toastTimer;
+      function toast(msg, kind = "ok") {
+        const icon = { ok: "circle-check", bad: "circle-x", warn: "triangle-alert", info: "info" }[kind] || "info";
+        $("#toast").innerHTML = `<div><i data-lucide="${icon}" style="color: rgb(var(--${kind}))"></i>${esc(msg)}</div>`;
+        icons(); clearTimeout(toastTimer); toastTimer = setTimeout(() => ($("#toast").innerHTML = ""), 2400);
+      }
+      function showTab(id) {
+        document.querySelectorAll("main > section").forEach((s) => (s.hidden = s.id !== "tab-" + id));
+        document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === id)));
+        window.scrollTo(0, 0);
+      }
+      document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab)));
+
+      /* ================= 流水线步骤演示 ================= */
+      const STEPS = [
+        { key: "analyze", name: "研读", phase: "一期", auto: "上传后自动",
+          input: "原文全文（小说按章节分块，每块 ≤ 上下文 60%）、文件名",
+          output: `{ "kind": "script|novel", "chapters": [{ "no":1, "title":"", "summary":"" }],\n  "characters": [{ "name":"林川", "aliases":["川子"], "brief":"" }],\n  "existing_episodes": 16 }`,
+          validate: "kind 必填；chapters 非空；剧本已分集时 existing_episodes = 实际集数",
+          next: "自动接「大纲」；已分好集的剧本直接整理成分集剧本", perEp: false, base: 4 },
+        { key: "outline", name: "大纲与人物", phase: "一期", auto: "研读后自动",
+          input: "研读结果、题材、画风、目标集数、单集时长",
+          output: `{ "outline_md":"…", "characters_md":"…",\n  "episodes": [{ "no":1, "title":"村里的女人", "synopsis":"…", "hook":"…" }] }`,
+          validate: "episodes 数量 = 目标集数（自动时 1–100）；每集 synopsis 非空",
+          next: "用户在剧本页审阅、修改后，点「生成分集剧本」", perEp: false, base: 6 },
+        { key: "scripts", name: "分集剧本", phase: "一期", auto: "用户触发",
+          input: "大纲、人物传记、本集梗概、上一集结尾 800 字、单集时长、风格",
+          output: `{ "no":1, "script_md":"## 场 1 EXT. 山村 黄昏\\n…" }`,
+          validate: "Markdown 至少 1 个场次标题；对白按「角色：台词」；估算时长在单集时长 ±30% 内",
+          next: "每集一个子请求、串行；某集失败只重试该集", perEp: true, base: 3 },
+        { key: "breakdown", name: "资产拆解", phase: "一期", auto: "用户确认（比例 + 集数）",
+          input: "所选集剧本、人物传记、已有资产清单（名称 / 别名 / 出现集）",
+          output: `{ "characters": [{ "name":"林川", "aliases":[], "looks":[{ "look":"童年", "desc":"…", "episodes":[1] }], "voice_prompt":"清亮少年音…" }],\n  "scenes": [{ "name":"山村街道", "desc":"…", "episodes":[1,2] }],\n  "props":  [{ "name":"双鱼玉佩", "desc":"…", "episodes":[2] }] }`,
+          validate: "名称非空、同类不重名；episodes ⊆ 所选集；与已有资产按名称/别名合并",
+          next: "写进短剧画布 → 所选集锁定 → 自动接「资产提示词」", perEp: true, base: 5 },
+        { key: "asset_prompts", name: "资产提示词", phase: "一期", auto: "拆解后自动",
+          input: "新资产设定、画风正向描述、项目比例",
+          output: `{ "items": [{ "node_id":"n_12", "prompt":"…全身三视图，纯色背景…" }] }`,
+          validate: "每个新资产都有 prompt；角色提示词含身份、服装、视角约束",
+          next: "写回节点 prompt，用户可批量生成图片", perEp: false, base: 2 },
+        { key: "storyboard", name: "分镜脚本", phase: "二期", auto: "集卡片「生成脚本」",
+          input: "本集剧本、本集资产（节点 id + 名称）、视频模型时长上限、比例",
+          output: `{ "segments": [{ "seconds":12, "prompt":"本片段场景设定在 @[山村街道](n_3)…",\n  "shots":[{ "seconds":8, "shot_size":"全景", "camera":"平视固定", "action":"…", "dialogue":"" }] }] }`,
+          validate: "每段 seconds ≤ 模型上限；shots 时长之和 = seconds；@ 引用的节点 id 必须存在",
+          next: "写入 drama_segments，进入片段工作区", perEp: true, base: 4 },
+        { key: "compose", name: "合成整集", phase: "三期", auto: "用户触发",
+          input: "本集各片段的「采用」视频",
+          output: "ffmpeg：统一分辨率（取第一段）→ concat → mp4 素材 → episodes.final_asset_id",
+          validate: "至少 1 个片段有采用视频，否则 67010；缺采用的片段跳过并提示（默认值）",
+          next: "集卡片显示成片，可下载", perEp: true, base: 1 },
+      ];
+      const demo = { sel: "breakdown", eps: 2 };
+      function renderDemo() {
+        $("#optList").innerHTML = STEPS.map((s) => `<button class="opt" aria-pressed="${s.key === demo.sel}" onclick="demo.sel='${s.key}';renderDemo()"><b>${esc(s.name)}</b> <span class="tag t-mute">${s.phase}</span><small><code>${s.key}</code> · ${esc(s.auto)}</small></button>`).join("");
+        const s = STEPS.find((x) => x.key === demo.sel);
+        const credits = s.perEp ? s.base * demo.eps + 2 : s.base;
+        $("#optPanel").innerHTML = `
+          <div class="row wrapflex"><h3 style="font-size:16px">${esc(s.name)}</h3><span class="tag t-vio">提案</span><span class="tag t-mute">${s.phase}</span><span class="tag t-info">${esc(s.auto)}</span></div>
+          <div class="kv" style="margin-top:14px">
+            <div>输入变量</div><div>${esc(s.input)}</div>
+            <div>校验规则</div><div>${esc(s.validate)}</div>
+            <div>完成之后</div><div>${esc(s.next)}</div>
+            <div>失败时</div><div>校验不过自动重试 1 次 → 仍失败任务 <code>failed</code>（67008），可重试，<b>不扣积分</b></div>
+          </div>
+          <div style="margin-top:14px; font-size:12.5px" class="muted">输出结构（JSON，提案）</div>
+          <div class="codeblock" style="margin-top:6px"><pre>${esc(s.output)}</pre></div>
+          ${s.perEp ? `<div class="row wrapflex" style="margin-top:14px; font-size:13px">
+            <span>范围：</span>
+            <input type="range" min="1" max="16" value="${demo.eps}" oninput="demo.eps=+this.value; $('#epN').textContent=this.value; $('#crN').textContent=${s.base}*this.value+2" style="width:180px">
+            <span><b id="epN">${demo.eps}</b> 集</span>
+            <span class="spacer">积分估算 ≈ <b id="crN">${credits}</b> <span class="tag t-warn">示意</span></span></div>`
+          : `<div class="row" style="margin-top:14px; font-size:13px">积分估算 ≈ <b>${credits}</b> <span class="tag t-warn">示意</span></div>`}
+          <div class="callout c-info" style="margin-top:14px"><i data-lucide="file-text"></i><div>提示词改写自 Toonflow（MIT）、drama-skills（MIT）、shuohao-skills（Apache-2.0），在 <code>internal/drama/prompts/NOTICE.md</code> 保留声明；火宝短剧（CC BY-NC-SA）<b>不复用</b>。</div></div>`;
+        icons();
+      }
+      renderDemo();
+
+      /* ================= 可点击原型 ================= */
+      const GENRES = ["甜宠言情", "悬疑推理", "热血动作", "喜剧搞笑", "科幻末世", "都市职场", "古风仙侠", "历史史诗", "家庭温情", "青春成长", "恐怖灵异", "心理博弈"];
+      const STYLES = ["90年代日式动画", "国风二次元", "二维扁平", "都市言情动画", "三维动画", "国风三维", "黏土定格", "国风赛博", "古风真人", "真人都市电影", "都市甜宠写实"];
+      const RATIOS = ["9:16", "16:9", "21:9", "3:4", "4:3", "1:1"];
+      const TYPES = [["character", "角色"], ["scene", "场景"], ["prop", "道具"], ["text", "文本"], ["image", "图片"], ["video", "视频"], ["audio", "音频"]];
+      let P, uid;
+      function seed() {
+        uid = 100;
+        const ep = (no, title, locked, scripted = true) => ({ no, title, synopsis: `第${no}集梗概（示意）`, script: scripted ? `## 场 1 EXT. 山村 黄昏 1974年\n黑屏。远处传来孩子们嬉闹的声音。\n一个七八岁的男孩——林川，背着书包，从村口跑回来。\n\n林川：妈，我回来了！\n（第 ${no} 集剧本正文，示意）` : "", locked, storyboard: no === 1 ? "ready" : "empty" });
+        P = {
+          view: "ws", area: "script", doc: "ep1", assetMode: "list", typeTab: "character", epFilter: "all",
+          selected: new Set(), canvasSel: null, flash: null, modal: null, menu: null, curEp: 1, curSeg: 0,
+          project: { title: "双鱼玉佩", genre: "悬疑推理", style: "真人都市电影", ratio: "9:16", textModel: "DeepSeek V4（文本类第 1 个）" },
+          outline: "林川七岁那年，村里的女人一个接一个不再出门……（大纲，示意）",
+          people: "林川：主角，童年目睹村中怪事，成年后回村寻找真相。\n沈月：林川童年的玩伴……（人物传记，示意）",
+          episodes: [ep(1, "村里的女人", true), ep(2, "双鱼玉佩", false), ep(3, "井", false), ep(4, "回村", false), ep(5, "复制体", false), ep(6, "深渊", false, false)],
+          assets: [
+            { id: "n1", type: "character", name: "林川", look: "童年", episodes: [1], status: "done", x: 30, y: 30 },
+            { id: "n2", type: "character", name: "沈月", look: "童年", episodes: [1], status: "idle", x: 170, y: 30 },
+            { id: "n3", type: "character", name: "母亲", look: "基础形象", episodes: [], status: "idle", x: 310, y: 30 },
+            { id: "n4", type: "scene", name: "山村街道", look: "", episodes: [1], status: "done", x: 30, y: 210 },
+            { id: "n5", type: "scene", name: "林川的家", look: "夜晚", episodes: [1], status: "idle", x: 170, y: 210 },
+            { id: "n6", type: "image", name: "未命名图片", look: "", episodes: null, status: "done", x: 450, y: 210 },
+          ],
+          jobs: [],
+          segments: {
+            1: [
+              { id: "s1", seconds: 12, prompt: 'html:本片段场景设定在 <span class="mchip" contenteditable="false" data-id="n4">@山村街道</span>。分镜1（8s）：全景，黄昏的山村村口，画面从黑屏缓缓淡入；<span class="mchip" contenteditable="false" data-id="n1">@林川·童年</span> 背着书包从远处跑回村中。', outputs: [], chosen: -1, status: "idle" },
+              { id: "s2", seconds: 15, prompt: 'html:分镜1（6s）：中景，<span class="mchip" contenteditable="false" data-id="n1">@林川·童年</span> 停下脚步，看向门口的女孩。', outputs: [], chosen: -1, status: "idle" },
+            ],
+          },
+        };
+      }
+      function resetProto() { seed(); render(); toast("原型已重置", "info"); }
+      function go(view) { P.view = view; P.modal = null; P.menu = null; render(); }
+      const ep = (no) => P.episodes.find((e) => e.no === no);
+      const busyText = () => P.jobs.find((j) => j.status === "running" && j.text);
+      const assetLabel = (a) => a.name + (a.look ? "·" + a.look : "");
+      const epText = (a) => (a.episodes === null ? "未分类" : a.episodes.length === 0 ? "全集" : "第 " + a.episodes.join("、") + " 集");
+
+      function render() {
+        const el = $("#proto");
+        $("#crumb").textContent = P.view === "list" ? "video-canvas / 短剧工作室" : P.view === "studio" ? `video-canvas / 短剧工作室 / ${P.project.title} / 第 ${P.curEp} 集` : `video-canvas / 短剧工作室 / ${P.project.title}`;
+        if (P.view === "list") el.innerHTML = viewList();
+        else el.innerHTML = viewWs();
+        icons();
+      }
+
+      /* ---- 项目列表 + 新建 ---- */
+      const draft = { title: "", text: "", file: "", genre: "", style: "国风二次元", ratio: "", eps: 0, secs: 60 };
+      function viewList() {
+        return `<div class="p-app"><div class="p-main"><div class="p-head"><b>短剧工作室</b><span class="tag t-mute">侧栏一级入口 /drama</span></div>
+          <div class="p-scroll" style="padding:18px; display:grid; gap:16px">
+            <div class="card note" style="display:grid; gap:12px">
+              <b style="font-size:15px">新建短剧</b>
+              <div class="p-drop">
+                <i data-lucide="file-up" style="font-size:22px"></i>
+                ${draft.file ? `<b>${esc(draft.file)}</b><span class="muted" style="font-size:12px">11.41 KB（示意）</span>` : `<span>拖入或<button class="btn btn-sm btn-outline" onclick="draft.file='_剧本原文.txt';render()">选择文件</button></span><span class="muted" style="font-size:12px">txt / md / docx，≤ 30 万字；PDF 不支持</span>`}
+              </div>
+              <textarea class="p-input" style="height:60px; padding:8px" placeholder="或直接粘贴剧本 / 小说正文" oninput="draft.text=this.value">${esc(draft.text)}</textarea>
+              <div class="row wrapflex"><span class="muted" style="width:60px">题材</span>${GENRES.slice(0, 6).map((g) => `<button class="p-chip" aria-pressed="${draft.genre === g}" onclick="draft.genre=draft.genre==='${g}'?'':'${g}';render()">${g}</button>`).join("")}<span class="muted" style="font-size:12px">…共 12 类，可不选</span></div>
+              <div class="row wrapflex"><span class="muted" style="width:60px">画风</span>${STYLES.slice(0, 5).map((g) => `<button class="p-chip" aria-pressed="${draft.style === g}" onclick="draft.style='${g}';render()">${g}</button>`).join("")}<button class="p-chip" aria-pressed="${draft.style === "自定义"}" onclick="draft.style='自定义';render()"><i data-lucide="pencil"></i>自定义</button></div>
+              <div class="row wrapflex"><span class="muted" style="width:60px">比例</span>${RATIOS.map((r) => `<button class="p-chip" aria-pressed="${draft.ratio === r}" onclick="draft.ratio='${r}';render()">${r}</button>`).join("")}<span class="muted" style="font-size:12px">可后定，资产拆解前必选</span></div>
+              <div class="row wrapflex"><span class="muted" style="width:60px">集数</span><select class="p-input" style="width:110px" onchange="draft.eps=+this.value"><option value="0">自动</option><option>10</option><option>16</option><option>30</option></select><span class="muted">单集时长</span><select class="p-input" style="width:100px" onchange="draft.secs=+this.value"><option>60</option><option>90</option><option>120</option></select><span class="muted">秒</span>
+                <button class="btn btn-primary spacer" onclick="createDrama()"><i data-lucide="arrow-up"></i>开始</button></div>
+              <div class="muted" style="font-size:12px">空文件或空文本会报 67002；没有启用的文本模型时「开始」置灰（67007）。</div>
+            </div>
+            <div class="note-txt">设计：只接剧本 / 小说 + 粘贴（用户确认），不做一句话创意；题材和画风分开选（需求文档 4.2），画风可自定义；比例允许后定，但拆解前强制选择，因为它影响资产图和成片。</div>
+            <div><b>我的短剧</b><div class="p-list-proj" style="margin-top:10px">
+              <button class="card" style="text-align:left" onclick="go('ws')"><div class="p-thumb done" style="aspect-ratio:16/9; margin-bottom:8px">双鱼玉佩</div><b>${esc(P.project.title)}</b><div class="muted" style="font-size:12px">6 集 · 第 1 集已拆解</div></button>
+            </div></div>
+          </div></div></div>`;
+      }
+      function createDrama() {
+        if (!draft.file && !draft.text.trim()) return toast("67002：原文为空，请上传文件或粘贴文本", "bad");
+        seed();
+        P.project.title = draft.file ? draft.file.replace(/\.\w+$/, "") : "未命名短剧";
+        P.project.ratio = draft.ratio; P.project.style = draft.style; P.project.genre = draft.genre;
+        P.episodes = []; P.assets = []; P.segments = {}; P.outline = ""; P.people = ""; P.doc = "outline";
+        P.view = "ws"; P.area = "script";
+        runJob({ step: "研读", text: true, ms: 1600, done: () => {
+          runJob({ step: "大纲与人物", text: true, ms: 1800, done: () => {
+            P.outline = "（模型生成的故事大纲，示意）"; P.people = "（模型生成的人物传记，示意）";
+            const n = draft.eps || 6;
+            for (let i = 1; i <= n; i++) P.episodes.push({ no: i, title: `第${i}集`, synopsis: `第${i}集梗概（示意）`, script: "", locked: false, storyboard: "empty" });
+            toast("大纲完成，审阅后点「生成分集剧本」");
+          } });
+        } });
+        render();
+      }
+
+      /* ---- 流水线任务（模拟） ---- */
+      function runJob({ step, text, ms, done, fail }) {
+        const job = { id: ++uid, step, text, status: "running", progress: 0 };
+        P.jobs.unshift(job);
+        const t0 = Date.now();
+        const tick = setInterval(() => {
+          job.progress = Math.min(100, Math.round(((Date.now() - t0) / ms) * 100));
+          const bar = document.getElementById("job" + job.id); if (bar) bar.style.width = job.progress + "%";
+          if (job.progress >= 100) {
+            clearInterval(tick);
+            if (fail && fail()) { job.status = "failed"; job.err = "67008：模型输出无法解析（已自动重试 1 次）"; toast(job.err, "bad"); }
+            else { job.status = "succeeded"; done && done(); }
+            render();
+          }
+        }, 120);
+        render();
+      }
+      function jobsPanel() {
+        const list = P.jobs.slice(0, 6).map((j) => `<div class="p-job"><div class="row"><b>${esc(j.step)}</b><span class="spacer tag ${j.status === "running" ? "t-info" : j.status === "failed" ? "t-bad" : "t-ok"}">${{ running: "进行中", failed: "失败", succeeded: "完成" }[j.status]}</span></div>
+          ${j.status === "running" ? `<div class="p-prog"><i id="job${j.id}" style="width:${j.progress}%"></i></div>` : ""}
+          ${j.err ? `<div style="color:rgb(var(--bad))">${esc(j.err)}</div><button class="btn btn-sm btn-outline" onclick="retry(${j.id})"><i data-lucide="rotate-cw"></i>重试（不扣积分）</button>` : ""}</div>`).join("");
+        return `<div class="p-side note"><div class="p-head"><b>流水线进度</b><span class="tag t-mute spacer">三期换成短剧助手</span></div>
+          <div class="p-scroll" style="padding:10px; display:grid; gap:8px; align-content:start">${list || `<div class="muted" style="font-size:12px">还没有任务。</div>`}
+          <div class="muted" style="font-size:11.5px">刷新或断线后，用 <code>GET /dramas/:id/jobs?status=active</code> 对账恢复。</div></div></div>`;
+      }
+      function retry(id) {
+        const j = P.jobs.find((x) => x.id === id); if (!j) return;
+        P.jobs = P.jobs.filter((x) => x.id !== id);
+        if (j.step.startsWith("资产拆解")) doBreakdown(j.eps, true);
+      }
+
+      /* ---- 工作台外壳 ---- */
+      function viewWs() {
+        const area = P.view === "studio" ? viewStudio() : P.area === "script" ? viewScript() : P.area === "assets" ? viewAssets() : viewEpisodes();
+        const nav = [["script", "book-open", "剧本"], ["assets", "boxes", "资产"], ["episodes", "film", "分集"]];
+        return `<div class="p-app">
+          <div class="p-rail">${nav.map(([k, ic, l]) => `<button aria-current="${P.view !== "studio" && P.area === k}" onclick="P.view='ws';P.area='${k}';render()" title="${l}"><i data-lucide="${ic}"></i></button><div class="lbl">${l}</div>`).join("")}
+            <div style="flex:1"></div><button onclick="go('list')" title="返回列表"><i data-lucide="arrow-left"></i></button></div>
+          <div class="p-main">
+            <div class="p-head">
+              <input class="p-input" style="width:150px; height:28px; font-weight:600" value="${esc(P.project.title)}" oninput="P.project.title=this.value" title="项目名，包含 bad 时拆解会失败（演示用）">
+              <span class="spacer"></span>
+              <button class="btn btn-sm btn-outline" onclick="toast('风格库：12 题材 + 11 画风 + 自定义（内置）','info')"><i data-lucide="palette"></i>${esc(P.project.style)}</button>
+              <button class="btn btn-sm btn-outline"><i data-lucide="ratio"></i>${esc(P.project.ratio || "比例未定")}</button>
+              <select class="p-input" style="width:auto; height:28px; font-size:12px" title="跟随后台「文本」类别"><option>${esc(P.project.textModel)}</option><option>Qwen 3.5（文本类）</option></select>
+            </div>
+            <div class="p-body">${area}${P.view === "studio" ? "" : jobsPanel()}</div>
+          </div>
+          ${P.modal ? P.modal() : ""}
+        </div>`;
+      }
+
+      /* ---- 剧本 ---- */
+      function viewScript() {
+        const docs = [["outline", "list-tree", "故事大纲"], ["people", "users", "人物传记"]];
+        const e = P.doc.startsWith("ep") ? ep(+P.doc.slice(2)) : null;
+        const text = P.doc === "outline" ? P.outline : P.doc === "people" ? P.people : e ? e.script : "";
+        const locked = e && e.locked;
+        const running = busyText();
+        const unscripted = P.episodes.filter((x) => !x.script).length;
+        let bar = "";
+        if (P.episodes.length && unscripted) bar = `<span>${unscripted} 集还没有剧本</span><span class="muted">≈ ${unscripted * 3} 积分（示意）</span><button class="btn btn-primary btn-sm" ${running ? "disabled title='有进行中的流水线任务（67004）'" : ""} onclick="genScripts()">生成分集剧本</button>`;
+        else if (P.episodes.length) bar = `<span>剧本整理完毕，下一步资产拆解</span><button class="btn btn-primary btn-sm" ${running ? "disabled title='有进行中的流水线任务（67004）'" : ""} onclick="openBreakdown()">资产拆解</button>`;
+        return `<div class="p-toc p-scroll">
+            ${docs.map(([k, ic, l]) => `<button aria-current="${P.doc === k}" onclick="P.doc='${k}';render()"><i data-lucide="${ic}"></i>${l}</button>`).join("")}
+            <div class="muted" style="font-size:11px; margin:8px 8px 4px">共 ${P.episodes.length} 集</div>
+            ${P.episodes.map((x) => `<button aria-current="${P.doc === "ep" + x.no}" onclick="P.doc='ep${x.no}';render()">${x.locked ? '<i data-lucide="lock" style="color:rgb(var(--warn))"></i>' : x.script ? '<i data-lucide="file-text"></i>' : '<i data-lucide="file"></i>'}${x.no}. ${esc(x.title)}</button>`).join("")}
+            ${!P.episodes.length ? `<div class="muted" style="font-size:12px; padding:8px">${running ? '<div class="spin" style="margin:0 0 6px"></div>正在研读剧本…' : "暂无"}</div>` : ""}
+          </div>
+          <div class="p-editor">
+            <div class="row"><b>${P.doc === "outline" ? "故事大纲" : P.doc === "people" ? "人物传记" : e ? `第 ${e.no} 集 · ${esc(e.title)}` : ""}</b>
+              ${locked ? '<span class="tag t-warn"><i data-lucide="lock"></i>已拆解资产，剧本已锁定</span>' : e && !e.script ? '<span class="tag t-mute">待生成</span>' : '<span class="tag t-ok">自动保存</span>'}</div>
+            <textarea ${locked ? "readonly" : ""} oninput="saveDoc(this.value)" placeholder="${e && !e.script ? "这一集还没有剧本，可以手写，或点下方「生成分集剧本」" : ""}">${esc(text)}</textarea>
+            ${bar ? `<div class="p-bar note">${bar}</div>` : ""}
+          </div>`;
+      }
+      function saveDoc(v) {
+        if (P.doc === "outline") P.outline = v; else if (P.doc === "people") P.people = v;
+        else { const e = ep(+P.doc.slice(2)); if (e && !e.locked) e.script = v; }
+      }
+      function genScripts() {
+        const todo = P.episodes.filter((x) => !x.script);
+        runJob({ step: `分集剧本（${todo.length} 集）`, text: true, ms: 2000, done: () => {
+          todo.forEach((x) => (x.script = `## 场 1\n（第 ${x.no} 集剧本，模型生成，示意）`)); toast("分集剧本已生成，可逐集修改");
+        } });
+      }
+
+      /* ---- 资产拆解弹窗 ---- */
+      const bd = { ratio: "", eps: new Set() };
+      function openBreakdown() {
+        bd.ratio = P.project.ratio; bd.eps = new Set();
+        const first = P.episodes.find((x) => !x.locked && x.script); if (first) bd.eps.add(first.no);
+        P.modal = modalBreakdown; render();
+      }
+      function modalBreakdown() {
+        const n = bd.eps.size, ok = bd.ratio && n;
+        return `<div class="p-modal-bg"><div class="p-modal note">
+          <b style="font-size:15px">确认进行资产拆解？</b>
+          <div class="muted">拆解所选集的角色、场景、道具，并自动为新资产写图片提示词。</div>
+          <div class="p-fieldset"><b>项目比例（必选）</b><div class="p-chiprow">${RATIOS.map((r) => `<button class="p-chip" aria-pressed="${bd.ratio === r}" ${P.project.ratio && P.project.ratio !== r && P.episodes.some((x) => x.locked) ? "disabled title='已有资产按当前比例生成，拆解中途不能改比例'" : ""} onclick="bd.ratio='${r}';render()">${r}</button>`).join("")}</div></div>
+          <div class="p-fieldset"><b>解析范围</b><div class="p-chiprow">${P.episodes.map((x) => `<button class="p-chip" aria-pressed="${bd.eps.has(x.no)}" ${x.locked ? "disabled title='已拆解'" : !x.script ? "disabled title='还没有剧本'" : ""} onclick="bd.eps.has(${x.no})?bd.eps.delete(${x.no}):bd.eps.add(${x.no});render()">${x.locked ? '<i data-lucide="lock"></i>' : ""}第${x.no}集</button>`).join("")}</div>
+            <div class="muted" style="font-size:12px">置灰的集：已拆解或还没有剧本。</div></div>
+          <div class="callout c-warn"><i data-lucide="lock"></i><div><b>拆解后这 ${n} 集的剧本将锁定，不能再修改。</b>预计消耗约 <b>${n * 5 + 2}</b> 积分（示意）。</div></div>
+          <div class="row"><span class="spacer"></span><button class="btn btn-outline" onclick="P.modal=null;render()">取消</button><button class="btn btn-primary" ${ok ? "" : "disabled"} onclick="doBreakdown([...bd.eps])">继续</button></div>
+          ${!ok ? `<div class="muted" style="font-size:12px; text-align:right">${!bd.ratio ? "请先选择比例" : "请至少选择一集"}</div>` : ""}
+        </div></div>`;
+      }
+      function doBreakdown(eps, isRetry) {
+        if (!isRetry) P.project.ratio = bd.ratio;
+        P.modal = null;
+        const label = `资产拆解（第 ${eps.join("、")} 集）`;
+        const willFail = /bad/i.test(P.project.title) && !isRetry;
+        const job = { step: label, text: true, ms: 2000, fail: () => willFail, done: () => {
+          eps.forEach((no) => (ep(no).locked = true));
+          // 合并：已有林川只追加集数；新资产才新建
+          const lin = P.assets.find((a) => a.name === "林川"); if (lin && lin.episodes) eps.forEach((no) => !lin.episodes.includes(no) && lin.episodes.push(no));
+          const add = (type, name, look) => P.assets.push({ id: "n" + ++uid, type, name, look, episodes: [...eps], status: "analyzing", x: 30 + (P.assets.length % 4) * 140, y: 30 + Math.floor(P.assets.length / 4) * 180 });
+          if (!P.assets.some((a) => a.name === "林川")) add("character", "林川", "童年");
+          add("character", "沈月的母亲", "基础形象"); add("scene", "老井", "黄昏"); add("prop", "双鱼玉佩", "");
+          toast(`拆解完成：林川已存在，只追加了出现集数；新增 3 个资产`);
+          runJob({ step: "资产提示词（3 个新资产）", text: true, ms: 1400, done: () => { P.assets.forEach((a) => a.status === "analyzing" && (a.status = "idle")); } });
+        } };
+        runJob(job);
+        P.jobs[0].eps = eps;
+      }
+
+      /* ---- 资产：列表 / 画布 ---- */
+      function filtered() {
+        return P.assets.filter((a) => {
+          const typeOk = a.type === P.typeTab || (a.episodes === null && P.typeTab === a.type);
+          if (!typeOk) return false;
+          if (P.epFilter === "all") return a.episodes !== null;
+          if (P.epFilter === "none") return a.episodes === null;
+          return a.episodes !== null && (a.episodes.length === 0 || a.episodes.includes(+P.epFilter));
+        });
+      }
+      function viewAssets() {
+        const head = `<div class="row wrapflex" style="padding:10px 14px; border-bottom:1px solid hsl(var(--border))">
+          <div class="p-seg"><button aria-pressed="${P.assetMode === "list"}" onclick="P.assetMode='list';render()"><i data-lucide="list"></i>列表</button><button aria-pressed="${P.assetMode === "canvas"}" onclick="P.assetMode='canvas';render()"><i data-lucide="frame"></i>画布</button></div>
+          <span class="muted" style="font-size:12px">同一份数据：画布节点</span>
+          <select class="p-input spacer" style="width:auto; height:28px; font-size:12px" onchange="P.epFilter=this.value;render()">
+            <option value="all" ${P.epFilter === "all" ? "selected" : ""}>全集</option>${P.episodes.map((x) => `<option value="${x.no}" ${P.epFilter == x.no ? "selected" : ""}>第 ${x.no} 集</option>`).join("")}<option value="none" ${P.epFilter === "none" ? "selected" : ""}>未分类</option></select></div>`;
+        return `<div class="p-main" style="min-width:0">${head}${P.assetMode === "list" ? assetList() : assetCanvas()}</div>`;
+      }
+      function assetList() {
+        const items = filtered();
+        const noImg = P.assets.filter((a) => a.type === "character" && a.status !== "done" && a.episodes !== null).length;
+        const tabs = TYPES.map(([k, l]) => `<button aria-pressed="${P.typeTab === k}" onclick="P.typeTab='${k}';P.selected.clear();render()">${l} ${P.assets.filter((a) => a.type === k && a.episodes !== null).length}</button>`).join("");
+        return `<div class="p-scroll" style="padding:12px 14px; display:grid; gap:12px; align-content:start">
+          <div class="p-seg" style="flex-wrap:wrap">${tabs}</div>
+          ${P.typeTab === "character" && noImg ? `<div class="callout c-info note"><i data-lucide="sparkles"></i><div style="flex:1">有 <b>${noImg}</b> 个角色还没有形象图，可以手动上传或批量生成。</div>
+            <button class="btn btn-sm btn-primary" ${P.selected.size ? "" : "disabled title='先勾选卡片'"} onclick="batchGen()">批量生成（${P.selected.size}）</button></div><div class="note-txt">设计：批量生成走现有图片生成任务（不占文本流水线）；角色生成的第一张图自动设为角色卡主图——主图已改为可空，空时显示「待生成形象」。</div>` : ""}
+          <div class="p-cards">${items.map((a) => `<div class="p-acard">
+              <button class="p-thumb ${a.status === "done" ? "done" : ""} ${P.selected.has(a.id) ? "sel" : ""}" style="width:100%" onclick="openInCanvas('${a.id}')">
+                ${a.status === "analyzing" ? '<div><div class="spin"></div>正在分析设定</div>' : a.status === "running" ? '<div><div class="spin"></div>生成中</div>' : a.status === "error" ? '<span style="color:rgb(var(--bad))">生成失败</span>' : a.status === "done" ? esc(a.name) : "待生成"}
+              </button>
+              <div class="row" style="margin-top:4px"><input type="checkbox" ${P.selected.has(a.id) ? "checked" : ""} ${a.status === "done" || a.status === "analyzing" ? "disabled title='已生成或正在分析'" : ""} onchange="this.checked?P.selected.add('${a.id}'):P.selected.delete('${a.id}');render()"><b style="font-size:12px">${esc(assetLabel(a))}</b></div>
+              <div class="muted" style="font-size:11px">${epText(a)}</div></div>`).join("")}
+            <button class="p-acard" onclick="newAsset()"><div class="p-thumb"><i data-lucide="plus" style="font-size:20px"></i></div><b style="font-size:12px">新建${TYPES.find((t) => t[0] === P.typeTab)[1]}</b><div class="muted" style="font-size:11px">${P.epFilter === "all" || P.epFilter === "none" ? "全集出现" : `第 ${P.epFilter} 集`}</div></button>
+          </div>
+          ${!items.length ? `<div class="muted" style="font-size:12px">这个分类下还没有资产。</div>` : ""}
+        </div>`;
+      }
+      function newAsset() {
+        const eps = P.epFilter === "all" || P.epFilter === "none" ? [] : [+P.epFilter];
+        P.assets.push({ id: "n" + ++uid, type: P.typeTab, name: "未命名" + TYPES.find((t) => t[0] === P.typeTab)[1], look: "", episodes: eps, status: "idle", x: 40 + (uid % 4) * 130, y: 380 });
+        render(); toast("已在画布上新建节点，列表同步出现");
+      }
+      function batchGen() {
+        const ids = [...P.selected]; P.selected.clear();
+        ids.forEach((id) => (P.assets.find((a) => a.id === id).status = "running"));
+        render();
+        setTimeout(() => { ids.forEach((id) => (P.assets.find((a) => a.id === id).status = "done")); render(); toast(`${ids.length} 个形象已生成，并设为角色卡主图`); }, 1800);
+      }
+      function openInCanvas(id) { P.assetMode = "canvas"; P.canvasSel = id; P.flash = id; render(); setTimeout(() => { P.flash = null; render(); }, 900); }
+      function assetCanvas() {
+        const sel = P.assets.find((a) => a.id === P.canvasSel);
+        const nodes = P.assets.map((a) => `<button class="p-node ${P.canvasSel === a.id ? "sel" : ""} ${P.flash === a.id ? "flash" : ""}" style="left:${a.x}px; top:${a.y}px" onclick="P.canvasSel='${a.id}';render()">
+            <div class="p-thumb ${a.status === "done" ? "done" : ""}">${a.type === "character" ? '<i data-lucide="user-round"></i>' : a.type === "scene" ? '<i data-lucide="mountain"></i>' : a.type === "prop" ? '<i data-lucide="gem"></i>' : '<i data-lucide="image"></i>'}</div>
+            <b>${esc(assetLabel(a))}</b><div class="muted">${{ character: "角色卡", scene: "场景", prop: "道具" }[a.type] || "图片"} · ${epText(a)}</div></button>`).join("");
+        const panel = sel ? `<div class="card note" style="position:absolute; right:12px; top:12px; width:230px; display:grid; gap:8px; font-size:12.5px; z-index:5">
+            <b>节点设置</b>
+            <label class="muted">名称<input class="p-input" value="${esc(sel.name)}" oninput="P.assets.find(a=>a.id==='${sel.id}').name=this.value"></label>
+            <label class="muted">资产类型<select class="p-input" onchange="setType('${sel.id}', this.value)"><option value="">未分类</option>${["character", "scene", "prop"].map((t) => `<option value="${t}" ${sel.type === t && sel.episodes !== null ? "selected" : ""}>${{ character: "角色", scene: "场景", prop: "道具" }[t]}</option>`).join("")}</select></label>
+            <div class="muted">出现集数 <span class="tag t-mute">不勾 = 全集</span></div>
+            <div class="p-chiprow">${P.episodes.map((x) => `<button class="p-chip" style="height:24px" ${sel.episodes === null ? "disabled title='先选资产类型'" : ""} aria-pressed="${!!(sel.episodes && sel.episodes.includes(x.no))}" onclick="toggleEp('${sel.id}', ${x.no})">${x.no}</button>`).join("")}</div>
+            <button class="btn btn-sm btn-outline" onclick="P.assetMode='list';P.typeTab='${sel.type}';render()"><i data-lucide="list"></i>在列表中查看</button>
+          </div><div class="note-txt" style="position:absolute; right:12px; top:330px; width:230px">设计：画布里新建的资产默认全集；「出现集数」只影响列表分类和 @ 候选排序，不影响能否引用。</div>` : "";
+        return `<div class="p-canvas" onclick="if(event.target===this){P.canvasSel=null;render()}">${nodes}${panel}
+          <div class="muted" style="position:absolute; left:12px; bottom:10px; font-size:11.5px">短剧专属画布（复用现有画布引擎，不出现在普通画布列表）· 点节点改名称 / 集数，切回列表立即同步</div></div>`;
+      }
+      function setType(id, t) { const a = P.assets.find((x) => x.id === id); if (!t) { a.episodes = null; } else { a.type = t; if (a.episodes === null) a.episodes = []; } render(); }
+      function toggleEp(id, no) { const a = P.assets.find((x) => x.id === id); const i = a.episodes.indexOf(no); i >= 0 ? a.episodes.splice(i, 1) : a.episodes.push(no); a.episodes.sort((p, q) => p - q); render(); }
+
+      /* ---- 分集视频 ---- */
+      function viewEpisodes() {
+        return `<div class="p-main"><div class="row" style="padding:12px 14px"><b style="font-size:15px">分集视频</b><span class="muted" style="font-size:12px">共 ${P.episodes.length} 集</span><span class="tag t-mute">二期</span>
+            <button class="btn btn-sm btn-outline spacer" onclick="P.episodes.push({no:P.episodes.length+1,title:'新的一集',synopsis:'',script:'',locked:false,storyboard:'empty'});render()"><i data-lucide="plus"></i>新增一集</button></div>
+          <div class="p-scroll" style="padding:0 14px 14px; display:grid; gap:10px; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); align-content:start">
+          ${P.episodes.map((x) => {
+            const chars = P.assets.filter((a) => a.type === "character" && a.episodes && (a.episodes.length === 0 || a.episodes.includes(x.no))).length;
+            const scenes = P.assets.filter((a) => a.type === "scene" && a.episodes && (a.episodes.length === 0 || a.episodes.includes(x.no))).length;
+            const st = x.storyboard === "ready" ? '<span class="tag t-ok">脚本已生成</span>' : x.storyboard === "generating" ? '<span class="tag t-info">生成中</span>' : '<span class="tag t-mute">待生成脚本</span>';
+            const btn = x.storyboard === "ready" ? `<button class="btn btn-sm btn-primary" onclick="openStudio(${x.no})">进入片段</button>`
+              : !x.locked ? `<button class="btn btn-sm btn-outline" disabled title="先完成该集的资产拆解（67006）">生成脚本</button>`
+              : `<button class="btn btn-sm btn-outline" ${busyText() ? "disabled title='有进行中的流水线任务（67004）'" : ""} onclick="genStoryboard(${x.no})">生成脚本</button>`;
+            return `<div class="p-ep"><div class="p-thumb"><i data-lucide="play"></i></div><div style="flex:1; display:grid; gap:4px; align-content:start">${st}<b>第 ${x.no} 集：${esc(x.title)}</b><span class="muted" style="font-size:12px">角色 ${chars} · 场景 ${scenes}</span><div class="row">${btn}</div>${!x.locked && x.storyboard !== "ready" ? '<span class="muted" style="font-size:11px">需先资产拆解</span>' : ""}</div></div>`;
+          }).join("")}</div></div>`;
+      }
+      function genStoryboard(no) {
+        ep(no).storyboard = "generating";
+        runJob({ step: `分镜脚本（第 ${no} 集）`, text: true, ms: 1800, done: () => {
+          ep(no).storyboard = "ready";
+          P.segments[no] = [1, 2, 3].map((i) => ({ id: "s" + ++uid, seconds: 10 + i, prompt: `html:分镜1（${5 + i}s）：中景，第 ${no} 集第 ${i} 段（模型生成，示意）。`, outputs: [], chosen: -1, status: "idle" }));
+          toast(`第 ${no} 集切成 3 个片段`);
+        } });
+      }
+      function openStudio(no) { P.view = "studio"; P.curEp = no; P.curSeg = 0; render(); }
+
+      /* ---- 片段工作区 ---- */
+      function viewStudio() {
+        const segs = P.segments[P.curEp] || [];
+        const s = segs[P.curSeg];
+        const libEp = P.libAll ? null : P.curEp;
+        const lib = P.assets.filter((a) => a.episodes !== null && (libEp === null || a.episodes.length === 0 || a.episodes.includes(libEp)));
+        const out = s && s.chosen >= 0 ? s.outputs[s.chosen] : null;
+        return `<div class="p-main"><div class="p-body">
+          <div class="p-assetlib note">
+            <div class="row"><b>资产库</b><select class="p-input spacer" style="width:auto; height:26px; font-size:11.5px" onchange="P.libAll=this.value==='all';render()"><option value="ep" ${!P.libAll ? "selected" : ""}>第 ${P.curEp} 集</option><option value="all" ${P.libAll ? "selected" : ""}>全集</option></select></div>
+            <div class="p-scroll" style="display:grid; gap:2px; align-content:start">${lib.map((a) => `<div class="p-aitem" draggable="true" ondragstart="event.dataTransfer.setData('text/plain','${a.id}')" title="拖到中间提示词里"><span class="p-av ${a.status === "done" ? "done" : ""}">${a.type === "character" ? "人" : a.type === "scene" ? "景" : "物"}</span>${esc(assetLabel(a))}</div>`).join("")}</div>
+            <div class="note-txt">设计：拖入是新增能力（现有画布只有弹窗引入）；拖入和 @ 产出同一种 chip。</div>
+          </div>
+          <div class="p-main" style="padding:14px; gap:10px; display:flex; flex-direction:column; position:relative">
+            ${s ? `<div class="row"><b style="font-size:16px">片段 ${String(P.curSeg + 1).padStart(2, "0")}</b><span class="muted">${s.seconds}s</span><button class="btn btn-sm btn-outline spacer" onclick="openMention(event)"><i data-lucide="at-sign"></i>引用资产</button><button class="btn btn-sm btn-outline" onclick="toast('生成首帧：出图后本片段改走图生视频（i2v）','info')"><i data-lucide="image"></i>生成首帧（可选）</button></div>
+              <div class="p-prompt note" id="pp" contenteditable="true" oninput="savePrompt()" ondragover="event.preventDefault()" ondrop="dropAsset(event)">${s.prompt.slice(5)}</div>
+              <div class="note-txt">设计：沿用画布节点提示词区的 @ 交互；@ 候选 = 本剧全部资产，当前集的排在前面。生成时角色卡展开为形象图 + 参考音频，场景/道具为参考图，按模型 refs 上限截断并提示。</div>
+              <div class="row"><span class="muted" style="font-size:12px">视频模型：SD 2.0 Fast（支持参考图）· 720p · ${esc(P.project.ratio || "9:16")}</span>
+                <button class="btn btn-primary spacer" ${s.status === "running" ? "disabled" : ""} onclick="genSeg()">${s.status === "running" ? '<div class="spin" style="margin:0"></div>生成中' : '<i data-lucide="sparkles"></i>立即生成'}</button></div>
+              ${s.status === "error" ? `<div class="callout c-bad"><i data-lucide="circle-x"></i><div>生成失败：供应商返回内容审核未通过（模拟）。修改提示词后重试；失败不扣积分。</div></div>` : ""}`
+            : `<div class="muted">这一集还没有片段。</div>`}
+            ${P.menu ? P.menu() : ""}
+          </div>
+          <div class="p-preview">
+            <b>预览</b>
+            <div class="p-video ${out ? "done" : ""}">${out ? `<div><i data-lucide="play" style="font-size:22px"></i><div>第 ${s.chosen + 1} 次结果 · ${s.seconds}s</div></div>` : s && s.status === "running" ? '<div><div class="spin"></div>生成中（模拟）</div>' : "未生成内容"}</div>
+            ${s && s.outputs.length > 1 ? `<div class="row"><button class="btn btn-sm btn-outline" onclick="pick(-1)"><i data-lucide="chevron-left"></i></button><span class="muted" style="font-size:12px">${s.chosen + 1} / ${s.outputs.length}</span><button class="btn btn-sm btn-outline" onclick="pick(1)"><i data-lucide="chevron-right"></i></button><span class="tag t-ok spacer">已采用</span></div>` : ""}
+            <div class="muted" style="font-size:11.5px">多次生成都保留，左右切换即「设为采用」，合成整集时只用采用的那条。</div>
+          </div>
+        </div>
+        <div class="p-strip note">
+          <button class="btn btn-sm btn-outline" onclick="P.view='ws';P.area='episodes';render()"><i data-lucide="arrow-left"></i>分集</button>
+          ${segs.map((g, i) => `<button class="p-clip" onclick="P.curSeg=${i};P.menu=null;render()"><div class="p-thumb ${g.chosen >= 0 ? "done" : ""} ${i === P.curSeg ? "sel" : ""}">${g.status === "running" ? '<div class="spin"></div>' : g.status === "error" ? '<i data-lucide="circle-x" style="color:rgb(var(--bad))"></i>' : '<i data-lucide="play"></i>'}</div>片段 ${String(i + 1).padStart(2, "0")} · ${g.seconds}s</button>`).join("")}
+          <button class="btn btn-sm btn-outline" onclick="addSeg()"><i data-lucide="plus"></i></button>
+          <button class="btn btn-sm btn-outline" ${P.curSeg > 0 ? "" : "disabled"} onclick="moveSeg(-1)" title="左移（真实产品是拖动排序）"><i data-lucide="arrow-left-right"></i>左移</button>
+          <span class="spacer"></span>
+          <button class="btn btn-sm btn-outline" disabled title="三期上线：前端连播预览"><i data-lucide="play-circle"></i>连播</button>
+          <button class="btn btn-sm btn-outline" disabled title="三期上线：服务端 ffmpeg 合成整集"><i data-lucide="combine"></i>合成整集</button>
+        </div>
+        <div class="note-txt" style="padding:0 12px 6px">设计：二期的片段条只管选择、新增、排序；连播与合成在三期（按钮先占位并写原因）。</div>
+        </div>`;
+      }
+      function curSeg() { return (P.segments[P.curEp] || [])[P.curSeg]; }
+      function savePrompt() { const s = curSeg(); if (s) s.prompt = "html:" + $("#pp").innerHTML; }
+      const chipHtml = (a) => `<span class="mchip" contenteditable="false" data-id="${a.id}">@${esc(assetLabel(a))}</span>&nbsp;`;
+      function dropAsset(e) {
+        e.preventDefault();
+        const a = P.assets.find((x) => x.id === e.dataTransfer.getData("text/plain")); if (!a) return;
+        $("#pp").insertAdjacentHTML("beforeend", chipHtml(a)); savePrompt(); toast(`已插入 @${assetLabel(a)}`);
+      }
+      function openMention(e) {
+        const list = P.assets.filter((a) => a.episodes !== null).sort((p, q) => (q.episodes.includes(P.curEp) || !q.episodes.length) - (p.episodes.includes(P.curEp) || !p.episodes.length));
+        P.menu = () => `<div class="p-menu" style="right:14px; top:44px">${list.map((a) => `<button onclick="insertMention('${a.id}')"><span class="p-av ${a.status === "done" ? "done" : ""}" style="width:20px;height:20px">${a.type === "character" ? "人" : a.type === "scene" ? "景" : "物"}</span>${esc(assetLabel(a))}<span class="muted spacer" style="font-size:10.5px">${epText(a)}</span></button>`).join("")}</div>`;
+        render();
+      }
+      function insertMention(id) { const a = P.assets.find((x) => x.id === id); const s = curSeg(); s.prompt += chipHtml(a); P.menu = null; render(); }
+      function genSeg() {
+        savePrompt(); const s = curSeg();
+        const ids = [...s.prompt.matchAll(/data-id="(\w+)"/g)].map((m) => m[1]);
+        const dead = ids.filter((id) => !P.assets.some((a) => a.id === id));
+        if (dead.length) toast(`有 ${dead.length} 个引用已失效，将不带这些参考继续`, "warn");
+        const noImg = ids.map((id) => P.assets.find((a) => a.id === id)).filter((a) => a && a.status !== "done");
+        if (noImg.length) toast(`${noImg.map(assetLabel).join("、")} 还没有形象图，只能按文字描述生成`, "warn");
+        s.status = "running"; render();
+        const fail = /失败/.test(s.prompt.replace(/<[^>]+>/g, ""));
+        setTimeout(() => {
+          if (fail) { s.status = "error"; toast("片段生成失败（模拟）", "bad"); }
+          else { s.outputs.push({ at: Date.now() }); s.chosen = s.outputs.length - 1; s.status = "done"; toast("片段生成完成，已设为采用"); }
+          render();
+        }, 1600);
+      }
+      function pick(d) { const s = curSeg(); s.chosen = (s.chosen + d + s.outputs.length) % s.outputs.length; render(); }
+      function addSeg() { const segs = P.segments[P.curEp] || (P.segments[P.curEp] = []); segs.push({ id: "s" + ++uid, seconds: 10, prompt: "html:", outputs: [], chosen: -1, status: "idle" }); P.curSeg = segs.length - 1; render(); }
+      function moveSeg(d) { const segs = P.segments[P.curEp]; const i = P.curSeg, j = i + d; [segs[i], segs[j]] = [segs[j], segs[i]]; P.curSeg = j; render(); }
+
+      seed(); render(); icons();
+    </script>
+  </body>
+</html>

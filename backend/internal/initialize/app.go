@@ -20,11 +20,13 @@ import (
 	"video-canvas/internal/config"
 	"video-canvas/internal/handler"
 	agenthandler "video-canvas/internal/handler/agent"
+	"video-canvas/internal/llmgateway"
 	"video-canvas/internal/mailer"
 	"video-canvas/internal/middleware"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/idcodec"
 	"video-canvas/internal/pkg/logger"
+	"video-canvas/internal/pkg/videoframe"
 	"video-canvas/internal/pkg/ws"
 	"video-canvas/internal/provider/plugin"
 	"video-canvas/internal/provider/pluginrunner"
@@ -92,7 +94,6 @@ func NewApp(cfg *config.Config) (*App, error) {
 
 	// 画布
 	canvasProjectRepo := repository.NewCanvasProjectRepository(db)
-	characterCardRepo := repository.NewCharacterCardRepository(db) // 角色卡 CRUD 与画布导出共用
 
 	// AI 配置（平台协议 / 模型 / 凭证）：service 同时是 provider.Registry 与 provider.SecretResolver
 	aiConfigRepo := repository.NewAIConfigRepository(db)
@@ -165,6 +166,19 @@ func NewApp(cfg *config.Config) (*App, error) {
 		Covers:      canvasProjectRepo,                                  // 任务成功时把第一张图写成画布封面
 	})
 
+	// 短剧流水线的文本步骤用后台的 Agent 模型（经 LLM 网关直接请求渠道）与账户计价；拆解写画布与角色卡由同一事务提交。
+	dramaRepo := repository.NewDramaRepository(db)
+	dramaCanvasSvc := service.NewDramaCanvasService(repository.NewDramaCanvasRepository(db), hub)
+	dramaSegments := service.NewDramaSegmentService(service.DramaSegmentDeps{Repo: dramaRepo, Tasks: taskSvc, Assets: assetSvc, Broadcaster: hub})
+	taskSvc.SetTaskObserver(dramaSegments)
+	dramaSvc := service.NewDramaService(service.DramaDeps{
+		Repo: dramaRepo, Registry: aiCfgSvc, Streamer: llmgateway.New(llmgateway.Options{IPAllowed: outboundIPPolicy(cfg)}), Secrets: aiCfgSvc, Canvas: dramaCanvasSvc, Broadcaster: hub, Credits: settingsSvc,
+		Segments: dramaSegments, CanvasAssets: canvasProjectRepo,
+		Compose: videoframe.New(videoframe.Options{Timeout: 10 * time.Minute}), Assets: assetSvc,
+		// 列表封面：资产画布里第一张生成成功的图，和画布列表一样取缩略图
+		Covers: dramaRepo, CoverURL: func(key string) string { return assetSvc.FileURL(key) + "?v=thumb" },
+	})
+
 	// 配置服务反向依赖插件宿主与任务服务，所以组装完后再注入。
 	aiCfgSvc.SetDryRunner(executor)
 	aiCfgSvc.SetTestTaskCreator(taskSvc)
@@ -195,7 +209,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 	} else if n > 0 {
 		logger.Warn("Go 库里有旧的 Agent 运行还停在进行中，已标为中断", zap.Int64("runs", n))
 	}
-	agentRT, err := newAgentRuntime(cfg, agentDeps{tasks: taskSvc, assets: assetSvc, frames: newVideoFrames(), frameStore: assetFrameStore{assetSvc}, repo: agentRepo, agent: agentSvc, canvas: agentCanvasSvc, registry: aiCfgSvc, secrets: aiCfgSvc, skills: skillSvc, toolCalls: observeRepo, modelRequests: observeRepo, ipAllowed: outboundIPPolicy(cfg), broadcaster: hub})
+	agentRT, err := newAgentRuntime(cfg, agentDeps{tasks: taskSvc, assets: assetSvc, assetLinks: assetSvc, frames: newVideoFrames(), frameStore: assetFrameStore{assetSvc}, repo: agentRepo, agent: agentSvc, canvas: agentCanvasSvc, registry: aiCfgSvc, secrets: aiCfgSvc, skills: skillSvc, drama: dramaSvc, segments: dramaSegments, toolCalls: observeRepo, modelRequests: observeRepo, ipAllowed: outboundIPPolicy(cfg), broadcaster: hub})
 	if err != nil {
 		stopRunner(runnerStop)
 		closeRedis(rdb)
@@ -213,14 +227,15 @@ func NewApp(cfg *config.Config) (*App, error) {
 
 	// 生成任务队列（River）：任务调度、并发、重试之外的实例心跳与救回都交给它；业务处理仍是 worker。
 	// 入队和后台操作总是可用，是否在本实例执行任务由 ai.worker.enabled 决定（API-only 实例关闭它）。
-	taskQueue, queueConn, err := newTaskQueue(cfg, db, taskSvc, executor, assetSvc, settingsSvc)
+	taskQueue, queueConn, err := newTaskQueue(cfg, db, taskSvc, executor, assetSvc, settingsSvc, dramaSvc)
 	if err != nil {
 		stopRunner(runnerStop)
 		closeRedis(rdb)
 		closeDB(db)
 		return nil, err
 	}
-	taskRepo.SetEnqueuer(taskQueue) // 创建任务的事务里入队：任务、积分冻结、job 一起提交
+	taskRepo.SetEnqueuer(taskQueue)  // 创建任务的事务里入队：任务、积分冻结、job 一起提交
+	dramaRepo.SetEnqueuer(taskQueue) // 短剧项目、流水线任务与 River job 在业务事务里一并提交。
 	riverUI, err := taskQueue.UIHandler(riverUIPrefix)
 	if err != nil {
 		queueConn.Close()
@@ -276,8 +291,10 @@ func NewApp(cfg *config.Config) (*App, error) {
 		User:          handler.NewUserHandler(userSvc),
 		Me:            handler.NewMeHandler(meSvc),
 		CanvasProject: handler.NewCanvasProjectHandler(canvasProjectSvc),
+		Drama:         handler.NewDramaHandler(dramaSvc),
+		DramaSegment:  handler.NewDramaSegmentHandler(dramaSegments),
 		CanvasTransfer: handler.NewCanvasTransferHandler(service.NewCanvasTransferService(service.CanvasTransferDeps{
-			Canvases: canvasProjectRepo, Assets: assetSvc, Characters: characterCardRepo,
+			Canvases: canvasProjectRepo, Assets: assetSvc,
 			Tx: repository.NewCanvasTransferRepository(db), AppVersion: version.Version,
 			Limits: canvasdoc.DefaultLimits(), // 不能留零值：零值上限会拒绝所有导入文件
 			Now:    time.Now,
@@ -298,9 +315,6 @@ func NewApp(cfg *config.Config) (*App, error) {
 		AssetLibrary: handler.NewAssetLibraryHandler(service.NewAssetLibraryService(service.AssetLibraryDeps{
 			Folders: repository.NewAssetFolderRepository(db), Items: repository.NewAssetLibraryRepository(db),
 			Assets: assetRepo, Canvases: canvasProjectRepo, Views: assetSvc,
-		})),
-		CharacterCard: handler.NewCharacterCardHandler(service.NewCharacterCardService(service.CharacterCardDeps{
-			Cards: characterCardRepo, Assets: assetRepo, Views: assetSvc,
 		})),
 		Files:        handler.NewFilesHandler(assetSvc),
 		AIModel:      handler.NewAIModelHandler(aiCfgSvc),

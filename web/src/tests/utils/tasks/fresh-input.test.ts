@@ -1,26 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
-import type { AssetDto } from "@/api/asset/type";
 import type { Capabilities } from "@/api/model/type";
-import type { CharacterDto } from "@/api/character/type";
-import type { CharacterEntry } from "@/store/characters";
-import type { IncomingLink } from "@/utils/tasks/capabilities";
-import { buildFreshInput, characterIdsOf } from "@/utils/tasks/fresh-input";
-
-const asset = (id: string, kind: AssetDto["kind"] = "image"): AssetDto =>
-  ({ id, kind }) as AssetDto;
-const card = (patch: Partial<CharacterDto> = {}): CharacterDto => ({
-  id: "c1",
-  name: "林晚",
-  description: "",
-  avatar: asset("1"),
-  extras: [],
-  voice: asset("9", "audio"),
-  createdAt: "",
-  updatedAt: "",
-  ...patch,
-});
-const ready = (c: CharacterDto): CharacterEntry => ({ status: "ready", card: c, loadedAt: 1 });
+import type { CharacterRefs, IncomingLink } from "@/utils/tasks/capabilities";
+import { buildFreshInput } from "@/utils/tasks/fresh-input";
 
 const caps = (): Capabilities => ({
   ops: ["t2v", "omni"],
@@ -33,51 +15,41 @@ const caps = (): Capabilities => ({
   params: {},
 });
 
+/** 角色卡节点此刻的内容：主图 1、补充图 2，音频音色 9（来自节点自带的数据） */
+const refs = (patch: Partial<CharacterRefs> = {}): CharacterRefs => ({
+  id: "n1",
+  name: "林晚",
+  avatarAssetId: "1",
+  extraAssetIds: ["2"],
+  voiceAssetId: "9",
+  ...patch,
+});
+
 const link = (patch: Partial<IncomingLink> = {}): IncomingLink => ({
   edgeId: "e1",
   sourceId: "n1",
   sourceKind: "character",
   sourceLabel: "林晚",
   targetHandle: null,
-  characterId: "c1",
+  character: refs(),
   ...patch,
 });
 
 const params = { op: "omni", prompt: "镜头推近" };
 
-describe("characterIdsOf：提交前要强制刷新的角色卡", () => {
-  test("只取角色卡连线，去重，缺 characterId 的旧数据略过", () => {
-    const ids = characterIdsOf([
-      link(),
-      link({ edgeId: "e2", sourceId: "n2" }),
-      link({ edgeId: "e3", characterId: "c2" }),
-      link({ edgeId: "e4", characterId: undefined }),
-      link({ edgeId: "e5", sourceKind: "image", characterId: undefined, assetId: "5" }),
-    ]);
-    expect(ids).toEqual(["c1", "c2"]);
-  });
-});
-
-describe("buildFreshInput：用刚读到的角色卡内容组装任务输入", () => {
-  test("资产页刚改过：提交用新图和新声音，而不是节点上次渲染时的旧缓存", () => {
-    const stale = card({ avatar: asset("1"), voice: null });
-    // links 里带着旧内容；最新读到的换了主图、加了声音
-    const out = buildFreshInput(caps(), params, [link({ character: undefined })], {
-      c1: ready(card({ avatar: asset("7"), extras: [asset("8")], voice: asset("9", "audio") })),
-    });
-    expect(stale.voice).toBeNull();
-    expect(out.input.images).toEqual([7, 8]);
+describe("buildFreshInput：按连线里的角色内容组装任务输入", () => {
+  test("角色卡节点的主图、补充图当参考图，音频音色当参考音频", () => {
+    const out = buildFreshInput(caps(), params, [link()]);
+    expect(out.input.images).toEqual([1, 2]);
     expect(out.input.audios).toEqual([9]);
     expect(out.errors).toEqual({});
   });
 
-  test("提交前发现卡已被删：不带它的素材（连线保留但不参与）", () => {
-    const out = buildFreshInput(
-      caps(),
-      { ...params },
-      [link(), link({ edgeId: "e2", sourceKind: "image", characterId: undefined, assetId: "5" })],
-      { c1: { status: "missing", loadedAt: 1 } },
-    );
+  test("角色节点还没有形象图（character 为 null）：不带它的素材，也不报错，别的连线照常", () => {
+    const out = buildFreshInput(caps(), { ...params }, [
+      link({ character: null }),
+      link({ edgeId: "e2", sourceKind: "image", character: undefined, assetId: "5" }),
+    ]);
     expect(out.input.images).toEqual([5]);
     expect(out.input.audios).toBeUndefined();
   });
@@ -85,9 +57,32 @@ describe("buildFreshInput：用刚读到的角色卡内容组装任务输入", (
   test("目标不收参考音频：声音丢弃，带上提示，其余照常提交", () => {
     const noAudio = caps();
     noAudio.refs.audio = { on: false, max: 0, max_mb: 0 };
-    const out = buildFreshInput(noAudio, params, [link()], { c1: ready(card()) });
-    expect(out.input.images).toEqual([1]);
+    const out = buildFreshInput(noAudio, params, [link()]);
+    expect(out.input.images).toEqual([1, 2]);
     expect(out.input.audios).toBeUndefined();
     expect(out.notices).toEqual(["当前模型不支持参考音频，声音未生效"]);
+  });
+
+  test("两个形象（同一角色的两个节点）互不串：各自的图按连线顺序依次带入", () => {
+    const out = buildFreshInput(caps(), params, [
+      link(),
+      link({
+        edgeId: "e2",
+        sourceId: "n2",
+        character: refs({ id: "n2", avatarAssetId: "3", extraAssetIds: [], voiceAssetId: null }),
+      }),
+    ]);
+    expect(out.input.images).toEqual([1, 2, 3]);
+  });
+
+  test("参考图超出上限：按顺序截断并提示第几张起未带入", () => {
+    const small = caps();
+    small.refs.image = { on: true, max: 2, max_mb: 10 };
+    const out = buildFreshInput(small, params, [
+      link(),
+      link({ edgeId: "e2", sourceId: "n2", character: refs({ id: "n2", avatarAssetId: "3" }) }),
+    ]);
+    expect(out.input.images).toEqual([1, 2]);
+    expect(out.notices.join("")).toContain("参考图最多 2 张");
   });
 });

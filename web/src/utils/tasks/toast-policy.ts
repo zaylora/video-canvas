@@ -3,7 +3,8 @@ import { isTerminalStatus, taskKey } from "./status";
 
 export type TaskToastPlan = {
   id: string;
-  tone: "success" | "error";
+  /** 只提醒失败 / 超时；生成完成不弹通知 */
+  tone: "error";
   title: string;
   description?: string;
   href?: string;
@@ -47,15 +48,18 @@ export function isFreshTerminalTransition(
 /** 首页生成的对话任务的 node_id 前缀（rec:{记录id}:{格子序号}），它们没有画布 */
 const CONVERSATION_NODE_PREFIX = "rec:";
 
+/** 短剧片段任务的 node_id 前缀：seg:{片段id} 是片段视频 */
+const SEGMENT_NODE_PREFIXES = ["seg:"] as const;
+
 /**
- * 画布外的完成提示：用户正看着这张画布时节点自己会变，不弹；
- * 在列表页或别的画布时弹「《画布名》中的视频已生成 / 生成失败」，点击跳转。
- * 首页生成的对话任务没有画布：正在对话页时格子自己会变，不弹；在别的页面弹不带画布名的说法，没有跳转。
+ * 画布外的提示：只提醒生成失败 / 超时（生成完成不弹，结果在节点、格子、片段上自己会出来）。
+ * 用户正看着这张画布时节点自己会变，不弹；在列表页或别的画布时弹「《画布名》中的视频生成失败」，点击跳转。
+ * 首页生成的对话任务没有画布：正在对话页时不弹；在别的页面弹不带画布名的说法，没有跳转。
  * 主动取消不提醒。
  * @param view 任务快照
  * @param currentCanvasId 正在看的画布 id，不在画布页为 null
  * @param canvasTitle 任务所属画布的标题
- * @param pathname 当前地址，判断是不是正在看对话页
+ * @param pathname 当前地址（路径加查询串，如 /drama/1a2b?area=studio），判断是不是正在看对话页或片场
  */
 export function planTaskToast(
   view: TaskView,
@@ -65,6 +69,9 @@ export function planTaskToast(
 ): TaskToastPlan | null {
   if (view.node_id.startsWith(CONVERSATION_NODE_PREFIX)) {
     return planConversationToast(view, pathname);
+  }
+  if (SEGMENT_NODE_PREFIXES.some((prefix) => view.node_id.startsWith(prefix))) {
+    return planSegmentToast(view, pathname);
   }
   const canvasId =
     view.canvas_id === null || view.canvas_id === undefined ? null : String(view.canvas_id);
@@ -76,8 +83,6 @@ export function planTaskToast(
   const id = `task:${taskKey(view.id)}`;
 
   switch (view.status) {
-    case "succeeded":
-      return { id, tone: "success", title: `${name}中的${kind}已生成`, href };
     case "failed":
     case "expired":
       return {
@@ -98,14 +103,41 @@ function planConversationToast(view: TaskView, pathname: string): TaskToastPlan 
   const kind = KIND_LABEL[view.kind] ?? "内容";
   const id = `task:${taskKey(view.id)}`;
   switch (view.status) {
-    case "succeeded":
-      return { id, tone: "success", title: `${kind}已生成` };
     case "failed":
     case "expired":
       return {
         id,
         tone: "error",
         title: `${kind}${view.status === "expired" ? "生成超时" : "生成失败"}`,
+        description: failureDescription(view),
+      };
+    default:
+      return null;
+  }
+}
+
+/**
+ * 正在看片场：工作台的 ?area=studio（片场已并入工作台），或旧的 /drama/:id/ep/:no（会被重定向，
+ * 重定向前的一瞬间也算）。查询参数顺序不固定，所以按参数解析，不用正则硬匹配。
+ */
+function inStudio(location: string): boolean {
+  if (/^\/drama\/[^/?]+\/ep\//.test(location)) return true;
+  const match = /^\/drama\/[^/?]+\?(.*)$/.exec(location);
+  return !!match && new URLSearchParams(match[1]).get("area") === "studio";
+}
+
+/** 片段任务的提示：正在片场时片段自己会变，不弹；短剧画布不是普通画布，不带画布名也不跳转 */
+function planSegmentToast(view: TaskView, pathname: string): TaskToastPlan | null {
+  if (inStudio(pathname)) return null;
+  const name = "片段视频";
+  const id = `task:${taskKey(view.id)}`;
+  switch (view.status) {
+    case "failed":
+    case "expired":
+      return {
+        id,
+        tone: "error",
+        title: `${name}${view.status === "expired" ? "生成超时" : "生成失败"}`,
         description: failureDescription(view),
       };
     default:

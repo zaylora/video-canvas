@@ -5,7 +5,8 @@
  *
  * 所有 id 参数都是十进制字符串；路径里的编码串由 HTTP 层先解码。
  */
-import type { AgentEngine, ApprovalView } from "../engine/engine.ts";
+import type { AttachmentCheck } from "../attachments.ts";
+import type { AgentEngine, ApprovalView, WatchBatchView } from "../engine/engine.ts";
 import { fromPlatform } from "../engine/engine.ts";
 import { AgentError, Err } from "../engine/errors.ts";
 import { isActive } from "../engine/status.ts";
@@ -49,7 +50,14 @@ export interface StartRunRequest {
   viewport?: unknown;
   budget_credits?: number | null;
   agent_model_key?: string;
+  /** 图片附件：只带素材 id，归属、格式、大小由 Go 校验 */
+  attachments?: Array<{ asset_id: string }>;
 }
+
+/** 一条消息最多几张图片附件（和 Go、前端一致） */
+const MAX_ATTACHMENTS = 9;
+/** 一条消息最多几个文本文件（.txt / .md），和图片分开计数；精确的分项上限由 Go 校验 */
+const MAX_DOCUMENTS = 3;
 
 /** 首条消息 / 标题：空白压成一个空格，最多 40 字；清空后返回 def */
 export function cleanTitle(raw: string, def: string): string {
@@ -76,7 +84,7 @@ export class AgentApiService {
   }
 
   async createSession(userId: string, canvasId: string, req: CreateSessionRequest): Promise<SessionView> {
-    await this.#platform(() => this.#o.platform.checkCanvas(userId, canvasId));
+    await this.#platform(() => this.#o.platform.checkCanvas(userId, canvasId, undefined, req.mode === "drama" ? req.mode : undefined));
     // 每个画布最多 50 个会话，避免历史无限增长
     if (this.#o.store.countSessions(userId, canvasId) >= MAX_SESSIONS_PER_CANVAS) throw new AgentError(60010, 409, "这个画布的会话数量已达上限");
     const title = cleanTitle(req.title ?? "", "");
@@ -99,7 +107,25 @@ export class AgentApiService {
     const sess = this.#session(userId, sessionId);
     const active = this.#o.store.activeRun(sess.canvasId);
     if (active && active.sessionId === sessionId) throw Err.runActive();
+    await this.#o.engine.cancelWatches(userId, sessionId).catch(() => {}); // 后台等待的监听任务一并收掉
     this.#o.store.deleteSession(userId, sessionId);
+  }
+
+  // ---- 后台等待生成 ----
+
+  /** 进行中的后台等待（waiting / deliverable），等待条的初始状态；之后靠 watch.updated 事件更新 */
+  async watches(userId: string, sessionId: string): Promise<{ items: WatchBatchView[] }> {
+    return { items: await this.#o.engine.watches(userId, sessionId) };
+  }
+
+  /** 不用等了：只取消 Agent 的跟进，已批准的生成照常完成 */
+  async cancelWatches(userId: string, sessionId: string): Promise<{ items: WatchBatchView[] }> {
+    return { items: await this.#o.engine.cancelWatches(userId, sessionId) };
+  }
+
+  /** Go 的门铃：一个 Agent 发起的生成任务结束了。没有对应的等待就是 404，Go 据此不再重试 */
+  async taskSettled(runId: string, taskId: string, status: string): Promise<void> {
+    if (!(await this.#o.engine.taskSettled(runId, taskId, status))) throw Err.watchMissing();
   }
 
   // ---- 事件和历史 ----
@@ -146,22 +172,25 @@ export class AgentApiService {
     const sess = this.#session(userId, sessionId);
     const message = req.message.trim();
     if (!message) throw Err.invalidParams("消息不能为空");
+    if ((req.mode || sess.mode) === "drama") await this.#platform(() => this.#o.platform.checkCanvas(userId, sess.canvasId, undefined, "drama"));
     // 消息里的引用（节点、模型、技能）必须有效；选中的节点里已不存在的去掉
     const selection = await this.#platform(() => this.#o.platform.checkMessage(userId, sess.canvasId, message, req.selection ?? []));
     const modelKey = await this.#pickModel(req.agent_model_key || sess.modelKey);
+    const attachments = await this.#checkAttachments(userId, req.attachments, modelKey);
     const run = await this.#o.engine.startRun({
-      userId, sessionId, message, mode: req.mode || undefined, modelKey, selection, budgetCredits: req.budget_credits ?? 0,
+      userId, sessionId, message, mode: req.mode || undefined, modelKey, selection, attachments, budgetCredits: req.budget_credits ?? 0,
     });
     return runView(this.#o.codec, run);
   }
 
-  async interject(userId: string, runId: string, message: string): Promise<void> {
+  async interject(userId: string, runId: string, message: string, attachments?: Array<{ asset_id: string }>): Promise<void> {
     const run = this.#run(userId, runId);
     const msg = message.trim();
     if (!msg) throw Err.invalidParams("消息不能为空");
     if (run.status !== "running") throw Err.state();
     await this.#platform(() => this.#o.platform.checkMessage(userId, run.canvasId, msg, []));
-    await this.#o.engine.interject(userId, runId, msg);
+    const checked = await this.#checkAttachments(userId, attachments, this.#session(userId, run.sessionId).modelKey);
+    await this.#o.engine.interject(userId, runId, msg, checked);
   }
 
   async cancel(userId: string, runId: string): Promise<RunView> {
@@ -262,6 +291,25 @@ export class AgentApiService {
   // ---- 内部 ----
 
   /** 选本轮用的 Agent 模型：优先 want，其次清单第一个；want 不在已发布清单里是 60002 */
+  /**
+   * 校验消息的附件（图片和文本文件）：格式、总数在这里先拦住（不创建运行），素材的归属、格式、大小、分项数量交给 Go；
+   * 里面有图片而当前模型不能看图时拒绝（只有文本文件不要求能看图）。没带附件就什么都不做。
+   */
+  async #checkAttachments(userId: string, raw: unknown, modelKey: string): Promise<AttachmentCheck[]> {
+    if (raw === undefined || raw === null) return [];
+    if (!Array.isArray(raw)) throw Err.invalidParams("附件格式不对");
+    if (raw.length === 0) return [];
+    if (raw.length > MAX_ATTACHMENTS + MAX_DOCUMENTS) throw Err.invalidParams(`一条消息最多 ${MAX_ATTACHMENTS} 张图片和 ${MAX_DOCUMENTS} 个文本文件`);
+    const ids = raw.map((a) => (a && typeof a === "object" && typeof (a as { asset_id?: unknown }).asset_id === "string" ? (a as { asset_id: string }).asset_id.trim() : ""));
+    if (ids.some((id) => !id || id.length > 32)) throw Err.invalidParams("附件格式不对");
+    const checked = await this.#platform(() => this.#o.platform.checkAttachments(userId, ids));
+    if (checked.some((a) => a.kind !== "document")) {
+      const model = (await this.models()).find((m) => m.key === modelKey);
+      if (!model?.vision) throw Err.invalidParams("当前模型不能看图，换一个能看图的模型或移除图片");
+    }
+    return checked;
+  }
+
   async #pickModel(want: string): Promise<string> {
     const list = await this.models();
     if (list.length === 0) throw Err.modelNA();

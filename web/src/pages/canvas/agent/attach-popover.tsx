@@ -9,23 +9,18 @@ import { MAX_ATTACH_IMAGES, pickImageFiles } from "@/utils/agent/image-files";
 
 import { AGENT_ICON_BTN, AGENT_POP } from "./styles";
 
-/** 故事文件最大字节数：消息最多 20000 字，文件再大也放不进去 */
-const MAX_STORY_BYTES = 200_000;
-/** 一条消息最多多少字，与后端一致 */
-const MAX_MESSAGE_CHARS = 20000;
-
 /**
  * ＋ 附件：
- * - 上传故事或剧本（.txt / .md）：读成文字插进输入框，Agent 直接就能读到
+ * - 上传故事或剧本（.txt / .md）：上传成素材，作为文件卡片附件跟着消息发给 Agent，不往输入框里塞字
  * - 上传图片：先在画布中心放成图片节点（走现有的上传），再把节点作为 chip 引用；Agent 用「查看图片」看它
  */
 export function AttachPopover({
-  onInsertText,
+  onAttachDocuments,
   onAttachImages,
   disabled,
 }: {
-  /** 插入一段文字 */
-  onInsertText: (text: string) => void;
+  /** 把选好的文档（.txt / .md）加进附件托盘；类型、大小、数量的校验由托盘负责 */
+  onAttachDocuments: (files: File[]) => void;
   /** 把图片上传到画布；调用方负责把新建的节点作为 chip 插进输入框 */
   onAttachImages: (files: File[]) => void | Promise<unknown>;
   disabled?: boolean;
@@ -33,22 +28,6 @@ export function AttachPopover({
   const [open, setOpen] = useState(false);
   const story = useRef<HTMLInputElement>(null);
   const image = useRef<HTMLInputElement>(null);
-
-  const readStory = async (file: File) => {
-    if (file.size > MAX_STORY_BYTES) {
-      toast.error("文件太大了，请控制在 20 万字节以内，或分段粘贴");
-      return;
-    }
-    const text = (await file.text()).replace(/\r\n/g, "\n").trim();
-    if (!text) {
-      toast.error("这个文件是空的");
-      return;
-    }
-    const clipped = [...text].slice(0, MAX_MESSAGE_CHARS);
-    if (clipped.length < [...text].length)
-      toast.info(`故事太长，只放进了前 ${MAX_MESSAGE_CHARS} 字`);
-    onInsertText(`${file.name.replace(/\.[^.]+$/, "")}：\n${clipped.join("")}`);
-  };
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -86,22 +65,29 @@ export function AttachPopover({
         <button
           type="button"
           onClick={() => story.current?.click()}
-          className="hover:bg-chrome-hover focus-visible:ring-node-ring/60 flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] outline-none focus-visible:ring-2"
+          className="hover:bg-chrome-hover focus-visible:ring-node-ring/60 flex items-start gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] outline-none focus-visible:ring-2"
         >
-          <FileText className="size-4" /> 上传故事或剧本
+          <FileText className="mt-0.5 size-4 shrink-0" />
+          <span className="min-w-0">
+            <span className="block">上传故事或剧本</span>
+            <span className="text-muted-foreground block text-xs leading-snug">
+              选一个 .txt 或 .md 文件，作为附件发给 Agent
+            </span>
+          </span>
         </button>
         <input
           ref={story}
           type="file"
-          accept=".txt,.md,text/plain,text/markdown"
+          accept=".txt,.md,.markdown,text/plain,text/markdown"
+          multiple
           className="sr-only"
           tabIndex={-1}
           aria-hidden
           onChange={(e) => {
-            const file = e.target.files?.[0];
+            const picked = Array.from(e.target.files ?? []);
             e.target.value = "";
             setOpen(false);
-            if (file) void readStory(file);
+            if (picked.length) onAttachDocuments(picked);
           }}
         />
         <input

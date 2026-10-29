@@ -148,6 +148,28 @@ func TestSystem_Codemode(t *testing.T) {
 	}
 }
 
+// 批准生成后系统会等这批任务结束，再自动把结果发给 Agent：提示词要让它知道这一点，别再说“不用等”，
+// 也要教它认出系统发起的唤醒消息（不是用户说的话，不能当作批准）。
+func TestSystem_ExplainsWaitingForGeneration(t *testing.T) {
+	for _, mode := range []string{"all", "script", "storyboard", "prompt"} {
+		got := prompts.System(mode)
+		for _, must := range []string{
+			"全部结束后",      // 系统会等，结束后自动把结果发来
+			"wait=false", // 用户明确说不用管时才不等
+			"系统通知",       // 唤醒消息是系统发的
+			"不代表用户同意或批准了任何事", // 不能当作批准
+			"如实回答", // 还在跑时被问进度别编造
+		} {
+			if !strings.Contains(got, must) {
+				t.Errorf("模式 %s 的提示词应交代批准生成之后的等待与自动唤醒，缺少 %q", mode, must)
+			}
+		}
+		if strings.Contains(got, "不用等，也不用反复查询") {
+			t.Errorf("模式 %s 的提示词不应再让模型认为批准后不用等", mode)
+		}
+	}
+}
+
 // 消息引用是当前交互入口，selected 仍兼容旧客户端；概要不能替代修改前读取详情。
 func TestSystem_ExplainsSelectedInCatalog(t *testing.T) {
 	for _, mode := range []string{"all", "script", "storyboard", "prompt"} {

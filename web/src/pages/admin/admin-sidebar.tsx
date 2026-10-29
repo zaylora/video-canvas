@@ -39,8 +39,8 @@ export function AdminSidebar() {
   const hasUpdate = !!check?.has_update;
 
   return (
-    <Sidebar collapsible="icon">
-      <SidebarHeader className="gap-3 px-2 pt-3">
+    <Sidebar variant="inset" collapsible="icon">
+      <SidebarHeader className="gap-3 px-2 pt-3 group-data-[collapsible=icon]:px-1">
         <div className="flex h-9 items-end gap-1.5 pb-1.5 pl-1.5 group-data-[collapsible=icon]:h-auto group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:pb-0 group-data-[collapsible=icon]:pl-0">
           <SidebarBrand to="/admin/ai/overview" />
           <VersionMarker onNavigate={() => setOpenMobile(false)} />
@@ -48,7 +48,7 @@ export function AdminSidebar() {
       </SidebarHeader>
       <SidebarContent>
         {ADMIN_NAV.map((section) => (
-          <SidebarGroup key={section.label} className="px-2">
+          <SidebarGroup key={section.label} className="px-2 group-data-[collapsible=icon]:px-1">
             <SidebarGroupLabel className="text-sidebar-foreground/55 px-2.5">
               {section.label}
             </SidebarGroupLabel>
@@ -81,7 +81,7 @@ export function AdminSidebar() {
           </SidebarGroup>
         ))}
       </SidebarContent>
-      <SidebarFooter className="border-sidebar-border border-t px-2 pb-3">
+      <SidebarFooter className="px-2 pb-3 group-data-[collapsible=icon]:px-1">
         {/* 离开后台是导航，不是账号操作，放在底部账号区的上面 */}
         <SidebarMenu className="gap-0.5">
           <SidebarMenuItem>

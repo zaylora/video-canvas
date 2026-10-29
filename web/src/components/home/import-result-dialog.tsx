@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { ImageOff, UserRoundPen, UserRoundX, Unlink, type LucideIcon } from "lucide-react";
+import { ImageOff, Unlink, type LucideIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -53,32 +53,6 @@ function ReportBody({ report, onOpen }: { report: ImportReport; onOpen: () => vo
             {report.assets.missing.map((item) => (
               <li key={`${item.nodeId}-${item.fileName}`}>
                 节点 <code>{item.nodeId}</code> · {item.fileName}
-              </li>
-            ))}
-          </Section>
-        )}
-        {summary.renamed > 0 && (
-          <Section
-            icon={UserRoundPen}
-            tone="info"
-            title={`${summary.renamed} 张角色卡重名，已自动改名`}
-          >
-            {report.characters.renamed.map((item) => (
-              <li key={`${item.from}-${item.to}`}>
-                {item.from} → {item.to}
-              </li>
-            ))}
-          </Section>
-        )}
-        {summary.invalid > 0 && (
-          <Section
-            icon={UserRoundX}
-            tone="warn"
-            title={`${summary.invalid} 张角色卡主图缺失，没有创建`}
-          >
-            {report.characters.invalid.map((item) => (
-              <li key={`${item.nodeId}-${item.name}`}>
-                节点 <code>{item.nodeId}</code> · {item.name}（显示为「已失效」）
               </li>
             ))}
           </Section>

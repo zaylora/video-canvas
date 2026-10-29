@@ -209,14 +209,6 @@ export const importCanvas = (
             fileName: item.file_name,
           })),
         },
-        characters: {
-          created: report.characters.created,
-          renamed: report.characters.renamed ?? [],
-          invalid: (report.characters.invalid ?? []).map((item) => ({
-            nodeId: item.node_id,
-            name: item.name,
-          })),
-        },
         edgesDropped: report.edges_dropped,
       },
     }));

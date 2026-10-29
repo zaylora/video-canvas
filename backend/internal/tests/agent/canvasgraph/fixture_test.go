@@ -179,6 +179,12 @@ func TestComposePromptMatchesFrontend(t *testing.T) {
 			Nodes []struct {
 				ID, Kind, Label, Text string
 				AssetID               string `json:"assetId"`
+				// Character 是角色卡的人物数据：补充图和声音的素材 id
+				Character *struct {
+					Name   string
+					Extras []string
+					Voice  string
+				}
 			}
 			Prompt string
 			Expect string
@@ -200,6 +206,17 @@ func TestComposePromptMatchesFrontend(t *testing.T) {
 				}
 				if n.AssetID != "" {
 					data["assetId"] = n.AssetID
+				}
+				if c := n.Character; c != nil {
+					extras := []any{}
+					for _, id := range c.Extras {
+						extras = append(extras, map[string]any{"assetId": id, "src": "/files/" + id})
+					}
+					var voice any
+					if c.Voice != "" {
+						voice = map[string]any{"mode": "audio", "assetId": c.Voice, "src": "/files/" + c.Voice}
+					}
+					data["character"] = map[string]any{"name": c.Name, "look": "基础形象", "extras": extras, "voice": voice}
 				}
 				nodes = append(nodes, map[string]any{"id": n.ID, "type": "canvas", "data": data})
 				edges = append(edges, map[string]any{"id": fmt.Sprintf("e%d", i), "source": n.ID, "target": "target"})

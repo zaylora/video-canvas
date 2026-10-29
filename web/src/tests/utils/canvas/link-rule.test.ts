@@ -92,12 +92,13 @@ describe("mentionableNodes：角色卡节点（二期 @ 角色）", () => {
     id,
     data: { kind, label: id, ...extra },
   });
-  // withId=false 造「没有 characterId 的旧数据」；不能用 undefined 当参数，会触发默认值
-  const card = (id: string, withId = true) =>
-    n(id, "character", withId ? { characterId: `c-${id}` } : {});
+  // 角色卡节点自带角色数据；空节点（没有主图）也列进候选：选了只是暂时不带入参考，补上图后自然生效
+  const role = { name: "角色", look: "基础形象", description: "", extras: [], voice: null };
+  const card = (id: string, withData = true) =>
+    n(id, "character", withData ? { character: role } : {});
 
-  test("目标是视频 / 图片节点：有 characterId 的角色卡列进候选，没有 characterId 的旧数据不列", () => {
-    const nodes = [n("video", "video"), n("image", "image"), card("c1"), card("old", false)];
+  test("目标是视频 / 图片节点：角色卡节点（含还没有形象图的空节点）列进候选，缺角色数据的异常数据不列", () => {
+    const nodes = [n("video", "video"), n("image", "image"), card("c1"), card("bad", false)];
     expect(mentionableNodes("video", nodes, []).canvas.map((item) => item.id)).toEqual(["c1"]);
     expect(mentionableNodes("image", nodes, []).canvas.map((item) => item.id)).toEqual(["c1"]);
   });

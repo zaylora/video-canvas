@@ -41,6 +41,7 @@ type fakeTaskRepo struct {
 	failUpdateIDs  map[uint64]error          // 指定任务 id 的 UpdateIf 返回错误（模拟某一个任务处理失败）
 	eventDetails   map[uint64]map[string]any // 任务 id -> 最近一次状态迁移带给事件的详情（repository.EventDetailKey）
 	enqueued       []uint64                  // 事务里入队的任务 id（事务回滚时一并撤销，和真实的“job 与任务同一个事务”一致）
+	agentNotified  []uint64                  // 事务里为 Agent 入队门铃的任务 id（同样随事务回滚）
 	slotReqs       []repository.SlotRequest  // AcquireSlot 收到的申请参数
 	slotResult     repository.SlotResult     // AcquireSlot 的返回值，空表示拿到
 }
@@ -102,10 +103,11 @@ func (f *fakeTaskRepo) WithTx(ctx context.Context, fn func(tx repository.Generat
 		credits[id] = &cp
 	}
 	ledger := append([]model.CreditLedger(nil), f.ledger...)
-	enqueued := len(f.enqueued)
+	enqueued, notified := len(f.enqueued), len(f.agentNotified)
 	if err := fn(f); err != nil {
 		f.tasks, f.credits, f.ledger = tasks, credits, ledger
 		f.enqueued = f.enqueued[:enqueued]
+		f.agentNotified = f.agentNotified[:notified]
 		return err
 	}
 	return nil
@@ -357,6 +359,15 @@ func (f *fakeTaskRepo) EnqueueTask(ctx context.Context, t *model.GenerationTask)
 		return err
 	}
 	f.enqueued = append(f.enqueued, t.ID)
+	return nil
+}
+
+// EnqueueAgentNotify 记录为 Agent 入队门铃的任务；errs["EnqueueAgentNotify"] 让它失败。
+func (f *fakeTaskRepo) EnqueueAgentNotify(ctx context.Context, t *model.GenerationTask) error {
+	if err := f.errs["EnqueueAgentNotify"]; err != nil {
+		return err
+	}
+	f.agentNotified = append(f.agentNotified, t.ID)
 	return nil
 }
 

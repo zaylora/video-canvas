@@ -14,7 +14,6 @@ const validDoc = { format: "video-canvas/canvas", version: 1, canvas: { title: "
 function cleanReport(overrides: Partial<Record<string, unknown>> = {}): Report {
   return {
     assets: { total: 2, copied: 2, missing: [] },
-    characters: { created: 1, renamed: [], invalid: [] },
     edgesDropped: 0,
     ...overrides,
   } as Report;
@@ -112,24 +111,6 @@ describe("runCanvasImport：列表页导入流程", () => {
     });
   });
 
-  test("只有角色卡重名：report", async () => {
-    const report = cleanReport({
-      characters: { created: 1, renamed: [{ from: "老王", to: "老王 (2)" }], invalid: [] },
-    });
-    const outcome = await runCanvasImport(setup({ report }));
-
-    expect(outcome.kind).toBe("report");
-  });
-
-  test("只有角色卡主图缺失：report", async () => {
-    const report = cleanReport({
-      characters: { created: 0, renamed: [], invalid: [{ nodeId: "n9", name: "老王" }] },
-    });
-    const outcome = await runCanvasImport(setup({ report }));
-
-    expect(outcome.kind).toBe("report");
-  });
-
   test("只有连线被丢弃：report", async () => {
     const outcome = await runCanvasImport(setup({ report: cleanReport({ edgesDropped: 1 }) }));
 
@@ -187,8 +168,6 @@ describe("summarizeImportReport：导入结果弹窗的数量", () => {
   test("干净报告：总数为 0", () => {
     expect(summarizeImportReport(cleanReport())).toEqual({
       missing: 0,
-      renamed: 0,
-      invalid: 0,
       edgesDropped: 0,
       total: 0,
     });
@@ -204,20 +183,13 @@ describe("summarizeImportReport：导入结果弹窗的数量", () => {
           { nodeId: "n2", fileName: "b.png" },
         ],
       },
-      characters: {
-        created: 1,
-        renamed: [{ from: "甲", to: "甲 (2)" }],
-        invalid: [{ nodeId: "n9", name: "乙" }],
-      },
       edgesDropped: 5,
     });
 
     expect(summarizeImportReport(report)).toEqual({
       missing: 2,
-      renamed: 1,
-      invalid: 1,
       edgesDropped: 5,
-      total: 5,
+      total: 3,
     });
   });
 });

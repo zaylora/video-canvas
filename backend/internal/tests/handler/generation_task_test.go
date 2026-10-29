@@ -104,6 +104,9 @@ func (f *fakeGenTaskRepo) AcquireSlot(ctx context.Context, req repository.SlotRe
 	return repository.SlotAcquired, nil
 }
 func (f *fakeGenTaskRepo) EnqueueTask(ctx context.Context, t *model.GenerationTask) error { return nil }
+func (f *fakeGenTaskRepo) EnqueueAgentNotify(ctx context.Context, t *model.GenerationTask) error {
+	return nil
+}
 func (f *fakeGenTaskRepo) FindByIdempotencyKey(ctx context.Context, userID uint64, key string) (*model.GenerationTask, error) {
 	for _, t := range f.tasks {
 		if t.UserID == userID && t.IdempotencyKey == key {

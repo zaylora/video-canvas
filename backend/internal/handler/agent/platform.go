@@ -47,8 +47,12 @@ type PlatformAPI interface {
 	AgentModels(ctx context.Context) ([]model.AgentModelView, error)
 	// CheckCanvas 确认画布属于这个用户。
 	CheckCanvas(ctx context.Context, userID, canvasID uint64) error
+	// PlatformTaskStates 读这个用户的一批生成任务的最新状态（Agent 补收任务结束的通知、取结果用）。
+	PlatformTaskStates(ctx context.Context, userID uint64, ids []uint64) ([]agentsvc.PlatformTaskState, error)
 	// CheckMessage 校验消息里的引用，返回去掉了不存在节点的选中列表。
 	CheckMessage(ctx context.Context, userID, canvasID uint64, message string, selection []string) ([]string, error)
+	// CheckAttachments 校验消息的图片附件（归属、格式、大小、数量），返回展示信息和交给模型的图。
+	CheckAttachments(ctx context.Context, userID uint64, assetIDs []string) ([]agentsvc.AttachmentCheck, error)
 	// UndoPlatformRun 撤销某运行对画布的全部改动。
 	UndoPlatformRun(ctx context.Context, rc agentsvc.RunContext) (*agentsvc.UndoResult, error)
 	// PrepareRun 给 Agent 服务一次运行（或续跑）需要的、由平台决定的内容：模型规格、系统提示词、工具声明、第一条消息、版本。
@@ -349,6 +353,7 @@ func (h *PlatformHandler) AgentModels(c *gin.Context) {
 type canvasBody struct {
 	UserID   uint64 `json:"user_id,string" binding:"required,min=1" label:"user_id"`
 	CanvasID uint64 `json:"canvas_id,string" binding:"required,min=1" label:"canvas_id"`
+	Mode     string `json:"mode" binding:"omitempty,oneof=all script storyboard prompt drama" label:"mode"`
 }
 
 // CheckCanvas 确认画布属于这个用户；别人的和不存在的一样返回「画布不存在」。
@@ -357,11 +362,50 @@ func (h *PlatformHandler) CheckCanvas(c *gin.Context) {
 	if !handler.BindJSON(c, &req) {
 		return
 	}
-	if err := h.svc.CheckCanvas(c.Request.Context(), req.UserID, req.CanvasID); err != nil {
+	var err error
+	if checker, ok := h.svc.(interface {
+		CheckCanvasMode(context.Context, uint64, uint64, string) error
+	}); ok && req.Mode != "" {
+		err = checker.CheckCanvasMode(c.Request.Context(), req.UserID, req.CanvasID, req.Mode)
+	} else if req.Mode == model.AgentModeDrama {
+		err = errcode.ErrInvalidParams.WithMsg("短剧模式校验未启用")
+	} else {
+		err = h.svc.CheckCanvas(c.Request.Context(), req.UserID, req.CanvasID)
+	}
+	if err != nil {
 		response.Fail(c, err)
 		return
 	}
 	response.OK(c, nil)
+}
+
+// taskStatusBody 是查任务状态的请求体。ID 是十进制字符串：雪花 ID 超过 2^53，用数字会在 JavaScript 里丢精度。
+type taskStatusBody struct {
+	UserID  uint64   `json:"user_id,string" binding:"required,min=1" label:"user_id"`
+	TaskIDs []string `json:"task_ids" binding:"required,min=1,max=50,dive,max=20" label:"task_ids"`
+}
+
+// TaskStatus 读这个用户的一批生成任务的最新状态；别人的和不存在的任务标 missing，不报错。
+func (h *PlatformHandler) TaskStatus(c *gin.Context) {
+	var req taskStatusBody
+	if !handler.BindJSON(c, &req) {
+		return
+	}
+	ids := make([]uint64, len(req.TaskIDs))
+	for i, raw := range req.TaskIDs {
+		id, err := strconv.ParseUint(raw, 10, 64)
+		if err != nil || id == 0 {
+			response.Fail(c, errcode.ErrInvalidParams.WithMsg("task_ids 里的每一项都必须是正整数（十进制字符串）"))
+			return
+		}
+		ids[i] = id
+	}
+	items, err := h.svc.PlatformTaskStates(c.Request.Context(), req.UserID, ids)
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, gin.H{"items": items})
 }
 
 // messageBody 是消息引用校验的请求体，字段上限与发起运行的请求一致。
@@ -386,6 +430,29 @@ func (h *PlatformHandler) CheckMessage(c *gin.Context) {
 		sel = []string{}
 	}
 	response.OK(c, map[string]any{"selection": sel})
+}
+
+// attachmentsBody 是附件校验的请求体：素材 id 是十进制字符串（雪花 ID 超过 2^53），一条消息最多 9 张。
+type attachmentsBody struct {
+	UserID   uint64   `json:"user_id,string" binding:"required,min=1" label:"user_id"`
+	AssetIDs []string `json:"asset_ids" binding:"max=9,dive,max=32" label:"asset_ids"`
+}
+
+// CheckAttachments 校验消息的图片附件：素材必须是该用户的、支持的图片格式。不合法返回 10001 并点名第几张。
+func (h *PlatformHandler) CheckAttachments(c *gin.Context) {
+	var req attachmentsBody
+	if !handler.BindJSON(c, &req) {
+		return
+	}
+	list, err := h.svc.CheckAttachments(c.Request.Context(), req.UserID, req.AssetIDs)
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	if list == nil {
+		list = []agentsvc.AttachmentCheck{}
+	}
+	response.OK(c, map[string]any{"attachments": list})
 }
 
 // UndoRun 撤销某运行对画布的全部改动。路径里的运行必须和上下文里声明的一致。

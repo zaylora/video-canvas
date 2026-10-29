@@ -22,6 +22,16 @@ export const TOOL_LABELS: Record<string, string> = {
   task_get: "查询任务",
   skill_search: "搜索技能",
   skill_read: "读取技能",
+  canvas_inspect_video: "查看视频",
+  canvas_capture_frame: "截取视频帧",
+  web_search: "搜索网页",
+  web_fetch: "读取网页",
+  codemode: "运行脚本",
+  drama_read: "读取短剧",
+  drama_update_outline: "修改大纲",
+  drama_update_episode: "修改剧本",
+  drama_update_segment: "修改片段",
+  drama_run_job: "提交任务",
 };
 
 /** 工具的短动词：活动块收起后的摘要按它计数，如「读取 2 · 修改 3」 */
@@ -38,6 +48,16 @@ export const TOOL_VERBS: Record<string, string> = {
   task_get: "查任务",
   skill_search: "技能",
   skill_read: "技能",
+  canvas_inspect_video: "看视频",
+  canvas_capture_frame: "截帧",
+  web_search: "搜索",
+  web_fetch: "读网页",
+  codemode: "脚本",
+  drama_read: "读取",
+  drama_update_outline: "改大纲",
+  drama_update_episode: "改剧本",
+  drama_update_segment: "改片段",
+  drama_run_job: "提交",
 };
 
 /** 工具的显示名：后端随事件下发的优先（新工具不用改前端），其次本地常量，都没有就显示原名 */

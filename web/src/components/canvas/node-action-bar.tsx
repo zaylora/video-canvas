@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import { ChevronDown, Copy, Download, FolderPlus, Maximize2, Sparkle } from "lucide-react";
 import { toast } from "sonner";
 
@@ -169,6 +169,7 @@ export function NodeActionBar({
   onAction,
   onTail,
   onGridPick,
+  extra,
 }: {
   config: NodeToolbarConfig;
   /** 节点标题，给读屏用 */
@@ -180,6 +181,8 @@ export function NodeActionBar({
   onTail?: Partial<Record<ToolbarTail, () => void>>;
   /** 宫格切分「自定义」选定了行列；没有就当占位（选了也只提示敬请期待） */
   onGridPick?: (rows: number, cols: number) => void;
+  /** 页面追加的内容（见 canvas-editor 的 toolbarExtra），接在查看类按钮之后 */
+  extra?: ReactNode;
 }) {
   const run = (id: string, name: string) => {
     const handler = onAction?.[id];
@@ -233,6 +236,8 @@ export function NodeActionBar({
       )}
       {config.actions.length > 0 && hasTail && <ChromeSeparator />}
       {tail}
+      {extra && (config.actions.length > 0 || hasTail) && <ChromeSeparator />}
+      {extra}
     </ChromePill>
   );
 }

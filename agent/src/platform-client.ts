@@ -7,6 +7,7 @@
  * 请求被 signal 中止时抛出的是原来的中止错误，不包装：调用方要分得清「被取消」和「出错」。
  */
 import { createHash } from "node:crypto";
+import type { AttachmentCheck } from "./attachments.ts";
 import type { RelayEvent } from "./event-pusher.ts";
 import { parseDecimal } from "./ids.ts";
 
@@ -119,7 +120,7 @@ export interface RunSetup {
   harness: { prompt_version: number; tools_hash: string; build_sha: string; key: string };
 }
 
-export type ApprovalKind = "generate" | "delete" | "ask";
+export type ApprovalKind = "generate" | "delete" | "ask" | "drama_update_outline" | "drama_update_episode" | "drama_update_segment" | "drama_run_job";
 
 export interface ApprovalProposal {
   is_error: boolean;
@@ -144,6 +145,9 @@ export interface ApprovalOutcome {
   items?: unknown[];
   node_ids?: string[];
   edge_ids?: string[];
+  /** Go 签发的短剧审批快照与签名；解析后原样交回执行接口。 */
+  drama?: unknown;
+  drama_signature?: string;
 }
 
 export interface ApprovalExecution {
@@ -166,6 +170,28 @@ export interface PlatformUsage {
     error?: string;
   };
 }
+
+/** 生成任务的一个产物：Agent 据此知道出了什么图、什么视频 */
+export interface TaskOutput {
+  media_type: string;
+  asset_id?: string;
+  text?: string;
+}
+
+/** Agent 查到的一个生成任务的最新状态；任务不存在或不属于这个用户是 missing（不区分，不泄露别人任务是否存在） */
+export interface TaskState {
+  task_id: string;
+  node_id?: string;
+  kind?: string;
+  status: string;
+  progress?: number;
+  error?: string;
+  credits?: number;
+  outputs?: TaskOutput[];
+}
+
+/** 任务到了这些状态就不会再变：成功、失败、超时、取消；missing 也算（再等也等不来） */
+export const TERMINAL_TASK_STATUSES = ["succeeded", "failed", "expired", "canceled", "missing"] as const;
 
 export interface AgentModel {
   key: string;
@@ -241,13 +267,16 @@ export function createPlatform({ baseUrl, serviceToken, fetchImpl = fetch }: Pla
     encodeId: async (n: string, signal?: AbortSignal): Promise<string> => (await call<{ encoded: string }>("GET", `/ids/${encodeURIComponent(n)}`, undefined, undefined, { signal })).encoded,
     /** 当前可用的 Agent 模型（没有时是空数组） */
     models: (signal?: AbortSignal) => call<AgentModel[]>("GET", "/agent/models", undefined, undefined, { signal }),
-    /** 确认画布属于这个用户；别人的和不存在的一样抛「画布不存在」（30001） */
-    checkCanvas: async (userId: string, canvasId: string, signal?: AbortSignal): Promise<void> => {
-      await call<null>("POST", "/canvases/check", undefined, userCanvas(userId, canvasId), { signal });
+    /** 确认画布归属；drama 模式同时要求短剧画布，保留普通画布的请求格式。 */
+    checkCanvas: async (userId: string, canvasId: string, signal?: AbortSignal, mode?: string): Promise<void> => {
+      await call<null>("POST", "/canvases/check", undefined, { ...userCanvas(userId, canvasId), ...(mode && { mode }) }, { signal });
     },
     /** 校验消息里的引用（节点、模型、技能），返回去掉了已不存在节点的选中列表 */
     checkMessage: async (userId: string, canvasId: string, message: string, selection: string[] = [], signal?: AbortSignal): Promise<string[]> =>
       (await call<{ selection: string[] }>("POST", "/messages/check", undefined, { ...userCanvas(userId, canvasId), message, selection }, { signal })).selection,
+    /** 校验消息的图片附件（归属、格式、大小、数量），返回展示信息和交给模型的图；不合法抛业务错误（10001，点名第几张） */
+    checkAttachments: async (userId: string, assetIds: string[], signal?: AbortSignal): Promise<AttachmentCheck[]> =>
+      (await call<{ attachments: AttachmentCheck[] }>("POST", "/attachments/check", undefined, { user_id: userId, asset_ids: assetIds }, { signal })).attachments,
     /** 撤销某运行对画布的全部改动（改动记录在 Go）。运行是不是自己的、是否已结束由调用方校验 */
     undo: (rc: RunContext, signal?: AbortSignal) => call<UndoResult>("POST", `/runs/${rc.run_id}/undo`, rc, undefined, { signal }),
     /** 执行一次工具调用。工具层的失败是 is_error 的普通结果；调用本身出错才抛 PlatformError */
@@ -275,6 +304,17 @@ export function createPlatform({ baseUrl, serviceToken, fetchImpl = fetch }: Pla
     /** 把事件成批推给 Go，由它经 WebSocket 发给浏览器（顺序由调用方保证）；事件已落在 Agent 自己的库里，推送失败不影响运行 */
     pushEvents: async (events: RelayEvent[], signal?: AbortSignal): Promise<void> => {
       await call<null>("POST", "/events", undefined, { events }, { signal });
+    },
+    /** 一批生成任务的最新状态（顺序与 taskIds 一致，最多 50 个）：补收没送到的结束通知、整批结束后取结果交给模型 */
+    taskStates: async (userId: string, taskIds: string[], signal?: AbortSignal): Promise<TaskState[]> => {
+      for (const [name, v] of [["user_id", userId], ...taskIds.map((t) => ["task_ids", t] as const)] as const) {
+        try {
+          if (parseDecimal(v) === 0n) throw new Error("zero");
+        } catch {
+          throw new Error(`${name} 必须是正整数的十进制字符串，当前是 ${JSON.stringify(v)}`);
+        }
+      }
+      return (await call<{ items: TaskState[] }>("POST", "/tasks/status", undefined, { user_id: userId, task_ids: taskIds }, { signal })).items;
     },
     /** 运行结束：释放 Go 内存里这个运行的状态（联网次数、技能固定版本）；不调用也会在闲置过期后清掉 */
     endRun: (rc: RunContext, signal?: AbortSignal) => call<null>("DELETE", `/runs/${rc.run_id}`, rc, undefined, { signal }),
