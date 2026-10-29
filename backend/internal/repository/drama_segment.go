@@ -59,9 +59,9 @@ func (r *DramaRepository) SaveSegment(ctx context.Context, row *model.DramaSegme
 	}
 	now := time.Now()
 	res := r.db.WithContext(ctx).Model(&model.DramaSegment{}).Where("user_id = ? AND episode_id = ? AND id = ? AND revision = ?", row.UserID, row.EpisodeID, row.ID, revision).Updates(map[string]any{
-		"seq": row.Seq, "seconds": row.Seconds, "prompt": row.Prompt, "shots": row.Shots,
-		"keyframe_asset_id": row.KeyframeAssetID, "chosen_task_id": row.ChosenTaskID,
-		"revision": gorm.Expr("revision + 1"), "updated_at": now,
+		"seq": row.Seq, "seconds": row.Seconds, "prompt": row.Prompt,
+		"chosen_task_id": row.ChosenTaskID,
+		"revision":       gorm.Expr("revision + 1"), "updated_at": now,
 	})
 	if res.Error != nil {
 		return res.Error
@@ -103,9 +103,6 @@ func (r *DramaRepository) ReplaceSegments(ctx context.Context, userID, episodeID
 	for i := range rows {
 		rows[i].BaseModel = model.BaseModel{}
 		rows[i].UserID, rows[i].EpisodeID, rows[i].Seq, rows[i].Revision = userID, episodeID, i, 1
-		if len(rows[i].Shots) == 0 {
-			rows[i].Shots = []byte(`[]`)
-		}
 	}
 	if len(rows) > 0 {
 		if err := r.db.WithContext(ctx).Create(&rows).Error; err != nil {

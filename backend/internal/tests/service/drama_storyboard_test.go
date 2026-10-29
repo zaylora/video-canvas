@@ -12,7 +12,7 @@ import (
 	"video-canvas/internal/model"
 )
 
-const storyboardValid = `{"segments":[{"seconds":15,"prompt":"@[村口](n_scene) @[陌生人](unknown)","shots":[{"seconds":15,"shot_size":"全景","camera":"平视固定","action":"女子走入村口","dialogue":""}]}]}`
+const storyboardValid = `{"segments":[{"seconds":15,"prompt":"@[村口](n_scene) @[陌生人](unknown)"}]}`
 
 func storyboardRequest(t *testing.T, maxSeconds int, episodes []int) *model.DramaJobReq {
 	t.Helper()

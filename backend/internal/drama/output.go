@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
 	"unicode/utf8"
 )
@@ -179,9 +180,32 @@ func (o AssetPromptsOutput) Validate() error {
 		if seen[prompt.NodeID] {
 			return invalidOutput("prompts 的 node_id 不得重复")
 		}
+		if r := promptRatio(prompt.Prompt); r != "" {
+			return invalidOutput(fmt.Sprintf("prompt 不得写画面比例（出现了 %s），比例由生成参数控制", r))
+		}
 		seen[prompt.NodeID] = true
 	}
 	return nil
+}
+
+// ratioRe 匹配「数字:数字」写法（半角或全角冒号），前后不能紧挨数字，避免把 3:45 这类时刻截成 3:4。
+var ratioRe = regexp.MustCompile(`(?:^|[^\d.])(\d{1,2})\s*[:：]\s*(\d{1,2})(?:$|[^\d])`)
+
+// imageRatios 是常见画面比例；只有命中这些才算写了比例，其他「数字:数字」可能是时刻、比分。
+var imageRatios = map[string]bool{
+	"1:1": true, "16:9": true, "9:16": true, "4:3": true, "3:4": true,
+	"21:9": true, "9:21": true, "3:2": true, "2:3": true, "5:4": true, "4:5": true,
+}
+
+// promptRatio 返回提示词里写的第一个画面比例；没有返回空串。
+// 资产图的比例只由节点的生成参数决定，正文里再写一遍会和参数打架，模型往往听正文。
+func promptRatio(prompt string) string {
+	for _, m := range ratioRe.FindAllStringSubmatch(prompt, -1) {
+		if r := m[1] + ":" + m[2]; imageRatios[r] {
+			return r
+		}
+	}
+	return ""
 }
 
 // DecodeOutput 严格解析单个 JSON 对象，拒绝未知、重复、缺失或 null 字段，并执行步骤语义校验。
@@ -239,7 +263,7 @@ func definitionForStep(step string) (outputDefinition, error) {
 			listKey: "prompts", itemFields: []string{"node_id", "prompt"}}, nil
 	case "storyboard":
 		return outputDefinition{value: &StoryboardOutput{}, fields: []string{"segments"},
-			listKey: "segments", itemFields: []string{"seconds", "prompt", "shots"}}, nil
+			listKey: "segments", itemFields: []string{"seconds", "prompt"}}, nil
 	default:
 		return outputDefinition{}, invalidOutput("不支持的流水线步骤")
 	}
@@ -259,9 +283,6 @@ func (d outputDefinition) checkFields(data []byte) error {
 		if _, err = requireObject(item, d.itemFields); err != nil {
 			return err
 		}
-	}
-	if _, ok := d.value.(*StoryboardOutput); ok {
-		return checkStoryboardShots(data)
 	}
 	return nil
 }

@@ -27,7 +27,6 @@ func segmentHTTP() (*gin.Engine, *dramasegmentfake.Repo) {
 	r.PATCH("/drama-segments/:sid", h.Update)
 	r.DELETE("/drama-segments/:sid", h.Delete)
 	r.POST("/drama-segments/:sid/generate", h.Generate)
-	r.POST("/drama-segments/:sid/keyframe", h.Keyframe)
 	return r, repo
 }
 
@@ -48,12 +47,10 @@ func TestDramaSegmentHandler_Contracts(t *testing.T) {
 		{"PATCH", base, `{"revision":1,"prompt":"新提示词"}`, 200, 0},
 		{"PATCH", base, `{"revision":1,"prompt":"旧版本"}`, 409, errcode.ErrCanvasConflict.Code},
 		{"POST", base + "/generate", `{"model_id":"video","input":{"prompt":"生成"}}`, 202, 0},
-		{"POST", base + "/keyframe", `{"model_id":"image","input":{"prompt":"首帧"}}`, 202, 0},
 		{"PUT", projectSegments + "/order", `{"ids":[]}`, 400, 67012},
 		{"PATCH", base, `{"revision":2,"chosen_task_id":"` + idcodec.Encode(255) + `"}`, 400, 67011},
 		{"PATCH", base, `{"prompt":"缺版本"}`, 400, 10001},
 		{"POST", base + "/generate", `{"input":{}}`, 400, 10001},
-		{"POST", base + "/keyframe", `{"model_id":"image"}`, 400, 10001},
 		{"POST", projectSegments, `{"seconds":0}`, 400, 10001},
 		{"POST", "/dramas/" + idcodec.Encode(7) + "/episodes/0/segments", `{}`, 400, 10001},
 		{"PATCH", "/drama-segments/invalid", `{"revision":1}`, 400, 10001},
@@ -73,8 +70,14 @@ func TestDramaSegmentHandler_IdempotencyAndEmptyView(t *testing.T) {
 	r, repo := segmentHTTP()
 	_, body := characterCall(t, r, "POST", "/dramas/"+idcodec.Encode(7)+"/episodes/1/segments", `{}`)
 	v := responseData(t, body)
-	if v["chosen_task_id"] != "" || v["keyframe"] != nil || len(v["takes"].([]any)) != 0 || len(v["shots"].([]any)) != 0 {
+	if v["chosen_task_id"] != "" || len(v["takes"].([]any)) != 0 {
 		t.Fatalf("空片段视图契约：%+v", v)
+	}
+	// 片段视图不再带分镜表和首帧
+	for _, removed := range []string{"shots", "keyframe"} {
+		if _, ok := v[removed]; ok {
+			t.Fatalf("片段视图不再带 %s：%+v", removed, v)
+		}
 	}
 	req := httptest.NewRequest("POST", "/drama-segments/"+v["id"].(string)+"/generate", strings.NewReader(`{"model_id":"video","input":{"prompt":"镜头"}}`))
 	req.Header.Set("Content-Type", "application/json")

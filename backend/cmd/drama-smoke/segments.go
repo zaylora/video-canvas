@@ -91,8 +91,8 @@ func smokeStoryboardOutput(vars map[string]json.RawMessage) string {
 		prompt = fmt.Sprintf("@[母亲](%s)在老宅拿起玉佩。", assets[0].NodeID)
 	}
 	raw, err := json.Marshal(map[string]any{"segments": []map[string]any{
-		{"seconds": 8, "prompt": prompt, "shots": []map[string]any{{"seconds": 8, "shot_size": "中景", "camera": "平视固定", "action": "母亲拿起玉佩", "dialogue": "我回来了"}}},
-		{"seconds": 4, "prompt": "玉佩反射窗外光线。", "shots": []map[string]any{{"seconds": 4, "shot_size": "特写", "camera": "缓慢推进", "action": "玉佩晃动", "dialogue": ""}}},
+		{"seconds": 8, "prompt": prompt},
+		{"seconds": 4, "prompt": "玉佩反射窗外光线。"},
 	}})
 	must(err)
 	return string(raw)
@@ -108,10 +108,9 @@ func registerSegmentRoutes(r *gin.Engine, svc *service.DramaSegmentService) {
 	r.PATCH("/drama-segments/:sid", h.Update)
 	r.DELETE("/drama-segments/:sid", h.Delete)
 	r.POST("/drama-segments/:sid/generate", h.Generate)
-	r.POST("/drama-segments/:sid/keyframe", h.Keyframe)
 }
 
-// awaitSegment 轮询片段真实任务投影，直到采用视频和首帧均已就绪。
+// awaitSegment 轮询片段真实任务投影，直到视频已被采用。
 func awaitSegment(base, path string) map[string]any {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -124,7 +123,7 @@ func awaitSegment(base, path string) map[string]any {
 		if segment["status"] == "error" {
 			panic(fmt.Sprint(segment))
 		}
-		if segment["status"] == "done" && segment["chosen_task_id"] != "" && segment["keyframe"] != nil {
+		if segment["status"] == "done" && segment["chosen_task_id"] != "" {
 			return segment
 		}
 		select {
@@ -147,9 +146,6 @@ func verifyStoryboardAndGeneration(ctx context.Context, e env, id, canvasID stri
 	require(len(items) == 2, fmt.Sprint(items))
 	sid := items[0].(map[string]any)["id"].(string)
 	verifySegmentEditing(e.url, path, sid, items)
-	status, b = request(e.url, "POST", "/drama-segments/"+sid+"/keyframe", map[string]any{"model_id": "smoke-image", "input": map[string]any{"prompt": "首帧图", "op": "t2i"}})
-	require(status == 202, fmt.Sprint(status, b))
-	verifyTaskBinding(data(b), "segkf:"+sid, canvasID)
 	status, b = request(e.url, "POST", "/drama-segments/"+sid+"/generate", map[string]any{"model_id": "smoke-video", "input": map[string]any{"prompt": "母亲拿起玉佩", "op": "t2v"}})
 	require(status == 202, fmt.Sprint(status, b))
 	verifyTaskBinding(data(b), "seg:"+sid, canvasID)
@@ -205,12 +201,12 @@ func awaitStoredSegment(ctx context.Context, db *gorm.DB, sid string) {
 	for {
 		var stored model.DramaSegment
 		must(db.WithContext(waitCtx).First(&stored, id).Error)
-		if stored.ChosenTaskID != nil && stored.KeyframeAssetID != nil {
+		if stored.ChosenTaskID != nil {
 			return
 		}
 		select {
 		case <-waitCtx.Done():
-			panic("任务状态出口未持久化自动采用或首帧")
+			panic("任务状态出口未持久化自动采用")
 		case <-ticker.C:
 		}
 	}

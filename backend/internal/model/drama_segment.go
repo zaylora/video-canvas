@@ -3,36 +3,23 @@ package model
 import (
 	"time"
 
-	"gorm.io/datatypes"
-
 	"video-canvas/internal/pkg/idcodec" //nolint:depguard // 对外 ID 与短剧项目沿用十六进制契约
 )
 
 // DramaSegment 单集内可独立生成的片段，任务和素材保留各自的生命周期。
 type DramaSegment struct {
 	BaseModel
-	UserID          uint64         `gorm:"not null;index"`
-	EpisodeID       uint64         `gorm:"not null;index:idx_drama_segment_episode_seq,priority:1"`
-	Seq             int            `gorm:"not null;default:0;index:idx_drama_segment_episode_seq,priority:2"`
-	Seconds         int            `gorm:"not null;default:5"`
-	Prompt          string         `gorm:"type:text;not null;default:''"`
-	Shots           datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'"`
-	KeyframeAssetID *uint64
-	ChosenTaskID    *uint64
-	Revision        int64 `gorm:"not null;default:1"`
+	UserID       uint64 `gorm:"not null;index"`
+	EpisodeID    uint64 `gorm:"not null;index:idx_drama_segment_episode_seq,priority:1"`
+	Seq          int    `gorm:"not null;default:0;index:idx_drama_segment_episode_seq,priority:2"`
+	Seconds      int    `gorm:"not null;default:5"`
+	Prompt       string `gorm:"type:text;not null;default:''"`
+	ChosenTaskID *uint64
+	Revision     int64 `gorm:"not null;default:1"`
 }
 
 // TableName 返回片段表名。
 func (DramaSegment) TableName() string { return "drama_segments" }
-
-// DramaSegmentShot 一条分镜的时长、摄影和表演信息。
-type DramaSegmentShot struct {
-	Seconds  int    `json:"seconds"`
-	ShotSize string `json:"shot_size"`
-	Camera   string `json:"camera"`
-	Action   string `json:"action"`
-	Dialogue string `json:"dialogue"`
-}
 
 // DramaSegmentTakeView 从生成任务读取的结果，不复制保存任务状态。
 type DramaSegmentTakeView struct {
@@ -50,8 +37,6 @@ type DramaSegmentView struct {
 	Seq          int                    `json:"seq"`
 	Seconds      int                    `json:"seconds"`
 	Prompt       string                 `json:"prompt"`
-	Shots        []DramaSegmentShot     `json:"shots"`
-	Keyframe     *AssetView             `json:"keyframe"`
 	Takes        []DramaSegmentTakeView `json:"takes"`
 	ChosenTaskID string                 `json:"chosen_task_id"`
 	Status       string                 `json:"status"`

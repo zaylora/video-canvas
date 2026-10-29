@@ -99,18 +99,8 @@ func (h *DramaSegmentHandler) Order(c *gin.Context) {
 	response.OK(c, gin.H{"items": items})
 }
 
-// Generate 固定video种类提交任务并转发Idempotency-Key。
+// Generate 固定video种类提交任务并转发Idempotency-Key，任务逐项错误在service转换为标准业务响应。
 func (h *DramaSegmentHandler) Generate(c *gin.Context) {
-	h.generate(c, false)
-}
-
-// Keyframe 固定image种类提交首帧生成任务。
-func (h *DramaSegmentHandler) Keyframe(c *gin.Context) {
-	h.generate(c, true)
-}
-
-// generate 绑定共用生成请求，任务逐项错误在service转换为标准业务响应。
-func (h *DramaSegmentHandler) generate(c *gin.Context, keyframe bool) {
 	sid, ok := dramaSegmentPath(c)
 	if !ok {
 		return
@@ -119,11 +109,7 @@ func (h *DramaSegmentHandler) generate(c *gin.Context, keyframe bool) {
 	if !BindJSON(c, &req) {
 		return
 	}
-	call := h.svc.Generate
-	if keyframe {
-		call = h.svc.Keyframe
-	}
-	task, err := call(c.Request.Context(), currentUserID(c), sid, c.GetHeader("Idempotency-Key"), &req)
+	task, err := h.svc.Generate(c.Request.Context(), currentUserID(c), sid, c.GetHeader("Idempotency-Key"), &req)
 	if err != nil {
 		response.Fail(c, err)
 		return

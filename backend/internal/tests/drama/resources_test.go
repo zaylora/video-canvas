@@ -96,6 +96,9 @@ func TestDecodeOutput(t *testing.T) {
 		{"拒绝null数组", "breakdown", `{"assets":[{"type":"scene","name":"街头","look":"","aliases":null,"episodes":[],"description":"街头","voice_prompt":""}]}`, false},
 		{"同名同造型交由画布合并", "breakdown", `{"assets":[{"type":"scene","name":"Street","look":"","aliases":[],"episodes":[1],"description":"街头","voice_prompt":""},{"type":"scene","name":" street ","look":"","aliases":[],"episodes":[2],"description":"街头","voice_prompt":""}]}`, true},
 		{"拒绝重复节点提示词", "asset_prompts", `{"prompts":[{"node_id":"n_a","prompt":"图像"},{"node_id":"n_a","prompt":"图像"}]}`, false},
+		{"拒绝提示词写画面比例", "asset_prompts", `{"prompts":[{"node_id":"n_a","prompt":"林薇，3:4全身人物三视图参考"}]}`, false},
+		{"拒绝全角冒号的画面比例", "asset_prompts", `{"prompts":[{"node_id":"n_a","prompt":"16：9 横版雨夜街道"}]}`, false},
+		{"时刻不算画面比例", "asset_prompts", `{"prompts":[{"node_id":"n_a","prompt":"墙上挂钟指向3:45的雨夜街道"}]}`, true},
 		{"拒绝未知步骤", "unknown_step", `{}`, false},
 	}
 	for _, tt := range tests {

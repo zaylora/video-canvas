@@ -23,7 +23,7 @@ func TestDramaSegmentRepository_IsolationTakesAndRevision(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := repository.NewDramaRepository(db)
-	seg := model.DramaSegment{UserID: 1, EpisodeID: ep.ID, Seconds: 5, Shots: []byte(`[]`), Revision: 1}
+	seg := model.DramaSegment{UserID: 1, EpisodeID: ep.ID, Seconds: 5, Revision: 1}
 	if err := r.SaveSegment(ctx, &seg, 0); err != nil {
 		t.Fatal(err)
 	}

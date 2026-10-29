@@ -203,11 +203,7 @@ func saveStoryboardOutput(ctx context.Context, tx repository.DramaTx, p *model.D
 	}
 	segments := make([]model.DramaSegment, 0, len(output.Segments))
 	for seq, segment := range output.Segments {
-		shots, err := json.Marshal(segment.Shots)
-		if err != nil {
-			return err
-		}
-		segments = append(segments, model.DramaSegment{UserID: p.UserID, EpisodeID: ep.ID, Seq: seq, Seconds: segment.Seconds, Prompt: segment.Prompt, Shots: shots, Revision: 1})
+		segments = append(segments, model.DramaSegment{UserID: p.UserID, EpisodeID: ep.ID, Seq: seq, Seconds: segment.Seconds, Prompt: segment.Prompt, Revision: 1})
 	}
 	if err = tx.ReplaceSegments(ctx, p.UserID, ep.ID, segments); err != nil {
 		return err

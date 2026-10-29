@@ -22,7 +22,7 @@ func (s *DramaSegmentService) Create(ctx context.Context, userID, dramaID uint64
 	if seconds < 1 || (req.AfterSeq != nil && *req.AfterSeq < 0) {
 		return nil, errcode.ErrInvalidParams
 	}
-	row := &model.DramaSegment{UserID: userID, EpisodeID: ep.ID, Seconds: seconds, Prompt: req.Prompt, Shots: []byte(`[]`), Revision: 1}
+	row := &model.DramaSegment{UserID: userID, EpisodeID: ep.ID, Seconds: seconds, Prompt: req.Prompt, Revision: 1}
 	// 2. 锁项目后移动后续片段；插入和所有seq变化同事务提交。
 	err = s.repo.WithTx(ctx, func(tx repository.DramaTx) error {
 		if _, err := tx.Project(ctx, userID, dramaID, true); err != nil {
@@ -52,7 +52,7 @@ func (s *DramaSegmentService) Update(ctx context.Context, userID, sid uint64, re
 			return errcode.ErrCanvasConflict
 		}
 		if req.ChosenTaskID != nil {
-			tasks, err := tx.SegmentTasks(ctx, userID, p.CanvasID, segmentNode(sid, false))
+			tasks, err := tx.SegmentTasks(ctx, userID, p.CanvasID, segmentNode(sid))
 			if err != nil {
 				return err
 			}

@@ -21,11 +21,11 @@ func (e *smokeEvents) Publish(_ context.Context, channel string, msg ws.Message)
 	e.messages = append(e.messages, msg)
 }
 
-// verify 在并发worker完成后检查采用结果与首帧事件内容，失败时输出原始事件数据。
+// verify 在并发worker完成后检查采用结果与事件内容，失败时输出原始事件数据。
 func (e *smokeEvents) verify(sid string) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	var taskSeen, videoSeen, keyframeSeen bool
+	var taskSeen, videoSeen bool
 	for _, msg := range e.messages {
 		raw, err := json.Marshal(msg.Data)
 		must(err)
@@ -43,7 +43,6 @@ func (e *smokeEvents) verify(sid string) {
 		}
 		require(body["episode_no"].(float64) == 1 && body["drama_id"] != "", string(raw))
 		videoSeen = videoSeen || (segment["status"] == "done" && segment["chosen_task_id"] != "")
-		keyframeSeen = keyframeSeen || segment["keyframe"] != nil
 	}
-	require(taskSeen && videoSeen && keyframeSeen, "task.updated或drama.segment事件缺失")
+	require(taskSeen && videoSeen, "task.updated或drama.segment事件缺失")
 }

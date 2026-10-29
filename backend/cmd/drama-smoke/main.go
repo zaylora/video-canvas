@@ -351,5 +351,5 @@ func main() {
 	verifyCompose(ctx, e, id)
 	verifyDramaAgent(ctx, e, id, cvID)
 	verifyCascade(ctx, e, id, cvID)
-	_, _ = os.Stdout.WriteString("PASS: HTTP201→River analyze/outline→breakdown+asset_prompts→storyboard→segment CRUD/order/revision→keyframe+video worker→auto adoption+WS→67013→compose H264/AAC+silence/skips→final/stale/67010→zero-charge reconciliation→cascade204/404\n")
+	_, _ = os.Stdout.WriteString("PASS: HTTP201→River analyze/outline→breakdown+asset_prompts→storyboard→segment CRUD/order/revision→video worker→auto adoption+WS→67013→compose H264/AAC+silence/skips→final/stale/67010→zero-charge reconciliation→cascade204/404\n")
 }

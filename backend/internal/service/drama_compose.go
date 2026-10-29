@@ -93,7 +93,7 @@ func composeInput(ctx context.Context, tx repository.DramaTx, p *model.DramaProj
 			input.SkippedSeqs = append(input.SkippedSeqs, row.Seq)
 			continue
 		}
-		tasks, err := tx.SegmentTasks(ctx, p.UserID, p.CanvasID, segmentNode(row.ID, false))
+		tasks, err := tx.SegmentTasks(ctx, p.UserID, p.CanvasID, segmentNode(row.ID))
 		if err != nil {
 			return nil, err
 		}

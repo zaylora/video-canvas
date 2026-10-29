@@ -31,7 +31,7 @@ func TestDramaSegmentService_CRUDAndOrder(t *testing.T) {
 	r := dramasegmentfake.New()
 	s := segmentService(r)
 	first, err := s.Create(ctx, 1, 7, 1, &model.CreateDramaSegmentReq{})
-	if err != nil || first.Seq != 0 || first.Revision != 1 || len(first.Shots) != 0 {
+	if err != nil || first.Seq != 0 || first.Revision != 1 {
 		t.Fatalf("新增默认片段：%+v %v", first, err)
 	}
 	after := 0
@@ -96,14 +96,15 @@ func TestDramaSegmentService_TakesReconcileAndStatus(t *testing.T) {
 	if err != nil || items[0].Status != "error" {
 		t.Fatalf("失败take优先：%+v %v", items, err)
 	}
+	// 历史遗留的首帧任务（segkf: 节点）不再触发片段更新，也不出现在片段视图里。
 	kf, _ := json.Marshal([]model.TaskOutput{{AssetID: 52, MediaType: "image"}})
 	r.Tasks = append(r.Tasks, model.GenerationTask{ID: 24, UserID: 1, CanvasProjectID: &canvas, NodeID: "segkf:" + idcodec.Encode(uint64(v.ID)), Kind: "image", Status: "succeeded", OutputJSON: kf, CreatedAt: time.Unix(3, 0)})
+	messages := len(r.Messages)
 	if err := s.OnTaskChanged(ctx, &r.Tasks[len(r.Tasks)-1]); err != nil {
 		t.Fatal(err)
 	}
-	items, err = s.List(ctx, 1, 7, 1)
-	if err != nil || items[0].Keyframe == nil || items[0].Keyframe.ID != 52 {
-		t.Fatalf("首帧写回：%+v %v", items, err)
+	if len(r.Messages) != messages {
+		t.Fatalf("首帧任务不该再推送片段事件：%+v", r.Messages[messages:])
 	}
 	if err := s.Delete(ctx, 1, uint64(v.ID)); err != nil || len(r.Tasks) != 4 {
 		t.Fatalf("删除保留生成任务：%v %+v", err, r.Tasks)
@@ -112,34 +113,25 @@ func TestDramaSegmentService_TakesReconcileAndStatus(t *testing.T) {
 
 func TestDramaSegmentService_GenerationDelegatesAndErrors(t *testing.T) {
 	ctx := context.Background()
-	for _, kind := range []string{"video", "image"} {
-		t.Run(kind, func(t *testing.T) {
-			r := dramasegmentfake.New()
-			s := segmentService(r)
-			v, err := s.Create(ctx, 1, 7, 1, &model.CreateDramaSegmentReq{})
-			if err != nil {
-				t.Fatal(err)
-			}
-			req := &model.GenerateDramaSegmentReq{ModelID: "model", Input: map[string]any{"prompt": "内容"}}
-			call := s.Generate
-			prefix := "seg:"
-			if kind == "image" {
-				call, prefix = s.Keyframe, "segkf:"
-			}
-			if _, err := call(ctx, 1, uint64(v.ID), "same-request", req); err != nil {
-				t.Fatal(err)
-			}
-			if r.Created.Kind != kind || r.Created.CanvasID != 9 || r.Created.NodeID != prefix+idcodec.Encode(uint64(v.ID)) || r.IdempotencyKey != "same-request" {
-				t.Fatalf("生成参数错误：%+v key=%s", r.Created, r.IdempotencyKey)
-			}
-			r.CreateError = &model.TaskItemError{Status: 402, Code: 42001, Message: "积分不足"}
-			_, err = call(ctx, 1, uint64(v.ID), "new-request", req)
-			segmentCode(t, err, 42001)
-			r.ProjectDeleted = true
-			_, err = call(ctx, 1, uint64(v.ID), "gone", req)
-			segmentCode(t, err, 67009)
-		})
+	r := dramasegmentfake.New()
+	s := segmentService(r)
+	v, err := s.Create(ctx, 1, 7, 1, &model.CreateDramaSegmentReq{})
+	if err != nil {
+		t.Fatal(err)
 	}
+	req := &model.GenerateDramaSegmentReq{ModelID: "model", Input: map[string]any{"prompt": "内容"}}
+	if _, err := s.Generate(ctx, 1, uint64(v.ID), "same-request", req); err != nil {
+		t.Fatal(err)
+	}
+	if r.Created.Kind != "video" || r.Created.CanvasID != 9 || r.Created.NodeID != "seg:"+idcodec.Encode(uint64(v.ID)) || r.IdempotencyKey != "same-request" {
+		t.Fatalf("生成参数错误：%+v key=%s", r.Created, r.IdempotencyKey)
+	}
+	r.CreateError = &model.TaskItemError{Status: 402, Code: 42001, Message: "积分不足"}
+	_, err = s.Generate(ctx, 1, uint64(v.ID), "new-request", req)
+	segmentCode(t, err, 42001)
+	r.ProjectDeleted = true
+	_, err = s.Generate(ctx, 1, uint64(v.ID), "gone", req)
+	segmentCode(t, err, 67009)
 }
 
 func TestDramaSegmentService_OrderRejectsMissingAndForeignIDs(t *testing.T) {
@@ -159,7 +151,7 @@ func TestDramaSegmentService_OrderRejectsMissingAndForeignIDs(t *testing.T) {
 	}
 }
 
-func TestDramaSegmentService_ManualChoiceAndNewestKeyframe(t *testing.T) {
+func TestDramaSegmentService_ManualChoiceSurvivesLaterSuccess(t *testing.T) {
 	ctx := context.Background()
 	r := dramasegmentfake.New()
 	s := segmentService(r)
@@ -186,20 +178,10 @@ func TestDramaSegmentService_ManualChoiceAndNewestKeyframe(t *testing.T) {
 	if err := s.OnTaskChanged(ctx, &r.Tasks[2]); err != nil {
 		t.Fatal(err)
 	}
-	for i, id := range []uint64{41, 42} {
-		output, err := json.Marshal([]model.TaskOutput{{AssetID: id, MediaType: "image"}})
-		if err != nil {
-			t.Fatal(err)
-		}
-		r.Tasks = append(r.Tasks, model.GenerationTask{ID: 30 + uint64(i), UserID: 1, CanvasProjectID: &canvas, NodeID: "segkf:" + idcodec.Encode(uint64(v.ID)), Kind: "image", Status: "succeeded", OutputJSON: output, CreatedAt: time.Unix(int64(4+i), 0)})
-	}
-	// 旧首帧事件晚到仍从数据库重读，不能覆盖较新的成功首帧。
-	if err := s.OnTaskChanged(ctx, &r.Tasks[3]); err != nil {
-		t.Fatal(err)
-	}
+	// 之后又有新的成功结果（23），已经手选的 22 不被覆盖。
 	views, err = s.List(ctx, 1, 7, 1)
-	if err != nil || views[0].ChosenTaskID != idcodec.Encode(22) || views[0].Keyframe == nil || views[0].Keyframe.ID != 42 {
-		t.Fatalf("手选保留与最新首帧：%+v %v", views, err)
+	if err != nil || views[0].ChosenTaskID != idcodec.Encode(22) {
+		t.Fatalf("手选保留：%+v %v", views, err)
 	}
 	count, seconds, done, err := s.Summary(ctx, 1, 10)
 	if err != nil || count != 1 || seconds != 5 || done != 1 {

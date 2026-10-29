@@ -14,10 +14,7 @@ import (
 )
 
 // segmentNode 与对外片段ID共用编码，避免将数据库主键直接暴露给节点。
-func segmentNode(sid uint64, keyframe bool) string {
-	if keyframe {
-		return "segkf:" + idcodec.Encode(sid)
-	}
+func segmentNode(sid uint64) string {
 	return "seg:" + idcodec.Encode(sid)
 }
 
@@ -34,17 +31,13 @@ func (s *DramaSegmentService) readView(ctx context.Context, userID, sid uint64) 
 		if err != nil {
 			return err
 		}
-		takes, err = tx.SegmentTasks(ctx, userID, p.CanvasID, segmentNode(sid, false))
+		takes, err = tx.SegmentTasks(ctx, userID, p.CanvasID, segmentNode(sid))
 		if err != nil {
 			return err
 		}
-		frames, err := tx.SegmentTasks(ctx, userID, p.CanvasID, segmentNode(sid, true))
-		if err != nil {
-			return err
-		}
-		changed, err = reconcileSegment(row, takes, frames)
-		if err != nil || !changed {
-			return err
+		changed = reconcileSegment(row, takes)
+		if !changed {
+			return nil
 		}
 		return tx.SaveSegment(ctx, row, row.Revision)
 	})
@@ -55,35 +48,19 @@ func (s *DramaSegmentService) readView(ctx context.Context, userID, sid uint64) 
 	return v, p, ep, changed, err
 }
 
-// reconcileSegment 首次成功自动采用；首帧始终取创建时间和ID排序后的最新成功产物。
-func reconcileSegment(row *model.DramaSegment, takes, frames []model.GenerationTask) (bool, error) {
-	changed := false
-	if row.ChosenTaskID == nil {
-		for i := range takes {
-			if takes[i].Kind == model.KindVideo && takes[i].Status == model.TaskSucceeded {
-				id := takes[i].ID
-				row.ChosenTaskID, changed = &id, true
-				break
-			}
+// reconcileSegment 首次成功自动采用：还没有采用的片段，把最早成功的视频任务设为采用。
+func reconcileSegment(row *model.DramaSegment, takes []model.GenerationTask) bool {
+	if row.ChosenTaskID != nil {
+		return false
+	}
+	for i := range takes {
+		if takes[i].Kind == model.KindVideo && takes[i].Status == model.TaskSucceeded {
+			id := takes[i].ID
+			row.ChosenTaskID = &id
+			return true
 		}
 	}
-	for i := len(frames) - 1; i >= 0; i-- {
-		if frames[i].Kind != model.KindImage || frames[i].Status != model.TaskSucceeded {
-			continue
-		}
-		id, err := segmentOutputAsset(&frames[i], model.KindImage)
-		if err != nil {
-			return false, err
-		}
-		if id == 0 {
-			continue
-		}
-		if row.KeyframeAssetID == nil || *row.KeyframeAssetID != id {
-			row.KeyframeAssetID, changed = &id, true
-		}
-		break
-	}
-	return changed, nil
+	return false
 }
 
 // segmentOutputAsset 从已转存产物读取指定媒体类型的第一个素材；非法持久化JSON按内部错误处理。
@@ -105,21 +82,9 @@ func segmentOutputAsset(task *model.GenerationTask, kind string) (uint64, error)
 
 // segmentView 状态优先反映最新take，已有采用不掩盖新一轮生成或失败。
 func (s *DramaSegmentService) segmentView(ctx context.Context, row *model.DramaSegment, no int, tasks []model.GenerationTask) (*model.DramaSegmentView, error) {
-	v := &model.DramaSegmentView{ID: idcodec.ID(row.ID), EpisodeNo: no, Seq: row.Seq, Seconds: row.Seconds, Prompt: row.Prompt, Shots: []model.DramaSegmentShot{}, Takes: []model.DramaSegmentTakeView{}, Status: "idle", Revision: row.Revision, UpdatedAt: row.UpdatedAt}
-	if len(row.Shots) > 0 {
-		if err := json.Unmarshal(row.Shots, &v.Shots); err != nil {
-			return nil, fmt.Errorf("解析片段分镜失败：%w", err)
-		}
-	}
+	v := &model.DramaSegmentView{ID: idcodec.ID(row.ID), EpisodeNo: no, Seq: row.Seq, Seconds: row.Seconds, Prompt: row.Prompt, Takes: []model.DramaSegmentTakeView{}, Status: "idle", Revision: row.Revision, UpdatedAt: row.UpdatedAt}
 	if row.ChosenTaskID != nil {
 		v.ChosenTaskID, v.Status = idcodec.Encode(*row.ChosenTaskID), "done"
-	}
-	if row.KeyframeAssetID != nil {
-		var err error
-		v.Keyframe, err = s.segmentAsset(ctx, row.UserID, *row.KeyframeAssetID)
-		if err != nil {
-			return nil, err
-		}
 	}
 	for i := range tasks {
 		if tasks[i].Kind != model.KindVideo {
@@ -169,20 +134,16 @@ func (s *DramaSegmentService) segmentAsset(ctx context.Context, userID, id uint6
 	return v, err
 }
 
-// OnTaskChanged 处理片段任务状态变化，自动采用、首帧写回和通知在提交后完成；已删除片段忽略。
+// OnTaskChanged 处理片段任务状态变化，自动采用和通知在提交后完成；已删除片段忽略。
 func (s *DramaSegmentService) OnTaskChanged(ctx context.Context, task *model.GenerationTask) error {
-	// 1. 只接受正式片段任务；画布、对话和已删除片段不改变既有行为。
+	// 1. 只接受正式片段视频任务；画布、对话和已删除片段不改变既有行为。
 	if task == nil || task.IsTest || task.CanvasProjectID == nil {
 		return nil
 	}
-	prefix, kind := "seg:", model.KindVideo
-	if strings.HasPrefix(task.NodeID, "segkf:") {
-		prefix, kind = "segkf:", model.KindImage
-	}
-	if !strings.HasPrefix(task.NodeID, prefix) || task.Kind != kind {
+	if !strings.HasPrefix(task.NodeID, "seg:") || task.Kind != model.KindVideo {
 		return nil
 	}
-	sid, ok := idcodec.Decode(strings.TrimPrefix(task.NodeID, prefix))
+	sid, ok := idcodec.Decode(strings.TrimPrefix(task.NodeID, "seg:"))
 	if !ok {
 		return nil
 	}
@@ -207,7 +168,7 @@ func (s *DramaSegmentService) OnTaskChanged(ctx context.Context, task *model.Gen
 	if err != nil || p.CanvasID != *task.CanvasProjectID {
 		return err
 	}
-	// 2. 从任务表重读而非信任回调快照，迟到事件不会覆盖较新的首帧或采用。
+	// 2. 从任务表重读而非信任回调快照，迟到事件不会覆盖较新的采用。
 	_, err = s.changedView(ctx, task.UserID, sid)
 	var business *errcode.Error
 	if errors.As(err, &business) && business.Code == errcode.ErrDramaSegmentNotFound.Code {

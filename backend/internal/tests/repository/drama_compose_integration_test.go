@@ -34,7 +34,7 @@ func TestDramaComposeRepository_SegmentVersions(t *testing.T) {
 			t.Fatalf("片段版本=%d 期望=%d", got.SegmentVersion, version)
 		}
 	}
-	seg := model.DramaSegment{UserID: 1, EpisodeID: ep.ID, Seconds: 5, Shots: []byte(`[]`), Revision: 1}
+	seg := model.DramaSegment{UserID: 1, EpisodeID: ep.ID, Seconds: 5, Revision: 1}
 	if err := r.WithTx(ctx, func(tx repository.DramaTx) error { return tx.SaveSegment(ctx, &seg, 0) }); err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +64,7 @@ func TestDramaComposeRepository_SegmentVersions(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertVersion(true)
-	if err := r.ReplaceSegments(ctx, 1, ep.ID, []model.DramaSegment{{Seconds: 5, Shots: []byte(`[]`)}}); err != nil {
+	if err := r.ReplaceSegments(ctx, 1, ep.ID, []model.DramaSegment{{Seconds: 5}}); err != nil {
 		t.Fatal(err)
 	}
 	assertVersion(true)
