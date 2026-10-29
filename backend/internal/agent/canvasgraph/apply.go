@@ -236,8 +236,15 @@ func (a *applier) createNode(op Op) error {
 	if op.Kind == KindDirector {
 		return errors.New("导演台节点只能由用户在画布上手动创建")
 	}
+	if op.Character != nil && op.Kind != KindCharacter {
+		return errors.New("character 只能写在角色节点（kind 为 character）上")
+	}
+	var character map[string]any
 	if op.Kind == KindCharacter {
-		return errors.New("角色节点需要通过短剧拆解创建，Agent 不能直接新建")
+		var err error
+		if character, err = newAgentCharacter(op.Character); err != nil {
+			return err
+		}
 	}
 	if !validKind(op.Kind) {
 		return fmt.Errorf("节点种类 %q 不认识，可选 script / image / video / audio", op.Kind)
@@ -260,11 +267,18 @@ func (a *applier) createNode(op Op) error {
 	if err := a.register(op.TempID, id); err != nil {
 		return err
 	}
-	n := Node{"id": id, "type": "canvas", "data": map[string]any{"kind": op.Kind, "label": a.uniqueLabel(op.Label, kindLabel[op.Kind])}}
+	defaultLabel := kindLabel[op.Kind]
+	if character != nil {
+		defaultLabel = characterLabel(character)
+	}
+	n := Node{"id": id, "type": "canvas", "data": map[string]any{"kind": op.Kind, "label": a.uniqueLabel(op.Label, defaultLabel)}}
+	if character != nil {
+		n.Data()["character"] = character
+	}
 	if ref != nil {
-		// 已有素材：节点直接是已完成的上传型图片，字段和前端从素材创建节点时一致
+		// 已有素材：节点直接是已完成的上传型图片（角色卡则是它的主图），字段和前端从素材创建节点时一致
 		for k, v := range uploadedImageData(*ref) {
-			if k != "label" {
+			if k != "label" && k != "kind" {
 				n.Data()[k] = v
 			}
 		}
@@ -315,8 +329,8 @@ func (a *applier) assetFor(op Op) (*AssetRef, error) {
 	if op.AssetID == "" {
 		return nil, nil
 	}
-	if op.Kind != KindImage {
-		return nil, errors.New("assetId 只能用在图片节点上")
+	if generationKind(op.Kind) != KindImage {
+		return nil, errors.New("assetId 只能用在图片节点和角色卡上")
 	}
 	if op.Prompt != nil || op.Model != nil || op.Mode != nil || len(op.Params) > 0 {
 		return nil, errors.New("带 assetId 的节点是已有素材，不需要提示词、模型、生成方式和参数")
@@ -328,7 +342,7 @@ func (a *applier) assetFor(op Op) (*AssetRef, error) {
 	return &ref, nil
 }
 
-// updateNode 修改普通节点的标题、提示词、模型和生成参数（params 浅合并）。产物字段不在 Op 里，写不了。
+// updateNode 修改普通节点的标题、提示词、模型和生成参数（params 浅合并），角色卡还能改人物数据。产物字段不在 Op 里，写不了。
 func (a *applier) updateNode(op Op) error {
 	if op.AssetID != "" {
 		return errors.New("assetId 只能用在新建图片节点上")
@@ -343,8 +357,16 @@ func (a *applier) updateNode(op Op) error {
 	if n.Kind() == KindDirector {
 		return errors.New("导演台节点只能由用户在导演台里修改")
 	}
-	if op.Label == nil && op.Prompt == nil && op.Model == nil && len(op.Params) == 0 && op.Mode == nil {
+	if op.Label == nil && op.Prompt == nil && op.Model == nil && len(op.Params) == 0 && op.Mode == nil && op.Character == nil {
 		return errors.New("没有要修改的内容")
+	}
+	if op.Character != nil {
+		if n.Kind() != KindCharacter {
+			return errors.New("character 只能改角色节点（kind 为 character）")
+		}
+		if err := patchAgentCharacter(n, op.Character); err != nil {
+			return err
+		}
 	}
 	if err := checkParams(op.Params); err != nil {
 		return err

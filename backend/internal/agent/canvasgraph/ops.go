@@ -27,7 +27,7 @@ const (
 	KindImage     = "image"     // 图片
 	KindVideo     = "video"     // 视频
 	KindAudio     = "audio"     // 音频
-	KindCharacter = "character" // 角色节点（数据内嵌在 data.character），Agent 不能建，由短剧拆解创建
+	KindCharacter = "character" // 角色卡（数据内嵌在 data.character）：生成、参考、连线按图片节点处理；短剧里的由拆解创建
 	// KindDirector 是导演台（3D 摆位与运镜预演）：只在画布上手动建，Agent 能读到但不能建、不能改、不能连线。
 	KindDirector = "director"
 )
@@ -73,6 +73,15 @@ type Op struct {
 	RemoveMembers []string       `json:"removeMembers,omitempty"` // set_group：移出的成员
 	Source        string         `json:"source,omitempty"`        // connect：起点
 	Target        string         `json:"target,omitempty"`        // connect：终点
+	Character     *CharacterOp   `json:"character,omitempty"`     // 角色卡的人物数据：create_node 必填（至少有名字），update_node 只改给了的字段
+}
+
+// CharacterOp 是角色卡的人物数据，对应节点的 data.character；字段为 nil 表示不改。
+type CharacterOp struct {
+	Name        *string `json:"name,omitempty"`        // 角色名，≤64 字
+	Look        *string `json:"look,omitempty"`        // 形象名（如「雨夜造型」），≤64 字，不写是「基础形象」
+	Description *string `json:"description,omitempty"` // 外貌和设定，≤500 字
+	VoicePrompt *string `json:"voicePrompt,omitempty"` // 生成声音用的音色描述，≤500 字
 }
 
 // Issue 是某一项操作的问题，Index 从 0 开始，对应 ops 数组下标。

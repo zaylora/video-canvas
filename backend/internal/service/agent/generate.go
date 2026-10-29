@@ -36,7 +36,7 @@ func remoteKindOf(nodeKind string) string {
 }
 
 // buildGenInput 按模型能力把节点读出来的内容组装成任务输入，与画布上点生成时的规则一致：
-// 提示词里 @ 的引用展开、没被 @ 的上游文字追加在后面（规则见 canvasgraph.ComposePrompt）；生成方式取节点上选的，没选时有参考图就走图生；上游素材按种类放进 images / videos / audios。
+// 提示词里 @ 的引用展开、没被 @ 的上游文字追加在后面（规则见 canvasgraph.ComposePrompt）；生成方式取节点上选的，没选时有参考图就走图生；上游素材按种类放进 images / videos / audios，角色卡展开成主图、补充图和声音。
 // 参数里有「生成数量」的一律按 1，要多个结果请多建几个节点。校验和默认值由 modelcfg.ValidateInput 负责。
 func buildGenInput(caps modelcfg.Capabilities, src *canvasgraph.GenSource) map[string]any {
 	input := make(map[string]any, len(src.Params)+4)
@@ -51,15 +51,12 @@ func buildGenInput(caps modelcfg.Capabilities, src *canvasgraph.GenSource) map[s
 	if op != "" {
 		input["op"] = op
 	}
-	input["prompt"] = canvasgraph.ComposePrompt(src, modelcfg.RefKindsUsed(caps, op))
+	used := modelcfg.RefKindsUsed(caps, op)
+	input["prompt"] = canvasgraph.ComposePrompt(src, used)
+	// 角色卡展开的主图、补充图、声音只填普通参考用剩的名额，规则见 GenSource.RefIDs
+	refs := src.RefIDs(used, func(kind string) int { return caps.Refs.Of(kind).Max })
 	for _, m := range modelcfg.MediaKinds {
-		var ids []uint64
-		for _, a := range src.Assets {
-			if id, err := strconv.ParseUint(a.AssetID, 10, 64); err == nil && a.Kind == m.Kind {
-				ids = append(ids, id)
-			}
-		}
-		if len(ids) > 0 {
+		if ids := refs[m.Kind]; len(ids) > 0 {
 			input[m.Key] = ids
 		}
 	}

@@ -765,16 +765,27 @@ func TestAgentDramaNodeRetainsReadIdempotencyUndoAndOwnership(t *testing.T) {
 	}
 }
 
-// Agent 不能新建角色节点：角色节点要通过短剧拆解创建，报错文案不再提角色卡。
-func TestAgentCreateCharacterNodeRejected(t *testing.T) {
+// Agent 可以新建角色卡：带上人物数据（至少名字），写进画布并提交。
+func TestAgentCreateCharacterNode(t *testing.T) {
+	e := newAgentCanvasEnv(t)
+	before := len(e.payload(t).Nodes)
+	_, err := e.svc.ApplyOps(context.Background(), e.run, "make-role", []byte(`[{"op":"create_node","tempId":"a","kind":"character","character":{"name":"林川","description":"短发少年"},"prompt":"林川三视图"}]`))
+	if err != nil {
+		t.Fatalf("应能新建角色卡: %v", err)
+	}
+	nodes := e.payload(t).Nodes
+	if len(nodes) != before+1 || e.repo.commits != 1 {
+		t.Fatalf("角色卡应写进画布: nodes=%d commits=%d", len(nodes), e.repo.commits)
+	}
+}
+
+// 新建角色卡没写人物数据：整批拒绝，不写画布。
+func TestAgentCreateCharacterNodeRequiresName(t *testing.T) {
 	e := newAgentCanvasEnv(t)
 	before := len(e.payload(t).Nodes)
 	_, err := e.svc.ApplyOps(context.Background(), e.run, "make-role", []byte(`[{"op":"create_node","tempId":"a","kind":"character","label":"林川"}]`))
-	if err == nil {
-		t.Fatal("create_node 不应能建角色节点")
-	}
-	if !strings.Contains(err.Error(), "短剧拆解") || strings.Contains(err.Error(), "角色卡") {
-		t.Fatalf("报错应提示通过短剧拆解创建且不再提角色卡: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "名字") {
+		t.Fatalf("没写名字应报错: %v", err)
 	}
 	if len(e.payload(t).Nodes) != before || e.repo.commits != 0 {
 		t.Fatalf("被拒绝的操作不应写画布: nodes=%d commits=%d", len(e.payload(t).Nodes), e.repo.commits)

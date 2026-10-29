@@ -14,7 +14,15 @@ const DIR = join(import.meta.dir, "../../../../../backend/internal/tests/testdat
 const { cases } = JSON.parse(readFileSync(join(DIR, "prompt-compose.json"), "utf-8")) as {
   cases: {
     name: string;
-    nodes: { id: string; kind: NodeKind; label: string; text?: string; assetId?: string }[];
+    nodes: {
+      id: string;
+      kind: NodeKind;
+      label: string;
+      text?: string;
+      assetId?: string;
+      /** 角色卡的人物数据：补充图和声音的素材 id */
+      character?: { name: string; extras?: string[]; voice?: string };
+    }[];
     prompt: string;
     expect: string;
   }[];
@@ -42,6 +50,13 @@ describe("与后端共用的提示词合成规则", () => {
         targetHandle: null,
         assetId: node.assetId,
         text: node.text,
+        character: node.character && {
+          id: node.id,
+          name: node.character.name,
+          avatarAssetId: node.assetId ?? "",
+          extraAssetIds: node.character.extras ?? [],
+          voiceAssetId: node.character.voice ?? null,
+        },
       }));
       const bindings = resolveBindings(caps, "omni", links);
       const built = buildTaskInput(caps, { prompt: c.prompt }, bindings, "omni", links);

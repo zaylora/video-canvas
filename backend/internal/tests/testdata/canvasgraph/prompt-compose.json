@@ -61,6 +61,15 @@
       ],
       "prompt": "@[角色](i1)走路",
       "expect": "图片1走路"
+    },
+    {
+      "name": "@ 角色卡展开成角色名；角色卡的图排在普通参考图后面，普通图片的编号不受它影响",
+      "nodes": [
+        {"id": "c1", "kind": "character", "label": "林夏 · 基础形象", "assetId": "21", "character": {"name": "林夏", "extras": ["22"], "voice": "31"}},
+        {"id": "i1", "kind": "image", "label": "街景", "assetId": "11"}
+      ],
+      "prompt": "@[林夏 · 基础形象](c1) 站在 @[街景](i1) 前",
+      "expect": "林夏 站在 图片1 前"
     }
   ]
 }

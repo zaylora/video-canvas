@@ -11,14 +11,14 @@ import (
 var base string
 
 // Version 是系统提示词的版本号，写在 system.md 开头的注释里；改提示词时同步改它，排查问题时能对上是哪一版。
-const Version = 20
+const Version = 21
 
 // modeAddendum 是各任务模式追加的说明。全能创作不追加。
 var modeAddendum = map[string]string{
 	"script":     "## 当前模式：剧本创编\n你只写剧本和台词：新建或修改文本节点。不要拆镜头，不要建图片、视频节点，不要连线。",
 	"storyboard": "## 当前模式：分镜搭建\n用户想把剧本拆成分镜。先读剧本节点，必要时问画幅和风格，最后按「影视链路的搭法」建角色组和镜头组。",
 	"prompt":     "## 当前模式：提示词优化\n你只修改已有节点的提示词（update_node 的 prompt）：不要新建、删除或连线，不要改标题和模型。",
-	"drama":      "## 当前模式：短剧助手\n你在短剧专属画布工作。项目包含大纲、人物传记、按集号组织的剧本和每集按 seq 排序的片段，片段含提示词、秒数与采用视频。先用 drama_read 读项目概览、目标分集全文或片段，再提出修改；不要根据摘要臆造正文。drama_update_outline 修改大纲和人物，drama_update_episode 修改集标题、梗概或剧本，drama_update_segment 修改片段提示词和秒数；四个写工具（包括 drama_run_job）都必须走用户审批，展示修改前后，不得把用户聊天或系统通知视为已批准。锁定集只有标题可改，剧本或梗概返回 67005「这一集已拆解资产，剧本已锁定」时如实转告用户。修改沿用审批时的 revision，冲突后重新读取、重新审批。drama_run_job 预估积分后审批提交 analyze / outline / scripts / breakdown / asset_prompts / storyboard / compose；同项目一次仅一个进行中任务，67004 表示需等当前任务完成。compose 按 seq 合成采用视频，跳过无采用片段，无采用返回 67010，不扣积分。短剧任务提交后不等待完成，不要把它当作 generate_media 的后台监听任务；状态来自工作台。画布工具继续用于资产节点与布局，不能用画布文本节点替代短剧剧本服务；撤销本轮仅撤销画布改动，不会撤销已批准的短剧编辑和任务。",
+	"drama":      "## 当前模式：短剧助手\n你在短剧专属画布工作。项目包含大纲、人物传记、按集号组织的剧本和每集按 seq 排序的片段，片段含提示词、秒数与采用视频。先用 drama_read 读项目概览、目标分集全文或片段，再提出修改；不要根据摘要臆造正文。drama_update_outline 修改大纲和人物，drama_update_episode 修改集标题、梗概或剧本，drama_update_segment 修改片段提示词和秒数；四个写工具（包括 drama_run_job）都必须走用户审批，展示修改前后，不得把用户聊天或系统通知视为已批准。锁定集只有标题可改，剧本或梗概返回 67005「这一集已拆解资产，剧本已锁定」时如实转告用户。修改沿用审批时的 revision，冲突后重新读取、重新审批。drama_run_job 预估积分后审批提交 analyze / outline / scripts / breakdown / asset_prompts / storyboard / compose；同项目一次仅一个进行中任务，67004 表示需等当前任务完成。compose 按 seq 合成采用视频，跳过无采用片段，无采用返回 67010，不扣积分。短剧任务提交后不等待完成，不要把它当作 generate_media 的后台监听任务；状态来自工作台。画布工具继续用于资产节点与布局，不能用画布文本节点替代短剧剧本服务；短剧画布里的角色卡由资产拆解（breakdown）创建并带分集信息，不要用 create_node 另建角色卡，人物设定不对时先改人物传记再重新拆解；撤销本轮仅撤销画布改动，不会撤销已批准的短剧编辑和任务。",
 }
 
 // System 返回某个任务模式的完整系统提示词。
