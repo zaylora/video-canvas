@@ -31,7 +31,7 @@ export function canvasPageTitle(title: string, prefix = ""): string {
 
 /** 首页外壳下各一级页面的名称，首页（创作页）只显示应用名 */
 const HOME_SECTIONS: Record<string, string> = {
-  canvases: "画布",
+  canvases: "作品",
   assets: "资产",
   profile: "个人资料",
   conversations: "对话",

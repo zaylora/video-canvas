@@ -59,8 +59,8 @@ export default function HomeLayout() {
         data-shell="home"
         className="home-theme"
         data-view-transitioning={transitioning || undefined}
-        /** 设计稿 4.0：展开 240px，收起 56px（40px 图标按钮 + 两侧各 8px），shadcn 默认的 48px 放不下 */
-        style={{ "--sidebar-width": "15rem", "--sidebar-width-icon": "3.5rem" } as CSSProperties}
+        /** 展开 240px；收起时图标栏 48px，inset 外框再加两侧各 8px，40px 的图标按钮居中 */
+        style={{ "--sidebar-width": "15rem", "--sidebar-width-icon": "3rem" } as CSSProperties}
         open={open}
         onOpenChange={(next) => {
           setOpen(next);

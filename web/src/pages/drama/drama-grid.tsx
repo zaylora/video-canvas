@@ -43,15 +43,18 @@ function Stepper({ progress }: { progress: [number, number, number] }) {
   );
 }
 
-/** 一张短剧卡：点击进工作台；右上角「⋯」删除（连带画布和角色卡，要确认） */
-function DramaCard({
+/** 一张短剧卡：点击进工作台；右上角「⋯」删除（连带画布和角色卡，要确认）。短剧首页和作品页共用 */
+export function DramaCard({
   drama,
   index,
   deleting,
   onDelete,
+  instant,
 }: {
   drama: DramaSummary;
   index: number;
+  /** 不做入场和位移动画（作品页切换范围时直接换内容） */
+  instant?: boolean;
   deleting: boolean;
   onDelete: () => void;
 }) {
@@ -60,8 +63,8 @@ function DramaCard({
   return (
     <motion.div
       data-slot="drama-card"
-      layout="position"
-      initial={{ opacity: 0, y: 8 }}
+      layout={instant ? false : "position"}
+      initial={instant ? false : { opacity: 0, y: 8 }}
       animate={{ opacity: deleting ? 0.5 : 1, y: 0 }}
       transition={{ duration: DURATION.slow, delay: Math.min(index, STAGGER_MAX) * STAGGER }}
       whileTap={TAP_CARD}

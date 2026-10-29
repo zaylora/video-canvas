@@ -108,14 +108,14 @@ export function AppSidebar() {
 
   return (
     <Sidebar variant="inset" collapsible="icon">
-      <SidebarHeader className="gap-3 px-2 pt-3">
+      <SidebarHeader className="gap-3 px-2 pt-3 group-data-[collapsible=icon]:px-1">
         <div className="flex h-9 items-center pl-1.5 group-data-[collapsible=icon]:h-auto group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:pl-0">
           <SidebarBrand to="/" />
         </div>
       </SidebarHeader>
 
       <SidebarContent>
-        <SidebarGroup className="px-2">
+        <SidebarGroup className="px-2 group-data-[collapsible=icon]:px-1">
           <SidebarMenu className="gap-0.5">
             {NAV.map((item) => (
               <SidebarMenuItem key={item.label}>
@@ -160,7 +160,7 @@ export function AppSidebar() {
         </div>
       </SidebarContent>
 
-      <SidebarFooter className="px-2 pb-3">
+      <SidebarFooter className="px-2 pb-3 group-data-[collapsible=icon]:px-1">
         <SidebarAccount>
           {isAdmin && (
             <DropdownMenuItem onClick={() => navigate("/admin/ai")}>

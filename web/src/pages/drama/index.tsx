@@ -1,61 +1,22 @@
-import { useCallback, useEffect, useState } from "react";
-import { Film } from "lucide-react";
-import { toast } from "sonner";
+import { Link } from "react-router";
+import { ChevronRight, Film } from "lucide-react";
 
-import { deleteDrama, listDramas } from "@/api/drama";
-import type { DramaSummary } from "@/api/drama/type";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useDramaList } from "@/hooks/use-drama-list";
 
 import { DramaGrid } from "./drama-grid";
 import { UploadCard } from "./upload-card";
 
-const PAGE_SIZE = 24;
+/** 首页只放最近的几部，其余去作品页的「个人短剧」看 */
+const PREVIEW_COUNT = 4;
 
 /**
- * 短剧工作室首页（/drama）：上面是创作卡（上传 / 粘贴剧本或小说），下面是「我的短剧」。
- * 列表按更新时间倒序，分页「加载更多」；删除成功后就地从列表移除。
+ * 短剧工作室首页（/drama）：上面是创作卡（上传 / 粘贴剧本或小说），下面是「我的短剧」最近 4 部；
+ * 超过 4 部时标题旁有「更多」，进作品页的「个人短剧」（/canvases?scope=drama）看全部。
  */
 export default function DramaListPage() {
-  const [items, setItems] = useState<DramaSummary[]>([]);
-  const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(true);
-  const [failed, setFailed] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-
-  const load = useCallback(async (next: number) => {
-    setLoading(true);
-    setFailed(false);
-    try {
-      const result = await listDramas({ page: next, pageSize: PAGE_SIZE });
-      setItems((prev) => (next === 1 ? result.items : [...prev, ...result.items]));
-      setTotal(result.total);
-      setPage(next);
-    } catch {
-      setFailed(true);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void load(1);
-  }, [load]);
-
-  const remove = async (id: string) => {
-    setDeletingId(id);
-    try {
-      await deleteDrama(id);
-      setItems((prev) => prev.filter((item) => item.id !== id));
-      setTotal((prev) => Math.max(0, prev - 1));
-      toast.success("已删除");
-    } catch {
-      // 请求层已经弹了错误提示
-    } finally {
-      setDeletingId(null);
-    }
-  };
+  const { items, total, loading, failed, deletingId, reload, remove } = useDramaList(PREVIEW_COUNT);
 
   return (
     <div className="mx-auto w-full max-w-320 px-4 pb-24 md:px-10">
@@ -70,6 +31,15 @@ export default function DramaListPage() {
         <div className="mb-5 flex items-center gap-2">
           <h2 className="text-[17px] font-semibold">我的短剧</h2>
           {total > 0 && <span className="text-muted-foreground text-sm tabular-nums">{total}</span>}
+          {total > PREVIEW_COUNT && (
+            <Link
+              to="/canvases?scope=drama"
+              className="text-muted-foreground hover:bg-chrome-hover hover:text-foreground focus-visible:ring-ring/50 ml-auto inline-flex h-8 items-center gap-0.5 rounded-full pr-2 pl-3 text-[13px] transition-colors outline-none focus-visible:ring-2"
+            >
+              更多
+              <ChevronRight className="size-4" />
+            </Link>
+          )}
         </div>
 
         {loading && items.length === 0 ? (
@@ -84,7 +54,7 @@ export default function DramaListPage() {
         ) : failed && items.length === 0 ? (
           <div className="text-muted-foreground flex flex-col items-center gap-3 py-12 text-sm">
             短剧列表加载失败
-            <Button variant="outline" size="sm" onClick={() => void load(1)}>
+            <Button variant="outline" size="sm" onClick={reload}>
               重试
             </Button>
           </div>
@@ -94,16 +64,7 @@ export default function DramaListPage() {
             还没有短剧，在上面上传一份剧本开始吧
           </div>
         ) : (
-          <>
-            <DramaGrid items={items} deletingId={deletingId} onDelete={(id) => void remove(id)} />
-            {items.length < total && (
-              <div className="mt-8 flex justify-center">
-                <Button variant="outline" disabled={loading} onClick={() => void load(page + 1)}>
-                  {loading ? "加载中…" : "加载更多"}
-                </Button>
-              </div>
-            )}
-          </>
+          <DramaGrid items={items} deletingId={deletingId} onDelete={remove} />
         )}
       </section>
     </div>

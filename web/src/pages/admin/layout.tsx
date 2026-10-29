@@ -124,7 +124,7 @@ function AdminBody() {
   return (
     <SidebarProvider
       data-admin-root
-      style={{ "--sidebar-width": "15rem", "--sidebar-width-icon": "3.5rem" } as CSSProperties}
+      style={{ "--sidebar-width": "15rem", "--sidebar-width-icon": "3rem" } as CSSProperties}
     >
       <AdminSidebar />
       {/* 和首页同一套外壳：侧栏是底层，内容区是浮起的圆角页面；内容在区内滚动，高度扣掉上下外边距 */}
