@@ -94,6 +94,8 @@ type CreateDramaReq struct {
 	Ratio          string `form:"ratio" binding:"omitempty,oneof=9:16 16:9 21:9 3:4 4:3 1:1"`
 	TargetEpisodes int    `form:"target_episodes" binding:"min=0,max=100"`
 	EpisodeSeconds int    `form:"episode_seconds" binding:"omitempty,min=30,max=180"`
+	// TextModel 流水线用的 Agent 模型 key；空串跟随后台第一个，选的模型停用时也回落到它
+	TextModel string `form:"text_model" binding:"max=128"`
 }
 
 // UpdateDramaReq 部分更新项目，revision 用于乐观锁。

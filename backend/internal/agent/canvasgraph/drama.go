@@ -103,6 +103,9 @@ func dramaMeta(n Node) (DramaAsset, bool) {
 		return DramaAsset{}, false
 	}
 	switch episodes := raw["episodes"].(type) {
+	case nil:
+		// null：资产所在的集被删了、还没重新归类；身份仍可参与合并，合并后归到新集
+		a.Episodes = nil
 	case []any:
 		a.Episodes = make([]int, len(episodes))
 		for i, value := range episodes {
@@ -130,8 +133,49 @@ func dramaMeta(n Node) (DramaAsset, bool) {
 	return a, true
 }
 
+// RemoveDramaEpisode 删掉第 no 集后改写资产的出现集数：去掉 no，后面的集号减 1；
+// 原来只出现在这一集的资产改成 null（未分类，保留类型和名字），不能变成 [] 被当成全集；全集保持不变。
+// 没有短剧元数据或集数不是数组的节点原样保留，入参不变。
+func RemoveDramaEpisode(g *Graph, no int) *Result {
+	after := g.Clone()
+	for _, n := range after.Nodes {
+		d, _ := n["data"].(map[string]any)
+		meta, ok := d["drama"].(map[string]any)
+		if !ok {
+			continue
+		}
+		episodes, ok := meta["episodes"].([]any)
+		if !ok || len(episodes) == 0 {
+			continue
+		}
+		next := make([]any, 0, len(episodes))
+		for _, value := range episodes {
+			ep, ok := value.(float64)
+			switch {
+			case !ok:
+				next = append(next, value)
+			case int(ep) == no:
+			case int(ep) > no:
+				next = append(next, ep-1)
+			default:
+				next = append(next, ep)
+			}
+		}
+		if len(next) == 0 {
+			meta["episodes"] = nil
+			continue
+		}
+		meta["episodes"] = next
+	}
+	return &Result{Graph: after, Changes: Diff(g, after)}
+}
+
 // unionEpisodes 空数组代表全集，不能在合并时被缩窄成一部分集。
 func unionEpisodes(a, b []int) []int {
+	// nil 是未分类（不属于任何集），不能和 [] 的「全集」混在一起：并上一方等于直接取另一方
+	if a == nil {
+		return append([]int{}, b...)
+	}
 	if len(a) == 0 || len(b) == 0 {
 		return []int{}
 	}

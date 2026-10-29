@@ -81,6 +81,9 @@ func TestDramaStoryboardPipeline(t *testing.T) {
 				if strings.Contains(e.prompts[0], "n_other") || strings.Contains(e.prompts[0], "不应输入") {
 					t.Fatal("混入其他集资产")
 				}
+				if strings.Contains(e.prompts[0], "n_orphan") {
+					t.Fatal("混入未分类资产（出现集数为 null）")
+				}
 				if !strings.Contains(string(r.jobs[0].Output), "陌生人") || strings.Contains(string(r.jobs[0].Output), "unknown") {
 					t.Fatalf("引用未降级: %s", r.jobs[0].Output)
 				}

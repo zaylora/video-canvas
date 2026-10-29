@@ -88,6 +88,16 @@ func (s *DramaService) UpdateEpisode(ctx context.Context, userID, id uint64, no 
 	return s.dramaEpisodeView(ctx, result)
 }
 
+// DeleteEpisode 删一集：后面的集号往前补位，资产画布上的出现集数同步改写，片段一并删除（生成任务与素材保留）。
+// 项目不存在或集不存在返回 67001，有任务在跑返回 67004。
+func (s *DramaService) DeleteEpisode(ctx context.Context, userID, id uint64, no int) error {
+	p, err := s.repo.Project(ctx, userID, id, false)
+	if err != nil {
+		return dramaError(err)
+	}
+	return s.canvas.DeleteEpisode(ctx, userID, id, p.CanvasID, no)
+}
+
 // applyDramaEpisodePatch 校验revision与拆解锁，再应用实际出现的字段。
 func applyDramaEpisodePatch(ep *model.DramaEpisode, req *model.UpdateDramaEpisodeReq) error {
 	if ep.Revision != req.Revision {

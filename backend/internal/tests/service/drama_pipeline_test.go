@@ -171,7 +171,7 @@ func (r *dramaMemory) GetByID(_ context.Context, userID, canvasID uint64) (*mode
 	if userID != r.project.UserID || canvasID != r.project.CanvasID {
 		return nil, repository.ErrNotFound
 	}
-	return &model.CanvasProject{PayloadJSON: []byte(`{"nodes":[{"id":"n_scene","data":{"drama":{"type":"scene","name":"村口","look":"夜","episodes":[]},"params":{"prompt":"夜间村口灯光"}}},{"id":"n_other","data":{"drama":{"type":"prop","name":"其他集","look":"","episodes":[2]},"params":{"prompt":"不应输入"}}}]}`)}, nil
+	return &model.CanvasProject{PayloadJSON: []byte(`{"nodes":[{"id":"n_scene","data":{"drama":{"type":"scene","name":"村口","look":"夜","episodes":[]},"params":{"prompt":"夜间村口灯光"}}},{"id":"n_other","data":{"drama":{"type":"prop","name":"其他集","look":"","episodes":[2]},"params":{"prompt":"不应输入"}}},{"id":"n_orphan","data":{"drama":{"type":"prop","name":"未分类道具","look":"","episodes":null},"params":{"prompt":"未分类不应输入"}}}]}`)}, nil
 }
 func (r *dramaMemory) Jobs(_ context.Context, userID, id uint64, active bool) ([]model.DramaJob, error) {
 	if userID != r.project.UserID || id != r.project.ID {
@@ -328,6 +328,13 @@ type dramaPipelineCanvas struct {
 	applied  int
 	prompted int
 	created  []service.DramaCanvasAsset
+	// deleted 记录删集调用：短剧 id、画布 id、集号
+	deleted [][3]uint64
+}
+
+func (c *dramaPipelineCanvas) DeleteEpisode(_ context.Context, _, dramaID, canvasID uint64, no int) error {
+	c.deleted = append(c.deleted, [3]uint64{dramaID, canvasID, uint64(no)})
+	return nil
 }
 
 func (c *dramaPipelineCanvas) ApplyBreakdown(context.Context, uint64, uint64, uint64, uint64, []int, []drama.Asset) ([]service.DramaCanvasAsset, error) {

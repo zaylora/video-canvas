@@ -25,6 +25,12 @@ type DramaCanvasTx interface {
 	UpdateCanvas(ctx context.Context, userID, canvasID, revision uint64, payload []byte) error
 	// LockEpisodes 按用户、短剧、集号锁集并递增各集 revision。
 	LockEpisodes(ctx context.Context, userID, dramaID uint64, nos []int) error
+	// LockProject 按用户锁未删除的短剧项目行，与新增分集、拆解同一把锁；不存在返回 ErrNotFound。
+	LockProject(ctx context.Context, userID, dramaID uint64) error
+	// HasActiveJob 报告该短剧是否有排队或运行中的流水线任务。
+	HasActiveJob(ctx context.Context, userID, dramaID uint64) (bool, error)
+	// DeleteEpisode 删第 no 集及其片段（片段软删，生成任务和素材保留），后面的集号依次减 1；不存在返回 ErrNotFound。
+	DeleteEpisode(ctx context.Context, userID, dramaID uint64, no int) error
 }
 
 // DramaCanvasRepository 为公共画布写入口提供带用户条件的查询与原子事务。
@@ -93,6 +99,45 @@ func (t *dramaCanvasTx) JobForUpdate(ctx context.Context, userID, canvasID, jobI
 		return nil, translate(err)
 	}
 	return &job, nil
+}
+
+// LockProject 对未删除的项目行加 FOR UPDATE，与 CreateEpisode、拆解锁同一行，保证集号变更串行。
+func (t *dramaCanvasTx) LockProject(ctx context.Context, userID, dramaID uint64) error {
+	var p model.DramaProject
+	err := t.db.WithContext(ctx).Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("user_id = ? AND id = ?", userID, dramaID).First(&p).Error
+	return translate(err)
+}
+
+// HasActiveJob 查该用户该短剧是否有 queued / running 的任务。
+func (t *dramaCanvasTx) HasActiveJob(ctx context.Context, userID, dramaID uint64) (bool, error) {
+	var n int64
+	err := t.db.WithContext(ctx).Model(&model.DramaJob{}).
+		Where("user_id = ? AND drama_id = ? AND status IN ?", userID, dramaID, []string{"queued", "running"}).
+		Count(&n).Error
+	return n > 0, err
+}
+
+// DeleteEpisode 片段软删（任务、素材保留）；分集行硬删，否则软删的行还占着 (drama_id, no) 唯一索引，
+// 后面的集没法补位。补位分两步：先把后面的集号取负，再改成「原号 - 1」，避免中途撞唯一索引。
+func (t *dramaCanvasTx) DeleteEpisode(ctx context.Context, userID, dramaID uint64, no int) error {
+	db := t.db.WithContext(ctx)
+	var ep model.DramaEpisode
+	if err := db.Where("user_id = ? AND drama_id = ? AND no = ?", userID, dramaID, no).First(&ep).Error; err != nil {
+		return translate(err)
+	}
+	if err := db.Where("user_id = ? AND episode_id = ?", userID, ep.ID).Delete(&model.DramaSegment{}).Error; err != nil {
+		return err
+	}
+	if err := db.Unscoped().Delete(&model.DramaEpisode{}, ep.ID).Error; err != nil {
+		return err
+	}
+	later := db.Model(&model.DramaEpisode{}).Where("user_id = ? AND drama_id = ? AND no > ?", userID, dramaID, no)
+	if err := later.Update("no", gorm.Expr("-no")).Error; err != nil {
+		return err
+	}
+	return db.Model(&model.DramaEpisode{}).Where("user_id = ? AND drama_id = ? AND no < 0", userID, dramaID).
+		Updates(map[string]any{"no": gorm.Expr("-no - 1"), "revision": gorm.Expr("revision + 1")}).Error
 }
 
 // MarkCanvasCommitted 限定用户、任务和 running 状态，合并 JSONB 字段，不存在返回 ErrNotFound。

@@ -190,6 +190,7 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		dramas.GET("/:id/episodes/:no", h.Drama.GetEpisode)
 		dramas.POST("/:id/episodes", h.Drama.CreateEpisode)
 		dramas.PATCH("/:id/episodes/:no", h.Drama.UpdateEpisode)
+		dramas.DELETE("/:id/episodes/:no", h.Drama.DeleteEpisode)
 		dramas.POST("/:id/estimate", h.Drama.Estimate)
 		dramas.POST("/:id/jobs", h.Drama.CreateJob)
 		dramas.GET("/:id/jobs", h.Drama.ListJobs)

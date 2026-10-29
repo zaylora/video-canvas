@@ -41,6 +41,8 @@ type DramaCanvasWriter interface {
 	ApplyBreakdown(context.Context, uint64, uint64, uint64, uint64, []int, []drama.Asset) ([]DramaCanvasAsset, error)
 	// ApplyPrompts 更新本次新建节点的提示词。
 	ApplyPrompts(context.Context, uint64, uint64, uint64, []drama.AssetPrompt) error
+	// DeleteEpisode 删一集、后面的集补位，并改写资产画布上的出现集数（userID, dramaID, canvasID, no）。
+	DeleteEpisode(context.Context, uint64, uint64, uint64, int) error
 }
 
 // DramaCreditPolicy 提供与现有生成任务一致的新账户初始积分。
@@ -122,8 +124,8 @@ func (s *DramaService) Create(ctx context.Context, userID uint64, req *model.Cre
 	if err := checkDramaStyle(req.StyleKey, req.StyleCustom); err != nil {
 		return nil, err
 	}
-	// 2. 冻结已启用的 Agent 模型；项目创建时即可发现没有可用模型。
-	snap, err := s.resolveModel(ctx, "")
+	// 2. 冻结首页选的 Agent 模型（没选或已停用时取后台第一个）；项目创建时即可发现没有可用模型。
+	snap, err := s.resolveModel(ctx, req.TextModel)
 	if err != nil {
 		return nil, err
 	}
@@ -143,7 +145,7 @@ func (s *DramaService) Create(ctx context.Context, userID uint64, req *model.Cre
 	if seconds == 0 {
 		seconds = 60
 	}
-	p := &model.DramaProject{UserID: userID, Title: title, SourceText: source, Genre: req.Genre, StyleKey: req.StyleKey, StyleCustom: req.StyleCustom, Ratio: req.Ratio, TargetEpisodes: req.TargetEpisodes, EpisodeSeconds: seconds, Status: "analyzing", Revision: 1, TextModelID: &snap.ModelRevisionID}
+	p := &model.DramaProject{UserID: userID, Title: title, SourceText: source, Genre: req.Genre, StyleKey: req.StyleKey, StyleCustom: req.StyleCustom, Ratio: req.Ratio, TargetEpisodes: req.TargetEpisodes, EpisodeSeconds: seconds, TextModel: req.TextModel, Status: "analyzing", Revision: 1, TextModelID: &snap.ModelRevisionID}
 	var j *model.DramaJob
 	// 3. 项目、画布、积分冻结与River入队一起提交。
 	err = s.repo.WithTx(ctx, func(tx repository.DramaTx) error {

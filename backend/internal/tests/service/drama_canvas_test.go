@@ -27,6 +27,8 @@ type dramaCanvasFake struct {
 	reads, transactions, updates                                        int
 	getErr, episodeErr, checkErr, updateErr, lockErr, jobErr, markerErr error
 	beforeUpdate                                                        func(*dramaCanvasFake)
+	// deletedEpisodes 记录已提交的删集（集号），用来确认失败时没删
+	deletedEpisodes []int
 }
 
 type dramaCanvasFakeTx struct {
@@ -70,7 +72,9 @@ func (f *dramaCanvasFake) WithTx(_ context.Context, fn func(repository.DramaCanv
 	for id, job := range f.jobs {
 		tx.jobs[id] = job
 	}
+	deleted := len(f.deletedEpisodes)
 	if err := fn(tx); err != nil {
+		f.deletedEpisodes = f.deletedEpisodes[:deleted]
 		return err
 	}
 	f.canvas, f.episodes = tx.canvas, tx.episodes
@@ -138,6 +142,41 @@ func (t *dramaCanvasFakeTx) LockEpisodes(_ context.Context, _, _ uint64, nos []i
 		ep.Revision++
 		t.episodes[no] = ep
 	}
+	return nil
+}
+
+func (t *dramaCanvasFakeTx) LockProject(_ context.Context, userID, dramaID uint64) error {
+	if userID != 1 || dramaID != 3 {
+		return repository.ErrNotFound
+	}
+	return nil
+}
+
+func (t *dramaCanvasFakeTx) HasActiveJob(_ context.Context, _, _ uint64) (bool, error) {
+	for _, job := range t.jobs {
+		if job.Status == "queued" || job.Status == "running" {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (t *dramaCanvasFakeTx) DeleteEpisode(_ context.Context, _, _ uint64, no int) error {
+	if _, ok := t.episodes[no]; !ok {
+		return repository.ErrNotFound
+	}
+	t.parent.deletedEpisodes = append(t.parent.deletedEpisodes, no)
+	next := map[int]model.DramaEpisode{}
+	for n, ep := range t.episodes {
+		switch {
+		case n < no:
+			next[n] = ep
+		case n > no:
+			ep.No = n - 1
+			next[n-1] = ep
+		}
+	}
+	t.episodes = next
 	return nil
 }
 

@@ -82,3 +82,27 @@ func TestDramaFailsWithoutChannelKey(t *testing.T) {
 		t.Fatalf("calls=%d job=%+v credit=%+v", e.calls, r.jobs[0], r.credit)
 	}
 }
+
+// 首页创建短剧时选的 Agent 模型：存进项目，研读任务就用它；不选则跟随后台第一个（存空串）。
+func TestDramaCreateKeepsChosenAgentModel(t *testing.T) {
+	for _, tc := range []struct{ name, chosen, want string }{
+		{"选了模型", "pro", "pro"},
+		{"没选跟随默认", "", "text"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newDramaMemory()
+			s, registry := dramaTestService(r, &dramaTextStreamer{}, nil)
+			registry.models = []provider.ModelInfo{{Key: "text", Kind: "agent"}, {Key: "pro", Kind: "agent"}}
+			_, err := s.Create(context.Background(), 7, &model.CreateDramaReq{Text: "第一章\n正文", StyleKey: "custom", StyleCustom: "写实", TextModel: tc.chosen})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if r.project.TextModel != tc.chosen {
+				t.Fatalf("项目里的模型=%q want %q", r.project.TextModel, tc.chosen)
+			}
+			if len(registry.requested) == 0 || registry.requested[0] != tc.want {
+				t.Fatalf("研读任务应先用 %q，实际请求 %v", tc.want, registry.requested)
+			}
+		})
+	}
+}

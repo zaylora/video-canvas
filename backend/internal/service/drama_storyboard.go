@@ -172,7 +172,8 @@ func (s *DramaService) storyboardAssets(ctx context.Context, p *model.DramaProje
 	assets := make([]dramaStoryboardAsset, 0, len(payload.Nodes))
 	for _, node := range payload.Nodes {
 		d := node.Data.Drama
-		if node.ID == "" || d == nil || !slices.Contains([]string{"character", "scene", "prop"}, d.Type) || len(d.Episodes) > 0 && !slices.Contains(d.Episodes, no) {
+		// Episodes 为 nil（JSON null）是未分类：所在的集被删了还没重新归类，不属于任何一集；[] 才是全集
+		if node.ID == "" || d == nil || d.Episodes == nil || !slices.Contains([]string{"character", "scene", "prop"}, d.Type) || len(d.Episodes) > 0 && !slices.Contains(d.Episodes, no) {
 			continue
 		}
 		summary := []rune(strings.TrimSpace(node.Data.Params.Prompt))

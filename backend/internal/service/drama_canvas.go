@@ -252,6 +252,51 @@ func promptsTx(ctx context.Context, tx repository.DramaCanvasTx, g *canvasgraph.
 	return tx.MarkCanvasCommitted(ctx, userID, jobID, []byte(`{"canvas_committed":true}`))
 }
 
+// DeleteEpisode 删第 no 集：同一事务里删集和片段、后面的集号补位，并改写资产画布上的出现集数
+// （后面的集号减 1，只出现在这一集的资产改为未分类）；有任务在跑时拒绝，免得任务写回错位的集。
+// CAS 冲突时在最新画布上重放，成功后推 canvas.patch，开着的资产画布同步更新。
+func (s *DramaCanvasService) DeleteEpisode(ctx context.Context, userID, dramaID, canvasID uint64, no int) error {
+	out, err := WriteCanvas(ctx, s.repo, userID, canvasID, func(g *canvasgraph.Graph, revision uint64) (breakdownAttempt, error) {
+		out := breakdownAttempt{before: revision, revision: revision}
+		err := s.repo.WithTx(ctx, func(tx repository.DramaCanvasTx) error {
+			return deleteEpisodeTx(ctx, tx, g, revision, &out, userID, dramaID, canvasID, no)
+		})
+		return out, err
+	})
+	if errors.Is(err, repository.ErrRevisionConflict) {
+		return errcode.ErrCanvasConflict
+	}
+	if err != nil {
+		return err
+	}
+	PublishCanvasPatch(ctx, s.bc, userID, CanvasPatch{CanvasID: canvasID, Kind: "delete_episode", RevisionBefore: out.before, RevisionAfter: out.revision, Changes: out.changes})
+	return nil
+}
+
+// deleteEpisodeTx 锁顺序与拆解一致：项目 → 分集 → 画布。
+func deleteEpisodeTx(ctx context.Context, tx repository.DramaCanvasTx, g *canvasgraph.Graph, revision uint64, out *breakdownAttempt, userID, dramaID, canvasID uint64, no int) error {
+	if err := tx.LockProject(ctx, userID, dramaID); err != nil {
+		return dramaError(err)
+	}
+	busy, err := tx.HasActiveJob(ctx, userID, dramaID)
+	if err != nil {
+		return err
+	}
+	if busy {
+		return errcode.ErrDramaJobBusy
+	}
+	if err := tx.DeleteEpisode(ctx, userID, dramaID, no); err != nil {
+		return dramaError(err)
+	}
+	if err := tx.CheckCanvasRevision(ctx, userID, canvasID, revision); err != nil {
+		return err
+	}
+	ed := canvasgraph.RemoveDramaEpisode(g, no)
+	out.changes = ed.Changes
+	out.revision, err = commitCanvas(ctx, tx, userID, canvasID, revision, ed.Graph, ed.Changes)
+	return err
+}
+
 // canvasCheckpoint 与流水线共用持久提交标记；result/cost 由核心写入，仓储只合并这里的字段。
 type canvasCheckpoint struct {
 	CanvasCommitted bool               `json:"canvas_committed"`

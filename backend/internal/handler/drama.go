@@ -188,6 +188,19 @@ func (h *DramaHandler) UpdateEpisode(c *gin.Context) {
 	response.OK(c, v)
 }
 
+// DeleteEpisode 删除一集，后面的集号往前补位，返回 204。
+func (h *DramaHandler) DeleteEpisode(c *gin.Context) {
+	id, no, ok := dramaEpisodePath(c)
+	if !ok {
+		return
+	}
+	if err := h.svc.DeleteEpisode(c.Request.Context(), currentUserID(c), id, no); err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.NoContent(c)
+}
+
 // dramaEpisodePath 解析十六进制项目 ID 和从 1 起的集号。
 func dramaEpisodePath(c *gin.Context) (uint64, int, bool) {
 	id, ok := CanvasPathID(c)
