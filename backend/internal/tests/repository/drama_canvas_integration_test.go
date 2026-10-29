@@ -65,7 +65,7 @@ func TestDramaCanvasRepositoryAtomicWrites(t *testing.T) {
 				}
 				wantCharacter := map[string]any{
 					"name": "林川", "look": "童年", "description": "少年", "extras": []any{},
-					"voice": map[string]any{"mode": "text", "text": "少年声"},
+					"voice": nil, "voicePrompt": "少年声",
 				}
 				if saved.Revision != canvas.Revision+1 || !reflect.DeepEqual(g.Node(created[0].NodeID).Data()["character"], wantCharacter) {
 					t.Fatalf("角色数据没有内嵌进画布节点: %+v", saved)
