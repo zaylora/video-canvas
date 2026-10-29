@@ -34,16 +34,13 @@ export function assetHasImage(asset: RefAsset): boolean {
 }
 
 function Item({ asset }: { asset: RefAsset }) {
-  const { insertRef } = useStudio();
   const thumb = useAssetThumb(asset);
   const Icon = TYPE_ICON[asset.type];
   const noImage = !assetHasImage(asset);
   return (
-    <button
-      type="button"
+    <div
       draggable
-      title="拖到提示词里，或点击插入到光标处"
-      onClick={() => insertRef(asset)}
+      title="拖到提示词里"
       onDragStart={(event) => {
         event.dataTransfer.setData(
           ASSET_DRAG_TYPE,
@@ -53,7 +50,7 @@ function Item({ asset }: { asset: RefAsset }) {
         event.dataTransfer.setData("text/plain", asset.label);
         event.dataTransfer.effectAllowed = "copy";
       }}
-      className="hover:bg-chrome-hover focus-visible:ring-ring/50 mx-1 flex w-[calc(100%-0.5rem)] cursor-grab items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs outline-none focus-visible:ring-2 active:cursor-grabbing"
+      className="hover:bg-chrome-hover mx-1 flex w-[calc(100%-0.5rem)] cursor-grab items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs active:cursor-grabbing"
     >
       <span className="bg-muted text-muted-foreground grid size-[30px] shrink-0 place-items-center overflow-hidden rounded-[7px]">
         {thumb ? (
@@ -69,7 +66,7 @@ function Item({ asset }: { asset: RefAsset }) {
         </StatusPill>
       )}
       <GripVertical className="text-muted-foreground size-3.5 shrink-0" />
-    </button>
+    </div>
   );
 }
 

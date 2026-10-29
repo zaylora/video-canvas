@@ -80,7 +80,7 @@ export function PromptPane({ segment }: { segment: Segment }) {
     }
   }, [saver, segment.id, segment.prompt, segment.revision, setDraft]);
 
-  // 把「插入引用 / 立即存盘」登记给工作区（资产库点击插入、生成前存盘用）
+  // 把「立即存盘」登记给工作区，供生成前存盘用
   const assetsById = useMemo(() => new Map(assets.map((asset) => [asset.id, asset])), [assets]);
   const toSource = useCallback(
     (asset: RefAsset): RefSource => ({
@@ -94,11 +94,10 @@ export function PromptPane({ segment }: { segment: Segment }) {
   );
   useEffect(() => {
     registerEditor({
-      insertRef: (asset) => editorRef.current?.insertRef(toSource(asset)),
       flush: () => saver.flush(),
     });
     return () => registerEditor(null);
-  }, [registerEditor, saver, toSource]);
+  }, [registerEditor, saver]);
 
   // 离开 / 页面隐藏时立即保存，不丢改动
   useEffect(() => {

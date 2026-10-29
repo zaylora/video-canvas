@@ -71,9 +71,8 @@ export type Studio = {
   reportSave: (key: string, status: AutosaveStatus) => void;
   /** 正在提交视频的片段 */
   submitting: ReadonlySet<string>;
-  /** 提示词编辑器登记：插入引用 / 立即存盘 */
+  /** 提示词编辑器登记：生成前立即存盘 */
   registerEditor: (handle: EditorHandle | null) => void;
-  insertRef: (asset: RefAsset) => void;
   actions: {
     add: () => Promise<void>;
     remove: (segment: Segment) => Promise<void>;
@@ -87,7 +86,6 @@ export type Studio = {
 };
 
 export type EditorHandle = {
-  insertRef: (asset: RefAsset) => void;
   flush: () => Promise<void>;
 };
 
@@ -465,7 +463,6 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
   const registerEditor = useCallback((handle: EditorHandle | null) => {
     editor.current = handle;
   }, []);
-  const insertRef = useCallback((asset: RefAsset) => editor.current?.insertRef(asset), []);
 
   const setOverride = useCallback(
     (name: string, value: unknown) =>
@@ -498,7 +495,6 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
     reportSave,
     submitting,
     registerEditor,
-    insertRef,
     actions: { add, remove, reorder, setSeconds, patch, choose, generate, batch },
   };
 }
