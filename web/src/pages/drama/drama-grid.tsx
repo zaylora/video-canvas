@@ -26,16 +26,16 @@ import { cn } from "@/lib/utils";
 import { dramaProgress, dramaStatusLabel } from "@/utils/drama/options";
 import { formatCanvasTime } from "@/utils/home/home";
 
-/** 卡片下的三步进度点：剧本 · 资产 · 视频 */
+/** 卡片下的三段进度条：剧本 · 资产 · 视频 */
 function Stepper({ progress }: { progress: [number, number, number] }) {
   return (
-    <div className="mt-1.5 flex gap-1" title="剧本 · 资产 · 视频" aria-hidden>
+    <div className="mt-2.5 flex gap-[3px]" title="剧本 · 资产 · 视频" aria-hidden>
       {progress.map((p, i) => (
         <i
           key={i}
           className={cn(
-            "h-1 flex-1 rounded-full",
-            p >= 1 ? "bg-status-success" : p > 0 ? "bg-status-warning" : "bg-muted",
+            "h-[3px] flex-1 rounded-full",
+            p >= 1 ? "bg-status-success" : p > 0 ? "bg-status-warning" : "bg-chrome-hover",
           )}
         />
       ))}
@@ -69,28 +69,41 @@ function DramaCard({
     >
       <Link
         to={`/drama/${drama.id}`}
-        className="focus-visible:ring-ring/60 block rounded-xl outline-none focus-visible:ring-3"
+        className="focus-visible:ring-ring/60 block rounded-[18px] outline-none focus-visible:ring-3"
         aria-label={`打开短剧 ${drama.title}`}
       >
-        <DramaPoster seed={drama.title} className="aspect-4/3 rounded-xl">
+        <DramaPoster
+          seed={drama.title}
+          className="ring-chrome-border group-hover/card:ring-foreground/20 aspect-16/10 rounded-[18px] ring-1 transition-shadow duration-150"
+        >
           {drama.coverUrl && (
             <img src={drama.coverUrl} alt="" className="absolute inset-0 size-full object-cover" />
           )}
-          <div className="from-cover-scrim absolute inset-x-0 bottom-0 bg-linear-to-t to-transparent px-3 pt-8 pb-2.5">
-            <div className="text-cover-foreground truncate text-sm font-semibold">
-              {drama.title}
-            </div>
-          </div>
         </DramaPoster>
-        <div className="px-0.5 pt-2">
-          <div className="text-muted-foreground flex items-center gap-1.5 text-xs">
-            {status.busy && <Loader2 className="size-3 animate-spin" />}
-            <span className="truncate tabular-nums">
-              {drama.episodeCount > 0 ? `${drama.episodeCount} 集 · ` : ""}
+        <div className="px-1 pt-3">
+          <div className="truncate text-[15px] font-medium">{drama.title}</div>
+          <div className="text-muted-foreground mt-1 flex items-center gap-1.5 text-[13px]">
+            {status.busy ? (
+              <Loader2 className="text-status-running size-3 shrink-0 animate-spin" />
+            ) : (
+              <i
+                aria-hidden
+                className={cn(
+                  "size-1.5 shrink-0 rounded-full",
+                  drama.status === "failed"
+                    ? "bg-destructive"
+                    : drama.status === "ready"
+                      ? "bg-status-success"
+                      : "bg-status-warning",
+                )}
+              />
+            )}
+            <span className={cn("truncate", drama.status === "failed" && "text-destructive")}>
               {status.text}
               {drama.lockedCount > 0 ? ` · 已拆解 ${drama.lockedCount} 集` : ""}
             </span>
             <span className="ml-auto shrink-0 tabular-nums">
+              {drama.episodeCount > 0 ? `${drama.episodeCount} 集 · ` : ""}
               {formatCanvasTime(drama.updatedAt)}
             </span>
           </div>
@@ -150,7 +163,7 @@ export function DramaGrid({
   onDelete: (id: string) => void;
 }) {
   return (
-    <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 lg:grid-cols-4">
+    <div className="grid grid-cols-2 gap-x-4 gap-y-7 sm:grid-cols-3 lg:grid-cols-4">
       {items.map((drama, index) => (
         <DramaCard
           key={drama.id}

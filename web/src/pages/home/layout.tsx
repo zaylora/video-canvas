@@ -43,7 +43,7 @@ function PageTransition() {
 }
 
 /**
- * 首页与所有画布页的外壳（设计稿 docs/design/首页）：左侧侧栏 + 吸顶顶栏 + 页面内容。
+ * 首页与所有画布页的外壳（设计稿 docs/design/首页）：左侧侧栏是底层，右边内容区是浮起的一张圆角页面（吸顶顶栏 + 页面内容）。
  * MotionConfig 的 reducedMotion="user" 让系统开了「减少动态效果」时只保留淡入淡出。
  * 首页点「更多」进所有画布页有 view transition：这个外壳不换，转场期间给侧栏和顶栏打上标记
  * （index.css 里据此给它们单独的 view-transition-name），让它们留在原地不跟着页面缩放。
@@ -57,6 +57,7 @@ export default function HomeLayout() {
     <MotionConfig reducedMotion="user">
       <SidebarProvider
         data-shell="home"
+        className="home-theme"
         data-view-transitioning={transitioning || undefined}
         /** 设计稿 4.0：展开 240px，收起 56px（40px 图标按钮 + 两侧各 8px），shadcn 默认的 48px 放不下 */
         style={{ "--sidebar-width": "15rem", "--sidebar-width-icon": "3.5rem" } as CSSProperties}
@@ -71,7 +72,7 @@ export default function HomeLayout() {
         }}
       >
         <AppSidebar />
-        <SidebarInset className="min-w-0">
+        <SidebarInset className="ring-border min-w-0 md:peer-data-[variant=inset]:rounded-[22px] md:peer-data-[variant=inset]:shadow-[0_12px_40px_-18px_oklch(0_0_0/0.35)] md:peer-data-[variant=inset]:ring-1">
           <SiteHeader />
           <PageTransition />
         </SidebarInset>

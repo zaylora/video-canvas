@@ -1,7 +1,7 @@
 import { Search } from "lucide-react";
 
 /**
- * 资产页右上角的搜索框（和旧资产页同款）：Esc 清空。
+ * 资产页工具条里的搜索框（胶囊）：Esc 清空。
  * @param value 输入框的值
  * @param onChange 输入变化
  * @param placeholder 占位提示，同时作为读屏名字
@@ -18,7 +18,7 @@ export function AssetSearch({
   return (
     <label
       data-slot="asset-search"
-      className="bg-muted text-muted-foreground focus-within:ring-ring flex h-8 w-33 items-center gap-1.5 rounded-[10px] px-2.5 transition-shadow focus-within:ring-1 md:w-50"
+      className="bg-chrome-hover ring-chrome-border text-muted-foreground focus-within:ring-ring flex h-9 w-36 items-center gap-2 rounded-full px-3.5 ring-1 transition-shadow md:w-56"
     >
       <Search className="size-4 shrink-0" />
       <input

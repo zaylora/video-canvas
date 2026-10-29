@@ -17,8 +17,9 @@ export function ListSection({
 }) {
   return (
     <section className="mt-2">
-      <div className="flex h-8 items-center justify-between px-2.5">
-        <p className="text-muted-foreground text-xs">{title}</p>
+      {/* 侧栏展开 / 收起的过程中宽度不够，文字只裁不折行 */}
+      <div className="flex h-8 items-center justify-between gap-2 pr-1.5 pl-3.5 whitespace-nowrap">
+        <p className="text-muted-foreground truncate text-xs">{title}</p>
         {action}
       </div>
       <div className="grid gap-0.5">{children}</div>
@@ -27,7 +28,7 @@ export function ListSection({
 }
 
 /**
- * 分组里的一项：24px 缩略图（封面或图标）+ 标题，当前项高亮。
+ * 分组里的一项：40px 高的胶囊，20px 缩略图（封面或图标）和导航项的图标在同一列，标题对齐导航项文字；当前项高亮。
  * trailing 是右侧的附加内容（进行中的圆点、更多菜单）；它们在链接外面，点击不会触发跳转。
  */
 export function ListItem({
@@ -56,17 +57,17 @@ export function ListItem({
         aria-current={active ? "page" : undefined}
         onClick={() => setOpenMobile(false)}
         className={cn(
-          "text-muted-foreground hover:bg-chrome-hover hover:text-foreground focus-visible:ring-ring/50 flex h-9 items-center gap-2.5 rounded-[10px] pr-2 pl-2.5 text-sm outline-none focus-visible:ring-3",
+          "text-muted-foreground hover:bg-chrome-hover hover:text-foreground focus-visible:ring-ring/50 flex h-10 items-center gap-3 rounded-full pr-3 pl-3.5 text-sm whitespace-nowrap transition-colors duration-150 outline-none focus-visible:ring-3",
           trailing && "pr-9",
-          active && "bg-muted text-foreground font-medium",
+          active && "bg-chrome-hover ring-chrome-border text-foreground font-medium ring-1",
         )}
       >
-        <span className="bg-muted grid size-6 shrink-0 place-items-center overflow-hidden rounded-[7px] [&_svg]:size-3.5">
+        <span className="bg-muted grid size-5 shrink-0 place-items-center overflow-hidden rounded-[6px] [&_svg]:size-3">
           {thumb}
         </span>
         <span className="min-w-0 flex-1 truncate">{title}</span>
       </Link>
-      {trailing && <div className="absolute top-1/2 right-1.5 -translate-y-1/2">{trailing}</div>}
+      {trailing && <div className="absolute top-1/2 right-2 -translate-y-1/2">{trailing}</div>}
     </div>
   );
 }
@@ -85,9 +86,9 @@ export function ListSkeleton({ rows = 4 }: { rows?: number }) {
         <div
           key={index}
           data-slot="list-skeleton-row"
-          className="flex h-9 items-center gap-2.5 pr-2 pl-2.5"
+          className="flex h-10 items-center gap-3 rounded-full pr-3 pl-3.5"
         >
-          <Skeleton className="size-6 shrink-0 rounded-[7px] motion-reduce:animate-none" />
+          <Skeleton className="size-5 shrink-0 rounded-[6px] motion-reduce:animate-none" />
           <Skeleton
             className="h-3.5 motion-reduce:animate-none"
             style={{

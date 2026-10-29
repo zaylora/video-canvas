@@ -1,15 +1,20 @@
 import { useCallback, useEffect } from "react";
 import { useSearchParams } from "react-router";
 
+import type { EpisodeSummary } from "@/api/drama/type";
 import {
   EPISODE_DOC,
   parseScriptDoc,
   resolveStage,
+  scriptTabDoc,
   type ScriptDoc,
   type WorkspaceStage,
 } from "@/utils/drama/stages";
 
-const NO_EPISODES: readonly { no: number }[] = [];
+/** 导航只需要每集的集号和剧本状态 */
+type NavEpisode = Pick<EpisodeSummary, "no" | "scriptStatus">;
+
+const NO_EPISODES: readonly NavEpisode[] = [];
 
 /** 工作台的导航状态：当前工序、当前集和剧本页打开的项目文档，都写在地址栏（?area=script&ep=3&doc=outline），刷新、分享链接都能回到原处 */
 export type WorkspaceNav = {
@@ -18,7 +23,7 @@ export type WorkspaceNav = {
   ep: number;
   /** 剧本页打开的大纲 / 人物传记；null 表示看当前集的剧本 */
   doc: ScriptDoc | null;
-  /** 切换工序；不传 ep 沿用当前集（切到剧本页时打开大纲），传了 ep 就是要看那一集 */
+  /** 切换工序；不传 ep 沿用当前集（切到剧本页时：这一集已有剧本就看它，还没开始写就打开大纲），传了 ep 就是要看那一集 */
   go: (stage: WorkspaceStage, ep?: number) => void;
   /** 只换集，工序不变（同时离开大纲 / 人物传记） */
   setEp: (ep: number) => void;
@@ -33,7 +38,7 @@ export type WorkspaceNav = {
  * 免得大纲生成出来后默认页变了、页面自己跳走。
  */
 export function useWorkspaceNav(
-  drama: { outlineMd: string; episodes: readonly { no: number }[] } | null,
+  drama: { outlineMd: string; episodes: readonly NavEpisode[] } | null,
 ): WorkspaceNav {
   const episodes = drama?.episodes ?? NO_EPISODES;
   const [params, setParams] = useSearchParams();
@@ -65,9 +70,15 @@ export function useWorkspaceNav(
     (nextStage, nextEp) => {
       // 只有资产区认 0（全集）；从那里切到别的工序时落到第一集
       const fallback = ep === 0 && nextStage !== "assets" ? (episodes[0]?.no ?? 1) : ep;
-      // 剧本页只有点名某一集才看分集剧本，单纯切过来默认打开大纲
-      const picked = nextStage === "script" && nextEp !== undefined ? EPISODE_DOC : undefined;
-      write(nextStage, nextEp ?? fallback, picked);
+      const target = nextEp ?? fallback;
+      // 点名某一集就看它的剧本；单纯切过来时，这一集已经开始写剧本就停在这一集，还没开始写（研读、出大纲阶段）打开大纲
+      const picked =
+        nextStage !== "script"
+          ? undefined
+          : nextEp !== undefined
+            ? EPISODE_DOC
+            : scriptTabDoc(episodes.find((episode) => episode.no === target));
+      write(nextStage, target, picked);
     },
     [ep, episodes, write],
   );

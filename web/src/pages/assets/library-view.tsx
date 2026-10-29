@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { createPortal } from "react-dom";
 import { useDropzone, type FileRejection } from "react-dropzone";
 import { ChevronRight, Upload } from "lucide-react";
 import { toast } from "sonner";
@@ -7,9 +6,10 @@ import { toast } from "sonner";
 import { addToLibrary, moveLibraryItem, removeLibraryItem } from "@/api/asset-library";
 import type { FolderDto, LibraryItemDto } from "@/api/asset-library/type";
 import { LibraryAssetCard } from "@/components/assets/asset-card";
-import { AssetGrid, AssetGridSkeleton, LoadMoreFooter } from "@/components/assets/asset-grid";
+import { AssetGridSkeleton, AssetMasonry, LoadMoreFooter } from "@/components/assets/asset-grid";
 import { AssetPreview, type AssetPreviewEntry } from "@/components/assets/asset-preview";
 import { AssetSearch } from "@/components/assets/asset-search";
+import { AssetsToolbar } from "@/components/assets/assets-toolbar";
 import { FolderCard } from "@/components/assets/folder-card";
 import { FolderNameDialog } from "@/components/assets/folder-name-dialog";
 import { FolderPickerDialog } from "@/components/assets/folder-picker-dialog";
@@ -45,16 +45,14 @@ const ACCEPT = { "image/*": [], "video/*": [], "audio/*": [] };
  * 根目录显示文件夹卡片和未归档素材；点文件夹进入（地址栏的 folder 参数），面包屑回到根目录。
  * 搜索跨文件夹平铺、隐藏文件夹卡片。「＋ 新建」可新建文件夹、上传资产（也支持拖入文件）。
  * 上传逐个走 uploadAsset，传完登记到当前文件夹，卡片显示进度，可取消、失败可重试。
- * @param searchSlot 页面头部右侧放搜索框和「新建」的容器，用 portal 渲染进去
+ * 路径、搜索和「新建」在一条半透明工具条里；文件夹单独一排，素材按真实画幅排成瀑布流。
  * @param folder 当前文件夹 ID，null 是根目录（来自地址栏）
  * @param onFolderChange 进入或离开文件夹；replace 为 true 时不留历史记录
  */
 export function LibraryView({
-  searchSlot,
   folder,
   onFolderChange,
 }: {
-  searchSlot: HTMLElement | null;
   folder: string | null;
   onFolderChange: (folder: string | null, options?: { replace?: boolean }) => void;
 }) {
@@ -168,41 +166,41 @@ export function LibraryView({
     <div {...getRootProps()} className="relative min-h-[60vh] outline-none">
       <input {...getInputProps()} aria-label="选择要上传的文件" />
 
-      {searchSlot &&
-        createPortal(
-          <>
-            <AssetSearch value={input} onChange={setInput} placeholder="搜索文件名" />
-            <NewMenu
-              canCreateFolder={folder === null}
-              onCreateFolder={() => setCreating(true)}
-              onUpload={openFilePicker}
-            />
-          </>,
-          searchSlot,
-        )}
-
-      <nav aria-label="当前位置" className="mt-4 mb-4.5 flex h-8 items-center gap-1 text-base">
-        {folder || searching ? (
-          <>
-            <button
-              type="button"
-              onClick={() => {
-                setInput("");
-                onFolderChange(null);
-              }}
-              className="text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 rounded-md px-1 transition-colors outline-none focus-visible:ring-3"
-            >
-              个人资产库
-            </button>
-            <ChevronRight aria-hidden className="text-muted-foreground size-4" />
-            <h2 className="truncate font-semibold">
-              {searching ? "搜索结果" : (currentFolder?.name ?? "…")}
-            </h2>
-          </>
-        ) : (
-          <h2 className="font-semibold">个人资产库</h2>
-        )}
-      </nav>
+      <AssetsToolbar className="mt-6 mb-7">
+        <nav
+          aria-label="当前位置"
+          className="flex h-9 min-w-0 items-center gap-1 pr-2 pl-3 text-[15px]"
+        >
+          {folder || searching ? (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setInput("");
+                  onFolderChange(null);
+                }}
+                className="text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 rounded-md px-1 transition-colors outline-none focus-visible:ring-3"
+              >
+                个人资产库
+              </button>
+              <ChevronRight aria-hidden className="text-muted-foreground size-4" />
+              <h2 className="truncate font-semibold">
+                {searching ? "搜索结果" : (currentFolder?.name ?? "…")}
+              </h2>
+            </>
+          ) : (
+            <h2 className="font-semibold">个人资产库</h2>
+          )}
+        </nav>
+        <div className="ml-auto flex items-center gap-1">
+          <AssetSearch value={input} onChange={setInput} placeholder="搜索文件名" />
+          <NewMenu
+            canCreateFolder={folder === null}
+            onCreateFolder={() => setCreating(true)}
+            onUpload={openFilePicker}
+          />
+        </div>
+      </AssetsToolbar>
 
       {state.status === "loading" || foldersPending ? (
         <AssetGridSkeleton />
@@ -225,16 +223,21 @@ export function LibraryView({
         )
       ) : (
         <>
-          <AssetGrid>
-            {folderList.map((entry) => (
-              <FolderCard
-                key={entry.id}
-                folder={entry}
-                onOpen={() => onFolderChange(entry.id)}
-                onRename={() => setRenaming(entry)}
-                onDelete={() => setDeleting(entry)}
-              />
-            ))}
+          {folderList.length > 0 && (
+            <div className="mb-8 grid grid-cols-2 gap-3 md:grid-cols-[repeat(auto-fill,minmax(220px,1fr))] md:gap-4">
+              {folderList.map((entry) => (
+                <FolderCard
+                  key={entry.id}
+                  wide
+                  folder={entry}
+                  onOpen={() => onFolderChange(entry.id)}
+                  onRename={() => setRenaming(entry)}
+                  onDelete={() => setDeleting(entry)}
+                />
+              ))}
+            </div>
+          )}
+          <AssetMasonry>
             {pendingUploads.map((task) => (
               <UploadCard
                 key={task.id}
@@ -247,12 +250,13 @@ export function LibraryView({
               <LibraryAssetCard
                 key={item.id}
                 item={item}
+                natural
                 onPreview={() => setPreviewId(item.asset.id)}
                 onMove={() => setMoving(item)}
                 onRemove={() => void remove(item)}
               />
             ))}
-          </AssetGrid>
+          </AssetMasonry>
           {items.length === 0 && (
             <p className="text-muted-foreground mt-6 text-center text-[13px]">
               {searching ? "没有符合的素材" : "这里还没有素材"}

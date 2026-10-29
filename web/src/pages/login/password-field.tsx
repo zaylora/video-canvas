@@ -19,7 +19,7 @@ export function PasswordField({ className, ...props }: Omit<ComponentProps<typeo
         aria-label={shown ? "隐藏密码" : "显示密码"}
         aria-pressed={shown}
         onClick={() => setShown((value) => !value)}
-        className="text-muted-foreground hover:text-foreground focus-visible:outline-ring absolute top-1/2 right-3 -translate-y-1/2 rounded p-1 focus-visible:outline-2 focus-visible:outline-offset-2"
+        className="text-muted-foreground hover:bg-chrome-hover hover:text-foreground focus-visible:outline-ring absolute top-1/2 right-2 grid size-8 -translate-y-1/2 place-items-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-2"
       >
         {shown ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
       </button>

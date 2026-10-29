@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import type { DramaJob, EpisodeSummary } from "@/api/drama/type";
 import {
+  EPISODE_DOC,
   episodeMatrix,
   episodePips,
   jumpStageFor,
@@ -9,6 +10,7 @@ import {
   parseScriptDoc,
   parseStage,
   resolveStage,
+  scriptTabDoc,
   stageHints,
   resumeTarget,
   STAGES,
@@ -301,5 +303,21 @@ describe("工序标签上的提醒点", () => {
 
   test("已经结束的任务不算", () => {
     expect(stageHints([], [job("scripts", "succeeded"), job("compose", "failed")])).toEqual({});
+  });
+});
+
+describe("scriptTabDoc：点顶部「剧本」切过来时打开什么", () => {
+  test("当前集已经有剧本（写好、在写、写失败）：停在这一集", () => {
+    expect(scriptTabDoc({ scriptStatus: "ready" })).toBe(EPISODE_DOC);
+    expect(scriptTabDoc({ scriptStatus: "generating" })).toBe(EPISODE_DOC);
+    expect(scriptTabDoc({ scriptStatus: "failed" })).toBe(EPISODE_DOC);
+  });
+
+  test("还没开始写剧本（研读、出大纲阶段）：打开大纲", () => {
+    expect(scriptTabDoc({ scriptStatus: "empty" })).toBeUndefined();
+  });
+
+  test("还没有分集：打开大纲", () => {
+    expect(scriptTabDoc(undefined)).toBeUndefined();
   });
 });

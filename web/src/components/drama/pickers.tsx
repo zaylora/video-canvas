@@ -14,6 +14,21 @@ import {
 
 import { DramaPoster } from "./poster";
 
+/** 已随前端发布预览图的内置画风；新画风在补图前仍使用渐变占位。 */
+const STYLE_PREVIEW_KEYS = new Set([
+  "anime_90s",
+  "chinese_anime",
+  "flat_2d",
+  "mature_urban_anime",
+  "animation_3d",
+  "chinese_3d",
+  "clay_stop_motion",
+  "chinese_cyber_3d",
+  "real_historical",
+  "real_city_film",
+  "real_sweet_romance",
+]);
+
 /** 浮层里的小标题 */
 export function MenuLabel({ children }: { children: ReactNode }) {
   return <div className="text-muted-foreground px-1.5 pt-1 text-xs">{children}</div>;
@@ -119,7 +134,6 @@ export function GenreList({
 }) {
   return (
     <>
-      <MenuLabel>叙事题材 · 决定节奏和表达</MenuLabel>
       <div className="grid grid-cols-3 gap-0.5">
         {genres.map((genre) => (
           <OptionRow
@@ -156,8 +170,7 @@ export function StyleGrid({
 }) {
   return (
     <>
-      <MenuLabel>画风 · 决定媒介、造型、配色与光影</MenuLabel>
-      <div className="grid grid-cols-3 gap-1.5">
+      <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
         {styles.map((style) => (
           <button
             key={style.key}
@@ -170,7 +183,19 @@ export function StyleGrid({
               value === style.key ? "bg-muted" : "hover:bg-muted/60",
             )}
           >
-            <DramaPoster seed={style.key} className="aspect-4/3 w-full rounded-md" />
+            <DramaPoster seed={style.key} className="aspect-16/10 w-full rounded-lg">
+              {STYLE_PREVIEW_KEYS.has(style.key) && (
+                <img
+                  src={`/drama-styles/${style.key}.webp`}
+                  alt={`${style.name}风格预览`}
+                  width={640}
+                  height={400}
+                  loading="lazy"
+                  decoding="async"
+                  className="absolute inset-0 size-full object-cover"
+                />
+              )}
+            </DramaPoster>
             <span className="truncate px-0.5">{style.name}</span>
           </button>
         ))}
@@ -183,7 +208,7 @@ export function StyleGrid({
             value === CUSTOM_STYLE_KEY ? "bg-muted" : "hover:bg-muted/60",
           )}
         >
-          <span className="bg-muted text-muted-foreground grid aspect-4/3 w-full place-items-center rounded-md">
+          <span className="bg-muted text-muted-foreground grid aspect-16/10 w-full place-items-center rounded-lg">
             <Pencil className="size-4" />
           </span>
           <span className="px-0.5">自定义</span>
@@ -267,7 +292,6 @@ export function EpisodesPicker({
 }) {
   return (
     <>
-      <MenuLabel>目标集数</MenuLabel>
       {TARGET_EPISODE_OPTIONS.map((n) => (
         <OptionRow key={n} active={target === n} onClick={() => onTarget(n)}>
           {n === 0 ? "自动" : `${n} 集`}

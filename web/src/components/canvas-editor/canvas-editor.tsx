@@ -825,6 +825,8 @@ export const CanvasEditor = memo(function CanvasEditor({
                             onPointerDownCapture={overlayGate.onPointerDownCapture}
                           >
                             <ReactFlow
+                              // 不显示右下角的「React Flow」署名（MIT 协议允许隐藏）
+                              proOptions={{ hideAttribution: true }}
                               nodeTypes={nodeTypes}
                               edgeTypes={edgeTypes}
                               defaultEdgeOptions={ANIMATED_EDGE_OPTIONS}

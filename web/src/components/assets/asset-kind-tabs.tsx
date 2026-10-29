@@ -24,7 +24,12 @@ export function AssetKindTabs({
   variant?: "plain" | "underline";
 }) {
   return (
-    <div data-slot="asset-kind-tabs" className="flex gap-0.5" role="group" aria-label="内容类型">
+    <div
+      data-slot="asset-kind-tabs"
+      className="flex shrink-0 gap-0.5"
+      role="group"
+      aria-label="内容类型"
+    >
       {ASSET_KINDS.map((item) => (
         <button
           key={item.value}
@@ -32,8 +37,10 @@ export function AssetKindTabs({
           aria-pressed={value === item.value}
           onClick={() => onChange(item.value)}
           className={cn(
-            "text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 aria-pressed:text-foreground h-8 rounded-lg px-3 transition-colors outline-none focus-visible:ring-3 aria-pressed:font-semibold",
-            variant === "plain" && "hover:bg-chrome-hover",
+            "text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 aria-pressed:text-foreground h-8 shrink-0 rounded-lg px-3 whitespace-nowrap transition-colors outline-none focus-visible:ring-3 aria-pressed:font-semibold",
+            // 资产页工具条里是胶囊：选中态同 coding-standards 6.1（半透明底 + 细描边）
+            variant === "plain" &&
+              "hover:bg-chrome-hover aria-pressed:bg-chrome-hover aria-pressed:ring-chrome-border h-9 rounded-full px-4 aria-pressed:font-medium aria-pressed:ring-1",
             // 下划线只做 transform（scaleX），减少动态效果时不过渡
             variant === "underline" &&
               "after:bg-foreground relative rounded-md after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:origin-center after:scale-x-0 after:rounded-full after:transition-transform after:duration-150 motion-reduce:after:transition-none aria-pressed:after:scale-x-100",

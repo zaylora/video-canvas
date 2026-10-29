@@ -183,3 +183,39 @@ describe("formatAssetDay：卡片日期", () => {
     expect(formatAssetDay("oops", now)).toBe("oops");
   });
 });
+
+describe("资产页瀑布流：卡片按素材真实画幅", () => {
+  test("natural 时按宽高比铺，不再统一成正方形", () => {
+    const item = generated({ asset: asset({ width: 1200, height: 1600 }) });
+    const out = renderToStaticMarkup(
+      <HistoryAssetCard
+        item={item}
+        natural
+        onPreview={noop}
+        onAddToLibrary={noop}
+        onOpenCanvas={noop}
+      />,
+    );
+    expect(out).toContain("aspect-ratio:1200 / 1600");
+    expect(out).not.toContain("aspect-square");
+  });
+
+  test("不传 natural（画布资产库弹框）时保持原来的正方形 / 16:10", () => {
+    const out = history(generated({ asset: asset({ width: 1200, height: 1600 }) }));
+    expect(out).toContain("aspect-square");
+    expect(out).not.toContain("aspect-ratio:");
+  });
+
+  test("资产库卡片同样支持 natural", () => {
+    const item: LibraryItemDto = {
+      id: "l1",
+      folderId: null,
+      asset: asset({ kind: "video", width: null, height: null, durationMs: 5000 }),
+      createdAt: "2026-10-14T10:20:00Z",
+    } as LibraryItemDto;
+    const out = renderToStaticMarkup(
+      <LibraryAssetCard item={item} natural onPreview={noop} onMove={noop} onRemove={noop} />,
+    );
+    expect(out).toContain("aspect-ratio:16 / 10");
+  });
+});

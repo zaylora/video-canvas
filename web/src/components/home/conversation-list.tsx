@@ -80,7 +80,7 @@ export function ConversationList({ pathname }: { pathname: string }) {
             aria-label="新对话"
             title="新对话"
             onClick={() => navigate("/")}
-            className="text-muted-foreground hover:bg-chrome-hover hover:text-foreground focus-visible:ring-ring/50 grid size-6 place-items-center rounded-md outline-none focus-visible:ring-2"
+            className="text-muted-foreground hover:bg-chrome-hover hover:text-foreground focus-visible:ring-ring/50 grid size-7 place-items-center rounded-full outline-none focus-visible:ring-2"
           >
             <Plus className="size-3.5" />
           </button>
@@ -88,8 +88,8 @@ export function ConversationList({ pathname }: { pathname: string }) {
       >
         {status === "loading" && items.length === 0 && (
           <div className="grid gap-1 px-2.5" aria-busy>
-            <Skeleton className="h-8" />
-            <Skeleton className="h-8" />
+            <Skeleton className="h-10 rounded-full" />
+            <Skeleton className="h-10 rounded-full" />
           </div>
         )}
         {status === "error" && items.length === 0 && (
@@ -121,7 +121,7 @@ export function ConversationList({ pathname }: { pathname: string }) {
                 <DropdownMenu modal={false}>
                   <DropdownMenuTrigger
                     aria-label={`「${conversation.title}」的操作`}
-                    className="text-muted-foreground hover:bg-chrome-hover hover:text-foreground focus-visible:ring-ring/50 grid size-6 place-items-center rounded-md opacity-0 outline-none group-focus-within/item:opacity-100 group-hover/item:opacity-100 focus-visible:ring-2 data-popup-open:opacity-100"
+                    className="text-muted-foreground hover:bg-chrome-hover hover:text-foreground focus-visible:ring-ring/50 grid size-7 place-items-center rounded-full opacity-0 outline-none group-focus-within/item:opacity-100 group-hover/item:opacity-100 focus-visible:ring-2 data-popup-open:opacity-100"
                   >
                     <MoreHorizontal className="size-4" />
                   </DropdownMenuTrigger>

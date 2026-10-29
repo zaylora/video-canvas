@@ -30,7 +30,7 @@ export function GreetingTitle({ hello }: { hello: string }) {
   return (
     <h1
       aria-label={`${hello}，今天想要${HIGHLIGHT}什么？`}
-      className="text-2xl font-semibold tracking-tight md:text-[32px]"
+      className="font-display text-[26px] font-black tracking-wide md:text-[34px]"
     >
       <span aria-hidden>
         {lead.map((char, i) => (

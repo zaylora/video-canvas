@@ -324,6 +324,29 @@
 }
 
 /*
+ * 首页外壳（创作、资产、短剧工作室入口等）的日间色：和短剧工作台同一套米色。
+ * 只换中性色（底、卡片、弹层、描边、半透明胶囊），强调色和主按钮不变；深色模式不受影响。
+ * 侧栏比内容页深一档，浮起的内容页在米色里仍有层次。
+ */
+:root:not(.dark) .home-theme {
+  --background: oklch(0.95 0.007 85);
+  --card: oklch(0.985 0.004 85);
+  --popover: oklch(0.985 0.004 85);
+  --secondary: oklch(0.92 0.008 85);
+  --muted: oklch(0.92 0.008 85);
+  --muted-foreground: oklch(0.5 0.015 85);
+  --accent: oklch(0.92 0.008 85);
+  --border: oklch(0.22 0.02 85 / 0.1);
+  --input: oklch(0.22 0.02 85 / 0.16);
+  --sidebar: oklch(0.925 0.009 85);
+  --sidebar-accent: oklch(0.9 0.009 85);
+  --sidebar-border: oklch(0.22 0.02 85 / 0.1);
+  --chrome: oklch(0.97 0.006 85 / 0.8);
+  --chrome-border: oklch(0.22 0.02 85 / 0.1);
+  --chrome-hover: oklch(0.22 0.02 85 / 0.06);
+}
+
+/*
  * 短剧工作台主题（设计：docs/design/短剧工作室/短剧工作室原型-v2.html）。
  * 只作用在挂了 .drama-theme 的工作台根节点内：覆盖 shadcn 的语义变量，里面的按钮、弹窗、下拉
  * 不用逐个改就跟着换成「暗房片场」——暖黑底 + 钨丝灯琥珀。强调色只有一个（--primary 即琥珀）。

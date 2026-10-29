@@ -58,27 +58,27 @@ export default function DramaListPage() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-275 px-4 pb-24 md:px-6">
-      <section className="pt-6 md:pt-10">
-        <h1 className="text-center text-3xl font-semibold tracking-tight">
+    <div className="mx-auto w-full max-w-320 px-4 pb-24 md:px-10">
+      <section className="pt-4 md:pt-6">
+        <h1 className="font-display text-center text-[26px] leading-tight font-black tracking-wide md:text-[34px]">
           把剧本交给 <span className="text-beam">短剧工作室</span>
         </h1>
-        <p className="text-muted-foreground mt-2 text-center text-sm">
-          上传剧本或小说，自动分集、拆资产、写分镜，一路做到每集成片
-        </p>
         <UploadCard />
       </section>
 
-      <section className="mt-12">
-        <div className="mb-3 flex items-center gap-2">
-          <h2 className="text-[15px] font-semibold">我的短剧</h2>
+      <section className="mt-12 md:mt-14">
+        <div className="mb-5 flex items-center gap-2">
+          <h2 className="text-[17px] font-semibold">我的短剧</h2>
           {total > 0 && <span className="text-muted-foreground text-sm tabular-nums">{total}</span>}
         </div>
 
         {loading && items.length === 0 ? (
-          <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-7 sm:grid-cols-3 lg:grid-cols-4">
             {[0, 1, 2, 3].map((i) => (
-              <Skeleton key={i} className="aspect-4/3 rounded-xl motion-reduce:animate-none" />
+              <Skeleton
+                key={i}
+                className="aspect-16/10 rounded-[18px] motion-reduce:animate-none"
+              />
             ))}
           </div>
         ) : failed && items.length === 0 ? (

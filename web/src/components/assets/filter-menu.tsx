@@ -69,7 +69,7 @@ export function FilterMenu({
         aria-label={label}
         title={icon ? (active && current ? `${label}：${current.label}` : label) : undefined}
         className={cn(
-          "text-muted-foreground hover:bg-chrome-hover hover:text-foreground focus-visible:ring-ring/50 inline-flex h-8 items-center gap-1 rounded-lg transition-colors outline-none focus-visible:ring-3",
+          "text-muted-foreground hover:bg-chrome-hover hover:text-foreground focus-visible:ring-ring/50 inline-flex h-9 items-center gap-1 rounded-full transition-colors outline-none focus-visible:ring-3",
           "data-popup-open:bg-chrome-hover",
           icon ? "relative w-8 justify-center [&_svg]:size-4" : "max-w-40 px-3",
           active && "text-foreground font-medium",

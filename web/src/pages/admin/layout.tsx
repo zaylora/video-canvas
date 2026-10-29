@@ -12,6 +12,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
+import { ChromePill } from "@/components/canvas/chrome/chrome";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAdminStore } from "@/store/admin";
@@ -126,9 +127,10 @@ function AdminBody() {
       style={{ "--sidebar-width": "15rem", "--sidebar-width-icon": "3.5rem" } as CSSProperties}
     >
       <AdminSidebar />
-      <SidebarInset className="h-svh min-w-0 overflow-hidden">
-        <header className="bg-background/85 sticky top-0 z-20 flex h-14 shrink-0 items-center gap-3 px-4 backdrop-blur lg:px-6">
-          <SidebarTrigger className="size-8" />
+      {/* 和首页同一套外壳：侧栏是底层，内容区是浮起的圆角页面；内容在区内滚动，高度扣掉上下外边距 */}
+      <SidebarInset className="ring-border h-svh min-w-0 overflow-hidden md:peer-data-[variant=inset]:h-[calc(100svh-1rem)] md:peer-data-[variant=inset]:rounded-[22px] md:peer-data-[variant=inset]:shadow-[0_12px_40px_-18px_oklch(0_0_0/0.35)] md:peer-data-[variant=inset]:ring-1">
+        <header className="bg-background/85 sticky top-0 z-20 flex h-14 shrink-0 items-center gap-3 px-4 backdrop-blur lg:px-5">
+          <SidebarTrigger className="size-8 rounded-full" />
           <Breadcrumb>
             <BreadcrumbList>
               <BreadcrumbItem className="hidden sm:inline-flex">
@@ -140,9 +142,9 @@ function AdminBody() {
               </BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>
-          <div className="ml-auto flex items-center gap-2">
+          <ChromePill className="ml-auto">
             <ThemeToggle />
-          </div>
+          </ChromePill>
         </header>
         <div data-slot="admin-outlet" className="min-h-0 flex-1">
           <Outlet />

@@ -50,6 +50,18 @@ export function parseScriptDoc(raw: string | null, episodeCount: number): Script
   return raw === EPISODE_DOC && episodeCount > 0 ? null : "outline";
 }
 
+/**
+ * 点顶部「剧本」切过来时打开什么：当前集已经开始写剧本（写好、在写、写失败）就停在这一集；
+ * 还没开始写（研读、出大纲阶段，或还没有分集）打开大纲，在那里看生成进度。
+ * @param episode 当前集的概要；还没有分集时为 undefined
+ * @returns EPISODE_DOC 表示看这一集的剧本；undefined 表示打开大纲
+ */
+export function scriptTabDoc(
+  episode: Pick<EpisodeSummary, "scriptStatus"> | undefined,
+): typeof EPISODE_DOC | undefined {
+  return episode && episode.scriptStatus !== "empty" ? EPISODE_DOC : undefined;
+}
+
 /** 分集栏小进度条一格的状态：off 未开始，run 进行中，part 做了一部分（或已过期），on 完成 */
 export type PipState = "off" | "run" | "part" | "on";
 

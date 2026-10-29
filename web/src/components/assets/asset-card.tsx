@@ -16,6 +16,7 @@ import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { TAP_CARD } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { formatMediaDuration } from "@/utils/canvas/media-lod";
+import { assetAspect } from "@/utils/assets/aspect";
 import { formatAssetDay } from "@/utils/assets/format";
 
 import { CardMenu } from "./card-menu";
@@ -50,6 +51,15 @@ export function AssetCover({ asset }: { asset: AssetDto }) {
     </div>
   );
 }
+
+/**
+ * 卡片画幅：natural（资产页瀑布流）按素材真实宽高，用内联 aspect-ratio；否则沿用固定画幅（画布资产库弹框）。
+ * 返回 className 和 style，两者只会给一个。
+ */
+const frameOf = (asset: AssetDto, natural?: boolean) =>
+  natural
+    ? { className: "rounded-2xl", style: { aspectRatio: assetAspect(asset) } }
+    : { className: aspectOf(asset.kind), style: undefined };
 
 /** 卡片外框共用的类：封面底色、圆角、聚焦描边 */
 const CARD_FRAME = "group/card bg-muted relative min-w-0 overflow-hidden rounded-xl";
@@ -137,6 +147,7 @@ const CHIP =
  * @param onAddToLibrary 菜单里的「加入资产库…」，已在库里时不出现
  * @param onOpenCanvas 菜单里的「在画布中打开」，来源画布存在时才可点
  * @param select 选择模式：给了就变成可勾选的卡片，预览与 ⋯ 菜单都收起（此时上面三个回调可省略）
+ * @param natural 按素材真实画幅显示（资产页瀑布流）
  */
 export function HistoryAssetCard({
   item,
@@ -144,8 +155,10 @@ export function HistoryAssetCard({
   onAddToLibrary,
   onOpenCanvas,
   select,
+  natural,
 }: {
   item: GeneratedItemDto;
+  natural?: boolean;
   onPreview?: () => void;
   onAddToLibrary?: () => void;
   onOpenCanvas?: (canvasId: string) => void;
@@ -162,7 +175,8 @@ export function HistoryAssetCard({
       data-in-library={inLibrary || undefined}
       {...selectAttrs(select)}
       whileTap={select?.disabled ? undefined : TAP_CARD}
-      className={cn(CARD_FRAME, aspectOf(asset.kind), selectFrame(select))}
+      className={cn(CARD_FRAME, frameOf(asset, natural).className, selectFrame(select))}
+      style={frameOf(asset, natural).style}
     >
       <AssetCover asset={asset} />
       <button
@@ -230,6 +244,7 @@ export function HistoryAssetCard({
  * @param onMove 菜单里的「移动到…」
  * @param onRemove 菜单里的「移出资产库」
  * @param select 选择模式：给了就变成可勾选的卡片，预览与 ⋯ 菜单都收起（此时上面三个回调可省略）
+ * @param natural 按素材真实画幅显示（资产页瀑布流）
  */
 export function LibraryAssetCard({
   item,
@@ -237,8 +252,10 @@ export function LibraryAssetCard({
   onMove,
   onRemove,
   select,
+  natural,
 }: {
   item: LibraryItemDto;
+  natural?: boolean;
   onPreview?: () => void;
   onMove?: () => void;
   onRemove?: () => void;
@@ -253,7 +270,8 @@ export function LibraryAssetCard({
       data-slot="library-card"
       {...selectAttrs(select)}
       whileTap={select?.disabled ? undefined : TAP_CARD}
-      className={cn(CARD_FRAME, aspectOf(asset.kind), selectFrame(select))}
+      className={cn(CARD_FRAME, frameOf(asset, natural).className, selectFrame(select))}
+      style={frameOf(asset, natural).style}
     >
       <AssetCover asset={asset} />
       <button

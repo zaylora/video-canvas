@@ -21,9 +21,9 @@ describe("侧栏列表骨架屏", () => {
 
   test("行高和缩略图尺寸与真实列表项一致，切换时不跳动", () => {
     const out = html(1);
-    expect(out).toContain("h-9");
-    expect(out).toContain("size-6");
-    expect(out).toContain("rounded-[7px]");
+    expect(out).toContain("h-10");
+    expect(out).toContain("size-5");
+    expect(out).toContain("rounded-full");
   });
 
   test("标题条宽度错开，不是整齐的一排", () => {
