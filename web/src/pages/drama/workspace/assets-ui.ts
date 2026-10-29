@@ -9,7 +9,6 @@ export type AssetsUi = {
   view: "list" | "canvas";
   setView: (view: "list" | "canvas") => void;
   filter: EpisodeFilter;
-  setFilter: (filter: EpisodeFilter) => void;
   type: AssetType;
   setType: (type: AssetType) => void;
   /** 列表的多选模式 */
@@ -21,6 +20,8 @@ export type AssetsUi = {
   commands: RefObject<CanvasEditorCommands | null>;
   /** 从列表新建节点前设置：新节点要带的短剧元数据（null = 未分类）；传 null 清除设置，之后新建的按默认「全集」 */
   setNewDrama: (pending: { drama: NodeDrama | null } | null) => void;
+  /** 顶栏「全部生成」的位置；列表中的按钮从编辑器内透传过来，沿用实时节点数据 */
+  generateAllTarget: HTMLDivElement | null;
 };
 
 export const AssetsUiContext = createContext<AssetsUi | null>(null);

@@ -1,5 +1,5 @@
 import { submitConversationRecord } from "@/api/conversation";
-import { generateSegment, keyframeSegment } from "@/api/drama";
+import { generateSegment } from "@/api/drama";
 import type { SegmentGenerateBody } from "@/api/drama/type";
 import type {
   SubmitRecordRequest,
@@ -57,21 +57,17 @@ export async function submitCanvasTasks(data: CreateTaskRequest): Promise<Create
 }
 
 /**
- * 提交短剧片段的生成任务：kind = video 走片段视频（node_id = seg:{sid}），image 走首帧图（segkf:{sid}），
- * 任务由后端建在短剧画布下。幂等键与重试、快照入库、刷新余额和画布节点一样走这里。
- * 请求失败会抛错，由调用方就地提示。
- * @param kind video 或 image
+ * 提交短剧片段的视频生成任务（node_id = seg:{sid}），任务由后端建在短剧画布下。
+ * 幂等键与重试、快照入库、刷新余额和画布节点一样走这里。请求失败会抛错，由调用方就地提示。
  * @param sid 片段 id
  * @param body 模型与按 capabilities 组装好的 input
  * @returns 任务快照
  */
-export async function submitSegmentTask(
-  kind: "video" | "image",
-  sid: string,
-  body: SegmentGenerateBody,
-): Promise<TaskView> {
-  const send = kind === "video" ? generateSegment : keyframeSegment;
-  const { task } = await submitWithRetry((key) => send(sid, body, key), crypto.randomUUID());
+export async function submitSegmentTask(sid: string, body: SegmentGenerateBody): Promise<TaskView> {
+  const { task } = await submitWithRetry(
+    (key) => generateSegment(sid, body, key),
+    crypto.randomUUID(),
+  );
   acceptTasks([task]);
   return task;
 }

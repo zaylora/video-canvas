@@ -1,5 +1,7 @@
 import type { DramaJob, DramaStep } from "@/api/drama/type";
 
+import type { WorkspaceStage } from "./stages";
+
 /** 排队中或进行中 */
 export const isActiveJob = (job: Pick<DramaJob, "status">): boolean =>
   job.status === "queued" || job.status === "running";
@@ -95,4 +97,67 @@ export function busyReason(jobs: readonly DramaJob[]): string | null {
   const running = jobs.find(isActiveJob);
   if (!running) return null;
   return `有进行中的任务：${jobTitle(running)}`;
+}
+
+const RUNNING_TEXT: Record<DramaStep, string> = {
+  analyze: "正在研读剧本…",
+  outline: "正在整理故事大纲与人物…",
+  scripts: "正在生成分集剧本…",
+  breakdown: "正在拆解剧本资产…",
+  asset_prompts: "正在写资产提示词…",
+  storyboard: "正在生成分镜脚本…",
+  compose: "正在合成整集…",
+};
+
+/** 进行中的话术，如「正在拆解剧本资产…」 */
+export const jobRunningText = (step: DramaStep): string => RUNNING_TEXT[step];
+
+const STEP_STAGE: Record<DramaStep, WorkspaceStage> = {
+  analyze: "script",
+  outline: "script",
+  scripts: "script",
+  breakdown: "assets",
+  asset_prompts: "assets",
+  storyboard: "studio",
+  compose: "final",
+};
+
+/** 任务提交后用户该看哪道工序页 */
+export const jobStage = (step: DramaStep): WorkspaceStage => STEP_STAGE[step];
+
+/** 正在给第 no 集生成分镜的任务（排队或进行中）；没有为 undefined */
+export function activeStoryboardJob(jobs: readonly DramaJob[], no: number): DramaJob | undefined {
+  return jobs.find(
+    (job) => job.step === "storyboard" && isActiveJob(job) && job.episodes.includes(no),
+  );
+}
+
+/** 页面此刻自己在显示哪些任务的进度 */
+export type InPlaceView = {
+  /** 剧本页正开着整页研读视图 */
+  analyzingView: boolean;
+  /** 正在看这一集的片场（分镜还没好时那里显示生成进度）；不在片场为 null */
+  storyboardEp: number | null;
+};
+
+/**
+ * 这条任务的进度页面里已经就地显示了，顶部进度条不再重复：
+ * 研读视图里的研读 / 大纲，片场里当前集的分镜。只管进行中的，失败照常进顶部（带原因和重试）。
+ */
+export function coveredInPlace(job: DramaJob, view: InPlaceView): boolean {
+  if (!isActiveJob(job)) return false;
+  if (view.analyzingView && (job.step === "analyze" || job.step === "outline")) return true;
+  return (
+    view.storyboardEp !== null &&
+    job.step === "storyboard" &&
+    job.episodes.includes(view.storyboardEp)
+  );
+}
+
+/** 页内进度条要显示的任务：全部进行中的；没有进行中时，最新一条若失败也显示（带重试） */
+export function bannerJobs(jobs: readonly DramaJob[]): DramaJob[] {
+  const active = jobs.filter(isActiveJob);
+  if (active.length > 0) return active;
+  const newest = [...jobs].sort(byCreatedDesc)[0];
+  return newest?.status === "failed" ? [newest] : [];
 }

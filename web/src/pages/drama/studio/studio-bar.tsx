@@ -1,14 +1,15 @@
-import { CloudAlert, CloudCheck, Loader2, MonitorPlay, RotateCw } from "lucide-react";
+import { CloudAlert, CloudCheck, Loader2, MonitorPlay, RotateCw, Timer } from "lucide-react";
 
 import { ChipPopover, MenuLabel } from "@/components/drama/pickers";
-import { VideoModelMenu } from "@/components/drama/video-model-menu";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useDramaJobsStore } from "@/store/drama";
 import { busyReason } from "@/utils/drama/jobs";
+import { modelMaxSeconds } from "@/utils/drama/video-models";
 import { matchOption, paramEntries } from "@/utils/tasks/capabilities";
 
 import { useStoryboardStart } from "../workspace/storyboard-start";
+import { GenerateControls } from "./generate-controls";
 import type { SaveSummary } from "../workspace/use-workspace";
 import { useStudio } from "./use-studio";
 
@@ -67,10 +68,51 @@ function ResolutionChip() {
   );
 }
 
+const SECOND_CHOICES = [3, 4, 5, 6, 8, 10, 12, 15, 20, 30];
+
+/** 当前片段的时长：选项不超过所选模型的时长上限，当前值总在里面；没有选中片段时不显示 */
+function SecondsChip() {
+  const { selected, actions, video } = useStudio();
+  if (!selected) return null;
+  const max = modelMaxSeconds(video.model?.capabilities) ?? 15;
+  const options = [...new Set([...SECOND_CHOICES.filter((s) => s <= max), selected.seconds])].sort(
+    (a, b) => a - b,
+  );
+  return (
+    <ChipPopover
+      variant="bar"
+      icon={<Timer />}
+      label={`${selected.seconds}s`}
+      title={`片段时长 · 模型上限 ${max}s`}
+      width="w-40"
+    >
+      {(close) =>
+        options.map((seconds) => (
+          <button
+            key={seconds}
+            type="button"
+            onClick={() => {
+              close();
+              void actions.setSeconds(selected, seconds);
+            }}
+            className={cn(
+              "hover:bg-muted focus-visible:ring-ring/50 flex min-h-8 items-center rounded-md px-2 text-left text-sm tabular-nums outline-none focus-visible:ring-2",
+              seconds === selected.seconds && "bg-muted font-medium",
+              seconds > max && "text-status-warning",
+            )}
+          >
+            {seconds}s{seconds > max && <span className="ml-auto text-[11px]">超出模型上限</span>}
+          </button>
+        ))
+      }
+    </ChipPopover>
+  );
+}
+
 const NO_JOBS: never[] = [];
 
 /**
- * 片场顶部条：集名、保存状态，右边是视频模型、分辨率、比例和「重新生成分镜脚本」。
+ * 片场顶部条：集名、保存状态，右边是当前片段时长、分辨率、比例、「重新生成分镜脚本」，最右是视频模型和「立即生成」。
  * 合成整集挪到了「成片」页；这里只管把片段做出来。
  */
 export function StudioBar() {
@@ -96,12 +138,7 @@ export function StudioBar() {
       </span>
       <span className="flex-1" />
       <div className="flex items-center gap-0.5 max-md:hidden">
-        <VideoModelMenu
-          models={video.models}
-          loading={video.status === "idle" || video.status === "loading"}
-          model={video.model}
-          onPick={video.setModel}
-        />
+        <SecondsChip />
         <ResolutionChip />
         <span className="text-muted-foreground px-2 font-mono text-xs">
           {drama.ratio || "比例未定"}
@@ -117,6 +154,7 @@ export function StudioBar() {
       >
         {starter.pending === no ? <Loader2 className="animate-spin" /> : <RotateCw />}
       </Button>
+      <GenerateControls />
     </div>
   );
 }

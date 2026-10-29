@@ -1,9 +1,18 @@
+import { useState } from "react";
 import { motion } from "motion/react";
-import { Lock } from "lucide-react";
+import { Loader2, Lock, Plus, ScrollText, Users } from "lucide-react";
+import { toast } from "sonner";
 
+import { addEpisode } from "@/api/drama";
+import { dramaErrorMessage } from "@/api/drama/errors";
 import { SPRING } from "@/lib/motion";
 import { cn } from "@/lib/utils";
-import { episodePips, type PipState, type WorkspaceStage } from "@/utils/drama/stages";
+import {
+  episodePips,
+  type PipState,
+  type ScriptDoc,
+  type WorkspaceStage,
+} from "@/utils/drama/stages";
 
 import { useWorkspace } from "./context";
 
@@ -27,18 +36,39 @@ function Pips({ states }: { states: readonly PipState[] }) {
 
 /**
  * 左侧分集栏：每集一个编号 + 四格进度，锁定集带小锁。
- * 「当前是哪一集」在所有工序间共用；资产区多一个「全集」用来取消按集筛选。
+ * 「当前是哪一集」在所有工序间共用；资产区多一个「全集」用来取消按集筛选；
+ * 剧本页顶上多「大纲」「人物」两项（研读先出大纲，再按集拆分，所以排在第 1 集前面）。
  */
 export function EpisodeRail({
   stage,
   ep,
+  doc = null,
   onPick,
+  onDoc,
 }: {
   stage: WorkspaceStage;
   ep: number;
+  /** 剧本页打开的项目文档；打开时分集都不高亮 */
+  doc?: ScriptDoc | null;
   onPick: (ep: number) => void;
+  onDoc?: (doc: ScriptDoc) => void;
 }) {
-  const { drama } = useWorkspace();
+  const { drama, refresh } = useWorkspace();
+  const [adding, setAdding] = useState(false);
+  const addOne = async () => {
+    setAdding(true);
+    try {
+      const created = await addEpisode(drama.id, { title: "新的一集" });
+      toast.success(`已新增第 ${created.no} 集，可以直接手写剧本`);
+      // 分集栏读自详情：先拉一次，新集出现后再切过去，否则集号会被当成无效回落
+      await refresh();
+      onPick(created.no);
+    } catch (e) {
+      toast.error(dramaErrorMessage(e, "新增失败，请稍后重试"));
+    } finally {
+      setAdding(false);
+    }
+  };
   const item =
     "focus-visible:ring-ring/50 relative flex w-full flex-col items-center gap-1.5 rounded-xl py-2 outline-none transition-colors focus-visible:ring-2";
   return (
@@ -49,6 +79,23 @@ export function EpisodeRail({
       <div className="text-muted-foreground py-1 text-center font-mono text-[10.5px] tracking-[0.12em]">
         {stage === "assets" ? "筛选" : "分集"}
       </div>
+      {stage === "script" && onDoc && (
+        <>
+          {PROJECT_DOCS.map(({ key, label, title, icon: Icon }) => (
+            <RailItem
+              key={key}
+              active={doc === key}
+              className={item}
+              label={title}
+              onClick={() => onDoc(key)}
+            >
+              <Icon className="size-4" aria-hidden />
+              <span className="text-[11px] leading-none">{label}</span>
+            </RailItem>
+          ))}
+          <div aria-hidden className="bg-border mx-2 my-1 h-px" />
+        </>
+      )}
       {stage === "assets" && (
         <RailItem active={ep === 0} className={item} label="全集" onClick={() => onPick(0)}>
           <span className="text-[13px] font-semibold">全集</span>
@@ -58,38 +105,61 @@ export function EpisodeRail({
       {drama.episodes.map((episode) => (
         <RailItem
           key={episode.no}
-          active={ep === episode.no}
+          active={!doc && ep === episode.no}
           className={item}
           label={`第 ${episode.no} 集 · ${episode.title}`}
           onClick={() => onPick(episode.no)}
+          corner={
+            episode.locked && (
+              <Lock
+                aria-hidden
+                className="text-muted-foreground absolute top-1.5 right-1.5 size-2.5"
+              />
+            )
+          }
         >
-          {episode.locked && (
-            <Lock
-              aria-hidden
-              className="text-muted-foreground absolute top-1.5 right-1.5 size-2.5"
-            />
-          )}
           <span className="font-mono text-[15px] leading-none font-semibold tracking-tight">
             {String(episode.no).padStart(2, "0")}
           </span>
           <Pips states={episodePips(episode)} />
         </RailItem>
       ))}
+      {stage === "script" && drama.episodes.length > 0 && (
+        <button
+          type="button"
+          aria-label="新增一集"
+          title="新增一集"
+          disabled={adding}
+          onClick={() => void addOne()}
+          className="text-muted-foreground hover:bg-muted/60 hover:text-foreground focus-visible:ring-ring/50 flex w-full flex-col items-center gap-1 rounded-xl py-2 text-[11px] outline-none focus-visible:ring-2 disabled:opacity-50"
+        >
+          {adding ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
+          新增一集
+        </button>
+      )}
     </nav>
   );
 }
+
+const PROJECT_DOCS = [
+  { key: "outline", label: "大纲", title: "故事大纲", icon: ScrollText },
+  { key: "characters", label: "人物", title: "人物传记", icon: Users },
+] as const;
 
 function RailItem({
   active,
   className,
   label,
   onClick,
+  corner,
   children,
 }: {
   active: boolean;
   className: string;
   label: string;
   onClick: () => void;
+  /** 挂在按钮角上的标记（如锁定集的小锁）：相对整个按钮定位，不进内容层，免得压住集号 */
+  corner?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
@@ -121,6 +191,7 @@ function RailItem({
         </>
       )}
       <span className="relative flex flex-col items-center gap-1.5">{children}</span>
+      {corner}
     </button>
   );
 }

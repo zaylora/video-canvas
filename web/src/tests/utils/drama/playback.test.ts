@@ -24,8 +24,6 @@ const seg = (
   seq,
   seconds,
   prompt: "",
-  shots: [],
-  keyframe: null,
   takes: url
     ? [
         {

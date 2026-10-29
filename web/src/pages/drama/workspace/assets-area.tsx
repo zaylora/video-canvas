@@ -1,22 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ReactFlowProvider } from "@xyflow/react";
-import {
-  ChevronDown,
-  Filter,
-  Frame,
-  LayoutGrid,
-  ListChecks,
-  Loader2,
-  ScanSearch,
-} from "lucide-react";
+import { Frame, LayoutGrid, Loader2 } from "lucide-react";
 
 import { getCanvas } from "@/api/canvas";
 import { listSegments } from "@/api/drama";
 import { confirm } from "@/components/admin-ui/confirm-dialog";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CanvasEditor } from "@/components/canvas-editor/canvas-editor";
 import type { CanvasEditorCommands } from "@/components/canvas-editor/editor-api";
-import { Button } from "@/components/ui/button";
 import { useCanvasLock } from "@/hooks/use-canvas-lock";
 import { cn } from "@/lib/utils";
 import { buildAddNodeItems } from "@/pages/canvas/chrome/add-node-items";
@@ -24,7 +14,6 @@ import type { CanvasNode, CanvasNodeData, FlowNode, NodeDrama, NodeKind } from "
 import { draftStore } from "@/utils/canvas/draft-idb";
 import { loadCanvasForEditing, type OpenedCanvas } from "@/utils/canvas/open-canvas";
 import { defaultDramaForNew, type AssetType, type EpisodeFilter } from "@/utils/drama/assets";
-import { busyReason } from "@/utils/drama/jobs";
 import { referenceWarning } from "@/utils/drama/segment-assets";
 import { getCurrentUserId } from "@/utils/storage/user-id";
 
@@ -50,68 +39,6 @@ const copyOpenPath = () => null;
 
 /** 编辑器插槽里的元素放在模块顶层，引用不变，页面重渲染时不会牵动编辑器 */
 const overlay = <AssetsOverlay />;
-
-/** 集数筛选浮层：全集 / 第 N 集 / 未分类 */
-function FilterButton({
-  filter,
-  onChange,
-}: {
-  filter: EpisodeFilter;
-  onChange: (filter: EpisodeFilter) => void;
-}) {
-  const { drama } = useWorkspace();
-  const [open, setOpen] = useState(false);
-  const label =
-    filter.kind === "all" ? "全集" : filter.kind === "none" ? "未分类" : `第 ${filter.no} 集`;
-  const row = (active: boolean) =>
-    cn(
-      "hover:bg-muted focus-visible:ring-ring/50 flex min-h-8 items-center gap-2 rounded-md px-2 text-left text-sm outline-none focus-visible:ring-2",
-      active && "bg-muted font-medium",
-    );
-  const pick = (next: EpisodeFilter) => {
-    onChange(next);
-    setOpen(false);
-  };
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger className="hover:bg-muted focus-visible:ring-ring/50 inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[13px] outline-none focus-visible:ring-2 [&_svg]:size-4">
-        <Filter />
-        {label}
-        <ChevronDown className="opacity-50" />
-      </PopoverTrigger>
-      <PopoverContent align="end" sideOffset={6} className="w-64 gap-1">
-        <button
-          type="button"
-          className={row(filter.kind === "all")}
-          onClick={() => pick({ kind: "all" })}
-        >
-          全集
-        </button>
-        <div className="text-muted-foreground px-1.5 pt-1 text-xs">按集</div>
-        <div className="grid grid-cols-3 gap-0.5">
-          {drama.episodes.map((ep) => (
-            <button
-              key={ep.no}
-              type="button"
-              className={cn(row(filter.kind === "episode" && filter.no === ep.no), "tabular-nums")}
-              onClick={() => pick({ kind: "episode", no: ep.no })}
-            >
-              第 {ep.no} 集
-            </button>
-          ))}
-        </div>
-        <button
-          type="button"
-          className={row(filter.kind === "none")}
-          onClick={() => pick({ kind: "none" })}
-        >
-          未分类
-          <span className="text-muted-foreground ml-auto text-xs">画布里随手建的</span>
-        </button>
-      </PopoverContent>
-    </Popover>
-  );
-}
 
 /** 画布区：加载短剧专属画布，用可复用的编辑器组装 */
 function DramaCanvas({
@@ -224,32 +151,20 @@ function DramaCanvas({
 }
 
 /**
- * 资产区：顶部是「列表 ⇄ 画布」切换、集数筛选、多选、资产拆解；下面是短剧专属画布（一直挂着），
- * 列表视图盖在画布上，读的是画布里同一份节点数据。
+ * 资产区：顶部是「列表 ⇄ 画布」切换和全部生成；左侧分集栏选中的集驱动筛选（0 = 全集）。
+ * 列表视图盖在短剧专属画布上，读的是画布里同一份节点数据。
  */
-export function AssetsArea({
-  ep,
-  onBreakdownOpen,
-}: {
-  /** 左侧分集栏当前选中的集；0 = 全集 */
-  ep: number;
-  onBreakdownOpen: () => void;
-}) {
-  const { drama, jobs } = useWorkspace();
+export function AssetsArea({ ep }: { ep: number }) {
   const [view, setView] = useState<"list" | "canvas">("list");
-  const [filter, setFilter] = useState<EpisodeFilter>(
-    ep === 0 ? { kind: "all" } : { kind: "episode", no: ep },
+  const filter = useMemo<EpisodeFilter>(
+    () => (ep === 0 ? { kind: "all" } : { kind: "episode", no: ep }),
+    [ep],
   );
-  // 分集栏换了集，筛选跟着换（顶部的「未分类」筛选只在栏没动时保留）
-  const [seenEp, setSeenEp] = useState(ep);
-  if (seenEp !== ep) {
-    setSeenEp(ep);
-    setFilter(ep === 0 ? { kind: "all" } : { kind: "episode", no: ep });
-  }
   const [type, setType] = useState<AssetType>("character");
   const [multi, setMulti] = useState(false);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const commands = useRef<CanvasEditorCommands | null>(null);
+  const [generateAllTarget, setGenerateAllTarget] = useState<HTMLDivElement | null>(null);
   const newDrama = useRef<{ drama: NodeDrama | null } | null>(null);
   const setNewDrama = useCallback((pending: { drama: NodeDrama | null } | null) => {
     newDrama.current = pending;
@@ -264,7 +179,6 @@ export function AssetsArea({
         setSelected(new Set());
       },
       filter,
-      setFilter,
       type,
       setType,
       multi,
@@ -276,11 +190,12 @@ export function AssetsArea({
       setSelected,
       commands,
       setNewDrama,
+      generateAllTarget,
     }),
-    [filter, multi, selected, setNewDrama, type, view],
+    [filter, generateAllTarget, multi, selected, setNewDrama, type, view],
   );
 
-  /** 新建节点默认「全集」；从列表新建时按列表当前的类型 / 筛选归类（未分类筛选下就是未分类） */
+  /** 新建节点默认「全集」；从列表新建时按列表当前的类型 / 集数归类 */
   const onNodeCreate = useCallback((node: CanvasNode): CanvasNode => {
     const pending = newDrama.current;
     if (pending) {
@@ -289,8 +204,6 @@ export function AssetsArea({
     }
     return { ...node, data: { ...node.data, drama: defaultDramaForNew(node.data) } };
   }, []);
-
-  const breakdownBlocked = busyReason(jobs);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -319,29 +232,8 @@ export function AssetsArea({
             </button>
           ))}
         </div>
-        <span className="text-muted-foreground text-xs max-md:hidden">同一份资产，两种看法</span>
         <span className="flex-1" />
-        <FilterButton filter={filter} onChange={setFilter} />
-        {view === "list" && (
-          <Button
-            variant={multi ? "default" : "outline"}
-            size="sm"
-            onClick={() => ui.setMulti(!multi)}
-          >
-            <ListChecks />
-            {multi ? "完成" : "多选"}
-          </Button>
-        )}
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={!!breakdownBlocked || drama.episodes.length === 0}
-          title={breakdownBlocked ?? (drama.episodes.length === 0 ? "还没有分集" : undefined)}
-          onClick={onBreakdownOpen}
-        >
-          <ScanSearch />
-          资产拆解
-        </Button>
+        <div ref={setGenerateAllTarget} className="flex items-center" />
       </div>
       <div className="relative min-h-0 flex-1">
         {/* 绝对定位铺满：编辑器的 h-full 才有确定的高度可依 */}

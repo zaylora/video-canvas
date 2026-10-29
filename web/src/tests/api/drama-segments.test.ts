@@ -4,7 +4,6 @@ import {
   addSegment,
   deleteSegment,
   generateSegment,
-  keyframeSegment,
   listSegments,
   mapEpisodeSummary,
   mapSegment,
@@ -34,11 +33,6 @@ const rawSegment = (patch: Partial<BackendSegmentView> = {}): BackendSegmentView
   seq: 0,
   seconds: 12,
   prompt: "本片段场景设定在 @[山村街道](n_abc)。",
-  shots: [
-    { seconds: 8, shot_size: "全景", camera: "平视固定", action: "跑回村中", dialogue: "" },
-    { seconds: 4, shot_size: "中景", camera: "缓推", action: "望向门窗", dialogue: "谁？" },
-  ],
-  keyframe: null,
   takes: [
     {
       task_id: "123",
@@ -74,33 +68,23 @@ describe("api/drama：片段 mapper（契约 §9）", () => {
       status: "done",
       revision: 1,
     });
-    expect(seg.shots[0]).toEqual({
-      seconds: 8,
-      shotSize: "全景",
-      camera: "平视固定",
-      action: "跑回村中",
-      dialogue: "",
-    });
+    // 片段不再带分镜表
+    expect(seg).not.toHaveProperty("shots");
     expect(seg.takes[0].asset?.url).toBe("https://cdn/9.mp4");
     expect(seg.takes[0].asset?.id).toBe("9");
     expect(seg.takes[1]).toMatchObject({ taskId: "124", status: "failed", asset: null });
     expect(seg.takes[1].errorMessage).toBe("内容审核未通过");
-    expect(seg.keyframe).toBeNull();
   });
 
-  test("shots / takes 为 null、首帧存在、task_id 是数字时兜底", () => {
+  test("takes 为 null、task_id 是数字时兜底", () => {
     const seg = mapSegment(
       rawSegment({
-        shots: null,
         takes: null,
-        keyframe: rawAsset(3, "https://cdn/3.png"),
         chosen_task_id: undefined as unknown as string,
       }),
     );
-    expect(seg.shots).toEqual([]);
     expect(seg.takes).toEqual([]);
     expect(seg.chosenTaskId).toBe("");
-    expect(seg.keyframe?.id).toBe("3");
     const num = mapSegment(
       rawSegment({
         takes: [
@@ -228,7 +212,7 @@ describe("api/drama：片段请求", () => {
     expect(list.map((s) => s.id)).toEqual(["b", "a"]);
   });
 
-  test("generate / keyframe：带幂等键，返回任务快照", async () => {
+  test("generate：带幂等键，返回任务快照", async () => {
     post.mockResolvedValue({ task: { id: "1", status: "pending" } });
     const body = { model_id: "veo", input: { prompt: "x" } };
     const result = await generateSegment("5d2a", body, "key-1");
@@ -236,7 +220,5 @@ describe("api/drama：片段请求", () => {
     expect(post.mock.calls[0][1]).toEqual(body);
     expect(post.mock.calls[0][2]).toMatchObject({ headers: { "Idempotency-Key": "key-1" } });
     expect(result.task.id).toBe("1");
-    await keyframeSegment("5d2a", body, "key-2");
-    expect(post.mock.calls[1][0]).toBe("/drama-segments/5d2a/keyframe");
   });
 });

@@ -132,7 +132,7 @@ describe("isFreshTerminalTransition：只在刚进入终态时提醒", () => {
   });
 });
 
-describe("planTaskToast：短剧片段任务（seg: / segkf: 前缀）", () => {
+describe("planTaskToast：短剧片段任务（seg: 前缀）", () => {
   test("正在片段工作区时不弹：片段自己会变", () => {
     const view = succeeded({ node_id: "seg:5d2a", canvas_id: "10" });
     expect(planTaskToast(view, null, "短剧画布", "/drama/1a2b/ep/1")).toBeNull();
@@ -146,7 +146,7 @@ describe("planTaskToast：短剧片段任务（seg: / segkf: 前缀）", () => {
     expect(planTaskToast(view, null, "短剧画布", "/drama/1a2b")).not.toBeNull();
   });
 
-  test("在别处：不带画布名、没有跳转（短剧画布不是普通画布），区分片段视频与首帧", () => {
+  test("在别处：不带画布名、没有跳转（短剧画布不是普通画布）", () => {
     const video = planTaskToast(
       succeeded({ node_id: "seg:5d2a", canvas_id: "10" }),
       null,
@@ -155,14 +155,14 @@ describe("planTaskToast：短剧片段任务（seg: / segkf: 前缀）", () => {
     );
     expect(video).toMatchObject({ tone: "success", title: "片段视频已生成" });
     expect(video?.href).toBeUndefined();
-    const frame = planTaskToast(
-      makeTask({ status: "failed", node_id: "segkf:5d2a", kind: "image", error_message: "审核" }),
+    const failed = planTaskToast(
+      makeTask({ status: "failed", node_id: "seg:5d2a", kind: "video", error_message: "审核" }),
       null,
       "短剧画布",
       "/",
     );
-    expect(frame).toMatchObject({ tone: "error", title: "片段首帧生成失败" });
-    expect(frame?.description).toContain("积分已退回");
-    expect(frame?.href).toBeUndefined();
+    expect(failed).toMatchObject({ tone: "error", title: "片段视频生成失败" });
+    expect(failed?.description).toContain("积分已退回");
+    expect(failed?.href).toBeUndefined();
   });
 });

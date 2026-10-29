@@ -9,7 +9,7 @@ export type WorkspaceStage = "overview" | "script" | "assets" | "studio" | "fina
 export const STAGES: readonly { key: WorkspaceStage; label: string }[] = [
   { key: "overview", label: "总览" },
   { key: "script", label: "剧本" },
-  { key: "assets", label: "角色与场景" },
+  { key: "assets", label: "资产管理" },
   { key: "studio", label: "片场" },
   { key: "final", label: "成片" },
 ];
@@ -21,6 +21,33 @@ export const STAGES: readonly { key: WorkspaceStage; label: string }[] = [
 export function parseStage(raw: string | null): WorkspaceStage {
   if (raw === "episodes") return "studio";
   return STAGES.find((stage) => stage.key === raw)?.key ?? "overview";
+}
+
+/**
+ * 地址栏 ?area= 没写时落在哪：刚提交、大纲和分集都还没有就进剧本页，
+ * 在大纲里看研读进度（研读第一步产出的就是大纲）；其余回到总览。写了就照写的解析。
+ */
+export function resolveStage(
+  raw: string | null,
+  drama: { outlineMd: string; episodeCount: number },
+): WorkspaceStage {
+  if (raw !== null) return parseStage(raw);
+  return !drama.outlineMd && drama.episodeCount === 0 ? "script" : "overview";
+}
+
+/** 剧本页里的项目文档：故事大纲、人物传记（随短剧一起保存，不属于哪一集） */
+export type ScriptDoc = "outline" | "characters";
+
+/** 地址栏 ?doc= 里表示「看当前集剧本」的取值：只有明确选了某一集才写它 */
+export const EPISODE_DOC = "episode";
+
+/**
+ * 读地址栏 ?doc=：写了大纲 / 人物传记就打开它；明确选了某一集（doc=episode）且有分集时看分集剧本（返回 null）；
+ * 其余——切到剧本页、研读完成后——都默认打开大纲。
+ */
+export function parseScriptDoc(raw: string | null, episodeCount: number): ScriptDoc | null {
+  if (raw === "outline" || raw === "characters") return raw;
+  return raw === EPISODE_DOC && episodeCount > 0 ? null : "outline";
 }
 
 /** 分集栏小进度条一格的状态：off 未开始，run 进行中，part 做了一部分（或已过期），on 完成 */

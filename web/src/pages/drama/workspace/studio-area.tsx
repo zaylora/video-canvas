@@ -3,11 +3,13 @@ import { Clapperboard, Lock, ScrollText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useDramaVideoModel } from "@/hooks/use-drama-video-model";
 import { episodeCardView } from "@/utils/drama/episode-cards";
-import { busyReason } from "@/utils/drama/jobs";
+import type { DramaJob } from "@/api/drama/type";
+import { activeStoryboardJob, busyReason } from "@/utils/drama/jobs";
 import type { WorkspaceStage } from "@/utils/drama/stages";
 
 import { StudioView } from "../studio/view";
 import { useWorkspace } from "./context";
+import { JobProgressBar, useCancelJob } from "./job-bar";
 import { StoryboardButton, useStoryboardStart } from "./storyboard-start";
 
 /** 前置工序没做完时的引导：一个图标、一句话、一个按钮 */
@@ -19,7 +21,8 @@ function Gate({
 }: {
   icon: React.ReactNode;
   title: string;
-  text: string;
+  /** 标题下的说明；不给就不显示 */
+  text?: string;
   children?: React.ReactNode;
 }) {
   return (
@@ -28,8 +31,30 @@ function Gate({
         {icon}
       </span>
       <h3 className="text-[17px] font-semibold">{title}</h3>
-      <p className="text-muted-foreground max-w-[44ch] text-[13px]">{text}</p>
+      {text && <p className="text-muted-foreground max-w-[44ch] text-[13px]">{text}</p>}
       {children}
+    </div>
+  );
+}
+
+/**
+ * 分镜生成中的就地进度：进度条、百分比（排队时写「排队中」）和取消。顶部进度条这时不再重复显示这条任务。
+ * 任务列表还没拉到（刚刷新）时只占位，不显示假进度。
+ */
+function StoryboardProgress({ job }: { job: DramaJob | undefined }) {
+  const { busy, cancel } = useCancelJob(job);
+  if (!job) return null;
+  return (
+    <div role="status" className="mt-2 grid w-64 gap-2">
+      <JobProgressBar progress={job.progress} />
+      <div className="text-muted-foreground flex items-center justify-between text-xs">
+        <span className="tabular-nums">
+          {job.status === "queued" ? "排队中" : `${job.progress}%`}
+        </span>
+        <Button variant="ghost" size="xs" disabled={busy} onClick={() => void cancel()}>
+          取消
+        </Button>
+      </div>
     </div>
   );
 }
@@ -96,17 +121,14 @@ export function StudioArea({
       <Gate
         icon={<Clapperboard className="animate-pulse motion-reduce:animate-none" />}
         title={`正在生成第 ${episode.no} 集的分镜脚本…`}
-        text="把剧本拆成每段不超过模型时长上限的片段，通常一两分钟。完成后这里会自动出现片场。"
-      />
+      >
+        <StoryboardProgress job={activeStoryboardJob(jobs, episode.no)} />
+      </Gate>
     );
   }
 
   return (
-    <Gate
-      icon={<Clapperboard />}
-      title={`第 ${episode.no} 集还没有分镜`}
-      text="根据剧本把这一集拆成若干片段，镜头里会自动带上已拆解的角色、场景和道具。"
-    >
+    <Gate icon={<Clapperboard />} title={`第 ${episode.no} 集还没有分镜`}>
       <StoryboardButton
         episode={episode}
         label={action.label}

@@ -96,10 +96,10 @@ describe("资产分类：节点 -> 类型", () => {
 });
 
 describe("集数筛选与「全集 / 未分类」语义", () => {
-  test("全集筛选：所有已分类的都显示（含只出现在某几集的），未分类不显示", () => {
+  test("全集筛选：同时显示已分类与未分类资产，不让移除筛选入口后遗漏旧节点", () => {
     expect(matchesFilter([], { kind: "all" })).toBe(true);
     expect(matchesFilter([2], { kind: "all" })).toBe(true);
-    expect(matchesFilter(null, { kind: "all" })).toBe(false);
+    expect(matchesFilter(null, { kind: "all" })).toBe(true);
   });
 
   test("第 N 集：出现集数为空（全集）或包含 N", () => {
@@ -131,6 +131,7 @@ describe("集数筛选与「全集 / 未分类」语义", () => {
       "c1",
       "c2",
       "c3",
+      "x",
     ]);
     expect(filterAssets(items, "character", { kind: "none" }).map((i) => i.id)).toEqual(["x"]);
   });
@@ -149,7 +150,7 @@ describe("资产合并后的列表计数", () => {
       character: 2,
       scene: 1,
       prop: 1,
-      image: 0,
+      image: 1,
     });
     expect(countByType(items, { kind: "episode", no: 1 })).toMatchObject({
       character: 1,

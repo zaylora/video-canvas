@@ -101,21 +101,13 @@ export const mapStyles = (raw: BackendDramaStyles): DramaStyles => ({
   styles: raw.styles ?? [],
 });
 
-/** 片段（契约 §9.2）：shots / takes 可能为 null，task_id 兼容数字 */
+/** 片段（契约 §9.2）：takes 可能为 null，task_id 兼容数字 */
 export const mapSegment = (raw: BackendSegmentView): Segment => ({
   id: String(raw.id),
   episodeNo: raw.episode_no,
   seq: raw.seq,
   seconds: raw.seconds,
   prompt: raw.prompt ?? "",
-  shots: (raw.shots ?? []).map((shot) => ({
-    seconds: shot.seconds,
-    shotSize: shot.shot_size ?? "",
-    camera: shot.camera ?? "",
-    action: shot.action ?? "",
-    dialogue: shot.dialogue ?? "",
-  })),
-  keyframe: raw.keyframe ? mapAsset(raw.keyframe) : null,
   takes: (raw.takes ?? []).map((take) => ({
     taskId: String(take.task_id),
     status: take.status,
@@ -360,15 +352,5 @@ export const generateSegment = (
   idempotencyKey: string,
 ): Promise<SegmentGenerateResult> =>
   service.post<SegmentGenerateResult>(`/drama-segments/${sid}/generate`, body, {
-    headers: { "Idempotency-Key": idempotencyKey },
-  });
-
-/** 提交片段的首帧图生成（202） */
-export const keyframeSegment = (
-  sid: string,
-  body: SegmentGenerateBody,
-  idempotencyKey: string,
-): Promise<SegmentGenerateResult> =>
-  service.post<SegmentGenerateResult>(`/drama-segments/${sid}/keyframe`, body, {
     headers: { "Idempotency-Key": idempotencyKey },
   });

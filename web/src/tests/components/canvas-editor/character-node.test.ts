@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
 import type { CanvasNodeData, NodeCharacter } from "@/types";
-import { characterNodeView, voiceCell } from "@/utils/characters/node-view";
+import { DEFAULT_NODE_ASPECT } from "@/utils/canvas/node-frame";
+import { characterNodeAspect, characterNodeView, voiceCell } from "@/utils/characters/node-view";
 
 const character = (patch: Partial<NodeCharacter> = {}): NodeCharacter => ({
   name: "林晚",
@@ -56,6 +57,32 @@ describe("characterNodeView：角色卡节点的封面状态", () => {
 
   test("缺角色数据（异常数据）：按空节点处理，不抛错", () => {
     expect(characterNodeView(data({ character: undefined })).phase).toBe("empty");
+  });
+});
+
+describe("characterNodeAspect：角色卡节点框跟主图同比例，不再固定 3:4", () => {
+  test("主图量到了画幅：用主图的比例（三视图 16:9 就是横框）", () => {
+    expect(characterNodeAspect({ measured: 16 / 9, declared: 3 / 4, selected: 1 })).toBeCloseTo(
+      16 / 9,
+    );
+  });
+
+  test("主图还没量到：先用节点记下的主图画幅", () => {
+    expect(characterNodeAspect({ measured: null, declared: 9 / 16, selected: 16 / 9 })).toBeCloseTo(
+      9 / 16,
+    );
+  });
+
+  test("还没有主图：跟参数面板选的比例", () => {
+    expect(characterNodeAspect({ measured: null, declared: null, selected: 16 / 9 })).toBeCloseTo(
+      16 / 9,
+    );
+  });
+
+  test("什么都没有：和图片节点一样按 16:9", () => {
+    expect(characterNodeAspect({ measured: null, declared: null, selected: null })).toBe(
+      DEFAULT_NODE_ASPECT,
+    );
   });
 });
 

@@ -47,8 +47,8 @@ export function isFreshTerminalTransition(
 /** 首页生成的对话任务的 node_id 前缀（rec:{记录id}:{格子序号}），它们没有画布 */
 const CONVERSATION_NODE_PREFIX = "rec:";
 
-/** 短剧片段任务的 node_id 前缀：seg:{片段id} 是视频，segkf:{片段id} 是首帧图 */
-const SEGMENT_NODE_PREFIXES = ["seg:", "segkf:"] as const;
+/** 短剧片段任务的 node_id 前缀：seg:{片段id} 是片段视频 */
+const SEGMENT_NODE_PREFIXES = ["seg:"] as const;
 
 /**
  * 画布外的完成提示：用户正看着这张画布时节点自己会变，不弹；
@@ -132,7 +132,7 @@ function inStudio(location: string): boolean {
 /** 片段任务的提示：正在片场时片段自己会变，不弹；短剧画布不是普通画布，不带画布名也不跳转 */
 function planSegmentToast(view: TaskView, pathname: string): TaskToastPlan | null {
   if (inStudio(pathname)) return null;
-  const name = view.node_id.startsWith("segkf:") ? "片段首帧" : "片段视频";
+  const name = "片段视频";
   const id = `task:${taskKey(view.id)}`;
   switch (view.status) {
     case "succeeded":

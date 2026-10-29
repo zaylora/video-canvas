@@ -30,8 +30,6 @@ const seg = (id: string, seq: number, withVideo: boolean): Segment => ({
   seq,
   seconds: 10,
   prompt: "",
-  shots: [],
-  keyframe: null,
   takes: withVideo
     ? [
         {

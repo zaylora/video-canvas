@@ -1,5 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
-import { Hand, Plus, Search, Sparkles, WandSparkles } from "lucide-react";
+import { createPortal } from "react-dom";
+import { AnimatePresence, motion } from "motion/react";
+import { Hand, Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 
 import { ChromePill, ChromeZone } from "@/components/canvas/chrome/chrome";
@@ -11,6 +13,7 @@ import { useRemoteModels } from "@/hooks/use-models";
 import { BottomToolbar } from "@/pages/canvas/chrome/bottom-toolbar";
 import { ViewControls } from "@/pages/canvas/chrome/view-controls";
 import { openShortcuts } from "@/pages/canvas/shortcuts-state";
+import { DURATION, EASE_OUT } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import {
   ASSET_TYPES,
@@ -28,8 +31,12 @@ import { lowestUnit } from "@/utils/pricing/quote";
 import { AssetCard, TYPE_ICON } from "./asset-card";
 import { useAssetsUi } from "./assets-ui";
 import { useWorkspace } from "./context";
+import { useMarquee } from "./use-marquee";
 
-/** 资产库浮窗（画布视图）：当前集数筛选下的资产按类型分组，点一项飞到画布上的节点 */
+/**
+ * 资产库浮窗（画布视图）：已分类资产按类型分组，全集视图也展示未分类资产；点一项飞到画布节点。
+ * 外观和底部工具条的胶囊同一套（半透明 chrome 底 + 模糊 + 提饱和），搜索框和条目也用 chrome 的透明层次。
+ */
 function LibraryFloat({ items }: { items: AssetItem[] }) {
   const ui = useAssetsUi();
   const { focusNode } = useCanvasEditor();
@@ -40,7 +47,8 @@ function LibraryFloat({ items }: { items: AssetItem[] }) {
     list: items.filter(
       (item) =>
         item.type === type.key &&
-        (ui.filter.kind === "none" ? item.episodes === null : item.episodes !== null) &&
+        (ui.filter.kind === "all" ||
+          (ui.filter.kind === "none" ? item.episodes === null : item.episodes !== null)) &&
         (!q || `${item.name}${item.look}`.toLowerCase().includes(q)),
     ),
   })).filter((group) => group.list.length > 0);
@@ -48,28 +56,28 @@ function LibraryFloat({ items }: { items: AssetItem[] }) {
   return (
     <ChromeZone
       position="top-left"
-      className="bg-chrome ring-chrome-border pointer-events-auto left-[4.5rem] max-h-[60%] w-56 flex-col items-stretch gap-0 rounded-2xl p-0 shadow-lg ring-1 backdrop-blur-xl max-md:hidden"
+      className="bg-chrome ring-chrome-border text-foreground pointer-events-auto max-h-[60%] w-64 flex-col items-stretch gap-0 rounded-3xl p-0 shadow-lg ring-1 backdrop-blur-xl backdrop-saturate-150 max-md:hidden"
     >
-      <div className="flex items-center gap-2 px-3 pt-3 pb-1.5 text-sm">
-        <b>资产库</b>
+      <div className="flex items-center gap-2 px-5 pt-4.5 pb-3 text-sm">
+        <b className="font-semibold">资产库</b>
         <span className="text-muted-foreground text-xs tabular-nums">{items.length}</span>
       </div>
-      <div className="relative px-3 pb-2">
-        <Search className="text-muted-foreground absolute top-2 left-5 size-3.5" />
+      <div className="relative px-3.5 pb-2">
+        <Search className="text-muted-foreground pointer-events-none absolute top-2.5 left-6.5 size-3.5" />
         <Input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           placeholder="搜索资产"
           aria-label="搜索资产"
-          className="h-7 pl-7 text-xs"
+          className="bg-chrome-hover dark:bg-chrome-hover border-chrome-border h-9 rounded-full pl-9 text-[13px]"
         />
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto pb-2">
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3 [scrollbar-width:thin]">
         {groups.map(({ type, list }) => {
           const Icon = TYPE_ICON[type.key];
           return (
-            <div key={type.key}>
-              <div className="text-muted-foreground flex items-center gap-1.5 px-3 pt-2 pb-1 text-xs">
+            <div key={type.key} className="pt-2.5 first:pt-1">
+              <div className="text-muted-foreground flex items-center gap-1.5 px-3 pt-1.5 pb-1.5 text-xs">
                 <Icon className="size-3.5" />
                 {type.label}
                 <span className="tabular-nums">{list.length}</span>
@@ -79,14 +87,14 @@ function LibraryFloat({ items }: { items: AssetItem[] }) {
                   key={item.id}
                   type="button"
                   onClick={() => focusNode(item.id)}
-                  className="hover:bg-chrome-hover focus-visible:ring-ring/50 flex h-8 w-full items-center gap-2 px-3 text-left text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-inset"
+                  className="hover:bg-chrome-hover focus-visible:ring-ring/50 flex h-10 w-full items-center gap-2.5 rounded-xl px-3 text-left text-[13px] transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-inset"
                 >
                   <span className="min-w-0 flex-1 truncate">
                     {item.name}
                     {item.look && <span className="text-muted-foreground"> · {item.look}</span>}
                   </span>
                   {item.status !== "done" && (
-                    <span className="bg-status-warning/15 text-status-warning shrink-0 rounded-full px-1.5 text-[10px] leading-4">
+                    <span className="bg-status-warning/15 text-status-warning shrink-0 rounded-full px-2 py-0.5 text-[10px] leading-4">
                       无图
                     </span>
                   )}
@@ -96,14 +104,14 @@ function LibraryFloat({ items }: { items: AssetItem[] }) {
           );
         })}
         {groups.length === 0 && (
-          <div className="text-muted-foreground px-3 py-4 text-xs">这个筛选下没有资产</div>
+          <div className="text-muted-foreground px-3 py-5 text-xs">这个筛选下没有资产</div>
         )}
       </div>
     </ChromeZone>
   );
 }
 
-/** 列表视图：类型 tab、批量生成横幅、资产卡网格 */
+/** 列表视图：类型 tab、资产卡网格（可鼠标框选）、有选中时底部浮出批量操作栏 */
 function AssetList({ items }: { items: AssetItem[] }) {
   const ui = useAssetsUi();
   const editor = useCanvasEditor();
@@ -126,6 +134,35 @@ function AssetList({ items }: { items: AssetItem[] }) {
   );
   const selectedItems = pending.filter((item) => ui.selected.has(item.id));
   const estimate = selectedItems.reduce((sum, item) => sum + unitOf(item), 0);
+  /** 能框选、全选的：当前显示出来的待生成卡片 */
+  const selectable = useMemo(() => {
+    const ids = new Set(pending.map((item) => item.id));
+    return shown.filter((item) => ids.has(item.id)).map((item) => item.id);
+  }, [pending, shown]);
+
+  const { setMulti, setSelected, multi } = ui;
+  const {
+    ref: marqueeRef,
+    box: marqueeBox,
+    handlers: marqueeHandlers,
+  } = useMarquee({
+    selectable,
+    selected: ui.selected,
+    onSelect: (next) => {
+      if (next.size > 0 && !multi) setMulti(true);
+      setSelected(next);
+    },
+    onClear: () => setMulti(false),
+  });
+  // Esc 退出多选（开着弹窗时让弹窗自己处理）
+  useEffect(() => {
+    if (!multi) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !document.querySelector("[role='dialog']")) setMulti(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [multi, setMulti]);
 
   const generate = useCallback(
     async (ids: string[]) => {
@@ -172,7 +209,10 @@ function AssetList({ items }: { items: AssetItem[] }) {
 
   return (
     <div className="bg-background absolute inset-0 z-20 flex flex-col">
-      <div role="tablist" className="border-border flex gap-0.5 overflow-x-auto border-b px-3">
+      <div
+        role="tablist"
+        className="border-border flex items-center gap-0.5 overflow-x-auto border-b px-3"
+      >
         {ASSET_TYPES.map((type) => (
           <button
             key={type.key}
@@ -181,7 +221,7 @@ function AssetList({ items }: { items: AssetItem[] }) {
             aria-selected={ui.type === type.key}
             onClick={() => {
               ui.setType(type.key);
-              ui.setSelected(new Set());
+              ui.setMulti(false);
             }}
             className={cn(
               "focus-visible:ring-ring/50 relative flex h-10 shrink-0 items-center gap-1.5 px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-inset",
@@ -195,25 +235,112 @@ function AssetList({ items }: { items: AssetItem[] }) {
           </button>
         ))}
       </div>
+      {ui.generateAllTarget &&
+        pending.length > 0 &&
+        !ui.multi &&
+        createPortal(
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              ui.setMulti(true);
+              ui.setSelected(new Set(pending.map((item) => item.id)));
+            }}
+          >
+            全部生成
+          </Button>,
+          ui.generateAllTarget,
+        )}
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        {pending.length > 0 && (
-          <div className="bg-muted/60 mb-4 flex flex-wrap items-center gap-2 rounded-xl px-3 py-2 text-sm">
-            <Sparkles className="text-credit size-4 shrink-0" />
-            <div className="min-w-0 flex-1">
-              <b>
-                还有 {pending.length} 个{typeMeta.label}没有图
-              </b>
-              <span className="text-muted-foreground">　可以上传，或勾选后批量生成</span>
-            </div>
-            {ui.multi ? (
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {/* 框选区：铺满滚动区，卡片之间和下方的空白都能按下开始框选 */}
+        <div
+          ref={marqueeRef}
+          {...marqueeHandlers}
+          className={cn(
+            "relative min-h-full p-4",
+            selectedItems.length > 0 && "pb-24",
+            marqueeBox && "select-none",
+          )}
+        >
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+            {shown.map((item, index) => (
+              <AssetCard
+                key={item.id}
+                item={item}
+                index={index}
+                multi={ui.multi}
+                selected={ui.selected.has(item.id)}
+                onToggle={() => {
+                  const next = new Set(ui.selected);
+                  if (!next.delete(item.id)) next.add(item.id);
+                  if (next.size === 0) ui.setMulti(false);
+                  else ui.setSelected(next);
+                }}
+                onLocate={() => locate(item.id)}
+              />
+            ))}
+            <button
+              type="button"
+              onClick={createNew}
+              className="text-muted-foreground hover:bg-muted/60 focus-visible:ring-ring/50 flex aspect-3/4 flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed text-sm outline-none focus-visible:ring-2"
+            >
+              <Plus className="size-5" />
+              {ui.type === "character" ? "引入角色卡" : `新建${typeMeta.label}`}
+              <span className="text-xs">
+                {ui.filter.kind === "none"
+                  ? "未分类"
+                  : ui.filter.kind === "episode"
+                    ? `出现在第 ${ui.filter.no} 集`
+                    : "全集出现"}
+              </span>
+            </button>
+          </div>
+          {shown.length === 0 && (
+            <div className="text-muted-foreground py-8 text-center text-sm">{hint}</div>
+          )}
+          {marqueeBox && (
+            <div
+              aria-hidden
+              className="border-primary bg-primary/10 pointer-events-none absolute z-20 rounded-sm border"
+              style={marqueeBox}
+            />
+          )}
+        </div>
+      </div>
+
+      <AnimatePresence>
+        {ui.multi && selectedItems.length > 0 && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-5 z-30 flex justify-center px-4">
+            <motion.div
+              role="toolbar"
+              aria-label="批量操作"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 12, transition: { duration: DURATION.exit } }}
+              transition={{ duration: DURATION.base, ease: EASE_OUT }}
+              className="bg-popover text-popover-foreground ring-border pointer-events-auto flex items-center gap-1 rounded-xl p-1.5 pl-3.5 shadow-lg ring-1"
+            >
+              <span className="mr-1.5 text-sm whitespace-nowrap">
+                已选 <b className="tabular-nums">{selectedItems.length}</b> 个
+              </span>
+              {selectedItems.length < selectable.length && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => ui.setSelected(new Set([...ui.selected, ...selectable]))}
+                >
+                  全选
+                </Button>
+              )}
+              <Button variant="ghost" size="sm" onClick={() => ui.setMulti(false)}>
+                取消
+              </Button>
               <Button
                 size="sm"
-                disabled={selectedItems.length === 0 || batching}
-                title={selectedItems.length === 0 ? "先勾选卡片" : undefined}
+                disabled={batching}
                 onClick={() => {
                   const ids = selectedItems.map((item) => item.id);
-                  ui.setSelected(new Set());
                   ui.setMulti(false);
                   void generate(ids);
                 }}
@@ -226,72 +353,23 @@ function AssetList({ items }: { items: AssetItem[] }) {
                   </>
                 )}
               </Button>
-            ) : (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  ui.setMulti(true);
-                  ui.setSelected(new Set(pending.map((item) => item.id)));
-                }}
-              >
-                <WandSparkles />
-                全部生成
-              </Button>
-            )}
+            </motion.div>
           </div>
         )}
-
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-          {shown.map((item, index) => (
-            <AssetCard
-              key={item.id}
-              item={item}
-              index={index}
-              multi={ui.multi}
-              selected={ui.selected.has(item.id)}
-              generating={batching}
-              onToggle={() => {
-                const next = new Set(ui.selected);
-                if (!next.delete(item.id)) next.add(item.id);
-                ui.setSelected(next);
-              }}
-              onGenerate={() => void generate([item.id])}
-              onLocate={() => locate(item.id)}
-            />
-          ))}
-          <button
-            type="button"
-            onClick={createNew}
-            className="text-muted-foreground hover:bg-muted/60 focus-visible:ring-ring/50 flex aspect-3/4 flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed text-sm outline-none focus-visible:ring-2"
-          >
-            <Plus className="size-5" />
-            {ui.type === "character" ? "引入角色卡" : `新建${typeMeta.label}`}
-            <span className="text-xs">
-              {ui.filter.kind === "none"
-                ? "未分类"
-                : ui.filter.kind === "episode"
-                  ? `出现在第 ${ui.filter.no} 集`
-                  : "全集出现"}
-            </span>
-          </button>
-        </div>
-        {shown.length === 0 && (
-          <div className="text-muted-foreground py-8 text-center text-sm">{hint}</div>
-        )}
-      </div>
+      </AnimatePresence>
     </div>
   );
 }
 
-/** 画布视图下的外壳：左侧工具条、资产库浮窗、视图控件、操作提示 */
+/** 画布视图下的外壳：左上资产库浮窗、底部居中横排工具条、视图控件、操作提示 */
 function CanvasChrome({ items }: { items: AssetItem[] }) {
   const editor = useCanvasEditor();
   return (
     <>
       <LibraryFloat items={items} />
-      <ChromeZone position="left-center">
+      <ChromeZone position="bottom-center">
         <BottomToolbar
+          orientation="horizontal"
           tool={editor.tool}
           onToolChange={editor.setTool}
           onAdd={editor.addAtCenter}

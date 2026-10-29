@@ -12,18 +12,16 @@ import { toast } from "sonner";
 import { addSegment, deleteSegment, reorderSegments, updateSegment } from "@/api/drama";
 import { DRAMA_ERR, dramaErrorMessage, isDramaError, isRevisionConflict } from "@/api/drama/errors";
 import type { Drama, EpisodeSummary, Segment, UpdateSegmentInput } from "@/api/drama/type";
-import type { ModelInfo } from "@/api/model/type";
 import { confirm } from "@/components/admin-ui/confirm-dialog";
 import { useDramaAssets, type DramaAssetsState } from "@/hooks/use-drama-assets";
 import { useDramaVideoModel } from "@/hooks/use-drama-video-model";
-import { useRemoteModels } from "@/hooks/use-models";
 import { useCreditsStore } from "@/store/credits";
 import { useDramaJobsStore } from "@/store/drama";
 import { segmentKey, useDramaSegmentsStore } from "@/store/drama-segments";
 import { useStudioPrefs, useStudioPrefsStore } from "@/store/drama-studio";
 import { reloadSegments } from "@/utils/drama/segment-events";
 import type { RefAsset } from "@/utils/drama/segment-assets";
-import { planKeyframeInput, planSegmentInput, type SegmentPlan } from "@/utils/drama/segment-input";
+import { planSegmentInput, type SegmentPlan } from "@/utils/drama/segment-input";
 import {
   applyOrder,
   batchTargets,
@@ -58,8 +56,6 @@ export type Studio = {
   assets: RefAsset[];
   assetsStatus: DramaAssetsState["status"];
   video: ReturnType<typeof useDramaVideoModel>;
-  /** 首帧用的图片模型 */
-  image: { models: ModelInfo[]; model: ModelInfo | undefined; setModel: (key: string) => void };
   /** 顶栏选的生成参数（分辨率等） */
   overrides: Record<string, unknown>;
   setOverride: (name: string, value: unknown) => void;
@@ -70,11 +66,10 @@ export type Studio = {
   plan: SegmentPlan | null;
   /** 选中片段的预估积分；算不出来为 undefined */
   credits: number | undefined;
-  keyframeCredits: number | undefined;
   availableCredits: number | null;
   save: SaveSummary;
   reportSave: (key: string, status: AutosaveStatus) => void;
-  /** 正在提交（视频 / 首帧）的片段 */
+  /** 正在提交视频的片段 */
   submitting: ReadonlySet<string>;
   /** 提示词编辑器登记：插入引用 / 立即存盘 */
   registerEditor: (handle: EditorHandle | null) => void;
@@ -87,7 +82,6 @@ export type Studio = {
     patch: (sid: string, fields: Omit<UpdateSegmentInput, "revision">) => Promise<Segment>;
     choose: (segment: Segment, taskId: string) => Promise<void>;
     generate: (segment: Segment) => Promise<void>;
-    keyframe: (segment: Segment) => Promise<void>;
     batch: () => Promise<void>;
   };
 };
@@ -107,7 +101,7 @@ export function useStudio(): Studio {
 
 /**
  * 片段工作区的数据层：片段列表（HTTP 读取 + WebSocket 推送 + 生成中兜底轮询）、资产库、模型与偏好、
- * 选中的片段及其参考素材组装、积分预估，以及增删改排序、采用结果、立即生成、首帧、批量生成这些动作。
+ * 选中的片段及其参考素材组装、积分预估，以及增删改排序、采用结果、立即生成、批量生成这些动作。
  */
 export function useStudioState(drama: Drama, no: number, refresh: () => Promise<void>): Studio {
   const dramaId = drama.id;
@@ -151,12 +145,7 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
     reload: reloadAssets,
   } = useDramaAssets(drama.canvasId, settled);
   const video = useDramaVideoModel(dramaId);
-  const imageRemote = useRemoteModels("image");
   const prefs = useStudioPrefs(dramaId);
-  const imageModel = useMemo(
-    () => imageRemote.models.find((m) => m.key === prefs.imageModel) ?? imageRemote.models[0],
-    [imageRemote.models, prefs.imageModel],
-  );
   const availableCredits = useCreditsStore((state) => state.credits?.available ?? null);
 
   const selected = useMemo(
@@ -177,7 +166,6 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
             ratio: drama.ratio,
             overrides: prefs.overrides,
             assets,
-            keyframeAssetId: selected.keyframe?.id ?? null,
           })
         : null,
     [assets, caps, drama.ratio, prefs.overrides, prompt, selected],
@@ -186,20 +174,6 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
     if (!plan || !video.model || Object.keys(plan.input).length === 0) return undefined;
     return quote(video.model.pricing, caps, priceSpecOf(caps, plan.input));
   }, [caps, plan, video.model]);
-  const keyframeCredits = useMemo(() => {
-    if (!selected || !imageModel) return undefined;
-    const built = planKeyframeInput({
-      caps: imageModel.capabilities,
-      prompt,
-      ratio: drama.ratio,
-      assets,
-    });
-    return quote(
-      imageModel.pricing,
-      imageModel.capabilities,
-      priceSpecOf(imageModel.capabilities, built.input),
-    );
-  }, [assets, drama.ratio, imageModel, prompt, selected]);
 
   const reportSave = useCallback((name: string, status: AutosaveStatus) => {
     setSaveStates((prev) => (prev[name] === status ? prev : { ...prev, [name]: status }));
@@ -284,12 +258,11 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
         ratio: drama.ratio,
         overrides: prefs.overrides,
         assets: latest,
-        keyframeAssetId: segment.keyframe?.id ?? null,
       });
       const firstError = Object.values(built.errors)[0];
       if (firstError) return { ok: false as const, message: firstError };
       try {
-        await submitSegmentTask("video", segment.id, { model_id: model.key, input: built.input });
+        await submitSegmentTask(segment.id, { model_id: model.key, input: built.input });
         return { ok: true as const };
       } catch (e) {
         return { ok: false as const, message: describeSubmitError(e).message };
@@ -321,7 +294,6 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
           ratio: drama.ratio,
           overrides: prefs.overrides,
           assets: latest,
-          keyframeAssetId: current.keyframe?.id ?? null,
         });
         if (preview.deadLabels.length > 0) {
           const go = await confirm({
@@ -355,51 +327,6 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
     ],
   );
 
-  const keyframe = useCallback<Studio["actions"]["keyframe"]>(
-    async (segment) => {
-      if (!imageModel || submitting.has(segment.id)) {
-        if (!imageModel) toast.error("没有可用的图片模型");
-        return;
-      }
-      markSubmitting(segment.id, true);
-      try {
-        await editor.current?.flush();
-        const current =
-          useDramaSegmentsStore.getState().byEpisode[key]?.find((item) => item.id === segment.id) ??
-          segment;
-        const latest = await freshAssets();
-        if (!latest) {
-          toast.error("资产信息读取失败，请稍后重试");
-          return;
-        }
-        const built = planKeyframeInput({
-          caps: imageModel.capabilities,
-          prompt: current.prompt,
-          ratio: drama.ratio,
-          assets: latest,
-        });
-        const firstError = Object.values(built.errors)[0];
-        if (firstError) {
-          toast.error(firstError);
-          return;
-        }
-        try {
-          await submitSegmentTask("image", segment.id, {
-            model_id: imageModel.key,
-            input: built.input,
-          });
-          toast.info("首帧生成中，完成后这个片段会改走图生视频");
-          void reloadSegments(dramaId, no);
-        } catch (e) {
-          toast.error(describeSubmitError(e).message);
-        }
-      } finally {
-        markSubmitting(segment.id, false);
-      }
-    },
-    [drama.ratio, dramaId, freshAssets, imageModel, key, markSubmitting, no, submitting],
-  );
-
   const batch = useCallback<Studio["actions"]["batch"]>(async () => {
     const targets = batchTargets(useDramaSegmentsStore.getState().byEpisode[key] ?? NO_SEGMENTS);
     if (targets.length === 0) {
@@ -422,7 +349,6 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
         ratio: drama.ratio,
         overrides: prefs.overrides,
         assets: latest,
-        keyframeAssetId: item.keyframe?.id ?? null,
       });
       planned.deadLabels.forEach((label) => dead.add(label));
     }
@@ -548,10 +474,6 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
         .patch(dramaId, { overrides: { ...prefs.overrides, [name]: value } }),
     [dramaId, prefs.overrides],
   );
-  const imageSetModel = useCallback(
-    (modelKey: string) => useStudioPrefsStore.getState().patch(dramaId, { imageModel: modelKey }),
-    [dramaId],
-  );
 
   return {
     drama,
@@ -565,20 +487,18 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
     assets,
     assetsStatus,
     video,
-    image: { models: imageRemote.models, model: imageModel, setModel: imageSetModel },
     overrides: prefs.overrides,
     setOverride,
     prompt,
     setDraft,
     plan,
     credits,
-    keyframeCredits,
     availableCredits,
     save,
     reportSave,
     submitting,
     registerEditor,
     insertRef,
-    actions: { add, remove, reorder, setSeconds, patch, choose, generate, keyframe, batch },
+    actions: { add, remove, reorder, setSeconds, patch, choose, generate, batch },
   };
 }

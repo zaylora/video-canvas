@@ -78,7 +78,7 @@ function Chip({ view }: { view: RefView }) {
 
 /**
  * 参考素材条：按提示词里的 @ 解析出这次会带上的参考图 / 音频，标出「只用文字」「声音未生效」，
- * 右上角是 n/上限（参考图张数，含首帧）。解析规则见 utils/drama/segment-input.ts。
+ * 右上角是 n/上限（参考图张数）。不另列说明文字，状态都标在每个素材上。解析规则见 utils/drama/segment-input.ts。
  */
 export function RefsBar() {
   const { plan } = useStudio();
@@ -95,23 +95,12 @@ export function RefsBar() {
             {plan.imageCount}/{plan.imageMax}
           </StatusPill>
         )}
-        {plan.keyframe && <StatusPill tone="running">含首帧</StatusPill>}
       </div>
       <div className="flex flex-wrap gap-1.5">
         {plan.refs.map((view) => (
           <Chip key={view.id} view={view} />
         ))}
-        {plan.refs.length === 0 && (
-          <span className="text-muted-foreground text-xs">还没有引用，输入 @ 或从左侧拖入</span>
-        )}
       </div>
-      {plan.notices.length > 0 && (
-        <ul className="text-muted-foreground mt-2 grid gap-0.5 text-xs">
-          {plan.notices.map((notice) => (
-            <li key={notice}>· {notice}</li>
-          ))}
-        </ul>
-      )}
     </section>
   );
 }

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { usePageTitle } from "@/hooks/use-page-title";
+import { jobStage } from "@/utils/drama/jobs";
 import { stageHints, STAGES } from "@/utils/drama/stages";
 import { formatPageTitle } from "@/utils/page-title";
 
@@ -17,6 +18,7 @@ import { CommandPalette } from "./command-palette";
 import { DramaWorkspaceContext } from "./context";
 import { EpisodeRail } from "./episode-rail";
 import { FinalArea } from "./final-area";
+import { JobBar } from "./job-bar";
 import { OverviewArea } from "./overview-area";
 import { ScriptArea } from "./script-area";
 import { SidePanel } from "./side-panel";
@@ -39,8 +41,8 @@ function WorkspaceSkeleton() {
 
 /**
  * 短剧工作台（/drama/:id，全屏，与 /canvas/:id 同层级）：
- * 顶栏（项目名、保存状态、工序标签、画风、比例、Agent 模型）、左侧分集栏、内容区、右栏（进度 / 助手）。
- * 当前工序和集号写在地址栏（?area=assets&ep=3），刷新能回到原处。
+ * 顶栏（项目名、保存状态、工序标签、画风、比例、Agent 模型）、左侧分集栏、内容区、右栏（助手）、顶栏下方的任务进度条。
+ * 当前工序、集号和剧本页打开的大纲 / 人物传记写在地址栏（?area=script&ep=3&doc=outline），刷新能回到原处。
  */
 export default function DramaWorkspacePage() {
   const { id = "" } = useParams();
@@ -51,7 +53,7 @@ export default function DramaWorkspacePage() {
 function Workspace({ id }: { id: string }) {
   const workspace = useDramaWorkspace(id);
   const { drama, error, jobs, save, refresh, patch, applyEpisode, reportSave } = workspace;
-  const nav = useWorkspaceNav(drama?.episodes ?? []);
+  const nav = useWorkspaceNav(drama);
   const [sideOpen, setSideOpen] = useState(() => window.innerWidth >= 1280);
   const [breakdownOpen, setBreakdownOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -132,22 +134,44 @@ function Workspace({ id }: { id: string }) {
                 onStage={(next) => nav.go(next)}
                 onPalette={() => setPaletteOpen(true)}
               />
+              <JobBar
+                inPlace={{
+                  analyzingView:
+                    stage === "script" &&
+                    nav.doc !== null &&
+                    !value.drama.outlineMd &&
+                    value.drama.episodes.length === 0,
+                  storyboardEp: stage === "studio" ? ep : null,
+                }}
+              />
               <div className="flex min-h-0 flex-1">
-                {stage !== "overview" && <EpisodeRail stage={stage} ep={ep} onPick={nav.setEp} />}
+                {stage !== "overview" && (
+                  <EpisodeRail
+                    stage={stage}
+                    ep={ep}
+                    doc={nav.doc}
+                    onPick={nav.setEp}
+                    onDoc={nav.openDoc}
+                  />
+                )}
                 <main className="relative min-w-0 flex-1 overflow-y-auto">
                   {stage === "overview" && (
-                    <OverviewArea onGo={nav.go} onBreakdownOpen={() => setBreakdownOpen(true)} />
+                    <OverviewArea
+                      onGo={nav.go}
+                      onOpenDoc={nav.openDoc}
+                      onBreakdownOpen={() => setBreakdownOpen(true)}
+                    />
                   )}
                   {stage === "script" && (
                     <ScriptArea
                       ep={ep}
+                      doc={nav.doc}
                       onEp={nav.setEp}
+                      onDoc={nav.openDoc}
                       onBreakdownOpen={() => setBreakdownOpen(true)}
                     />
                   )}
-                  {stage === "assets" && (
-                    <AssetsArea ep={ep} onBreakdownOpen={() => setBreakdownOpen(true)} />
-                  )}
+                  {stage === "assets" && <AssetsArea ep={ep} />}
                   {stage === "studio" && <StudioArea ep={ep} onGo={nav.go} />}
                   {stage === "final" && <FinalArea ep={ep} onGo={nav.go} />}
                 </main>
@@ -156,7 +180,11 @@ function Workspace({ id }: { id: string }) {
                 )}
               </div>
             </div>
-            <BreakdownDialog open={breakdownOpen} onOpenChange={setBreakdownOpen} />
+            <BreakdownDialog
+              open={breakdownOpen}
+              onOpenChange={setBreakdownOpen}
+              onStarted={() => nav.go(jobStage("breakdown"), 0)}
+            />
             <CommandPalette
               open={paletteOpen}
               onOpenChange={setPaletteOpen}

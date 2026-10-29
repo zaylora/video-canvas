@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { Loader2, Sparkles } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { deleteSegment, listSegments, submitJob } from "@/api/drama";
@@ -108,7 +108,7 @@ export function StoryboardButton({
       title={disabledReason ?? (estimate.status === "error" ? estimate.message : undefined)}
       onClick={onStart}
     >
-      {busy ? <Loader2 className="animate-spin" /> : <Sparkles />}
+      {busy && <Loader2 className="animate-spin" />}
       {label}
       {estimate.status === "ready" && (
         <>

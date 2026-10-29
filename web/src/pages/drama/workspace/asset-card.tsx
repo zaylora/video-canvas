@@ -6,9 +6,7 @@ import {
   Gem,
   Image as ImageIcon,
   Loader2,
-  LocateFixed,
   Mountain,
-  Sparkles,
   Type,
   UserRound,
   Video,
@@ -16,7 +14,6 @@ import {
 } from "lucide-react";
 
 import { DramaPoster } from "@/components/drama/poster";
-import { Button } from "@/components/ui/button";
 import { DURATION, STAGGER, STAGGER_MAX, TAP_CARD } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import type { AssetItem, AssetType } from "@/utils/drama/assets";
@@ -89,7 +86,8 @@ function EmptyFrame({
 
 /**
  * 资产卡（原型资产列表）：封面按状态显示——已完成（素材）、生成中、分析设定中、失败、待生成（角色显示「待生成形象」）。
- * 悬停出「生成 / 重试」和「画布」（在画布中定位）；多选模式下左上角出勾选框。
+ * 点整张卡进画布定位到对应节点（生成在画布里做，或在这里多选 / 框选后批量生成）；多选模式下点卡片是勾选。
+ * 根节点带 data-asset-id，列表框选按它量卡片位置。
  * 出现集数：全集一个小标，具体集号一串小点，未分类写「未分类」。
  */
 export function AssetCard({
@@ -97,19 +95,14 @@ export function AssetCard({
   index,
   multi,
   selected,
-  generating,
   onToggle,
-  onGenerate,
   onLocate,
 }: {
   item: AssetItem;
   index: number;
   multi: boolean;
   selected: boolean;
-  /** 能不能生成（角色 / 场景 / 道具，且不是正在生成） */
-  generating: boolean;
   onToggle: () => void;
-  onGenerate: () => void;
   onLocate: () => void;
 }) {
   const Icon = TYPE_ICON[item.type];
@@ -121,6 +114,7 @@ export function AssetCard({
   return (
     <motion.div
       data-slot="asset-card"
+      data-asset-id={item.id}
       layout="position"
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
@@ -190,18 +184,13 @@ export function AssetCard({
         )}
 
         {!multi && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center gap-1.5 bg-black/35 opacity-0 transition-opacity duration-150 group-focus-within/card:opacity-100 group-hover/card:opacity-100 max-md:opacity-100 max-md:bg-transparent max-md:items-end max-md:pb-9">
-            {canGenerate && (
-              <Button size="sm" disabled={generating} onClick={onGenerate}>
-                <Sparkles />
-                {item.status === "error" ? "重试" : "生成"}
-              </Button>
-            )}
-            <Button size="sm" variant="secondary" onClick={onLocate}>
-              <LocateFixed />
-              画布
-            </Button>
-          </div>
+          <button
+            type="button"
+            aria-label={`在画布中打开 ${item.name}`}
+            title="在画布中打开"
+            onClick={onLocate}
+            className="focus-visible:ring-ring/60 absolute inset-0 z-10 cursor-pointer rounded-[inherit] outline-none transition-colors duration-150 hover:bg-white/5 focus-visible:ring-3 focus-visible:ring-inset"
+          />
         )}
       </motion.div>
 

@@ -16,7 +16,7 @@ export const ASSET_TYPES: { key: AssetType; label: string }[] = [
 /** 拆解产物（会批量生成图片的三类） */
 export const GENERATED_TYPES: AssetType[] = ["character", "scene", "prop"];
 
-/** 集数筛选：全集 = 所有已分类的；第 N 集 = 全集资产加出现在 N 的；未分类 = 没有 drama 字段的 */
+/** 集数筛选：全集 = 所有资产（含未分类）；第 N 集 = 全集资产加出现在 N 的；未分类 = 没有 drama 字段的 */
 export type EpisodeFilter = { kind: "all" } | { kind: "episode"; no: number } | { kind: "none" };
 
 /** 卡片状态 */
@@ -64,9 +64,9 @@ export function assetEpisodesOf(data: CanvasNodeData): number[] | null {
 
 /** 这个出现集数是否落在筛选里 */
 export function matchesFilter(episodes: number[] | null, filter: EpisodeFilter): boolean {
+  if (filter.kind === "all") return true;
   if (filter.kind === "none") return episodes === null;
   if (episodes === null) return false;
-  if (filter.kind === "all") return true;
   return episodes.length === 0 || episodes.includes(filter.no);
 }
 

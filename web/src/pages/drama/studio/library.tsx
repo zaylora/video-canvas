@@ -114,18 +114,12 @@ export function Library() {
   const shown = all ? assets : splitByEpisode(assets, no).here;
   const groups = groupByType(shown);
   return (
-    <aside
-      aria-label="资产库"
-      className="border-border flex w-56 shrink-0 flex-col border-r max-xl:hidden"
-    >
+    <aside aria-label="资产库" className="flex h-full w-full flex-col">
       <div className="flex items-center px-3 pt-3 pb-2">
         <b className="text-sm">资产库</b>
         <span className="flex-1" />
         <Scope all={all} onChange={setAll} />
       </div>
-      <p className="text-muted-foreground px-3 pb-1.5 text-[11px]">
-        拖到提示词里，或在提示词里输入 <kbd className="bg-muted rounded px-1">@</kbd>
-      </p>
       <div className="min-h-0 flex-1 overflow-y-auto pb-3">
         {groups.map((group) => {
           const Icon = TYPE_ICON[group.type];

@@ -57,17 +57,23 @@ function OptionRow({
 export function ChipPopover({
   icon,
   label,
+  showChevron = true,
   set = true,
   variant = "chip",
+  size = "default",
   disabled,
   title,
   width,
   children,
 }: {
-  icon: ReactNode;
+  icon?: ReactNode;
   label: string;
+  showChevron?: boolean;
   set?: boolean;
-  variant?: "chip" | "bar";
+  /** chip 带边框的胶囊；bar 工具栏里的平按钮；chrome 放在半透明胶囊（ChromePill）里的圆按钮 */
+  variant?: "chip" | "bar" | "chrome";
+  /** lg 加高一档、字和图标放大（放在主操作按钮旁边时用） */
+  size?: "default" | "lg";
   disabled?: boolean;
   title?: string;
   width?: string;
@@ -83,13 +89,16 @@ export function ChipPopover({
           "focus-visible:ring-ring/50 inline-flex items-center gap-1.5 text-[13px] outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0",
           variant === "chip"
             ? "hover:bg-muted h-8 rounded-full border px-3"
-            : "hover:bg-muted h-8 rounded-lg px-2.5",
+            : variant === "chrome"
+              ? "hover:bg-chrome-hover h-8 rounded-full px-3 transition-colors duration-150"
+              : "hover:bg-muted h-8 rounded-lg px-2.5",
           variant === "chip" && !set && "text-muted-foreground",
+          size === "lg" && "h-9 gap-2 px-3 text-sm [&_svg]:size-5",
         )}
       >
         {icon}
         <span className="max-w-40 truncate">{label}</span>
-        <ChevronDown className="opacity-50" />
+        {showChevron && <ChevronDown className="opacity-50" />}
       </PopoverTrigger>
       <PopoverContent align="start" sideOffset={6} className={cn("gap-1", width ?? "w-64")}>
         {children(() => setOpen(false))}

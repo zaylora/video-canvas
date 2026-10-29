@@ -1,13 +1,14 @@
-import { Check, Clapperboard } from "lucide-react";
+import { Check } from "lucide-react";
 
 import type { ModelInfo } from "@/api/model/type";
+import { ModelLogo } from "@/components/model-logo";
 import { cn } from "@/lib/utils";
 import { modelSummary, videoModelSupport } from "@/utils/drama/video-models";
 
 import { ChipPopover } from "./pickers";
 
 /**
- * 视频模型选择（分集页和片段工作区顶栏共用）：只有收参考图的模型可选，
+ * 视频模型选择（片场编辑区生成按钮旁）：前面是模型厂商 logo；只有收参考图的模型可选，
  * 不支持的置灰并写原因（片段里的 @ 资产要靠参考图带入）。
  */
 export function VideoModelMenu({
@@ -24,14 +25,18 @@ export function VideoModelMenu({
   return (
     <ChipPopover
       variant="bar"
-      icon={<Clapperboard />}
+      size="lg"
+      icon={
+        model && (
+          <ModelLogo vendor={model.vendor} name={model.label} className="size-5 rounded-md" />
+        )
+      }
       label={model?.label ?? (loading ? "加载模型…" : "没有可用的视频模型")}
       title="生成片段视频用的模型"
       width="w-80"
     >
       {(close) => (
         <>
-          <div className="text-muted-foreground px-1.5 pt-1 text-xs">视频模型 · 片段要用参考图</div>
           {models.length === 0 && (
             <div className="text-muted-foreground px-2 py-3 text-sm">
               {loading ? "加载中…" : "暂无可用的视频模型"}
@@ -55,7 +60,7 @@ export function VideoModelMenu({
                   active && "bg-muted font-medium",
                 )}
               >
-                <Clapperboard className="size-4 shrink-0" />
+                <ModelLogo vendor={info.vendor} name={info.label} className="size-5" />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate">{info.label}</span>
                   <span className="text-muted-foreground block truncate text-[11px] font-normal">

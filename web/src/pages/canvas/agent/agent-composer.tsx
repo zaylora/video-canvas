@@ -1,11 +1,11 @@
 import type { Ref } from "react";
 import { motion } from "motion/react";
-import { ArrowUp, Bot, Check, ChevronDown, Square } from "lucide-react";
+import { ArrowUp, Check, ChevronDown, Square } from "lucide-react";
 
 import type { AgentModelDto } from "@/api/agent/type";
 import { ChromeTooltip } from "@/components/canvas/chrome/chrome";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { VendorAvatar } from "@/components/admin-ui/vendor-avatar";
+import { ModelLogo } from "@/components/model-logo";
 import { vendorOf } from "@/constants/vendors";
 import { TAP } from "@/lib/motion";
 import { cn } from "@/lib/utils";
@@ -21,18 +21,6 @@ import { ContextRing } from "./context-ring";
 import { ModelPopover } from "./model-popover";
 import { SkillPopover } from "./skill-popover";
 import { AGENT_BAR_BTN, AGENT_POP } from "./styles";
-
-/** Agent 模型的厂商 logo：配了厂商用 VendorAvatar，没配回退 Bot 图标（不用首字头像，底栏里太抢眼） */
-function ModelLogo({ model, className }: { model?: AgentModelDto; className?: string }) {
-  if (!vendorOf(model?.vendor)) return <Bot className="size-4 shrink-0" />;
-  return (
-    <VendorAvatar
-      vendor={model?.vendor}
-      name={model?.name ?? ""}
-      className={cn("border-0 shadow-none", className)}
-    />
-  );
-}
 
 /** Agent 大语言模型：底栏右侧，向上弹出单选；运行中不能换。浮窗太窄时只显示 logo */
 function AgentModelMenu({
@@ -54,7 +42,11 @@ function AgentModelMenu({
           aria-label="Agent 模型"
           className={cn(AGENT_BAR_BTN, "min-w-0 shrink")}
         >
-          <ModelLogo model={current} className="size-4 rounded-[5px]" />
+          <ModelLogo
+            vendor={current?.vendor}
+            name={current?.name ?? ""}
+            className="size-4 rounded-[5px]"
+          />
           <span className="max-w-28 min-w-0 truncate @max-[360px]:hidden">
             {current?.name ?? "未选"}
           </span>
@@ -81,7 +73,7 @@ function AgentModelMenu({
               onClick={() => patch({ modelKey: m.key })}
               className="hover:bg-chrome-hover focus-visible:ring-node-ring/60 flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] outline-none focus-visible:ring-2"
             >
-              <ModelLogo model={m} className="size-7" />
+              <ModelLogo vendor={m.vendor} name={m.name} className="size-7" />
               <span className="min-w-0 flex-1">
                 <span className="block truncate">{m.name}</span>
                 {vendorOf(m.vendor) && (

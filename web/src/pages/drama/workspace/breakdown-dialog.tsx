@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Check, Lock } from "lucide-react";
-import { toast } from "sonner";
 
 import { submitJob } from "@/api/drama";
 import { dramaErrorMessage } from "@/api/drama/errors";
@@ -9,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -28,7 +26,7 @@ import { useWorkspace } from "./context";
 import { useEstimate } from "./use-estimate";
 
 /** 对话框主体：每次打开重新挂载，选择状态回到默认 */
-function BreakdownBody({ onClose }: { onClose: () => void }) {
+function BreakdownBody({ onClose, onStarted }: { onClose: () => void; onStarted: () => void }) {
   const { drama, refresh } = useWorkspace();
   const fixed = ratioFixed(drama.episodes);
   const options = breakdownOptions(drama.episodes);
@@ -59,8 +57,8 @@ function BreakdownBody({ onClose }: { onClose: () => void }) {
       const job = await submitJob(drama.id, { step: "breakdown", episodes: selected, ratio });
       useDramaJobsStore.getState().applyJob(drama.id, job);
       void refresh();
-      toast.success("已开始资产拆解，进度见右侧");
       onClose();
+      onStarted();
     } catch (e) {
       setError(dramaErrorMessage(e, "提交失败，请稍后重试"));
       setSubmitting(false);
@@ -71,9 +69,6 @@ function BreakdownBody({ onClose }: { onClose: () => void }) {
     <>
       <DialogHeader>
         <DialogTitle>资产拆解</DialogTitle>
-        <DialogDescription>
-          从所选集的剧本里找出角色、场景、道具，已有的资产只追加出现集数，不会重复新建。
-        </DialogDescription>
       </DialogHeader>
 
       <section className="grid gap-2">
@@ -162,7 +157,6 @@ function BreakdownBody({ onClose }: { onClose: () => void }) {
             );
           })}
         </div>
-        <p className="text-muted-foreground text-xs">带锁的已经拆解过；没有剧本的集不能拆解。</p>
       </section>
 
       <div className="bg-status-warning/10 flex items-center gap-2 rounded-lg px-3 py-2 text-sm">
@@ -206,14 +200,17 @@ function BreakdownBody({ onClose }: { onClose: () => void }) {
 export function BreakdownDialog({
   open,
   onOpenChange,
+  onStarted,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** 拆解任务提交成功后（对话框已关闭）：调用方带用户去看进度 */
+  onStarted: () => void;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-xl">
-        {open && <BreakdownBody onClose={() => onOpenChange(false)} />}
+        {open && <BreakdownBody onClose={() => onOpenChange(false)} onStarted={onStarted} />}
       </DialogContent>
     </Dialog>
   );

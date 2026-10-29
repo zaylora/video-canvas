@@ -235,9 +235,6 @@ export function CharacterDetailDialog({
                   </SelectContent>
                 </Select>
               </div>
-              <p className="text-muted-foreground text-xs">
-                同一个角色的不同形象，用相同的角色名归在一起；只改当前这个节点。
-              </p>
             </div>
 
             <div className="flex flex-col gap-1.5">
@@ -259,9 +256,6 @@ export function CharacterDetailDialog({
                 <span className={LABEL}>出现集数</span>
                 <p className="bg-muted rounded-lg px-3 py-2 text-sm">
                   {episodes.length === 0 ? "全集" : `第 ${episodes.join("、")} 集`}
-                  <span className="text-muted-foreground ml-2 text-xs">
-                    选中节点后用上方功能条修改
-                  </span>
                 </p>
               </div>
             )}
@@ -276,7 +270,7 @@ export function CharacterDetailDialog({
                 />
               ) : (
                 <p className="text-muted-foreground bg-muted rounded-lg px-3 py-2 text-sm">
-                  还没有声音，可以上传、绑定已有音频，或用下面的提示词生成
+                  还没有声音
                 </p>
               )}
               <div className="grid grid-cols-2 gap-2">
@@ -298,9 +292,6 @@ export function CharacterDetailDialog({
                   绑定已有
                 </Button>
               </div>
-              <p className="text-muted-foreground text-xs">
-                有声音时，连到视频节点会作为参考音频和形象一起带入；声音只能接近参考，不保证完全一致。
-              </p>
             </div>
 
             <div className="flex flex-col gap-2">

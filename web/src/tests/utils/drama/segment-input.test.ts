@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import type { Capabilities } from "@/api/model/type";
 import type { NodeCharacter } from "@/types";
 import type { RefAsset } from "@/utils/drama/segment-assets";
-import { planKeyframeInput, planSegmentInput } from "@/utils/drama/segment-input";
+import { planSegmentInput } from "@/utils/drama/segment-input";
 
 /** 角色卡节点自带的数据：补充图 2、音频音色 9（素材 id 在 payload 里是字符串） */
 const roleData = (patch: Partial<NodeCharacter> = {}): NodeCharacter => ({
@@ -67,7 +67,6 @@ const base = {
   seconds: 12,
   ratio: "9:16",
   overrides: {},
-  keyframeAssetId: null,
 };
 
 describe("planSegmentInput：@ 解析与参考素材组装（契约 §13）", () => {
@@ -195,51 +194,6 @@ describe("planSegmentInput：@ 解析与参考素材组装（契约 §13）", ()
   });
 });
 
-describe("planSegmentInput：首帧走图生视频", () => {
-  const assets = [character("n1"), scene("n2")];
-
-  test("有首帧且模型支持 i2v：op = i2v，参考图只放首帧，@ 的资产只用文字", () => {
-    const plan = planSegmentInput({
-      ...base,
-      caps: video(),
-      prompt: "@[林川](n1)在@[村口](n2)",
-      assets,
-      keyframeAssetId: "77",
-    });
-    expect(plan.op).toBe("i2v");
-    expect(plan.keyframe).toBe(true);
-    expect(plan.input.images).toEqual([77]);
-    expect(plan.input.audios).toBeUndefined();
-    expect(plan.input.prompt).toBe("林川在村口");
-    expect(plan.notices.join("")).toContain("首帧");
-    expect(plan.refs.every((ref) => ref.state === "text")).toBe(true);
-  });
-
-  test("模型不支持 i2v 只有全能参考：首帧排在参考图最前面，其余照常带入", () => {
-    const plan = planSegmentInput({
-      ...base,
-      caps: video({ ops: ["omni"] }),
-      prompt: "@[林川](n1)",
-      assets,
-      keyframeAssetId: "77",
-    });
-    expect(plan.op).toBe("omni");
-    expect(plan.input.images).toEqual([77, 1, 2]);
-    expect(plan.input.audios).toEqual([9]);
-  });
-
-  test("没有首帧：不会走 i2v", () => {
-    const plan = planSegmentInput({
-      ...base,
-      caps: video(),
-      prompt: "@[村口](n2)",
-      assets,
-    });
-    expect(plan.op).toBe("omni");
-    expect(plan.keyframe).toBe(false);
-  });
-});
-
 describe("planSegmentInput：时长与校验", () => {
   test("片段时长超出模型范围：按上限提交，并提示", () => {
     const plan = planSegmentInput({
@@ -282,52 +236,5 @@ describe("planSegmentInput：时长与校验", () => {
       assets: [],
     });
     expect(plan.input).toEqual({});
-  });
-});
-
-describe("planKeyframeInput：首帧图走图片模型", () => {
-  const image = (): Capabilities => ({
-    ops: ["t2i", "i2i"],
-    refs: {
-      image: { on: true, max: 4, max_mb: 10 },
-      audio: { on: false, max: 0, max_mb: 0 },
-      video: { on: false, max: 0, max_mb: 0 },
-    },
-    prompt: { max_length: 2000 },
-    params: {
-      aspect_ratio: {
-        type: "enum",
-        label: "比例",
-        open: true,
-        options: ["1:1", "9:16"],
-        default: "1:1",
-      },
-    },
-  });
-
-  test("引用的角色 / 场景带成参考图（图生图），比例跟短剧，提示词带首帧说明", () => {
-    const plan = planKeyframeInput({
-      caps: image(),
-      prompt: "@[林川](n1)站在@[村口](n2)",
-      ratio: "9:16",
-      assets: [character("n1"), scene("n2")],
-    });
-    expect(plan.input.op).toBe("i2i");
-    expect(plan.input.images).toEqual([5, 1, 2]);
-    expect(plan.input.aspect_ratio).toBe("9:16");
-    expect(String(plan.input.prompt)).toContain("首帧");
-    expect(String(plan.input.prompt)).toContain("林川站在图片1");
-    expect(plan.errors).toEqual({});
-  });
-
-  test("没有任何参考图：文生图", () => {
-    const plan = planKeyframeInput({
-      caps: image(),
-      prompt: "雨夜的街道",
-      ratio: "9:16",
-      assets: [],
-    });
-    expect(plan.input.op).toBe("t2i");
-    expect(plan.input.images).toBeUndefined();
   });
 });

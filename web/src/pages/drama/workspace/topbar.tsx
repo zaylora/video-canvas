@@ -6,15 +6,14 @@ import {
   CloudCheck,
   Loader2,
   PanelRight,
-  Palette,
-  Ratio,
   Search,
-  Type,
 } from "lucide-react";
 import { Link } from "react-router";
 import { toast } from "sonner";
 
+import { ChromePill, ChromeSeparator } from "@/components/canvas/chrome/chrome";
 import { ChipPopover, RatioList, StyleGrid } from "@/components/drama/pickers";
+import { ModelLogo } from "@/components/model-logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { useDramaStyles } from "@/hooks/use-drama-styles";
@@ -108,7 +107,7 @@ function StyleChip() {
     void patch({ styleKey, styleCustom }).catch(() => undefined);
 
   return (
-    <ChipPopover variant="bar" icon={<Palette />} label={name} width="w-[26rem] max-w-[90vw]">
+    <ChipPopover variant="chrome" showChevron={false} label={name} width="w-[26rem] max-w-[90vw]">
       {() => (
         <StyleGrid
           styles={styles}
@@ -138,17 +137,19 @@ function ModelChip() {
 
   return (
     <ChipPopover
-      variant="bar"
-      icon={<Type />}
+      variant="chrome"
+      showChevron={false}
+      icon={
+        !stale && (
+          <ModelLogo vendor={selected?.vendor} name={label} className="size-4 rounded-[5px]" />
+        )
+      }
       label={stale ? `${drama.textModel}（已停用）` : label}
       title="跟随后台「Agent」类别"
       width="w-72"
     >
       {(close) => (
         <>
-          <div className="text-muted-foreground px-1.5 pt-1 text-xs">
-            Agent 模型 · 跟随后台「Agent」类别
-          </div>
           {remote.models.length === 0 && (
             <div className="text-muted-foreground px-2 py-3 text-sm">
               {remote.status === "loading" ? "加载中…" : "暂无可用的 Agent 模型"}
@@ -174,7 +175,7 @@ function ModelChip() {
                   active && "bg-muted font-medium",
                 )}
               >
-                <Type className="size-4 shrink-0" />
+                <ModelLogo vendor={model.vendor} name={model.label} className="size-5" />
                 <span className="min-w-0 flex-1 truncate">{model.label}</span>
                 {index === 0 && (
                   <span className="bg-muted text-muted-foreground rounded-full px-1.5 text-[10px] leading-4">
@@ -196,7 +197,7 @@ function RatioChip() {
   const { drama, patch } = useWorkspace();
   const fixed = ratioFixed(drama.episodes);
   return (
-    <ChipPopover variant="bar" icon={<Ratio />} label={drama.ratio || "比例未定"}>
+    <ChipPopover variant="chrome" showChevron={false} label={drama.ratio || "比例未定"}>
       {(close) => (
         <RatioList
           value={drama.ratio}
@@ -259,11 +260,14 @@ export function Topbar({
       </div>
       <StageTabs stage={stage} hints={hints} onChange={onStage} />
       <div className="flex items-center justify-end gap-0.5">
-        <div className="flex items-center gap-0.5 max-xl:hidden">
+        {/* 画风 / 比例 / 模型合成一条半透明胶囊，和工序标签、积分同一套外观 */}
+        <ChromePill className="mr-1 max-xl:hidden">
           <StyleChip />
+          <ChromeSeparator />
           <RatioChip />
+          <ChromeSeparator />
           <ModelChip />
-        </div>
+        </ChromePill>
         <Button
           variant="ghost"
           size="sm"

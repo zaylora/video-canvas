@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { Position, useNodeConnections, useNodesData, useReactFlow } from "@xyflow/react";
 import { toast } from "sonner";
 import {
@@ -20,6 +20,7 @@ import { toggleVoice, useVoicePlaying } from "@/components/characters/voice-play
 import { Button } from "@/components/ui/button";
 import { NODE_META } from "@/constants/canvas";
 import { useCharacterMedia } from "@/hooks/use-character-media";
+import { useMediaAspect } from "@/hooks/use-media-aspect";
 import { useTaskGeneration } from "@/hooks/use-task-generation";
 import { useTaskNode } from "@/hooks/use-task-node";
 import { useVoiceBackfill } from "@/hooks/use-voice-backfill";
@@ -27,9 +28,10 @@ import { cn } from "@/lib/utils";
 import { useCharacterDetail } from "@/store/character-detail";
 import type { CanvasNode, CanvasNodeData } from "@/types";
 import { ignoresVoice } from "@/utils/canvas/link-rule";
-import { NODE_FRAME_SHORT_SIDE } from "@/utils/canvas/node-frame";
+import { shouldRecordAspect } from "@/utils/canvas/media-aspect";
+import { nodeFrameSize, paramAspect } from "@/utils/canvas/node-frame";
 import { applyPickedAssets, emptyCharacter, MAX_EXTRAS } from "@/utils/characters/node-character";
-import { characterNodeView, voiceCell } from "@/utils/characters/node-view";
+import { characterNodeAspect, characterNodeView, voiceCell } from "@/utils/characters/node-view";
 
 import { CharacterDetailDialog } from "./character-detail-dialog";
 import { useRegisterNodeActions } from "./node-actions";
@@ -167,6 +169,19 @@ function CharacterNodeBody({
   };
   const media = useCharacterMedia((asset, purpose) => apply([asset], purpose, "upload"));
 
+  // 框的画幅跟主图走：有主图量主图，量到后记进节点；没主图跟参数面板选的比例
+  const measuredAspect = useMediaAspect(view.phase === "ready" ? data.src : null, "image");
+  useEffect(() => {
+    if (measuredAspect !== null && shouldRecordAspect(data.mediaAspect, measuredAspect)) {
+      updateNodeData(id, { mediaAspect: measuredAspect });
+    }
+  }, [data.mediaAspect, id, measuredAspect, updateNodeData]);
+  const aspect = characterNodeAspect({
+    measured: measuredAspect,
+    declared: data.mediaAspect,
+    selected: paramAspect(vm.caps, vm.params),
+  });
+
   const showTask = SHOWS_TASK_BODY.has(vm.view.phase);
   const extraFull = character.extras.length >= MAX_EXTRAS;
 
@@ -191,14 +206,14 @@ function CharacterNodeBody({
       }
       handles={CHARACTER_HANDLES}
       canAcceptConnection={() => true}
-      width={NODE_FRAME_SHORT_SIDE}
+      width={nodeFrameSize(aspect).width}
     >
       <BaseNodeContent>
-        <div className="relative aspect-3/4 w-full">
+        <div className="relative w-full" style={{ aspectRatio: aspect }}>
           {showTask ? (
             <NodeVideoBody
               view={vm.view}
-              aspect={3 / 4}
+              aspect={aspect}
               placeholder="选中后输入提示词生成形象"
               mediaType="image"
               onCancel={vm.view.phase === "queued" ? vm.cancel : undefined}

@@ -42,8 +42,6 @@ const seg = (id: string, seq: number, patch: Partial<Segment> = {}): Segment => 
   seq,
   seconds: 10,
   prompt: "提示词",
-  shots: [],
-  keyframe: null,
   takes: [],
   chosenTaskId: "",
   status: "idle",

@@ -59,7 +59,7 @@ export function Preview() {
   return (
     <section
       aria-label="预览"
-      className="relative flex min-w-0 flex-1 flex-col items-center gap-3 overflow-hidden px-5 py-4 max-lg:hidden"
+      className="relative flex h-full w-full min-w-0 flex-col items-center gap-3 overflow-hidden px-5 py-4"
     >
       <Ambient src={shownTake?.asset?.url ?? null} />
       <div className="relative z-10 flex min-h-0 w-full flex-1 items-center justify-center">
@@ -127,8 +127,7 @@ export function Preview() {
                   {String((selected?.seq ?? 0) + 1).padStart(2, "0")}
                 </span>
                 <Clapperboard className="mx-auto mb-1.5 size-5" />
-                还没有生成内容
-                <p className="mt-1 text-[11px] opacity-60">在右侧写好提示词后点「立即生成」</p>
+                还没有生成内容{" "}
               </div>
             </div>
           )}

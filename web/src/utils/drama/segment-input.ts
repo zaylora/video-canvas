@@ -9,7 +9,6 @@ import {
   type Bindings,
   type IncomingLink,
 } from "@/utils/tasks/capabilities";
-import { buildFreshInput } from "@/utils/tasks/fresh-input";
 
 import type { DramaAssetType, RefAsset } from "./segment-assets";
 import { durationField, fitDuration, segmentParams } from "./video-models";
@@ -19,7 +18,7 @@ export type RefView = {
   id: string;
   label: string;
   type: DramaAssetType | null;
-  /** image 带了参考图；text 只用文字（没图 / 被截断 / 首帧模式）；dead 节点已被删 */
+  /** image 带了参考图；text 只用文字（没图 / 被截断）；dead 节点已被删 */
   state: "image" | "text" | "dead";
   /** 这个资产在 input.images 里占了几张 */
   imageCount: number;
@@ -32,24 +31,19 @@ export type RefView = {
 export type SegmentPlan = {
   /** 生成方式；模型能力没到时为 undefined */
   op: GenerationOp | undefined;
-  /** 可以直接交给 generate / keyframe 的 input */
+  /** 可以直接交给 generate 的 input */
   input: Record<string, unknown>;
   /** 输入名 -> 该标红的原因；空表示可以提交 */
   errors: Record<string, string>;
   /** 非阻断提示：声音未生效、第 N 张起未带入、时长被调整…… */
   notices: string[];
   refs: RefView[];
-  /** input.images 里的张数（含首帧）与模型上限，参考素材条的「n/上限」 */
+  /** input.images 里的张数与模型上限，参考素材条的「n/上限」 */
   imageCount: number;
   imageMax: number;
-  /** 本次带了首帧（i2v，或全能参考里放在参考图最前） */
-  keyframe: boolean;
   /** 引用了已被删除的节点，存下来的名字 */
   deadLabels: string[];
 };
-
-/** 首帧图的提示词前缀：让图片模型画「开场第一帧」而不是整段剧情 */
-export const KEYFRAME_PREFIX = "为下面这个视频片段生成首帧（开场第一帧的静态画面）：";
 
 type Cited = { id: string; label: string; asset: RefAsset | undefined };
 
@@ -149,16 +143,15 @@ function refViews(linked: Linked, bindings: Bindings): RefView[] {
 }
 
 /**
- * 视频的生成方式（契约 §13）：有首帧且模型支持 i2v → i2v；
+ * 视频的生成方式（契约 §13）：
  * 有参考图 → 全能参考，没有全能参考就退回图生视频；一张参考图都没有 → 文生视频，
  * 只有全能参考的模型照旧用 omni（由校验提示至少要 1 个参考素材）。
  */
 export function pickVideoOp(
   caps: Capabilities | undefined,
-  state: { keyframe: boolean; hasImages: boolean },
+  state: { hasImages: boolean },
 ): GenerationOp | undefined {
   const ops = caps?.ops ?? [];
-  if (state.keyframe && ops.includes("i2v")) return "i2v";
   if (state.hasImages && ops.includes("omni")) return "omni";
   if (!state.hasImages && ops.includes("t2v")) return "t2v";
   if (state.hasImages && ops.includes("i2v")) return "i2v";
@@ -168,8 +161,7 @@ export function pickVideoOp(
 /**
  * 组装片段「立即生成」的 input：
  * 提示词里 `@[名](节点id)` 解析成资产（角色卡展开主图 + 补充图为参考图、声音为参考音频），
- * 按所选模型的参考图 / 音频上限截断并给出提示；模型不收音频时只用图片并提示声音未生效；
- * 有首帧且模型支持 i2v 时走图生视频（参考图只放首帧，@ 的资产只用文字）。
+ * 按所选模型的参考图 / 音频上限截断并给出提示；模型不收音频时只用图片并提示声音未生效。
  * 时长跟片段、比例跟短剧、分辨率等取用户选的。
  */
 export function planSegmentInput(args: {
@@ -179,30 +171,13 @@ export function planSegmentInput(args: {
   ratio: string;
   overrides: Record<string, unknown>;
   assets: readonly RefAsset[];
-  /** 首帧图的素材 id；没有为 null */
-  keyframeAssetId: string | null;
 }): SegmentPlan {
-  const { caps, prompt, keyframeAssetId } = args;
+  const { caps, prompt } = args;
   const linked = linkRefs(prompt, args.assets);
-  const hasKeyframe = keyframeAssetId !== null;
-  const keyLink: IncomingLink | null = hasKeyframe
-    ? {
-        edgeId: "keyframe",
-        sourceId: "keyframe",
-        sourceKind: "image",
-        sourceLabel: "首帧",
-        targetHandle: null,
-        assetId: keyframeAssetId,
-      }
-    : null;
-  const withKey = keyLink ? [keyLink, ...linked.links] : linked.links;
   const op = pickVideoOp(caps, {
-    keyframe: hasKeyframe,
-    hasImages: hasImageRefs({}, { images: imageLinksOf(withKey) }),
+    hasImages: hasImageRefs({}, { images: imageLinksOf(linked.links) }),
   });
-  const keyframeOnly = op === "i2v" && keyLink !== null;
-  // 首帧图生视频：参考图只放首帧，别的资产只用文字
-  const bindings = resolveBindings(caps, op, keyframeOnly ? [keyLink] : withKey);
+  const bindings = resolveBindings(caps, op, linked.links);
   const params = {
     prompt,
     ...segmentParams(caps, { seconds: args.seconds, ratio: args.ratio, overrides: args.overrides }),
@@ -210,7 +185,6 @@ export function planSegmentInput(args: {
   const built = buildTaskInput(caps, params, bindings, op, linked.links);
 
   const notices = [...bindings.notices];
-  if (keyframeOnly) notices.unshift("有首帧：只带首帧图生成，@ 的资产只用文字");
   const duration = durationField(caps);
   if (duration) {
     const fit = fitDuration(duration, args.seconds);
@@ -222,31 +196,9 @@ export function planSegmentInput(args: {
     input: built.input,
     errors: built.errors,
     notices,
-    // 首帧模式下 @ 的资产都只用文字：用空绑定算
-    refs: refViews(linked, keyframeOnly ? resolveBindings(caps, op, []) : bindings),
+    refs: refViews(linked, bindings),
     imageCount: Array.isArray(images) ? images.length : 0,
     imageMax: caps?.refs?.image?.max ?? 0,
-    keyframe: hasKeyframe && Array.isArray(images) && images.length > 0,
     deadLabels: deadLabelsOf(linked),
   };
-}
-
-/**
- * 组装「生成首帧」的 input：图片模型，引用的角色 / 场景 / 道具带成参考图（图生图），
- * 没有参考图就文生图；比例跟短剧。提示词前面加一句说明，让模型画开场第一帧。
- * 走和画布一致的 buildFreshInput，保证角色卡展开、截断规则相同。
- */
-export function planKeyframeInput(args: {
-  caps: Capabilities | undefined;
-  prompt: string;
-  ratio: string;
-  assets: readonly RefAsset[];
-}) {
-  const linked = linkRefs(args.prompt, args.assets);
-  const params = {
-    prompt: `${KEYFRAME_PREFIX}${args.prompt}`,
-    ...segmentParams(args.caps, { seconds: 0, ratio: args.ratio, overrides: {} }),
-  };
-  const fresh = buildFreshInput(args.caps, params, linked.links);
-  return { ...fresh, deadLabels: deadLabelsOf(linked) };
 }

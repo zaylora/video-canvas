@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 
 /**
  * 画布外壳的积木（设计稿 docs/design/画布UI设计 6.1）：
- * 四角 + 左侧居中五个区，每个区里摆半透明胶囊，胶囊里是图标按钮、分隔线、分段控件。
+ * 四角 + 底部居中 + 左侧居中六个区，每个区里摆半透明胶囊，胶囊里是图标按钮、分隔线、分段控件。
  * 只管长相，摆什么按钮由页面组合。
  */
 
@@ -16,6 +16,7 @@ const ZONE_CLASS = {
   "top-right": "top-3 right-3",
   "bottom-left": "bottom-3.5 left-3",
   "bottom-right": "bottom-3.5 right-3",
+  "bottom-center": "bottom-3.5 left-1/2 -translate-x-1/2",
   "left-center": "top-1/2 left-3 -translate-y-1/2",
 } as const;
 

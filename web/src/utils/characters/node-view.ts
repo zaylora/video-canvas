@@ -1,4 +1,5 @@
 import type { CanvasNodeData, NodeCharacter } from "@/types";
+import { resolveNodeAspect } from "@/utils/canvas/node-frame";
 
 /** 角色卡节点封面的展示状态 */
 export type CharacterNodeView =
@@ -44,6 +45,22 @@ export function characterNodeView(
   }
   if (hasRealSrc(data.src)) return { phase: "ready", tag: null };
   return { phase: "empty", tag: "待补充" };
+}
+
+/**
+ * 角色卡节点框的宽高比：和主图一样（三视图常是横图），规则同图片节点——
+ * 量到的主图画幅 > 节点记下的主图画幅 > 参数面板所选比例 > 16:9。
+ * @param input.measured 主图实际的宽 / 高；还没有主图或没量到为 null
+ * @param input.declared 节点记下的主图画幅（data.mediaAspect）
+ * @param input.selected 参数面板所选比例对应的宽 / 高
+ * @returns 宽 / 高
+ */
+export function characterNodeAspect(input: {
+  measured: number | null;
+  declared: number | null | undefined;
+  selected: number | null;
+}): number {
+  return resolveNodeAspect({ ...input, mediaType: "image" });
 }
 
 /** 封面下方声音格的内容 */

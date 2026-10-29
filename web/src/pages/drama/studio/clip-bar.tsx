@@ -105,7 +105,7 @@ export function ClipBar() {
   };
 
   return (
-    <div className="border-border bg-sidebar shrink-0 border-t px-4 pt-2.5 pb-3">
+    <div className="bg-sidebar h-full overflow-y-auto px-4 pt-2.5 pb-3">
       <div className="mb-1.5 flex items-center gap-2">
         <Button
           variant="ghost"
@@ -138,8 +138,7 @@ export function ClipBar() {
         <Button variant="ghost" size="sm" onClick={() => void actions.batch()}>
           <Layers />
           批量生成
-        </Button>
-        <span className="text-muted-foreground text-[11.5px] max-sm:hidden">拖动片段可排序</span>
+        </Button>{" "}
       </div>
       <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
         <div className="relative shrink-0">

@@ -22,6 +22,7 @@ import {
   overallProgress,
   resumeTarget,
   type MatrixCell,
+  type ScriptDoc,
   type WorkspaceStage,
 } from "@/utils/drama/stages";
 
@@ -230,12 +231,15 @@ function synopsisOf(outlineMd: string): string {
 /**
  * 总览：海报式首屏（项目名、简介、一个主按钮「继续制作」）、16 集 × 5 道工序的进度矩阵、
  * 整体完成度与下一步。矩阵每格都能点，直接跳到对应工序与集。
+ * 大纲和人物传记的全文在剧本页分集栏顶上，这里只放简介和入口。
  */
 export function OverviewArea({
   onGo,
+  onOpenDoc,
   onBreakdownOpen,
 }: {
   onGo: (stage: WorkspaceStage, ep: number) => void;
+  onOpenDoc: (doc: ScriptDoc) => void;
   onBreakdownOpen: () => void;
 }) {
   const { drama, jobs } = useWorkspace();
@@ -269,7 +273,19 @@ export function OverviewArea({
           <h1 className="font-display text-[clamp(34px,4.4vw,56px)] leading-[1.05] font-black tracking-wide">
             {drama.title}
           </h1>
-          {synopsis && <p className="text-muted-foreground max-w-[48ch] text-[15px]">{synopsis}</p>}
+          {synopsis && (
+            <p className="text-muted-foreground max-w-[48ch] text-[15px]">
+              {synopsis}
+              <button
+                type="button"
+                onClick={() => onOpenDoc("outline")}
+                className="text-foreground hover:text-primary focus-visible:ring-ring/50 ml-1.5 inline-flex items-center gap-0.5 rounded text-[13px] font-medium whitespace-nowrap outline-none focus-visible:ring-2"
+              >
+                读完整大纲
+                <ArrowRight className="size-3.5" aria-hidden />
+              </button>
+            </p>
+          )}
           <div className="flex flex-wrap gap-1.5">
             <span className="bg-muted text-muted-foreground rounded-full px-2.5 py-1 text-xs">
               {drama.episodes.length} 集

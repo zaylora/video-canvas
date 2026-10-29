@@ -91,9 +91,9 @@ export function CommandPalette({
               <ScanSearch />
               资产拆解
             </CommandItem>
-            <CommandItem value="操作 右栏 进度 助手" onSelect={run(onToggleSide)}>
+            <CommandItem value="操作 右栏 助手" onSelect={run(onToggleSide)}>
               <PanelRight />
-              展开 / 收起右栏（进度、短剧助手）
+              展开 / 收起右栏（短剧助手）
             </CommandItem>
             <CommandItem
               value="操作 切换 明暗 主题"

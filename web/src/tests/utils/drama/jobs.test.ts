@@ -2,7 +2,12 @@ import { describe, expect, test } from "bun:test";
 
 import type { DramaJob } from "@/api/drama/type";
 import {
+  activeStoryboardJob,
   busyReason,
+  bannerJobs,
+  coveredInPlace,
+  jobRunningText,
+  jobStage,
   isActiveJob,
   jobTitle,
   mergeJob,
@@ -126,5 +131,80 @@ describe("展示与禁用原因", () => {
     ];
     const pruned = pruneFinished(jobs, 2);
     expect(pruned.map((j) => j.id)).toEqual(["r", "d4", "d3"]);
+  });
+});
+
+describe("页面里就地显示进度的任务，顶部进度条不再重复", () => {
+  const view = { analyzingView: false, storyboardEp: null };
+
+  test("正在看第 1 集片场：这一集的分镜任务在页面里显示，不进顶部", () => {
+    const sb = job({ step: "storyboard", episodes: [1] });
+    expect(coveredInPlace(sb, { ...view, storyboardEp: 1 })).toBe(true);
+  });
+
+  test("看的是别的集或不在片场：照常进顶部", () => {
+    const sb = job({ step: "storyboard", episodes: [1] });
+    expect(coveredInPlace(sb, { ...view, storyboardEp: 2 })).toBe(false);
+    expect(coveredInPlace(sb, view)).toBe(false);
+  });
+
+  test("分镜失败了不算就地显示：顶部照样给出原因和重试", () => {
+    const failed = job({ step: "storyboard", episodes: [1], status: "failed" });
+    expect(coveredInPlace(failed, { ...view, storyboardEp: 1 })).toBe(false);
+  });
+
+  test("研读视图开着时，研读和大纲任务不进顶部；其他任务照常", () => {
+    const on = { ...view, analyzingView: true };
+    expect(coveredInPlace(job({ step: "analyze", episodes: [] }), on)).toBe(true);
+    expect(coveredInPlace(job({ step: "outline", episodes: [] }), on)).toBe(true);
+    expect(coveredInPlace(job({ step: "breakdown" }), on)).toBe(false);
+  });
+
+  test("activeStoryboardJob：找出正在给这一集生成分镜的任务", () => {
+    const sb = job({ id: "s", step: "storyboard", episodes: [2] });
+    const jobs = [job({ id: "b" }), sb, job({ id: "d", step: "storyboard", status: "succeeded" })];
+    expect(activeStoryboardJob(jobs, 2)?.id).toBe("s");
+    expect(activeStoryboardJob(jobs, 1)).toBeUndefined();
+  });
+});
+
+describe("页内进度条 bannerJobs", () => {
+  test("进行中的都显示", () => {
+    const jobs = [job({ id: "a", status: "running" }), job({ id: "b", status: "queued" })];
+    expect(bannerJobs(jobs).map((j) => j.id)).toEqual(["a", "b"]);
+  });
+
+  test("最新一条失败了才显示它；已有更新的成功任务就不显示旧失败", () => {
+    const failedNewest = [
+      job({ id: "n", status: "failed", createdAt: "2026-10-28T11:00:00Z" }),
+      job({ id: "o", status: "succeeded", createdAt: "2026-10-28T10:00:00Z" }),
+    ];
+    expect(bannerJobs(failedNewest).map((j) => j.id)).toEqual(["n"]);
+    const succeededNewest = [
+      job({ id: "n", status: "succeeded", createdAt: "2026-10-28T11:00:00Z" }),
+      job({ id: "o", status: "failed", createdAt: "2026-10-28T10:00:00Z" }),
+    ];
+    expect(bannerJobs(succeededNewest)).toEqual([]);
+  });
+
+  test("没有任务或只有成功、取消时为空", () => {
+    expect(bannerJobs([])).toEqual([]);
+    expect(bannerJobs([job({ status: "canceled" })])).toEqual([]);
+  });
+});
+
+describe("任务文案与落点", () => {
+  test("进行中的话术", () => {
+    expect(jobRunningText("breakdown")).toBe("正在拆解剧本资产…");
+    expect(jobRunningText("analyze")).toBe("正在研读剧本…");
+  });
+
+  test("每个步骤对应的工序页", () => {
+    expect(jobStage("analyze")).toBe("script");
+    expect(jobStage("scripts")).toBe("script");
+    expect(jobStage("breakdown")).toBe("assets");
+    expect(jobStage("asset_prompts")).toBe("assets");
+    expect(jobStage("storyboard")).toBe("studio");
+    expect(jobStage("compose")).toBe("final");
   });
 });

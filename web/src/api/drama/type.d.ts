@@ -266,14 +266,6 @@ export interface DramaJobEvent {
 /** 片段状态（由最近一条 take 推出） */
 export type SegmentStatus = "idle" | "running" | "done" | "error";
 
-export interface BackendShot {
-  seconds: number;
-  shot_size: string;
-  camera: string;
-  action: string;
-  dialogue: string;
-}
-
 export interface BackendSegmentTake {
   task_id: string;
   status: TaskStatus;
@@ -288,22 +280,11 @@ export interface BackendSegmentView {
   seq: number;
   seconds: number;
   prompt: string;
-  shots: BackendShot[] | null;
-  keyframe: BackendAssetDto | null;
   takes: BackendSegmentTake[] | null;
   chosen_task_id: string;
   status: SegmentStatus;
   revision: number;
   updated_at: string;
-}
-
-/** 分镜表的一行（只读，供参考） */
-export interface SegmentShot {
-  seconds: number;
-  shotSize: string;
-  camera: string;
-  action: string;
-  dialogue: string;
 }
 
 /** 片段的一次视频生成结果 */
@@ -323,9 +304,6 @@ export interface Segment {
   seconds: number;
   /** `@[名](短剧画布节点 id)` 形式的提示词 */
   prompt: string;
-  shots: SegmentShot[];
-  /** 首帧图；有则生成视频走 i2v */
-  keyframe: AssetDto | null;
   /** 按创建时间正序 */
   takes: SegmentTake[];
   /** 采用的那一条；空串 = 没有 */
@@ -350,7 +328,7 @@ export interface AddSegmentInput {
   afterSeq?: number;
 }
 
-/** generate / keyframe 请求体：input 与 POST /generation-tasks 的 input 同构 */
+/** generate 请求体：input 与 POST /generation-tasks 的 input 同构 */
 export interface SegmentGenerateBody {
   model_id: string;
   input: Record<string, unknown>;
