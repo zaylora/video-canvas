@@ -3,19 +3,19 @@ import { AnimatePresence, motion } from "motion/react";
 import { Loader2, Lock } from "lucide-react";
 import { toast } from "sonner";
 
-import { getEpisode, submitJob, updateEpisode } from "@/api/drama";
+import { getEpisode, updateEpisode } from "@/api/drama";
 import { dramaErrorMessage, isRevisionConflict } from "@/api/drama/errors";
 import type { Episode } from "@/api/drama/type";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DURATION, EASE_OUT } from "@/lib/motion";
 import { cn } from "@/lib/utils";
-import { useDramaJobsStore } from "@/store/drama";
 import { episodeEditState, nextStep } from "@/utils/drama/episodes";
 import { extractScenes, normalizeSceneTitle } from "@/utils/drama/scenes";
 import type { ScriptDoc } from "@/utils/drama/stages";
 
 import { useWorkspace } from "./context";
+import { ScriptsDialog } from "./scripts-dialog";
 import { DocEditor } from "./doc-editor";
 import { useAnalyzing } from "./analyzing-view";
 import { PAPER_PROSE, ProjectDoc } from "./project-doc";
@@ -227,70 +227,62 @@ function EpisodeDoc({ no }: { no: number }) {
   );
 }
 
-/** 底部「下一步」浮条：生成分集剧本 / 资产拆解；有进行中任务时禁用并写明原因 */
+/**
+ * 底部「下一步」浮条：生成分集剧本 / 资产拆解，点了都先弹框选集数；
+ * 有进行中任务时禁用并写明原因
+ */
 function NextStepPill({ onBreakdown }: { onBreakdown: () => void }) {
-  const { drama, jobs, refresh } = useWorkspace();
+  const { drama, jobs } = useWorkspace();
   const step = nextStep(drama, jobs);
   const estimate = useEstimate(
     drama.id,
     step.kind === "scripts" ? { step: "scripts", episodes: step.episodes } : null,
   );
-  const [submitting, setSubmitting] = useState(false);
-
-  const generate = async () => {
-    if (step.kind !== "scripts") return;
-    setSubmitting(true);
-    try {
-      const job = await submitJob(drama.id, { step: "scripts", episodes: step.episodes });
-      useDramaJobsStore.getState().applyJob(drama.id, job);
-      void refresh();
-    } catch (e) {
-      toast.error(dramaErrorMessage(e, "提交失败，请稍后重试"));
-    } finally {
-      setSubmitting(false);
-    }
-  };
+  const [scriptsOpen, setScriptsOpen] = useState(false);
 
   return (
-    <AnimatePresence>
-      {step.kind !== "none" && (
-        <motion.div
-          key={step.kind}
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 8, transition: { duration: DURATION.exit } }}
-          transition={{ duration: DURATION.base, ease: EASE_OUT }}
-          className="bg-chrome ring-chrome-border absolute bottom-4 left-1/2 z-10 flex max-w-[calc(100%-2rem)] -translate-x-1/2 items-center gap-3 rounded-full py-1.5 pr-1.5 pl-4 text-sm shadow-lg ring-1 backdrop-blur-xl"
-        >
-          {step.kind === "scripts" ? (
-            <>
-              <span className="tabular-nums">{step.episodes.length} 集还没有剧本</span>
-              {estimate.status === "ready" && (
-                <span className="text-muted-foreground text-xs tabular-nums">
-                  约 <span className="text-credit">{estimate.credits}</span> 积分
-                </span>
-              )}
-            </>
-          ) : (
-            <span>剧本整理完毕，下一步拆解角色和场景</span>
-          )}
-          <Button
-            size="sm"
-            className="rounded-full"
-            disabled={!!step.disabledReason || submitting}
-            title={step.disabledReason ?? undefined}
-            onClick={step.kind === "scripts" ? () => void generate() : onBreakdown}
+    <>
+      <ScriptsDialog open={scriptsOpen} onOpenChange={setScriptsOpen} />
+      <AnimatePresence>
+        {step.kind !== "none" && (
+          <motion.div
+            key={step.kind}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8, transition: { duration: DURATION.exit } }}
+            transition={{ duration: DURATION.base, ease: EASE_OUT }}
+            className="bg-chrome ring-chrome-border absolute bottom-4 left-1/2 z-10 flex max-w-[calc(100%-2rem)] -translate-x-1/2 items-center gap-3 rounded-full py-1.5 pr-1.5 pl-4 text-sm shadow-lg ring-1 backdrop-blur-xl"
           >
-            {step.kind === "scripts" ? "生成分集剧本" : "资产拆解"}
-          </Button>
-          {step.disabledReason && (
-            <span className="text-muted-foreground max-w-48 truncate pr-3 text-xs">
-              {step.disabledReason}
-            </span>
-          )}
-        </motion.div>
-      )}
-    </AnimatePresence>
+            {step.kind === "scripts" ? (
+              <>
+                <span className="tabular-nums">{step.episodes.length} 集还没有剧本</span>
+                {estimate.status === "ready" && (
+                  <span className="text-muted-foreground text-xs tabular-nums">
+                    约 <span className="text-credit">{estimate.credits}</span> 积分
+                  </span>
+                )}
+              </>
+            ) : (
+              <span>剧本整理完毕，下一步拆解角色和场景</span>
+            )}
+            <Button
+              size="sm"
+              className="rounded-full"
+              disabled={!!step.disabledReason}
+              title={step.disabledReason ?? undefined}
+              onClick={step.kind === "scripts" ? () => setScriptsOpen(true) : onBreakdown}
+            >
+              {step.kind === "scripts" ? "生成分集剧本" : "资产拆解"}
+            </Button>
+            {step.disabledReason && (
+              <span className="text-muted-foreground max-w-48 truncate pr-3 text-xs">
+                {step.disabledReason}
+              </span>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
   );
 }
 

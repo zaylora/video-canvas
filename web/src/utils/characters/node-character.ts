@@ -8,6 +8,7 @@ import type {
 } from "@/types";
 import { takeUploadFile } from "@/utils/canvas/media";
 import { newNodeLabel } from "@/utils/canvas/node-label";
+import { appendOutput } from "@/utils/canvas/outputs";
 import type { CharacterRefs } from "@/utils/tasks/capabilities";
 
 /** 形象（造型）名的默认值 */
@@ -177,7 +178,8 @@ export function roleNames(nodes: readonly { data: CanvasNodeData }[]): string[] 
 
 /**
  * 把选好（素材库）或传好（上传）的一张图写成节点主图：落在节点自己的 assetId / src / mediaType，
- * 清掉失败状态和失败原因；如果同一张图之前是补充图，从补充图里去掉（补充图不含主图）。
+ * 同时记进节点的历史版本（原来的主图留在历史里，可以切回去），清掉失败状态和失败原因；
+ * 如果同一张图之前是补充图，从补充图里去掉（补充图不含主图）。
  * @param data 节点数据
  * @param asset 图片素材
  */
@@ -194,9 +196,13 @@ export function applyMainImage(
     : data.character;
   return {
     ...rest,
-    assetId: asset.id,
-    src: asset.url,
-    mediaType: "image",
+    ...appendOutput(data, {
+      id: asset.id,
+      src: asset.url,
+      mediaType: "image",
+      assetId: asset.id,
+      createdAt: Date.now(),
+    }),
     status: "idle",
     ...(character ? { character } : {}),
   };

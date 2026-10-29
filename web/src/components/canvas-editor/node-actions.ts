@@ -7,8 +7,11 @@ import { useEffect, useRef } from "react";
 export type NodeActions = {
   /** 此刻不能提交的原因；可以提交返回 null */
   blockedReason: () => string | null;
-  /** 提交生成；失败的原因由节点自己就地提示，成败从节点数据（status / taskId）判断 */
-  submit: () => Promise<void>;
+  /**
+   * 提交生成：成功返回 null，失败返回原因（同时节点自己也会就地提示）。
+   * 不能靠事后读节点数据判断成败：画布节点是受控状态，提交刚结束时 status 还没同步过来。
+   */
+  submit: () => Promise<string | null>;
 };
 
 const registry = new Map<string, NodeActions>();
@@ -29,7 +32,7 @@ export function registerNodeActions(id: string, read: () => NodeActions | null):
       const actions = read();
       return actions ? actions.blockedReason() : NOT_READY;
     },
-    submit: () => read()?.submit() ?? Promise.resolve(),
+    submit: () => read()?.submit() ?? Promise.resolve(NOT_READY),
   });
   return () => {
     registry.delete(id);
@@ -58,14 +61,12 @@ export function useRegisterNodeActions(id: string, actions: NodeActions | null) 
 export const hasNodeActions = (id: string): boolean => registry.has(id);
 
 /**
- * 触发一个节点的生成。不能提交时返回原因，否则发起提交并等它结束，返回 null。
- * 提交本身的失败（积分不足等）由节点就地提示，调用方再从节点数据确认有没有真的开始。
+ * 触发一个节点的生成：不能提交、或提交失败（积分不足等）时返回原因，提交成功返回 null。
  */
 export async function submitNodeById(id: string): Promise<string | null> {
   const actions = registry.get(id);
   if (!actions) return NOT_READY;
   const blocked = actions.blockedReason();
   if (blocked) return blocked;
-  await actions.submit();
-  return null;
+  return actions.submit();
 }

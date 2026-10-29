@@ -10,7 +10,6 @@ import { jobStage } from "@/utils/drama/jobs";
 import { stageHints, STAGES } from "@/utils/drama/stages";
 import { formatPageTitle } from "@/utils/page-title";
 
-import { DramaAssistantProvider } from "../assistant/use-drama-assistant";
 import { useComposeNotices } from "../use-compose";
 import { AssetsArea } from "./assets-area";
 import { BreakdownDialog } from "./breakdown-dialog";
@@ -21,7 +20,6 @@ import { FinalArea } from "./final-area";
 import { JobBar } from "./job-bar";
 import { OverviewArea } from "./overview-area";
 import { ScriptArea } from "./script-area";
-import { SidePanel } from "./side-panel";
 import { StudioArea } from "./studio-area";
 import { Topbar } from "./topbar";
 import { useWorkspaceNav } from "./use-nav";
@@ -41,7 +39,7 @@ function WorkspaceSkeleton() {
 
 /**
  * 短剧工作台（/drama/:id，全屏，与 /canvas/:id 同层级）：
- * 顶栏（项目名、保存状态、工序标签、画风、比例、Agent 模型）、左侧分集栏、内容区、右栏（助手）、顶栏下方的任务进度条。
+ * 顶栏（项目名、保存状态、工序标签、画风、比例、Agent 模型）、左侧分集栏、内容区、顶栏下方的任务进度条（短剧助手这一版不上，右栏已去掉）。
  * 当前工序、集号和剧本页打开的大纲 / 人物传记写在地址栏（?area=script&ep=3&doc=outline），刷新能回到原处。
  */
 export default function DramaWorkspacePage() {
@@ -54,7 +52,6 @@ function Workspace({ id }: { id: string }) {
   const workspace = useDramaWorkspace(id);
   const { drama, error, jobs, save, refresh, patch, applyEpisode, reportSave } = workspace;
   const nav = useWorkspaceNav(drama);
-  const [sideOpen, setSideOpen] = useState(() => window.innerWidth >= 1280);
   const [breakdownOpen, setBreakdownOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
 
@@ -122,79 +119,73 @@ function Workspace({ id }: { id: string }) {
   const { stage, ep } = nav;
   return (
     <DramaWorkspaceContext.Provider value={value}>
-      <DramaAssistantProvider drama={value.drama} refresh={refresh}>
-        <MotionConfig reducedMotion="user">
-          <TooltipProvider delay={400}>
-            <div className="drama-theme bg-background text-foreground flex h-svh w-svw flex-col overflow-hidden">
-              <Topbar
-                sideOpen={sideOpen}
-                onToggleSide={() => setSideOpen((open) => !open)}
-                stage={stage}
-                hints={hints}
-                onStage={(next) => nav.go(next)}
-                onPalette={() => setPaletteOpen(true)}
-              />
-              <JobBar
-                inPlace={{
-                  analyzingView:
-                    stage === "script" &&
-                    nav.doc !== null &&
-                    !value.drama.outlineMd &&
-                    value.drama.episodes.length === 0,
-                  storyboardEp: stage === "studio" ? ep : null,
-                }}
-              />
-              <div className="flex min-h-0 flex-1">
-                {stage !== "overview" && (
-                  <EpisodeRail
-                    stage={stage}
-                    ep={ep}
-                    doc={nav.doc}
-                    onPick={nav.setEp}
-                    onDoc={nav.openDoc}
+      <MotionConfig reducedMotion="user">
+        <TooltipProvider delay={400}>
+          <div className="drama-theme bg-background text-foreground flex h-svh w-svw flex-col overflow-hidden">
+            <Topbar
+              stage={stage}
+              hints={hints}
+              onStage={(next) => nav.go(next)}
+              onPalette={() => setPaletteOpen(true)}
+            />
+            <JobBar
+              inPlace={{
+                analyzingView:
+                  stage === "script" &&
+                  nav.doc !== null &&
+                  !value.drama.outlineMd &&
+                  value.drama.episodes.length === 0,
+                storyboardEp: stage === "studio" ? ep : null,
+              }}
+            />
+            <div className="flex min-h-0 flex-1">
+              {stage !== "overview" && (
+                <EpisodeRail
+                  stage={stage}
+                  ep={ep}
+                  doc={nav.doc}
+                  onPick={nav.setEp}
+                  onDoc={nav.openDoc}
+                />
+              )}
+              <main className="relative min-w-0 flex-1 overflow-y-auto">
+                {stage === "overview" && (
+                  <OverviewArea
+                    onGo={nav.go}
+                    onOpenDoc={nav.openDoc}
+                    onBreakdownOpen={() => setBreakdownOpen(true)}
                   />
                 )}
-                <main className="relative min-w-0 flex-1 overflow-y-auto">
-                  {stage === "overview" && (
-                    <OverviewArea
-                      onGo={nav.go}
-                      onOpenDoc={nav.openDoc}
-                      onBreakdownOpen={() => setBreakdownOpen(true)}
-                    />
-                  )}
-                  {stage === "script" && (
-                    <ScriptArea
-                      ep={ep}
-                      doc={nav.doc}
-                      onEp={nav.setEp}
-                      onDoc={nav.openDoc}
-                      onBreakdownOpen={() => setBreakdownOpen(true)}
-                    />
-                  )}
-                  {stage === "assets" && <AssetsArea ep={ep} />}
-                  {stage === "studio" && <StudioArea ep={ep} onGo={nav.go} />}
-                  {stage === "final" && <FinalArea ep={ep} onGo={nav.go} />}
-                </main>
-                {sideOpen && (
-                  <SidePanel className="max-lg:absolute max-lg:inset-y-0 max-lg:right-0 max-lg:z-30 max-lg:shadow-xl" />
+                {stage === "script" && (
+                  <ScriptArea
+                    ep={ep}
+                    doc={nav.doc}
+                    onEp={nav.setEp}
+                    onDoc={nav.openDoc}
+                    onBreakdownOpen={() => setBreakdownOpen(true)}
+                  />
                 )}
-              </div>
+                {stage === "assets" && (
+                  <AssetsArea ep={ep} onBreakdownOpen={() => setBreakdownOpen(true)} />
+                )}
+                {stage === "studio" && <StudioArea ep={ep} onGo={nav.go} />}
+                {stage === "final" && <FinalArea ep={ep} onGo={nav.go} />}
+              </main>
             </div>
-            <BreakdownDialog
-              open={breakdownOpen}
-              onOpenChange={setBreakdownOpen}
-              onStarted={() => nav.go(jobStage("breakdown"), 0)}
-            />
-            <CommandPalette
-              open={paletteOpen}
-              onOpenChange={setPaletteOpen}
-              onGo={nav.go}
-              onBreakdownOpen={() => setBreakdownOpen(true)}
-              onToggleSide={() => setSideOpen((open) => !open)}
-            />
-          </TooltipProvider>
-        </MotionConfig>
-      </DramaAssistantProvider>
+          </div>
+          <BreakdownDialog
+            open={breakdownOpen}
+            onOpenChange={setBreakdownOpen}
+            onStarted={() => nav.go(jobStage("breakdown"), 0)}
+          />
+          <CommandPalette
+            open={paletteOpen}
+            onOpenChange={setPaletteOpen}
+            onGo={nav.go}
+            onBreakdownOpen={() => setBreakdownOpen(true)}
+          />
+        </TooltipProvider>
+      </MotionConfig>
     </DramaWorkspaceContext.Provider>
   );
 }

@@ -13,7 +13,11 @@ const rail = (episodes: EpisodeSummary[]) =>
   renderToStaticMarkup(
     <DramaWorkspaceContext.Provider
       value={
-        { drama: { id: "d1", episodes }, refresh: async () => {} } as unknown as DramaWorkspace
+        {
+          drama: { id: "d1", episodes },
+          jobs: [],
+          refresh: async () => {},
+        } as unknown as DramaWorkspace
       }
     >
       <EpisodeRail stage="assets" ep={0} onPick={() => {}} />

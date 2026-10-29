@@ -106,6 +106,23 @@ describe("按集与分组", () => {
     expect(other.map((a) => a.id)).toEqual(["p1", "run"]);
   });
 
+  test("未分类资产（所在的集被删了，episodes 为 null）不算出现在任何一集", () => {
+    const [orphan] = assetsFromGraph([
+      {
+        id: "o1",
+        type: "canvas",
+        position: { x: 0, y: 0 },
+        data: {
+          kind: "image",
+          label: "道具",
+          drama: { type: "prop", name: "玉佩", episodes: null },
+        },
+      },
+    ] as never);
+    expect(orphan.episodes).toBeNull();
+    expect(inEpisode(orphan, 1)).toBe(false);
+  });
+
   test("分组按角色 / 场景 / 道具，空组略过", () => {
     expect(groupByType(assets).map((g) => [g.type, g.items.length])).toEqual([
       ["character", 1],

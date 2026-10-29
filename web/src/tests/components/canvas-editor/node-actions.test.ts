@@ -7,9 +7,16 @@ import {
   type NodeActions,
 } from "@/components/canvas-editor/node-actions";
 
-const actions = (blocked: string | null, onSubmit: () => void = () => {}): NodeActions => ({
+const actions = (
+  blocked: string | null,
+  onSubmit: () => void = () => {},
+  failure: string | null = null,
+): NodeActions => ({
   blockedReason: () => blocked,
-  submit: async () => onSubmit(),
+  submit: async () => {
+    onSubmit();
+    return failure;
+  },
 });
 
 describe("按节点 ID 触发生成 submitNodeById", () => {
@@ -32,6 +39,12 @@ describe("按节点 ID 触发生成 submitNodeById", () => {
     );
     expect(await submitNodeById("n-blocked")).toBe("请先写提示词");
     expect(submitted).toBe(0);
+    off();
+  });
+
+  test("提交本身失败（积分不足等）：直接返回失败原因，调用方不用事后读节点状态去猜", async () => {
+    const off = registerNodeActions("n-fail", () => actions(null, () => {}, "积分不足"));
+    expect(await submitNodeById("n-fail")).toBe("积分不足");
     off();
   });
 

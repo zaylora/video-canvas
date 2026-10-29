@@ -1,12 +1,18 @@
 import { useState } from "react";
 import { motion } from "motion/react";
-import { Loader2, Lock, Plus, ScrollText, Users } from "lucide-react";
+import { Loader2, Lock, Plus, ScrollText, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
 
-import { addEpisode } from "@/api/drama";
+import { addEpisode, deleteEpisode } from "@/api/drama";
 import { dramaErrorMessage } from "@/api/drama/errors";
+import type { EpisodeSummary } from "@/api/drama/type";
+import { ActionContextMenu } from "@/components/action-context-menu";
+import { confirm } from "@/components/admin-ui/confirm-dialog";
 import { SPRING } from "@/lib/motion";
 import { cn } from "@/lib/utils";
+import { useDramaSegmentsStore } from "@/store/drama-segments";
+import { deleteEpisodeConfirm, episodeAfterDelete } from "@/utils/drama/episodes";
+import { busyReason } from "@/utils/drama/jobs";
 import {
   episodePips,
   type PipState,
@@ -35,7 +41,7 @@ function Pips({ states }: { states: readonly PipState[] }) {
 }
 
 /**
- * 左侧分集栏：每集一个编号 + 四格进度，锁定集带小锁。
+ * 左侧分集栏：每集一个编号 + 四格进度，锁定集带小锁；右键一集可删除（后面的集号往前补位）。
  * 「当前是哪一集」在所有工序间共用；资产区多一个「全集」用来取消按集筛选；
  * 剧本页顶上多「大纲」「人物」两项（研读先出大纲，再按集拆分，所以排在第 1 集前面）。
  */
@@ -53,8 +59,36 @@ export function EpisodeRail({
   onPick: (ep: number) => void;
   onDoc?: (doc: ScriptDoc) => void;
 }) {
-  const { drama, refresh } = useWorkspace();
+  const { drama, jobs, refresh } = useWorkspace();
   const [adding, setAdding] = useState(false);
+  /** 有任务在跑时不能删集：任务按集号写回，删集补位会让它写错集 */
+  const blocked = busyReason(jobs);
+
+  /** 右键「删除」：确认后删，后面的集号往前补位；正在看的集跟着落到合适的位置 */
+  const removeOne = async (episode: EpisodeSummary) => {
+    const total = drama.episodes.length;
+    const ok = await confirm({
+      ...deleteEpisodeConfirm(episode, total),
+      confirmLabel: "删除",
+      destructive: true,
+      blockReason: blocked,
+      onConfirm: async () => {
+        try {
+          await deleteEpisode(drama.id, episode.no);
+        } catch (e) {
+          throw new Error(dramaErrorMessage(e, "删除失败，请稍后重试"));
+        }
+      },
+    });
+    if (!ok) return;
+    useDramaSegmentsStore.getState().forgetDrama(drama.id);
+    await refresh();
+    toast.success(`已删除第 ${episode.no} 集`);
+    // 资产区的「全集」、剧本页的大纲 / 人物不跟集号走，不用跳
+    if (ep === 0 || doc !== null) return;
+    const next = episodeAfterDelete(ep, episode.no, total - 1);
+    if (next !== ep || ep === episode.no) onPick(next);
+  };
   const addOne = async () => {
     setAdding(true);
     try {
@@ -103,26 +137,39 @@ export function EpisodeRail({
         </RailItem>
       )}
       {drama.episodes.map((episode) => (
-        <RailItem
+        <ActionContextMenu
           key={episode.no}
-          active={!doc && ep === episode.no}
-          className={item}
-          label={`第 ${episode.no} 集 · ${episode.title}`}
-          onClick={() => onPick(episode.no)}
-          corner={
-            episode.locked && (
-              <Lock
-                aria-hidden
-                className="text-muted-foreground absolute top-1.5 right-1.5 size-2.5"
-              />
-            )
-          }
+          actions={[
+            {
+              key: "delete",
+              label: "删除",
+              icon: <Trash2 />,
+              destructive: true,
+              disabledReason: blocked,
+              onSelect: () => void removeOne(episode),
+            },
+          ]}
         >
-          <span className="font-mono text-[15px] leading-none font-semibold tracking-tight">
-            {String(episode.no).padStart(2, "0")}
-          </span>
-          <Pips states={episodePips(episode)} />
-        </RailItem>
+          <RailItem
+            active={!doc && ep === episode.no}
+            className={item}
+            label={`第 ${episode.no} 集 · ${episode.title}`}
+            onClick={() => onPick(episode.no)}
+            corner={
+              episode.locked && (
+                <Lock
+                  aria-hidden
+                  className="text-muted-foreground absolute top-1.5 right-1.5 size-2.5"
+                />
+              )
+            }
+          >
+            <span className="font-mono text-[15px] leading-none font-semibold tracking-tight">
+              {String(episode.no).padStart(2, "0")}
+            </span>
+            <Pips states={episodePips(episode)} />
+          </RailItem>
+        </ActionContextMenu>
       ))}
       {stage === "script" && drama.episodes.length > 0 && (
         <button

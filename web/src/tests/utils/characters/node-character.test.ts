@@ -311,6 +311,26 @@ describe("applyMainImage：选了 / 上传了一张图作为主图", () => {
     expect(out.error).toBeUndefined();
     expect(out.character?.extras).toEqual([{ assetId: "11", src: "/a/11.png" }]);
   });
+
+  test("新主图进历史并成为当前版本，原来的主图留在历史里可以切回去", () => {
+    const out = applyMainImage(data({ assetId: "5", src: "/a/5.png" }), asset);
+    expect(out.outputs?.map((item) => item.assetId)).toEqual(["5", "10"]);
+    expect(out.activeOutputId).toBe("10");
+    expect(out.src).toBe("/a/10.png");
+  });
+
+  test("已有多版历史时追加一版；同一张图再选一次只切过去，不重复入列", () => {
+    const outputs = [
+      { id: "5", src: "/a/5.png", mediaType: "image" as const, assetId: "5", createdAt: 1 },
+      { id: "10", src: "/a/10.png", mediaType: "image" as const, assetId: "10", createdAt: 2 },
+    ];
+    const again = applyMainImage(
+      data({ assetId: "5", src: "/a/5.png", outputs, activeOutputId: "5" }),
+      asset,
+    );
+    expect(again.outputs?.map((item) => item.id)).toEqual(["5", "10"]);
+    expect(again.activeOutputId).toBe("10");
+  });
 });
 
 describe("applyVoiceAudio：绑定音频音色", () => {

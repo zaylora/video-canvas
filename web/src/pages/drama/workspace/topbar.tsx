@@ -1,26 +1,15 @@
 import { useEffect, useRef, useState } from "react";
-import {
-  ArrowLeft,
-  Check,
-  CloudAlert,
-  CloudCheck,
-  Loader2,
-  PanelRight,
-  Search,
-} from "lucide-react";
+import { ArrowLeft, CloudAlert, CloudCheck, Loader2, Search } from "lucide-react";
 import { Link } from "react-router";
-import { toast } from "sonner";
 
 import { ChromePill, ChromeSeparator } from "@/components/canvas/chrome/chrome";
-import { ChipPopover, RatioList, StyleGrid } from "@/components/drama/pickers";
+import { useAgentModel } from "@/components/drama/agent-model-picker";
 import { ModelLogo } from "@/components/model-logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { useDramaStyles } from "@/hooks/use-drama-styles";
-import { useRemoteModels } from "@/hooks/use-models";
 import { cn } from "@/lib/utils";
 import { CreditsPill } from "@/pages/canvas/chrome/top-right-bar";
-import { ratioFixed } from "@/utils/drama/episodes";
 import { CUSTOM_STYLE_KEY } from "@/utils/drama/options";
 import type { StageHints, WorkspaceStage } from "@/utils/drama/stages";
 
@@ -91,143 +80,56 @@ function TitleInput() {
   );
 }
 
-/** 画风：浮层选择，改了只影响之后生成的内容；自定义描述防抖保存 */
-function StyleChip() {
-  const { drama, patch } = useWorkspace();
+/**
+ * 这部短剧的画风 / 比例 / Agent 模型：在首页新建时选定，进了工作台只显示、不能改
+ * （改画风、比例会让前后生成的资产不一致）。
+ */
+function ProjectSettings() {
+  const { drama } = useWorkspace();
   const { styles } = useDramaStyles();
-  const [custom, setCustom] = useState(drama.styleCustom);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => void (timer.current && clearTimeout(timer.current)), []);
-
-  const name =
+  const agent = useAgentModel(drama.textModel);
+  const style =
     drama.styleKey === CUSTOM_STYLE_KEY
       ? "自定义画风"
-      : (styles.find((s) => s.key === drama.styleKey)?.name ?? "画风");
-  const save = (styleKey: string, styleCustom: string) =>
-    void patch({ styleKey, styleCustom }).catch(() => undefined);
-
+      : (styles.find((item) => item.key === drama.styleKey)?.name ?? "画风");
+  const item = "flex h-8 items-center gap-1.5 px-3 text-[13px] whitespace-nowrap";
   return (
-    <ChipPopover variant="chrome" showChevron={false} label={name} width="w-[26rem] max-w-[90vw]">
-      {() => (
-        <StyleGrid
-          styles={styles}
-          value={drama.styleKey}
-          custom={custom}
-          note="改画风只影响之后生成的内容"
-          onPick={(key) => save(key, key === CUSTOM_STYLE_KEY ? custom : "")}
-          onCustomChange={(text) => {
-            setCustom(text);
-            if (timer.current) clearTimeout(timer.current);
-            timer.current = setTimeout(() => save(CUSTOM_STYLE_KEY, text), 600);
-          }}
-        />
-      )}
-    </ChipPopover>
-  );
-}
-
-/** Agent 模型：列后台「Agent」类别的模型，第一个标默认；留空表示跟随默认 */
-function ModelChip() {
-  const { drama, patch } = useWorkspace();
-  const remote = useRemoteModels("agent");
-  const first = remote.models[0];
-  const selected = drama.textModel ? remote.models.find((m) => m.key === drama.textModel) : first;
-  const label = selected?.label ?? (drama.textModel || first?.label || "Agent 模型");
-  const stale = !!drama.textModel && remote.status === "ready" && !selected;
-
-  return (
-    <ChipPopover
-      variant="chrome"
-      showChevron={false}
-      icon={
-        !stale && (
-          <ModelLogo vendor={selected?.vendor} name={label} className="size-4 rounded-[5px]" />
-        )
-      }
-      label={stale ? `${drama.textModel}（已停用）` : label}
-      title="跟随后台「Agent」类别"
-      width="w-72"
-    >
-      {(close) => (
-        <>
-          {remote.models.length === 0 && (
-            <div className="text-muted-foreground px-2 py-3 text-sm">
-              {remote.status === "loading" ? "加载中…" : "暂无可用的 Agent 模型"}
-            </div>
-          )}
-          {remote.models.map((model, index) => {
-            const active = selected?.key === model.key;
-            return (
-              <button
-                key={model.key}
-                type="button"
-                onClick={() => {
-                  close();
-                  // 选默认模型等于「跟随后台」：存空串，后台调整默认后自动跟着变
-                  const next = index === 0 ? "" : model.key;
-                  if (next === drama.textModel) return;
-                  void patch({ textModel: next })
-                    .then(() => toast.info(`之后的流水线任务改用 ${model.label}`))
-                    .catch(() => undefined);
-                }}
-                className={cn(
-                  "hover:bg-muted focus-visible:ring-ring/50 flex min-h-8 items-center gap-2 rounded-md px-2 text-left text-sm outline-none focus-visible:ring-2",
-                  active && "bg-muted font-medium",
-                )}
-              >
-                <ModelLogo vendor={model.vendor} name={model.label} className="size-5" />
-                <span className="min-w-0 flex-1 truncate">{model.label}</span>
-                {index === 0 && (
-                  <span className="bg-muted text-muted-foreground rounded-full px-1.5 text-[10px] leading-4">
-                    默认
-                  </span>
-                )}
-                {active && <Check className="size-4 shrink-0" />}
-              </button>
-            );
-          })}
-        </>
-      )}
-    </ChipPopover>
-  );
-}
-
-/** 比例：已有锁定集（资产已按当前比例生成）时固定不可改 */
-function RatioChip() {
-  const { drama, patch } = useWorkspace();
-  const fixed = ratioFixed(drama.episodes);
-  return (
-    <ChipPopover variant="chrome" showChevron={false} label={drama.ratio || "比例未定"}>
-      {(close) => (
-        <RatioList
-          value={drama.ratio}
-          fixed={fixed}
-          onPick={(ratio) => {
-            close();
-            if (ratio !== drama.ratio) void patch({ ratio }).catch(() => undefined);
-          }}
-        />
-      )}
-    </ChipPopover>
+    <ChromePill className="mr-1 max-xl:hidden" aria-label="创作设置">
+      <span
+        className={item}
+        title={drama.styleKey === CUSTOM_STYLE_KEY ? drama.styleCustom : undefined}
+      >
+        {style}
+      </span>
+      <ChromeSeparator />
+      <span className={cn(item, "tabular-nums")}>{drama.ratio || "比例未定"}</span>
+      <ChromeSeparator />
+      <span className={item}>
+        {agent.model && !agent.stale && (
+          <ModelLogo
+            vendor={agent.model.vendor}
+            name={agent.label}
+            className="size-4 rounded-[5px]"
+          />
+        )}
+        <span className="max-w-40 truncate">{agent.label}</span>
+      </span>
+    </ChromePill>
   );
 }
 
 /**
  * 工作台顶栏：左边返回列表 + 项目名（可改）+ 保存状态，中间是工序标签，
- * 右边是画风 / 比例 / Agent 模型、明暗、积分、右栏开关。
+ * 右边是画风 / 比例 / Agent 模型（只读）、明暗、积分。
  * 三列：右列至少是自己的内容宽度（minmax(max-content,1fr)），宽屏时和左列等宽、标签居中；
  * 窗口变窄时由左列（项目名）让位。左右强制等宽的话，右列装不下就会向左溢出、压在标签上。
  */
 export function Topbar({
-  sideOpen,
-  onToggleSide,
   stage,
   hints,
   onStage,
   onPalette,
 }: {
-  sideOpen: boolean;
-  onToggleSide: () => void;
   stage: WorkspaceStage;
   hints: StageHints;
   onStage: (stage: WorkspaceStage) => void;
@@ -260,14 +162,8 @@ export function Topbar({
       </div>
       <StageTabs stage={stage} hints={hints} onChange={onStage} />
       <div className="flex items-center justify-end gap-0.5">
-        {/* 画风 / 比例 / 模型合成一条半透明胶囊，和工序标签、积分同一套外观 */}
-        <ChromePill className="mr-1 max-xl:hidden">
-          <StyleChip />
-          <ChromeSeparator />
-          <RatioChip />
-          <ChromeSeparator />
-          <ModelChip />
-        </ChromePill>
+        {/* 画风 / 比例 / 模型：首页新建时选定，这里只显示 */}
+        <ProjectSettings />
         <Button
           variant="ghost"
           size="sm"
@@ -281,15 +177,6 @@ export function Topbar({
         </Button>
         <ThemeToggle />
         <CreditsPill />
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label={sideOpen ? "收起右栏" : "展开右栏"}
-          aria-pressed={sideOpen}
-          onClick={onToggleSide}
-        >
-          <PanelRight />
-        </Button>
       </div>
     </header>
   );

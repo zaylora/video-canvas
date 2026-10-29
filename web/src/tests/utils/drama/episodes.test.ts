@@ -5,6 +5,11 @@ import {
   breakdownOptions,
   breakdownSubmit,
   defaultBreakdownSelection,
+  deleteEpisodeConfirm,
+  defaultScriptSelection,
+  scriptOptions,
+  scriptSubmit,
+  episodeAfterDelete,
   episodeEditState,
   nextStep,
   ratioFixed,
@@ -154,5 +159,64 @@ describe("资产拆解对话框", () => {
     expect(breakdownSubmit("", [2])).toEqual({ ok: false, label: "先选比例" });
     expect(breakdownSubmit("9:16", [])).toEqual({ ok: false, label: "至少选一集" });
     expect(breakdownSubmit("9:16", [2, 4])).toEqual({ ok: true, label: "开始拆解" });
+  });
+});
+
+describe("删除一集", () => {
+  test("删的是当前看的这集：落到补位上来的下一集，删的是最后一集就落到前一集", () => {
+    expect(episodeAfterDelete(2, 2, 3)).toBe(2);
+    expect(episodeAfterDelete(3, 3, 2)).toBe(2);
+  });
+
+  test("删的在当前集前面：当前集号减 1，看的还是同一集", () => {
+    expect(episodeAfterDelete(4, 2, 4)).toBe(3);
+  });
+
+  test("删的在当前集后面：不变", () => {
+    expect(episodeAfterDelete(1, 3, 4)).toBe(1);
+  });
+
+  test("删完一集都不剩：回到 1（页面按「还没有分集」显示）", () => {
+    expect(episodeAfterDelete(1, 1, 0)).toBe(1);
+  });
+
+  test("确认框：写明集号和标题；有片段视频的提醒会一起删，后面的集号往前补", () => {
+    const plain = deleteEpisodeConfirm(ep(2, { title: "初见" }), 5);
+    expect(plain.title).toBe("删除第 2 集「初见」？");
+    expect(plain.description).toContain("第 3–5 集会依次变成第 2–4 集");
+    expect(plain.description).not.toContain("片段");
+    const withClips = deleteEpisodeConfirm(ep(5, { segmentCount: 3 }), 5);
+    expect(withClips.description).toContain("3 个片段");
+    expect(withClips.description).not.toContain("依次变成");
+  });
+});
+
+describe("生成分集剧本对话框", () => {
+  const eps = [
+    ep(1, { scriptStatus: "ready", locked: true }),
+    ep(2, { scriptStatus: "ready" }),
+    ep(3, { scriptStatus: "empty" }),
+    ep(4, { scriptStatus: "failed" }),
+    ep(5, { scriptStatus: "generating" }),
+  ];
+
+  test("已拆解、生成中的集不能选；已有剧本的能选（重新生成会覆盖）", () => {
+    expect(scriptOptions(eps)).toEqual([
+      { no: 1, title: "第1集", disabled: true, reason: "已拆解", hasScript: true },
+      { no: 2, title: "第2集", disabled: false, reason: null, hasScript: true },
+      { no: 3, title: "第3集", disabled: false, reason: null, hasScript: false },
+      { no: 4, title: "第4集", disabled: false, reason: null, hasScript: false },
+      { no: 5, title: "第5集", disabled: true, reason: "生成中", hasScript: false },
+    ]);
+  });
+
+  test("默认勾选还没有剧本的集（没有或失败），和原来一键生成的范围一样", () => {
+    expect(defaultScriptSelection(eps)).toEqual([3, 4]);
+  });
+
+  test("提交按钮写明集数；没选不能提交；选了已有剧本的给出覆盖提醒", () => {
+    expect(scriptSubmit([], eps)).toEqual({ ok: false, label: "至少选一集", overwrite: 0 });
+    expect(scriptSubmit([3, 4], eps)).toEqual({ ok: true, label: "生成 2 集剧本", overwrite: 0 });
+    expect(scriptSubmit([2, 3], eps)).toEqual({ ok: true, label: "生成 2 集剧本", overwrite: 1 });
   });
 });

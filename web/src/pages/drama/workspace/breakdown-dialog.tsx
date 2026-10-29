@@ -71,46 +71,49 @@ function BreakdownBody({ onClose, onStarted }: { onClose: () => void; onStarted:
         <DialogTitle>资产拆解</DialogTitle>
       </DialogHeader>
 
-      <section className="grid gap-2">
-        <div className="flex items-center gap-2 text-sm">
-          <b>成片比例</b>
-          <span className="bg-status-warning/15 text-status-warning rounded-full px-2 py-px text-xs">
-            必选
-          </span>
-          {fixed && (
-            <span className="text-muted-foreground ml-auto text-xs">
-              已有资产按这个比例生成，不能再改
+      {/* 比例在首页新建时就定了；只有以前建的、没定比例的老短剧才在这里选 */}
+      {!drama.ratio && (
+        <section className="grid gap-2">
+          <div className="flex items-center gap-2 text-sm">
+            <b>成片比例</b>
+            <span className="bg-status-warning/15 text-status-warning rounded-full px-2 py-px text-xs">
+              必选
             </span>
-          )}
-        </div>
-        <div className="grid grid-cols-6 gap-1.5 max-sm:grid-cols-3">
-          {RATIOS.map((item) => {
-            const max = Math.max(item.w, item.h);
-            return (
-              <button
-                key={item.key}
-                type="button"
-                aria-pressed={ratio === item.key}
-                disabled={fixed && drama.ratio !== item.key}
-                onClick={() => setRatio(item.key)}
-                className={cn(
-                  "focus-visible:ring-ring/50 flex h-14 flex-col items-center justify-center gap-1 rounded-lg border text-xs tabular-nums outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-40",
-                  ratio === item.key
-                    ? "border-foreground bg-muted font-medium"
-                    : "hover:bg-muted/60",
-                )}
-              >
-                <span
-                  aria-hidden
-                  className="rounded-[3px] border-[1.5px] border-current"
-                  style={{ width: (item.w / max) * 22, height: (item.h / max) * 22 }}
-                />
-                {item.key}
-              </button>
-            );
-          })}
-        </div>
-      </section>
+            {fixed && (
+              <span className="text-muted-foreground ml-auto text-xs">
+                已有资产按这个比例生成，不能再改
+              </span>
+            )}
+          </div>
+          <div className="grid grid-cols-6 gap-1.5 max-sm:grid-cols-3">
+            {RATIOS.map((item) => {
+              const max = Math.max(item.w, item.h);
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  aria-pressed={ratio === item.key}
+                  disabled={fixed && drama.ratio !== item.key}
+                  onClick={() => setRatio(item.key)}
+                  className={cn(
+                    "focus-visible:ring-ring/50 flex h-14 flex-col items-center justify-center gap-1 rounded-lg border text-xs tabular-nums outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-40",
+                    ratio === item.key
+                      ? "border-foreground bg-muted font-medium"
+                      : "hover:bg-muted/60",
+                  )}
+                >
+                  <span
+                    aria-hidden
+                    className="rounded-[3px] border-[1.5px] border-current"
+                    style={{ width: (item.w / max) * 22, height: (item.h / max) * 22 }}
+                  />
+                  {item.key}
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       <section className="grid gap-2">
         <div className="flex items-center gap-2 text-sm">
@@ -196,7 +199,10 @@ function BreakdownBody({ onClose, onStarted }: { onClose: () => void; onStarted:
   );
 }
 
-/** 资产拆解对话框（剧本区底栏、资产区顶栏共用）：比例必选，已有锁定集时比例固定；集数多选，锁定的、没有剧本的禁用 */
+/**
+ * 资产拆解对话框（剧本区底栏、资产区顶栏共用）：集数多选，锁定的、没有剧本的禁用。
+ * 比例在首页新建时就定了，这里不再显示；只有没定比例的老短剧才在这里必选。
+ */
 export function BreakdownDialog({
   open,
   onOpenChange,

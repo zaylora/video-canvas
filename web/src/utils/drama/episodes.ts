@@ -90,3 +90,93 @@ export function breakdownSubmit(
   if (selected.length === 0) return { ok: false, label: "至少选一集" };
   return { ok: true, label: "开始拆解" };
 }
+
+/** 生成分集剧本对话框里一集的选项 */
+export type ScriptOption = {
+  no: number;
+  title: string;
+  disabled: boolean;
+  /** 不能选的原因，可选时为 null */
+  reason: "已拆解" | "生成中" | null;
+  /** 已有剧本：可以重新生成，但会覆盖 */
+  hasScript: boolean;
+};
+
+/** 已拆解（剧本锁定）的、正在生成的不能选；已有剧本的可以选来重新生成 */
+export function scriptOptions(episodes: readonly EpisodeSummary[]): ScriptOption[] {
+  return episodes.map((ep) => {
+    const reason = ep.locked ? "已拆解" : ep.scriptStatus === "generating" ? "生成中" : null;
+    return {
+      no: ep.no,
+      title: ep.title,
+      disabled: reason !== null,
+      reason,
+      hasScript: ep.scriptStatus === "ready",
+    };
+  });
+}
+
+/** 对话框打开时的默认选择：还没有剧本（没有或失败）的集，和原来一键生成的范围一致 */
+export function defaultScriptSelection(episodes: readonly EpisodeSummary[]): number[] {
+  return scriptOptions(episodes)
+    .filter((option) => !option.disabled && !option.hasScript)
+    .map((option) => option.no);
+}
+
+/**
+ * 提交按钮：至少一集；按钮写明生成几集；overwrite 是选中里已有剧本、会被覆盖的集数。
+ * @param selected 选中的集号
+ * @param episodes 全部集
+ */
+export function scriptSubmit(
+  selected: readonly number[],
+  episodes: readonly EpisodeSummary[],
+): { ok: boolean; label: string; overwrite: number } {
+  const overwrite = scriptOptions(episodes).filter(
+    (option) => option.hasScript && selected.includes(option.no),
+  ).length;
+  if (selected.length === 0) return { ok: false, label: "至少选一集", overwrite };
+  return { ok: true, label: `生成 ${selected.length} 集剧本`, overwrite };
+}
+
+/**
+ * 删掉第 deleted 集后，当前看的那一集该落到哪个集号（后面的集已经往前补位）：
+ * 删的就是当前集——落到补上来的下一集，删的是最后一集就落到前一集；
+ * 删的在当前集前面——集号减 1，看的还是同一集；在后面——不变。一集都不剩时回到 1。
+ * @param current 删之前看的集号
+ * @param deleted 删掉的集号
+ * @param remaining 删完还剩几集
+ */
+export function episodeAfterDelete(current: number, deleted: number, remaining: number): number {
+  if (remaining === 0) return 1;
+  if (current === deleted) return Math.min(deleted, remaining);
+  return current > deleted ? current - 1 : current;
+}
+
+/**
+ * 删一集前的确认框文案：写明删的是哪一集；有片段的说明片段会一起删（生成过的视频素材保留）；
+ * 不是最后一集的说明后面的集号会往前补。
+ * @param episode 要删的集
+ * @param total 删之前一共几集
+ */
+export function deleteEpisodeConfirm(
+  episode: Pick<EpisodeSummary, "no" | "title" | "segmentCount">,
+  total: number,
+): { title: string; description: string } {
+  const name = episode.title.trim()
+    ? `第 ${episode.no} 集「${episode.title.trim()}」`
+    : `第 ${episode.no} 集`;
+  const parts = ["这一集的剧本会一起删除，不能撤销。"];
+  if ((episode.segmentCount ?? 0) > 0) {
+    parts.push(`它的 ${episode.segmentCount} 个片段也会删除，已生成的视频仍保留在素材里。`);
+  }
+  if (episode.no < total) {
+    const from = episode.no + 1;
+    parts.push(
+      from === total
+        ? `第 ${total} 集会变成第 ${total - 1} 集。`
+        : `第 ${from}–${total} 集会依次变成第 ${from - 1}–${total - 1} 集。`,
+    );
+  }
+  return { title: `删除${name}？`, description: parts.join("") };
+}

@@ -3,7 +3,8 @@ import { isTerminalStatus, taskKey } from "./status";
 
 export type TaskToastPlan = {
   id: string;
-  tone: "success" | "error";
+  /** 只提醒失败 / 超时；生成完成不弹通知 */
+  tone: "error";
   title: string;
   description?: string;
   href?: string;
@@ -51,9 +52,9 @@ const CONVERSATION_NODE_PREFIX = "rec:";
 const SEGMENT_NODE_PREFIXES = ["seg:"] as const;
 
 /**
- * 画布外的完成提示：用户正看着这张画布时节点自己会变，不弹；
- * 在列表页或别的画布时弹「《画布名》中的视频已生成 / 生成失败」，点击跳转。
- * 首页生成的对话任务没有画布：正在对话页时格子自己会变，不弹；在别的页面弹不带画布名的说法，没有跳转。
+ * 画布外的提示：只提醒生成失败 / 超时（生成完成不弹，结果在节点、格子、片段上自己会出来）。
+ * 用户正看着这张画布时节点自己会变，不弹；在列表页或别的画布时弹「《画布名》中的视频生成失败」，点击跳转。
+ * 首页生成的对话任务没有画布：正在对话页时不弹；在别的页面弹不带画布名的说法，没有跳转。
  * 主动取消不提醒。
  * @param view 任务快照
  * @param currentCanvasId 正在看的画布 id，不在画布页为 null
@@ -82,8 +83,6 @@ export function planTaskToast(
   const id = `task:${taskKey(view.id)}`;
 
   switch (view.status) {
-    case "succeeded":
-      return { id, tone: "success", title: `${name}中的${kind}已生成`, href };
     case "failed":
     case "expired":
       return {
@@ -104,8 +103,6 @@ function planConversationToast(view: TaskView, pathname: string): TaskToastPlan 
   const kind = KIND_LABEL[view.kind] ?? "内容";
   const id = `task:${taskKey(view.id)}`;
   switch (view.status) {
-    case "succeeded":
-      return { id, tone: "success", title: `${kind}已生成` };
     case "failed":
     case "expired":
       return {
@@ -135,8 +132,6 @@ function planSegmentToast(view: TaskView, pathname: string): TaskToastPlan | nul
   const name = "片段视频";
   const id = `task:${taskKey(view.id)}`;
   switch (view.status) {
-    case "succeeded":
-      return { id, tone: "success", title: `${name}已生成` };
     case "failed":
     case "expired":
       return {

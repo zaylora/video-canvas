@@ -7,6 +7,7 @@ import { listSegments } from "@/api/drama";
 import { confirm } from "@/components/admin-ui/confirm-dialog";
 import { CanvasEditor } from "@/components/canvas-editor/canvas-editor";
 import type { CanvasEditorCommands } from "@/components/canvas-editor/editor-api";
+import { Button } from "@/components/ui/button";
 import { useCanvasLock } from "@/hooks/use-canvas-lock";
 import { cn } from "@/lib/utils";
 import { buildAddNodeItems } from "@/pages/canvas/chrome/add-node-items";
@@ -14,6 +15,7 @@ import type { CanvasNode, CanvasNodeData, FlowNode, NodeDrama, NodeKind } from "
 import { draftStore } from "@/utils/canvas/draft-idb";
 import { loadCanvasForEditing, type OpenedCanvas } from "@/utils/canvas/open-canvas";
 import { defaultDramaForNew, type AssetType, type EpisodeFilter } from "@/utils/drama/assets";
+import { busyReason } from "@/utils/drama/jobs";
 import { referenceWarning } from "@/utils/drama/segment-assets";
 import { getCurrentUserId } from "@/utils/storage/user-id";
 
@@ -154,7 +156,21 @@ function DramaCanvas({
  * 资产区：顶部是「列表 ⇄ 画布」切换和全部生成；左侧分集栏选中的集驱动筛选（0 = 全集）。
  * 列表视图盖在短剧专属画布上，读的是画布里同一份节点数据。
  */
-export function AssetsArea({ ep }: { ep: number }) {
+export function AssetsArea({
+  ep,
+  onBreakdownOpen,
+}: {
+  /** 左侧分集栏当前选中的集；0 = 全集 */
+  ep: number;
+  /** 打开资产拆解对话框：从剧本里拆出角色、场景、道具 */
+  onBreakdownOpen: () => void;
+}) {
+  const { drama, jobs } = useWorkspace();
+  const breakdownBlocked =
+    busyReason(jobs) ??
+    (drama.episodes.some((episode) => episode.scriptStatus === "ready" && !episode.locked)
+      ? null
+      : "没有可拆解的集：先写好剧本");
   const [view, setView] = useState<"list" | "canvas">("list");
   const filter = useMemo<EpisodeFilter>(
     () => (ep === 0 ? { kind: "all" } : { kind: "episode", no: ep }),
@@ -234,6 +250,15 @@ export function AssetsArea({ ep }: { ep: number }) {
         </div>
         <span className="flex-1" />
         <div ref={setGenerateAllTarget} className="flex items-center" />
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={!!breakdownBlocked}
+          title={breakdownBlocked ?? "从已写好的剧本里拆出角色、场景和道具"}
+          onClick={onBreakdownOpen}
+        >
+          资产拆解
+        </Button>
       </div>
       <div className="relative min-h-0 flex-1">
         {/* 绝对定位铺满：编辑器的 h-full 才有确定的高度可依 */}

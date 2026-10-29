@@ -126,8 +126,8 @@ export type NodeDrama = {
   name?: string;
   /** 造型 / 变体名，可空串 */
   look?: string;
-  /** 出现的集号；空数组 = 全集 */
-  episodes: number[];
+  /** 出现的集号；空数组 = 全集；null = 未分类（所在的集被删了，保留类型和名字等用户重新归类） */
+  episodes: number[] | null;
   [extra: string]: unknown;
 };
 

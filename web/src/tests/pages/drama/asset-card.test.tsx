@@ -42,6 +42,17 @@ describe("AssetCard：短剧资产卡", () => {
     expect(card(item({ status: "error" }))).not.toContain(">重试<");
   });
 
+  test("封面图完整显示不裁切：16:9 的三视图放进 3:4 的卡片里也能看全", () => {
+    const out = card(
+      item({
+        status: "done",
+        data: { kind: "character", src: "https://cdn/sheet.png" } as CanvasNodeData,
+      }),
+    );
+    expect(out).toContain("object-contain");
+    expect(out).not.toContain("object-cover");
+  });
+
   test("多选模式下点卡片是勾选，不进画布", () => {
     const out = card(item(), true);
     expect(out).toContain('aria-label="选择"');

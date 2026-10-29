@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, spyOn, test, type Mock } from 
 
 import {
   addSegment,
+  deleteEpisode,
   deleteSegment,
   generateSegment,
   listSegments,
@@ -205,6 +206,10 @@ describe("api/drama：片段请求", () => {
     del.mockResolvedValue(undefined);
     await deleteSegment("5d2a");
     expect(del.mock.calls[0][0]).toBe("/drama-segments/5d2a");
+    await deleteEpisode("1a2b", 3);
+    expect(del.mock.calls[1][0]).toBe("/dramas/1a2b/episodes/3");
+    // 失败原因（有任务在跑等）由调用方就地提示，不弹全局 toast
+    expect(del.mock.calls[1][1]).toMatchObject({ silent: true });
     put.mockResolvedValue({ items: [rawSegment({ id: "b" }), rawSegment({ id: "a" })] });
     const list = await reorderSegments("1a2b", 1, ["b", "a"]);
     expect(put.mock.calls[0][0]).toBe("/dramas/1a2b/episodes/1/segments/order");

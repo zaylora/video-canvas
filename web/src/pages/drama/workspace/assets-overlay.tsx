@@ -164,30 +164,22 @@ function AssetList({ items }: { items: AssetItem[] }) {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [multi, setMulti]);
 
-  const generate = useCallback(
-    async (ids: string[]) => {
-      setBatching(true);
-      let started = 0;
-      const blocked: string[] = [];
-      for (const id of ids) {
-        const reason = await submitNodeById(id);
-        if (reason) {
-          blocked.push(reason);
-          continue;
-        }
-        // 提交本身的失败（积分不足等）由节点就地提示；这里按节点数据确认是不是真的开始了
-        const node = editor.getNodes().find((n) => n.id === id);
-        if (node && node.type !== "group" && node.data.status === "running") started += 1;
-        else blocked.push("没有提交成功，到画布里选中它可以看到原因");
-      }
-      setBatching(false);
-      if (started > 0) toast.success(`已提交 ${started} 个生成任务`);
-      if (blocked.length > 0) {
-        toast.warning(`有 ${blocked.length} 个没能提交：${blocked[0]}`);
-      }
-    },
-    [editor],
-  );
+  const generate = useCallback(async (ids: string[]) => {
+    setBatching(true);
+    let started = 0;
+    const blocked: string[] = [];
+    for (const id of ids) {
+      // 成败以提交结果为准：节点是受控状态，提交刚结束时读到的 status 还是旧的，不能拿来判断
+      const reason = await submitNodeById(id);
+      if (reason) blocked.push(reason);
+      else started += 1;
+    }
+    setBatching(false);
+    if (started > 0) toast.success(`已提交 ${started} 个生成任务`);
+    if (blocked.length > 0) {
+      toast.warning(`有 ${blocked.length} 个没能提交：${blocked[0]}`);
+    }
+  }, []);
 
   const locate = (id: string) => {
     ui.setView("canvas");

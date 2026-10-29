@@ -224,6 +224,8 @@ export interface CreateDramaInput {
   /** 0 = 自动 */
   targetEpisodes?: number;
   episodeSeconds?: number;
+  /** 流水线用的 Agent 模型 key；不传跟随后台第一个 */
+  textModel?: string;
 }
 
 /** PATCH /dramas/:id 可改字段 */

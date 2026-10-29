@@ -37,6 +37,15 @@ describe("片段 store", () => {
     ).toEqual(["a"]);
   });
 
+  test("forgetDrama：删集补位后丢掉这部短剧缓存的各集片段（集号变了，旧缓存会对错集），别的短剧不动", () => {
+    const store = useDramaSegmentsStore.getState();
+    store.setList("d1", 1, [handleShape("a", 0)]);
+    store.setList("d1", 2, [handleShape("b", 0)]);
+    store.setList("d10", 1, [handleShape("c", 0)]);
+    store.forgetDrama("d1");
+    expect(Object.keys(useDramaSegmentsStore.getState().byEpisode)).toEqual([segmentKey("d10", 1)]);
+  });
+
   test("watch 引用计数：多处打开同一集，全部关掉才不再对账", () => {
     const store = useDramaSegmentsStore.getState();
     const off1 = store.watch("d1", 1);

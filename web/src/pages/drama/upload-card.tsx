@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import { createDrama } from "@/api/drama";
 import { DRAMA_ERR, dramaErrorMessage, isDramaError } from "@/api/drama/errors";
 import type { DramaRatio } from "@/api/drama/type";
+import { AgentModelPicker } from "@/components/drama/agent-model-picker";
 import {
   ChipPopover,
   EpisodesPicker,
@@ -89,7 +90,9 @@ export function UploadCard() {
   const [genre, setGenre] = useState("");
   const [styleKey, setStyleKey] = useState<string | null>(null);
   const [styleCustom, setStyleCustom] = useState("");
-  const [ratio, setRatio] = useState<DramaRatio>("");
+  // 画风、比例、模型进了工作台就不能再改：比例默认竖屏短剧常用的 9:16
+  const [ratio, setRatio] = useState<DramaRatio>("9:16");
+  const [textModel, setTextModel] = useState("");
   const [target, setTarget] = useState(0);
   const [seconds, setSeconds] = useState(DEFAULT_EPISODE_SECONDS);
   const [error, setError] = useState<string | null>(null);
@@ -142,6 +145,7 @@ export function UploadCard() {
         ratio,
         targetEpisodes: target,
         episodeSeconds: seconds,
+        textModel: textModel || undefined,
       });
       navigate(`/drama/${drama.id}`);
     } catch (e) {
@@ -283,7 +287,6 @@ export function UploadCard() {
           {(close) => (
             <RatioList
               value={ratio}
-              hint="可以之后再定，拆解前必选"
               onPick={(next) => {
                 setRatio(next);
                 close();
@@ -304,6 +307,7 @@ export function UploadCard() {
             />
           )}
         </ChipPopover>
+        <AgentModelPicker value={textModel} onChange={setTextModel} />
         <motion.button
           type="button"
           whileTap={TAP}

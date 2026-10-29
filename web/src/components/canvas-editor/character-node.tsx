@@ -16,6 +16,7 @@ import {
 import type { AssetDto } from "@/api/asset/type";
 import { NodeCard, NodeVideoBody, type NodeCardHandle } from "@/components/canvas";
 import { BaseNodeContent } from "@/components/canvas/base-node";
+import { VersionBadge } from "@/components/canvas/version-badge";
 import { toggleVoice, useVoicePlaying } from "@/components/characters/voice-player";
 import { Button } from "@/components/ui/button";
 import { NODE_META } from "@/constants/canvas";
@@ -29,6 +30,7 @@ import { useCharacterDetail } from "@/store/character-detail";
 import type { CanvasNode, CanvasNodeData } from "@/types";
 import { ignoresVoice } from "@/utils/canvas/link-rule";
 import { shouldRecordAspect } from "@/utils/canvas/media-aspect";
+import { showVersionBadge } from "@/utils/canvas/versions";
 import { nodeFrameSize, paramAspect } from "@/utils/canvas/node-frame";
 import { applyPickedAssets, emptyCharacter, MAX_EXTRAS } from "@/utils/characters/node-character";
 import { characterNodeAspect, characterNodeView, voiceCell } from "@/utils/characters/node-view";
@@ -182,6 +184,9 @@ function CharacterNodeBody({
     selected: paramAspect(vm.caps, vm.params),
   });
 
+  // 生成过多张（或换过主图）：右上角出「历史」徽标，点开选一张当主图，和图片节点一样
+  const badge = showVersionBadge(data);
+
   const showTask = SHOWS_TASK_BODY.has(vm.view.phase);
   const extraFull = character.extras.length >= MAX_EXTRAS;
 
@@ -207,6 +212,7 @@ function CharacterNodeBody({
       handles={CHARACTER_HANDLES}
       canAcceptConnection={() => true}
       width={nodeFrameSize(aspect).width}
+      corner={badge ? <VersionBadge nodeId={id} badge={badge} /> : undefined}
     >
       <BaseNodeContent>
         <div className="relative w-full" style={{ aspectRatio: aspect }}>
@@ -332,7 +338,11 @@ function CharacterNodeBody({
         {data.drama && (
           <div className="text-muted-foreground -mt-1.5 px-2.5 pb-2.5 text-[11px]">
             出现集数：
-            {data.drama.episodes.length === 0 ? "全集" : `第 ${data.drama.episodes.join("、")} 集`}
+            {data.drama.episodes === null
+              ? "未分类"
+              : data.drama.episodes.length === 0
+                ? "全集"
+                : `第 ${data.drama.episodes.join("、")} 集`}
           </div>
         )}
       </BaseNodeContent>

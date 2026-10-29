@@ -25,6 +25,8 @@ type DramaSegmentsState = {
   remove: (dramaId: string, no: number, id: string) => void;
   /** 片段工作区挂载时登记，卸载时取消 */
   watch: (dramaId: string, no: number) => () => void;
+  /** 丢掉一部短剧缓存的全部集（删集后集号补位，按集号存的旧缓存会对错集），下次打开重新读 */
+  forgetDrama: (dramaId: string) => void;
 };
 
 export const useDramaSegmentsStore = create<DramaSegmentsState>((set) => ({
@@ -64,4 +66,11 @@ export const useDramaSegmentsStore = create<DramaSegmentsState>((set) => ({
         return { watching };
       });
   },
+
+  forgetDrama: (dramaId) =>
+    set((state) => ({
+      byEpisode: Object.fromEntries(
+        Object.entries(state.byEpisode).filter(([key]) => parseSegmentKey(key).dramaId !== dramaId),
+      ),
+    })),
 }));

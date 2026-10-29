@@ -3,7 +3,6 @@ import {
   Film,
   LayoutGrid,
   Moon,
-  PanelRight,
   ScanSearch,
   ScrollText,
   Sun,
@@ -35,7 +34,7 @@ const STAGE_ICON: Record<WorkspaceStage, LucideIcon> = {
 };
 
 /**
- * ⌘K 命令面板：跳到某道工序、某一集，或执行常用操作（资产拆解、收起右栏、切换明暗）。
+ * ⌘K 命令面板：跳到某道工序、某一集，或执行常用操作（资产拆解、切换明暗）。
  * 搜索由 cmdk 完成；选中后先关面板再执行，避免面板关闭动画和页面切换抢焦点。
  */
 export function CommandPalette({
@@ -43,13 +42,11 @@ export function CommandPalette({
   onOpenChange,
   onGo,
   onBreakdownOpen,
-  onToggleSide,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onGo: (stage: WorkspaceStage, ep?: number) => void;
   onBreakdownOpen: () => void;
-  onToggleSide: () => void;
 }) {
   const { drama } = useWorkspace();
   const theme = useSettingsStore((state) => state.theme);
@@ -90,10 +87,6 @@ export function CommandPalette({
             <CommandItem value="操作 资产拆解" onSelect={run(onBreakdownOpen)}>
               <ScanSearch />
               资产拆解
-            </CommandItem>
-            <CommandItem value="操作 右栏 助手" onSelect={run(onToggleSide)}>
-              <PanelRight />
-              展开 / 收起右栏（短剧助手）
             </CommandItem>
             <CommandItem
               value="操作 切换 明暗 主题"

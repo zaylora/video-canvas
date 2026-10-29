@@ -45,7 +45,8 @@ function DoneCover({ item }: { item: AssetItem }) {
         alt={item.name}
         loading="lazy"
         draggable={false}
-        className="absolute inset-0 size-full object-cover"
+        // 按图片原比例完整显示：三视图是横图，裁成 3:4 会只剩半个人；空出的部分露出卡片底色
+        className="absolute inset-0 size-full object-contain"
       />
     );
   }

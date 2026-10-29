@@ -100,6 +100,8 @@ describe("api/drama：请求体", () => {
     expect(form.has("genre")).toBe(false);
     expect(form.has("ratio")).toBe(false);
     expect(form.has("target_episodes")).toBe(false);
+    // 没选模型：不传，后端跟随后台第一个
+    expect(form.has("text_model")).toBe(false);
   });
 
   test("新建（文本）：text 与创作设置转 snake_case 字符串", () => {
@@ -112,6 +114,7 @@ describe("api/drama：请求体", () => {
       ratio: "16:9",
       targetEpisodes: 10,
       episodeSeconds: 90,
+      textModel: "pro",
     });
     expect(form.get("text")).toBe("正文");
     expect(form.get("file")).toBeNull();
@@ -120,6 +123,7 @@ describe("api/drama：请求体", () => {
     expect(form.get("ratio")).toBe("16:9");
     expect(form.get("target_episodes")).toBe("10");
     expect(form.get("episode_seconds")).toBe("90");
+    expect(form.get("text_model")).toBe("pro");
   });
 
   test("改短剧 / 改集：只带传了的字段", () => {

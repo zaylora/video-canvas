@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 
 import type { CanvasNodeData, NodeCharacter } from "@/types";
 import { DEFAULT_NODE_ASPECT } from "@/utils/canvas/node-frame";
+import { selectOutput } from "@/utils/canvas/outputs";
+import { canSetMain, showVersionBadge } from "@/utils/canvas/versions";
 import { characterNodeAspect, characterNodeView, voiceCell } from "@/utils/characters/node-view";
 
 const character = (patch: Partial<NodeCharacter> = {}): NodeCharacter => ({
@@ -83,6 +85,33 @@ describe("characterNodeAspect：角色卡节点框跟主图同比例，不再固
     expect(characterNodeAspect({ measured: null, declared: null, selected: null })).toBe(
       DEFAULT_NODE_ASPECT,
     );
+  });
+});
+
+describe("角色卡节点的多版本徽标：生成过多张就能看历史、选主图", () => {
+  const output = (id: string) => ({
+    id,
+    src: `/a/${id}.png`,
+    mediaType: "image" as const,
+    assetId: id,
+    createdAt: 1,
+  });
+
+  test("只有一版：没有徽标", () => {
+    expect(
+      showVersionBadge(data({ assetId: "1", src: "/a/1.png", outputs: [output("1")] })),
+    ).toBeNull();
+  });
+
+  test("有多版：显示总数，和图片节点同一套", () => {
+    const badge = showVersionBadge(data({ outputs: [output("1"), output("2"), output("3")] }));
+    expect(badge).toEqual({ count: 3, generating: false });
+  });
+
+  test("切主图：选历史里的一版，主图换成它", () => {
+    const node = data({ outputs: [output("1"), output("2")], activeOutputId: "2", assetId: "2" });
+    expect(canSetMain(node, "1")).toEqual({ ok: true });
+    expect(selectOutput(node, "1")).toMatchObject({ assetId: "1", src: "/a/1.png" });
   });
 });
 

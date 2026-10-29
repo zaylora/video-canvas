@@ -73,6 +73,16 @@ describe("资产分类：节点 -> 类型", () => {
     ]);
   });
 
+  test("所在的集被删了：episodes 为 null 也是未分类，但保留类型（不会被当成全集）", () => {
+    const orphan = {
+      kind: "image" as const,
+      label: "a",
+      drama: { type: "scene" as const, episodes: null },
+    };
+    expect(assetEpisodesOf(orphan)).toBeNull();
+    expect(assetTypeOf(orphan)).toBe("scene");
+  });
+
   test("toAssetItems：跳过组与导演台，名字取 drama.name + look", () => {
     const items = toAssetItems([
       { id: "g", type: "group", position: { x: 0, y: 0 }, data: { label: "组" } } as FlowNode,

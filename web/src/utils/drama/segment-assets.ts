@@ -22,7 +22,8 @@ export type RefAsset = {
   /** 节点标题，chip 上显示它（如「林川 · 童年」） */
   label: string;
   /** 出现集号；[] = 全集 */
-  episodes: number[];
+  /** 出现的集号；空数组 = 全集；null = 未分类 */
+  episodes: number[] | null;
   kind: NodeKind;
   /** 当前素材地址；还没出图为 null */
   src: string | null;
@@ -55,7 +56,10 @@ export function assetsFromGraph(nodes: CanvasGraphDto["nodes"] | null | undefine
       name,
       look,
       label: data.label?.trim() || (look ? `${name} · ${look}` : name),
-      episodes: [...new Set(data.drama?.episodes ?? [])].sort((a, b) => a - b),
+      episodes:
+        data.drama?.episodes === null
+          ? null
+          : [...new Set(data.drama?.episodes ?? [])].sort((a, b) => a - b),
       kind: data.kind,
       src,
       mediaType: data.mediaType,
@@ -67,9 +71,9 @@ export function assetsFromGraph(nodes: CanvasGraphDto["nodes"] | null | undefine
   return out;
 }
 
-/** 这个资产出现在第 no 集（全集资产算出现在每一集） */
+/** 这个资产出现在第 no 集（全集资产算出现在每一集，未分类的不算出现在任何一集） */
 export const inEpisode = (asset: Pick<RefAsset, "episodes">, no: number): boolean =>
-  asset.episodes.length === 0 || asset.episodes.includes(no);
+  asset.episodes !== null && (asset.episodes.length === 0 || asset.episodes.includes(no));
 
 /** 按是否属于本集拆成两组，各自保持原顺序（@ 候选本集优先、资产库「本集 / 全集」切换都用它） */
 export function splitByEpisode(

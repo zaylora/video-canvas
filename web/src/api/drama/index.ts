@@ -138,6 +138,7 @@ export function buildCreateForm(input: CreateDramaInput): FormData {
     ratio: input.ratio || undefined,
     target_episodes: input.targetEpisodes ? String(input.targetEpisodes) : undefined,
     episode_seconds: input.episodeSeconds ? String(input.episodeSeconds) : undefined,
+    text_model: input.textModel || undefined,
   };
   for (const [key, value] of Object.entries(fields)) {
     if (value !== undefined) form.append(key, value);
@@ -251,6 +252,11 @@ export const addEpisode = async (
   body: { title?: string; synopsis?: string } = {},
 ): Promise<Episode> =>
   mapEpisode(await service.post<BackendEpisodeView>(`/dramas/${id}/episodes`, body));
+
+/** 删一集：后面的集号往前补位，资产的出现集数由后端一起改；有任务在跑 67004，由调用方提示 */
+export const deleteEpisode = async (id: string, no: number): Promise<void> => {
+  await service.delete(`/dramas/${id}/episodes/${no}`, { silent: true });
+};
 
 /** 改单集；锁定集改正文 67005、revision 冲突 409 都由调用方处理 */
 export const updateEpisode = async (

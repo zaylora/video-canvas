@@ -1,16 +1,23 @@
 import { AnimatePresence, motion } from "motion/react";
-import { CircleX, Clapperboard, Loader2 } from "lucide-react";
+import { Clapperboard, Loader2 } from "lucide-react";
 
 import { VideoPoster } from "@/components/canvas/media-preview";
-import { DURATION, EASE_OUT, SHIMMER } from "@/lib/motion";
+import { EASE_OUT, SHIMMER } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { playableTake } from "@/utils/drama/segments";
 
+import { TakeCarousel } from "./take-carousel";
 import { usePlaybackContext } from "./use-playback";
 import { useStudio } from "./use-studio";
 
 /** 「x:y」比例转成 CSS aspect-ratio；认不出来用 9:16 */
 const aspectOf = (ratio: string) => (/^\d+:\d+$/.test(ratio) ? ratio.replace(":", "/") : "9/16");
+
+/** 「x:y」比例转成宽 / 高的数值；认不出来按 9:16 */
+const aspectValue = (ratio: string) => {
+  const match = /^(\d+):(\d+)$/.exec(ratio);
+  return match ? Number(match[1]) / Number(match[2]) : 9 / 16;
+};
 
 /**
  * 播放器背后的氛围光：把当前画面的海报放大、虚化、压低透明度铺在底下，
@@ -45,8 +52,9 @@ function Ambient({ src }: { src: string | null }) {
 }
 
 /**
- * 中间的大播放器：采用的视频播放；连播时显示当前片段（两个 video 双缓冲）；
- * 下面是这个片段多次生成的结果缩略图，点选即采用。成片在「成片」页看，不在这里。
+ * 中间的预览：这个片段生成过结果时是版本轮播（正中是采用的那一版，滑到哪版就采用哪版）；
+ * 连播时换成双缓冲的大播放器显示当前片段。成片在「成片」页看，不在这里。
+ * 连播用的两个 video 一直挂着（轮播时只是藏起来），否则开始连播时拿不到它们。
  */
 export function Preview() {
   const { selected, drama, actions, submitting, segments } = useStudio();
@@ -56,6 +64,7 @@ export function Preview() {
   const take = selected ? playableTake(selected) : null;
   const shownTake = playback.active && current ? playableTake(current) : take;
   const running = !!selected && (selected.status === "running" || submitting.has(selected.id));
+  const carousel = !playback.active && !!selected && selected.takes.length > 0;
   return (
     <section
       aria-label="预览"
@@ -63,9 +72,24 @@ export function Preview() {
     >
       <Ambient src={shownTake?.asset?.url ?? null} />
       <div className="relative z-10 flex min-h-0 w-full flex-1 items-center justify-center">
+        {carousel && selected && (
+          <div className="absolute inset-0">
+            <TakeCarousel
+              key={selected.id}
+              takes={selected.takes}
+              chosenTaskId={selected.chosenTaskId}
+              aspect={aspectValue(drama.ratio)}
+              onChoose={(taskId) => void actions.choose(selected, taskId)}
+            />
+          </div>
+        )}
         <div
+          aria-hidden={carousel}
           style={{ aspectRatio: aspectOf(drama.ratio) }}
-          className="relative grid h-full max-h-[680px] max-w-full place-items-center overflow-hidden rounded-2xl bg-black shadow-[0_40px_80px_-30px_rgb(0_0_0/0.9)] ring-1 ring-white/10"
+          className={cn(
+            "relative grid h-full max-h-[680px] max-w-full place-items-center overflow-hidden rounded-2xl bg-black shadow-[0_40px_80px_-30px_rgb(0_0_0/0.9)] ring-1 ring-white/10",
+            carousel && "invisible",
+          )}
         >
           {/* 连播的两个 video 一直挂着（下一段在不可见的那个里预加载），只显示当前画面；无连播时都是透明的 */}
           {([0, 1] as const).map((which) => {
@@ -98,15 +122,6 @@ export function Preview() {
               </span>
               <span>{current?.seconds}s</span>
             </div>
-          ) : take?.asset ? (
-            <video
-              key={take.taskId}
-              src={take.asset.url}
-              controls
-              playsInline
-              preload="metadata"
-              className="size-full bg-black object-contain"
-            />
           ) : running ? (
             <div className="grid size-full place-items-center bg-[repeating-linear-gradient(135deg,oklch(0.17_0_0)_0_14px,oklch(0.15_0_0)_14px_28px)] text-center text-xs text-white/70">
               <div>
@@ -117,7 +132,6 @@ export function Preview() {
                 >
                   生成中，通常要几分钟
                 </span>
-                <p className="mt-1 text-[11px] opacity-60">可以先去改别的片段，完成后会通知你</p>
               </div>
             </div>
           ) : (
@@ -133,56 +147,6 @@ export function Preview() {
           )}
         </div>
       </div>
-      {selected && selected.takes.length > 0 && (
-        <motion.div
-          key={selected.id}
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: DURATION.base, ease: EASE_OUT }}
-          className="relative z-10 flex items-center gap-2"
-        >
-          <span className="text-muted-foreground mr-1 text-xs">版本 · 点选即采用</span>
-          {selected.takes.map((item, index) => {
-            const chosen = selected.chosenTaskId === item.taskId;
-            const ok = item.status === "succeeded" && !!item.asset;
-            const ing =
-              !ok &&
-              item.status !== "failed" &&
-              item.status !== "canceled" &&
-              item.status !== "expired";
-            return (
-              <button
-                key={item.taskId}
-                type="button"
-                aria-pressed={chosen}
-                aria-label={`第 ${index + 1} 次结果${chosen ? "（已采用）" : ""}`}
-                disabled={!ok}
-                title={ok ? "采用这一条" : item.errorMessage || (ing ? "生成中" : "没有可用的结果")}
-                onClick={() => void actions.choose(selected, item.taskId)}
-                style={{ aspectRatio: aspectOf(drama.ratio) }}
-                className={cn(
-                  "bg-muted focus-visible:ring-ring/50 relative w-10 overflow-hidden rounded-lg border-2 outline-none transition-transform hover:-translate-y-0.5 focus-visible:ring-2",
-                  chosen ? "border-primary" : "border-transparent",
-                  !ok && "cursor-not-allowed opacity-70",
-                )}
-              >
-                {chosen && (
-                  <span className="bg-primary text-primary-foreground absolute top-0.5 left-0.5 z-10 rounded px-1 text-[9px] leading-[14px] font-semibold">
-                    采用
-                  </span>
-                )}
-                {ok && item.asset ? (
-                  <VideoPoster src={item.asset.url} />
-                ) : ing ? (
-                  <Loader2 className="text-muted-foreground m-auto size-4 animate-spin" />
-                ) : (
-                  <CircleX className="text-destructive m-auto size-4" />
-                )}
-              </button>
-            );
-          })}
-        </motion.div>
-      )}
     </section>
   );
 }
