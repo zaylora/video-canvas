@@ -101,6 +101,30 @@ func (r *DramaRepository) List(ctx context.Context, userID uint64, keyword strin
 	return rows, n, err
 }
 
+// CoverKeys 按用户批量取短剧资产画布的封面存储 key（canvas_projects.cover_asset_id 指向的素材），
+// 没有封面或不属于该用户的画布不在结果里；canvasIDs 为空时不查库。
+func (r *DramaRepository) CoverKeys(ctx context.Context, userID uint64, canvasIDs []uint64) (map[uint64]string, error) {
+	out := make(map[uint64]string, len(canvasIDs))
+	if len(canvasIDs) == 0 {
+		return out, nil
+	}
+	var rows []struct {
+		ID  uint64
+		Key string
+	}
+	err := r.db.WithContext(ctx).Model(&model.CanvasProject{}).
+		Joins("JOIN assets ON assets.id = canvas_projects.cover_asset_id").
+		Where("canvas_projects.user_id = ? AND canvas_projects.id IN ? AND canvas_projects.cover_asset_id <> 0", userID, canvasIDs).
+		Select("canvas_projects.id AS id", "assets.storage_key AS key").Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		out[row.ID] = row.Key
+	}
+	return out, nil
+}
+
 // Project 按用户和ID读取，其他用户的数据返回ErrNotFound。
 func (r *DramaRepository) Project(ctx context.Context, userID, id uint64, lock bool) (*model.DramaProject, error) {
 	q := r.db.WithContext(ctx)

@@ -175,6 +175,8 @@ func NewApp(cfg *config.Config) (*App, error) {
 		Repo: dramaRepo, Registry: aiCfgSvc, Streamer: llmgateway.New(llmgateway.Options{IPAllowed: outboundIPPolicy(cfg)}), Secrets: aiCfgSvc, Canvas: dramaCanvasSvc, Broadcaster: hub, Credits: settingsSvc,
 		Segments: dramaSegments, CanvasAssets: canvasProjectRepo,
 		Compose: videoframe.New(videoframe.Options{Timeout: 10 * time.Minute}), Assets: assetSvc,
+		// 列表封面：资产画布里第一张生成成功的图，和画布列表一样取缩略图
+		Covers: dramaRepo, CoverURL: func(key string) string { return assetSvc.FileURL(key) + "?v=thumb" },
 	})
 
 	// 配置服务反向依赖插件宿主与任务服务，所以组装完后再注入。

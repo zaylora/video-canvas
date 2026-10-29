@@ -45,6 +45,12 @@ type DramaCanvasWriter interface {
 	DeleteEpisode(context.Context, uint64, uint64, uint64, int) error
 }
 
+// DramaCoverReader 读取短剧资产画布的封面素材：画布里第一张生成成功的图（canvas_projects.cover_asset_id）。
+type DramaCoverReader interface {
+	// CoverKeys 按用户批量取画布封面的存储 key，没有封面的画布不在结果里。
+	CoverKeys(ctx context.Context, userID uint64, canvasIDs []uint64) (map[uint64]string, error)
+}
+
 // DramaCreditPolicy 提供与现有生成任务一致的新账户初始积分。
 type DramaCreditPolicy interface {
 	// InitialCredits 返回后台当前生效的新账户初始积分。
@@ -81,6 +87,9 @@ type DramaDeps struct {
 	Segments     DramaSegmentSummary
 	Compose      DramaVideoComposer
 	Assets       DramaComposeAssets
+	// Covers 和 CoverURL 给列表配封面；任一为空时列表不返回封面。
+	Covers   DramaCoverReader
+	CoverURL func(key string) string
 }
 
 // DramaService 短剧项目和固定流水线的业务入口。
@@ -96,11 +105,13 @@ type DramaService struct {
 	segments     DramaSegmentSummary
 	compose      DramaVideoComposer
 	assets       DramaComposeAssets
+	covers       DramaCoverReader
+	coverURL     func(key string) string
 }
 
 // NewDramaService 创建短剧服务，不启动后台任务。
 func NewDramaService(d DramaDeps) *DramaService {
-	return &DramaService{repo: d.Repo, registry: d.Registry, streamer: d.Streamer, secrets: d.Secrets, canvas: d.Canvas, bc: d.Broadcaster, credits: d.Credits, canvasAssets: d.CanvasAssets, segments: d.Segments, compose: d.Compose, assets: d.Assets}
+	return &DramaService{repo: d.Repo, registry: d.Registry, streamer: d.Streamer, secrets: d.Secrets, canvas: d.Canvas, bc: d.Broadcaster, credits: d.Credits, canvasAssets: d.CanvasAssets, segments: d.Segments, compose: d.Compose, assets: d.Assets, covers: d.Covers, coverURL: d.CoverURL}
 }
 
 // Create 校验原文和风格，在同一事务建立项目、画布与首个研读任务。
@@ -218,7 +229,32 @@ func (s *DramaService) List(ctx context.Context, userID uint64, keyword string, 
 		}
 		out = append(out, v)
 	}
+	// 2. 封面取各自资产画布里第一张生成成功的图，一页一次批量查。
+	if err := s.fillCovers(ctx, userID, rows, out); err != nil {
+		return nil, 0, err
+	}
 	return out, n, nil
+}
+
+// fillCovers 给列表项填封面地址；没配封面依赖或画布还没有图时保持空串，前端回退到渐变底。
+func (s *DramaService) fillCovers(ctx context.Context, userID uint64, rows []model.DramaProject, out []model.DramaSummary) error {
+	if s.covers == nil || s.coverURL == nil || len(rows) == 0 {
+		return nil
+	}
+	ids := make([]uint64, 0, len(rows))
+	for _, p := range rows {
+		ids = append(ids, p.CanvasID)
+	}
+	keys, err := s.covers.CoverKeys(ctx, userID, ids)
+	if err != nil {
+		return err
+	}
+	for i, p := range rows {
+		if key := keys[p.CanvasID]; key != "" {
+			out[i].CoverURL = s.coverURL(key)
+		}
+	}
+	return nil
 }
 
 // Update 带版本更新项目，不改变已锁定集正文。
