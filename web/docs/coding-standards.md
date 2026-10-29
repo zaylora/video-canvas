@@ -59,6 +59,26 @@
 - 项目自己的业务组件放在 `src/components` 其他目录（如 `canvas`、`setting`），不要放进 `ui`。
 - 配置见 `components.json`（style: base-nova，图标库 lucide）。
 
+### 6.1 视觉风格：统一用半透明「清透」胶囊
+
+浮层、工具条、标签组、筛选 / 下拉按钮组等浮在内容上的控件，统一用画布工具条那套半透明外观，不用 `bg-card` / `bg-muted` 加 `border` 的实心卡片。
+
+- 优先直接用 `src/components/canvas/chrome/chrome.tsx` 的 `ChromePill`、`ChromeSeparator`、`ChromeButton`、`ChromeSegment`，不要自己再拼一套。
+- 需要自己写时，底用 `bg-chrome ring-1 ring-chrome-border shadow-lg backdrop-blur-xl backdrop-saturate-150`；胶囊用 `rounded-full`，面板用 `rounded-3xl`。
+- 选中态用 `bg-chrome-hover ring-1 ring-chrome-border rounded-full`（同 `ChromeSegment` 的滑块），悬停用 `hover:bg-chrome-hover`。
+- 面板里的输入框用 `bg-chrome-hover border-chrome-border rounded-full`，不用默认的实心输入框。
+- 间距宽松，不要挤：列表行高不低于 40px，面板四周留白不低于 16px。
+- 参考实现：短剧工作台的工序标签 `pages/drama/workspace/stage-tabs.tsx`、顶栏画风 / 比例 / 模型胶囊（`ChipPopover variant="chrome"`）、资产画布的资产库浮窗和底部横排工具条（`pages/drama/workspace/assets-overlay.tsx`）。
+- 共用组件已有的变体（如 `ChipPopover` 的 `bar`）别处还在用，要换外观就加新变体，不改已有调用方的样子。
+
+### 6.2 不加操作说明小字
+
+把交互和视觉做好，界面自己会说话；不要在页面上加教用户怎么操作的说明文字，看着乱。
+
+- 不加：「拖动片段可排序」「拖到提示词里，或输入 @」「在右侧写好提示词后点『立即生成』」「分镜表供参考……」「可以离开这个页面，完成后会通知你」这类说明小字，以及空状态标题下的解释段落。
+- 空状态只留：图标 + 一句标题 + 操作按钮（需要时加进度）。
+- 照常保留：按钮的 `title` 悬停提示、禁用原因、错误和失败原因等必要反馈。
+
 ## 7. 生成任务：统一入口
 
 所有入口（画布节点、首页对话、以后新增的任何地方）提交和取消生成任务，**只经过 `utils/tasks/gateway.ts`**，共用同一套逻辑：
