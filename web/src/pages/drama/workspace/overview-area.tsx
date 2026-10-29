@@ -1,8 +1,10 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { motion } from "motion/react";
 import {
   ArrowRight,
   Check,
+  ChevronLeft,
+  ChevronRight,
   Clapperboard,
   Loader2,
   Play,
@@ -16,7 +18,8 @@ import { useDramaAssets } from "@/hooks/use-drama-assets";
 import { DURATION, EASE_OUT, STAGGER, STAGGER_MAX } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { useDramaJobsStore } from "@/store/drama";
-import { nextStep } from "@/utils/drama/episodes";
+import { episodePage, nextStep, pageOfEpisode } from "@/utils/drama/episodes";
+import { getPageNumbers } from "@/utils/pagination";
 import {
   episodeMatrix,
   overallProgress,
@@ -153,6 +156,68 @@ function MatrixRow({
   );
 }
 
+/** 进度表底部的分页：左边当前范围，右边上一页 / 页码 / 下一页 */
+function MatrixPager({
+  page,
+  pages,
+  range,
+  onPage,
+}: {
+  page: number;
+  pages: number;
+  range: string;
+  onPage: (page: number) => void;
+}) {
+  return (
+    <nav
+      aria-label="进度表分页"
+      className="flex flex-wrap items-center gap-2 px-[18px] pt-3 max-sm:justify-center"
+    >
+      <span className="text-muted-foreground text-xs tabular-nums">{range}</span>
+      <span className="flex-1 max-sm:hidden" />
+      <div className="flex items-center gap-1">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="上一页"
+          disabled={page <= 1}
+          onClick={() => onPage(page - 1)}
+        >
+          <ChevronLeft />
+        </Button>
+        {getPageNumbers(page, pages).map((item, index) =>
+          item === "..." ? (
+            <span key={`gap-${index}`} className="text-muted-foreground w-6 text-center text-xs">
+              …
+            </span>
+          ) : (
+            <Button
+              key={item}
+              variant={item === page ? "secondary" : "ghost"}
+              size="icon-sm"
+              aria-label={`第 ${item} 页`}
+              aria-current={item === page ? "page" : undefined}
+              onClick={() => onPage(item)}
+              className="font-mono text-xs tabular-nums"
+            >
+              {item}
+            </Button>
+          ),
+        )}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="下一页"
+          disabled={page >= pages}
+          onClick={() => onPage(page + 1)}
+        >
+          <ChevronRight />
+        </Button>
+      </div>
+    </nav>
+  );
+}
+
 /** 整体完成度圆环：conic-gradient 画弧，中间留白放百分比 */
 function Ring({ percent }: { percent: number }) {
   return (
@@ -229,7 +294,7 @@ function synopsisOf(outlineMd: string): string {
 }
 
 /**
- * 总览：海报式首屏（项目名、简介、一个主按钮「继续制作」）、16 集 × 5 道工序的进度矩阵、
+ * 总览：海报式首屏（项目名、简介、一个主按钮「继续制作」）、分集 × 5 道工序的进度矩阵（每页 10 集）、
  * 整体完成度与下一步。矩阵每格都能点，直接跳到对应工序与集。
  * 大纲和人物传记的全文在剧本页分集栏顶上，这里只放简介和入口。
  */
@@ -254,6 +319,9 @@ export function OverviewArea({
   );
   const synopsis = synopsisOf(drama.outlineMd);
   const resumeEpisode = resume ? drama.episodes.find((ep) => ep.no === resume.ep) : null;
+  // 进度表分页：一开始翻到「继续制作」那一集所在的页
+  const [page, setPage] = useState(() => (resume ? pageOfEpisode(drama.episodes, resume.ep) : 1));
+  const matrix = episodePage(drama.episodes, page);
 
   return (
     <div className="mx-auto max-w-[1440px] px-[clamp(16px,3vw,40px)] pt-7 pb-12">
@@ -371,7 +439,7 @@ export function OverviewArea({
               ))}
             </div>
             <div className="grid gap-1">
-              {drama.episodes.map((episode, index) => (
+              {matrix.items.map((episode, index) => (
                 <MatrixRow key={episode.no} episode={episode} index={index} onGo={onGo} />
               ))}
               {drama.episodes.length === 0 && (
@@ -381,6 +449,14 @@ export function OverviewArea({
               )}
             </div>
           </div>
+          {matrix.pages > 1 && (
+            <MatrixPager
+              page={matrix.page}
+              pages={matrix.pages}
+              range={`第 ${matrix.from}–${matrix.to} 集 · 共 ${drama.episodes.length} 集`}
+              onPage={setPage}
+            />
+          )}
         </section>
 
         <div className="grid gap-5">

@@ -11,7 +11,9 @@ import {
   scriptSubmit,
   episodeAfterDelete,
   episodeEditState,
+  episodePage,
   nextStep,
+  pageOfEpisode,
   ratioFixed,
   tocState,
 } from "@/utils/drama/episodes";
@@ -218,5 +220,31 @@ describe("生成分集剧本对话框", () => {
     expect(scriptSubmit([], eps)).toEqual({ ok: false, label: "至少选一集", overwrite: 0 });
     expect(scriptSubmit([3, 4], eps)).toEqual({ ok: true, label: "生成 2 集剧本", overwrite: 0 });
     expect(scriptSubmit([2, 3], eps)).toEqual({ ok: true, label: "生成 2 集剧本", overwrite: 1 });
+  });
+});
+
+describe("总览进度表分页", () => {
+  const eps = Array.from({ length: 25 }, (_, i) => ep(i + 1));
+
+  test("每页 10 集，给出当前页的集和「第 a–b 集」范围", () => {
+    const first = episodePage(eps, 1);
+    expect(first.items.map((e) => e.no)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(first).toMatchObject({ page: 1, pages: 3, from: 1, to: 10 });
+    const last = episodePage(eps, 3);
+    expect(last.items.map((e) => e.no)).toEqual([21, 22, 23, 24, 25]);
+    expect(last).toMatchObject({ page: 3, pages: 3, from: 21, to: 25 });
+  });
+
+  test("页码越界收回到有效范围；没有集时只有一页", () => {
+    expect(episodePage(eps, 9).page).toBe(3);
+    expect(episodePage(eps, 0).page).toBe(1);
+    expect(episodePage([], 1)).toMatchObject({ items: [], page: 1, pages: 1 });
+  });
+
+  test("某一集在第几页：按在列表里的位置算，找不到回第 1 页", () => {
+    expect(pageOfEpisode(eps, 1)).toBe(1);
+    expect(pageOfEpisode(eps, 10)).toBe(1);
+    expect(pageOfEpisode(eps, 11)).toBe(2);
+    expect(pageOfEpisode(eps, 99)).toBe(1);
   });
 });

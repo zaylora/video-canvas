@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router";
 import { MotionConfig } from "motion/react";
 
+import { Logo } from "@/components/brand/logo";
+import { FocusLoader } from "@/components/focus-loader";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { jobStage } from "@/utils/drama/jobs";
@@ -25,17 +26,8 @@ import { Topbar } from "./topbar";
 import { useWorkspaceNav } from "./use-nav";
 import { useDramaWorkspace, type DramaWorkspace } from "./use-workspace";
 
-function WorkspaceSkeleton() {
-  return (
-    <div className="flex h-svh w-svw">
-      <Skeleton className="h-full w-[78px] rounded-none motion-reduce:animate-none" />
-      <div className="flex-1 p-6">
-        <Skeleton className="h-8 w-60 motion-reduce:animate-none" />
-        <Skeleton className="mt-6 h-64 w-full motion-reduce:animate-none" />
-      </div>
-    </div>
-  );
-}
+/** 加载层开始退场时不用做什么：工作台自己的入场动画随挂载播放 */
+const noop = () => {};
 
 /**
  * 短剧工作台（/drama/:id，全屏，与 /canvas/:id 同层级）：
@@ -54,6 +46,9 @@ function Workspace({ id }: { id: string }) {
   const nav = useWorkspaceNav(drama);
   const [breakdownOpen, setBreakdownOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  /** 进场加载层已收起；和进画布同一套（FocusLoader），数据到了且 Logo 聚焦完才退场 */
+  const [revealed, setRevealed] = useState(false);
+  const onLoaderDone = useCallback(() => setRevealed(true), []);
 
   usePageTitle(formatPageTitle(drama?.title, "短剧工作室"));
   useComposeNotices(id);
@@ -108,84 +103,93 @@ function Workspace({ id }: { id: string }) {
       </div>
     );
   }
-  if (!value) {
-    return (
-      <div className="drama-theme bg-background">
-        <WorkspaceSkeleton />
-      </div>
-    );
-  }
+  const loader = !revealed && (
+    <FocusLoader
+      icon={<Logo size={56} animated />}
+      plainIcon
+      title="连镜"
+      subtitle={drama ? `正在打开「${drama.title}」` : "正在打开短剧"}
+      label={drama ? `正在打开短剧「${drama.title}」` : "正在打开短剧"}
+      ready={!!value}
+      onOpen={noop}
+      onDone={onLoaderDone}
+    />
+  );
+  if (!value) return loader || null;
 
   const { stage, ep } = nav;
   return (
-    <DramaWorkspaceContext.Provider value={value}>
-      <MotionConfig reducedMotion="user">
-        <TooltipProvider delay={400}>
-          <div className="drama-theme bg-background text-foreground flex h-svh w-svw flex-col overflow-hidden">
-            <Topbar
-              stage={stage}
-              hints={hints}
-              onStage={(next) => nav.go(next)}
-              onPalette={() => setPaletteOpen(true)}
-            />
-            <JobBar
-              inPlace={{
-                analyzingView:
-                  stage === "script" &&
-                  nav.doc !== null &&
-                  !value.drama.outlineMd &&
-                  value.drama.episodes.length === 0,
-                storyboardEp: stage === "studio" ? ep : null,
-              }}
-            />
-            <div className="flex min-h-0 flex-1">
-              {stage !== "overview" && (
-                <EpisodeRail
-                  stage={stage}
-                  ep={ep}
-                  doc={nav.doc}
-                  onPick={nav.setEp}
-                  onDoc={nav.openDoc}
-                />
-              )}
-              <main className="relative min-w-0 flex-1 overflow-y-auto">
-                {stage === "overview" && (
-                  <OverviewArea
-                    onGo={nav.go}
-                    onOpenDoc={nav.openDoc}
-                    onBreakdownOpen={() => setBreakdownOpen(true)}
-                  />
-                )}
-                {stage === "script" && (
-                  <ScriptArea
+    <>
+      <DramaWorkspaceContext.Provider value={value}>
+        <MotionConfig reducedMotion="user">
+          <TooltipProvider delay={400}>
+            <div className="drama-theme bg-background text-foreground flex h-svh w-svw flex-col overflow-hidden">
+              <Topbar
+                stage={stage}
+                hints={hints}
+                onStage={(next) => nav.go(next)}
+                onPalette={() => setPaletteOpen(true)}
+              />
+              <JobBar
+                inPlace={{
+                  analyzingView:
+                    stage === "script" &&
+                    nav.doc !== null &&
+                    !value.drama.outlineMd &&
+                    value.drama.episodes.length === 0,
+                  storyboardEp: stage === "studio" ? ep : null,
+                }}
+              />
+              <div className="flex min-h-0 flex-1">
+                {stage !== "overview" && (
+                  <EpisodeRail
+                    stage={stage}
                     ep={ep}
                     doc={nav.doc}
-                    onEp={nav.setEp}
+                    onPick={nav.setEp}
                     onDoc={nav.openDoc}
-                    onBreakdownOpen={() => setBreakdownOpen(true)}
                   />
                 )}
-                {stage === "assets" && (
-                  <AssetsArea ep={ep} onBreakdownOpen={() => setBreakdownOpen(true)} />
-                )}
-                {stage === "studio" && <StudioArea ep={ep} onGo={nav.go} />}
-                {stage === "final" && <FinalArea ep={ep} onGo={nav.go} />}
-              </main>
+                <main className="relative min-w-0 flex-1 overflow-y-auto">
+                  {stage === "overview" && (
+                    <OverviewArea
+                      onGo={nav.go}
+                      onOpenDoc={nav.openDoc}
+                      onBreakdownOpen={() => setBreakdownOpen(true)}
+                    />
+                  )}
+                  {stage === "script" && (
+                    <ScriptArea
+                      ep={ep}
+                      doc={nav.doc}
+                      onEp={nav.setEp}
+                      onDoc={nav.openDoc}
+                      onBreakdownOpen={() => setBreakdownOpen(true)}
+                    />
+                  )}
+                  {stage === "assets" && (
+                    <AssetsArea ep={ep} onBreakdownOpen={() => setBreakdownOpen(true)} />
+                  )}
+                  {stage === "studio" && <StudioArea ep={ep} onGo={nav.go} />}
+                  {stage === "final" && <FinalArea ep={ep} onGo={nav.go} />}
+                </main>
+              </div>
             </div>
-          </div>
-          <BreakdownDialog
-            open={breakdownOpen}
-            onOpenChange={setBreakdownOpen}
-            onStarted={() => nav.go(jobStage("breakdown"), 0)}
-          />
-          <CommandPalette
-            open={paletteOpen}
-            onOpenChange={setPaletteOpen}
-            onGo={nav.go}
-            onBreakdownOpen={() => setBreakdownOpen(true)}
-          />
-        </TooltipProvider>
-      </MotionConfig>
-    </DramaWorkspaceContext.Provider>
+            <BreakdownDialog
+              open={breakdownOpen}
+              onOpenChange={setBreakdownOpen}
+              onStarted={() => nav.go(jobStage("breakdown"), 0)}
+            />
+            <CommandPalette
+              open={paletteOpen}
+              onOpenChange={setPaletteOpen}
+              onGo={nav.go}
+              onBreakdownOpen={() => setBreakdownOpen(true)}
+            />
+          </TooltipProvider>
+        </MotionConfig>
+      </DramaWorkspaceContext.Provider>
+      {loader}
+    </>
   );
 }

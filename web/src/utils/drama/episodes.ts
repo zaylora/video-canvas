@@ -180,3 +180,24 @@ export function deleteEpisodeConfirm(
   }
   return { title: `删除${name}？`, description: parts.join("") };
 }
+
+/** 总览进度表每页几集 */
+export const EPISODES_PER_PAGE = 10;
+
+/**
+ * 总览进度表的一页：页码越界收回到有效范围，没有集时也算一页。
+ * @returns 这一页的集、实际页码、总页数，以及「第 from–to 集」用的序号（按在列表里的位置，从 1 起）
+ */
+export function episodePage<T>(episodes: readonly T[], page: number) {
+  const pages = Math.max(1, Math.ceil(episodes.length / EPISODES_PER_PAGE));
+  const current = Math.min(Math.max(1, page), pages);
+  const start = (current - 1) * EPISODES_PER_PAGE;
+  const items = episodes.slice(start, start + EPISODES_PER_PAGE);
+  return { items, page: current, pages, from: start + 1, to: start + items.length };
+}
+
+/** 某一集在进度表的第几页；找不到回第 1 页 */
+export function pageOfEpisode(episodes: readonly EpisodeSummary[], no: number): number {
+  const index = episodes.findIndex((episode) => episode.no === no);
+  return index < 0 ? 1 : Math.floor(index / EPISODES_PER_PAGE) + 1;
+}
