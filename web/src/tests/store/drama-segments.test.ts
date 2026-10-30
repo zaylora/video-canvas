@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, spyOn, test } from "bun:test";
 
 import type { BackendSegmentView } from "@/api/drama/type";
+import { subscribeDramaChanges } from "@/utils/drama/episode-events";
 import { useDramaSegmentsStore, segmentKey } from "@/store/drama-segments";
 import { handleDramaSegmentEvent, reconcileWatchedSegments } from "@/utils/drama/segment-events";
 import service from "@/utils/requests/service";
@@ -89,6 +90,50 @@ describe("WebSocket drama.segment", () => {
     });
     const list = useDramaSegmentsStore.getState().byEpisode[segmentKey("d9", 2)]!;
     expect(list[0]).toMatchObject({ id: "s1", status: "running", prompt: "来自推送" });
+  });
+
+  test("片段生成完成立即刷新分集摘要，重复或过时推送不重复刷新", () => {
+    handleDramaSegmentEvent({ drama_id: "d1", episode_no: 1, segment: raw({ status: "running" }) });
+    let refreshes = 0;
+    const off = subscribeDramaChanges("d1", () => {
+      refreshes++;
+    });
+    try {
+      const done = {
+        drama_id: "d1",
+        episode_no: 1,
+        segment: raw({ status: "done", chosen_task_id: "t1", revision: 2 }),
+      };
+      handleDramaSegmentEvent(done);
+      expect(refreshes).toBe(1);
+      handleDramaSegmentEvent(done);
+      handleDramaSegmentEvent({ ...done, segment: raw() });
+      expect(refreshes).toBe(1);
+    } finally {
+      off();
+    }
+  });
+
+  test("断线对账补到完成视频时同步刷新分集摘要", async () => {
+    const event = { drama_id: "d1", episode_no: 1, segment: raw({ status: "running" }) };
+    handleDramaSegmentEvent(event);
+    const get = spyOn(service, "get").mockResolvedValue({
+      items: [raw({ status: "done", chosen_task_id: "t1", revision: 2 })],
+    });
+    let refreshes = 0;
+    const off = subscribeDramaChanges("d1", () => {
+      refreshes++;
+    });
+    useDramaSegmentsStore.getState().watch("d1", 1);
+    try {
+      await reconcileWatchedSegments();
+      expect(refreshes).toBe(1);
+      await reconcileWatchedSegments();
+      expect(refreshes).toBe(1);
+    } finally {
+      off();
+      get.mockRestore();
+    }
   });
 
   test("对账：只重新拉正在看的那几集，请求失败不抛", async () => {

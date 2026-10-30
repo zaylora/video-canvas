@@ -259,6 +259,14 @@ export interface DramaJobInput {
   maxSeconds?: number;
 }
 
+/** WebSocket drama.episode 事件载荷：该集剧本状态已保存，需重新读取短剧详情。 */
+export interface DramaEpisodeEvent {
+  /** 短剧 ID。 */
+  drama_id: string;
+  /** 已保存状态的集号，从 1 开始。 */
+  episode_no: number;
+}
+
 /** WebSocket drama.job 事件载荷 */
 export interface DramaJobEvent {
   dramaId: string;

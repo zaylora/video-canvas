@@ -1,8 +1,10 @@
-import { beforeEach, describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, spyOn, test } from "bun:test";
 
 import type { BackendJobView, DramaJob } from "@/api/drama/type";
 import { useDramaJobsStore } from "@/store/drama";
-import { handleDramaJobEvent } from "@/utils/drama/job-events";
+import { subscribeDramaChanges } from "@/utils/drama/episode-events";
+import service from "@/utils/requests/service";
+import { handleDramaJobEvent, reconcileWatchedDramas } from "@/utils/drama/job-events";
 import { parseServerMessage } from "@/utils/ws/socket-client";
 
 const job = (patch: Partial<DramaJob> = {}): DramaJob => ({
@@ -118,5 +120,29 @@ describe("WebSocket drama.job", () => {
     handleDramaJobEvent({ drama_id: "d9", job: rawJob({ progress: 40, episodes: null }) });
     const jobs = useDramaJobsStore.getState().byDrama.d9;
     expect(jobs[0]).toMatchObject({ id: "j1", progress: 40, episodes: [] });
+  });
+});
+
+describe("断线恢复的分集状态", () => {
+  test("整批仍在运行也重新拉详情，补齐离线期间已写完的集", async () => {
+    useDramaJobsStore.getState().watch("d1");
+    const get = spyOn(service, "get").mockResolvedValue({
+      items: [rawJob({ step: "scripts", progress: 40 })],
+    });
+    let refreshes = 0;
+    const off = subscribeDramaChanges("d1", () => {
+      refreshes++;
+    });
+    try {
+      await reconcileWatchedDramas();
+      expect(refreshes).toBe(1);
+      expect(useDramaJobsStore.getState().settled.d1).toBeUndefined();
+      get.mockRejectedValue(new Error("offline"));
+      await reconcileWatchedDramas();
+      expect(refreshes).toBe(1);
+    } finally {
+      off();
+      get.mockRestore();
+    }
   });
 });

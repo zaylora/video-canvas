@@ -7,6 +7,8 @@ import (
 	"video-canvas/internal/drama"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
+	"video-canvas/internal/pkg/idcodec"
+	"video-canvas/internal/pkg/ws"
 	"video-canvas/internal/provider"
 	"video-canvas/internal/repository"
 )
@@ -52,9 +54,10 @@ func (s *DramaService) runScripts(ctx context.Context, p *model.DramaProject, j 
 	return outputs, cost, nil
 }
 
-// saveDramaScript 在项目与任务锁内写入当前集，取消或锁定后拒绝覆盖。
+// saveDramaScript 在项目与任务锁内写入当前集，提交后通知前端；取消或锁定后拒绝覆盖。
 func (s *DramaService) saveDramaScript(ctx context.Context, j *model.DramaJob, no int, text, status string) error {
-	return s.repo.WithTx(ctx, func(tx repository.DramaTx) error {
+	// 1. 状态与正文原子保存，失败时不通知前端。
+	err := s.repo.WithTx(ctx, func(tx repository.DramaTx) error {
 		if _, e := tx.Project(ctx, j.UserID, j.DramaID, true); e != nil {
 			return e
 		}
@@ -85,6 +88,22 @@ func (s *DramaService) saveDramaScript(ctx context.Context, j *model.DramaJob, n
 		}
 		return errcode.ErrDramaNotFound
 	})
+	if err != nil {
+		return err
+	}
+	// 2. 提交后逐集通知，不依赖整批进度的 10% 推送节流。
+	s.publishEpisode(ctx, j, no)
+	return nil
+}
+
+// publishEpisode 通知当前用户重新读取该集状态，不在数据库事务内发送。
+func (s *DramaService) publishEpisode(ctx context.Context, j *model.DramaJob, no int) {
+	if s.bc != nil {
+		s.bc.Publish(ctx, ws.UserChannel(j.UserID), ws.Message{Type: ws.TypeDramaEpisode, Data: struct {
+			DramaID   idcodec.ID `json:"drama_id"`
+			EpisodeNo int        `json:"episode_no"`
+		}{idcodec.ID(j.DramaID), no}})
+	}
 }
 
 // markScriptFailed 仅标记失败集，不覆盖该集已有正文。

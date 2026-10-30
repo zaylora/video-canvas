@@ -4,6 +4,7 @@ import { getDrama, updateDrama } from "@/api/drama";
 import { DRAMA_ERR, dramaErrorMessage, isDramaError, isRevisionConflict } from "@/api/drama/errors";
 import type { Drama, DramaJob, UpdateDramaInput } from "@/api/drama/type";
 import { useDramaJobsStore } from "@/store/drama";
+import { subscribeDramaChanges } from "@/utils/drama/episode-events";
 import { reconcileDrama } from "@/utils/drama/job-events";
 import type { AutosaveStatus } from "@/utils/drama/autosave";
 import { toast } from "sonner";
@@ -43,7 +44,7 @@ export type DramaWorkspace = {
 /**
  * 短剧工作台的数据层：详情、任务卡（来自 store，WebSocket 推送 + 对账）、保存状态。
  * - 挂载时拉详情、登记「正在看这部短剧」（WebSocket 重连 / 回到前台时据此对账）、对账一次进行中的任务；
- * - 任务收尾（settled 计数变化）后重新拉详情：集、大纲、剧本、比例都可能变了。
+ * - 分集写入、片段完成或任务收尾后重新拉详情：集、大纲、剧本、比例都可能变了。
  */
 export function useDramaWorkspace(id: string) {
   const [drama, setDrama] = useState<Drama | null>(null);
@@ -70,6 +71,9 @@ export function useDramaWorkspace(id: string) {
       setError((prev) => (isDramaError(e, DRAMA_ERR.notFound) ? "notfound" : (prev ?? "failed")));
     }
   }, [id]);
+
+  /** 逐集写入或片段完成时同步摘要，分集栏与总览共用最新状态。 */
+  useEffect(() => subscribeDramaChanges(id, () => void refresh()), [id, refresh]);
 
   // 首次加载：详情 + 任务对账
   useEffect(() => {
