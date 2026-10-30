@@ -93,6 +93,40 @@ describe("characterRefsOfNode：节点自带的数据 → 绑定要用的素材�
     expect(characterRefsOfNode("n1", data())?.voiceAssetId).toBeNull();
   });
 
+  test("声音生成及回填期间保留等待状态，失败或取消不阻止复用已绑定声音", () => {
+    const node = data({ voiceTaskId: "101" });
+    for (const status of [undefined, "running", "succeeded"])
+      expect(characterRefsOfNode("n1", node, status)?.voicePending).toBe(true);
+    for (const status of ["failed", "expired", "canceled"])
+      expect(characterRefsOfNode("n1", node, status)?.voicePending).toBeUndefined();
+  });
+
+  test("已经绑定声音但主图未就绪：保留声音关系供视频校验，不带旧主图或补充图", () => {
+    const voice = {
+      mode: "audio" as const,
+      assetId: "20",
+      src: "/a/20.mp3",
+      origin: "upload" as const,
+    };
+    for (const patch of [{ assetId: undefined }, { status: "running" as const }]) {
+      expect(
+        characterRefsOfNode(
+          "n1",
+          data({
+            ...patch,
+            character: character({ voice, extras: [{ assetId: "11", src: "/a/11.png" }] }),
+          }),
+        ),
+      ).toEqual({
+        id: "n1",
+        name: "林晚",
+        avatarAssetId: "",
+        extraAssetIds: [],
+        voiceAssetId: "20",
+      });
+    }
+  });
+
   test("没有 character 元数据（异常数据）：返回 null", () => {
     expect(characterRefsOfNode("n1", data({ character: undefined }))).toBeNull();
   });

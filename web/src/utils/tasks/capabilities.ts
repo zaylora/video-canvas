@@ -139,6 +139,8 @@ export type CharacterRefs = {
   extraAssetIds: string[];
   /** 声音素材 ID；没有声音为 null */
   voiceAssetId: string | null;
+  /** 声音正在生成或尚未回填，视频不能沿用旧音色 */
+  voicePending?: boolean;
 };
 
 /** 一根展开出来的虚拟连线是角色卡的哪一部分 */
@@ -178,7 +180,7 @@ export type Bindings = {
   images: IncomingLink[];
   videos: IncomingLink[];
   audios: IncomingLink[];
-  /** 超出参考上限、按顺序被截掉的角色卡素材（虚拟连线） */
+  /** 超出参考上限被省略的角色补充图（虚拟连线） */
   dropped: IncomingLink[];
   /** 目标不收参考音频，被丢弃的角色卡声音（虚拟连线） */
   ignored: IncomingLink[];
@@ -217,13 +219,14 @@ function characterLinks(link: IncomingLink, refs: CharacterRefs) {
  * 先认落在具名输入口且类型对得上的线，剩下的线按种类落到第一个同类型输入口。
  * 当前生成方式不接收的素材（含关闭的类型）不绑定，连线保留但不参与提交。
  * 角色卡连线展开成虚拟连线：主图在前、补充图随后进 images，声音进 audios；
- * 失效 / 加载中的角色卡跳过；超出参考图 / 参考音频上限的按顺序截断（普通连线先占名额），
- * 目标不收参考音频时声音丢弃，两种情况都在 notices 里给出提示，不阻断提交。
+ * 视频先保留每个角色的主图和声音，再按剩余容量补充视角；必要素材不足由 buildTaskInput 报错。
+ * 图片生成保持原来的参考规则，不使用角色声音。手动素材也计入补充图的容量预算。
  */
 export function resolveBindings(
   caps: Capabilities | undefined,
   op: GenerationOp | undefined,
   links: IncomingLink[],
+  params: Record<string, unknown> = {},
 ): Bindings {
   const ports = inputPorts(caps, op);
   const out = emptyBindings();
@@ -258,36 +261,33 @@ export function resolveBindings(
     if (parts.voice && op !== "t2i" && op !== "i2i") virtualVoices.push(parts.voice);
   }
 
-  // 参考图：普通连线先占名额，角色卡的图按顺序填剩下的，放不下的截掉
+  /** 视频的主图先于补充图，防止前一个角色的补充图挤掉后一个角色。 */
+  const video = op === "t2v" || op === "i2v" || op === "omni";
+  if (video)
+    virtualImages.sort(
+      (a, b) =>
+        Number(a.fromCharacter?.part === "extra") - Number(b.fromCharacter?.part === "extra"),
+    );
   if (imagePort && caps) {
     const max = caps.refs?.image?.max ?? 0;
-    const room = Math.max(0, max - out.images.length);
-    out.images.push(...virtualImages.slice(0, room));
-    out.dropped.push(...virtualImages.slice(room));
-    if (virtualImages.length > room) {
-      out.notices.push(`参考图最多 ${max} 张，第 ${max + 1} 张起未带入`);
+    const used = new Set([
+      ...out.images.map((link) => toAssetNumber(link.assetId)).filter((id) => id !== null),
+      ...manualRefs(params, "images"),
+    ]);
+    for (const link of virtualImages) {
+      const id = toAssetNumber(link.assetId);
+      if (id === null) continue;
+      if ((video && link.fromCharacter?.part === "avatar") || used.has(id) || used.size < max) {
+        out.images.push(link);
+        used.add(id);
+      } else out.dropped.push(link);
     }
+    if (out.dropped.length) out.notices.push(`参考图最多 ${max} 张，多余补充图未带入`);
   }
-  // 声音：目标不收参考音频就丢弃；收的话同样按上限截断
-  if (virtualVoices.length > 0 && imagePort) {
-    if (!audioPort) {
-      out.ignored.push(...virtualVoices);
-      out.notices.push("当前模型不支持参考音频，角色卡声音未生效");
-    } else if (caps) {
-      const max = caps.refs?.audio?.max ?? 0;
-      const room = Math.max(0, max - out.audios.length);
-      out.audios.push(...virtualVoices.slice(0, room));
-      out.dropped.push(...virtualVoices.slice(room));
-      if (virtualVoices.length > room) {
-        out.notices.push(`参考音频最多 ${max} 条，多出的声音未带入`);
-      }
-    }
-  } else if (virtualVoices.length > 0 && audioPort && caps) {
-    // 只收音频不收图片的方式：声音照常带入
-    const max = caps.refs?.audio?.max ?? 0;
-    const room = Math.max(0, max - out.audios.length);
-    out.audios.push(...virtualVoices.slice(0, room));
-    out.dropped.push(...virtualVoices.slice(room));
+  if (audioPort) out.audios.push(...virtualVoices);
+  else if (virtualVoices.length && imagePort) {
+    out.ignored.push(...virtualVoices);
+    out.notices.push("当前模型不支持参考音频，角色卡声音未生效");
   }
   return out;
 }
@@ -508,21 +508,30 @@ const REF_WORD: Record<RefKind, string> = { image: "图片", video: "视频", au
 /**
  * 把提示词里 @ 进来的素材和节点预设换成模型看得懂的文字：文本上游换成它的正文，
  * 素材换成在 input 里的编号（连线已断、素材没提交的，退回成素材名）；
- * 角色卡换成角色名；预设换成预设提示词（设计稿 6.13），已下架的退回成名称。
+ * 视频角色卡换成人物名与主图编号；预设换成预设提示词（设计稿 6.13），已下架的退回成名称。
  */
-function expandRefs(prompt: string, links: IncomingLink[], input: Record<string, unknown>) {
+function expandRefs(
+  prompt: string,
+  links: IncomingLink[],
+  input: Record<string, unknown>,
+  names: Map<string, string>,
+): string {
   return expandPrompt(
     prompt,
     (id, label) => {
       const link = links.find((item) => item.sourceId === id);
       if (!link) return label;
-      // 形象和声音已经由连线展开成参考图 / 参考音频带入 input，这里只把 @ 换成名字；
-      // 节点已删或卡已失效时同样是名字，不报错
-      if (link.sourceKind === "character") return link.character?.name || label;
+      if (link.sourceKind === "character") return names.get(id) || link.character?.name || label;
       const ports = PORTS_OF_KIND[link.sourceKind];
       if (ports.length !== 1) return label;
       const port = ports[0];
-      if (port === "text") return link.text?.trim() || label;
+      if (port === "text")
+        return expandRefs(
+          link.text?.trim() || label,
+          links.filter((item) => item.sourceKind !== "script"),
+          input,
+          names,
+        );
       const ref = REF_KEYS.find((item) => item.kind === port);
       const list = ref ? input[ref.key] : undefined;
       const asset = toAssetNumber(link.assetId);
@@ -547,6 +556,7 @@ function composePrompt(
   links: IncomingLink[],
   promptLink: IncomingLink | undefined,
   input: Record<string, unknown>,
+  names: Map<string, string>,
 ) {
   const texts = new Map<string, string>();
   const upstream = links.filter((item) => item.sourceKind === "script");
@@ -560,9 +570,72 @@ function composePrompt(
     if (text && !texts.has(item.sourceId)) texts.set(item.sourceId, text);
   }
   const cited = new Set(promptRefIds(typed));
-  const parts = [expandRefs(typed, [...links, ...upstream], input).trim()];
-  for (const [id, text] of texts) if (!cited.has(id)) parts.push(text);
+  const parts = [expandRefs(typed, [...links, ...upstream], input, names).trim()];
+  for (const [id, text] of texts)
+    if (!cited.has(id))
+      parts.push(
+        expandRefs(
+          text,
+          links.filter((item) => item.sourceKind !== "script"),
+          input,
+          names,
+        ),
+      );
   return parts.filter(Boolean).join("\n\n");
+}
+
+/** 按最终素材数组编译人物与声音的对应关系；名字只用于展示，身份以角色节点为准。 */
+function characterPrompt(
+  links: IncomingLink[],
+  input: Record<string, unknown>,
+  errors: Record<string, string>,
+) {
+  const names = new Map<string, string>();
+  const visuals: string[] = [];
+  const voices: string[] = [];
+  const seen = new Set<string>();
+  const indexOf = (key: RefKey, id: string | null) => {
+    const list = input[key];
+    return Array.isArray(list) ? list.indexOf(toAssetNumber(id)) : -1;
+  };
+  for (const link of links) {
+    const role = link.character;
+    if (!role || seen.has(role.id)) continue;
+    seen.add(role.id);
+    if (role.voicePending)
+      errors.audios ??= `角色「${role.name}」的声音尚未就绪，请等待声音生成完成`;
+    const image = indexOf("images", role.avatarAssetId);
+    if (image >= 0) {
+      const subject = `${role.name}（图片${image + 1}中的人物）`;
+      names.set(link.sourceId, subject);
+      const extras = [
+        ...new Set(
+          role.extraAssetIds
+            .map((id) => indexOf("images", id))
+            .filter((index) => index >= 0 && index !== image),
+        ),
+      ];
+      visuals.push(
+        `${role.name}：图片${image + 1}中的人物${extras.length ? `，补充视角：${extras.map((index) => `图片${index + 1}`).join("、")}` : ""}。`,
+      );
+    }
+    if (!role.voiceAssetId) continue;
+    if (image < 0) errors.images ??= `角色「${role.name}」的主图未就绪或当前方式不支持参考图片`;
+    const audio = indexOf("audios", role.voiceAssetId);
+    if (audio < 0)
+      errors.audios ??= `角色「${role.name}」的声音未带入，请选择支持参考音频的生成方式`;
+    if (image >= 0 && audio >= 0)
+      voices.push(`${names.get(link.sourceId)}说话时，音色参考音频${audio + 1}。`);
+  }
+  return {
+    names,
+    blocks: [
+      visuals.length ? `【人物参考】\n${visuals.join("\n")}` : "",
+      voices.length
+        ? `【人物音色对应】\n${voices.join("\n")}\n角色声音样本只用于音色参考，本次台词以剧情为准。`
+        : "",
+    ],
+  };
 }
 
 /**
@@ -610,10 +683,16 @@ export function buildTaskInput(
     if (!kinds.includes(ref.kind)) continue;
     linked += bindings[ref.key].length;
     // 还没出图的上游直接跳过：它在引用条里标着「还没生成」，不拦着整次提交
-    const ids = bindings[ref.key]
+    const ordinary = bindings[ref.key].filter((item) => !item.fromCharacter);
+    const characters = bindings[ref.key].filter((item) => item.fromCharacter);
+    const ids = [
+      ...ordinary,
+      ...manualRefs(params, ref.key).map((assetId) => ({ assetId })),
+      ...characters,
+    ]
       .map((item) => toAssetNumber(item.assetId))
       .filter((id): id is number => id !== null);
-    const all = [...new Set([...ids, ...manualRefs(params, ref.key)])];
+    const all = [...new Set(ids)];
     const max = caps.refs[ref.kind].max;
     if (all.length > max) errors[ref.key] ??= `${ref.label}最多 ${max} 个，请移除多余的`;
     if (all.length > 0) input[ref.key] = all;
@@ -632,8 +711,18 @@ export function buildTaskInput(
   // 提示词：手填的先展开 @ 的素材，没被 @ 的上游文字按连线顺序追加在后面，手填为空就只剩上游文字
   const link = bindings.prompt;
   const typed = typeof params.prompt === "string" ? params.prompt : "";
-  const prompt = composePrompt(typed, links, link, input);
-  const promptError = !prompt
+  const video = op === "t2v" || op === "i2v" || op === "omni";
+  const character = video
+    ? characterPrompt(links, input, errors)
+    : { names: new Map<string, string>(), blocks: [] };
+  const hasVoice = video && links.some((item) => item.character?.voiceAssetId);
+  const sound = caps.params?.generate_audio;
+  const soundValue = sound?.open ? input.generate_audio : sound?.default;
+  if (hasVoice && sound && (soundValue === false || soundValue === "false"))
+    errors.generate_audio = "使用角色音色时请开启声音生成";
+  const body = composePrompt(typed, links, link, input, character.names);
+  const prompt = [body, ...character.blocks].filter(Boolean).join("\n\n");
+  const promptError = !body
     ? link
       ? `上游「${link.sourceLabel}」还没有文字`
       : "请填写提示词"

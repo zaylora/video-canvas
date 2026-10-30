@@ -82,7 +82,8 @@ describe("planSegmentInput：@ 解析与参考素材组装（契约 §13）", ()
     expect(plan.op).toBe("omni");
     expect(plan.input.images).toEqual([5, 1, 2]);
     expect(plan.input.audios).toEqual([9]);
-    expect(plan.input.prompt).toBe("林川走进图片1");
+    expect(plan.input.prompt).toStartWith("林川（图片2中的人物）走进图片1");
+    expect(plan.input.prompt).toContain("林川（图片2中的人物）说话时，音色参考音频1。");
     expect(plan.input.duration).toBe(12);
     expect(plan.errors).toEqual({});
     expect(plan.imageCount).toBe(3);
@@ -106,7 +107,7 @@ describe("planSegmentInput：@ 解析与参考素材组装（契约 §13）", ()
     });
   });
 
-  test("模型不收参考音频：只用图片，提示声音未生效，角色标记为声音被忽略", () => {
+  test("模型不收参考音频：阻止提交，角色标记为声音被忽略", () => {
     const plan = planSegmentInput({
       ...base,
       caps: video({ audio: false }),
@@ -114,7 +115,7 @@ describe("planSegmentInput：@ 解析与参考素材组装（契约 §13）", ()
       assets,
     });
     expect(plan.input.audios).toBeUndefined();
-    expect(plan.notices).toContain("当前模型不支持参考音频，角色卡声音未生效");
+    expect(plan.errors.audios).toBeTruthy();
     expect(plan.refs[0].voice).toBe("ignored");
   });
 
@@ -127,6 +128,19 @@ describe("planSegmentInput：@ 解析与参考素材组装（契约 §13）", ()
     });
     expect(plan.input.audios).toBeUndefined();
     expect(plan.refs[0].voice).toBe("none");
+  });
+
+  test("声音仍在生成时阻止片段提交，失败后可复用已经绑定的声音", () => {
+    for (const voiceTaskStatus of ["running", "failed"]) {
+      const plan = planSegmentInput({
+        ...base,
+        caps: video(),
+        prompt: "@[林川](n1)说话",
+        assets: [character("n1", { voiceTaskId: "101", voiceTaskStatus })],
+      });
+      expect(Boolean(plan.errors.audios)).toBe(voiceTaskStatus === "running");
+      expect(plan.input.audios).toEqual([9]);
+    }
   });
 
   test("没有图的资产只保留文字：空角色节点（没有形象图）、场景没有素材都不进参考图，也不算失效", () => {
@@ -144,7 +158,7 @@ describe("planSegmentInput：@ 解析与参考素材组装（契约 §13）", ()
     expect(plan.input.prompt).toBe("林川在村口");
     // 一张图都没有且模型有文生视频：退回 t2v，不报缺参考素材
     expect(plan.op).toBe("t2v");
-    expect(plan.errors).toEqual({});
+    expect(plan.errors.images).toBeTruthy();
   });
 
   test("引用的节点已被删：标成失效、记下名字，提示词退回成名字，不阻断", () => {

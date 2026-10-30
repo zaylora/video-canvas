@@ -12,7 +12,7 @@ import { useRemoteModels } from "@/hooks/use-models";
 import type { TaskGeneration, TaskNodeKind } from "@/hooks/use-task-generation";
 import { ANIMATED_EDGE_OPTIONS, REMOTE_KIND_OF_NODE } from "@/constants/canvas";
 import { useCreditsStore } from "@/store/credits";
-import { useTask } from "@/store/tasks";
+import { useTask, useTasksStore } from "@/store/tasks";
 import type { CanvasEdge, CanvasNode, CanvasNodeData, ParamAsset } from "@/types";
 import { isGenerating } from "@/utils/canvas/outputs";
 import { mentionableNodes, opForLink, unlinkSource } from "@/utils/canvas/link-rule";
@@ -98,8 +98,13 @@ export function useTaskNode(
     [allConnections, data.outpaintFrom],
   );
   const upstream = useNodesData<CanvasNode>(connections.map((item) => item.source));
+  const voiceTaskStates = useTasksStore((state) =>
+    upstream.map((node) => state.tasks[node.data.voiceTaskId ?? ""]?.status ?? "").join("|"),
+  );
   const links = useMemo<IncomingLink[]>(() => {
     const byId = new Map(upstream.map((node) => [node.id, node.data]));
+    const statuses = voiceTaskStates.split("|");
+    const voiceStatuses = new Map(upstream.map((node, index) => [node.id, statuses[index]]));
     return connections.flatMap((connection) => {
       const source = byId.get(connection.source);
       if (!source) return [];
@@ -113,14 +118,20 @@ export function useTaskNode(
           targetHandle: connection.targetHandle ?? null,
           assetId: generating ? undefined : source.assetId,
           text: referencedText(source),
-          // 角色卡节点的内容就在节点自己的数据里：形象、补充图、音频音色，没有主图时为 null（不带入，不算失效）
+          /** 保留角色与声音关系供提交校验，声音任务结束后按最新状态重算。 */
           ...(source.kind === "character"
-            ? { character: characterRefsOfNode(connection.source, source) }
+            ? {
+                character: characterRefsOfNode(
+                  connection.source,
+                  source,
+                  voiceStatuses.get(connection.source),
+                ),
+              }
             : {}),
         },
       ];
     });
-  }, [connections, upstream]);
+  }, [connections, upstream, voiceTaskStates]);
   // 图片模型不让用户选生成方式：连着图片或手动加了参考图就是图生图，否则文生图
   const hasImageRef = useMemo(
     () => hasImageRefs(params, { images: imageLinksOf(links) }),
@@ -131,7 +142,10 @@ export function useTaskNode(
   // 自动切换时文生图状态下也要摆出参考图入口，用户加了图才会转成图生图
   const refOp = refPanelOp(caps, op);
   const refKinds = useMemo(() => refKindsOf(caps, refOp), [caps, refOp]);
-  const bindings = useMemo(() => resolveBindings(caps, op, links), [caps, op, links]);
+  const bindings = useMemo(
+    () => resolveBindings(caps, op, links, params),
+    [caps, op, links, params],
+  );
   const built = useMemo(
     () => buildTaskInput(caps, params, bindings, op, links),
     [caps, params, bindings, op, links],

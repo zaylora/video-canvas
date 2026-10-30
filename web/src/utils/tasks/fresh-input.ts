@@ -30,6 +30,6 @@ export function buildFreshInput(
   links: IncomingLink[],
 ): FreshInput {
   const op = currentOp(caps, params, hasImageRefs(params, { images: imageLinksOf(links) }));
-  const bindings = resolveBindings(caps, op, links);
+  const bindings = resolveBindings(caps, op, links, params);
   return { ...buildTaskInput(caps, params, bindings, op, links), notices: bindings.notices };
 }
