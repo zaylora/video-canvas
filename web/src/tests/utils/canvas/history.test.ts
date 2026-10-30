@@ -119,6 +119,11 @@ describe("restoreNodes", () => {
     expect(dropped.data.voiceTaskId).toBeUndefined();
   });
 
+  test("「出图后生成音色」的标记属于任务字段：撤销不倒回它，否则出图后音色不会接着生成", () => {
+    const [kept] = restoreNodes([node("n1")], [node("n1", { voiceAfterImage: ["7"] })]);
+    expect(kept.data.voiceAfterImage).toEqual(["7"]);
+  });
+
   test("快照里没有、眼下才有的任务字段会被带上", () => {
     const [restored] = restoreNodes([node("n1")], [node("n1", { status: "running", taskId: "7" })]);
     expect(restored.data).toMatchObject({ status: "running", taskId: "7" });

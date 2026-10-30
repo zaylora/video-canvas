@@ -49,6 +49,21 @@ describe("角色卡节点的存取：数据内嵌在画布里", () => {
     expect(without.nodes[0].data).not.toHaveProperty("voiceTaskId");
   });
 
+  test("存档带上「出图后生成音色」的标记，刷新后形象出图照样接着生成音色；没有就不写", () => {
+    const pending = serializeGraph(
+      [node("c1", { character: emptyCharacter("林晚"), voiceAfterImage: ["7"] })],
+      [],
+      viewport,
+    );
+    expect(pending.nodes[0].data).toMatchObject({ voiceAfterImage: ["7"] });
+    const without = serializeGraph(
+      [node("c1", { character: emptyCharacter("林晚") })],
+      [],
+      viewport,
+    );
+    expect(without.nodes[0].data).not.toHaveProperty("voiceAfterImage");
+  });
+
   test("存档不再写旧字段 characterId / labelCache", () => {
     const graph = serializeGraph(
       [

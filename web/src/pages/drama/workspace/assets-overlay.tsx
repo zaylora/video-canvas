@@ -6,7 +6,7 @@ import { toast } from "sonner";
 
 import { ChromePill, ChromeZone } from "@/components/canvas/chrome/chrome";
 import { useCanvasEditor } from "@/components/canvas-editor/editor-api";
-import { submitNodeById, submitVoiceById } from "@/components/canvas-editor/node-actions";
+import { submitNodeById, submitWithVoiceById } from "@/components/canvas-editor/node-actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useRemoteModels } from "@/hooks/use-models";
@@ -184,7 +184,7 @@ function AssetList({ items }: { items: AssetItem[] }) {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [multi, setMulti]);
 
-  /** 逐个提交生成；withVoice 时角色卡在形象之后再提交一段音色 */
+  /** 逐个提交生成；withVoice 时角色卡出图后再用新形象生成音色（音色由节点在出图后自己提交） */
   const generate = useCallback(async (ids: string[], withVoice: boolean) => {
     setBatching(true);
     let started = 0;
@@ -192,19 +192,24 @@ function AssetList({ items }: { items: AssetItem[] }) {
     const blocked: string[] = [];
     for (const id of ids) {
       // 成败以提交结果为准：节点是受控状态，提交刚结束时读到的 status 还是旧的，不能拿来判断
-      const reason = await submitNodeById(id);
-      if (reason) blocked.push(reason);
+      if (!withVoice) {
+        const reason = await submitNodeById(id);
+        if (reason) blocked.push(reason);
+        else started += 1;
+        continue;
+      }
+      const { image, voice } = await submitWithVoiceById(id);
+      if (image) blocked.push(image);
       else started += 1;
-      if (!withVoice) continue;
-      const voiceReason = await submitVoiceById(id);
-      if (voiceReason) blocked.push(`音色：${voiceReason}`);
-      else voiced += 1;
+      // 形象都没交上时音色原因和它相同，不重复记
+      if (voice && !image) blocked.push(`音色：${voice}`);
+      else if (!voice) voiced += 1;
     }
     setBatching(false);
     if (started + voiced > 0) {
       toast.success(
         withVoice
-          ? `已提交 ${started} 个形象、${voiced} 个音色任务`
+          ? `已提交 ${started} 个形象，其中 ${voiced} 个出图后生成音色`
           : `已提交 ${started} 个生成任务`,
       );
     }
@@ -386,7 +391,7 @@ function AssetList({ items }: { items: AssetItem[] }) {
                     title="生成角色形象图，并按音色描述生成声音"
                     onClick={() => run(true)}
                   >
-                    含音色生成
+                    生成（含音色）
                     <Credits value={voiceEstimate} />
                   </Button>
                 </>

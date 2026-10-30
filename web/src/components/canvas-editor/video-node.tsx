@@ -11,7 +11,7 @@ import {
   type IncomingConnection,
 } from "@/components/canvas";
 import { useHandleRemeasure } from "@/components/canvas/hooks/use-handle-remeasure";
-import { PANEL_CHIP_CLASS } from "@/components/canvas/node-prompt-input";
+import { PANEL_CHIP_CLASS, type SecondarySubmit } from "@/components/canvas/node-prompt-input";
 import { OpTabs } from "@/components/canvas/op-tabs";
 import { PresetPicker } from "@/components/canvas/preset-picker";
 import { cn } from "@/lib/utils";
@@ -154,6 +154,7 @@ export function TaskPromptPanel({
   nodeId,
   width,
   className,
+  secondarySubmit,
 }: {
   vm: TaskNodeModel;
   data: CanvasNodeData;
@@ -162,6 +163,8 @@ export function TaskPromptPanel({
   width: number;
   /** 面板外层的附加样式（放进弹框时去掉浮层自己的底和阴影） */
   className?: string;
+  /** 发送键旁边的第二种生成（角色卡的「生成（含音色）」） */
+  secondarySubmit?: SecondarySubmit;
 }) {
   const meta = NODE_META.get(kind);
   // 连着图片 / 视频 / 音频节点，或手动加过参考素材，就算有参考素材（文本不算）
@@ -226,6 +229,7 @@ export function TaskPromptPanel({
         running={vm.running}
         submitting={vm.submitting}
         onSubmit={() => void vm.submit()}
+        secondarySubmit={secondarySubmit}
         canSubmit={!vm.blockedReason}
         hint={vm.blockedReason ?? "开始生成"}
         placeholder={

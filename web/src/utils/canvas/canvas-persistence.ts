@@ -110,6 +110,7 @@ export function serializeGraph(
           ...(rest.scene !== undefined ? { scene: rest.scene } : {}),
           ...(rest.character !== undefined ? { character: rest.character } : {}),
           ...(rest.voiceTaskId !== undefined ? { voiceTaskId: rest.voiceTaskId } : {}),
+          ...(rest.voiceAfterImage?.length ? { voiceAfterImage: rest.voiceAfterImage } : {}),
           ...(rest.drama !== undefined ? { drama: rest.drama } : {}),
         };
         if (data.src?.startsWith("blob:") && !data.assetId) delete data.src;

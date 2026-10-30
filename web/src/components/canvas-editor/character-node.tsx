@@ -15,6 +15,7 @@ import {
 
 import type { AssetDto } from "@/api/asset/type";
 import { NodeCard, NodeVideoBody, type NodeCardHandle } from "@/components/canvas";
+import type { SecondarySubmit } from "@/components/canvas/node-prompt-input";
 import { BaseNodeContent } from "@/components/canvas/base-node";
 import { VersionBadge } from "@/components/canvas/version-badge";
 import { toggleVoice, useVoicePlaying } from "@/components/characters/voice-player";
@@ -24,6 +25,7 @@ import { useCharacterMedia } from "@/hooks/use-character-media";
 import { useMediaAspect } from "@/hooks/use-media-aspect";
 import { useTaskGeneration } from "@/hooks/use-task-generation";
 import { useTaskNode } from "@/hooks/use-task-node";
+import { useVoiceAfterImage } from "@/hooks/use-voice-after-image";
 import { useVoiceBackfill } from "@/hooks/use-voice-backfill";
 import { useVoiceGeneration, type VoiceGeneration } from "@/hooks/use-voice-generation";
 import { cn } from "@/lib/utils";
@@ -36,6 +38,7 @@ import { showVersionBadge } from "@/utils/canvas/versions";
 import { nodeFrameSize, paramAspect } from "@/utils/canvas/node-frame";
 import { applyPickedAssets, emptyCharacter, MAX_EXTRAS } from "@/utils/characters/node-character";
 import { characterNodeAspect, characterNodeView, voiceCell } from "@/utils/characters/node-view";
+import { lowestUnit } from "@/utils/pricing/quote";
 
 import { CharacterDetailDialog } from "./character-detail-dialog";
 import { useRegisterNodeActions } from "./node-actions";
@@ -74,22 +77,30 @@ export function CharacterCanvasNode({
 }) {
   const generation = useTaskGeneration(id, "image");
   const vm = useTaskNode(id, data, "image", generation);
-  // 声音生成只在这里起一份：详情页和短剧列表的「生成含音色」共用，模型选择、提交锁都是同一份
+  // 声音生成只在这里起一份：详情页、面板和短剧列表的「生成（含音色）」共用，模型选择、提交锁都是同一份
   const voiceGen = useVoiceGeneration(id, data);
   const voicePrompt = data.character?.voicePrompt ?? "";
+  const voiceBlocked = voiceGen.blockedReason(voicePrompt);
+  useVoiceAfterImage(id, data, voiceGen);
+  /** 「生成（含音色）」：先提交形象，这次的任务 id 记进 voiceAfterImage，出图后用新主图接着生成音色 */
+  const submitWithVoice = () =>
+    voiceBlocked
+      ? Promise.resolve(voiceBlocked)
+      : vm.submit((taskIds) => ({ voiceAfterImage: taskIds }));
   useRegisterNodeActions(id, {
     blockedReason: () => vm.blockedReason,
     submit: () => vm.submit(),
     voice: {
-      blockedReason: () =>
-        voiceGen.task.phase === "generating"
-          ? "音色正在生成"
-          : !voicePrompt.trim()
-            ? "还没有音色描述"
-            : null,
-      submit: () => voiceGen.submit(voicePrompt),
+      blockedReason: () => voiceBlocked,
+      submitAfterImage: submitWithVoice,
     },
   });
+  const withVoice: SecondarySubmit = {
+    label: "含音色",
+    blockedReason: vm.blockedReason ?? voiceBlocked,
+    extraCredits: lowestUnit(voiceGen.model?.pricing),
+    onSubmit: () => void submitWithVoice(),
+  };
   const multiSelected = useMultiSelected();
   const dragSelected = useDragSelected(id);
   return (
@@ -99,7 +110,14 @@ export function CharacterCanvasNode({
         {selected && !dragSelected && (
           <NodeOverlays key="overlays" id={id} data={data}>
             {(width) => (
-              <TaskPromptPanel vm={vm} data={data} kind="image" nodeId={id} width={width} />
+              <TaskPromptPanel
+                vm={vm}
+                data={data}
+                kind="image"
+                nodeId={id}
+                width={width}
+                secondarySubmit={withVoice}
+              />
             )}
           </NodeOverlays>
         )}
@@ -129,6 +147,7 @@ export function CharacterCanvasNode({
             nodeId={id}
             width={width}
             className={PROMPT_DIALOG_PANEL_CLASS}
+            secondarySubmit={withVoice}
           />
         )}
       </PromptEditDialog>

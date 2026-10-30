@@ -12,10 +12,12 @@ export type NodeActions = {
    * 不能靠事后读节点数据判断成败：画布节点是受控状态，提交刚结束时 status 还没同步过来。
    */
   submit: () => Promise<string | null>;
-  /** 生成音色（只有角色卡有）：语义同上，成功返回 null，否则返回原因 */
+  /** 音色（只有角色卡有） */
   voice?: {
+    /** 此刻不能生成音色的原因（没写音色描述、音色正在生成……）；可以返回 null */
     blockedReason: () => string | null;
-    submit: () => Promise<string | null>;
+    /** 生成形象，出图后用新主图接着生成音色：语义同 submit，成功返回 null，否则返回原因 */
+    submitAfterImage: () => Promise<string | null>;
   };
 };
 
@@ -47,7 +49,7 @@ export function registerNodeActions(id: string, read: () => NodeActions | null):
         if (!actions) return NOT_READY;
         return actions.voice ? actions.voice.blockedReason() : NO_VOICE;
       },
-      submit: () => read()?.voice?.submit() ?? Promise.resolve(NO_VOICE),
+      submitAfterImage: () => read()?.voice?.submitAfterImage() ?? Promise.resolve(NO_VOICE),
     },
   });
   return () => {
@@ -88,12 +90,19 @@ export async function submitNodeById(id: string): Promise<string | null> {
 }
 
 /**
- * 触发一个角色卡节点的音色生成：不能提交、或提交失败时返回原因，提交成功返回 null。
+ * 「生成（含音色）」：生成形象，出图后用新主图接着生成音色。
+ * 音色此刻不能生成（不是角色卡、没写音色描述……）时照常生成形象，音色那一项给原因。
+ * @returns 形象、音色各自没能提交的原因；null 表示已提交（音色是已排上，出图后才真正提交）
  */
-export async function submitVoiceById(id: string): Promise<string | null> {
-  const voice = registry.get(id)?.voice;
-  if (!voice) return NOT_READY;
-  const blocked = voice.blockedReason();
-  if (blocked) return blocked;
-  return voice.submit();
+export async function submitWithVoiceById(
+  id: string,
+): Promise<{ image: string | null; voice: string | null }> {
+  const actions = registry.get(id);
+  if (!actions) return { image: NOT_READY, voice: NOT_READY };
+  const blocked = actions.blockedReason();
+  if (blocked) return { image: blocked, voice: blocked };
+  const voiceBlocked = actions.voice ? actions.voice.blockedReason() : NO_VOICE;
+  if (voiceBlocked || !actions.voice) return { image: await actions.submit(), voice: voiceBlocked };
+  const failed = await actions.voice.submitAfterImage();
+  return { image: failed, voice: failed };
 }

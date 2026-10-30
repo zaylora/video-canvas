@@ -4,7 +4,7 @@ import {
   hasNodeActions,
   registerNodeActions,
   submitNodeById,
-  submitVoiceById,
+  submitWithVoiceById,
   type NodeActions,
 } from "@/components/canvas-editor/node-actions";
 
@@ -73,31 +73,87 @@ describe("按节点 ID 触发生成 submitNodeById", () => {
   });
 });
 
-describe("按节点 ID 生成音色 submitVoiceById", () => {
-  test("节点没有音色动作（不是角色卡）：返回原因，不报错", async () => {
-    const off = registerNodeActions("v-none", () => actions(null));
-    expect(await submitVoiceById("v-none")).toBe("这个节点不能生成音色");
+describe("按节点 ID 生成形象并在出图后生成音色 submitWithVoiceById", () => {
+  test("没有登记的节点：形象和音色都没准备好", async () => {
+    expect(await submitWithVoiceById("never-registered")).toEqual({
+      image: "节点还没准备好",
+      voice: "节点还没准备好",
+    });
+  });
+
+  test("节点没有音色动作（不是角色卡）：照常生成形象，音色给原因", async () => {
+    let submitted = 0;
+    const off = registerNodeActions("v-none", () => actions(null, () => (submitted += 1)));
+    expect(await submitWithVoiceById("v-none")).toEqual({
+      image: null,
+      voice: "这个节点不能生成音色",
+    });
+    expect(submitted).toBe(1);
     off();
   });
 
-  test("有音色动作：先看能否提交，能就提交", async () => {
+  test("音色此刻不能生成（没写音色描述）：照常生成形象，音色给原因", async () => {
+    let submitted = 0;
     let voiced = 0;
-    let blocked: string | null = "先写音色描述";
-    const off = registerNodeActions("v-ok", () => ({
-      ...actions(null),
+    const off = registerNodeActions("v-blocked", () => ({
+      ...actions(null, () => (submitted += 1)),
       voice: {
-        blockedReason: () => blocked,
-        submit: async () => {
+        blockedReason: () => "还没有音色描述",
+        submitAfterImage: async () => {
           voiced += 1;
           return null;
         },
       },
     }));
-    expect(await submitVoiceById("v-ok")).toBe("先写音色描述");
+    expect(await submitWithVoiceById("v-blocked")).toEqual({
+      image: null,
+      voice: "还没有音色描述",
+    });
+    expect([submitted, voiced]).toEqual([1, 0]);
+    off();
+  });
+
+  test("都能提交：走「生成形象 + 出图后生成音色」一次提交，不另外再提交形象", async () => {
+    let submitted = 0;
+    let voiced = 0;
+    const off = registerNodeActions("v-ok", () => ({
+      ...actions(null, () => (submitted += 1)),
+      voice: {
+        blockedReason: () => null,
+        submitAfterImage: async () => {
+          voiced += 1;
+          return null;
+        },
+      },
+    }));
+    expect(await submitWithVoiceById("v-ok")).toEqual({ image: null, voice: null });
+    expect([submitted, voiced]).toEqual([0, 1]);
+    off();
+  });
+
+  test("形象不能提交：两样都不提交，原因相同", async () => {
+    let voiced = 0;
+    const off = registerNodeActions("v-busy", () => ({
+      ...actions("生成中"),
+      voice: {
+        blockedReason: () => null,
+        submitAfterImage: async () => {
+          voiced += 1;
+          return null;
+        },
+      },
+    }));
+    expect(await submitWithVoiceById("v-busy")).toEqual({ image: "生成中", voice: "生成中" });
     expect(voiced).toBe(0);
-    blocked = null;
-    expect(await submitVoiceById("v-ok")).toBeNull();
-    expect(voiced).toBe(1);
+    off();
+  });
+
+  test("提交失败（积分不足）：两样都算失败", async () => {
+    const off = registerNodeActions("v-fail", () => ({
+      ...actions(null),
+      voice: { blockedReason: () => null, submitAfterImage: async () => "积分不足" },
+    }));
+    expect(await submitWithVoiceById("v-fail")).toEqual({ image: "积分不足", voice: "积分不足" });
     off();
   });
 });
