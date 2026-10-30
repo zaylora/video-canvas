@@ -6,7 +6,13 @@ import { useRemoteModels } from "@/hooks/use-models";
 import { useTask } from "@/store/tasks";
 import type { CanvasNode, CanvasNodeData } from "@/types";
 import { useCurrentCanvasId } from "@/utils/canvas/canvas-id";
-import { buildVoiceInput, voiceNodeId, voiceTaskView } from "@/utils/characters/voice-task";
+import { withVoiceModel } from "@/utils/characters/voice-history";
+import {
+  buildVoiceInput,
+  pickVoiceModel,
+  voiceNodeId,
+  voiceTaskView,
+} from "@/utils/characters/voice-task";
 import { cancelTasks, submitCanvasTasks } from "@/utils/tasks/gateway";
 import { describeSubmitError, settleSubmission } from "@/utils/tasks/submit";
 
@@ -14,6 +20,7 @@ import { describeSubmitError, settleSubmission } from "@/utils/tasks/submit";
  * 详情页「AI 生成声音」的提交与取消：用音频模型生成一段音频，任务绑在 voice:{节点id} 上，
  * 提交成功后把任务 id 记在节点的 voiceTaskId，结果由 useVoiceBackfill 绑成角色的声音。
  * 没有参数面板：只提交提示词，其余参数取模型默认值；模型收参考图时带上角色主图。
+ * 选的模型记在节点的 character.voiceModel 上，节点卸载（如切换短剧工序）、刷新后都还在。
  * @param id 角色卡节点 id
  * @param data 节点数据
  */
@@ -21,13 +28,11 @@ export function useVoiceGeneration(id: string, data: CanvasNodeData) {
   const { updateNodeData } = useReactFlow<CanvasNode>();
   const canvasId = useCurrentCanvasId();
   const remote = useRemoteModels("audio");
-  const [modelKey, setModelKey] = useState<string | undefined>();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const lockRef = useRef(false);
 
-  const model: ModelInfo | undefined =
-    remote.models.find((item) => item.key === modelKey) ?? remote.models[0];
+  const model: ModelInfo | undefined = pickVoiceModel(remote.models, data.character?.voiceModel);
   const task = voiceTaskView(data.voiceTaskId, useTask(data.voiceTaskId));
 
   /**
@@ -86,6 +91,12 @@ export function useVoiceGeneration(id: string, data: CanvasNodeData) {
     [canvasId, data.assetId, id, model, updateNodeData],
   );
 
+  /** 选音频模型：写进节点数据，和提示词一样随画布保存 */
+  const selectModel = useCallback(
+    (key: string) => updateNodeData(id, (node) => withVoiceModel(node.data, key)),
+    [id, updateNodeData],
+  );
+
   const cancel = useCallback(async () => {
     if (data.voiceTaskId) await cancelTasks([data.voiceTaskId]);
   }, [data.voiceTaskId]);
@@ -94,7 +105,7 @@ export function useVoiceGeneration(id: string, data: CanvasNodeData) {
     models: remote.models,
     modelsStatus: remote.status,
     model,
-    selectModel: setModelKey,
+    selectModel,
     task,
     blockedReason,
     submitting,

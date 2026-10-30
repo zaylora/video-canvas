@@ -118,6 +118,8 @@ export type NodeCharacter = {
   voice: CharacterVoice | null;
   /** 生成声音用的提示词（音色描述加一句试音台词），≤500 字；只是下次生成的输入，不会带入下游 */
   voicePrompt?: string;
+  /** 生成声音选的音频模型 key；缺省或已下架时取音频模型清单的第一个。记在节点上，节点卸载、刷新后都还在 */
+  voiceModel?: string;
 };
 
 /**

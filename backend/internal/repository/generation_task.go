@@ -160,6 +160,16 @@ func (r *GenerationTaskRepository) ListActive(ctx context.Context, userID uint64
 	return list, err
 }
 
+// ListByNode 查询该用户在某张画布某个节点上的正式任务（排除 is_test），条件 user_id + canvas_project_id + node_id，
+// 按 id 降序（新的在前）最多 limit 个；走 idx_task_user_canvas_node。没有记录返回空切片，不返回哨兵错误。
+func (r *GenerationTaskRepository) ListByNode(ctx context.Context, userID, canvasID uint64, nodeID string, limit int) ([]model.GenerationTask, error) {
+	var list []model.GenerationTask
+	err := r.db.WithContext(ctx).
+		Where("user_id = ? AND canvas_project_id = ? AND node_id = ? AND is_test = FALSE", userID, canvasID, nodeID).
+		Order("id DESC").Limit(limit).Find(&list).Error
+	return list, err
+}
+
 // FindByIdempotencyKey 按 (user_id, idempotency_key) 查任务，不存在返回 ErrNotFound。
 func (r *GenerationTaskRepository) FindByIdempotencyKey(ctx context.Context, userID uint64, key string) (*model.GenerationTask, error) {
 	var t model.GenerationTask

@@ -64,6 +64,12 @@ describe("角色卡节点的存取：数据内嵌在画布里", () => {
     expect(without.nodes[0].data).not.toHaveProperty("voiceAfterImage");
   });
 
+  test("存档带上选好的音频模型和声音提示词，节点卸载、刷新后都还在", () => {
+    const character = { ...emptyCharacter("林晚"), voicePrompt: "低沉男声", voiceModel: "tts-2" };
+    const back = deserializeGraph(serializeGraph([node("c1", { character })], [], viewport));
+    expect(back.nodes[0].data.character).toEqual(character);
+  });
+
   test("存档不再写旧字段 characterId / labelCache", () => {
     const graph = serializeGraph(
       [

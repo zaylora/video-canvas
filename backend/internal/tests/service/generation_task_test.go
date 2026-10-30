@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -147,6 +148,23 @@ func (f *fakeTaskRepo) ListActive(ctx context.Context, userID uint64) ([]model.G
 		if t.UserID == userID && !t.IsTest && !model.IsTerminalStatus(t.Status) {
 			out = append(out, *t)
 		}
+	}
+	return out, nil
+}
+
+func (f *fakeTaskRepo) ListByNode(ctx context.Context, userID, canvasID uint64, nodeID string, limit int) ([]model.GenerationTask, error) {
+	if err := f.errs["ListByNode"]; err != nil {
+		return nil, err
+	}
+	var out []model.GenerationTask
+	for _, t := range f.tasks {
+		if t.UserID == userID && !t.IsTest && t.CanvasProjectID != nil && *t.CanvasProjectID == canvasID && t.NodeID == nodeID {
+			out = append(out, *t)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID > out[j].ID })
+	if len(out) > limit {
+		out = out[:limit]
 	}
 	return out, nil
 }
@@ -1282,6 +1300,91 @@ func TestGenerationTaskService_List(t *testing.T) {
 		env := newTaskSvcEnv(defaultTaskLimits())
 		env.repo.errs["ListActive"] = errors.New("db down")
 		if _, err := env.svc.List(context.Background(), 1, &model.ListGenerationTaskReq{Status: "active"}); err == nil {
+			t.Fatal("期望返回错误")
+		}
+	})
+}
+
+// 按节点查询生成记录（角色声音历史）：node_id 与 canvas_project_id 必须同时传，
+// 只返回当前用户在这张画布这个节点上的正式任务，新的在前，最多 20 个，并带上提示词与模型展示名。
+func TestGenerationTaskService_ListByNode(t *testing.T) {
+	env := newTaskSvcEnv(defaultTaskLimits())
+	canvas, otherCanvas := uint64(7), uint64(8)
+	node := "voice:c1"
+	var mine []*model.GenerationTask
+	for i := 0; i < 22; i++ {
+		mine = append(mine, env.repo.addTask(model.GenerationTask{
+			UserID: 1, Status: model.TaskSucceeded, CanvasProjectID: &canvas, NodeID: node,
+			InputJSON:      datatypes.JSON(`{"prompt":"  年轻女声 ` + itoa(i) + `  "}`),
+			ConfigSnapshot: datatypes.JSON(`{"model":{"label":"声音模型"}}`),
+		}))
+	}
+	env.repo.addTask(model.GenerationTask{UserID: 2, Status: model.TaskSucceeded, CanvasProjectID: &canvas, NodeID: node})
+	env.repo.addTask(model.GenerationTask{UserID: 1, Status: model.TaskSucceeded, CanvasProjectID: &canvas, NodeID: node, IsTest: true})
+	env.repo.addTask(model.GenerationTask{UserID: 1, Status: model.TaskSucceeded, CanvasProjectID: &otherCanvas, NodeID: node})
+	env.repo.addTask(model.GenerationTask{UserID: 1, Status: model.TaskSucceeded, CanvasProjectID: &canvas, NodeID: "voice:c2"})
+
+	t.Run("编码画布 ID：新的在前、最多 20 个、带提示词和模型名", func(t *testing.T) {
+		got, err := env.svc.List(context.Background(), 1, &model.ListGenerationTaskReq{NodeID: node, CanvasProjectID: idcodec.Encode(canvas)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(got) != 20 {
+			t.Fatalf("期望 20 个，实际 %d 个", len(got))
+		}
+		if got[0].ID != mine[21].ID || got[19].ID != mine[2].ID {
+			t.Fatalf("应按新的在前：首个 %d 末个 %d", got[0].ID, got[19].ID)
+		}
+		if got[0].Prompt != "年轻女声 21" || got[0].ModelLabel != "声音模型" {
+			t.Fatalf("提示词或模型名不对：%q %q", got[0].Prompt, got[0].ModelLabel)
+		}
+	})
+	t.Run("十进制画布 ID 同样可用", func(t *testing.T) {
+		got, err := env.svc.List(context.Background(), 1, &model.ListGenerationTaskReq{NodeID: node, CanvasProjectID: "7"})
+		if err != nil || len(got) != 20 {
+			t.Fatalf("n=%d err=%v", len(got), err)
+		}
+	})
+	t.Run("其他模式不带提示词", func(t *testing.T) {
+		got, err := env.svc.List(context.Background(), 1, &model.ListGenerationTaskReq{IDs: itoa(int(mine[0].ID))})
+		if err != nil || len(got) != 1 || got[0].Prompt != "" {
+			t.Fatalf("got=%v err=%v", got, err)
+		}
+	})
+	t.Run("别的节点、别的画布互不相干", func(t *testing.T) {
+		got, err := env.svc.List(context.Background(), 1, &model.ListGenerationTaskReq{NodeID: "voice:c2", CanvasProjectID: "7"})
+		if err != nil || len(got) != 1 {
+			t.Fatalf("n=%d err=%v", len(got), err)
+		}
+		got, err = env.svc.List(context.Background(), 1, &model.ListGenerationTaskReq{NodeID: node, CanvasProjectID: "8"})
+		if err != nil || len(got) != 1 {
+			t.Fatalf("n=%d err=%v", len(got), err)
+		}
+	})
+
+	bad := []struct {
+		name string
+		req  model.ListGenerationTaskReq
+	}{
+		{"只传 node_id", model.ListGenerationTaskReq{NodeID: node}},
+		{"只传 canvas_project_id", model.ListGenerationTaskReq{CanvasProjectID: "7"}},
+		{"node 模式与 ids 同时传", model.ListGenerationTaskReq{NodeID: node, CanvasProjectID: "7", IDs: "1"}},
+		{"node 模式与 status 同时传", model.ListGenerationTaskReq{NodeID: node, CanvasProjectID: "7", Status: "active"}},
+		{"画布 ID 格式错误", model.ListGenerationTaskReq{NodeID: node, CanvasProjectID: "abc"}},
+		{"画布 ID 为 0", model.ListGenerationTaskReq{NodeID: node, CanvasProjectID: "0"}},
+	}
+	for _, tt := range bad {
+		t.Run(tt.name+"返回 400", func(t *testing.T) {
+			req := tt.req
+			_, err := env.svc.List(context.Background(), 1, &req)
+			assertTaskCode(t, err, errcode.ErrInvalidParams.Code)
+		})
+	}
+
+	t.Run("仓储错误透传", func(t *testing.T) {
+		env := newTaskSvcEnv(defaultTaskLimits())
+		env.repo.errs["ListByNode"] = errors.New("db down")
+		if _, err := env.svc.List(context.Background(), 1, &model.ListGenerationTaskReq{NodeID: node, CanvasProjectID: "7"}); err == nil {
 			t.Fatal("期望返回错误")
 		}
 	})

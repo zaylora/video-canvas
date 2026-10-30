@@ -158,7 +158,7 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		auth.POST("/ws/ticket", h.WS.IssueTicket)
 		tasks := auth.Group("/generation-tasks")
 		tasks.POST("", h.GenerationTask.Create) // 202
-		tasks.GET("", h.GenerationTask.List)    // ?ids=1,2,3 或 ?status=active
+		tasks.GET("", h.GenerationTask.List)    // ?ids=1,2,3 或 ?status=active 或 ?node_id=&canvas_project_id=（节点的生成记录）
 		tasks.GET("/:id", h.GenerationTask.Get)
 		tasks.POST("/:id/cancel", h.GenerationTask.Cancel)
 		auth.GET("/credits", h.GenerationTask.Credits)

@@ -36,6 +36,21 @@ const TASK_FIELDS = [
  */
 const LIVE_FIELDS = [...TASK_FIELDS, "scene"] as const satisfies readonly (keyof CanvasNodeData)[];
 
+/**
+ * 声音任务回填写的是 character.voice（不在任务字段里，用户上传 / 绑定也写它，撤销要能倒回），
+ * 所以单独认：快照那一刻节点还记着声音任务，眼下任务记录已经清掉（或换成了别的任务）、
+ * 声音是 AI 生成的，说明这段声音是任务回填进来的，撤销保留眼下的声音，
+ * 否则撤一步就把刚生成好的音色抹掉了，任务记录又已清掉，没人再回填。
+ * @param saved 快照里的节点数据
+ * @param now 眼下的节点数据
+ * @returns 要保留的声音；不是这种情况时为 undefined
+ */
+function taskFilledVoice(saved: CanvasNodeData, now: CanvasNodeData) {
+  const voice = now.character?.voice;
+  if (!saved.voiceTaskId || saved.voiceTaskId === now.voiceTaskId) return undefined;
+  return voice?.origin === "generated" ? voice : undefined;
+}
+
 /** 节点的结构：增删、位置、连线变了就是一步，立刻入栈 */
 export function structureKey({ nodes, edges }: HistorySnapshot) {
   return JSON.stringify([
@@ -87,6 +102,8 @@ export function restoreNodes(snapshot: FlowNode[], current: FlowNode[]): FlowNod
       if (now.data[key] === undefined) delete data[key];
       else Object.assign(data, { [key]: now.data[key] });
     }
+    const filledVoice = taskFilledVoice(saved.data, now.data);
+    if (filledVoice && data.character) data.character = { ...data.character, voice: filledVoice };
     const mirrored =
       saved.data.activeOutputId && now.data.status !== "running"
         ? selectOutput(data, saved.data.activeOutputId)

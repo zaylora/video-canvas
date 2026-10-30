@@ -119,6 +119,46 @@ describe("restoreNodes", () => {
     expect(dropped.data.voiceTaskId).toBeUndefined();
   });
 
+  test("声音任务回填的音色不被撤销倒回：快照时任务还在跑，眼下已绑成 AI 生成的声音", () => {
+    const base = { name: "林晚", look: "基础形象", description: "", extras: [] };
+    const generated = {
+      mode: "audio" as const,
+      assetId: "77",
+      src: "/77.mp3",
+      origin: "generated" as const,
+    };
+    const saved = node("c1", {
+      kind: "character",
+      label: "旧名",
+      voiceTaskId: "9",
+      character: { ...base, voice: null },
+    });
+    const now = node("c1", {
+      kind: "character",
+      label: "新名",
+      character: { ...base, name: "新名", voice: generated },
+    });
+    const [restored] = restoreNodes([saved], [now]);
+    expect(restored.data.voiceTaskId).toBeUndefined();
+    expect(restored.data.character?.voice).toEqual(generated);
+    expect(restored.data.label).toBe("旧名");
+    expect(restored.data.character?.name).toBe("林晚");
+  });
+
+  test("用户自己换的声音照常可以撤销（快照里没有进行中的声音任务）", () => {
+    const base = { name: "林晚", look: "基础形象", description: "", extras: [] };
+    const saved = node("c1", { kind: "character", character: { ...base, voice: null } });
+    const now = node("c1", {
+      kind: "character",
+      character: {
+        ...base,
+        voice: { mode: "audio", assetId: "5", src: "/5.mp3", origin: "generated" },
+      },
+    });
+    const [restored] = restoreNodes([saved], [now]);
+    expect(restored.data.character?.voice).toBeNull();
+  });
+
   test("「出图后生成音色」的标记属于任务字段：撤销不倒回它，否则出图后音色不会接着生成", () => {
     const [kept] = restoreNodes([node("n1")], [node("n1", { voiceAfterImage: ["7"] })]);
     expect(kept.data.voiceAfterImage).toEqual(["7"]);

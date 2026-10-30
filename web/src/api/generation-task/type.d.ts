@@ -76,6 +76,10 @@ export interface TaskView {
   submitted_at: string | null;
   /** 结束时间，未结束为 null */
   finished_at: string | null;
+  /** 提交时的提示词；只有按节点查生成记录（getGenerationTasksByNode）时才有，推送和对账不带 */
+  prompt?: string;
+  /** 提交时的模型展示名（取配置快照，模型改名、下架后仍能显示）；同上，只有按节点查询时才有 */
+  model_label?: string;
 }
 
 /** 提交生成任务的请求体 */

@@ -65,24 +65,39 @@ func (s *GenerationTaskService) userTask(ctx context.Context, userID, id uint64,
 	return t, nil
 }
 
-// List 对账查询：ids 接受十进制或编码任务 ID（最多 100 个），与 status=active 二选一。
+// List 任务查询，三种模式必须且只能用一种：
+//   - ids：对账，接受十进制或编码任务 ID（最多 100 个）；
+//   - status=active：对账，该用户所有非终态任务；
+//   - node_id + canvas_project_id：某张画布某个节点的生成记录（如角色声音），新的在前最多 20 个，带提示词和模型名。
+//
 // 返回的切片永远不是 nil，只包含当前用户的正式任务。
 func (s *GenerationTaskService) List(ctx context.Context, userID uint64, req *model.ListGenerationTaskReq) ([]model.GenerationTaskView, error) {
-	// 1. ids 与 status 必须且只能传一个
+	// 1. 三种模式必须且只能用一种；节点模式的两个参数缺一个也算没说清楚，按参数错误返回，不退化成别的查询
 	hasIDs, hasStatus := strings.TrimSpace(req.IDs) != "", req.Status != ""
-	if hasIDs == hasStatus {
-		return nil, errcode.ErrInvalidParams.WithMsg("ids 与 status=active 必须且只能传一个")
+	hasNode := req.NodeID != "" || req.CanvasProjectID != ""
+	modes := 0
+	for _, on := range []bool{hasIDs, hasStatus, hasNode} {
+		if on {
+			modes++
+		}
+	}
+	if modes != 1 {
+		return nil, errcode.ErrInvalidParams.WithMsg("ids、status=active、node_id + canvas_project_id 必须且只能传一种")
 	}
 
-	// 2. status=active：该用户所有非终态任务（WS 重连后对账）
 	var (
 		tasks []model.GenerationTask
 		err   error
 	)
-	if hasStatus {
+	switch {
+	case hasStatus:
+		// 2. status=active：该用户所有非终态任务（WS 重连后对账）
 		tasks, err = s.repo.ListActive(ctx, userID)
-	} else {
-		// 3. ids：逐个解析，非法 / 超过 100 个返回 400；查询带 user_id，别人的任务查不到，直接不出现在结果里
+	case hasNode:
+		// 3. 节点模式：两个参数都要有；画布 ID 和其他接口一样接受编码串，也兼容十进制
+		return s.listByNode(ctx, userID, req)
+	default:
+		// 4. ids：逐个解析，非法 / 超过 100 个返回 400；查询带 user_id，别人的任务查不到，直接不出现在结果里
 		ids, perr := parseTaskIDs(req.IDs)
 		if perr != nil {
 			return nil, errcode.ErrInvalidParams.WithMsg(perr.Error())
@@ -93,10 +108,40 @@ func (s *GenerationTaskService) List(ctx context.Context, userID uint64, req *mo
 		return nil, err
 	}
 
-	// 4. 转成视图；outputs 永远是数组
+	// 5. 转成视图；outputs 永远是数组
 	views := make([]model.GenerationTaskView, 0, len(tasks))
 	for i := range tasks {
 		views = append(views, *taskView(&tasks[i]))
+	}
+	return views, nil
+}
+
+// listByNode 是 List 的节点模式：查当前用户在这张画布这个节点上最近的正式任务，新的在前，最多 maxNodeTasks 个，
+// 视图额外带上提示词和模型展示名（详情页的生成记录要显示，对账和推送不需要）。
+func (s *GenerationTaskService) listByNode(ctx context.Context, userID uint64, req *model.ListGenerationTaskReq) ([]model.GenerationTaskView, error) {
+	// 1. 两个参数必须同时传
+	if req.NodeID == "" || req.CanvasProjectID == "" {
+		return nil, errcode.ErrInvalidParams.WithMsg("node_id 与 canvas_project_id 必须同时传")
+	}
+	canvasID, ok := parseIDPart(strings.TrimSpace(req.CanvasProjectID))
+	if !ok {
+		return nil, errcode.ErrInvalidParams.WithMsg("canvas_project_id 格式错误")
+	}
+
+	// 2. 查询带 user_id：别人的画布查不到任务，结果为空，不暴露画布是否存在；
+	//    不校验画布归属，因为条件里已有 user_id，查到的只会是自己的任务
+	tasks, err := s.repo.ListByNode(ctx, userID, canvasID, req.NodeID, maxNodeTasks)
+	if err != nil {
+		return nil, err
+	}
+
+	// 3. 转成视图并补提示词、模型名；解析失败（历史脏数据）时这两项留空，不影响其余字段
+	views := make([]model.GenerationTaskView, 0, len(tasks))
+	for i := range tasks {
+		view := taskView(&tasks[i])
+		view.Prompt = taskPromptText(tasks[i].InputJSON)
+		view.ModelLabel = taskModelLabel(tasks[i].ConfigSnapshot, tasks[i].ModelKey)
+		views = append(views, *view)
 	}
 	return views, nil
 }

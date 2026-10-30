@@ -488,6 +488,49 @@ func TestGenerationTaskRepo_Queries(t *testing.T) {
 	})
 }
 
+// ListByNode 是角色声音的生成记录：只看当前用户在这张画布这个节点上的正式任务，新的在前，按 limit 截断。
+func TestGenerationTaskRepo_ListByNode(t *testing.T) {
+	ctx := context.Background()
+	db := gtTestDB(t)
+	repo := NewGenerationTaskRepository(db)
+	user, other := gtNewUserID(), gtNewUserID()
+	canvas, otherCanvas := uint64(11), uint64(12)
+	insert := func(userID uint64, canvasID *uint64, nodeID string, isTest bool) *model.GenerationTask {
+		tk := gtTask(userID, model.TaskSucceeded, 1, time.Now())
+		tk.CanvasProjectID, tk.NodeID, tk.IsTest = canvasID, nodeID, isTest
+		if _, err := repo.InsertTask(ctx, tk); err != nil {
+			t.Fatal(err)
+		}
+		return tk
+	}
+	var mine []*model.GenerationTask
+	for range 4 {
+		mine = append(mine, insert(user, &canvas, "voice:c1", false))
+	}
+	insert(other, &canvas, "voice:c1", false)
+	insert(user, &canvas, "voice:c1", true)
+	insert(user, &otherCanvas, "voice:c1", false)
+	insert(user, &canvas, "voice:c2", false)
+	insert(user, nil, "voice:c1", false)
+
+	got, err := repo.ListByNode(ctx, user, canvas, "voice:c1", 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("应按 limit 返回 3 个，实际 %d 个", len(got))
+	}
+	for i, want := range []uint64{mine[3].ID, mine[2].ID, mine[1].ID} {
+		if got[i].ID != want {
+			t.Fatalf("第 %d 个应是 %d（新的在前），实际 %d", i, want, got[i].ID)
+		}
+	}
+	all, err := repo.ListByNode(ctx, user, canvas, "voice:c1", 20)
+	if err != nil || len(all) != 4 {
+		t.Fatalf("别人的、试跑的、别的画布和别的节点都不算：n=%d err=%v", len(all), err)
+	}
+}
+
 func TestGenerationTaskRepo_Reconcile(t *testing.T) {
 	ctx := context.Background()
 	db := gtTestDB(t)

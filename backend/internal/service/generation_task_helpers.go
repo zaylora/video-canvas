@@ -79,13 +79,9 @@ func parseTaskIDs(raw string) ([]uint64, error) {
 	seen := make(map[uint64]struct{}, len(parts))
 	ids := make([]uint64, 0, len(parts))
 	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		id, err := strconv.ParseUint(part, 10, 64)
-		if err != nil || id == 0 {
-			var ok bool
-			if id, ok = idcodec.Decode(part); !ok {
-				return nil, errors.New("ids 格式错误，应为逗号分隔的任务 id")
-			}
+		id, ok := parseIDPart(strings.TrimSpace(part))
+		if !ok {
+			return nil, errors.New("ids 格式错误，应为逗号分隔的任务 id")
 		}
 		if _, ok := seen[id]; ok {
 			continue
@@ -94,6 +90,14 @@ func parseTaskIDs(raw string) ([]uint64, error) {
 		ids = append(ids, id)
 	}
 	return ids, nil
+}
+
+// parseIDPart 解析一个对外 ID：先按十进制，再按编码串（idcodec）；0 和格式不对都返回 false。
+func parseIDPart(raw string) (uint64, bool) {
+	if id, err := strconv.ParseUint(raw, 10, 64); err == nil && id > 0 {
+		return id, true
+	}
+	return idcodec.Decode(raw)
 }
 
 // toUint64 把输入中的素材 ID 转成 uint64。

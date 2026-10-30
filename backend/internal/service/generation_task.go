@@ -30,6 +30,8 @@ type GenerationTaskRepo interface {
 	ListByIDs(ctx context.Context, userID uint64, ids []uint64) ([]model.GenerationTask, error)
 	// ListActive 查询该用户所有非终态的正式任务（排除 is_test）。
 	ListActive(ctx context.Context, userID uint64) ([]model.GenerationTask, error)
+	// ListByNode 查询该用户在某张画布某个节点上的正式任务（排除 is_test），新的在前，最多 limit 个。
+	ListByNode(ctx context.Context, userID, canvasID uint64, nodeID string, limit int) ([]model.GenerationTask, error)
 	// GetCredit 读取积分账户，不存在返回 repository.ErrNotFound。
 	GetCredit(ctx context.Context, userID uint64) (*model.UserCredit, error)
 	// GetByIDAny 只按 id 查询，供系统内部（队列 worker）使用，不做归属过滤。不存在返回 repository.ErrNotFound。
@@ -56,6 +58,7 @@ const (
 const (
 	defaultTaskDeadline      = 30 * time.Minute // 模型没配置 deadline 时的默认超时
 	maxReconcileIDs          = 100              // 批量对账一次最多查多少个任务
+	maxNodeTasks             = 20               // 按节点查生成记录一次最多返回多少个（只给详情页看最近的几次）
 	maxIdempotencyKeyLen     = 128              // 与 generation_tasks.idempotency_key 列宽一致
 	executorCancelTimeout    = 5 * time.Second  // 取消时“尽力通知上游”的超时
 	upstreamLimit            = 16 * 1024        // 写进任务事件的上游错误原文上限（字节），只为保护存储

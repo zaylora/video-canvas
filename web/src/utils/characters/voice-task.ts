@@ -1,5 +1,5 @@
 import type { TaskView } from "@/api/generation-task/type";
-import type { Capabilities } from "@/api/model/type";
+import type { Capabilities, ModelInfo } from "@/api/model/type";
 import type { CanvasNodeData, NodeCharacter } from "@/types";
 import { isGenerating } from "@/utils/canvas/outputs";
 import { buildTaskInput, toAssetNumber } from "@/utils/tasks/capabilities";
@@ -53,6 +53,20 @@ export function voiceTaskView(
     return { phase: "failed", reason: "没有生成出音频" };
   }
   return { phase: "failed", reason: view.error_message || "生成失败" };
+}
+
+/**
+ * 生成声音用哪个音频模型：节点上记着的（character.voiceModel）还在清单里就用它，
+ * 没记过、或已经下架，取清单第一个。
+ * @param models 音频模型清单
+ * @param key 节点上记着的模型 key
+ * @returns 清单为空时为 undefined
+ */
+export function pickVoiceModel<T extends Pick<ModelInfo, "key">>(
+  models: readonly T[],
+  key: string | undefined,
+): T | undefined {
+  return models.find((item) => item.key === key) ?? models[0];
 }
 
 /** 组装好的提交内容；error 非空时不能提交 */

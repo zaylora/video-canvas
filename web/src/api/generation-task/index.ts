@@ -47,6 +47,22 @@ export const getActiveGenerationTasks = async (): Promise<TaskView[]> =>
   (await service.get<TaskView[] | null>("/generation-tasks", { status: "active" })) ?? [];
 
 /**
+ * 查某张画布某个节点最近的生成记录（如角色卡的声音任务 voice:{节点id}）：
+ * 只有当前用户的正式任务，新的在前，最多 20 个，带提示词和模型展示名
+ * @param canvasId 画布 ID（十六进制串）
+ * @param nodeId 任务绑定的 node_id
+ * @returns 任务视图列表，新的在前
+ */
+export const getGenerationTasksByNode = async (
+  canvasId: string,
+  nodeId: string,
+): Promise<TaskView[]> =>
+  (await service.get<TaskView[] | null>("/generation-tasks", {
+    node_id: nodeId,
+    canvas_project_id: canvasId,
+  })) ?? [];
+
+/**
  * 软取消任务；后端可能返回最新快照，也可能什么都不返回，调用方都要能处理
  * @param id 任务 ID
  * @returns 最新任务快照或 null
