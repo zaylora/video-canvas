@@ -143,7 +143,7 @@ export function RecordView({
   const [deleting, setDeleting] = useState(false);
 
   const active = recordActive(tasks);
-  /** 只有还没提交给上游的（排队中）才给「取消」，已经在生成、转存的取消不了 */
+  /** 排队、生成中才给「取消」，转存中结果已到手，取消不了 */
   const cancelable = tasks.some(isCancelableTask);
   const credits = recordCredits(tasks);
   const model = models.find((item) => item.key === record.modelId);

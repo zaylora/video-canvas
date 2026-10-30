@@ -1390,25 +1390,27 @@ func TestGenerationTaskService_GetTestTrace(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestGenerationTaskService_Cancel(t *testing.T) {
-	// 用户取消只在任务还没提交给平台（排队中）时允许：一旦已经调用平台，平台就会照常生成、产生费用，
-	// 这时取消再退回积分，等于白拿一次生成。
+	// 用户取消：还没提交给平台（排队中）全额退回积分；已经进入生成（同步请求已发出、平台已受理或生成中）
+	// 平台会照常产生费用，取消后冻结积分全额扣除、不退，并尽力通知平台取消。转存中结果已经到手，不再允许取消。
 	const user = uint64(1)
 	submittedAt := time.Date(2026, 10, 17, 10, 0, 0, 0, time.UTC)
 	tests := []struct {
-		name     string
-		task     model.GenerationTask
-		wantCode int
-		wantMsg  string // 错误文案要写明原因
+		name       string
+		task       model.GenerationTask
+		wantCode   int
+		wantMsg    string // 错误文案要写明原因
+		wantCharge bool   // 取消成功时积分是否被扣除（否则全额退回）
+		wantCancel int    // 期望通知平台取消的次数
 	}{
-		{"还没提交给平台（pending 且没有提交时间）：取消并退回积分", model.GenerationTask{UserID: user, Status: model.TaskPending, Credits: 10}, 0, ""},
-		{"同步请求已经发给平台（pending 但有提交时间）：不能取消", model.GenerationTask{UserID: user, Status: model.TaskPending, Credits: 10, SubmittedAt: &submittedAt}, errcode.ErrTaskNotCancelable.Code, "已提交给平台"},
-		{"平台已受理、在排队（queued）：不能取消", model.GenerationTask{UserID: user, Status: model.TaskQueued, Credits: 10, ProviderTaskID: "pt-1", SubmittedAt: &submittedAt}, errcode.ErrTaskNotCancelable.Code, "已提交给平台"},
-		{"平台生成中（running）：不能取消", model.GenerationTask{UserID: user, Status: model.TaskRunning, Credits: 10, ProviderTaskID: "pt-1", SubmittedAt: &submittedAt}, errcode.ErrTaskNotCancelable.Code, "已提交给平台"},
-		{"转存中（finalizing）：不能取消", model.GenerationTask{UserID: user, Status: model.TaskFinalizing, Credits: 10, ProviderTaskID: "pt-1", SubmittedAt: &submittedAt}, errcode.ErrTaskNotCancelable.Code, "已提交给平台"},
-		{"已成功的任务不可取消", model.GenerationTask{UserID: user, Status: model.TaskSucceeded, Credits: 10}, errcode.ErrTaskNotCancelable.Code, ""},
-		{"已取消的任务不可重复取消", model.GenerationTask{UserID: user, Status: model.TaskCanceled, Credits: 10}, errcode.ErrTaskNotCancelable.Code, ""},
-		{"别人的任务当作不存在", model.GenerationTask{UserID: 2, Status: model.TaskPending, Credits: 10}, errcode.ErrTaskNotFound.Code, ""},
-		{"试跑任务当作不存在", model.GenerationTask{UserID: user, Status: model.TaskPending, IsTest: true}, errcode.ErrTaskNotFound.Code, ""},
+		{"还没提交给平台（pending 且没有提交时间）：取消并退回积分", model.GenerationTask{UserID: user, Status: model.TaskPending, Credits: 10}, 0, "", false, 0},
+		{"同步请求已经发给平台（pending 但有提交时间）：可取消，积分不退", model.GenerationTask{UserID: user, Status: model.TaskPending, Credits: 10, SubmittedAt: &submittedAt}, 0, "", true, 0},
+		{"平台已受理、在排队（queued）：可取消，积分不退并通知平台", model.GenerationTask{UserID: user, Status: model.TaskQueued, Credits: 10, ProviderTaskID: "pt-1", SubmittedAt: &submittedAt}, 0, "", true, 1},
+		{"平台生成中（running）：可取消，积分不退并通知平台", model.GenerationTask{UserID: user, Status: model.TaskRunning, Credits: 10, ProviderTaskID: "pt-1", SubmittedAt: &submittedAt}, 0, "", true, 1},
+		{"转存中（finalizing）：不能取消", model.GenerationTask{UserID: user, Status: model.TaskFinalizing, Credits: 10, ProviderTaskID: "pt-1", SubmittedAt: &submittedAt}, errcode.ErrTaskNotCancelable.Code, "正在保存", false, 0},
+		{"已成功的任务不可取消", model.GenerationTask{UserID: user, Status: model.TaskSucceeded, Credits: 10}, errcode.ErrTaskNotCancelable.Code, "", false, 0},
+		{"已取消的任务不可重复取消", model.GenerationTask{UserID: user, Status: model.TaskCanceled, Credits: 10}, errcode.ErrTaskNotCancelable.Code, "", false, 0},
+		{"别人的任务当作不存在", model.GenerationTask{UserID: 2, Status: model.TaskPending, Credits: 10}, errcode.ErrTaskNotFound.Code, "", false, 0},
+		{"试跑任务当作不存在", model.GenerationTask{UserID: user, Status: model.TaskPending, IsTest: true}, errcode.ErrTaskNotFound.Code, "", false, 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1418,8 +1420,8 @@ func TestGenerationTaskService_Cancel(t *testing.T) {
 
 			view, err := env.svc.Cancel(context.Background(), user, task.ID)
 			assertTaskCode(t, err, tt.wantCode)
-			if len(env.exec.cancelCalls) != 0 {
-				t.Fatalf("还没提交给平台，不该通知平台取消：%d 次", len(env.exec.cancelCalls))
+			if len(env.exec.cancelCalls) != tt.wantCancel {
+				t.Fatalf("通知平台取消 %d 次，期望 %d 次", len(env.exec.cancelCalls), tt.wantCancel)
 			}
 			if tt.wantCode != 0 {
 				var ec *errcode.Error
@@ -1439,6 +1441,21 @@ func TestGenerationTaskService_Cancel(t *testing.T) {
 			}
 			if view.Status != model.TaskCanceled || view.ErrorCode != TaskErrCanceled {
 				t.Fatalf("视图不对：%+v", view)
+			}
+			if tt.wantCharge {
+				if acc := env.repo.credits[user]; acc.Frozen != 0 || acc.Balance != 40 {
+					t.Fatalf("已进入生成：冻结应全额扣除（余额 50→40）：%+v", acc)
+				}
+				if l := env.repo.ledgerOf(task.ID, model.LedgerSettle); l == nil || l.Amount != 10 {
+					t.Fatalf("缺少 settle 流水：%+v", env.repo.ledger)
+				}
+				if l := env.repo.ledgerOf(task.ID, model.LedgerRefund); l != nil {
+					t.Fatalf("已进入生成的取消不该有 refund 流水：%+v", l)
+				}
+				if view.ChargedCredits == nil || *view.ChargedCredits != 10 || strings.Contains(view.ErrorMessage, "已退回") {
+					t.Fatalf("视图要带实扣积分、文案不能说已退回：%+v", view)
+				}
+				return
 			}
 			if acc := env.repo.credits[user]; acc.Frozen != 0 || acc.Balance != 50 {
 				t.Fatalf("应退回冻结、余额不变：%+v", acc)

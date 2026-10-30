@@ -22,7 +22,7 @@ import { handleTaskView } from "@/utils/ws/task-events";
  * 2. 提交成功：返回的任务快照立刻交给 handleTaskView 合并进任务库，并刷新余额；
  *    之后进度全部由任务库驱动（WebSocket 推送 + 断线对账），调用方只订阅任务库，不自己轮询。
  * 3. 取消：逐个取消，某个失败不影响其他；返回的最新快照同样入库，并刷新余额。
- * 4. 只有还没提交给上游的任务能取消（见 isCancelableTask）。
+ * 4. 转存前的任务都能取消（见 isCancelableTask）；排队中取消退积分，已进入生成取消不退（见 cancelRefunds）。
  * 5. 状态怎么理解（进行中 / 终态 / 可取消 / 排队中 / 生成中）统一看 status.ts 和 node-view.ts，不要在入口里另写判断。
  *
  * 入口之间只允许在「提交到哪里、结果往哪放」上不同：画布放进节点，对话放进记录。
@@ -92,13 +92,13 @@ export async function submitRecordTasks(
 }
 
 /**
- * 取消任务（积分退回）。逐个取消，某个失败（请求层已弹提示）不影响其他；
+ * 取消任务（排队中退回积分，已进入生成不退）。逐个取消，某个失败（请求层已弹提示）不影响其他；
  * 后端可能直接回最新快照，没有的话等 WebSocket / 对账推终态。
  * @param ids 任务 ID
  * @returns 取消失败的任务 ID
  */
 export async function cancelTasks(ids: ReadonlyArray<string | number>): Promise<string[]> {
-  // 已经提交给上游的取消不了，不发请求（后端也会拒绝）
+  // 转存中和已结束的取消不了，不发请求（后端也会拒绝）
   const targets = cancelableTaskIds(ids, useTasksStore.getState().tasks);
   const results = await Promise.allSettled(targets.map((id) => cancelGenerationTask(id)));
   const failed: string[] = [];

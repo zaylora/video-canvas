@@ -81,7 +81,17 @@ describe("voiceTaskView：节点上记着的声音任务此刻是什么状态", 
   });
 
   test("已取消：单独一种，界面据此清掉记录，不当失败", () => {
-    expect(voiceTaskView("5", makeTask({ status: "canceled" }))).toEqual({ phase: "canceled" });
+    expect(voiceTaskView("5", makeTask({ status: "canceled" }))).toEqual({
+      phase: "canceled",
+      refunded: true,
+    });
+  });
+
+  test("已取消且有实扣积分（已进入生成才取消）：标明积分没退", () => {
+    expect(voiceTaskView("5", makeTask({ status: "canceled", charged_credits: 2 }))).toEqual({
+      phase: "canceled",
+      refunded: false,
+    });
   });
 });
 

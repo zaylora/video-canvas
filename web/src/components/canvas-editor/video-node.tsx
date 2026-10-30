@@ -442,9 +442,7 @@ function MediaTaskNode({
             mediaType={mediaType}
             placeholderIcon={PlaceholderIcon ? <PlaceholderIcon className="size-10" /> : undefined}
             // 扩图在合成 / 上传的阶段还没有任务，没有可取消的东西（设计稿 6.17：本期不做）
-            onCancel={
-              vm.view.phase === "queued" && !outpaintRunner.isActive(id) ? vm.cancel : undefined
-            }
+            onCancel={!outpaintRunner.isActive(id) ? vm.cancel : undefined}
             cancelling={vm.cancelling}
             onRetry={retryable ? retry : undefined}
             retryDisabled={!uploadFailed && !outpaintBeforeUpload && !!vm.blockedReason}

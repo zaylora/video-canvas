@@ -92,7 +92,13 @@ describe("deriveCell：任务状态 → 格子状态", () => {
       message: "生成超时",
       taskRef: null,
     });
-    expect(deriveCell(record(), 0, makeTask({ status: "canceled" }), NOW).kind).toBe("canceled");
+    expect(deriveCell(record(), 0, makeTask({ status: "canceled" }), NOW)).toEqual({
+      kind: "canceled",
+      refunded: true,
+    });
+    expect(
+      deriveCell(record(), 0, makeTask({ status: "canceled", charged_credits: 8 }), NOW),
+    ).toEqual({ kind: "canceled", refunded: false });
   });
 
   test("没有任务：有提交失败原因就显示它，否则是任务丢失", () => {

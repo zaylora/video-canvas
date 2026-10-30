@@ -66,8 +66,8 @@ export function NodeVideoBody({
         <BaseNodeContent>
           <PendingPlaceholder
             {...copy}
-            // 只有排队中（还没提交给上游）能取消；已经在生成、转存的取消不了
-            onCancel={view.phase === "queued" ? onCancel : undefined}
+            // 排队中、生成中能取消（排队中退积分，生成中不退）；转存中结果已到手，取消不了
+            onCancel={view.phase === "finalizing" ? undefined : onCancel}
             cancelling={cancelling}
             className={BOX_CLASS}
             style={{ aspectRatio: aspect }}

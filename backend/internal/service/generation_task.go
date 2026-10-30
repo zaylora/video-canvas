@@ -46,7 +46,9 @@ const (
 	TaskErrTimeout  = "timeout"
 
 	taskMsgCanceled = "已取消，积分已退回"
-	taskMsgTimeout  = "生成超时，积分已退回"
+	// 已进入生成后用户取消：平台已经产生费用，冻结的积分照扣
+	taskMsgCanceledCharged = "已取消，已进入生成的积分不退回"
+	taskMsgTimeout         = "生成超时，积分已退回"
 	// taskMsgQueueTimeout 用于一直在排队、从没调用过上游就超时的任务（渠道同时生成数已满，排了很久）
 	taskMsgQueueTimeout = "排队超时，积分已退回"
 )

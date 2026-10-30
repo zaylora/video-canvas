@@ -164,17 +164,18 @@ describe("cancelTasks：取消", () => {
     expect(useTasksStore.getState().tasks["2"]).toBeUndefined();
   });
 
-  test("已经提交给上游的任务不发取消请求（上游照常生成，取消退款会白拿一次生成）", async () => {
+  test("转存中和已结束的任务不发取消请求，排队、生成中的照常取消", async () => {
     useTasksStore.setState({
       tasks: {
         "1": makeTask({ id: 1, status: "pending", submitted_at: null }),
         "2": makeTask({ id: 2, status: "running", submitted_at: "2026-09-29T10:00:05Z" }),
-        "3": makeTask({ id: 3, status: "pending", submitted_at: "2026-09-29T10:00:05Z" }),
+        "3": makeTask({ id: 3, status: "finalizing", submitted_at: "2026-09-29T10:00:05Z" }),
+        "5": makeTask({ id: 5, status: "succeeded" }),
       },
     });
     cancelImpl = async () => null;
-    const failed = await cancelTasks([1, 2, 3, 4]);
-    expect(calls.cancel).toEqual([1, 4]);
+    const failed = await cancelTasks([1, 2, 3, 4, 5]);
+    expect(calls.cancel).toEqual([1, 2, 4]);
     expect(failed).toEqual([]);
   });
 

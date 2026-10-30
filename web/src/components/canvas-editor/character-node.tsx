@@ -267,7 +267,7 @@ function CharacterNodeBody({
               aspect={aspect}
               placeholder="选中后输入提示词生成形象"
               mediaType="image"
-              onCancel={vm.view.phase === "queued" ? vm.cancel : undefined}
+              onCancel={vm.cancel}
               cancelling={vm.cancelling}
               onRetry={vm.view.phase === "failed" ? () => void vm.submit() : undefined}
               retryDisabled={!!vm.blockedReason}
