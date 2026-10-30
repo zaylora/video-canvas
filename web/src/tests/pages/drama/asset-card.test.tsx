@@ -53,6 +53,14 @@ describe("AssetCard：短剧资产卡", () => {
     expect(out).not.toContain("object-cover");
   });
 
+  test.each(["character", "image"] as const)("%s 资产封面只加载缩略图", (kind) => {
+    const src = "/files/assets/sheet.png";
+    const out = card(item({ status: "done", data: { kind, src } as CanvasNodeData }));
+    expect(out).toContain(`src="${src}?v=thumb"`);
+    expect(out).not.toContain(`src="${src}"`);
+    expect(out).toContain('data-slot="media-skeleton"');
+  });
+
   test("多选模式下点卡片是勾选，不进画布", () => {
     const out = card(item(), true);
     expect(out).toContain('aria-label="选择"');
