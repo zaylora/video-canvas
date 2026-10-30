@@ -22,20 +22,18 @@
 
 </div>
 
-
 ## 核心功能
-
 
 **创作**
 
+- **短剧工作室**：专为连续剧与短剧打造的结构化生产工作台。支持长剧本/小说导入与 AI 自动化研读、故事大纲与分集剧本编排、角色/场景/道具智能拆解与资产同源管理，以及分镜片场精准生视频与成片流程。
 - **无限画布**：文本、图片、视频、音频节点可以互相连线，上游节点的结果直接作为下游生成的参考。
 - **首页对话**：在首页选择模型和参数直接发起生成，结果按对话记录保存，可重试、再编辑，或作为下一次生成的参考素材。
 - **素材处理**：图片扩图；图片编辑；视频修剪、截取帧；生成结果保留历史版本，可随时切换。
 - **3D 导演台**：用人台、道具和多机位摆出构图，把机位画面导出为视频和首帧图片，再放回画布。
 - **画布 Agent**：在画布中对话，Agent 可以创建、编辑和排列节点，联网搜索资料，改动支持撤销；可导入技能包。
 - **个人资产库**：上传素材、按文件夹整理，生成结果可一键入库，也可以从资产库添加到画布。
-
-**生成**
+  **生成**
 
 - **异步任务**：提交后立即返回，进度通过 WebSocket 推送，断线重连后自动对账；任务可取消。
 - **积分结算**：提交时冻结积分，成功后扣除，失败或取消时退回；支持在线充值。
@@ -51,25 +49,47 @@
 
 ## 项目截图
 
+### 短剧工作室
+
 <table>
   <tr>
-    <th width="50%">首页</th>
-    <th width="50%">无限画布</th>
+    <th width="50%">全流程总览</th>
+    <th width="50%">剧本与大纲研读</th>
   </tr>
   <tr>
-    <td><a href="docs/assets/screenshots/%E9%A6%96%E9%A1%B5.png"><img src="docs/assets/screenshots/%E9%A6%96%E9%A1%B5.png" alt="首页" /></a></td>
-    <td><a href="docs/assets/screenshots/%E7%94%BB%E5%B8%83.png"><img src="docs/assets/screenshots/%E7%94%BB%E5%B8%83.png" alt="无限画布" /></a></td>
+    <td><a href="docs/assets/screenshots/短剧工作室-总览.png"><img src="docs/assets/screenshots/短剧工作室-总览.png" alt="短剧工作室-全流程总览" /></a></td>
+    <td><a href="docs/assets/screenshots/短剧工作室-剧本.png"><img src="docs/assets/screenshots/短剧工作室-剧本.png" alt="短剧工作室-剧本与大纲研读" /></a></td>
   </tr>
   <tr>
-    <th>3D 导演台</th>
-    <th>后台管理</th>
+    <th>角色与场景资产管理</th>
+    <th>分镜片场与视频生成</th>
   </tr>
   <tr>
-    <td><a href="docs/assets/screenshots/%E5%AF%BC%E6%BC%94%E5%8F%B0.png"><img src="docs/assets/screenshots/%E5%AF%BC%E6%BC%94%E5%8F%B0.png" alt="3D 导演台" /></a></td>
-    <td><a href="docs/assets/screenshots/%E5%90%8E%E5%8F%B0%E7%AE%A1%E7%90%86.png"><img src="docs/assets/screenshots/%E5%90%8E%E5%8F%B0%E7%AE%A1%E7%90%86.png" alt="后台管理" /></a></td>
+    <td><a href="docs/assets/screenshots/短剧工作室资产管理.png"><img src="docs/assets/screenshots/短剧工作室资产管理.png" alt="短剧工作室-资产管理" /></a></td>
+    <td><a href="docs/assets/screenshots/短剧工作室分镜.png"><img src="docs/assets/screenshots/短剧工作室分镜.png" alt="短剧工作室-分镜片场" /></a></td>
   </tr>
 </table>
 
+### 创作空间与后台
+
+<table>
+  <tr>
+    <th width="50%">无限画布</th>
+    <th width="50%">3D 导演台</th>
+  </tr>
+  <tr>
+    <td><a href="docs/assets/screenshots/%E7%94%BB%E5%B8%83.png"><img src="docs/assets/screenshots/%E7%94%BB%E5%B8%83.png" alt="无限画布" /></a></td>
+    <td><a href="docs/assets/screenshots/%E5%AF%BC%E6%BC%94%E5%8F%B0.png"><img src="docs/assets/screenshots/%E5%AF%BC%E6%BC%94%E5%8F%B0.png" alt="3D 导演台" /></a></td>
+  </tr>
+  <tr>
+    <th>首页对话生成</th>
+    <th>后台管理</th>
+  </tr>
+  <tr>
+    <td><a href="docs/assets/screenshots/%E9%A6%96%E9%A1%B5.png"><img src="docs/assets/screenshots/%E9%A6%96%E9%A1%B5.png" alt="首页" /></a></td>
+    <td><a href="docs/assets/screenshots/%E5%90%8E%E5%8F%B0%E7%AE%A1%E7%90%86.png"><img src="docs/assets/screenshots/%E5%90%8E%E5%8F%B0%E7%AE%A1%E7%90%86.png" alt="后台管理" /></a></td>
+  </tr>
+</table>
 
 ## 快速开始
 
@@ -100,12 +120,11 @@ curl -fsSL https://raw.githubusercontent.com/zaylora/video-canvas/master/scripts
 curl -fsSL https://raw.githubusercontent.com/zaylora/video-canvas/master/scripts/update.sh | bash
 ```
 
-
 ## 文档
 
 | 内容                         | 文档                                                                                                    |
 | ---------------------------- | ------------------------------------------------------------------------------------------------------- |
-| 开发环境、架构、测试与发布   | [开发指南](docs/development.md) · [贡献指南](CONTRIBUTING.md)                                            |
+| 开发环境、架构、测试与发布   | [开发指南](docs/development.md) · [贡献指南](CONTRIBUTING.md)                                           |
 | 生产部署                     | [生产 Docker 部署](docs/docker-production.md)                                                           |
 | 后端结构、配置项、完整接口表 | [backend/README.md](backend/README.md)                                                                  |
 | AI 管理接口、插件契约        | [admin-ai-api.md](backend/docs/admin-ai-api.md) · [plugin-contract.md](backend/docs/plugin-contract.md) |
@@ -119,6 +138,7 @@ curl -fsSL https://raw.githubusercontent.com/zaylora/video-canvas/master/scripts
 开始贡献前，请先阅读 [贡献指南](CONTRIBUTING.md)（如何提 Issue 和 PR）和 [开发指南](docs/development.md)（环境、规范、提交前检查）。
 
 如果连镜对你有帮助，欢迎给项目一个 ⭐ Star，让更多创作者发现它。
+
 ## 许可证
 
 [MIT](LICENSE)

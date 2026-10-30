@@ -25,14 +25,13 @@ From text and images to video and audio, keep your creative process organized, r
 ## Features
 
 **Creation**
-
+- **Drama Studio**: An end-to-end production pipeline for episodic AI short dramas. Ingests scripts or novels for automated AI analysis, structures story outlines and episode scripts, breaks down characters, scenes, and props with unified cross-episode asset management, and guides shot clips into final video episodes.
 - **Infinite canvas**: Connect text, image, video and audio nodes. The output of an upstream node is used directly as a reference for downstream generation.
 - **Home conversations**: Pick a model and parameters on the home page and generate right away. Results are kept as a conversation and can be retried, edited, or used as references for the next generation.
 - **Media tools**: Outpaint images; trim videos and capture frames. Every generation keeps its version history, and you can switch between versions at any time.
 - **3D director's desk**: Compose shots with mannequins, props and multiple cameras, then export camera views as videos and first-frame images back to the canvas.
 - **Canvas Agent**: Chat inside the canvas. The Agent can create, edit and arrange nodes and search the web, and its changes can be undone. Skill packs can be imported.
 - **Personal asset library**: Upload media and organize it in folders. Generated results can be added in one click and placed back onto any canvas.
-
 **Generation**
 
 - **Asynchronous tasks**: Submitting returns immediately. Progress is pushed over WebSocket and reconciled automatically after a reconnect. Tasks can be cancelled.
@@ -49,21 +48,44 @@ From text and images to video and audio, keep your creative process organized, r
 
 ## Screenshots
 
+### Drama Studio
+
 <table>
   <tr>
-    <th width="50%">Home</th>
+    <th width="50%">Workflow overview</th>
+    <th width="50%">Script and story outline</th>
+  </tr>
+  <tr>
+    <td><a href="docs/assets/screenshots/短剧工作室-总览.png"><img src="docs/assets/screenshots/短剧工作室-总览.png" alt="Drama Studio - Overview" /></a></td>
+    <td><a href="docs/assets/screenshots/短剧工作室-剧本.png"><img src="docs/assets/screenshots/短剧工作室-剧本.png" alt="Drama Studio - Script and Outlines" /></a></td>
+  </tr>
+  <tr>
+    <th>Character & scene asset management</th>
+    <th>Storyboard & video generation</th>
+  </tr>
+  <tr>
+    <td><a href="docs/assets/screenshots/短剧工作室资产管理.png"><img src="docs/assets/screenshots/短剧工作室资产管理.png" alt="Drama Studio - Assets" /></a></td>
+    <td><a href="docs/assets/screenshots/短剧工作室分镜.png"><img src="docs/assets/screenshots/短剧工作室分镜.png" alt="Drama Studio - Storyboard" /></a></td>
+  </tr>
+</table>
+
+### Workspace & Administration
+
+<table>
+  <tr>
     <th width="50%">Infinite canvas</th>
+    <th width="50%">3D director's desk</th>
   </tr>
   <tr>
-    <td><a href="docs/assets/screenshots/%E9%A6%96%E9%A1%B5.png"><img src="docs/assets/screenshots/%E9%A6%96%E9%A1%B5.png" alt="Home" /></a></td>
     <td><a href="docs/assets/screenshots/%E7%94%BB%E5%B8%83.png"><img src="docs/assets/screenshots/%E7%94%BB%E5%B8%83.png" alt="Infinite canvas" /></a></td>
+    <td><a href="docs/assets/screenshots/%E5%AF%BC%E6%BC%94%E5%8F%B0.png"><img src="docs/assets/screenshots/%E5%AF%BC%E6%BC%94%E5%8F%B0.png" alt="3D director's desk" /></a></td>
   </tr>
   <tr>
-    <th>3D director's desk</th>
+    <th>Home</th>
     <th>Admin console</th>
   </tr>
   <tr>
-    <td><a href="docs/assets/screenshots/%E5%AF%BC%E6%BC%94%E5%8F%B0.png"><img src="docs/assets/screenshots/%E5%AF%BC%E6%BC%94%E5%8F%B0.png" alt="3D director's desk" /></a></td>
+    <td><a href="docs/assets/screenshots/%E9%A6%96%E9%A1%B5.png"><img src="docs/assets/screenshots/%E9%A6%96%E9%A1%B5.png" alt="Home" /></a></td>
     <td><a href="docs/assets/screenshots/%E5%90%8E%E5%8F%B0%E7%AE%A1%E7%90%86.png"><img src="docs/assets/screenshots/%E5%90%8E%E5%8F%B0%E7%AE%A1%E7%90%86.png" alt="Admin console" /></a></td>
   </tr>
 </table>
