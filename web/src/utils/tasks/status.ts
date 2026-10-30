@@ -47,6 +47,13 @@ export const cancelableTaskIds = <T extends string | number>(
 /** 后端 id 是数字，前端一律当字符串用 */
 export const taskKey = (id: number | string) => String(id);
 
+/** 同一个任务既可通过画布的十进制 ID，也可通过短剧使用的编码任务编号定位。 */
+export const matchesTaskId = (
+  task: Pick<TaskView, "id" | "task_ref">,
+  id: string | number,
+): boolean =>
+  taskKey(task.id) === taskKey(id) || Boolean(task.task_ref && task.task_ref === taskKey(id));
+
 /** 任务的第一份产物；没有产物时为 undefined */
 export const firstOutput = (view: TaskView) => view.outputs?.[0];
 

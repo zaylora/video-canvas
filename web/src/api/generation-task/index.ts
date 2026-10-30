@@ -22,8 +22,8 @@ export const getGenerationTask = (id: string | number) =>
   service.get<TaskView>(`/generation-tasks/${id}`, undefined);
 
 /**
- * 按 id 批量对账，后端单次最多 100 个，超出自动分批
- * @param ids 任务 ID 列表
+ * 按 id 批量对账，兼容画布十进制 ID 和短剧编码 ID；单次最多 100 个，超出自动分批
+ * @param ids 十进制或编码任务 ID 列表
  * @returns 任务视图列表
  */
 export const getGenerationTasksByIds = async (ids: Array<string | number>): Promise<TaskView[]> => {

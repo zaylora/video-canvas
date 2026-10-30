@@ -65,7 +65,7 @@ func (s *GenerationTaskService) userTask(ctx context.Context, userID, id uint64,
 	return t, nil
 }
 
-// List 对账查询：ids=1,2,3（最多 100 个）或 status=active（该用户所有进行中的任务）二选一。
+// List 对账查询：ids 接受十进制或编码任务 ID（最多 100 个），与 status=active 二选一。
 // 返回的切片永远不是 nil，只包含当前用户的正式任务。
 func (s *GenerationTaskService) List(ctx context.Context, userID uint64, req *model.ListGenerationTaskReq) ([]model.GenerationTaskView, error) {
 	// 1. ids 与 status 必须且只能传一个

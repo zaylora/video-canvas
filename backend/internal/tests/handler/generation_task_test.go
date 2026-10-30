@@ -590,6 +590,10 @@ func TestGenerationTaskHandler_List(t *testing.T) {
 	for i := range manyIDs {
 		manyIDs[i] = genTaskItoa(uint64(i + 1))
 	}
+	encodedIDs := make([]string, 100)
+	for i := range encodedIDs {
+		encodedIDs[i] = idcodec.Encode(a.ID)
+	}
 
 	tests := []struct {
 		name       string
@@ -599,6 +603,10 @@ func TestGenerationTaskHandler_List(t *testing.T) {
 		wantLen    int
 	}{
 		{"按 ids 对账", "?ids=" + genTaskItoa(a.ID) + "," + genTaskItoa(b.ID), http.StatusOK, 0, 2},
+		{"按短剧编码任务 ID 对账", "?ids=" + idcodec.Encode(a.ID) + "," + idcodec.Encode(b.ID), http.StatusOK, 0, 2},
+		{"编码 ID 仍过滤其他用户任务", "?ids=" + idcodec.Encode(a.ID) + "," + idcodec.Encode(theirs.ID), http.StatusOK, 0, 1},
+		{"一批 100 个编码 ID 不会被查询字符串长度拒绝", "?ids=" + strings.Join(encodedIDs, ","), http.StatusOK, 0, 1},
+		{"伪造编码 ID 返回 400", "?ids=" + strings.Repeat("0", 32), http.StatusBadRequest, errcode.ErrInvalidParams.Code, 0},
 		{"ids 中别人的任务不出现", "?ids=" + genTaskItoa(a.ID) + "," + genTaskItoa(theirs.ID), http.StatusOK, 0, 1},
 		{"status=active 返回进行中的任务", "?status=active", http.StatusOK, 0, 1},
 		{"ids 与 status 都没传返回 400", "", http.StatusBadRequest, errcode.ErrInvalidParams.Code, 0},

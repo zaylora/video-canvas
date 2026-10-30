@@ -147,6 +147,6 @@ type TaskItemError struct {
 
 // ListGenerationTaskReq 对账查询：ids（逗号分隔，最多 100 个）与 status=active 二选一。
 type ListGenerationTaskReq struct {
-	IDs    string `form:"ids" binding:"max=2048" label:"任务ID"`                // 任务 ID，逗号分隔
+	IDs    string `form:"ids" binding:"max=3300" label:"任务ID"`                // 十进制或编码任务 ID，最多 100 个编码 ID（32 位 + 逗号）
 	Status string `form:"status" binding:"omitempty,oneof=active" label:"状态"` // 状态过滤，目前仅支持 active（非终态）
 }
