@@ -180,6 +180,9 @@ func (f *fakeGenTaskRepo) UpdateIf(ctx context.Context, id uint64, from []string
 	if v, ok := fields["error_message"].(string); ok {
 		t.ErrorMessage = v
 	}
+	if v, ok := fields["charged_credits"].(int); ok {
+		t.ChargedCredits = &v
+	}
 	if bump {
 		t.Version++
 	}
@@ -633,18 +636,23 @@ func TestGenerationTaskHandler_List(t *testing.T) {
 }
 
 func TestGenerationTaskHandler_Cancel(t *testing.T) {
+	submittedAt := time.Date(2026, 10, 17, 10, 0, 0, 0, time.UTC)
 	tests := []struct {
 		name       string
 		task       model.GenerationTask
 		path       string
 		wantStatus int
 		wantCode   int
+		wantCharge bool
 	}{
-		{"取消还没提交给上游的任务", model.GenerationTask{UserID: 1, Status: model.TaskPending, Credits: 10}, "", http.StatusOK, 0},
-		{"已提交给上游的任务返回 409 + 40005", model.GenerationTask{UserID: 1, Status: model.TaskRunning, Credits: 10}, "", http.StatusConflict, errcode.ErrTaskNotCancelable.Code},
-		{"已结束的任务返回 409 + 40005", model.GenerationTask{UserID: 1, Status: model.TaskSucceeded, Credits: 10}, "", http.StatusConflict, errcode.ErrTaskNotCancelable.Code},
-		{"别人的任务返回 404 + 40004", model.GenerationTask{UserID: 2, Status: model.TaskRunning}, "", http.StatusNotFound, errcode.ErrTaskNotFound.Code},
-		{"id 非法返回 400", model.GenerationTask{}, "/abc", http.StatusBadRequest, errcode.ErrInvalidParams.Code},
+		{"尚未提交给上游：取消并退回积分", model.GenerationTask{UserID: 1, Status: model.TaskPending, Credits: 10}, "", http.StatusOK, 0, false},
+		{"同步请求已发出：取消并扣除积分", model.GenerationTask{UserID: 1, Status: model.TaskPending, Credits: 10, SubmittedAt: &submittedAt}, "", http.StatusOK, 0, true},
+		{"上游排队中：取消并扣除积分", model.GenerationTask{UserID: 1, Status: model.TaskQueued, Credits: 10}, "", http.StatusOK, 0, true},
+		{"上游生成中：取消并扣除积分", model.GenerationTask{UserID: 1, Status: model.TaskRunning, Credits: 10}, "", http.StatusOK, 0, true},
+		{"转存中的任务返回 409 + 40005", model.GenerationTask{UserID: 1, Status: model.TaskFinalizing, Credits: 10}, "", http.StatusConflict, errcode.ErrTaskNotCancelable.Code, false},
+		{"已结束的任务返回 409 + 40005", model.GenerationTask{UserID: 1, Status: model.TaskSucceeded, Credits: 10}, "", http.StatusConflict, errcode.ErrTaskNotCancelable.Code, false},
+		{"别人的任务返回 404 + 40004", model.GenerationTask{UserID: 2, Status: model.TaskRunning}, "", http.StatusNotFound, errcode.ErrTaskNotFound.Code, false},
+		{"id 非法返回 400", model.GenerationTask{}, "/abc", http.StatusBadRequest, errcode.ErrInvalidParams.Code, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -659,14 +667,24 @@ func TestGenerationTaskHandler_Cancel(t *testing.T) {
 			if status != tt.wantStatus || genTaskRespCode(resp) != tt.wantCode {
 				t.Fatalf("期望 HTTP %d / code %d，实际 %d / %v", tt.wantStatus, tt.wantCode, status, resp)
 			}
-			if tt.wantCode == 0 {
-				data := resp["data"].(map[string]any)
-				if data["status"] != "canceled" {
-					t.Fatalf("状态应为 canceled：%v", data)
+			if tt.wantCode != 0 {
+				return
+			}
+			data := resp["data"].(map[string]any)
+			if data["status"] != "canceled" {
+				t.Fatalf("状态应为 canceled：%v", data)
+			}
+			wantBalance := 50
+			if tt.wantCharge {
+				wantBalance = 40
+				if data["charged_credits"] != float64(10) || !strings.Contains(data["error_message"].(string), "不退回") {
+					t.Fatalf("进入生成后的取消应显示扣除 10 积分且不退回：%v", data)
 				}
-				if env.repo.credits[1].Frozen != 0 {
-					t.Fatalf("应退回冻结积分：%+v", env.repo.credits[1])
-				}
+			} else if data["charged_credits"] != nil {
+				t.Fatalf("未提交的任务不应扣除积分：%v", data)
+			}
+			if acc := env.repo.credits[1]; acc.Frozen != 0 || acc.Balance != wantBalance {
+				t.Fatalf("取消后的积分应为余额 %d、冻结 0：%+v", wantBalance, acc)
 			}
 		})
 	}
