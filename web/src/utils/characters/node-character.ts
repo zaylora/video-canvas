@@ -163,20 +163,6 @@ export function addExtra(
 }
 
 /**
- * 「已有角色」下拉：画布里角色卡节点的角色名，按出现顺序去重，忽略空名和别的节点。
- * 选中只是复用这个名字，不会建立任何关联。
- * @param nodes 画布节点（只用到 data）
- */
-export function roleNames(nodes: readonly { data: CanvasNodeData }[]): string[] {
-  const names: string[] = [];
-  for (const { data } of nodes) {
-    const name = data.kind === "character" ? data.character?.name.trim() : "";
-    if (name && !names.includes(name)) names.push(name);
-  }
-  return names;
-}
-
-/**
  * 把选好（素材库）或传好（上传）的一张图写成节点主图：落在节点自己的 assetId / src / mediaType，
  * 同时记进节点的历史版本（原来的主图留在历史里，可以切回去），清掉失败状态和失败原因；
  * 如果同一张图之前是补充图，从补充图里去掉（补充图不含主图）。

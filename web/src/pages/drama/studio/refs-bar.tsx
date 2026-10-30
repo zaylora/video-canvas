@@ -9,7 +9,7 @@ import { useStudio } from "./use-studio";
 
 const TYPE_ICON = { character: User, scene: ImageIcon, prop: Box } as const;
 
-/** 参考素材条上的一项：缩略图 + 名字 + 状态标记（只用文字 / 声音未生效 / 失效 / 被截断） */
+/** 参考素材条上的一项：缩略图 + 名字 + 状态标记（只用文字 / 角色卡声音未生效 / 失效 / 被截断） */
 function Chip({ view }: { view: RefView }) {
   const { assets } = useStudio();
   const asset = assets.find((item) => item.id === view.id);
@@ -50,7 +50,7 @@ function Chip({ view }: { view: RefView }) {
       )}
       {view.voice === "ignored" && (
         <StatusPill tone="warning" className="h-4 text-[10px]">
-          声音未生效
+          角色卡声音未生效
         </StatusPill>
       )}
       {view.voice === "dropped" && (
@@ -63,7 +63,7 @@ function Chip({ view }: { view: RefView }) {
 }
 
 /**
- * 参考素材条：按提示词里的 @ 解析出这次会带上的参考图 / 音频，标出「只用文字」「声音未生效」，
+ * 参考素材条：按提示词里的 @ 解析出这次会带上的参考图 / 音频，标出「只用文字」「角色卡声音未生效」，
  * 右上角是 n/上限（参考图张数）。不另列说明文字，状态都标在每个素材上。解析规则见 utils/drama/segment-input.ts。
  */
 export function RefsBar() {

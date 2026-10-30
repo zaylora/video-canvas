@@ -79,27 +79,16 @@ export type VoiceCell =
       /** 有声音：可试听，连到视频时会展开成参考音频 */
       kind: "audio";
       title: string;
-      /** 连着的目标模型不收参考音频，声音在那里不生效 */
-      ignored: boolean;
     };
 
 /**
  * 声音格显示什么：生成中 > 有声音 > 没有。
- * 目标模型不收参考音频时标「声音未生效」，只带形象、不阻断。
+ * 声音有没有被下游视频参考，由视频节点自己提示，角色卡上不标。
  * @param character 角色数据
- * @param ignored 连着的某个目标收图片却不收参考音频
  * @param generating 这个节点正在生成声音
  */
-export function voiceCell(
-  character: NodeCharacter,
-  ignored: boolean,
-  generating = false,
-): VoiceCell {
+export function voiceCell(character: NodeCharacter, generating = false): VoiceCell {
   if (generating) return { kind: "generating", title: "声音生成中…" };
   if (!character.voice) return { kind: "none", title: "还没有声音，点开详情设置" };
-  return {
-    kind: "audio",
-    title: ignored ? "声音（目标模型不收参考音频，声音未生效）" : "声音",
-    ignored,
-  };
+  return { kind: "audio", title: "声音" };
 }

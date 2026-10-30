@@ -123,7 +123,25 @@ describe("resolveBindings：角色卡展开成参考图 + 参考音频", () => {
     expect(ids(bound.images)).toEqual(["1", "2", "3"]);
     expect(bound.audios).toEqual([]);
     expect(ids(bound.ignored)).toEqual(["9"]);
-    expect(bound.notices).toEqual(["当前模型不支持参考音频，声音未生效"]);
+    expect(bound.notices).toEqual(["当前模型不支持参考音频，角色卡声音未生效"]);
+  });
+
+  test("图片生成方式：角色卡的声音不参与，不进 ignored，也不提示", () => {
+    const i2i: Capabilities = {
+      ops: ["t2i", "i2i"],
+      refs: {
+        image: { on: true, max: 4, max_mb: 10 },
+        audio: { on: false, max: 0, max_mb: 0 },
+        video: { on: false, max: 0, max_mb: 0 },
+      },
+      prompt: { max_length: 100 },
+      params: {},
+    };
+    const bound = resolveBindings(i2i, "i2i", [charLink()]);
+    expect(ids(bound.images)).toEqual(["1", "2", "3"]);
+    expect(bound.audios).toEqual([]);
+    expect(bound.ignored).toEqual([]);
+    expect(bound.notices).toEqual([]);
   });
 
   test("没有声音：不带音频，也没有提示", () => {

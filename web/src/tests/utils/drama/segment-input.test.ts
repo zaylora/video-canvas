@@ -114,7 +114,7 @@ describe("planSegmentInput：@ 解析与参考素材组装（契约 §13）", ()
       assets,
     });
     expect(plan.input.audios).toBeUndefined();
-    expect(plan.notices).toContain("当前模型不支持参考音频，声音未生效");
+    expect(plan.notices).toContain("当前模型不支持参考音频，角色卡声音未生效");
     expect(plan.refs[0].voice).toBe("ignored");
   });
 

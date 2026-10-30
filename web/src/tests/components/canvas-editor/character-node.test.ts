@@ -117,30 +117,21 @@ describe("角色卡节点的多版本徽标：生成过多张就能看历史、�
 
 describe("voiceCell：封面下方声音格", () => {
   test("没有声音：空格，点开详情设置", () => {
-    expect(voiceCell(character(), false)).toEqual({
+    expect(voiceCell(character())).toEqual({
       kind: "none",
       title: "还没有声音，点开详情设置",
     });
   });
 
   test("正在生成声音：显示生成中，哪怕之前绑过音频", () => {
-    expect(voiceCell(character(), false, true)).toEqual({
+    expect(voiceCell(character(), true)).toEqual({
       kind: "generating",
       title: "声音生成中…",
     });
-    expect(voiceCell(character({ voice: audio }), false, true).kind).toBe("generating");
+    expect(voiceCell(character({ voice: audio }), true).kind).toBe("generating");
   });
 
-  test("有声音：可试听；目标模型不收参考音频时标「声音未生效」", () => {
-    expect(voiceCell(character({ voice: audio }), false)).toEqual({
-      kind: "audio",
-      title: "声音",
-      ignored: false,
-    });
-    expect(voiceCell(character({ voice: audio }), true)).toEqual({
-      kind: "audio",
-      title: "声音（目标模型不收参考音频，声音未生效）",
-      ignored: true,
-    });
+  test("有声音：可试听", () => {
+    expect(voiceCell(character({ voice: audio }))).toEqual({ kind: "audio", title: "声音" });
   });
 });

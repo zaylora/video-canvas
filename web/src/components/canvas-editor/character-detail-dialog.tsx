@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useReactFlow } from "@xyflow/react";
-import { AudioLines, FolderOpen, Loader2, Sparkles, Upload, X } from "lucide-react";
+import { AudioLines, FolderOpen, Loader2, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 
 import type { AssetDto } from "@/api/asset/type";
@@ -32,7 +32,6 @@ import {
   MAX_NAME,
   MAX_TEXT,
   renameCharacter,
-  roleNames,
 } from "@/utils/characters/node-character";
 
 import { priceLabel } from "@/utils/pricing/quote";
@@ -65,7 +64,7 @@ function AudioRow({ assetId, src, origin }: { assetId: string; src: string; orig
 }
 
 /**
- * 角色卡详情（设计 §6.1）：左边大图 + 补充图（可移除）+「上传源素材」，右边角色名称（可选画布里的已有角色）、
+ * 角色卡详情（设计 §6.1）：左边大图 + 补充图（可移除）+「上传源素材」，右边角色名称、
  * 形象名称、出现集数（短剧画布，只读，改集数用节点上方的功能条）、声音（上传 / 绑定已有 / AI 生成）。
  * 所有修改直接写回节点，没有「保存」按钮：连着打字合并成一步撤销，和画布里改节点是同一套。
  */
@@ -83,7 +82,7 @@ export function CharacterDetailDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const { updateNodeData, getNodes } = useReactFlow<CanvasNode>();
+  const { updateNodeData } = useReactFlow<CanvasNode>();
   const character = data.character ?? emptyCharacter(data.label);
   /** 角色名输入框：允许暂时清空，失焦时空名恢复原名；有内容就实时写回 */
   const [name, setName] = useState(character.name);
@@ -106,7 +105,6 @@ export function CharacterDetailDialog({
   };
   const media = useCharacterMedia((asset, purpose) => apply([asset], purpose, "upload"));
 
-  const names = roleNames(getNodes().map((node) => ({ data: node.data })));
   const episodes = data.drama?.episodes;
 
   return (
@@ -186,14 +184,6 @@ export function CharacterDetailDialog({
                 <Upload />
                 上传源素材
               </Button>
-              <Button
-                variant="outline"
-                className="flex-1"
-                disabled
-                title="拼图的含义还没有确定，一期不做"
-              >
-                拼图
-              </Button>
             </div>
           </div>
 
@@ -216,28 +206,6 @@ export function CharacterDetailDialog({
                     if (!name.trim()) setName(character.name);
                   }}
                 />
-                <Select
-                  value=""
-                  onValueChange={(value) => {
-                    if (!value) return;
-                    setName(value);
-                    updateNodeData(id, renameCharacter(data, value));
-                  }}
-                >
-                  <SelectTrigger className="w-32 shrink-0" aria-label="选择画布里已有的角色名">
-                    <SelectValue placeholder="已有角色" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {names.length === 0 && (
-                      <div className="text-muted-foreground px-2 py-1.5 text-sm">没有已有角色</div>
-                    )}
-                    {names.map((item) => (
-                      <SelectItem key={item} value={item}>
-                        {item}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
               </div>
             </div>
 
@@ -351,7 +319,6 @@ export function CharacterDetailDialog({
                     title={data.voiceAfterImage?.length ? "出图后会接着生成音色" : undefined}
                     onClick={() => void voiceGen.submit(character.voicePrompt ?? "")}
                   >
-                    <Sparkles />
                     {voiceGen.task.phase === "failed"
                       ? "重试"
                       : character.voice

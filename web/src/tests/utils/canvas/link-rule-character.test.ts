@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 
 import type { Capabilities } from "@/api/model/type";
 import { useModelsStore } from "@/store/models";
-import { canLinkNodes, ignoresVoice, opForLink } from "@/utils/canvas/link-rule";
+import { canLinkNodes, opForLink } from "@/utils/canvas/link-rule";
 
 const character = { kind: "character" as const };
 
@@ -78,19 +78,5 @@ describe("角色卡的连线规则（设计 §8.2 第 5 条）", () => {
 
   test("模型清单还没到：不拦，按种类规则放行", () => {
     expect(canLinkNodes(character, { kind: "video" })).toBe(true);
-  });
-});
-
-describe("ignoresVoice：声音连到这个目标会不会被丢弃", () => {
-  test("收图片不收参考音频：会丢；图片和音频都收：不丢", () => {
-    setModels(imageOnlyVideo(), imageModel());
-    expect(ignoresVoice({ kind: "video", model: "v1" })).toBe(true);
-    expect(ignoresVoice({ kind: "image", model: "i1" })).toBe(true);
-    setModels(omniVideo());
-    expect(ignoresVoice({ kind: "video", model: "v1", params: { op: "omni" } })).toBe(false);
-  });
-
-  test("清单没到时不下判断", () => {
-    expect(ignoresVoice({ kind: "video" })).toBe(false);
   });
 });

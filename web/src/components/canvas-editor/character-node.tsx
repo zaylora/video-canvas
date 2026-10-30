@@ -1,17 +1,7 @@
-import { useEffect, useMemo } from "react";
-import { Position, useNodeConnections, useNodesData, useReactFlow } from "@xyflow/react";
+import { useEffect } from "react";
+import { Position, useReactFlow } from "@xyflow/react";
 import { toast } from "sonner";
-import {
-  AudioLines,
-  Ellipsis,
-  FolderOpen,
-  Loader2,
-  Pause,
-  Play,
-  Plus,
-  Upload,
-  VolumeX,
-} from "lucide-react";
+import { AudioLines, Ellipsis, FolderOpen, Loader2, Pause, Play, Plus, Upload } from "lucide-react";
 
 import type { AssetDto } from "@/api/asset/type";
 import { NodeCard, NodeVideoBody, type NodeCardHandle } from "@/components/canvas";
@@ -32,7 +22,6 @@ import { cn } from "@/lib/utils";
 import { useCharacterDetail } from "@/store/character-detail";
 import { usePromptEditor } from "@/store/prompt-editor";
 import type { CanvasNode, CanvasNodeData } from "@/types";
-import { ignoresVoice } from "@/utils/canvas/link-rule";
 import { shouldRecordAspect } from "@/utils/canvas/media-aspect";
 import { showVersionBadge } from "@/utils/canvas/versions";
 import { nodeFrameSize, paramAspect } from "@/utils/canvas/node-frame";
@@ -156,15 +145,7 @@ export function CharacterCanvasNode({
 }
 
 /** 声音格里的音频试听：圆形按钮，点一下播放 / 暂停（全站同一时刻只放一条） */
-function AudioCell({
-  asset,
-  ignored,
-  title,
-}: {
-  asset: AssetDto;
-  ignored: boolean;
-  title: string;
-}) {
+function AudioCell({ asset, title }: { asset: AssetDto; title: string }) {
   const playing = useVoicePlaying(asset.id);
   return (
     <button
@@ -179,7 +160,6 @@ function AudioCell({
       onPointerDown={(event) => event.stopPropagation()}
       className={cn(
         "focus-visible:ring-ring/60 bg-info/15 text-info grid size-9 shrink-0 place-items-center rounded-[10px] outline-none focus-visible:ring-2 [&_svg]:size-4",
-        ignored && "opacity-50",
       )}
     >
       {playing ? <Pause /> : <Play />}
@@ -189,7 +169,6 @@ function AudioCell({
 
 /**
  * 节点正文：封面（空 / 生成中 / 失败 / 主图）、声音格 + 补充图格、形象名与状态标签、「…」菜单入口。
- * 连到不收参考音频的目标时，「声音未生效」标签挂在节点名旁。
  */
 function CharacterNodeBody({
   id,
@@ -211,17 +190,9 @@ function CharacterNodeBody({
   const view = characterNodeView(data);
   const KindIcon = NODE_META.get("character")?.icon;
 
-  const outgoing = useNodeConnections({ id, handleType: "source" });
-  const targets = useNodesData<CanvasNode>(outgoing.map((connection) => connection.target));
-  const hasAudio = !!character.voice;
-  /** 连着的某个目标收图片却不收参考音频：声音在那里不生效 */
-  const voiceIgnored = useMemo(
-    () => hasAudio && targets.some((target) => ignoresVoice(target.data)),
-    [hasAudio, targets],
-  );
   // 声音任务的结果由这里回填（节点始终挂载，详情页关着也能收到）
   const voiceTask = useVoiceBackfill(id, data);
-  const cell = voiceCell(character, voiceIgnored, voiceTask.phase === "generating");
+  const cell = voiceCell(character, voiceTask.phase === "generating");
 
   /** 拿到素材后写进节点：主图落在节点自己的 assetId / src，补充图、音频落在 character 里 */
   const apply = (
@@ -259,20 +230,7 @@ function CharacterNodeBody({
       title={data.label}
       onRename={(label) => updateNodeData(id, { label })}
       icon={KindIcon ? <KindIcon /> : undefined}
-      status={
-        showTask ? (
-          <NodeStatusLabel view={vm.view} />
-        ) : voiceIgnored ? (
-          <span
-            data-slot="voice-ignored-tag"
-            title="目标模型不收参考音频，只带入形象"
-            className="text-status-warning inline-flex items-center gap-1"
-          >
-            <VolumeX className="size-3.5" />
-            声音未生效
-          </span>
-        ) : undefined
-      }
+      status={showTask ? <NodeStatusLabel view={vm.view} /> : undefined}
       handles={CHARACTER_HANDLES}
       canAcceptConnection={() => true}
       width={nodeFrameSize(aspect).width}
@@ -331,7 +289,6 @@ function CharacterNodeBody({
           {cell.kind === "audio" && character.voice ? (
             <AudioCell
               asset={{ id: character.voice.assetId, url: character.voice.src } as AssetDto}
-              ignored={cell.ignored}
               title={cell.title}
             />
           ) : (

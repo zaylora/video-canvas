@@ -60,7 +60,7 @@ describe("buildFreshInput：按连线里的角色内容组装任务输入", () =
     const out = buildFreshInput(noAudio, params, [link()]);
     expect(out.input.images).toEqual([1, 2]);
     expect(out.input.audios).toBeUndefined();
-    expect(out.notices).toEqual(["当前模型不支持参考音频，声音未生效"]);
+    expect(out.notices).toEqual(["当前模型不支持参考音频，角色卡声音未生效"]);
   });
 
   test("两个形象（同一角色的两个节点）互不串：各自的图按连线顺序依次带入", () => {

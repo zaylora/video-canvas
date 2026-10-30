@@ -14,7 +14,6 @@ import {
   newCharacterData,
   normalizeLegacyCharacters,
   renameCharacter,
-  roleNames,
   takeCharacterFile,
 } from "@/utils/characters/node-character";
 
@@ -254,19 +253,6 @@ describe("旧版文本音色：声音只剩音频，描述变成生成声音的�
       data: data({ character: character({ voice: audio }) }),
     };
     expect(normalizeLegacyCharacters([node])[0]).toBe(node);
-  });
-});
-
-describe("roleNames：「已有角色」下拉", () => {
-  test("画布里角色卡节点的角色名，按出现顺序去重，忽略空名和别的节点", () => {
-    const nodes = [
-      { data: data({ character: character({ name: "林晚" }) }) },
-      { data: data({ character: character({ name: "沈既白" }) }) },
-      { data: data({ character: character({ name: "林晚", look: "礼服" }) }) },
-      { data: data({ character: character({ name: " " }) }) },
-      { data: { kind: "image", label: "图" } as CanvasNodeData },
-    ];
-    expect(roleNames(nodes)).toEqual(["林晚", "沈既白"]);
   });
 });
 

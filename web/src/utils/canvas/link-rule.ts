@@ -7,8 +7,6 @@ import {
   currentOp,
   opToAcceptSource,
   readParams,
-  refKindsOf,
-  refPanelOp,
 } from "@/utils/tasks/capabilities";
 
 import { canConnectKinds } from "./canvas";
@@ -52,17 +50,6 @@ export function opForLink(source: LinkEnd, target: LinkEnd): GenerationOp | unde
   if (!canConnectKinds(source.kind, "source", target.kind)) return undefined;
   const caps = capabilitiesOf(target);
   return opToAcceptSource(caps, currentOp(caps, readParams(target)), source.kind);
-}
-
-/**
- * 角色卡的声音连到这个下游后会不会被丢弃：目标当前方式收图片却不收参考音频（设计 §6.3「声音不支持」）。
- * 模型清单还没到时不下判断；文生视频这类当前不收任何参考的方式，连上后会自动切方式，也不算。
- */
-export function ignoresVoice(target: LinkEnd): boolean {
-  const caps = capabilitiesOf(target);
-  if (!caps) return false;
-  const kinds = refKindsOf(caps, refPanelOp(caps, currentOp(caps, readParams(target))));
-  return kinds.includes("image") && !kinds.includes("audio");
 }
 
 /** 从 from 节点的某一端拉线，落到 other 节点上能不能接：source 端拉出时 other 是下游 */

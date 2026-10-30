@@ -254,7 +254,8 @@ export function resolveBindings(
     if (link.sourceKind !== "character" || !link.character) continue;
     const parts = characterLinks(link, link.character);
     if (imagePort) virtualImages.push(...parts.images);
-    if (parts.voice) virtualVoices.push(parts.voice);
+    // 声音只给视频生成用，图片生成方式不参考角色卡的音频，也不提示
+    if (parts.voice && op !== "t2i" && op !== "i2i") virtualVoices.push(parts.voice);
   }
 
   // 参考图：普通连线先占名额，角色卡的图按顺序填剩下的，放不下的截掉
@@ -271,7 +272,7 @@ export function resolveBindings(
   if (virtualVoices.length > 0 && imagePort) {
     if (!audioPort) {
       out.ignored.push(...virtualVoices);
-      out.notices.push("当前模型不支持参考音频，声音未生效");
+      out.notices.push("当前模型不支持参考音频，角色卡声音未生效");
     } else if (caps) {
       const max = caps.refs?.audio?.max ?? 0;
       const room = Math.max(0, max - out.audios.length);

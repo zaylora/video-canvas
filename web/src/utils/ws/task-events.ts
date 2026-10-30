@@ -2,21 +2,15 @@ import type { TaskView } from "@/api/generation-task/type";
 import { getActiveGenerationTasks, getGenerationTasksByIds } from "@/api/generation-task";
 import { useCreditsStore } from "@/store/credits";
 import { useTasksStore } from "@/store/tasks";
-import { toast } from "sonner";
-import { getCanvasTitle } from "@/utils/canvas/title-cache";
 import { findStaleActiveIds } from "@/utils/tasks/reconcile";
-import {
-  currentCanvasIdFromPath,
-  isFreshTerminalTransition,
-  planTaskToast,
-} from "@/utils/tasks/toast-policy";
+import { isFreshTerminalTransition } from "@/utils/tasks/toast-policy";
 
 /** 快照来源：WebSocket 实时推送，或 HTTP 对账拉回来的 */
 export type TaskSource = "live" | "reconcile";
 
 /**
  * 所有任务快照的唯一入口：合并进 store；
- * 刚进入终态的顺便刷新积分，并在画布外弹完成提示。
+ * 刚进入终态的顺便刷新积分（生成结果不弹通知）。
  */
 export function handleTaskView(view: TaskView, source: TaskSource) {
   const applied = useTasksStore.getState().upsert(view);
@@ -24,25 +18,6 @@ export function handleTaskView(view: TaskView, source: TaskSource) {
   if (!isFreshTerminalTransition(applied.prev, applied.view, source)) return;
 
   void useCreditsStore.getState().refresh();
-  const plan = planTaskToast(
-    applied.view,
-    currentCanvasIdFromPath(window.location.pathname),
-    getCanvasTitle(applied.view.canvas_id),
-    window.location.pathname + window.location.search,
-  );
-  if (!plan) return;
-  const { href } = plan;
-  toast[plan.tone](plan.title, {
-    id: plan.id,
-    description: plan.description,
-    // 动态引入 router，避免 router -> ws-runtime -> 本文件 的循环依赖
-    action: href
-      ? {
-          label: "点击查看",
-          onClick: () => void import("@/router").then(({ router }) => router.navigate(href)),
-        }
-      : undefined,
-  });
 }
 
 /**
