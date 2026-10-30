@@ -2,6 +2,7 @@ package service_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"video-canvas/internal/model"
@@ -291,7 +292,7 @@ func TestCatalog_ListModels(t *testing.T) {
 			t.Errorf("m-pending：%+v", m)
 		}
 	})
-	t.Run("顺序是用户看到的顺序：渠道顺序，再渠道内顺序；渠道不存在的排最后", func(t *testing.T) {
+	t.Run("顺序是用户看到的顺序：渠道顺序，渠道内已启用在前，再按渠道内顺序；渠道不存在的排最后", func(t *testing.T) {
 		if err := e.svc.SetOrder(ctx, 1, []string{"b-nokey", "a-main"}); err != nil {
 			t.Fatal(err)
 		}
@@ -300,8 +301,8 @@ func TestCatalog_ListModels(t *testing.T) {
 		for _, it := range page.List {
 			got = append(got, it.Key)
 		}
-		// b-nokey 排在 a-main 前面；a-main 内按 sort（m-draft、m-online 都是 10，按 key；导入的 m-pending 排在最后）；no-such 的模型最后
-		want := []string{"m-broken", "m-draft", "m-online", "m-pending", "m-ghost"}
+		// b-nokey 排在 a-main 前面；a-main 内已启用的 m-online 在前，未启用的再按 sort（m-draft 是 10，导入的 m-pending 排在最后）；no-such 的模型最后
+		want := []string{"m-broken", "m-online", "m-draft", "m-pending", "m-ghost"}
 		if len(got) != len(want) {
 			t.Fatalf("顺序不对：%v", got)
 		}
@@ -309,6 +310,31 @@ func TestCatalog_ListModels(t *testing.T) {
 			if got[i] != want[i] {
 				t.Fatalf("顺序不对：%v，期望 %v", got, want)
 			}
+		}
+	})
+	t.Run("渠道内两组各自保持拖动顺序：组内按 sort，sort 相同按 key", func(t *testing.T) {
+		e := newCatEnv(t)
+		e.channel(t, "c", "渠道", true, true)
+		e.model(t, "on-b", "c", true)
+		e.model(t, "off-a", "c", false)
+		e.model(t, "on-a", "c", true)
+		e.model(t, "off-b", "c", false)
+		e.model(t, "on-c", "c", true)
+		// 拖动后的完整顺序（启用和未启用交错保存），组内相对顺序是 on-c、on-a、on-b 和 off-b、off-a
+		if err := e.cfg.SetChannelModelOrder(ctx, "c", []string{"off-b", "on-c", "off-a", "on-a", "on-b"}); err != nil {
+			t.Fatal(err)
+		}
+		// 新建的两个 sort 都是 10，排在组内最前，sort 相同按 key
+		e.model(t, "on-z", "c", true)
+		e.model(t, "on-0", "c", true)
+		page, _ := e.cat.ListModels(ctx, modelReq("", "", "", "", 0, 0))
+		var got []string
+		for _, it := range page.List {
+			got = append(got, it.Key)
+		}
+		want := []string{"on-0", "on-z", "on-c", "on-a", "on-b", "off-b", "off-a"}
+		if strings.Join(got, ",") != strings.Join(want, ",") {
+			t.Fatalf("顺序不对：%v，期望 %v", got, want)
 		}
 	})
 	t.Run("按状态筛选：在线 / 未上线 / 不可用 / 待配置", func(t *testing.T) {
