@@ -45,7 +45,7 @@ func (h *GenerationTaskHandler) Get(c *gin.Context) {
 	response.OK(c, view)
 }
 
-// 对账查询：?ids=1,2,3（最多 100 个）或 ?status=active（所有进行中的任务），data 是任务数组
+// List 对账查询：ids 接受十进制或编码任务 ID（最多 100 个），与 status=active 二选一，返回任务数组。
 func (h *GenerationTaskHandler) List(c *gin.Context) {
 	var req model.ListGenerationTaskReq
 	if !BindQuery(c, &req) {

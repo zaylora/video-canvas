@@ -4,13 +4,12 @@ import { CircleAlert, Download, ImagePlus, Music, Play, RotateCw } from "lucide-
 import type { RecordDto } from "@/api/conversation/type";
 import type { TaskOutput } from "@/api/generation-task/type";
 import { MediaPreview, VideoPoster } from "@/components/canvas/media-preview";
-import { FailedPlaceholder, PendingPlaceholder } from "@/components/generation-placeholder";
+import { GenerationStatus } from "@/components/generation-status";
 import { SoonTip } from "@/components/home/soon";
 import { cn } from "@/lib/utils";
 import { useTask } from "@/store/tasks";
 import { useNow } from "@/hooks/use-now";
 import { cellNeedsClock, deriveCell } from "@/utils/conversation/cell";
-import { pendingCopy } from "@/utils/tasks/pending-copy";
 import { cellAspect, shapeOfAspect } from "@/utils/conversation/shape";
 import { useMediaAspect } from "@/hooks/use-media-aspect";
 import { downloadMedia } from "@/utils/canvas/download";
@@ -115,14 +114,15 @@ export function ResultCell({
     case "queued":
     case "running":
     case "finalizing": {
-      // 和画布节点共用占位和文案（见 PendingPlaceholder、pendingCopy）
+      /** 各入口共用相同的任务状态展示。 */
       const phase =
         cell.kind === "running"
           ? ({ phase: "running", elapsedMs: cell.elapsedMs, progress: cell.progress } as const)
           : ({ phase: cell.kind } as const);
       return (
-        <PendingPlaceholder
-          {...pendingCopy(phase, record.kind)}
+        <GenerationStatus
+          view={phase}
+          mediaType={record.kind}
           className={cn("rounded-xl", size)}
           style={frame}
         />
@@ -130,10 +130,8 @@ export function ResultCell({
     }
     case "failed":
       return (
-        <FailedPlaceholder
-          message={cell.message}
-          refunded
-          taskRef={cell.taskRef}
+        <GenerationStatus
+          view={{ phase: "failed", message: cell.message, refunded: true, taskRef: cell.taskRef }}
           onRetry={() => onRetry(index)}
           className={cn("rounded-xl", size)}
           style={frame}

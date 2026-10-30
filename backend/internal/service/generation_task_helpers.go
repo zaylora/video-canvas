@@ -70,7 +70,7 @@ func taskDeadline(snap *provider.Snapshot) time.Duration {
 	return defaultTaskDeadline
 }
 
-// parseTaskIDs 解析逗号分隔的任务 ID，去重后返回。
+// parseTaskIDs 兼容画布的十进制 ID 和短剧的编码 ID，解码后按同一主键去重。
 func parseTaskIDs(raw string) ([]uint64, error) {
 	parts := strings.Split(raw, ",")
 	if len(parts) > maxReconcileIDs {
@@ -79,9 +79,13 @@ func parseTaskIDs(raw string) ([]uint64, error) {
 	seen := make(map[uint64]struct{}, len(parts))
 	ids := make([]uint64, 0, len(parts))
 	for _, part := range parts {
-		id, err := strconv.ParseUint(strings.TrimSpace(part), 10, 64)
+		part = strings.TrimSpace(part)
+		id, err := strconv.ParseUint(part, 10, 64)
 		if err != nil || id == 0 {
-			return nil, errors.New("ids 格式错误，应为逗号分隔的任务 id")
+			var ok bool
+			if id, ok = idcodec.Decode(part); !ok {
+				return nil, errors.New("ids 格式错误，应为逗号分隔的任务 id")
+			}
 		}
 		if _, ok := seen[id]; ok {
 			continue

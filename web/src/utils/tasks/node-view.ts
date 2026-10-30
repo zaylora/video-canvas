@@ -1,6 +1,7 @@
 import type { TaskView } from "@/api/generation-task/type";
 import type { CanvasNodeData } from "@/types";
 import { isUploading } from "@/utils/canvas/upload-state";
+import { isTerminalStatus } from "@/utils/tasks/status";
 
 /** 视频节点正文该长什么样 */
 export type VideoNodeView =
@@ -23,6 +24,39 @@ export type PendingPhase =
   | { phase: "queued" }
   | { phase: "running"; elapsedMs: number | null; progress: number | null }
   | { phase: "finalizing" };
+
+/** 通用任务占位状态；成功产物交给调用方渲染，尚未回填时显示保存阶段。 */
+export type GenerationStatusView = PendingPhase | Extract<VideoNodeView, { phase: "failed" }>;
+
+/** 页面已有的任务摘要，在完整任务快照尚未同步时提供状态和失败原因。 */
+export type TaskStatusFallback = Pick<TaskView, "status" | "error_message">;
+
+/** 任务快照与页面摘要转成统一状态；终态摘要不能被任务库里迟到的进行中快照覆盖。 */
+export function deriveTaskStatus(
+  task: TaskView | undefined,
+  now: number,
+  fallback?: TaskStatusFallback,
+): GenerationStatusView {
+  const snapshot =
+    fallback && isTerminalStatus(fallback.status) && task && !isTerminalStatus(task.status)
+      ? undefined
+      : task;
+  const status = snapshot?.status ?? fallback?.status;
+  if (status && isTerminalStatus(status) && status !== "succeeded") {
+    return {
+      phase: "failed",
+      message:
+        snapshot?.error_message ||
+        fallback?.error_message ||
+        (status === "canceled" ? "已取消" : status === "expired" ? "生成超时" : "生成失败"),
+      refunded: snapshot?.charged_credits === 0,
+      taskRef: snapshot?.task_ref ?? null,
+    };
+  }
+  if (snapshot) return derivePendingPhase(snapshot, now);
+  if (status === "finalizing" || status === "succeeded") return { phase: "finalizing" };
+  return { phase: "running", elapsedMs: null, progress: null };
+}
 
 /**
  * 任务快照 -> 还没结束时的展示阶段，画布节点和首页对话的结果格子共用这一套说法（设计 6.3 节的表）。

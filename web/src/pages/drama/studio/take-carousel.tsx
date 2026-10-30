@@ -7,11 +7,12 @@ import {
   useTransform,
   type MotionValue,
 } from "motion/react";
-import { CircleX, Loader2 } from "lucide-react";
 
 import type { SegmentTake } from "@/api/drama/type";
 import { VideoPoster } from "@/components/canvas/media-preview";
 import { VideoPlayer } from "@/components/video-player";
+import { TaskGenerationStatus } from "@/components/generation-status";
+import { isTerminalStatus } from "@/utils/tasks/status";
 import { cn } from "@/lib/utils";
 import { initialTakeIndex, snapTakeIndex } from "@/utils/drama/take-carousel";
 
@@ -36,10 +37,7 @@ const WHEEL_COOLDOWN = 260;
 
 const isPlayable = (take: SegmentTake) => take.status === "succeeded" && !!take.asset;
 const isRunning = (take: SegmentTake) =>
-  !isPlayable(take) &&
-  take.status !== "failed" &&
-  take.status !== "canceled" &&
-  take.status !== "expired";
+  !isPlayable(take) && (!isTerminalStatus(take.status) || take.status === "succeeded");
 
 /** 预览区的尺寸，用来算卡片大小 */
 function useBoxSize() {
@@ -88,7 +86,6 @@ function TakeCard({
   const opacity = useTransform(distance, [0, 1, 2], [1, 0.5, 0.18]);
   const zIndex = useTransform(distance, (value) => Math.round(20 - value * 8));
   const playable = isPlayable(take);
-  const running = isRunning(take);
 
   return (
     <motion.div
@@ -118,19 +115,11 @@ function TakeCard({
           <VideoPoster src={take.asset.url} />
         )
       ) : (
-        <div className="grid size-full place-items-center bg-[repeating-linear-gradient(135deg,oklch(0.17_0_0)_0_14px,oklch(0.15_0_0)_14px_28px)] p-4 text-center text-xs text-white/70">
-          {running ? (
-            <div>
-              <Loader2 className="mx-auto mb-2 size-6 animate-spin" />
-              生成中
-            </div>
-          ) : (
-            <div className="grid justify-items-center gap-1.5">
-              <CircleX className="text-destructive size-6" />
-              <span className="line-clamp-3">{take.errorMessage || "生成失败"}</span>
-            </div>
-          )}
-        </div>
+        <TaskGenerationStatus
+          taskId={take.taskId}
+          fallback={{ status: take.status, error_message: take.errorMessage }}
+          className="size-full"
+        />
       )}
       {chosen && (
         <span className="bg-primary text-primary-foreground pointer-events-none absolute top-2 left-2 rounded-md px-1.5 py-0.5 text-[11px] font-semibold">

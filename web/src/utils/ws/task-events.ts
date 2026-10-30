@@ -4,6 +4,7 @@ import { useCreditsStore } from "@/store/credits";
 import { useTasksStore } from "@/store/tasks";
 import { findStaleActiveIds } from "@/utils/tasks/reconcile";
 import { isFreshTerminalTransition } from "@/utils/tasks/toast-policy";
+import { matchesTaskId } from "@/utils/tasks/status";
 
 /** 快照来源：WebSocket 实时推送，或 HTTP 对账拉回来的 */
 export type TaskSource = "live" | "reconcile";
@@ -48,8 +49,7 @@ export async function reconcileTaskIds(ids: string[]): Promise<string[] | null> 
   try {
     const views = await getGenerationTasksByIds(ids);
     for (const view of views) handleTaskView(view, "reconcile");
-    const got = new Set(views.map((view) => String(view.id)));
-    return ids.filter((id) => !got.has(id));
+    return ids.filter((id) => !views.some((view) => matchesTaskId(view, id)));
   } catch {
     // 节点保持「生成中」，之后的推送或重连对账会补上
     return null;

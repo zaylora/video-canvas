@@ -1244,6 +1244,11 @@ func TestGenerationTaskService_List(t *testing.T) {
 		wantLen  int
 	}{
 		{"ids 批量对账", model.ListGenerationTaskReq{IDs: itoa(int(a.ID)) + "," + itoa(int(b.ID))}, 0, 2},
+		{"短剧编码任务 ID 可批量对账", model.ListGenerationTaskReq{IDs: idcodec.Encode(a.ID) + "," + idcodec.Encode(b.ID)}, 0, 2},
+		{"编码与十进制 ID 混用时按同一任务去重", model.ListGenerationTaskReq{IDs: idcodec.Encode(a.ID) + "," + itoa(int(a.ID))}, 0, 1},
+		{"编码查询仍不能访问其他用户的任务", model.ListGenerationTaskReq{IDs: idcodec.Encode(a.ID) + "," + idcodec.Encode(theirs.ID)}, 0, 1},
+		{"伪造的编码任务 ID 返回 400", model.ListGenerationTaskReq{IDs: strings.Repeat("0", 32)}, errcode.ErrInvalidParams.Code, 0},
+		{"编码的零 ID 返回 400", model.ListGenerationTaskReq{IDs: idcodec.Encode(0)}, errcode.ErrInvalidParams.Code, 0},
 		{"ids 里别人的任务和不存在的任务不出现", model.ListGenerationTaskReq{IDs: itoa(int(a.ID)) + "," + itoa(int(theirs.ID)) + ",99999"}, 0, 1},
 		{"ids 带空格和重复项", model.ListGenerationTaskReq{IDs: itoa(int(a.ID)) + " , " + itoa(int(a.ID))}, 0, 1},
 		{"ids 全查不到得到空数组", model.ListGenerationTaskReq{IDs: "99998,99999"}, 0, 0},

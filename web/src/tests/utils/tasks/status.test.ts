@@ -5,9 +5,23 @@ import {
   cancelRefunds,
   canceledRefunded,
   isCancelableTask,
+  matchesTaskId,
   outputText,
 } from "@/utils/tasks/status";
 import { makeTask, succeeded, textSucceeded } from "./fixtures";
+
+describe("matchesTaskId：跨画布和短剧的任务身份", () => {
+  test("十进制 ID 和编码任务编号匹配同一份快照，不把已返回的编码查询误判为丢失", () => {
+    const task = makeTask({
+      id: "1844674407370955161",
+      task_ref: "62385d8ed5d50315ea76e9ce6e6394cd",
+    });
+    expect(matchesTaskId(task, task.id)).toBe(true);
+    expect(matchesTaskId(task, task.task_ref!)).toBe(true);
+    expect(matchesTaskId(task, "other")).toBe(false);
+    expect(matchesTaskId(makeTask(), "")).toBe(false);
+  });
+});
 
 describe("outputText：文本产出提取", () => {
   test("取第一份带正文的产出，原样保留换行与首尾空白", () => {

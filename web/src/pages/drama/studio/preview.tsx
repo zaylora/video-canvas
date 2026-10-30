@@ -1,8 +1,9 @@
 import { AnimatePresence, motion } from "motion/react";
-import { Clapperboard, Loader2 } from "lucide-react";
+import { Clapperboard } from "lucide-react";
 
 import { VideoPoster } from "@/components/canvas/media-preview";
-import { EASE_OUT, SHIMMER } from "@/lib/motion";
+import { EASE_OUT } from "@/lib/motion";
+import { TaskGenerationStatus } from "@/components/generation-status";
 import { cn } from "@/lib/utils";
 import { playableTake } from "@/utils/drama/segments";
 
@@ -123,17 +124,7 @@ export function Preview() {
               <span>{current?.seconds}s</span>
             </div>
           ) : running ? (
-            <div className="grid size-full place-items-center bg-[repeating-linear-gradient(135deg,oklch(0.17_0_0)_0_14px,oklch(0.15_0_0)_14px_28px)] text-center text-xs text-white/70">
-              <div>
-                <Loader2 className="mx-auto mb-3 size-6 animate-spin" />
-                <span
-                  className="inline-block animate-pulse font-medium motion-reduce:animate-none"
-                  style={{ animationDuration: `${SHIMMER}s` }}
-                >
-                  生成中，通常要几分钟
-                </span>
-              </div>
-            </div>
+            <TaskGenerationStatus className="size-full" />
           ) : (
             <div className="grid size-full place-items-center bg-[repeating-linear-gradient(135deg,oklch(0.17_0_0)_0_14px,oklch(0.15_0_0)_14px_28px)] text-center text-xs text-white/70">
               <div>

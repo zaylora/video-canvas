@@ -38,7 +38,7 @@ func remoteKindOf(nodeKind string) string {
 // buildGenInput 按模型能力把节点读出来的内容组装成任务输入，与画布上点生成时的规则一致：
 // 提示词里 @ 的引用展开、没被 @ 的上游文字追加在后面（规则见 canvasgraph.ComposePrompt）；生成方式取节点上选的，没选时有参考图就走图生；上游素材按种类放进 images / videos / audios，角色卡展开成主图、补充图和声音。
 // 参数里有「生成数量」的一律按 1，要多个结果请多建几个节点。校验和默认值由 modelcfg.ValidateInput 负责。
-func buildGenInput(caps modelcfg.Capabilities, src *canvasgraph.GenSource) map[string]any {
+func buildGenInput(caps modelcfg.Capabilities, src *canvasgraph.GenSource) (map[string]any, error) {
 	input := make(map[string]any, len(src.Params)+4)
 	for k, v := range src.Params {
 		input[k] = v
@@ -52,15 +52,29 @@ func buildGenInput(caps modelcfg.Capabilities, src *canvasgraph.GenSource) map[s
 		input["op"] = op
 	}
 	used := modelcfg.RefKindsUsed(caps, op)
-	input["prompt"] = canvasgraph.ComposePrompt(src, used)
-	// 角色卡展开的主图、补充图、声音只填普通参考用剩的名额，规则见 GenSource.RefIDs
+	// 先确定实际提交的素材，再计算提示词编号，避免手动素材和角色补充图造成编号漂移。
 	refs := src.RefIDs(used, func(kind string) int { return caps.Refs.Of(kind).Max })
+	generateAudio := true
+	if field, ok := caps.Params.Get("generate_audio"); ok {
+		value := field.Default
+		if field.Open && input["generate_audio"] != nil {
+			value = input["generate_audio"]
+		}
+		generateAudio = value != false && value != "false"
+	}
+	if err := src.ValidateCharacterInput(refs, generateAudio); err != nil {
+		return nil, err
+	}
+	input["prompt"] = canvasgraph.ComposePrompt(src, refs)
 	for _, m := range modelcfg.MediaKinds {
 		if ids := refs[m.Kind]; len(ids) > 0 {
+			if len(ids) > caps.Refs.Of(m.Kind).Max {
+				return nil, fmt.Errorf("%s最多 %d 个，请移除多余的参考素材", map[string]string{"image": "参考图片", "audio": "参考音频", "video": "参考视频"}[m.Kind], caps.Refs.Of(m.Kind).Max)
+			}
 			input[m.Key] = ids
 		}
 	}
-	return input
+	return input, nil
 }
 
 // pickOp 选生成方式，规则见 canvasgraph.PickOp：创建节点后给模型的提醒和这里用的是同一条规则。
@@ -98,7 +112,7 @@ func (b *AgentBridge) toolGenerate(ctx context.Context, tc *toolCall) (*toolOut,
 	p := GeneratePayload{Reason: truncateRunes(a.Reason, 200), Wait: a.Wait == nil || *a.Wait}
 	total := 0
 	for _, src := range srcs {
-		it, err := b.precheck(ctx, src)
+		it, err := b.precheck(ctx, tc.run.UserID, src)
 		if err != nil {
 			return nil, err
 		}
@@ -113,7 +127,7 @@ func (b *AgentBridge) toolGenerate(ctx context.Context, tc *toolCall) (*toolOut,
 }
 
 // precheck 预检一个节点能不能生成，通过时返回它的审批条目（含预估价）。不通过的原因是写给模型看的，说明怎么改。
-func (b *AgentBridge) precheck(ctx context.Context, src *canvasgraph.GenSource) (GenerateItem, error) {
+func (b *AgentBridge) precheck(ctx context.Context, userID uint64, src *canvasgraph.GenSource) (GenerateItem, error) {
 	name := fmt.Sprintf("节点 %q（%s）", src.NodeID, src.Label)
 	switch {
 	case src.HasOutput:
@@ -134,7 +148,14 @@ func (b *AgentBridge) precheck(ctx context.Context, src *canvasgraph.GenSource) 
 	if snap.Model.Kind != remoteKindOf(src.Kind) {
 		return GenerateItem{}, fail("%s是%s节点，模型 %q 是%s模型，种类对不上。", name, src.Kind, src.Model, snap.Model.Kind)
 	}
-	input, fieldErrs := modelcfg.ValidateInput(snap.Model.Kind, caps, buildGenInput(caps, src))
+	rawInput, err := buildGenInput(caps, src)
+	if err != nil {
+		return GenerateItem{}, fail("%s：%s", name, err.Error())
+	}
+	if err := validateCharacterVoiceTasks(ctx, b.d.Tasks, src, userID); err != nil {
+		return GenerateItem{}, fail("%s：%s", name, err.Error())
+	}
+	input, fieldErrs := modelcfg.ValidateInput(snap.Model.Kind, caps, rawInput)
 	if len(fieldErrs) > 0 {
 		return GenerateItem{}, fail("%s的参数不合法：%s。请用 canvas_apply_ops 修正后再申请。", name, modelcfg.JoinFieldErrors(fieldErrs))
 	}
@@ -257,10 +278,17 @@ func (g *AgentGenerator) submit(ctx context.Context, run *model.AgentRun, approv
 		return nil, errors.New("模型已不可用")
 	}
 	key := fmt.Sprintf("agent-%d-%d", approvalID, idx)
+	input, err := buildGenInput(snap.Model.Capabilities, src)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateCharacterVoiceTasks(ctx, g.tasks, src, run.UserID); err != nil {
+		return nil, err
+	}
 	resp, err := g.tasks.Create(ctx, run.UserID, key, &model.CreateGenerationTaskReq{
 		Kind: snap.Model.Kind, ModelID: it.ModelKey, CanvasID: idcodec.ID(run.CanvasID), NodeID: it.NodeID,
 		AgentRunID: run.ID, // 任务结束时据此通知 Agent；不从请求体读，只有这里能填
-		Input:      buildGenInput(snap.Model.Capabilities, src),
+		Input:      input,
 	})
 	if err != nil {
 		return nil, userFacing(err)
@@ -272,6 +300,30 @@ func (g *AgentGenerator) submit(ctx context.Context, run *model.AgentRun, approv
 		return nil, errors.New("任务没有创建成功")
 	}
 	return resp.Items[0].Task, nil
+}
+
+// validateCharacterVoiceTasks 在预检和实际提交时核对声音任务；成功但尚未回填也不能使用旧声音。
+func validateCharacterVoiceTasks(ctx context.Context, tasks AgentGenTasks, src *canvasgraph.GenSource, userID uint64) error {
+	if src.Kind != canvasgraph.KindVideo {
+		return nil
+	}
+	for _, role := range src.Characters {
+		if role.VoiceTaskID == "" {
+			continue
+		}
+		id, err := strconv.ParseUint(role.VoiceTaskID, 10, 64)
+		if err != nil || tasks == nil {
+			return fmt.Errorf("角色「%s」的声音尚未就绪，请等待声音生成完成", role.Name)
+		}
+		view, err := tasks.Get(ctx, userID, id)
+		if err != nil {
+			return userFacing(err)
+		}
+		if !slices.Contains([]string{model.TaskFailed, model.TaskExpired, model.TaskCanceled}, view.Status) {
+			return fmt.Errorf("角色「%s」的声音尚未就绪，请等待声音生成完成", role.Name)
+		}
+	}
+	return nil
 }
 
 // userFacing 把业务错误换成它的文案，其它错误只说内部错误（细节由任务服务记日志）。

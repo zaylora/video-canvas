@@ -229,7 +229,8 @@ func TestComposePromptMatchesFrontend(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			got := canvasgraph.ComposePrompt(src, []string{"image", "video", "audio"})
+			refs := src.RefIDs([]string{"image", "video", "audio"}, func(string) int { return 9 })
+			got := canvasgraph.ComposePrompt(src, refs)
 			if got != c.Expect {
 				t.Errorf("提示词 = %q，期望 %q", got, c.Expect)
 			}

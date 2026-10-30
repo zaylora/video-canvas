@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
-import { FailedPlaceholder, PendingPlaceholder } from "@/components/generation-placeholder";
-import { pendingCopy } from "@/utils/tasks/pending-copy";
+import { PendingPlaceholder } from "@/components/generation-placeholder";
+import { GenerationStatus } from "@/components/generation-status";
 import type { VideoNodeView } from "@/utils/tasks/node-view";
 
 import { BaseNodeContent } from "./base-node";
@@ -60,15 +60,18 @@ export function NodeVideoBody({
   switch (view.phase) {
     case "queued":
     case "running":
-    case "finalizing": {
-      const copy = pendingCopy(view, mediaType);
+    case "finalizing":
+    case "failed": {
       return (
         <BaseNodeContent>
-          <PendingPlaceholder
-            {...copy}
-            // 排队中、生成中能取消（排队中退积分，生成中不退）；转存中结果已到手，取消不了
-            onCancel={view.phase === "finalizing" ? undefined : onCancel}
+          <GenerationStatus
+            view={view}
+            mediaType={mediaType}
+            onCancel={onCancel}
             cancelling={cancelling}
+            onRetry={onRetry}
+            retryDisabled={retryDisabled}
+            retryHint={retryHint}
             className={BOX_CLASS}
             style={{ aspectRatio: aspect }}
           />
@@ -90,21 +93,6 @@ export function NodeVideoBody({
       );
     case "done":
       return <NodeMediaBody src={view.src} mediaType={mediaType} active={active} aspect={aspect} />;
-    case "failed":
-      return (
-        <BaseNodeContent>
-          <FailedPlaceholder
-            message={view.message}
-            refunded={view.refunded}
-            taskRef={view.taskRef}
-            onRetry={onRetry}
-            retryDisabled={retryDisabled}
-            retryHint={retryHint}
-            className={BOX_CLASS}
-            style={{ aspectRatio: aspect }}
-          />
-        </BaseNodeContent>
-      );
     default:
       return (
         <NodePlaceholderBody

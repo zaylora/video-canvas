@@ -261,6 +261,71 @@ func hasTool(ss []string, s string) bool {
 	return false
 }
 
+func TestAgentGenerator_CharacterVoice(t *testing.T) {
+	const payload = `{"nodes":[
+	 {"id":"v","type":"canvas","data":{"kind":"video","label":"对话","model":"video","params":{"op":"omni","prompt":"@[青年](c1)和@[老年](c2)对话","images":[100],"audios":[99,9]}}},
+	 {"id":"c1","type":"canvas","data":{"kind":"character","label":"林夏·青年","assetId":"1","character":{"name":"林夏","extras":[{"assetId":"2"}],"voice":{"mode":"audio","assetId":"9"}}}},
+	 {"id":"c2","type":"canvas","data":{"kind":"character","label":"林夏·老年","assetId":"5","character":{"name":"林夏","extras":[],"voice":{"mode":"audio","assetId":"10"}}}}
+	 ],"edges":[{"id":"e1","source":"c1","target":"v"},{"id":"e2","source":"c2","target":"v"}]}`
+	for _, tc := range []struct {
+		name                   string
+		images, audios         int
+		noAudio, mute, noImage bool
+		voiceStatus            string
+		want                   string
+	}{
+		{name: "同名角色按最终素材编号对应各自声音", images: 3, audios: 3},
+		{name: "声音不足不创建任务", images: 3, audios: 1, want: "参考音频"},
+		{name: "主图不足不创建任务", images: 2, audios: 3, want: "参考图片"},
+		{name: "模型不收音频不创建任务", images: 3, audios: 3, noAudio: true, want: "声音未带入"},
+		{name: "关闭声音不创建任务", images: 3, audios: 3, mute: true, want: "开启声音"},
+		{name: "主图未就绪不创建任务", images: 3, audios: 3, noImage: true, want: "主图未就绪"},
+		{name: "声音生成中不沿用旧音色", images: 3, audios: 3, voiceStatus: model.TaskRunning, want: "声音尚未就绪"},
+		{name: "声音成功但未回填不沿用旧音色", images: 3, audios: 3, voiceStatus: model.TaskSucceeded, want: "声音尚未就绪"},
+		{name: "声音失败后可以复用已绑定声音", images: 3, audios: 3, voiceStatus: model.TaskFailed},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newApprovalEnv(t, "all")
+			e.repo.canvas.PayloadJSON = []byte(payload)
+			if tc.voiceStatus != "" {
+				e.repo.canvas.PayloadJSON = []byte(strings.Replace(payload, `"assetId":"1",`, `"assetId":"1","voiceTaskId":"901",`, 1))
+				e.tasks.views = map[uint64]*model.GenerationTaskView{901: {ID: 901, Status: tc.voiceStatus}}
+			}
+			if tc.noImage {
+				e.repo.canvas.PayloadJSON = []byte(strings.Replace(payload, `"assetId":"1",`, "", 1))
+			}
+			caps := modelcfg.Capabilities{Ops: []string{"omni"}, Refs: modelcfg.Refs{Image: modelcfg.RefSpec{On: true, Max: tc.images}, Audio: modelcfg.RefSpec{On: !tc.noAudio, Max: tc.audios}}, Prompt: modelcfg.PromptSpec{MaxLength: 5000}}
+			if tc.mute {
+				caps.Params = modelcfg.ParamSet{{Name: "generate_audio", ParamField: modelcfg.ParamField{Type: "boolean", Default: false}}}
+			}
+			e.reg.snap = &provider.Snapshot{Model: provider.ModelSnapshot{Key: "video", Kind: "video", Capabilities: caps}}
+			if tc.want != "" {
+				if result := propose(t, e, platformCtx(e.run.ID, "all"), "generate", map[string]any{"items": []map[string]string{{"nodeId": "v"}}}); !result.IsError || !strings.Contains(result.Content, tc.want) {
+					t.Fatalf("审批预检应拒绝：%+v", result)
+				}
+			}
+			_, err := newGenerator(e).Execute(context.Background(), e.run, 3, []GenerateItem{{NodeID: "v", ModelKey: "video", Count: 1}})
+			if tc.want != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.want) || len(e.tasks.reqs) != 0 {
+					t.Fatalf("不应创建任务：err=%v reqs=%d", err, len(e.tasks.reqs))
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			input := e.tasks.reqs[0].Input
+			prompt, _ := input["prompt"].(string)
+			if !strings.Contains(prompt, "林夏（图片2中的人物）说话时，音色参考音频2。") || !strings.Contains(prompt, "林夏（图片3中的人物）说话时，音色参考音频3。") || strings.Contains(prompt, "补充视角") {
+				t.Fatalf("人物与声音不对应：%v", input)
+			}
+			if got, _ := json.Marshal(input["images"]); string(got) != "[100,1,5]" {
+				t.Fatalf("必要主图必须保留：%v", input)
+			}
+		})
+	}
+}
+
 // Agent 查一批任务的状态：自己的任务给出状态、节点、产物；别人的和不存在的一律 missing，不泄露存在与否。
 func TestAgentBridge_PlatformTaskStates(t *testing.T) {
 	ctx := context.Background()

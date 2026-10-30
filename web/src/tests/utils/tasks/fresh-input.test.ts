@@ -11,7 +11,7 @@ const caps = (): Capabilities => ({
     audio: { on: true, max: 1, max_mb: 10 },
     video: { on: false, max: 0, max_mb: 0 },
   },
-  prompt: { max_length: 100 },
+  prompt: { max_length: 5000 },
   params: {},
 });
 
@@ -54,13 +54,13 @@ describe("buildFreshInput：按连线里的角色内容组装任务输入", () =
     expect(out.input.audios).toBeUndefined();
   });
 
-  test("目标不收参考音频：声音丢弃，带上提示，其余照常提交", () => {
+  test("目标不收参考音频：声音未带入，返回阻断错误", () => {
     const noAudio = caps();
     noAudio.refs.audio = { on: false, max: 0, max_mb: 0 };
     const out = buildFreshInput(noAudio, params, [link()]);
     expect(out.input.images).toEqual([1, 2]);
     expect(out.input.audios).toBeUndefined();
-    expect(out.notices).toEqual(["当前模型不支持参考音频，角色卡声音未生效"]);
+    expect(out.errors.audios).toBeTruthy();
   });
 
   test("两个形象（同一角色的两个节点）互不串：各自的图按连线顺序依次带入", () => {
@@ -72,7 +72,7 @@ describe("buildFreshInput：按连线里的角色内容组装任务输入", () =
         character: refs({ id: "n2", avatarAssetId: "3", extraAssetIds: [], voiceAssetId: null }),
       }),
     ]);
-    expect(out.input.images).toEqual([1, 2, 3]);
+    expect(out.input.images).toEqual([1, 3, 2]);
   });
 
   test("参考图超出上限：按顺序截断并提示第几张起未带入", () => {
@@ -82,7 +82,7 @@ describe("buildFreshInput：按连线里的角色内容组装任务输入", () =
       link(),
       link({ edgeId: "e2", sourceId: "n2", character: refs({ id: "n2", avatarAssetId: "3" }) }),
     ]);
-    expect(out.input.images).toEqual([1, 2]);
+    expect(out.input.images).toEqual([1, 3]);
     expect(out.notices.join("")).toContain("参考图最多 2 张");
   });
 });

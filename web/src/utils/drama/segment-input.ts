@@ -72,12 +72,17 @@ function toLink(asset: RefAsset): IncomingLink {
   if (asset.kind === "character") {
     return {
       ...link,
-      // 角色卡的内容就在资产自己的数据里；没有主图（或正在生成）时为 null：只用文字，不算失效
-      character: characterRefsOfNode(asset.id, {
-        assetId: asset.src ? asset.assetId : undefined,
-        status: asset.generating ? "running" : undefined,
-        character: asset.character,
-      }),
+      /** 主图未就绪时仍保留声音关系，视频必须先通过对应关系校验。 */
+      character: characterRefsOfNode(
+        asset.id,
+        {
+          assetId: asset.src ? asset.assetId : undefined,
+          status: asset.generating ? "running" : undefined,
+          character: asset.character,
+          voiceTaskId: asset.voiceTaskId,
+        },
+        asset.voiceTaskStatus,
+      ),
     };
   }
   // 正在生成的节点 assetId 还指着上一版，不当参考图
@@ -161,7 +166,7 @@ export function pickVideoOp(
 /**
  * 组装片段「立即生成」的 input：
  * 提示词里 `@[名](节点id)` 解析成资产（角色卡展开主图 + 补充图为参考图、声音为参考音频），
- * 按所选模型的参考图 / 音频上限截断并给出提示；模型不收音频时只用图片并提示声音未生效。
+ * 优先保留主图与声音，补充图按剩余容量添加；必要素材或声音未就绪时阻止提交。
  * 时长跟片段、比例跟短剧、分辨率等取用户选的。
  */
 export function planSegmentInput(args: {
@@ -177,11 +182,11 @@ export function planSegmentInput(args: {
   const op = pickVideoOp(caps, {
     hasImages: hasImageRefs({}, { images: imageLinksOf(linked.links) }),
   });
-  const bindings = resolveBindings(caps, op, linked.links);
   const params = {
     prompt,
     ...segmentParams(caps, { seconds: args.seconds, ratio: args.ratio, overrides: args.overrides }),
   };
+  const bindings = resolveBindings(caps, op, linked.links, params);
   const built = buildTaskInput(caps, params, bindings, op, linked.links);
 
   const notices = [...bindings.notices];

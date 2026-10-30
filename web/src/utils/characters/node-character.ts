@@ -49,24 +49,32 @@ export function newCharacterData(existingLabels: Iterable<string>): {
 
 /**
  * 节点自带的数据换成绑定用的素材引用（取代旧版「按 characterId 读缓存」）。
- * 没有主图（空节点）、或正在生成（这时 assetId 还指着上一版）返回 null：不带入任何参考，
- * 但这不是「失效」——节点可以继续连线，下游只是少一份参考。补充图要有主图才带。
+ * 没有主图或正在生成时不带旧图；若已绑定声音，保留声音关系，让视频提交明确提示主图未就绪。
+ * 没有声音的空节点仍返回 null，补充图要有主图才带。
  * 没有声音时 voiceAssetId 为 null。
  * @param id 节点 id，连线展开出的虚拟连线靠它定位
  * @param data 节点数据
+ * @param voiceTaskStatus 声音任务的最新状态；缺少快照时等待对账，成功后等待声音绑定回填
  */
 export function characterRefsOfNode(
   id: string,
-  data: Pick<CanvasNodeData, "assetId" | "status" | "character">,
+  data: Pick<CanvasNodeData, "assetId" | "status" | "character" | "voiceTaskId">,
+  voiceTaskStatus?: string,
 ): CharacterRefs | null {
   const character = data.character;
-  if (!character || !data.assetId || data.status === "running") return null;
+  if (!character) return null;
+  const voicePending = Boolean(
+    data.voiceTaskId && !["failed", "expired", "canceled"].includes(voiceTaskStatus ?? ""),
+  );
+  const ready = Boolean(data.assetId && data.status !== "running");
+  if (!ready && !character.voice && !voicePending) return null;
   return {
     id,
     name: character.name,
-    avatarAssetId: data.assetId,
-    extraAssetIds: character.extras.map((extra) => extra.assetId),
+    avatarAssetId: ready ? data.assetId! : "",
+    extraAssetIds: ready ? character.extras.map((extra) => extra.assetId) : [],
     voiceAssetId: character.voice?.mode === "audio" ? character.voice.assetId : null,
+    ...(voicePending ? { voicePending: true } : {}),
   };
 }
 

@@ -32,6 +32,10 @@ export type RefAsset = {
   assetId?: string;
   /** 角色卡节点自带的角色数据（kind 为 character 时有）；主图就是本资产的 assetId / src */
   character?: NodeCharacter;
+  /** 角色声音生成任务 id */
+  voiceTaskId?: string;
+  /** 声音任务状态，由读取资产的 hook 补齐 */
+  voiceTaskStatus?: string;
   /** 节点正在生成：这时 assetId 还指着上一版，不能当参考图 */
   generating: boolean;
 };
@@ -65,6 +69,7 @@ export function assetsFromGraph(nodes: CanvasGraphDto["nodes"] | null | undefine
       mediaType: data.mediaType,
       assetId: data.assetId,
       character: data.character,
+      ...(data.voiceTaskId ? { voiceTaskId: data.voiceTaskId } : {}),
       generating: data.status === "running",
     });
   }

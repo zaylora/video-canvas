@@ -2,6 +2,7 @@ import { create } from "zustand";
 
 import type { TaskView } from "@/api/generation-task/type";
 import { mergeTask, mergeTasks, type TaskMap } from "@/utils/tasks/merge";
+import { matchesTaskId } from "@/utils/tasks/status";
 
 export type TaskApplied = { view: TaskView; prev?: TaskView };
 
@@ -35,6 +36,11 @@ export const useTasksStore = create<TasksState>((set, get) => ({
   },
 }));
 
-/** 订阅单个任务；taskId 为空或还没有快照时返回 undefined */
+/** 通过十进制 ID 或编码任务编号订阅快照，任务库仍只保存一份规范 ID 的记录。 */
 export const useTask = (taskId: string | undefined) =>
-  useTasksStore((state) => (taskId ? state.tasks[taskId] : undefined));
+  useTasksStore((state) =>
+    taskId
+      ? (state.tasks[taskId] ??
+        Object.values(state.tasks).find((task) => matchesTaskId(task, taskId)))
+      : undefined,
+  );

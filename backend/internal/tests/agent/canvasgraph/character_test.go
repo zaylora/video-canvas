@@ -172,3 +172,15 @@ func join(ids []uint64) string {
 	}
 	return strings.Join(parts, ",")
 }
+
+func TestComposePrompt_CharacterBindingDoesNotReplaceEmptyStory(t *testing.T) {
+	g := mustParse(t, strings.Replace(genCharPayload, `"prompt":"走路"`, `"prompt":""`, 1))
+	src, err := canvasgraph.Generation(g, "v")
+	if err != nil {
+		t.Fatal(err)
+	}
+	refs := src.RefIDs([]string{"image", "audio"}, func(string) int { return 9 })
+	if got := canvasgraph.ComposePrompt(src, refs); got != "" {
+		t.Fatalf("没有剧情时不应只提交角色对应说明：%q", got)
+	}
+}
