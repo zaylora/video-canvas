@@ -313,8 +313,8 @@ describe("scriptTabDoc：点顶部「剧本」切过来时打开什么", () => {
     expect(scriptTabDoc({ scriptStatus: "failed" })).toBe(EPISODE_DOC);
   });
 
-  test("还没开始写剧本（研读、出大纲阶段）：打开大纲", () => {
-    expect(scriptTabDoc({ scriptStatus: "empty" })).toBeUndefined();
+  test("这一集还没写剧本：也停在这一集，不跳到最上面的大纲（别的工序看的是哪集，切过来还是哪集）", () => {
+    expect(scriptTabDoc({ scriptStatus: "empty" })).toBe(EPISODE_DOC);
   });
 
   test("还没有分集：打开大纲", () => {

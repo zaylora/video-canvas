@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { RatioIcon } from "@/components/ratio-icon";
 import { cn } from "@/lib/utils";
 import type { ParamAsset } from "@/types";
 import { MediaPreview, VideoPoster } from "./media-preview";
@@ -66,20 +67,6 @@ const isRatioParam = (field: ParamEntry) =>
     (option) => RATIO_RE.test(String(option)) || /^auto$/i.test(String(option)),
   );
 
-/** 比例按钮上的小图形：按宽高比画一个圆角矩形，Auto 画虚线框 */
-function RatioShape({ option }: { option: string }) {
-  const match = RATIO_RE.exec(option);
-  const [w, h] = match ? [Number(match[1]), Number(match[2])] : [1, 1];
-  const scale = 16 / Math.max(w, h);
-  return (
-    <span
-      aria-hidden
-      className={cn("border-current border-[1.5px]", !match && "border-dashed")}
-      style={{ width: w * scale, height: h * scale, borderRadius: 3 }}
-    />
-  );
-}
-
 /** 比例：带比例图形的网格按钮 */
 function RatioGrid({
   field,
@@ -104,14 +91,14 @@ function RatioGrid({
             aria-checked={active}
             disabled={disabled}
             className={cn(
-              "flex flex-col items-center gap-1 rounded-lg border px-1 py-1.5 text-[11px] transition-colors disabled:opacity-50",
+              "flex flex-col items-center gap-0.5 rounded-lg border px-1 py-1.5 text-[11px] transition-colors disabled:cursor-not-allowed disabled:opacity-50",
               active
                 ? "border-foreground/60 bg-accent text-foreground"
                 : "text-muted-foreground hover:text-foreground",
             )}
             onClick={() => onChange(option)}
           >
-            <RatioShape option={String(option)} />
+            <RatioIcon ratio={String(option)} />
             {String(option)}
           </button>
         );

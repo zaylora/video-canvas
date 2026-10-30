@@ -48,7 +48,8 @@ function BeamGradient({ id, beam }: { id: string; beam: string }) {
  * @param size 边长（px），不超过 24 时自动换小尺寸版
  * @param bright 光用 beam-bright：登录页舞台这类永远偏暗的底
  * @param animated 拆成光晕、左弧、右弧、光束四层叠放，供加载层的「开镜 · 对焦 · 光铺开」
- *   分别做 transform 动画（index.css 的 logo-anim-*）
+ *   分别做 transform 动画（index.css 的 logo-anim-*）；每层外面的 span 管退场，里面的 svg 管进场和对焦循环，
+ *   两层的 transform 叠加，退场从循环当时的位置接着走
  */
 export function Logo({
   size = 32,
@@ -72,21 +73,29 @@ export function Logo({
         className={cn("logo-anim relative inline-block shrink-0", className)}
         style={{ width: size, height: size }}
       >
-        <svg viewBox="0 0 48 48" data-part="glow" className={cn(layer, "blur-[6px]")}>
-          <path d={strokes.beam} fill={beam} />
-        </svg>
-        <svg viewBox="0 0 48 48" data-part="left" className={layer}>
-          <path d={strokes.left} fill="currentColor" />
-        </svg>
-        <svg viewBox="0 0 48 48" data-part="right" className={layer}>
-          <path d={strokes.right} fill="currentColor" />
-        </svg>
-        <svg viewBox="0 0 48 48" data-part="beam" className={layer}>
-          <defs>
-            <BeamGradient id={gradientId} beam={beam} />
-          </defs>
-          <path d={strokes.beam} fill={`url(#${gradientId})`} />
-        </svg>
+        <span data-part="glow" className={layer}>
+          <svg viewBox="0 0 48 48" className={cn(layer, "blur-[6px]")}>
+            <path d={strokes.beam} fill={beam} />
+          </svg>
+        </span>
+        <span data-part="left" className={layer}>
+          <svg viewBox="0 0 48 48" className={layer}>
+            <path d={strokes.left} fill="currentColor" />
+          </svg>
+        </span>
+        <span data-part="right" className={layer}>
+          <svg viewBox="0 0 48 48" className={layer}>
+            <path d={strokes.right} fill="currentColor" />
+          </svg>
+        </span>
+        <span data-part="beam" className={layer}>
+          <svg viewBox="0 0 48 48" className={layer}>
+            <defs>
+              <BeamGradient id={gradientId} beam={beam} />
+            </defs>
+            <path d={strokes.beam} fill={`url(#${gradientId})`} />
+          </svg>
+        </span>
       </span>
     );
   }

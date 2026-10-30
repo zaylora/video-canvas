@@ -24,6 +24,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useCharacterMedia } from "@/hooks/use-character-media";
 import type { VoiceGeneration } from "@/hooks/use-voice-generation";
+import { useVoiceHistory } from "@/hooks/use-voice-history";
 import type { CanvasNode, CanvasNodeData } from "@/types";
 import {
   applyPickedAssets,
@@ -33,10 +34,12 @@ import {
   MAX_TEXT,
   renameCharacter,
 } from "@/utils/characters/node-character";
+import { setVoiceFromHistory } from "@/utils/characters/voice-history";
 
 import { priceLabel } from "@/utils/pricing/quote";
 
 import { LibraryPickerForCharacter } from "./character-library-picker";
+import { VoiceHistoryList } from "./voice-history-list";
 
 /** 详情里的小标题 */
 const LABEL = "text-[13px] font-medium";
@@ -106,6 +109,18 @@ export function CharacterDetailDialog({
   const media = useCharacterMedia((asset, purpose) => apply([asset], purpose, "upload"));
 
   const episodes = data.drama?.episodes;
+  const history = useVoiceHistory(
+    id,
+    open,
+    data.voiceTaskId,
+    character.voice?.assetId,
+    voiceGen.models,
+  );
+  /** 把一条生成记录设为音色：和上传、绑定一样直接写回节点，可以撤销 */
+  const applyHistoryVoice = (asset: { id: string; url: string }) => {
+    const patch = setVoiceFromHistory(data, asset);
+    if (patch) updateNodeData(id, patch);
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -339,6 +354,7 @@ export function CharacterDetailDialog({
                     (voiceGen.task.phase === "failed" ? voiceGen.task.reason : null)}
                 </p>
               )}
+              <VoiceHistoryList rows={history} onUse={applyHistoryVoice} />
             </div>
           </div>
         </div>

@@ -27,9 +27,9 @@ describe("短剧创作卡：上传和粘贴二选一", () => {
     expect(out).toMatch(/data-pane="paste"[^>]*inert/);
   });
 
-  test("上传区是居中的一摞稿纸 + 一句拖入提示 + 格式限制", () => {
+  test("上传区只有一句拖入提示 + 格式限制，不放稿纸图标", () => {
     const out = html();
-    expect(out).toContain('data-slot="source-papers"');
+    expect(out).not.toContain('data-slot="source-papers"');
     expect(out).toContain("拖入剧本文件，或");
     expect(out).toContain("选择文件");
     expect(out).toContain("txt · md · docx");

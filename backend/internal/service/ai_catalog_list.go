@@ -299,7 +299,7 @@ type CatalogModelPage struct {
 }
 
 // ListModels 按关键字（key / 展示名 / 上游模型名 / 厂商 / 标签 / 渠道名 / 协议名）、能力、渠道和状态筛选并分页返回模型。
-// 顺序是用户看到的顺序：渠道顺序，再渠道内顺序（sort、key 升序）。
+// 顺序：渠道顺序；渠道内按启用开关分两组（已启用在前，看的是 enabled 字段而不是算出的状态），组内按 sort、key 升序。
 // 状态是跨渠道和插件算的：在线 / 不可用（已上架但渠道或协议用不了）/ 未上线 / 待配置（还没选能力或协议）。
 func (s *AICatalogService) ListModels(ctx context.Context, req *model.ListModelReq) (*CatalogModelPage, error) {
 	c, err := s.load(ctx)
@@ -322,7 +322,7 @@ func (s *AICatalogService) ListModels(ctx context.Context, req *model.ListModelR
 			ChannelName: names[m.Channel], PluginName: pluginNames[m.Plugin],
 		})
 	}
-	// 渠道顺序在前（渠道已按 sort 排好），渠道不存在的排最后；渠道内按 sort、key
+	// 渠道顺序在前（渠道已按 sort 排好），渠道不存在的排最后；渠道内已启用的在前，同组内按 sort、key
 	sort.SliceStable(items, func(i, j int) bool {
 		ri, okI := rank[items[i].Channel]
 		rj, okJ := rank[items[j].Channel]
@@ -331,6 +331,9 @@ func (s *AICatalogService) ListModels(ctx context.Context, req *model.ListModelR
 		}
 		if ri != rj {
 			return ri < rj
+		}
+		if items[i].Enabled != items[j].Enabled {
+			return items[i].Enabled
 		}
 		if items[i].Sort != items[j].Sort {
 			return items[i].Sort < items[j].Sort

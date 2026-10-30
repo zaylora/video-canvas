@@ -36,4 +36,11 @@ describe("Logo「流光」", () => {
     expect(out).toContain('data-slot="logo"');
     expect(out).toContain("logo-anim");
   });
+
+  test("animated 每层外面再包一层：退场动画放外层，内层的对焦循环不被打断，退场不会跳回原位", () => {
+    const out = renderToStaticMarkup(<Logo size={44} animated />);
+    for (const part of ["glow", "left", "right", "beam"]) {
+      expect(out).toMatch(new RegExp(`<span[^>]*data-part="${part}"[^>]*><svg`));
+    }
+  });
 });

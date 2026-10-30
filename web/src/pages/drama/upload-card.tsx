@@ -27,7 +27,6 @@ import {
   CUSTOM_STYLE_KEY,
   DEFAULT_EPISODE_SECONDS,
   DEFAULT_STYLE_KEY,
-  extOf,
   SOURCE_MAX_CHARS,
   targetEpisodesLabel,
 } from "@/utils/drama/options";
@@ -38,44 +37,6 @@ const formatSize = (bytes: number) =>
   bytes >= 1024 * 1024
     ? `${(bytes / 1024 / 1024).toFixed(1)} MB`
     : `${(bytes / 1024).toFixed(1)} KB`;
-
-/**
- * 上传区中间的一小摞稿纸：后两张斜着垫底，最上面一张画着横线；选好文件后横线上标出扩展名。
- * 悬停上传区时后两张稍微散开（只在有指针的设备上）。
- * @param ext 已选文件的扩展名；没有文件时只有横线
- */
-function SourcePapers({ ext }: { ext?: string }) {
-  const sheet =
-    "bg-background ring-chrome-border absolute inset-0 rounded-xl shadow-[0_6px_16px_oklch(0_0_0/0.18)] ring-1 transition-transform duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] dark:bg-[oklch(0.25_0_0)]";
-  return (
-    <span data-slot="source-papers" aria-hidden className="relative block h-13 w-11">
-      <span
-        className={cn(
-          sheet,
-          "-rotate-6 [@media(hover:hover)]:group-hover/drop:translate-x-[-8px] [@media(hover:hover)]:group-hover/drop:-rotate-[13deg]",
-        )}
-      />
-      <span
-        className={cn(
-          sheet,
-          "rotate-4 [@media(hover:hover)]:group-hover/drop:translate-x-[7px] [@media(hover:hover)]:group-hover/drop:rotate-[9deg]",
-        )}
-      />
-      <span
-        className={cn(
-          sheet,
-          "grid place-items-center bg-[repeating-linear-gradient(180deg,transparent_0_9px,var(--chrome-hover)_9px_10px)] bg-size-[64%_36px] bg-position-[center_10px] bg-no-repeat",
-        )}
-      >
-        {ext && (
-          <span className="text-beam bg-background rounded px-1 text-[11px] font-semibold uppercase dark:bg-[oklch(0.25_0_0)]">
-            {ext}
-          </span>
-        )}
-      </span>
-    </span>
-  );
-}
 
 /** 两块叠放的面板：选中的可交互，另一块淡出、模糊 2px、不可交互，读屏也跳过 */
 const paneState = (active: boolean) => ({
@@ -220,7 +181,6 @@ export function UploadCard() {
           )}
         >
           <input {...getInputProps()} accept=".txt,.md,.docx" />
-          <SourcePapers ext={file ? extOf(file.name) : undefined} />
           {file ? (
             <motion.div
               initial={{ opacity: 0 }}

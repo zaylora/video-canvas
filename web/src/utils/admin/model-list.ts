@@ -22,3 +22,20 @@ export function modelListQuery(
     channel: channelKey,
   };
 }
+
+/**
+ * 拖动后的新顺序是否仍在各自的组内：列表按启用开关分两组（已启用在前），只能在组内拖动。
+ * 逐位比较新旧顺序的启用标记，完全一致说明没有行跨过分组边界。
+ * @param before 拖动前（服务端）的顺序
+ * @param after 拖动后的本地顺序
+ * @returns 两组各自内部调换返回 true；有行跨组或行数不一致返回 false
+ */
+export function reorderKeepsGroups(
+  before: { enabled?: boolean }[],
+  after: { enabled?: boolean }[],
+): boolean {
+  return (
+    before.length === after.length &&
+    after.every((item, index) => !!item.enabled === !!before[index]?.enabled)
+  );
+}

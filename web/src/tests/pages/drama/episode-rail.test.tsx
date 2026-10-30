@@ -5,11 +5,12 @@ import type { EpisodeSummary } from "@/api/drama/type";
 import { DramaWorkspaceContext } from "@/pages/drama/workspace/context";
 import { EpisodeRail } from "@/pages/drama/workspace/episode-rail";
 import type { DramaWorkspace } from "@/pages/drama/workspace/use-workspace";
+import type { WorkspaceStage } from "@/utils/drama/stages";
 
 const episode = (patch: Partial<EpisodeSummary> = {}) =>
   ({ no: 1, title: "初见", locked: false, ...patch }) as EpisodeSummary;
 
-const rail = (episodes: EpisodeSummary[]) =>
+const rail = (episodes: EpisodeSummary[], stage: WorkspaceStage = "assets", ep = 0) =>
   renderToStaticMarkup(
     <DramaWorkspaceContext.Provider
       value={
@@ -20,7 +21,7 @@ const rail = (episodes: EpisodeSummary[]) =>
         } as unknown as DramaWorkspace
       }
     >
-      <EpisodeRail stage="assets" ep={0} onPick={() => {}} />
+      <EpisodeRail stage={stage} ep={ep} onPick={() => {}} onDoc={() => {}} />
     </DramaWorkspaceContext.Provider>,
   );
 
@@ -37,5 +38,44 @@ describe("EpisodeRail：分集栏", () => {
 
   test("没锁定的集没有小锁", () => {
     expect(rail([episode()])).not.toContain("lucide-lock");
+  });
+});
+
+describe("EpisodeRail：各工序共用同一条栏，切工序时不跳", () => {
+  const episodes = [episode(), episode({ no: 2, title: "重逢" })];
+  /** 栏里每一项按钮的读屏名，按出现顺序 */
+  const labels = (html: string) =>
+    [...html.matchAll(/<button[^>]*aria-label="([^"]+)"/g)].map((m) => m[1]);
+  const stages: WorkspaceStage[] = ["script", "assets", "studio", "final"];
+
+  test("每个工序顶部都是 大纲、人物、全集，再接各集，位置完全一致", () => {
+    for (const stage of stages) {
+      expect(labels(rail(episodes, stage, 1)).slice(0, 5)).toEqual([
+        "故事大纲",
+        "人物传记",
+        "全集",
+        "第 1 集 · 初见",
+        "第 2 集 · 重逢",
+      ]);
+    }
+  });
+
+  test("「全集」只有资产管理能点，其他工序置灰禁用并说明原因", () => {
+    const all = (html: string) =>
+      html.slice(html.lastIndexOf("<button", html.indexOf('aria-label="全集"')));
+    expect(all(rail(episodes, "assets", 0))).not.toMatch(/^<button[^>]* disabled=""/);
+    for (const stage of ["script", "studio", "final"] as const) {
+      const button = all(rail(episodes, stage, 1));
+      expect(button).toMatch(/^<button[^>]*disabled=""/);
+      expect(button).toMatch(/^<button[^>]*title="仅资产管理可按全集筛选"/);
+    }
+  });
+
+  test("栏头统一叫「分集」", () => {
+    for (const stage of stages) {
+      const html = rail(episodes, stage, 1);
+      expect(html).toContain(">分集<");
+      expect(html).not.toContain(">筛选<");
+    }
   });
 });

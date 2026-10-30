@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>连镜体验修复计划</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@600;700&family=Noto+Sans+SC:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* 布局：左侧固定目录（宽屏），右侧单列阅读；每条问题一块，现状 / 方案 / 测试三段 */
+:root {
+  --bg: #f6f5f2;
+  --surface: #ffffff;
+  --fg: #1d1b18;
+  --muted: #6b665d;
+  --line: #e4e0d8;
+  --accent: #b7791f;      /* 连镜品牌的琥珀光束色 */
+  --accent-soft: #f6ead6;
+  --ok: #2f7d5b;
+  --ok-soft: #e1f1e9;
+  --warn: #9a5b12;
+  --code-bg: #f0eee9;
+  --font-display: "Noto Serif SC", "Songti SC", "STSong", serif;
+  --font-body: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121110; --surface: #1b1a18; --fg: #ece8e1; --muted: #a39d92; --line: #2e2b27;
+    --accent: #e0a347; --accent-soft: #33281a; --ok: #6cc59b; --ok-soft: #1c2e25; --warn: #e3a35a;
+    --code-bg: #24221f; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #121110; --surface: #1b1a18; --fg: #ece8e1; --muted: #a39d92; --line: #2e2b27;
+  --accent: #e0a347; --accent-soft: #33281a; --ok: #6cc59b; --ok-soft: #1c2e25; --warn: #e3a35a;
+  --code-bg: #24221f; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 15px/1.75 var(--font-body);
+  padding-block: 40px 80px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 1080px; margin: 0 auto; display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 48px; }
+@media (max-width: 860px) { .wrap { grid-template-columns: minmax(0, 1fr); gap: 24px; } .toc { display: none; } }
+
+.toc { position: sticky; top: 24px; align-self: start; font-size: 13px; }
+.toc p { margin: 0 0 8px; color: var(--muted); letter-spacing: .12em; font-size: 11px; }
+.toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.toc a { display: flex; gap: 10px; padding: 5px 8px; border-radius: 6px; color: var(--muted); text-decoration: none; }
+.toc a:hover, .toc a:focus-visible { background: var(--surface); color: var(--fg); outline: none; }
+.toc .n { font-family: var(--font-mono); color: var(--accent); font-variant-numeric: tabular-nums; }
+
+main { min-width: 0; display: grid; gap: 40px; }
+header h1 { font-family: var(--font-display); font-size: 34px; line-height: 1.25; margin: 0 0 12px; text-wrap: balance; }
+header .eyebrow { font-family: var(--font-mono); font-size: 12px; color: var(--accent); letter-spacing: .08em; margin: 0 0 10px; }
+header .lede { color: var(--muted); margin: 0; max-width: 62ch; }
+a { color: var(--accent); }
+
+.table-box { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; min-width: 560px; font-size: 14px; }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-weight: 500; color: var(--muted); font-size: 12px; letter-spacing: .06em; }
+tr:last-child td { border-bottom: 0; }
+td.num { font-family: var(--font-mono); color: var(--accent); font-variant-numeric: tabular-nums; width: 3em; }
+
+.chip { display: inline-block; padding: 1px 9px; border-radius: 999px; font-size: 12px; line-height: 20px; white-space: nowrap; border: 1px solid var(--line); color: var(--muted); }
+.chip.be { background: var(--accent-soft); border-color: transparent; color: var(--warn); }
+.chip.ok { background: var(--ok-soft); border-color: transparent; color: var(--ok); }
+
+.rule { border-left: 3px solid var(--accent); background: var(--surface); padding: 14px 18px; border-radius: 0 10px 10px 0; }
+.rule strong { color: var(--accent); }
+.order { font-family: var(--font-mono); font-size: 14px; color: var(--fg); }
+
+section.item { display: grid; gap: 14px; scroll-margin-top: 24px; }
+.item-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px 14px; border-bottom: 1px solid var(--line); padding-bottom: 10px; }
+.item-head .n { font-family: var(--font-mono); font-size: 13px; color: var(--accent); }
+.item-head h2 { font-family: var(--font-display); font-size: 22px; line-height: 1.35; margin: 0; flex: 1 1 260px; text-wrap: balance; }
+.item-head .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.blocks { display: grid; gap: 12px; }
+.block { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 12px; }
+@media (max-width: 520px) { .block { grid-template-columns: minmax(0, 1fr); gap: 2px; } }
+.block > .label { font-size: 12px; letter-spacing: .12em; color: var(--muted); padding-top: 4px; }
+.block ul { margin: 0; padding-left: 1.1em; display: grid; gap: 4px; max-width: 70ch; }
+.block p { margin: 0; max-width: 70ch; }
+code { font-family: var(--font-mono); font-size: 12.5px; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; word-break: break-all; }
+.confirmed { color: var(--ok); font-size: 13px; }
+
+.verify { display: grid; gap: 14px; }
+.verify h2 { font-family: var(--font-display); font-size: 22px; margin: 0; }
+.verify ul { margin: 0; padding-left: 1.1em; display: grid; gap: 6px; }
+footer { color: var(--muted); font-size: 13px; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav class="toc" aria-label="目录">
+    <p>问题清单</p>
+    <ol>
+      <li><a href="#i1"><span class="n">1</span>启用的模型排前</a></li>
+      <li><a href="#i2"><span class="n">2</span>加载动画重播</a></li>
+      <li><a href="#i3"><span class="n">3</span>音频生成记录</a></li>
+      <li><a href="#i4"><span class="n">4</span>分集栏固定</a></li>
+      <li><a href="#i5"><span class="n">5</span>侧边栏宽度</a></li>
+      <li><a href="#i6"><span class="n">6</span>人物卡片</a></li>
+      <li><a href="#i7"><span class="n">7</span>切换回到顶部</a></li>
+      <li><a href="#i8"><span class="n">8</span>比例图标</a></li>
+      <li><a href="#verify"><span class="n">—</span>验证与假设</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <header>
+      <p class="eyebrow">2026-10-31 · 反馈批次</p>
+      <h1>连镜体验修复计划</h1>
+      <p class="lede">来自飞书反馈文档的 8 条问题，其中「短剧开始时选模型时长与类型」已划掉，本次不做。代码位置经只读扫描和抽查核对，行号以 2026-10-31 的 master 为准。</p>
+    </header>
+
+    <div class="table-box">
+      <table>
+        <thead><tr><th>#</th><th>问题</th><th>范围</th><th>改动量</th><th>后端</th></tr></thead>
+        <tbody>
+          <tr><td class="num">1</td><td>后台渠道模型列表：已启用的排前面</td><td>后台</td><td>小</td><td><span class="chip be">需要</span></td></tr>
+          <tr><td class="num">2</td><td>短剧加载动画播完重来、不连贯</td><td>短剧</td><td>小</td><td>—</td></tr>
+          <tr><td class="num">3</td><td>角色卡详情退出后，AI 生成音频记录没了</td><td>画布 / 短剧</td><td>中</td><td><span class="chip be">需要</span></td></tr>
+          <tr><td class="num">4</td><td>分集栏切页签时会动</td><td>短剧</td><td>小</td><td>—</td></tr>
+          <tr><td class="num">5</td><td>主侧边栏限制宽度（出现横向滚动条）</td><td>首页</td><td>小</td><td>—</td></tr>
+          <tr><td class="num">6</td><td>人物传记改成卡片式</td><td>短剧</td><td>中</td><td>—</td></tr>
+          <tr><td class="num">7</td><td>资产库切换 图片 / 视频 / 音频 时回到顶部</td><td>资产</td><td>小</td><td>—</td></tr>
+          <tr><td class="num">8</td><td>比例图标形状不准</td><td>画布 / 后台</td><td>小</td><td>—</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="rule">
+      <p style="margin:0 0 8px"><strong>通用规则：</strong>不能点的选项一律用置灰的禁用样式（降低不透明度、禁用光标、<code>aria-disabled</code>，悬停提示说明原因），不能和可点项长得一样。</p>
+      <p style="margin:0">建议顺序：<span class="order">2 → 5 → 7 → 8 → 4 → 1 → 6 → 3</span>。先小后大，第 3 条依赖新的后端接口放最后。每条单独提交，先写失败测试再实现。</p>
+    </div>
+
+    <section class="item" id="i1">
+      <div class="item-head"><span class="n">01</span><h2>渠道模型列表：已启用的排前面</h2><div class="chips"><span class="chip">后台</span><span class="chip be">后端</span></div></div>
+      <div class="blocks">
+        <div class="block"><div class="label">现状</div><ul>
+          <li>列表在 Go 内存里排序（<code>backend/internal/service/ai_catalog_list.go</code> 约 326–340 行）：渠道顺序 → <code>sort</code> → <code>key</code>，不看启用状态。</li>
+          <li>拖动保存时把整个渠道重写成 sort = 10, 20, 30…；启停开关只改 <code>enabled</code>，行不会移动。</li>
+        </ul></div>
+        <div class="block"><div class="label">方案</div><ul>
+          <li>排序改为：渠道顺序 → 已启用在前 → <code>sort</code> → <code>key</code>。启用组和未启用组各自保留手动拖动的顺序。</li>
+          <li>按 <code>enabled</code> 判断，不按「在线」健康状态（健康状态会自己变，列表会跳）。</li>
+          <li>拖动只在同组内有效，跨组拖动在前端拦下并回弹；保存接口和后端校验不变。</li>
+          <li>切换启用开关后，行移到对应分组，这是预期行为。</li>
+        </ul></div>
+        <div class="block"><div class="label">测试</div><ul>
+          <li>改 <code>ai_catalog_list_test.go</code>「顺序是用户看到的顺序」的期望，新增「启用在前、组内按 sort」用例。</li>
+          <li>把跨组判断抽成纯函数放到 <code>web/src/utils/admin/</code>，补单测。</li>
+        </ul></div>
+      </div>
+    </section>
+
+    <section class="item" id="i2">
+      <div class="item-head"><span class="n">02</span><h2>短剧加载动画播完重来</h2><div class="chips"><span class="chip">短剧</span><span class="chip ok">根因已确认</span></div></div>
+      <div class="blocks">
+        <div class="block"><div class="label">根因</div><ul>
+          <li><code>web/src/pages/drama/workspace/index.tsx</code> 第 118 行：数据没到时直接返回加载层；数据到了以后，加载层换到 Fragment 的最后（第 192 行）。位置变了，React 卸载旧加载层、挂一个新的，动画从头播放，900ms 最短展示时间也重新计时。</li>
+          <li>次要：退场时整条 animation 被替换，logo 从对焦循环的当前位置跳回原位再退场，有一帧跳变（<code>web/src/index.css</code> 666–673 行）。</li>
+        </ul></div>
+        <div class="block"><div class="label">方案</div><ul>
+          <li>两种状态都返回同一结构 <code>&lt;&gt;{value &amp;&amp; 工作台}{loader}&lt;/&gt;</code>，加载层位置不变，不会重挂。</li>
+          <li>退场动画放到 logo 外层的包裹元素上，内层继续对焦循环，两层 transform 叠加，去掉跳变。</li>
+          <li>动画设计本身不改。</li>
+        </ul></div>
+        <div class="block"><div class="label">测试</div><ul><li>数据从无到有时，加载层 DOM 节点是同一个，没有被重新挂载。</li></ul></div>
+      </div>
+    </section>
+
+    <section class="item" id="i3">
+      <div class="item-head"><span class="n">03</span><h2>角色卡详情：保留历次 AI 生成的音频</h2><div class="chips"><span class="chip">画布 / 短剧</span><span class="chip be">后端</span></div></div>
+      <div class="blocks">
+        <div class="block"><div class="label">现状</div><ul>
+          <li>每个角色节点只有一个 <code>voiceTaskId</code> 槽位。生成成功后，音频绑成当前音色，任务 id 被清掉，新结果直接覆盖旧的，没有历史记录。</li>
+          <li>声音任务的 node_id 是 <code>voice:{角色节点id}</code>，后端表里有这一列，但查询接口只支持按任务 id 查和查进行中任务。</li>
+          <li>模型选择和错误信息只存在组件内存里，切换工序时节点卸载就丢了。</li>
+        </ul></div>
+        <div class="block"><div class="label">方案</div><ul>
+          <li>后端：<code>GET /generation-tasks</code> 增加 <code>node_id</code> 查询，必须同时带 <code>canvas_project_id</code>。只查当前用户的非测试任务，按创建时间倒序，最多 20 条。按 router → handler → service → repository 分层实现。</li>
+          <li>前端：「AI 生成声音」下加「生成记录」列表。每条显示提示词摘要、模型、时间、状态；成功的可以试听、可以「设为音色」，当前音色会标出来；失败的显示原因。</li>
+          <li>打开详情时拉一次记录，新任务完成后插到列表顶部。</li>
+          <li>模型选择存进节点数据，切工序回来不丢。</li>
+          <li>顺带核实：撤销字段里有 <code>voiceTaskId</code> 没有 <code>character</code>，撤销可能把音色退回去而任务 id 还在。写测试确认，确有问题一并修。</li>
+        </ul></div>
+        <div class="block"><div class="label">测试</div><ul>
+          <li>后端 repository / service / handler 补按 node_id 查询的用例：只返回本人的、非测试的，按时间倒序，有条数上限，缺 canvas_project_id 时返回参数错误。</li>
+          <li>前端补「任务转列表项」「设为音色」的纯函数测试。</li>
+        </ul></div>
+      </div>
+    </section>
+
+    <section class="item" id="i4">
+      <div class="item-head"><span class="n">04</span><h2>分集栏固定成一条公共栏</h2><div class="chips"><span class="chip">短剧</span><span class="chip ok">方案已确认</span></div></div>
+      <div class="blocks">
+        <div class="block"><div class="label">现状</div><ul>
+          <li>剧本、资产管理、片场、成片四个页签用的是同一个分集栏组件，但里面的内容会变：只有剧本页顶上有「大纲」「人物」，只有资产页有「全集」，所以集号列表会上下跳。</li>
+          <li>总览页不显示分集栏，切进切出时主内容会左右平移 78px。</li>
+        </ul></div>
+        <div class="block"><div class="label">方案</div><ul>
+          <li>所有页签都显示「大纲」「人物」；在非剧本页点击，跳到剧本页并打开对应文档。</li>
+          <li>「全集」固定占位，只在资产管理页可点，其他页签显示为<strong>置灰禁用</strong>，悬停提示「仅资产管理可按全集筛选」。</li>
+          <li>总览页也显示分集栏，点某一集跳到该集的剧本页。</li>
+          <li>「新增一集」在列表最底部，不影响上面各项的位置，仍只在剧本页显示。标题统一为「分集」。</li>
+        </ul></div>
+        <div class="block"><div class="label">测试</div><ul><li><code>episode-rail.test.tsx</code>：各页签顶部条目一致；非资产页「全集」处于禁用状态；总览页显示分集栏。</li></ul></div>
+      </div>
+    </section>
+
+    <section class="item" id="i5">
+      <div class="item-head"><span class="n">05</span><h2>主侧边栏横向溢出</h2><div class="chips"><span class="chip">首页</span></div></div>
+      <div class="blocks">
+        <div class="block"><div class="label">根因</div><ul>
+          <li>对话和画布列表在纵向滚动容器里（<code>app-sidebar.tsx:129</code>），这个容器的横向也会变成可滚动。</li>
+          <li>列表容器 <code>grid gap-0.5</code>（<code>sidebar-list.tsx:25</code>）没有定义列宽，长标题不换行，把整列撑宽，省略号截断没生效，于是底部出现横向滚动条。这是读代码得出的推断，动手前先在本地复现。</li>
+        </ul></div>
+        <div class="block"><div class="label">方案</div><ul>
+          <li>列表容器改成 <code>grid-cols-[minmax(0,1fr)]</code>，列表项外层加 <code>min-w-0</code>，长标题正常显示省略号。</li>
+          <li>滚动容器加 <code>overflow-x-hidden</code> 兜底；侧栏保持 15rem 固定宽度。</li>
+        </ul></div>
+        <div class="block"><div class="label">测试</div><ul><li>jsdom 测不了真实布局，用 class 断言防止回归。</li></ul></div>
+      </div>
+    </section>
+
+    <section class="item" id="i6">
+      <div class="item-head"><span class="n">06</span><h2>人物传记改成卡片</h2><div class="chips"><span class="chip">短剧</span><span class="chip ok">方案已确认</span></div></div>
+      <div class="blocks">
+        <div class="block"><div class="label">现状</div><ul>
+          <li><code>project-doc.tsx</code> 把 AI 写的人物 Markdown 放进富文本编辑器显示。</li>
+          <li>常见结构：分组（主要人物）→ 一级列表是人名，可带「（外号：…）」→ 二级列表是 <code>**身份**：…</code>、动机、能力/根基、关系网络、角色弧线。</li>
+        </ul></div>
+        <div class="block"><div class="label">方案</div><ul>
+          <li>新增 <code>web/src/utils/drama/parse-characters.ts</code>，把 Markdown 解析成人物列表：每个人物有分组、名字、外号和若干字段。</li>
+          <li>不认识的字段名照常显示，没有字段名的行放进「其他」，内容一条都不丢。</li>
+          <li>所有人物用同一种卡片：卡片头是名字、外号和分组标签，下面逐项列出字段，字段名和内容分开排版，长内容可以展开。</li>
+          <li>卡片只用来查看，保留「编辑原文」入口切回现在的富文本编辑器。</li>
+          <li>如果一个人物都解析不出来，直接显示原来的富文本，不出现空白页。</li>
+        </ul></div>
+        <div class="block"><div class="label">测试</div><ul><li>覆盖截图里的格式、带外号、多分组、未知字段、无字段名的行、空字符串、非列表 Markdown（回退）。</li></ul></div>
+      </div>
+    </section>
+
+    <section class="item" id="i7">
+      <div class="item-head"><span class="n">07</span><h2>资产库切换类型回到顶部</h2><div class="chips"><span class="chip">资产</span></div></div>
+      <div class="blocks">
+        <div class="block"><div class="label">现状</div><p>图片、视频、音频的切换状态只存在 <code>history-view.tsx:53</code> 的组件内存里，切换时没有滚动处理。整页滚动的是 window。</p></div>
+        <div class="block"><div class="label">方案</div><ul>
+          <li>切换类型时直接回到顶部，不用平滑滚动，避免和骨架屏切换叠在一起发抖。</li>
+          <li>来源、时间、排序筛选变化时同样回顶；输入搜索词时不回顶。</li>
+        </ul></div>
+        <div class="block"><div class="label">测试</div><ul><li>点击「视频」后断言 <code>window.scrollTo</code> 以 <code>top: 0</code> 被调用。</li></ul></div>
+      </div>
+    </section>
+
+    <section class="item" id="i8">
+      <div class="item-head"><span class="n">08</span><h2>比例图标形状不准</h2><div class="chips"><span class="chip">画布 / 后台</span></div></div>
+      <div class="blocks">
+        <div class="block"><div class="label">现状</div><ul>
+          <li><code>video-param-panel.tsx</code> 的比例图标是最长边 16px、1.5px 边框、3px 圆角的方块。21:9 高约 7px，扣掉上下边框只剩约 4px，再加上圆角，看起来像胶囊，比例失真。Auto 和 1:1 是同样大小的方框。</li>
+          <li>短剧的比例选择器（<code>pickers.tsx:231</code>）另有一份 18px 的画法，两处不一致。</li>
+          <li>后台和画布节点的生成面板用的是同一个网格，改一次两处都生效。</li>
+        </ul></div>
+        <div class="block"><div class="label">方案</div><ul>
+          <li>抽一个共用的 SVG 比例图标，按真实宽高比画矩形，描边画在内侧，圆角按短边按比例取，最大 2px。两处都改用它。</li>
+          <li>所有比例放进同一尺寸的外框里居中，方便直接对比形状。</li>
+          <li>Auto 换一个和 1:1 不同的图形，比如四角括号。</li>
+          <li>不支持的选项按通用规则置灰禁用。</li>
+        </ul></div>
+        <div class="block"><div class="label">测试</div><ul><li>16:9、21:9、9:16 输出的矩形宽高比与标称值一致（误差小于 1%）；Auto 和 1:1 的图形不同。</li></ul></div>
+      </div>
+    </section>
+
+    <section class="verify" id="verify">
+      <h2>验证与默认假设</h2>
+      <div class="blocks">
+        <div class="block"><div class="label">验证</div><ul>
+          <li>前端：<code>cd web &amp;&amp; bun run test</code>（先跑相关测试文件）、<code>bun node_modules/oxlint/bin/oxlint src</code>、对改动文件跑 <code>oxfmt</code>、<code>bun run build</code>。</li>
+          <li>后端（第 1、3 条）：<code>cd backend &amp;&amp; go test ./internal/tests/...</code>。</li>
+          <li>不做 Playwright 端到端测试。第 2、4、5、8 条是视觉问题，改完需要人工在浏览器里看一眼。</li>
+        </ul></div>
+        <div class="block"><div class="label">假设</div><ul>
+          <li>第 1 条：启用组在前、组内保留手动顺序、禁止跨组拖动；按 <code>enabled</code> 判断，不按在线状态。</li>
+          <li>第 4 条：在总览页点某一集，跳到该集的剧本页。</li>
+          <li>第 5 条：根因是读代码推断的，动手前先在本地复现。</li>
+          <li>置灰规则：理解为针对分集栏「全集」这类不可点项，并推广到本次涉及的所有不可点选项。</li>
+        </ul></div>
+      </div>
+    </section>
+
+    <footer>来源：飞书反馈文档 · 对应 Markdown 版：docs/superpowers/plans/2026-10-31-feedback-batch-fixes.md</footer>
+  </main>
+</div>
+</body>
+</html>

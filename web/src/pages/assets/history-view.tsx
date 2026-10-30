@@ -24,6 +24,7 @@ import {
   type GeneratedFilter,
 } from "@/utils/assets/generated-filter";
 import { addGeneratedToLibrary, type LibraryApi } from "@/utils/assets/library-actions";
+import { createScrollTopRunner } from "@/utils/assets/scroll-top";
 import type { TimeRange } from "@/utils/assets/time-range";
 
 /** 加入资产库用到的接口 */
@@ -51,6 +52,10 @@ const ORDER_OPTIONS = [
  */
 export function HistoryView() {
   const [kind, setKind] = useState<AssetKind>("image");
+  /** 标签上选中的类型：点了立刻高亮，列表等页面平滑滚回顶部后再换（kind） */
+  const [tabKind, setTabKind] = useState<AssetKind>("image");
+  /** 换类型、换筛选：先平滑滚回顶部，到顶再换列表 */
+  const [scrollTopThen] = useState(() => createScrollTopRunner());
   const [source, setSource] = useState(DEFAULT_GENERATED_FILTER.source);
   const [range, setRange] = useState<TimeRange>("all");
   const [order, setOrder] = useState<GeneratedFilter["order"]>("desc");
@@ -98,14 +103,20 @@ export function HistoryView() {
   return (
     <>
       <AssetsToolbar className="mt-6 mb-7">
-        <AssetKindTabs value={kind} onChange={setKind} />
+        <AssetKindTabs
+          value={tabKind}
+          onChange={(next) => {
+            setTabKind(next);
+            scrollTopThen(() => setKind(next));
+          }}
+        />
         <span aria-hidden className="bg-chrome-border mx-1 h-4 w-px shrink-0" />
         <FilterMenu
           label="来源"
           value={sourceMenu.value}
           defaultValue="all"
           groups={sourceMenu.groups}
-          onChange={(value) => setSource(sourceFromValue(value))}
+          onChange={(value) => scrollTopThen(() => setSource(sourceFromValue(value)))}
           onOpenChange={sourceMenu.onOpenChange}
           footer={sourceMenu.footer}
         />
@@ -114,14 +125,14 @@ export function HistoryView() {
           value={range}
           defaultValue="all"
           groups={[{ options: RANGE_OPTIONS }]}
-          onChange={(value) => setRange(value as TimeRange)}
+          onChange={(value) => scrollTopThen(() => setRange(value as TimeRange))}
         />
         <FilterMenu
           label="排序"
           value={order}
           defaultValue="desc"
           groups={[{ options: ORDER_OPTIONS }]}
-          onChange={(value) => setOrder(value as GeneratedFilter["order"])}
+          onChange={(value) => scrollTopThen(() => setOrder(value as GeneratedFilter["order"]))}
         />
         <div className="ml-auto">
           <AssetSearch value={input} onChange={setInput} placeholder="搜索提示词" />

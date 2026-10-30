@@ -42,8 +42,9 @@ function Pips({ states }: { states: readonly PipState[] }) {
 
 /**
  * 左侧分集栏：每集一个编号 + 四格进度，锁定集带小锁；右键一集可删除（后面的集号往前补位）。
- * 「当前是哪一集」在所有工序间共用；资产区多一个「全集」用来取消按集筛选；
- * 剧本页顶上多「大纲」「人物」两项（研读先出大纲，再按集拆分，所以排在第 1 集前面）。
+ * 「当前是哪一集」在所有工序间共用（总览不放这条栏）；各工序栏里的条目都一样、位置不动，切工序时不跳：
+ * 顶上是「大纲」「人物」（研读先出大纲，再按集拆分，所以排在第 1 集前面；在别的工序点它们会跳到剧本页），
+ * 接着是「全集」（只有资产区按集筛选，别处置灰禁用），再往下是各集。
  */
 export function EpisodeRail({
   stage,
@@ -111,14 +112,14 @@ export function EpisodeRail({
       className="border-border flex w-[78px] shrink-0 flex-col gap-1 overflow-y-auto border-r px-2 py-2.5 max-sm:hidden"
     >
       <div className="text-muted-foreground py-1 text-center font-mono text-[10.5px] tracking-[0.12em]">
-        {stage === "assets" ? "筛选" : "分集"}
+        分集
       </div>
-      {stage === "script" && onDoc && (
+      {onDoc && (
         <>
           {PROJECT_DOCS.map(({ key, label, title, icon: Icon }) => (
             <RailItem
               key={key}
-              active={doc === key}
+              active={stage === "script" && doc === key}
               className={item}
               label={title}
               onClick={() => onDoc(key)}
@@ -130,12 +131,16 @@ export function EpisodeRail({
           <div aria-hidden className="bg-border mx-2 my-1 h-px" />
         </>
       )}
-      {stage === "assets" && (
-        <RailItem active={ep === 0} className={item} label="全集" onClick={() => onPick(0)}>
-          <span className="text-[13px] font-semibold">全集</span>
-          <Pips states={["on"]} />
-        </RailItem>
-      )}
+      <RailItem
+        active={stage === "assets" && ep === 0}
+        className={item}
+        label="全集"
+        disabledReason={stage === "assets" ? undefined : "仅资产管理可按全集筛选"}
+        onClick={() => onPick(0)}
+      >
+        <span className="text-[13px] font-semibold">全集</span>
+        <Pips states={["on"]} />
+      </RailItem>
       {drama.episodes.map((episode) => (
         <ActionContextMenu
           key={episode.no}
@@ -198,6 +203,7 @@ function RailItem({
   className,
   label,
   onClick,
+  disabledReason,
   corner,
   children,
 }: {
@@ -205,6 +211,8 @@ function RailItem({
   className: string;
   label: string;
   onClick: () => void;
+  /** 不能点时的原因：有就置灰禁用，悬停显示原因 */
+  disabledReason?: string;
   /** 挂在按钮角上的标记（如锁定集的小锁）：相对整个按钮定位，不进内容层，免得压住集号 */
   corner?: React.ReactNode;
   children: React.ReactNode;
@@ -214,13 +222,15 @@ function RailItem({
       type="button"
       aria-current={active}
       aria-label={label}
-      title={label}
+      title={disabledReason ?? label}
+      disabled={!!disabledReason}
       onClick={onClick}
       className={cn(
         className,
         active
           ? "text-foreground"
           : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+        "disabled:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent",
       )}
     >
       {active && (

@@ -126,7 +126,7 @@ export function AppSidebar() {
         </SidebarGroup>
 
         {/* 收起成图标栏后放不下列表，整块隐藏 */}
-        <div className="min-h-0 flex-1 overflow-y-auto px-2 group-data-[collapsible=icon]:hidden">
+        <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-2 group-data-[collapsible=icon]:hidden">
           <ConversationList pathname={pathname} />
           <ListSection
             title="画布"

@@ -22,7 +22,8 @@ export function ListSection({
         <p className="text-muted-foreground truncate text-xs">{title}</p>
         {action}
       </div>
-      <div className="grid gap-0.5">{children}</div>
+      {/* 列宽钉在侧栏以内：默认的 auto 列会被不换行的长标题撑宽，标题来不及省略，底部冒出横向滚动条 */}
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-0.5">{children}</div>
     </section>
   );
 }
@@ -49,7 +50,7 @@ export function ListItem({
 }) {
   const { setOpenMobile } = useSidebar();
   return (
-    <div className="group/item relative">
+    <div className="group/item relative min-w-0">
       <Link
         to={to}
         {...(newWindow ? { target: "_blank", rel: "noopener" } : {})}

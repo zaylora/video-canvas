@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -78,6 +79,19 @@ func (f *fakeGenTaskRepo) ListActive(ctx context.Context, userID uint64) ([]mode
 		if t.UserID == userID && !t.IsTest && !model.IsTerminalStatus(t.Status) {
 			out = append(out, *t)
 		}
+	}
+	return out, nil
+}
+func (f *fakeGenTaskRepo) ListByNode(ctx context.Context, userID, canvasID uint64, nodeID string, limit int) ([]model.GenerationTask, error) {
+	var out []model.GenerationTask
+	for _, t := range f.tasks {
+		if t.UserID == userID && !t.IsTest && t.CanvasProjectID != nil && *t.CanvasProjectID == canvasID && t.NodeID == nodeID {
+			out = append(out, *t)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID > out[j].ID })
+	if len(out) > limit {
+		out = out[:limit]
 	}
 	return out, nil
 }
@@ -585,6 +599,10 @@ func TestGenerationTaskHandler_List(t *testing.T) {
 	a := env.repo.add(model.GenerationTask{UserID: 1, Status: model.TaskRunning})
 	b := env.repo.add(model.GenerationTask{UserID: 1, Status: model.TaskSucceeded})
 	theirs := env.repo.add(model.GenerationTask{UserID: 2, Status: model.TaskRunning})
+	canvas := uint64(3)
+	older := env.repo.add(model.GenerationTask{UserID: 1, Status: model.TaskFailed, CanvasProjectID: &canvas, NodeID: "voice:c1", InputJSON: datatypes.JSON(`{"prompt":"旧的"}`)})
+	newer := env.repo.add(model.GenerationTask{UserID: 1, Status: model.TaskSucceeded, CanvasProjectID: &canvas, NodeID: "voice:c1", InputJSON: datatypes.JSON(`{"prompt":"新的"}`)})
+	env.repo.add(model.GenerationTask{UserID: 2, Status: model.TaskSucceeded, CanvasProjectID: &canvas, NodeID: "voice:c1"})
 
 	manyIDs := make([]string, 101)
 	for i := range manyIDs {
@@ -614,6 +632,11 @@ func TestGenerationTaskHandler_List(t *testing.T) {
 		{"ids 含非数字返回 400", "?ids=1,abc", http.StatusBadRequest, errcode.ErrInvalidParams.Code, 0},
 		{"ids 超过 100 个返回 400", "?ids=" + strings.Join(manyIDs, ","), http.StatusBadRequest, errcode.ErrInvalidParams.Code, 0},
 		{"status 取值非法返回 400", "?status=done", http.StatusBadRequest, errcode.ErrInvalidParams.Code, 0},
+		{"按节点查询生成记录（编码画布 ID）", "?node_id=voice:c1&canvas_project_id=" + idcodec.Encode(canvas), http.StatusOK, 0, 2},
+		{"按节点查询生成记录（十进制画布 ID）", "?node_id=voice:c1&canvas_project_id=3", http.StatusOK, 0, 2},
+		{"node_id 缺 canvas_project_id 返回 400", "?node_id=voice:c1", http.StatusBadRequest, errcode.ErrInvalidParams.Code, 0},
+		{"node_id 与 status 同时传返回 400", "?node_id=voice:c1&canvas_project_id=3&status=active", http.StatusBadRequest, errcode.ErrInvalidParams.Code, 0},
+		{"node_id 超长返回 400", "?node_id=" + strings.Repeat("n", 65) + "&canvas_project_id=3", http.StatusBadRequest, errcode.ErrInvalidParams.Code, 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -629,6 +652,18 @@ func TestGenerationTaskHandler_List(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("按节点查询：新的在前，带提示词", func(t *testing.T) {
+		_, resp := env.call(t, http.MethodGet, "/api/v1/generation-tasks?node_id=voice:c1&canvas_project_id=3", "", nil)
+		list, _ := resp["data"].([]any)
+		if len(list) != 2 {
+			t.Fatalf("data=%v", resp["data"])
+		}
+		first, _ := list[0].(map[string]any)
+		if first["id"] != float64(newer.ID) || first["prompt"] != "新的" {
+			t.Fatalf("首项应是最新的任务：%v（旧的 %d）", first, older.ID)
+		}
+	})
 
 	t.Run("结果为空时 data 是空数组而不是 null", func(t *testing.T) {
 		env := newGenTaskEnv(t)

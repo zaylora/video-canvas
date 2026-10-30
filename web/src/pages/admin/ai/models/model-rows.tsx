@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { HEALTH_UI_TONE, MODEL_STATUS_LABEL, MODEL_STATUS_TONE } from "@/utils/admin/health";
+import { reorderKeepsGroups } from "@/utils/admin/model-list";
 
 import { KindTag } from "../kind";
 
@@ -105,6 +106,7 @@ function testDeny(item: ModelListItem): string | null {
  * 模型表格（设计稿 renderTable）：☐ / 模型（名称 + key）/ 能力 / 请求协议 / 状态（启用开关）/ 操作，点整行打开编辑弹窗。
  * 行内常驻“测试 / 删除”（编辑靠点整行）。传 selected 时第一列是勾选框（批量操作用）。
  * 传 onReorder 时每行左侧有拖动手柄，拖动时只改本地顺序，松手顺序变了才回调（新顺序是当前行的 key 列表）；
+ * 列表按启用开关分组（已启用在前），只能组内拖动，跨组松手会弹回原顺序；
  * 只有手柄能拖，免得点开关、点行时误触发排序。服务端的列表变了就以服务端为准。
  */
 export function ModelRows({
@@ -151,11 +153,14 @@ export function ModelRows({
     setLocal(models);
   }
   const draggable = !!onReorder && status === "ready" && models.length > 1;
-  /** 松手：顺序真的变了才回调 */
+  /** 松手：顺序真的变了才回调；有行跨过启用 / 未启用的分组边界就弹回服务端顺序，不保存 */
   const commit = () => {
-    if (local.some((item, index) => item.key !== models[index]?.key)) {
-      onReorder?.(local.map((item) => item.key));
+    if (!local.some((item, index) => item.key !== models[index]?.key)) return;
+    if (!reorderKeepsGroups(models, local)) {
+      setLocal(models);
+      return;
     }
+    onReorder?.(local.map((item) => item.key));
   };
   const all = selectable && keys.length > 0 && keys.every((key) => selected.includes(key));
   const some = selectable && keys.some((key) => selected.includes(key));
