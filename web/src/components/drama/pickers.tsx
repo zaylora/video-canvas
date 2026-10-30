@@ -4,6 +4,7 @@ import { Check, ChevronDown, Pencil } from "lucide-react";
 import type { DramaRatio, DramaStyles } from "@/api/drama/type";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
+import { RatioIcon } from "@/components/ratio-icon";
 import { cn } from "@/lib/utils";
 import {
   CUSTOM_STYLE_KEY,
@@ -56,7 +57,7 @@ function OptionRow({
       aria-pressed={active}
       onClick={onClick}
       className={cn(
-        "hover:bg-muted focus-visible:ring-ring/50 flex min-h-8 items-center gap-2 rounded-md px-2 text-left text-sm outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-40",
+        "hover:bg-muted focus-visible:ring-ring/50 flex min-h-8 items-center gap-2 rounded-md px-2 text-left text-sm outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent",
         active && "bg-muted font-medium",
       )}
     >
@@ -228,18 +229,6 @@ export function StyleGrid({
   );
 }
 
-/** 比例小方块示意 */
-function RatioShape({ w, h }: { w: number; h: number }) {
-  const max = Math.max(w, h);
-  return (
-    <span
-      aria-hidden
-      className="border-current rounded-[3px] border-[1.5px]"
-      style={{ width: (w / max) * 18, height: (h / max) * 18 }}
-    />
-  );
-}
-
 /** 比例：已有锁定集时除当前值外全部禁用 */
 export function RatioList({
   value,
@@ -264,9 +253,7 @@ export function RatioList({
           title={fixed && value !== ratio.key ? "已有资产按当前比例生成" : undefined}
           onClick={() => onPick(ratio.key)}
         >
-          <span className="grid w-5 place-items-center">
-            <RatioShape w={ratio.w} h={ratio.h} />
-          </span>
+          <RatioIcon ratio={ratio.key} />
           {ratio.key}
           {value === ratio.key && <Check className="ml-auto size-4" />}
         </OptionRow>

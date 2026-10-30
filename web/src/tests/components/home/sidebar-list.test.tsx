@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { ListSkeleton } from "@/components/home/sidebar-list";
+import { ListSection, ListSkeleton } from "@/components/home/sidebar-list";
 
 const html = (rows?: number) => renderToStaticMarkup(<ListSkeleton rows={rows} />);
 
@@ -35,5 +35,16 @@ describe("侧栏列表骨架屏", () => {
     const out = html();
     expect(out).toContain("aria-busy");
     expect(out).toContain("motion-reduce:animate-none");
+  });
+});
+
+describe("侧栏列表分组", () => {
+  test("列宽限制在侧栏以内：长标题只裁不撑宽，底部不出现横向滚动条", () => {
+    const out = renderToStaticMarkup(
+      <ListSection title="画布">
+        <span>很长很长的画布标题</span>
+      </ListSection>,
+    );
+    expect(out).toContain("grid-cols-[minmax(0,1fr)]");
   });
 });
