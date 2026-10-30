@@ -3,7 +3,7 @@ import { useReactFlow } from "@xyflow/react";
 import { toast } from "sonner";
 
 import { REMOTE_KIND_OF_NODE } from "@/constants/canvas";
-import type { CanvasEdge, CanvasNode } from "@/types";
+import type { CanvasEdge, CanvasNode, CanvasNodeData } from "@/types";
 import { useCurrentCanvasId } from "@/utils/canvas/canvas-id";
 import { releaseObjectUrl } from "@/utils/canvas/media";
 import { cancelTasks, submitCanvasTasks } from "@/utils/tasks/gateway";
@@ -48,6 +48,8 @@ export function useTaskGeneration(nodeId: string, nodeKind: TaskNodeKind) {
       count?: number;
       /** 前端算出的每个任务的积分；与后端冻结额不一致时记日志（两份计价算法漂移了），以后端为准 */
       expectedCredits?: number;
+      /** 提交成功后随任务一起写进节点的字段（同一次更新，不会被旧状态抢先读到），参数是成功创建的任务 id */
+      extraPatch?: (taskIds: string[]) => Partial<CanvasNodeData>;
     }): Promise<SubmitOutcome> => {
       if (lockRef.current)
         return { ok: false, error: { kind: "unknown", message: "正在提交，请稍候" } };
@@ -89,7 +91,10 @@ export function useTaskGeneration(nodeId: string, nodeKind: TaskNodeKind) {
           };
         }
         releaseObjectUrl(args.currentSrc);
-        updateNodeData(nodeId, (node) => buildSubmittedPatch(nodeKind, taskIds, node.data));
+        updateNodeData(nodeId, (node) => ({
+          ...buildSubmittedPatch(nodeKind, taskIds, node.data),
+          ...args.extraPatch?.(taskIds),
+        }));
         if (failures.length > 0) {
           toast.warning(`有 ${failures.length} 张没能提交：${failures[0].message}`);
         }

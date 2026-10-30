@@ -345,7 +345,10 @@ export function CharacterDetailDialog({
                   </Button>
                 ) : (
                   <Button
-                    disabled={voiceGen.submitting || !voiceGen.model}
+                    disabled={
+                      voiceGen.submitting || !voiceGen.model || !!data.voiceAfterImage?.length
+                    }
+                    title={data.voiceAfterImage?.length ? "出图后会接着生成音色" : undefined}
                     onClick={() => void voiceGen.submit(character.voicePrompt ?? "")}
                   >
                     <Sparkles />

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { motion } from "motion/react";
 import { Box, GripVertical, Image as ImageIcon, User } from "lucide-react";
 
+import { MediaPreview } from "@/components/canvas/media-preview";
 import { StatusPill } from "@/components/drama/status-pill";
 import { SPRING } from "@/lib/motion";
 import { cn } from "@/lib/utils";
@@ -23,18 +24,12 @@ const TYPE_ICON: Record<DramaAssetType, typeof User> = {
   prop: Box,
 };
 
-/** 资产的缩略图地址：就是节点上的素材（角色卡节点的主图也在 src 里） */
-export function useAssetThumb(asset: RefAsset): string | null {
-  return asset.src;
-}
-
 /** 有没有能当参考图的形象：角色卡节点看主图，其余看节点素材；正在生成的不算（assetId 还指着上一版） */
 export function assetHasImage(asset: RefAsset): boolean {
   return !!asset.src && !asset.generating;
 }
 
 function Item({ asset }: { asset: RefAsset }) {
-  const thumb = useAssetThumb(asset);
   const Icon = TYPE_ICON[asset.type];
   const noImage = !assetHasImage(asset);
   return (
@@ -53,8 +48,8 @@ function Item({ asset }: { asset: RefAsset }) {
       className="hover:bg-chrome-hover mx-1 flex w-[calc(100%-0.5rem)] cursor-grab items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs active:cursor-grabbing"
     >
       <span className="bg-muted text-muted-foreground grid size-[30px] shrink-0 place-items-center overflow-hidden rounded-[7px]">
-        {thumb ? (
-          <img src={thumb} alt="" draggable={false} className="size-full object-cover" />
+        {asset.src ? (
+          <MediaPreview src={asset.src} mode="thumb" fit="cover" draggable={false} />
         ) : (
           <Icon className="size-3.5" />
         )}

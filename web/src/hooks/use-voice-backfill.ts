@@ -24,16 +24,19 @@ export function useVoiceBackfill(id: string, data: CanvasNodeData): VoiceTaskVie
   const state = voiceTaskView(taskId, view);
   const phase = state.phase;
   const asset = state.phase === "done" ? state.asset : null;
+  const refunded = state.phase === "canceled" ? state.refunded : true;
 
   useEffect(() => {
     if (!taskId) return;
     if (asset) {
       updateNodeData(id, (node) => applyVoiceResult(node.data, asset));
     } else if (phase === "canceled") {
-      toast.info("已取消生成声音，积分已退回", { id: `voice-canceled:${taskId}` });
+      toast.info(`已取消生成声音，${refunded ? "积分已退回" : "积分不退回"}`, {
+        id: `voice-canceled:${taskId}`,
+      });
       updateNodeData(id, { voiceTaskId: undefined });
     }
-  }, [asset, id, phase, taskId, updateNodeData]);
+  }, [asset, id, phase, refunded, taskId, updateNodeData]);
 
   useEffect(() => {
     if (!taskId || useTasksStore.getState().tasks[taskId]) return;

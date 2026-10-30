@@ -330,26 +330,31 @@ export function useTaskNode(
 
   /**
    * 提交失败就地提示在提示词面板里，全局错误 toast 由请求层统一弹出。
+   * @param extraPatch 提交成功后随任务一起写进节点的字段（如角色卡的「出图后生成音色」）
    * @returns 成功为 null，失败或不能提交时为原因（批量生成据此计数，不能事后读节点状态）
    */
-  const submit = useCallback(async (): Promise<string | null> => {
-    if (blockedReason) return blockedReason;
-    if (!model) return "暂无可用模型";
-    setSubmitError(null);
-    const input = built.input;
-    const expectedCredits = price && !price.isMax ? price.one : undefined;
-    const outcome = await generation.submit({
-      modelKey: model.key,
-      input,
-      currentSrc: data.src,
-      count: price?.count ?? 1,
-      // Token 计费的预估不含固定系统提示（画布拿不到），和后端本来就会不同，不比对
-      expectedCredits,
-    });
-    if (outcome.ok) return null;
-    setSubmitError(outcome.error.message);
-    return outcome.error.message;
-  }, [blockedReason, built.input, data.src, generation, model, price]);
+  const submit = useCallback(
+    async (extraPatch?: (taskIds: string[]) => Partial<CanvasNodeData>): Promise<string | null> => {
+      if (blockedReason) return blockedReason;
+      if (!model) return "暂无可用模型";
+      setSubmitError(null);
+      const input = built.input;
+      const expectedCredits = price && !price.isMax ? price.one : undefined;
+      const outcome = await generation.submit({
+        modelKey: model.key,
+        input,
+        currentSrc: data.src,
+        count: price?.count ?? 1,
+        // Token 计费的预估不含固定系统提示（画布拿不到），和后端本来就会不同，不比对
+        expectedCredits,
+        extraPatch,
+      });
+      if (outcome.ok) return null;
+      setSubmitError(outcome.error.message);
+      return outcome.error.message;
+    },
+    [blockedReason, built.input, data.src, generation, model, price],
+  );
 
   /** 取消本节点全部进行中的任务（一批任务时是 pendingTaskIds，否则是 taskId）；已出的图保留 */
   const cancel = useCallback(() => {

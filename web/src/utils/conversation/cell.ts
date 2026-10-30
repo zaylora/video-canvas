@@ -1,7 +1,7 @@
 import type { RecordDto } from "@/api/conversation/type";
 import type { TaskOutput, TaskView } from "@/api/generation-task/type";
 import { derivePendingPhase } from "@/utils/tasks/node-view";
-import { isActiveStatus } from "@/utils/tasks/status";
+import { canceledRefunded, isActiveStatus } from "@/utils/tasks/status";
 
 /** 结果格子的状态，由任务状态推出 */
 export type CellState =
@@ -19,8 +19,8 @@ export type CellState =
   | { kind: "done"; output: TaskOutput }
   /** 失败或超时，带给用户看的原因（积分已退回）和任务编号（到后端日志里定位用，后端没给为 null） */
   | { kind: "failed"; message: string; taskRef: string | null }
-  /** 已取消（积分已退回） */
-  | { kind: "canceled" };
+  /** 已取消；refunded 表示积分有没有退回（排队中取消退，已进入生成取消不退） */
+  | { kind: "canceled"; refunded: boolean };
 
 /**
  * 格子要不要走表（每秒刷新「已耗时」）：任务没结束就走，和画布节点「生成中就走表」一致。
@@ -70,7 +70,7 @@ export function deriveCell(
         : { kind: "failed", message: "没有生成出结果", taskRef: task.task_ref ?? null };
     }
     case "canceled":
-      return { kind: "canceled" };
+      return { kind: "canceled", refunded: canceledRefunded(task) };
     case "expired":
       return {
         kind: "failed",

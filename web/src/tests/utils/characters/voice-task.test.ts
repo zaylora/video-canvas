@@ -6,6 +6,7 @@ import {
   buildVoiceInput,
   VOICE_NODE_PREFIX,
   voiceNodeId,
+  voiceAfterImageStep,
   voiceTaskView,
 } from "@/utils/characters/voice-task";
 import type { CanvasNodeData } from "@/types";
@@ -81,7 +82,17 @@ describe("voiceTaskView：节点上记着的声音任务此刻是什么状态", 
   });
 
   test("已取消：单独一种，界面据此清掉记录，不当失败", () => {
-    expect(voiceTaskView("5", makeTask({ status: "canceled" }))).toEqual({ phase: "canceled" });
+    expect(voiceTaskView("5", makeTask({ status: "canceled" }))).toEqual({
+      phase: "canceled",
+      refunded: true,
+    });
+  });
+
+  test("已取消且有实扣积分（已进入生成才取消）：标明积分没退", () => {
+    expect(voiceTaskView("5", makeTask({ status: "canceled", charged_credits: 2 }))).toEqual({
+      phase: "canceled",
+      refunded: false,
+    });
   });
 });
 
@@ -110,6 +121,93 @@ describe("buildVoiceInput：按音频模型能力组装提交内容", () => {
       params: { speaker: { type: "enum", label: "发音人", open: true, options: ["a", "b"] } },
     });
     expect(buildVoiceInput(caps, "你好").error).toBe("请填写发音人");
+  });
+
+  test("模型收参考图：带上角色主图", () => {
+    const caps = audioCaps({
+      refs: { ...audioCaps().refs, image: { on: true, max: 1, max_mb: 10 } },
+    });
+    expect(buildVoiceInput(caps, "你好", "12")).toEqual({
+      input: { prompt: "你好", images: [12] },
+      error: null,
+    });
+  });
+
+  test("模型不收参考图：只提交提示词，不因为有主图报错", () => {
+    expect(buildVoiceInput(audioCaps(), "你好", "12")).toEqual({
+      input: { prompt: "你好" },
+      error: null,
+    });
+  });
+
+  test("收参考图但角色还没有主图（或主图还是本地文件）：只提交提示词", () => {
+    const caps = audioCaps({
+      refs: { ...audioCaps().refs, image: { on: true, max: 1, max_mb: 10 } },
+    });
+    expect(buildVoiceInput(caps, "你好").input).toEqual({ prompt: "你好" });
+    expect(buildVoiceInput(caps, "你好", "blob:x").input).toEqual({ prompt: "你好" });
+  });
+});
+
+describe("voiceAfterImageStep：「生成（含音色）」出图后要不要接着生成音色", () => {
+  const output = (assetId: string, taskId?: string) => ({
+    id: assetId,
+    src: `/files/${assetId}.png`,
+    mediaType: "image" as const,
+    assetId,
+    taskId,
+    createdAt: 1,
+  });
+  const data = (over: Partial<CanvasNodeData> = {}): CanvasNodeData => ({
+    kind: "character",
+    label: "林晚",
+    voiceAfterImage: ["7"],
+    ...over,
+  });
+
+  test("没有记着要生成音色：什么都不做", () => {
+    expect(voiceAfterImageStep(data({ voiceAfterImage: undefined }))).toBeNull();
+    expect(voiceAfterImageStep(data({ voiceAfterImage: [] }))).toBeNull();
+  });
+
+  test("形象还在生成（含一批里还有没结清的）：等着", () => {
+    expect(voiceAfterImageStep(data({ status: "running", taskId: "7" }))).toEqual({
+      kind: "wait",
+    });
+    expect(
+      voiceAfterImageStep(
+        data({ status: "done", voiceAfterImage: ["7", "8"], pendingTaskIds: ["8"] }),
+      ),
+    ).toEqual({ kind: "wait" });
+  });
+
+  test("出图了且当前主图是这次生成的：用新主图生成音色", () => {
+    expect(
+      voiceAfterImageStep(
+        data({
+          status: "done",
+          assetId: "30",
+          outputs: [output("10", "1"), output("30", "7")],
+          activeOutputId: "30",
+        }),
+      ),
+    ).toEqual({ kind: "submit", imageAssetId: "30" });
+  });
+
+  test("形象失败：放弃音色并说明原因", () => {
+    expect(voiceAfterImageStep(data({ status: "error", taskId: "7" }))).toEqual({
+      kind: "abort",
+      reason: "形象没有生成成功，音色未生成",
+    });
+  });
+
+  test("形象被取消、节点退回旧主图：不拿旧图生成音色", () => {
+    expect(
+      voiceAfterImageStep(
+        data({ status: "done", assetId: "10", outputs: [output("10", "1")], activeOutputId: "10" }),
+      ).kind,
+    ).toBe("abort");
+    expect(voiceAfterImageStep(data({ status: "idle" })).kind).toBe("abort");
   });
 });
 

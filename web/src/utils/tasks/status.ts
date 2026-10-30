@@ -13,12 +13,21 @@ export const isTerminalStatus = (status: TaskStatus) => TERMINAL_STATUSES.includ
 export const isActiveStatus = (status: TaskStatus) => !isTerminalStatus(status);
 
 /**
- * 能不能取消：只有还没提交给上游的（pending 且没有提交时间，即界面上的「排队中」）才行。
- * 一旦调用了上游（同步请求已发出、平台已受理、生成中、转存中）就取消不了：上游照常生成，取消退款等于白拿一次生成。
+ * 能不能取消：排队中、同步请求已发出、平台已受理、生成中都行；转存中结果已到手，不能取消。
  * 和后端 GenerationTaskService.Cancel 的规则一致，后端仍会再判断一次。
  */
-export const isCancelableTask = (task: Pick<TaskView, "status" | "submitted_at">) =>
+export const isCancelableTask = (task: Pick<TaskView, "status">) =>
+  task.status === "pending" || task.status === "queued" || task.status === "running";
+
+/**
+ * 现在取消，积分会不会退回：只有还没提交给上游（pending 且没有提交时间，界面上的「排队中」）才退；
+ * 已经进入生成，平台照常产生费用，冻结的积分全额扣除。
+ */
+export const cancelRefunds = (task: Pick<TaskView, "status" | "submitted_at">) =>
   task.status === "pending" && !task.submitted_at;
+
+/** 已取消的任务积分有没有退回：后端取消时按「已进入生成」写了实扣积分的，就是没退 */
+export const canceledRefunded = (task: Pick<TaskView, "charged_credits">) => !task.charged_credits;
 
 /**
  * 从一批任务 id 里挑出该去取消的：本地已有快照且不可取消的跳过；
@@ -28,7 +37,7 @@ export const isCancelableTask = (task: Pick<TaskView, "status" | "submitted_at">
  */
 export const cancelableTaskIds = <T extends string | number>(
   ids: readonly T[],
-  tasks: Readonly<Record<string, Pick<TaskView, "status" | "submitted_at">>>,
+  tasks: Readonly<Record<string, Pick<TaskView, "status">>>,
 ): T[] =>
   ids.filter((id) => {
     const task = tasks[taskKey(id)];

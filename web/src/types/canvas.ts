@@ -53,6 +53,11 @@ export type CanvasNodeData = {
    * 任务 node_id 是 voice:{节点id}；成功时回填把音频绑成角色的声音并删掉这个字段，失败时留着让详情页显示原因和重试。
    */
   voiceTaskId?: string;
+  /**
+   * 角色卡点「生成（含音色）」后记下的这次形象任务 id：这些任务出图后，用新主图接着生成音色，然后删掉这个字段；
+   * 形象失败或被取消时同样删掉，不拿旧图生成。只有 kind 为 character 时才有。
+   */
+  voiceAfterImage?: string[];
   /** 按所选模型 capabilities 存的参数值：提示词 params.prompt（兼容旧的 prompt 字段）、生成方式 params.op、生成参数按参数名、手动添加的参考素材 params.images / videos / audios（素材 id 数组） */
   params?: Record<string, unknown>;
   /** params 里媒体字段所选素材的展示信息，字段名 -> 素材 */

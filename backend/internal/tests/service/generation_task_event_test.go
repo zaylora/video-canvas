@@ -87,10 +87,20 @@ func TestGenerationTaskService_EventDetail(t *testing.T) {
 		}
 	})
 
-	t.Run("Cancel：已提交给平台的任务用户取消被拒绝，不留取消事件详情", func(t *testing.T) {
+	t.Run("Cancel：已进入生成的任务用户可取消，事件原因是 user_cancel 并标明扣费", func(t *testing.T) {
 		env, task := newEnv(model.TaskQueued)
+		if _, err := env.svc.Cancel(ctx, user, task.ID); err != nil {
+			t.Fatal(err)
+		}
+		if d := env.repo.eventDetails[task.ID]; d["reason"] != "user_cancel" || d["charged"] != true {
+			t.Fatalf("取消事件应为 user_cancel 且 charged=true：%+v", d)
+		}
+	})
+
+	t.Run("Cancel：转存中的任务用户取消被拒绝，不留取消事件详情", func(t *testing.T) {
+		env, task := newEnv(model.TaskFinalizing)
 		if _, err := env.svc.Cancel(ctx, user, task.ID); err == nil {
-			t.Fatal("已受理的任务用户不能取消")
+			t.Fatal("转存中的任务用户不能取消")
 		}
 		if len(env.repo.eventDetails[task.ID]) != 0 {
 			t.Fatalf("被拒绝的取消不应写事件详情：%+v", env.repo.eventDetails[task.ID])

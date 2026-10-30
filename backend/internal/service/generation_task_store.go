@@ -338,12 +338,12 @@ func (s *GenerationTaskService) Expire(ctx context.Context, t *model.GenerationT
 	return true, nil
 }
 
-// taskMsgCancelSubmitted 是任务已经提交给平台、用户再取消时的文案。
-const taskMsgCancelSubmitted = "任务已提交给平台生成，无法取消"
+// taskMsgCancelFinalizing 是任务结果已经拿到、正在转存时用户再取消的文案。
+const taskMsgCancelFinalizing = "结果已生成，正在保存，无法取消"
 
-// Cancel 用户取消任务：只有还没提交给平台的（pending 且没有提交时间，界面上的「排队中」）才能取消，
-// 取消后退回积分。一旦已经调用平台（同步请求已发出、平台已受理或正在生成、转存中），平台会照常生成并产生费用，
-// 这时再取消并退回积分就等于白拿一次生成，所以一律拒绝，等任务自己出结果。
+// Cancel 用户取消任务。还没提交给平台的（pending 且没有提交时间，界面上的「排队中」）取消后全额退回积分；
+// 已经进入生成（同步请求已发出、平台已受理或正在生成）平台会照常产生费用，取消后冻结的积分全额扣除、不退，
+// 并尽力通知平台取消上游任务。转存中结果已经到手，不允许取消，等任务自己出结果。
 func (s *GenerationTaskService) Cancel(ctx context.Context, userID, id uint64) (*model.GenerationTaskView, error) {
 	return s.cancel(ctx, userID, id, false)
 }
@@ -365,24 +365,36 @@ func (s *GenerationTaskService) cancel(ctx context.Context, userID, id uint64, f
 	if model.IsTerminalStatus(t.Status) {
 		return nil, errcode.ErrTaskNotCancelable
 	}
-	// 用户取消：只放行还没提交给平台的；状态迁移的前置条件也只留 pending，
-	// 读到之后任务刚好被 worker 提交了（变成 queued / running）时，这次取消不会生效
+	// 用户取消：转存中不放行；还没提交给平台的退回积分，已进入生成的扣除冻结积分。
+	// 状态迁移的前置条件按读到的情况收紧：读到之后任务状态又变了（如进入转存），这次取消不会生效
 	from := model.ActiveTaskStatuses
 	reason := "user_cancel"
+	charged := false
 	if !force {
-		if t.Status != model.TaskPending || t.SubmittedAt != nil {
-			return nil, errcode.ErrTaskNotCancelable.WithMsg(taskMsgCancelSubmitted)
+		if t.Status == model.TaskFinalizing {
+			return nil, errcode.ErrTaskNotCancelable.WithMsg(taskMsgCancelFinalizing)
 		}
+		charged = t.Status != model.TaskPending || t.SubmittedAt != nil
 		from = []string{model.TaskPending}
+		if charged {
+			from = []string{model.TaskPending, model.TaskQueued, model.TaskRunning}
+		}
 	} else {
 		// 后台封禁并取消：不是用户自己点的，事件里写明，运营排查时不会误以为是用户取消
 		reason = "admin_cancel"
 	}
-	updated, applied, err := s.finish(ctx, id, from, model.TaskCanceled, map[string]any{
+	detail := map[string]any{"reason": reason}
+	extra := map[string]any{
 		"error_code":              TaskErrCanceled,
 		"error_message":           taskMsgCanceled,
-		repository.EventDetailKey: map[string]any{"reason": reason},
-	})
+		repository.EventDetailKey: detail,
+	}
+	if charged {
+		extra["error_message"] = taskMsgCanceledCharged
+		extra["charged_credits"] = t.Credits
+		detail["charged"] = true
+	}
+	updated, applied, err := s.finish(ctx, id, from, model.TaskCanceled, extra)
 	if err != nil {
 		return nil, err
 	}
@@ -484,20 +496,21 @@ func (s *GenerationTaskService) finish(ctx context.Context, id uint64, from []st
 }
 
 // settleLedger 写结算 / 退款流水并解冻：成功时扣 charged_credits（没有则扣冻结额），多冻结的部分再写一笔 refund；
-// 失败 / 取消 / 超时全额退回。流水 UNIQUE(task_id, type) 保证重复结算只生效一次。
+// 失败 / 超时全额退回；取消默认全额退回，只有已进入生成的用户取消会带上 charged_credits，按它扣费、不退。
+// 流水 UNIQUE(task_id, type) 保证重复结算只生效一次。
 func settleLedger(ctx context.Context, tx repository.GenerationTaskTx, t *model.GenerationTask, target string) error {
 	frozen, charge := t.Credits, 0
 	if target == model.TaskSucceeded {
 		charge = frozen
-		if t.ChargedCredits != nil {
-			charge = min(max(*t.ChargedCredits, 0), frozen)
-		}
+	}
+	if t.ChargedCredits != nil && (target == model.TaskSucceeded || target == model.TaskCanceled) {
+		charge = min(max(*t.ChargedCredits, 0), frozen)
 	}
 	entries := []model.CreditLedger{}
 	if charge > 0 || target == model.TaskSucceeded {
 		entries = append(entries, model.CreditLedger{UserID: t.UserID, TaskID: model.TaskIDPtr(t.ID), Type: model.LedgerSettle, Amount: charge})
 	}
-	if refund := frozen - charge; refund > 0 || target != model.TaskSucceeded {
+	if refund := frozen - charge; refund > 0 || (target != model.TaskSucceeded && charge == 0) {
 		entries = append(entries, model.CreditLedger{UserID: t.UserID, TaskID: model.TaskIDPtr(t.ID), Type: model.LedgerRefund, Amount: refund})
 	}
 	for i := range entries {

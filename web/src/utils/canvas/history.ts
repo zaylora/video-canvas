@@ -19,6 +19,7 @@ const TASK_FIELDS = [
   "taskId",
   "pendingTaskIds",
   "voiceTaskId",
+  "voiceAfterImage",
   "error",
   "text",
   "outputs",

@@ -143,7 +143,7 @@ export function ResultCell({
       return (
         <div className={cn(PLACEHOLDER, size)} style={frame}>
           <div className="grid justify-items-center">
-            已取消 · 积分已退回
+            已取消 · {cell.refunded ? "积分已退回" : "积分不退回"}
             {retry}
           </div>
         </div>

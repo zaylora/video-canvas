@@ -1,10 +1,10 @@
 import { AudioLines, Box, Image as ImageIcon, User } from "lucide-react";
 
+import { MediaPreview } from "@/components/canvas/media-preview";
 import { StatusPill } from "@/components/drama/status-pill";
 import { cn } from "@/lib/utils";
 import type { RefView } from "@/utils/drama/segment-input";
 
-import { useAssetThumb } from "./library";
 import { useStudio } from "./use-studio";
 
 const TYPE_ICON = { character: User, scene: ImageIcon, prop: Box } as const;
@@ -13,20 +13,6 @@ const TYPE_ICON = { character: User, scene: ImageIcon, prop: Box } as const;
 function Chip({ view }: { view: RefView }) {
   const { assets } = useStudio();
   const asset = assets.find((item) => item.id === view.id);
-  // 资产已被删时没有缩略图，Hook 不能条件调用，所以用一个占位资产
-  const thumb = useAssetThumb(
-    asset ?? {
-      id: view.id,
-      type: "scene",
-      name: view.label,
-      look: "",
-      label: view.label,
-      episodes: [],
-      kind: "image",
-      src: null,
-      generating: false,
-    },
-  );
   const Icon = TYPE_ICON[view.type ?? "scene"];
   const dead = view.state === "dead";
   return (
@@ -37,8 +23,8 @@ function Chip({ view }: { view: RefView }) {
       )}
     >
       <span className="bg-background/60 text-muted-foreground grid size-6 shrink-0 place-items-center overflow-hidden rounded-md">
-        {thumb && !dead ? (
-          <img src={thumb} alt="" draggable={false} className="size-full object-cover" />
+        {asset?.src && !dead ? (
+          <MediaPreview src={asset.src} mode="thumb" fit="cover" draggable={false} />
         ) : (
           <Icon className="size-3.5" />
         )}

@@ -13,7 +13,7 @@ import { describeSubmitError, settleSubmission } from "@/utils/tasks/submit";
 /**
  * 详情页「AI 生成声音」的提交与取消：用音频模型生成一段音频，任务绑在 voice:{节点id} 上，
  * 提交成功后把任务 id 记在节点的 voiceTaskId，结果由 useVoiceBackfill 绑成角色的声音。
- * 没有参数面板：只提交提示词，其余参数取模型默认值。
+ * 没有参数面板：只提交提示词，其余参数取模型默认值；模型收参考图时带上角色主图。
  * @param id 角色卡节点 id
  * @param data 节点数据
  */
@@ -30,9 +30,28 @@ export function useVoiceGeneration(id: string, data: CanvasNodeData) {
     remote.models.find((item) => item.key === modelKey) ?? remote.models[0];
   const task = voiceTaskView(data.voiceTaskId, useTask(data.voiceTaskId));
 
-  /** 提交：成功返回 null，失败返回原因（同时记在 error 上给详情页显示） */
+  /**
+   * 此刻不能生成音色的原因（提交前就能知道的那些）；可以返回 null。
+   * 「生成（含音色）」要在提交形象之前先问它，免得形象出了图音色才发现交不了。
+   */
+  const blockedReason = useCallback(
+    (prompt: string): string | null => {
+      if (task.phase === "generating") return "音色正在生成";
+      if (data.voiceAfterImage?.length) return "出图后会接着生成音色";
+      if (!prompt.trim()) return "还没有音色描述";
+      if (!model) return "没有可用的音频模型";
+      return buildVoiceInput(model.capabilities, prompt).error;
+    },
+    [data.voiceAfterImage, model, task.phase],
+  );
+
+  /**
+   * 提交：成功返回 null，失败返回原因（同时记在 error 上给详情页显示）。
+   * @param prompt 提示词
+   * @param imageAssetId 参考的角色主图，缺省取节点此刻的主图（出图后接着生成时由调用方传新图）
+   */
   const submit = useCallback(
-    async (prompt: string): Promise<string | null> => {
+    async (prompt: string, imageAssetId = data.assetId): Promise<string | null> => {
       if (lockRef.current) return "正在提交";
       const fail = (reason: string) => {
         setError(reason);
@@ -41,7 +60,7 @@ export function useVoiceGeneration(id: string, data: CanvasNodeData) {
       setError(null);
       if (!canvasId) return fail("画布信息缺失，请刷新页面重试");
       if (!model) return fail("没有可用的音频模型");
-      const built = buildVoiceInput(model.capabilities, prompt);
+      const built = buildVoiceInput(model.capabilities, prompt, imageAssetId);
       if (built.error) return fail(built.error);
       lockRef.current = true;
       setSubmitting(true);
@@ -64,7 +83,7 @@ export function useVoiceGeneration(id: string, data: CanvasNodeData) {
         setSubmitting(false);
       }
     },
-    [canvasId, id, model, updateNodeData],
+    [canvasId, data.assetId, id, model, updateNodeData],
   );
 
   const cancel = useCallback(async () => {
@@ -77,6 +96,7 @@ export function useVoiceGeneration(id: string, data: CanvasNodeData) {
     model,
     selectModel: setModelKey,
     task,
+    blockedReason,
     submitting,
     error,
     submit,

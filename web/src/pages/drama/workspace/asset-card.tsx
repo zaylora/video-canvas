@@ -14,6 +14,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+import { MediaPreview } from "@/components/canvas/media-preview";
 import { DramaPoster } from "@/components/drama/poster";
 import { Button } from "@/components/ui/button";
 import { DURATION, STAGGER, STAGGER_MAX, TAP_CARD } from "@/lib/motion";
@@ -42,14 +43,10 @@ function DoneCover({ item }: { item: AssetItem }) {
   }
   if (data.src && data.mediaType !== "video" && data.kind !== "video" && data.kind !== "audio") {
     return (
-      <img
-        src={data.src}
-        alt={item.name}
-        loading="lazy"
-        draggable={false}
-        // 按图片原比例完整显示：三视图是横图，裁成 3:4 会只剩半个人；空出的部分露出卡片底色
-        className="absolute inset-0 size-full object-contain"
-      />
+      <div className="absolute inset-0">
+        {/* 三视图按原比例完整显示，空出的部分露出卡片底色。 */}
+        <MediaPreview src={data.src} alt={item.name} mode="thumb" draggable={false} />
+      </div>
     );
   }
   if (data.src && (data.kind === "video" || data.mediaType === "video")) {

@@ -1,8 +1,9 @@
 import type { TaskView } from "@/api/generation-task/type";
 import type { Capabilities } from "@/api/model/type";
 import type { CanvasNodeData, NodeCharacter } from "@/types";
-import { buildTaskInput } from "@/utils/tasks/capabilities";
-import { isTerminalStatus } from "@/utils/tasks/status";
+import { isGenerating } from "@/utils/canvas/outputs";
+import { buildTaskInput, toAssetNumber } from "@/utils/tasks/capabilities";
+import { canceledRefunded, isTerminalStatus } from "@/utils/tasks/status";
 
 import { applyVoiceAudio } from "./node-character";
 
@@ -20,7 +21,8 @@ export type VoiceTaskView =
   | { phase: "idle" }
   | { phase: "generating"; progress: number | null }
   | { phase: "failed"; reason: string }
-  | { phase: "canceled" }
+  /** refunded：积分有没有退回（排队中取消退，已进入生成取消不退） */
+  | { phase: "canceled"; refunded: boolean }
   | { phase: "done"; asset: { id: string; url: string } };
 
 /**
@@ -38,7 +40,7 @@ export function voiceTaskView(
   if (!view || !isTerminalStatus(view.status)) {
     return { phase: "generating", progress: view?.progress ?? null };
   }
-  if (view.status === "canceled") return { phase: "canceled" };
+  if (view.status === "canceled") return { phase: "canceled", refunded: canceledRefunded(view) };
   if (view.status === "succeeded") {
     const audio = view.outputs?.find(
       (output) =>
@@ -58,15 +60,52 @@ export type VoiceInput = { input: Record<string, unknown>; error: string | null 
 
 /**
  * 按所选音频模型的能力组装提交内容。详情页没有参数面板，所以只提交提示词；
+ * 模型收参考图时再带上角色主图，让声音贴合形象，不收就不带。
  * 开放给用户又没有默认值的必填参数会在这里报缺什么。
  * @param caps 音频模型的能力，清单还没到时为 undefined
  * @param prompt 提示词（音色描述加一句试音台词）
+ * @param imageAssetId 角色主图的素材 id；没有主图（或主图还是本地文件）时不参考
  */
-export function buildVoiceInput(caps: Capabilities | undefined, prompt: string): VoiceInput {
+export function buildVoiceInput(
+  caps: Capabilities | undefined,
+  prompt: string,
+  imageAssetId?: string,
+): VoiceInput {
   if (!caps) return { input: {}, error: "音频模型还没加载好" };
-  const built = buildTaskInput(caps, { prompt: prompt.trim() });
+  const image = toAssetNumber(imageAssetId);
+  const params: Record<string, unknown> = { prompt: prompt.trim() };
+  // 手动参考素材的通道：模型不收图片时 buildTaskInput 自己会略过
+  if (image !== null) params.images = [image];
+  const built = buildTaskInput(caps, params);
   const error = Object.values(built.errors)[0] ?? null;
   return { input: built.input, error };
+}
+
+/** 「生成（含音色）」出图后的下一步：接着等、用新主图生成音色、或放弃 */
+export type VoiceAfterImageStep =
+  | { kind: "wait" }
+  | { kind: "submit"; imageAssetId: string }
+  | { kind: "abort"; reason: string };
+
+/**
+ * 节点记着「出图后生成音色」（voiceAfterImage）时，此刻该做什么。
+ * 只认这次提交的任务出的图：形象失败、被取消（节点退回旧主图）都放弃，不拿旧图生成音色。
+ * @param data 节点数据
+ * @returns 没有记着时为 null
+ */
+export function voiceAfterImageStep(
+  data: Pick<
+    CanvasNodeData,
+    "voiceAfterImage" | "status" | "pendingTaskIds" | "assetId" | "outputs" | "taskId"
+  >,
+): VoiceAfterImageStep | null {
+  const taskIds = data.voiceAfterImage;
+  if (!taskIds?.length) return null;
+  if (isGenerating(data)) return { kind: "wait" };
+  const current = data.outputs?.find((output) => output.assetId === data.assetId);
+  if (data.status === "done" && data.assetId && current?.taskId && taskIds.includes(current.taskId))
+    return { kind: "submit", imageAssetId: data.assetId };
+  return { kind: "abort", reason: "形象没有生成成功，音色未生成" };
 }
 
 /**

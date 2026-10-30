@@ -8,6 +8,7 @@ import { publishCanvasPatch } from "@/utils/agent/patch-bus";
 import { useWsStore } from "@/store/ws";
 import { getToken } from "@/utils/storage/token";
 
+import { handleDramaEpisodeEvent } from "@/utils/drama/episode-events";
 import { handleDramaJobEvent, reconcileWatchedDramas } from "@/utils/drama/job-events";
 import { handleDramaSegmentEvent, reconcileWatchedSegments } from "@/utils/drama/segment-events";
 
@@ -35,6 +36,7 @@ export function useTaskSocket() {
       onAgentEvent: (event) => useAgentStore.getState().handleEvent(event, { live: true }),
       onPayment: (update) => usePaymentStore.getState().handleWsUpdate(update),
       onDramaJob: handleDramaJobEvent,
+      onDramaEpisode: handleDramaEpisodeEvent,
       onDramaSegment: handleDramaSegmentEvent,
       onOpen: () => {
         void reconcileActiveTasks();

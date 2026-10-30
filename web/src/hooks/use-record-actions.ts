@@ -125,7 +125,7 @@ export function useRecordActions(conversationId: string) {
 
   const retryCell = useCallback((record: RecordDto) => resubmit(record, 1), [resubmit]);
 
-  /** 取消记录里还能取消的任务，积分退回；统一入口逐个取消，某个失败不影响其他 */
+  /** 取消记录里还能取消的任务（排队中退积分，已进入生成不退）；统一入口逐个取消，某个失败不影响其他 */
   const cancel = useCallback(async (record: RecordDto) => {
     const tasks = useTasksStore.getState().tasks;
     const ids = record.tasks

@@ -2,6 +2,7 @@ import type { PaymentWsUpdate } from "@/store/payment";
 import { describe, expect, test } from "bun:test";
 
 import type { AgentEventDto, CanvasPatchDto } from "@/api/agent/type";
+import type { DramaEpisodeEvent } from "@/api/drama/type";
 import type { TaskView } from "@/api/generation-task/type";
 import type { ConnectionState } from "@/store/ws";
 
@@ -153,6 +154,7 @@ function setup(
   const patches: CanvasPatchDto[] = [];
   const agentEvents: AgentEventDto[] = [];
   const payments: PaymentWsUpdate[] = [];
+  const dramaEpisodes: DramaEpisodeEvent[] = [];
   let opens = 0;
   let tickets = 0;
   const client = new TaskSocketClient({
@@ -172,6 +174,7 @@ function setup(
     onCanvasPatch: (patch) => patches.push(patch),
     onAgentEvent: (event) => agentEvents.push(event),
     onPayment: (update) => payments.push(update),
+    onDramaEpisode: (event) => dramaEpisodes.push(event),
     onOpen: () => {
       opens += 1;
     },
@@ -190,6 +193,7 @@ function setup(
     patches,
     agentEvents,
     payments,
+    dramaEpisodes,
     advance,
     flush,
     opens: () => opens,
@@ -434,5 +438,19 @@ describe("TaskSocketClient", () => {
     expect(t.pendingCount()).toBe(0);
     await t.advance(120_000);
     expect(t.sockets.length).toBe(1);
+  });
+});
+
+describe("分集变更推送", () => {
+  test("同一连接收到逐集通知后立即分发", async () => {
+    const env = setup();
+    env.client.start();
+    await env.flush();
+    const socket = env.sockets[0];
+    socket.open();
+    const event = { drama_id: "d1", episode_no: 1 };
+    socket.message({ type: "drama.episode", data: event });
+    expect(env.dramaEpisodes).toEqual([event]);
+    env.client.stop();
   });
 });

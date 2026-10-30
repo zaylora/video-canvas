@@ -13,6 +13,7 @@ const (
 	TypeCanvasPatch    = "canvas.patch"    // Agent 改了画布：带逐节点的改动，前端三方合并
 	TypeAgentEvent     = "agent.event"     // Agent 会话里的一条事件（文本增量、工具调用、审批……）
 	TypePaymentUpdated = "payment.updated" // 支付订单状态变化（入账、关单……），前端据此刷新商城和余额
+	TypeDramaEpisode   = "drama.episode"   // 分集剧本状态已保存，前端据此刷新详情
 	TypeDramaJob       = "drama.job"       // 短剧流水线状态、进度和结算结果
 	TypeDramaSegment   = "drama.segment"   // 短剧片段编辑、生成结果和首帧变化
 

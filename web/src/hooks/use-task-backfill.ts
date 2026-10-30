@@ -6,6 +6,7 @@ import { useTasksStore } from "@/store/tasks";
 import type { CanvasNode } from "@/types";
 import { applyBackfill, failedBatchMembers } from "@/utils/tasks/backfill";
 import { collectRunningTaskIds, markTasksGone } from "@/utils/tasks/reconcile";
+import { canceledRefunded } from "@/utils/tasks/status";
 
 /**
  * 任务结果回填画布：
@@ -27,7 +28,14 @@ export function useTaskBackfill(
     setNodes((prev) => applyBackfill(prev, tasks).nodes);
     for (const event of events) {
       if (event.view.status === "canceled") {
-        toast.info("已取消生成，积分已退回", { id: `canceled:${event.view.id}` });
+        toast.info(
+          canceledRefunded(event.view)
+            ? "已取消生成，积分已退回"
+            : "已取消生成，已进入生成的积分不退回",
+          {
+            id: `canceled:${event.view.id}`,
+          },
+        );
       }
     }
     // 一批任务里有失败的、节点却已经有结果：节点不会变成失败态，用一条提示说清楚

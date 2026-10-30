@@ -59,6 +59,16 @@ export const PANEL_CHIP_CLASS = cn(
   "disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-3 [&_svg]:shrink-0",
 );
 
+/** 发送键旁边的第二种生成（如角色卡的「生成（含音色）」）：和发送键共用忙碌状态 */
+export type SecondarySubmit = {
+  label: string;
+  /** 此刻不能点的原因；可以点为 null */
+  blockedReason: string | null;
+  /** 比发送键多花的积分（最低单价），加进这个按钮显示的积分里 */
+  extraCredits: number;
+  onSubmit: () => void;
+};
+
 type NodePromptInputProps = {
   /** 提示词文本，@ 进来的素材写成 `@[名字](节点 id)` */
   value: string;
@@ -117,6 +127,8 @@ type NodePromptInputProps = {
   notice?: { tone: "error" | "info"; text: string } | null;
   /** 底栏里模型选择后面的插槽，放参数摘要、批量 */
   toolbarExtra?: ReactNode;
+  /** 发送键旁边的第二种生成；不给就只有发送键 */
+  secondarySubmit?: SecondarySubmit;
   /** 面板宽度（屏幕像素）；不给就 480 */
   width?: number;
   className?: string;
@@ -149,6 +161,8 @@ type PromptFooterProps = {
   busy?: boolean;
   /** 点发送键 */
   onSubmit: () => void;
+  /** 发送键旁边的第二种生成 */
+  secondarySubmit?: SecondarySubmit;
 };
 
 /**
@@ -169,6 +183,7 @@ function PromptFooter({
   blocked,
   busy,
   onSubmit,
+  secondarySubmit,
 }: PromptFooterProps) {
   return (
     <div className="flex min-w-0 flex-col gap-3">
@@ -242,6 +257,23 @@ function PromptFooter({
 
         {/* 积分是灰色小字，发送键是独立的实心圆：要花多少一眼看到，不用二次确认 */}
         <span className="ml-auto flex shrink-0 items-center gap-3" title={creditsTitle}>
+          {/* 第二种生成（角色卡的「含音色」）排在前面，和发送键一样是「积分 + 实心键」 */}
+          {secondarySubmit && (
+            <SubmitPill
+              label={secondarySubmit.label}
+              credits={credits === undefined ? undefined : credits + secondarySubmit.extraCredits}
+              creditsIsMax={creditsIsMax}
+              title={
+                busy
+                  ? "生成中"
+                  : (secondarySubmit.blockedReason ??
+                    `形象 ${credits ?? "—"} 积分，音色约 ${secondarySubmit.extraCredits} 积分`)
+              }
+              blocked={busy || !!secondarySubmit.blockedReason}
+              busy={busy}
+              onClick={secondarySubmit.onSubmit}
+            />
+          )}
           <span className="text-muted-foreground flex items-center gap-1 text-[13px] font-medium tabular-nums">
             <Sparkle
               className={cn("size-3.5", blocked ? "fill-muted-foreground" : "fill-credit")}
@@ -270,6 +302,58 @@ function PromptFooter({
         </span>
       </div>
     </div>
+  );
+}
+
+/** 第二种生成：灰色积分小字 + 带文字的实心键，长相跟着发送键走 */
+function SubmitPill({
+  label,
+  credits,
+  creditsIsMax,
+  title,
+  blocked,
+  busy,
+  onClick,
+}: {
+  label: string;
+  credits?: number;
+  creditsIsMax?: boolean;
+  /** 悬停说明：不能点的原因，或积分明细 */
+  title: string;
+  blocked: boolean;
+  busy?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    // 不能点的按钮收不到鼠标事件，悬停说明挂在外层
+    <span className="flex items-center gap-3" title={title}>
+      <span className="text-muted-foreground flex items-center gap-1 text-[13px] font-medium tabular-nums">
+        <Sparkle
+          className={cn("size-3.5", blocked ? "fill-muted-foreground" : "fill-credit")}
+          strokeWidth={0}
+        />
+        {credits === undefined ? "—" : `${creditsIsMax ? "≤" : ""}${credits}`}
+      </span>
+      <motion.button
+        type="button"
+        whileTap={blocked ? undefined : { scale: 0.92 }}
+        whileHover={blocked ? undefined : { scale: 1.05 }}
+        aria-label={busy ? "生成中" : label}
+        disabled={blocked}
+        onClick={onClick}
+        className={cn(
+          "bg-foreground text-background focus-visible:ring-node-ring/60 inline-flex h-8 items-center gap-1 rounded-full pr-2 pl-3 text-[13px] font-medium whitespace-nowrap outline-none transition-colors focus-visible:ring-2 disabled:pointer-events-none",
+          blocked && "bg-foreground/35",
+        )}
+      >
+        {label}
+        {busy ? (
+          <Loader2 className="size-4 animate-spin" />
+        ) : (
+          <ArrowUp className="size-4 stroke-[2.5]" />
+        )}
+      </motion.button>
+    </span>
   );
 }
 
@@ -307,6 +391,7 @@ export function NodePromptInput({
   mention,
   notice,
   toolbarExtra,
+  secondarySubmit,
   width = 480,
   className,
 }: NodePromptInputProps) {
@@ -379,6 +464,7 @@ export function NodePromptInput({
     blocked: !!blocked,
     busy,
     onSubmit: submit,
+    secondarySubmit,
   };
   // 没有生成方式 Tabs 时，引用条顶到第一行，和放大按钮并排（设计稿 6.7）
   const top = header ?? children;
@@ -476,6 +562,15 @@ export function NodePromptInput({
                 setExpanded(false);
                 submit();
               }}
+              secondarySubmit={
+                secondarySubmit && {
+                  ...secondarySubmit,
+                  onSubmit: () => {
+                    setExpanded(false);
+                    secondarySubmit.onSubmit();
+                  },
+                }
+              }
             />
           </DialogContent>
         </Dialog>
