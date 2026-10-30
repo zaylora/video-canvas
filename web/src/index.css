@@ -641,28 +641,29 @@ html:has([data-shell="home"]) {
 /* 连镜 Logo 的加载动画「开镜 · 对焦 · 光铺开」（docs/design/品牌Logo）：
    Logo 拆成光晕、左弧、右弧、光束四层（<Logo animated />），每层是独立的盒子，只动 transform / opacity。
    进场放完（0.9s，和 FocusLoader 的 MIN_SHOW_MS 对齐）接着循环「对焦」，两段写在同一条 animation 里，不靠 JS 切状态。 */
-.logo-anim [data-part="glow"] {
+.logo-anim [data-part="glow"] > svg {
   opacity: 0;
 }
-.canvas-loader .logo-anim [data-part="left"] {
+.canvas-loader .logo-anim [data-part="left"] > svg {
   animation:
     logo-anim-left-in 0.9s cubic-bezier(0.2, 0, 0, 1) both,
     logo-anim-left-focus 1.6s ease-in-out 0.9s infinite;
 }
-.canvas-loader .logo-anim [data-part="right"] {
+.canvas-loader .logo-anim [data-part="right"] > svg {
   animation:
     logo-anim-right-in 0.9s cubic-bezier(0.2, 0, 0, 1) both,
     logo-anim-right-focus 1.6s ease-in-out 0.9s infinite;
 }
-.canvas-loader .logo-anim [data-part="beam"] {
+.canvas-loader .logo-anim [data-part="beam"] > svg {
   animation:
     logo-anim-beam-in 0.75s cubic-bezier(0.2, 0, 0, 1) 0.15s both,
     logo-anim-beam-focus 1.6s ease-in-out 0.9s infinite;
 }
-.canvas-loader .logo-anim [data-part="glow"] {
+.canvas-loader .logo-anim [data-part="glow"] > svg {
   animation: logo-anim-glow 1.6s ease-in-out 0.9s infinite;
 }
-/* 退场「光铺开」：两弧向外散开，光横向铺开，整层随后按 canvas-loader-out 淡出 */
+/* 退场「光铺开」：两弧向外散开，光横向铺开，整层随后按 canvas-loader-out 淡出。
+   退场写在外层 span 上，里面的对焦循环照跑、transform 叠加，不会先跳回原位再散开 */
 .canvas-loader[data-leaving] .logo-anim [data-part="left"] {
   animation: logo-anim-left-out 0.32s cubic-bezier(0.4, 0, 1, 1) both;
 }
@@ -883,7 +884,8 @@ html:has([data-shell="home"]) {
 @media (prefers-reduced-motion: reduce) {
   [data-entering] *,
   .canvas-loader-focus,
-  .canvas-loader .logo-anim [data-part] {
+  .canvas-loader .logo-anim [data-part],
+  .canvas-loader .logo-anim [data-part] > svg {
     animation: none !important;
   }
   .canvas-loader[data-leaving] {
