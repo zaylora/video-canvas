@@ -87,6 +87,8 @@ export const mapDrama = (raw: BackendDramaView): Drama => ({
   targetEpisodes: raw.target_episodes,
   episodeSeconds: raw.episode_seconds,
   textModel: raw.text_model ?? "",
+  imageModel: raw.image_model ?? "",
+  videoModel: raw.video_model ?? "",
   outlineMd: raw.outline_md ?? "",
   charactersMd: raw.characters_md ?? "",
   revision: raw.revision,
@@ -139,6 +141,7 @@ export function buildCreateForm(input: CreateDramaInput): FormData {
     target_episodes: input.targetEpisodes ? String(input.targetEpisodes) : undefined,
     episode_seconds: input.episodeSeconds ? String(input.episodeSeconds) : undefined,
     text_model: input.textModel || undefined,
+    video_model: input.videoModel || undefined,
   };
   for (const [key, value] of Object.entries(fields)) {
     if (value !== undefined) form.append(key, value);
@@ -176,6 +179,8 @@ export const toJobBody = (input: DramaJobInput) =>
     episodes: input.episodes,
     ratio: input.ratio || undefined,
     max_seconds: input.step === "storyboard" ? input.maxSeconds : undefined,
+    image_model: input.imageModel || undefined,
+    video_model: input.videoModel || undefined,
   });
 
 /** PATCH /drama-segments/:sid 请求体 */

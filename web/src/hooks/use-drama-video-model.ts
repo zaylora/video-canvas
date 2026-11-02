@@ -7,14 +7,16 @@ import { pickVideoModel, storyboardMaxSeconds } from "@/utils/drama/video-models
 
 /**
  * 一部短剧当前所选的视频模型：分集页生成脚本（取时长上限作 max_seconds）和片段工作区生成视频共用，
- * 选择存在本机（按短剧分开）。存的模型已下线或不可用时回到第一个可用的。
+ * 选择存在本机（按短剧分开）；本机没选过时用项目记下的视频平台（新建或拆解时选的），
+ * 都已下线或不可用时回到第一个可用的。
+ * @param projectKey 项目记下的视频模型 key（drama.videoModel）
  */
-export function useDramaVideoModel(dramaId: string) {
+export function useDramaVideoModel(dramaId: string, projectKey = "") {
   const remote = useRemoteModels("video");
   const prefs = useStudioPrefs(dramaId);
   const model: ModelInfo | undefined = useMemo(
-    () => pickVideoModel(remote.models, prefs.videoModel),
-    [prefs.videoModel, remote.models],
+    () => pickVideoModel(remote.models, prefs.videoModel, projectKey),
+    [prefs.videoModel, projectKey, remote.models],
   );
   const setModel = useCallback(
     (key: string) => useStudioPrefsStore.getState().patch(dramaId, { videoModel: key }),

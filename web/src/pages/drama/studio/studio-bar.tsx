@@ -118,7 +118,7 @@ const NO_JOBS: never[] = [];
 export function StudioBar() {
   const { drama, episode, no, save, video } = useStudio();
   const jobs = useDramaJobsStore((state) => state.byDrama[drama.id]) ?? NO_JOBS;
-  const starter = useStoryboardStart(video.maxSeconds);
+  const starter = useStoryboardStart(video.maxSeconds, video.model?.key);
   const status = SAVE_LABEL[save];
   const blocked = busyReason(jobs);
   return (

@@ -30,7 +30,8 @@ func (s *DramaService) callDrama(ctx context.Context, j *model.DramaJob, snap *p
 		if invalid != nil {
 			vars["validation_error"] = invalid.Error()
 		}
-		prompt, e := drama.Prompt(step, vars)
+		targets, _ := vars["target_models"].(drama.Targets)
+		prompt, e := drama.PromptFor(step, vars, targets)
 		if e != nil {
 			return nil, 0, e
 		}

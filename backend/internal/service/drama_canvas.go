@@ -200,8 +200,9 @@ func createdAssets(merged *canvasgraph.DramaResult, assets []drama.Asset) []Dram
 	return created
 }
 
-// ApplyPrompts 为本次新增资产写提示词，保留用户其他参数；CAS 冲突时在最新画布上重新应用。
-func (s *DramaCanvasService) ApplyPrompts(ctx context.Context, userID, canvasID, jobID uint64, prompts []drama.AssetPrompt) error {
+// ApplyPrompts 为本次新增资产写提示词，保留用户其他参数；imageModel 非空时作为还没选模型的资产的默认生成模型。
+// CAS 冲突时在最新画布上重新应用。
+func (s *DramaCanvasService) ApplyPrompts(ctx context.Context, userID, canvasID, jobID uint64, prompts []drama.AssetPrompt, imageModel string) error {
 	// 1. 只接受资源层校验通过的节点提示词，不把非法模型输出透传成画布编辑。
 	if err := (drama.AssetPromptsOutput{Prompts: prompts}).Validate(); err != nil {
 		return errcode.ErrDramaOutputInvalid
@@ -214,7 +215,7 @@ func (s *DramaCanvasService) ApplyPrompts(ctx context.Context, userID, canvasID,
 	out, err := WriteCanvas(ctx, s.repo, userID, canvasID, func(g *canvasgraph.Graph, revision uint64) (breakdownAttempt, error) {
 		out := breakdownAttempt{before: revision, revision: revision}
 		err := s.repo.WithTx(ctx, func(tx repository.DramaCanvasTx) error {
-			return promptsTx(ctx, tx, g, revision, &out, userID, canvasID, jobID, byID)
+			return promptsTx(ctx, tx, g, revision, &out, userID, canvasID, jobID, byID, imageModel)
 		})
 		return out, err
 	})
@@ -230,7 +231,7 @@ func (s *DramaCanvasService) ApplyPrompts(ctx context.Context, userID, canvasID,
 }
 
 // promptsTx 在单个事务里校验任务、写入提示词并标记画布已提交。
-func promptsTx(ctx context.Context, tx repository.DramaCanvasTx, g *canvasgraph.Graph, revision uint64, out *breakdownAttempt, userID, canvasID, jobID uint64, byID map[string]string) error {
+func promptsTx(ctx context.Context, tx repository.DramaCanvasTx, g *canvasgraph.Graph, revision uint64, out *breakdownAttempt, userID, canvasID, jobID uint64, byID map[string]string, imageModel string) error {
 	_, checkpoint, err := lockedJobCheckpoint(ctx, tx, userID, canvasID, jobID, "asset_prompts")
 	if err != nil {
 		return err
@@ -241,7 +242,7 @@ func promptsTx(ctx context.Context, tx repository.DramaCanvasTx, g *canvasgraph.
 	if err := tx.CheckCanvasRevision(ctx, userID, canvasID, revision); err != nil {
 		return err
 	}
-	ed, err := canvasgraph.ApplyDramaPrompts(g, byID)
+	ed, err := canvasgraph.ApplyDramaPrompts(g, byID, imageModel)
 	if err != nil {
 		return errcode.ErrDramaOutputInvalid
 	}

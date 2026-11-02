@@ -4,6 +4,11 @@ import { Check, Lock } from "lucide-react";
 import { submitJob } from "@/api/drama";
 import { dramaErrorMessage } from "@/api/drama/errors";
 import type { DramaRatio } from "@/api/drama/type";
+import {
+  describeImageModel,
+  describeVideoModel,
+  ModelMenu,
+} from "@/components/drama/video-model-menu";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -13,6 +18,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { useDramaVideoModel } from "@/hooks/use-drama-video-model";
+import { useRemoteModels } from "@/hooks/use-models";
 import { useDramaJobsStore } from "@/store/drama";
 import {
   breakdownOptions,
@@ -20,6 +27,7 @@ import {
   defaultBreakdownSelection,
   ratioFixed,
 } from "@/utils/drama/episodes";
+import { pickImageModel } from "@/utils/drama/image-models";
 import { RATIOS } from "@/utils/drama/options";
 
 import { useWorkspace } from "./context";
@@ -36,11 +44,21 @@ function BreakdownBody({ onClose, onStarted }: { onClose: () => void; onStarted:
   );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 图片模型：资产提示词按它的写法写，资产默认用它生成
+  const imageModels = useRemoteModels("image");
+  const [imageKey, setImageKey] = useState(drama.imageModel);
+  const image = pickImageModel(imageModels.models, imageKey);
+  // 视频平台新建时就定了；只有以前建的、没选过的老短剧才在这里补选（拆解写试音要按它的参考音频限制）
+  const video = useDramaVideoModel(drama.id, drama.videoModel);
+  const models = {
+    imageModel: image?.key,
+    videoModel: drama.videoModel ? undefined : video.model?.key,
+  };
 
   const submit = breakdownSubmit(ratio, selected);
   const estimate = useEstimate(
     drama.id,
-    submit.ok ? { step: "breakdown", episodes: selected, ratio } : null,
+    submit.ok ? { step: "breakdown", episodes: selected, ratio, ...models } : null,
   );
 
   const toggle = (no: number) =>
@@ -54,7 +72,12 @@ function BreakdownBody({ onClose, onStarted }: { onClose: () => void; onStarted:
     setSubmitting(true);
     setError(null);
     try {
-      const job = await submitJob(drama.id, { step: "breakdown", episodes: selected, ratio });
+      const job = await submitJob(drama.id, {
+        step: "breakdown",
+        episodes: selected,
+        ratio,
+        ...models,
+      });
       useDramaJobsStore.getState().applyJob(drama.id, job);
       void refresh();
       onClose();
@@ -114,6 +137,34 @@ function BreakdownBody({ onClose, onStarted }: { onClose: () => void; onStarted:
           </div>
         </section>
       )}
+
+      <section className="grid gap-2">
+        <b className="text-sm">生成模型</b>
+        <div className="flex flex-wrap gap-1.5">
+          <ModelMenu
+            prefix="图片"
+            noun="图片"
+            title="资产图片的提示词按它的写法写"
+            models={imageModels.models}
+            loading={imageModels.status === "idle" || imageModels.status === "loading"}
+            model={image}
+            onPick={setImageKey}
+            describe={describeImageModel}
+          />
+          {!drama.videoModel && (
+            <ModelMenu
+              prefix="视频"
+              noun="视频"
+              title="角色试音和分镜都按这个视频平台的要求来"
+              models={video.models}
+              loading={video.status === "idle" || video.status === "loading"}
+              model={video.model}
+              onPick={video.setModel}
+              describe={describeVideoModel}
+            />
+          )}
+        </div>
+      </section>
 
       <section className="grid gap-2">
         <div className="flex items-center gap-2 text-sm">

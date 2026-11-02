@@ -66,7 +66,7 @@ import { getModelOptions, pruneRemoteDefaults } from "@/utils/canvas/canvas";
 import { createCanvas } from "@/api/canvas";
 import type { CanvasDetailDto } from "@/api/canvas/type";
 import { canLinkFrom, canLinkNodes } from "@/utils/canvas/link-rule";
-import { TEXT_BODY_MAX, clipFileName, clipText, type ClipboardContent } from "@/utils/canvas/paste";
+import { clipFileName, type ClipboardContent } from "@/utils/canvas/paste";
 import { DEFAULT_NODE_SIZE } from "@/utils/canvas/placement";
 import {
   deserializeGraph,
@@ -698,9 +698,7 @@ export const CanvasEditor = memo(function CanvasEditor({
         return;
       }
 
-      const { text, clipped } = clipText(content.text);
-      addNodeAt("script", origin, { status: "done", text });
-      if (clipped) toast.info(`文字太长，只放进了前 ${TEXT_BODY_MAX} 个字`);
+      addNodeAt("script", origin, { status: "done", text: content.text });
     },
     [addNodeAt, addUploadedNodes, beginUploadAt, viewportCenter],
   );

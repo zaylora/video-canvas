@@ -38,28 +38,34 @@ export function GenerateControls() {
         model={video.model}
         onPick={video.setModel}
       />
-      <Button
-        size="sm"
-        disabled={!!blocked}
+      {/* 禁用的按钮 pointer-events-none，title 出不来；提示挂在外层 span 上，置灰时才看得到原因 */}
+      <span
         title={
           blocked ??
           (lowCredits
             ? `积分不足：本次约需 ${credits}，当前可用 ${availableCredits}`
             : "开始生成这个片段的视频（⌘↵）")
         }
-        onClick={() => selected && void actions.generate(selected)}
       >
-        {busy && <Loader2 className="animate-spin" />}
-        {out ? "再生成一次" : "立即生成"}
-        {credits !== undefined && (
-          <>
-            <span aria-hidden className="opacity-50">
-              ·
-            </span>
-            <span className={cn("tabular-nums", lowCredits && "text-destructive")}>{credits}</span>
-          </>
-        )}
-      </Button>
+        <Button
+          size="sm"
+          disabled={!!blocked}
+          onClick={() => selected && void actions.generate(selected)}
+        >
+          {busy && <Loader2 className="animate-spin" />}
+          {out ? "再生成一次" : "立即生成"}
+          {credits !== undefined && (
+            <>
+              <span aria-hidden className="opacity-50">
+                ·
+              </span>
+              <span className={cn("tabular-nums", lowCredits && "text-destructive")}>
+                {credits}
+              </span>
+            </>
+          )}
+        </Button>
+      </span>
     </div>
   );
 }

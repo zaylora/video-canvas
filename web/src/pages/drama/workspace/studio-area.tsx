@@ -72,8 +72,8 @@ export function StudioArea({
   onGo: (stage: WorkspaceStage, ep?: number) => void;
 }) {
   const { drama, jobs, refresh } = useWorkspace();
-  const video = useDramaVideoModel(drama.id);
-  const starter = useStoryboardStart(video.maxSeconds);
+  const video = useDramaVideoModel(drama.id, drama.videoModel);
+  const starter = useStoryboardStart(video.maxSeconds, video.model?.key);
   const episode = drama.episodes.find((item) => item.no === ep) ?? drama.episodes[0];
 
   if (!episode) {
@@ -134,6 +134,7 @@ export function StudioArea({
         label={action.label}
         disabledReason={action.disabledReason}
         maxSeconds={video.maxSeconds}
+        videoModel={video.model?.key}
         busy={starter.pending === episode.no}
         onStart={() => void starter.start(episode)}
       />

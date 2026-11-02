@@ -6,7 +6,6 @@ import {
   dramaProgress,
   dramaStatusLabel,
   extOf,
-  SOURCE_MAX_CHARS,
 } from "@/utils/drama/options";
 
 describe("新建短剧的本地预检", () => {
@@ -21,11 +20,10 @@ describe("新建短剧的本地预检", () => {
     expect(extOf("a.b.c.TXT")).toBe("txt");
   });
 
-  test("粘贴为空 / 全是空白算内容为空（对应 67002），超过 30 万字对应 67003", () => {
+  test("粘贴为空 / 全是空白算内容为空（对应 67002），不限字数", () => {
     expect(checkSourceText("   \n ")).toContain("为空");
     expect(checkSourceText("正文")).toBeNull();
-    expect(checkSourceText("字".repeat(SOURCE_MAX_CHARS))).toBeNull();
-    expect(checkSourceText("字".repeat(SOURCE_MAX_CHARS + 1))).toContain("30 万字");
+    expect(checkSourceText("字".repeat(300_001))).toBeNull();
   });
 });
 

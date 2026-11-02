@@ -27,6 +27,8 @@ type DramaProject struct {
 	TargetEpisodes int    `gorm:"not null;default:0"`
 	EpisodeSeconds int    `gorm:"not null;default:60"`
 	TextModel      string `gorm:"size:128;not null;default:''"`
+	ImageModel     string `gorm:"size:128;not null;default:''"` // 拆解时选的图片模型：资产提示词按它的写法写，资产节点默认用它生成
+	VideoModel     string `gorm:"size:128;not null;default:''"` // 拆解或分镜时选的视频模型：分镜提示词按它的写法写
 	OutlineMD      string `gorm:"type:text;not null;default:''"`
 	CharactersMD   string `gorm:"type:text;not null;default:''"`
 	Status         string `gorm:"size:16;not null;default:analyzing"`
@@ -96,6 +98,8 @@ type CreateDramaReq struct {
 	EpisodeSeconds int    `form:"episode_seconds" binding:"omitempty,min=30,max=180"`
 	// TextModel 流水线用的 Agent 模型 key；空串跟随后台第一个，选的模型停用时也回落到它
 	TextModel string `form:"text_model" binding:"max=128"`
+	// VideoModel 视频平台（视频模型 key），一开始就选：拆解写音色和分镜写提示词都按它的要求；空串表示没选
+	VideoModel string `form:"video_model" binding:"max=128"`
 }
 
 // UpdateDramaReq 部分更新项目，revision 用于乐观锁。
@@ -131,6 +135,8 @@ type DramaJobReq struct {
 	Episodes   []int  `json:"episodes" binding:"max=100,dive,min=1,max=100"`
 	Ratio      string `json:"ratio" binding:"omitempty,oneof=9:16 16:9 21:9 3:4 4:3 1:1"`
 	MaxSeconds int    `json:"max_seconds" binding:"omitempty,min=4,max=60"`
+	ImageModel string `json:"image_model" binding:"max=128"` // 非空时写回项目，之后的资产提示词按它写
+	VideoModel string `json:"video_model" binding:"max=128"` // 非空时写回项目，之后的分镜提示词按它写
 }
 
 // DramaSummary 列表项。
@@ -202,6 +208,8 @@ type DramaView struct {
 	TargetEpisodes int                   `json:"target_episodes"`
 	EpisodeSeconds int                   `json:"episode_seconds"`
 	TextModel      string                `json:"text_model"`
+	ImageModel     string                `json:"image_model"`
+	VideoModel     string                `json:"video_model"`
 	OutlineMD      string                `json:"outline_md"`
 	CharactersMD   string                `json:"characters_md"`
 	Revision       int64                 `json:"revision"`

@@ -82,7 +82,8 @@ func (s *DramaService) estimateStoryboard(ctx context.Context, userID, id uint64
 	if err != nil {
 		return 0, err
 	}
-	return dramaQuote(project, req.Step, selected, snap), nil
+	project = withTargetModels(project, req)
+	return dramaQuote(project, req.Step, selected, snap, s.referenceChars(ctx, project, req.Step)), nil
 }
 
 // enqueueStoryboard 保存不可变输入并标记generating，随冻结和队列插入一起回滚。

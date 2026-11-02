@@ -145,4 +145,11 @@ describe("默认模型", () => {
     expect(pickVideoModel(list, "gone")?.key).toBe("first");
     expect(pickVideoModel([list[0]], "")).toBeUndefined();
   });
+
+  test("本机没选过时用项目记下的模型（拆解时选的）；本机选的优先", () => {
+    expect(pickVideoModel(list, "", "second")?.key).toBe("second");
+    expect(pickVideoModel(list, "first", "second")?.key).toBe("first");
+    expect(pickVideoModel(list, "gone", "second")?.key).toBe("second");
+    expect(pickVideoModel(list, "", "nope")?.key).toBe("first");
+  });
 });

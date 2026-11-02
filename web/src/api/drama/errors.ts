@@ -6,7 +6,7 @@ export const DRAMA_ERR = {
   notFound: 67001,
   /** 原文格式不支持或内容为空（Msg 写具体原因） */
   sourceInvalid: 67002,
-  /** 原文超过 30 万字 */
+  /** 原文文件超过 32MB（上传体积上限，不限字数） */
   sourceTooLong: 67003,
   /** 已有进行中的任务 */
   jobBusy: 67004,
@@ -34,7 +34,7 @@ export const DRAMA_ERR = {
 const FALLBACK: Record<number, string> = {
   [DRAMA_ERR.notFound]: "短剧不存在",
   [DRAMA_ERR.sourceInvalid]: "原文格式不支持或内容为空",
-  [DRAMA_ERR.sourceTooLong]: "原文超过 30 万字，请删减后再试",
+  [DRAMA_ERR.sourceTooLong]: "原文文件超过 32MB，请拆分后再试",
   [DRAMA_ERR.jobBusy]: "已有进行中的任务，完成后再试",
   [DRAMA_ERR.episodeLocked]: "这一集已拆解资产，剧本已锁定",
   [DRAMA_ERR.stepNotReady]: "前置步骤未完成",

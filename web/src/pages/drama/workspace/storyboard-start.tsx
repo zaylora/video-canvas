@@ -18,18 +18,24 @@ import { useEstimate } from "./use-estimate";
  * 生成 / 重新生成一集的分镜脚本：
  * 已有出视频的片段时先确认「会清空已有片段」，确认后逐个删片段再提交；
  * 提交撞上 67013（失败的 take 也算）时同样走确认。
+ * 带上当前视频模型，后端写回项目，分镜提示词按它的写法写。
  */
-export function useStoryboardStart(maxSeconds: number) {
+export function useStoryboardStart(maxSeconds: number, videoModel?: string) {
   const { drama, refresh } = useWorkspace();
   const [pending, setPending] = useState<number | null>(null);
 
   const submit = useCallback(
     async (no: number) => {
-      const job = await submitJob(drama.id, { step: "storyboard", episodes: [no], maxSeconds });
+      const job = await submitJob(drama.id, {
+        step: "storyboard",
+        episodes: [no],
+        maxSeconds,
+        videoModel,
+      });
       useDramaJobsStore.getState().applyJob(drama.id, job);
       void refresh();
     },
-    [drama.id, maxSeconds, refresh],
+    [drama.id, maxSeconds, refresh, videoModel],
   );
 
   const clearThenSubmit = useCallback(
@@ -84,6 +90,7 @@ export function StoryboardButton({
   label,
   disabledReason,
   maxSeconds,
+  videoModel,
   busy,
   onStart,
 }: {
@@ -91,6 +98,8 @@ export function StoryboardButton({
   label: string;
   disabledReason: string | null;
   maxSeconds: number;
+  /** 当前视频模型：估价按它的写法资料算 */
+  videoModel?: string;
   busy: boolean;
   onStart: () => void;
 }) {
@@ -99,6 +108,7 @@ export function StoryboardButton({
     step: "storyboard",
     episodes: [episode.no],
     maxSeconds,
+    videoModel,
   });
   return (
     <Button

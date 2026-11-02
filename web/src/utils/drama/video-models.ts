@@ -106,12 +106,17 @@ export function segmentParams(
 }
 
 /**
- * 默认选哪个视频模型：存过选择且仍可用就沿用，否则取第一个可用的；一个都没有为 undefined。
+ * 默认选哪个视频模型：按顺序取 preferred 里第一个仍可用的（本机选过的、项目记下的），
+ * 都不可用就取第一个可用的；一个都没有为 undefined。
  */
 export function pickVideoModel(
   models: readonly ModelInfo[],
-  savedKey: string,
+  ...preferred: string[]
 ): ModelInfo | undefined {
   const usable = models.filter((info) => videoModelSupport(info).ok);
-  return usable.find((info) => info.key === savedKey) ?? usable[0];
+  for (const key of preferred) {
+    const hit = key ? usable.find((info) => info.key === key) : undefined;
+    if (hit) return hit;
+  }
+  return usable[0];
 }

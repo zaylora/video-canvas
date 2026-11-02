@@ -244,7 +244,8 @@ func dramaPosition(g *Graph, kind string, n Node) Point {
 }
 
 // ApplyDramaPrompts 只给已分类资产写提示词；任何目标无效时整批不生效，保留其他参数。
-func ApplyDramaPrompts(g *Graph, prompts map[string]string) (*Result, error) {
+// model 非空时写进还没选模型的节点，作为默认生成模型；用户已选的不覆盖。
+func ApplyDramaPrompts(g *Graph, prompts map[string]string, model string) (*Result, error) {
 	after := g.Clone()
 	for id, prompt := range prompts {
 		n := after.Node(id)
@@ -255,6 +256,9 @@ func ApplyDramaPrompts(g *Graph, prompts map[string]string) (*Result, error) {
 			return nil, fmt.Errorf("%w: 节点 %q 不是短剧资产", ErrInvalid, id)
 		}
 		setPrompt(n, prompt)
+		if d := n.Data(); model != "" && d["model"] == nil {
+			d["model"] = model
+		}
 	}
 	return &Result{Graph: after, Changes: Diff(g, after)}, nil
 }

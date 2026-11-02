@@ -185,3 +185,34 @@ func TestDramaHandler_CreateSourceExclusive(t *testing.T) {
 		}
 	}
 }
+
+func TestDramaHandler_CreateBodyTooLarge(t *testing.T) {
+	var body bytes.Buffer
+	form := multipart.NewWriter(&body)
+	if err := form.WriteField("style_key", "real_city_film"); err != nil {
+		t.Fatal(err)
+	}
+	part, err := form.CreateFormFile("file", "剧本.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write(bytes.Repeat([]byte("a"), 33<<20)); err != nil {
+		t.Fatal(err)
+	}
+	if err := form.Close(); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest("POST", "/dramas", &body)
+	req.Header.Set("Content-Type", form.FormDataContentType())
+	w := httptest.NewRecorder()
+	httpDramaRouter().ServeHTTP(w, req)
+	var got struct {
+		Code int `json:"code"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if w.Code != 400 || got.Code != 67003 {
+		t.Fatalf("超过上传体积：status=%d body=%s", w.Code, w.Body.String())
+	}
+}

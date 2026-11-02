@@ -24,9 +24,6 @@ export const CUSTOM_STYLE_KEY = "custom";
 /** 新建时默认选中的画风；清单里没有就取第一个 */
 export const DEFAULT_STYLE_KEY = "real_city_film";
 
-/** 原文字数上限（契约 §3.1） */
-export const SOURCE_MAX_CHARS = 300_000;
-
 /** 上传支持的扩展名 */
 export const SOURCE_EXTENSIONS = ["txt", "md", "docx"] as const;
 
@@ -38,7 +35,7 @@ export const extOf = (name: string): string => {
 
 /**
  * 上传文件的本地预检：只拦显然不对的格式（给 PDF 一句明确的话），
- * 内容为空、超长等以后端 67002 / 67003 为准。通过返回 null。
+ * 内容为空、文件过大等以后端 67002 / 67003 为准。通过返回 null。
  */
 export function checkSourceFile(file: Pick<File, "name">): string | null {
   const ext = extOf(file.name);
@@ -49,10 +46,9 @@ export function checkSourceFile(file: Pick<File, "name">): string | null {
   return null;
 }
 
-/** 粘贴文本的本地预检：空白 / 超长 */
+/** 粘贴文本的本地预检：只拦空白，不限字数 */
 export function checkSourceText(text: string): string | null {
   if (text.trim().length === 0) return "内容为空，先粘贴剧本或小说正文";
-  if (text.length > SOURCE_MAX_CHARS) return "内容超过 30 万字，请删减后再试";
   return null;
 }
 

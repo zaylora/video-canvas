@@ -142,7 +142,7 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
     status: assetsStatus,
     reload: reloadAssets,
   } = useDramaAssets(drama.canvasId, settled);
-  const video = useDramaVideoModel(dramaId);
+  const video = useDramaVideoModel(dramaId, drama.videoModel);
   const prefs = useStudioPrefs(dramaId);
   const availableCredits = useCreditsStore((state) => state.credits?.available ?? null);
 

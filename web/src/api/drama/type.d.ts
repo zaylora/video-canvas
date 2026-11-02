@@ -96,6 +96,9 @@ export interface BackendDramaView {
   target_episodes: number;
   episode_seconds: number;
   text_model: string;
+  /** 老数据可能没有 */
+  image_model?: string;
+  video_model?: string;
   outline_md: string;
   characters_md: string;
   revision: number;
@@ -190,6 +193,10 @@ export interface Drama {
   episodeSeconds: number;
   /** 空串 = 跟随后台「文本」类别第一个启用模型 */
   textModel: string;
+  /** 拆解时选的图片模型：资产提示词按它写，资产默认用它生成；空串 = 没选过 */
+  imageModel: string;
+  /** 拆解或分镜时选的视频模型：分镜提示词按它写；空串 = 没选过 */
+  videoModel: string;
   outlineMd: string;
   charactersMd: string;
   revision: number;
@@ -226,6 +233,8 @@ export interface CreateDramaInput {
   episodeSeconds?: number;
   /** 流水线用的 Agent 模型 key；不传跟随后台第一个 */
   textModel?: string;
+  /** 视频平台（视频模型 key）：一开始就选，拆解写音色和分镜写提示词都按它的要求 */
+  videoModel?: string;
 }
 
 /** PATCH /dramas/:id 可改字段 */
@@ -257,6 +266,10 @@ export interface DramaJobInput {
   ratio?: DramaRatio;
   /** storyboard：所选视频模型的单段时长上限（秒），缺省 15，范围 4–60 */
   maxSeconds?: number;
+  /** 非空时写回项目，之后的资产提示词按它写 */
+  imageModel?: string;
+  /** 非空时写回项目，之后的分镜提示词按它写 */
+  videoModel?: string;
 }
 
 /** WebSocket drama.episode 事件载荷：该集剧本状态已保存，需重新读取短剧详情。 */

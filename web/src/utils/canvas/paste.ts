@@ -1,6 +1,3 @@
-/** 文本节点正文的字数上限：粘贴和手动编辑共用，免得一份画布被几十万字撑大 */
-export const TEXT_BODY_MAX = 20000;
-
 /** 截图一类没有真名字的图片，起的统一名字 */
 const PASTED_IMAGE_NAME = "粘贴图片";
 
@@ -84,15 +81,4 @@ export function clipFileName(file: File): string {
   if (!file.type.startsWith("image/") || (name && !GENERIC_IMAGE_NAME.test(name))) return name;
   const ext = name.split(".")[1] ?? file.type.split("/")[1] ?? "png";
   return `${PASTED_IMAGE_NAME}.${ext}`;
-}
-
-/**
- * 把文字卡在正文上限以内，按字符数截（不拆开表情那种两个码元的字）。
- * @param text 原文
- * @returns 截好的文字和有没有被截
- */
-export function clipText(text: string): { text: string; clipped: boolean } {
-  const chars = [...text];
-  if (chars.length <= TEXT_BODY_MAX) return { text, clipped: false };
-  return { text: chars.slice(0, TEXT_BODY_MAX).join(""), clipped: true };
 }
