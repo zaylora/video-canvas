@@ -1,4 +1,6 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+
+import { mockAgentApi } from "@/tests/helpers/agent-api";
 
 import type { AgentEventDto, AgentWatchBatchDto } from "@/api/agent/type";
 
@@ -14,7 +16,7 @@ const batch = (over: Partial<AgentWatchBatchDto> = {}): AgentWatchBatchDto => ({
 let served: AgentWatchBatchDto[] = [];
 let canceled: AgentWatchBatchDto[] = [];
 const cancelCalls: string[] = [];
-mock.module("@/api/agent", () => ({
+const fakeApi = () => ({
   listAdminAssistantSessions: async () => [],
   listAgentSessions: async () => [],
   getAgentHistory: async () => ({ events: [], has_more: false }),
@@ -26,7 +28,14 @@ mock.module("@/api/agent", () => ({
     cancelCalls.push(sid);
     return canceled;
   },
-}));
+});
+
+/** 替身只在当前用例内生效，避免污染其他文件的 API 模块。 */
+let restoreApi: () => void;
+beforeEach(() => {
+  restoreApi = mockAgentApi(fakeApi());
+});
+afterEach(() => restoreApi());
 
 const { useAgentStore, subscribeLiveAgentEvents } = await import("@/store/agent");
 

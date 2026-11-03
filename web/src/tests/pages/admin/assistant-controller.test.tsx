@@ -1,10 +1,12 @@
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import type {
   act as ReactAct,
   createElement as CreateElement,
   useEffect as UseEffect,
 } from "react";
 import type { Root, createRoot as CreateRoot } from "react-dom/client";
+
+import { mockAgentApi } from "@/tests/helpers/agent-api";
 
 import type {
   AdminPageContext,
@@ -97,8 +99,7 @@ const rec =
   };
 
 /**
- * 假的 @/api/agent：覆盖全部导出（别的模块加载时按名字取，缺一个就报错）。
- * 别的测试文件也会 mock 这个模块并留到进程结束，所以放在 beforeAll 里再覆盖一次
+ * API 替身按用例安装并恢复，保留真实模块的导出集合，避免依赖测试文件的加载顺序。
  */
 const fakeApi = () => ({
   getAgentModels: rec("getAgentModels", () => models),
@@ -146,7 +147,6 @@ beforeAll(async () => {
     });
   }
   g.IS_REACT_ACT_ENVIRONMENT = true;
-  mock.module("@/api/agent", fakeApi);
   const react = await import("react");
   act = react.act;
   createElement = react.createElement;
@@ -171,7 +171,11 @@ let realRefresh: () => Promise<void>;
 /** 还没卸载的组件：断言失败时也要卸载，否则它订阅着 store，会在后面的测试文件里报错 */
 const mounted: Array<() => Promise<void>> = [];
 
+/** 卸载组件后恢复当前用例的 API 替身。 */
+let restoreApi: () => void;
+
 beforeEach(() => {
+  restoreApi = mockAgentApi(fakeApi());
   calls = [];
   adminList = [];
   failDecide = false;
@@ -188,6 +192,7 @@ afterEach(async () => {
       // 用例里已经卸载过了
     }
   }
+  restoreApi();
 });
 
 type Args = Parameters<typeof UseAgentController>[0];
