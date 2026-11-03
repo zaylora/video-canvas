@@ -183,6 +183,7 @@ type AgentRunFacts struct {
 
 // DigestQuery 是运行摘要列表的筛选条件，零值表示不限。
 type DigestQuery struct {
+	Scene         string    // canvas（默认）排除后台，admin 只看后台助手
 	Since, Until  time.Time // 运行创建时间的范围，Since 含、Until 不含
 	Statuses      []string  // 运行状态
 	Feedback      string    // down / up / none；空或 any 不限

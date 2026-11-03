@@ -347,6 +347,15 @@ test("codemode：只有标为可被脚本调用的工具在 tools 里；需要�
     for (const no of ["generate_media", "canvas_delete", "ask_user", "canvas_inspect_image"]) assert.doesNotMatch(r, new RegExp(no));
   }));
 
+test("codemode：查找只能直接调用的工具时说明正确入口，不返回无关工具或 undefined", () =>
+  withCodemode([callTools({ id: "lookup", name: "codemode", args: { code: "text(await describeTool('ask_user'));" } }), fauxAssistantMessage("改为直接提问")], async e => {
+    await e.ask();
+    const result = e.m.seen[1].find(m => m.role === "toolResult")!;
+    assert.match(textOf(result), /ask_user.*直接调用/);
+    assert.equal((result as { isError?: boolean }).isError, true);
+    assert.equal(e.f.seen.length, 0);
+  }));
+
 test("codemode：脚本里的工具失败，脚本能 catch；脚本出错时模型收到错误结果", () =>
   withCodemode([callTools({ id: "c1", name: "codemode", args: { code: "await tools.canvas_apply_ops({}); return 1;" } }), fauxAssistantMessage("好")], async (e) => {
     e.f.reply("POST /internal/platform/v1/tools/canvas_apply_ops", { json: { code: 0, data: { content: "操作没有生效：缺少 ops", is_error: true, terminate: false, tool_end: { id: "x", name: "canvas_apply_ops", is_error: true, summary: "没有生效" } } } });

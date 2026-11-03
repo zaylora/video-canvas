@@ -7,9 +7,11 @@
  * 请求被 signal 中止时抛出的是原来的中止错误，不包装：调用方要分得清「被取消」和「出错」。
  */
 import { createHash } from "node:crypto";
+import type { JsonValue } from "@earendil-works/chord";
 import type { AttachmentCheck } from "./attachments.ts";
 import type { RelayEvent } from "./event-pusher.ts";
 import { parseDecimal } from "./ids.ts";
+import { waitForPlatform } from "./platform-wait.ts";
 
 /** 运行上下文。ID 一律是十进制字符串：雪花 ID 超过 2^53，用数字会在 JavaScript 里丢精度。 */
 export interface RunContext {
@@ -65,7 +67,9 @@ export function platformToolCallId(id: string): string {
 export function encodeRunContext(rc: RunContext): string {
   for (const f of ID_FIELDS) {
     const v = rc[f];
+    if (f === "canvas_id" && rc.mode === "admin" && v === "0") continue;
     try {
+      if (f === "canvas_id" && rc.mode === "admin") throw new Error("admin canvas");
       if (typeof v !== "string") throw new Error("not a string");
       if (parseDecimal(v) === 0n) throw new Error("zero");
     } catch {
@@ -93,6 +97,7 @@ export interface ToolImage {
 export type ToolEndEvent = { id: string; name: string; is_error: boolean; summary: string; label?: string; verb?: string } & Record<string, unknown>;
 
 export interface PlatformToolResult {
+  data?: JsonValue;
   content: string;
   is_error: boolean;
   terminate: boolean;
@@ -120,7 +125,7 @@ export interface RunSetup {
   harness: { prompt_version: number; tools_hash: string; build_sha: string; key: string };
 }
 
-export type ApprovalKind = "generate" | "delete" | "ask" | "drama_update_outline" | "drama_update_episode" | "drama_update_segment" | "drama_run_job";
+export type ApprovalKind = "generate" | "delete" | "ask" | "drama_update_outline" | "drama_update_episode" | "drama_update_segment" | "drama_run_job" | "admin_change" | "admin_secret" | "admin_test_run";
 
 export interface ApprovalProposal {
   is_error: boolean;
@@ -148,10 +153,12 @@ export interface ApprovalOutcome {
   /** Go 签发的短剧审批快照与签名；解析后原样交回执行接口。 */
   drama?: unknown;
   drama_signature?: string;
+  admin_change?: unknown;
+  admin_signature?: string;
 }
 
 export interface ApprovalExecution {
-  status: "none" | "executed" | "failed";
+  status: "none" | "executed" | "failed" | "partially_approved" | "rejected";
   result?: unknown;
   outcome_text: string;
 }
@@ -229,7 +236,7 @@ export interface ToolCallOptions {
 export function createPlatform({ baseUrl, serviceToken, fetchImpl = fetch }: PlatformOptions) {
   const base = baseUrl.replace(/\/+$/, "") + "/internal/platform/v1";
 
-  async function call<T>(method: string, path: string, rc: RunContext | undefined, body?: unknown, extra: { idemKey?: string; signal?: AbortSignal } = {}): Promise<T> {
+  async function call<T>(method: string, path: string, rc: RunContext | undefined, body?: unknown, extra: { idemKey?: string; signal?: AbortSignal; longWait?: boolean } = {}): Promise<T> {
     if (extra.idemKey !== undefined && !IDEM_KEY.test(extra.idemKey)) {
       throw new Error(`幂等键只能是 1 到 64 个字母、数字或 . _ : -，当前是 ${JSON.stringify(extra.idemKey)}`);
     }
@@ -239,7 +246,8 @@ export function createPlatform({ baseUrl, serviceToken, fetchImpl = fetch }: Pla
     if (body !== undefined) headers["content-type"] = "application/json";
     let res: Response;
     try {
-      res = await fetchImpl(base + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), signal: extra.signal });
+      const request = extra.longWait && fetchImpl === fetch ? waitForPlatform : fetchImpl;
+      res = await request(base + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), signal: extra.signal });
     } catch (e) {
       if (extra.signal?.aborted) throw e;
       throw new PlatformError(`连接平台失败（${base}）：${String((e as Error)?.message ?? e)}`, 0);
@@ -283,9 +291,9 @@ export function createPlatform({ baseUrl, serviceToken, fetchImpl = fetch }: Pla
     tool: (rc: RunContext, name: string, args: unknown, o: ToolCallOptions) =>
       call<PlatformToolResult>("POST", `/tools/${encodeURIComponent(name)}`, rc, { tool_call_id: platformToolCallId(o.toolCallId), args: args ?? {} }, { idemKey: o.idemKey, signal: o.signal }),
     /** 运行准备：模型规格、系统提示词、工具声明、版本；带 message 时还有第一条用户消息。不带 message 是续跑 */
-    prepare: (rc: RunContext, req: { message?: string; max_steps?: number } = {}, signal?: AbortSignal) => call<RunSetup>("POST", "/runs/prepare", rc, req, { signal }),
+    prepare: (rc: RunContext, req: { message?: string; max_steps?: number; page_context?: unknown } = {}, signal?: AbortSignal) => call<RunSetup>("POST", "/runs/prepare", rc, req, { signal }),
     /** 审批预估：工具参数 → 审批内容和预估积分，不落库 */
-    propose: (rc: RunContext, kind: ApprovalKind, args: unknown, signal?: AbortSignal) => call<ApprovalProposal>("POST", "/approvals/propose", rc, { kind, args: args ?? {} }, { signal }),
+    propose: (rc: RunContext, kind: ApprovalKind, args: unknown, signal?: AbortSignal, idemKey?: string) => call<ApprovalProposal>("POST", "/approvals/propose", rc, { kind, args: args ?? {} }, { signal, idemKey }),
     /** 审批解析：用户的决定 → 实际批准了什么（逐项勾选、张数、重新算价、检查预算） */
     resolve: (rc: RunContext, kind: ApprovalKind, payload: unknown, decision: ApprovalDecision, signal?: AbortSignal) =>
       call<ApprovalOutcome>("POST", "/approvals/resolve", rc, { kind, payload, decision }, { signal }),
@@ -296,7 +304,7 @@ export function createPlatform({ baseUrl, serviceToken, fetchImpl = fetch }: Pla
       } catch {
         throw new Error(`审批 id 必须是正整数的十进制字符串，当前是 ${JSON.stringify(approvalId)}`);
       }
-      return call<ApprovalExecution>("POST", "/approvals/execute", rc, { kind, approval_id: approvalId, tool_call_id: platformToolCallId(toolCallId), outcome }, { signal });
+      return call<ApprovalExecution>("POST", "/approvals/execute", rc, { kind, approval_id: approvalId, tool_call_id: platformToolCallId(toolCallId), outcome }, { signal, longWait: kind === "admin_test_run" });
     },
     /** 运行的用量；带 callId（模型调用的 id，十进制字符串）时一并给出这次调用的结算情况 */
     usage: (rc: RunContext, callId?: string, signal?: AbortSignal) =>

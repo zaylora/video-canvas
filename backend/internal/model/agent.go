@@ -9,6 +9,7 @@ import (
 
 // 任务模式：决定追加的系统提示词、默认挂载的技能和可用工具子集（见 docs/design/画布Agent助手设计）。
 const (
+	AgentModeAdmin      = "admin"      // 后台配置助手
 	AgentModeAll        = "all"        // 全能创作
 	AgentModeScript     = "script"     // 剧本创编
 	AgentModeStoryboard = "storyboard" // 分镜搭建
@@ -19,7 +20,7 @@ const (
 // ValidAgentMode 判断是不是认识的任务模式。
 func ValidAgentMode(m string) bool {
 	switch m {
-	case AgentModeAll, AgentModeScript, AgentModeStoryboard, AgentModePrompt, AgentModeDrama:
+	case AgentModeAll, AgentModeScript, AgentModeStoryboard, AgentModePrompt, AgentModeDrama, AgentModeAdmin:
 		return true
 	}
 	return false

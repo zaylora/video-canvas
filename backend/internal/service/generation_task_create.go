@@ -207,6 +207,12 @@ func taskItems(nodes []string, tasks []*model.GenerationTask, errs []error) *mod
 // SubmitTest 创建运营试跑任务（管理端 test-run 用）：is_test=true，不冻结也不扣积分，
 // 不校验并发上限，状态变化也不推送给普通用户。快照由调用者传入，这样可以用未发布的草稿配置试跑。
 func (s *GenerationTaskService) SubmitTest(ctx context.Context, userID uint64, snap *provider.Snapshot, input map[string]any) (*model.GenerationTaskView, error) {
+	key, _ := ctx.Value(testRunKey{}).(string)
+	if existing, err := s.findIdempotent(ctx, s.repo, userID, key); err != nil {
+		return nil, err
+	} else if existing != nil {
+		return taskView(existing), nil
+	}
 	// 1. 快照必须有效
 	if snap == nil {
 		return nil, errcode.ErrInvalidParams.WithMsg("缺少试跑配置")
@@ -218,21 +224,32 @@ func (s *GenerationTaskService) SubmitTest(ctx context.Context, userID uint64, s
 		return nil, err
 	}
 
-	// 3. 插入任务并入队（同一个事务）：credits 记 0（不参与积分与对账），没有幂等键
+	// 3. 插入任务并入队（同一个事务）：credits 记 0；助手审批使用幂等键，普通试跑仍不去重。
 	queueWait, err := s.queueMaxWait(ctx)
 	if err != nil {
 		return nil, err
 	}
-	task := &model.GenerationTask{UserID: userID, IsTest: true}
+	task := &model.GenerationTask{UserID: userID, IsTest: true, IdempotencyKey: key}
 	if err := s.fillTask(task, snap, normalized, queueWait); err != nil {
 		return nil, err
 	}
 	err = s.repo.WithTx(ctx, func(tx repository.GenerationTaskTx) error {
-		if _, err := tx.InsertTask(ctx, task); err != nil {
+		if inserted, err := tx.InsertTask(ctx, task); err != nil {
 			return err
+		} else if !inserted {
+			return errIdempotentConflict
 		}
 		return tx.EnqueueTask(ctx, task)
 	})
+	if errors.Is(err, errIdempotentConflict) {
+		existing, findErr := s.findIdempotent(ctx, s.repo, userID, key)
+		if findErr != nil {
+			return nil, findErr
+		}
+		if existing != nil {
+			return taskView(existing), nil
+		}
+	}
 	if err != nil {
 		return nil, err
 	}

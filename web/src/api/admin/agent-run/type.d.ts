@@ -86,6 +86,8 @@ export interface AgentRunListQuery {
   feedback?: AgentRunFeedbackFilter;
   /** 只要被撤销过的；只能传 true，不筛选就不传 */
   undone?: true;
+  /** 场景：canvas（缺省，排除后台助手的运行）或 admin（只看后台助手）；缺省不传 */
+  scene?: "canvas" | "admin";
   /** Harness 版本 */
   harness_key?: string;
   /** 系统提示词版本 */

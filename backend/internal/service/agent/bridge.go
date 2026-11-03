@@ -66,6 +66,7 @@ type ModelStreamer interface {
 
 // BridgeDeps 是创建 AgentBridge 需要的依赖。
 type BridgeDeps struct {
+	Admin            *AdminAssistantService  // 后台配置助手，仅 admin 模式使用
 	Repo             AgentRepo               // 运行、会话的数据访问
 	Canvas           *AgentCanvasService     // 读写画布
 	Agent            *AgentService           // 审批规则、画布和消息引用的校验

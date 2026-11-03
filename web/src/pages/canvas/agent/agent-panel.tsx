@@ -17,6 +17,7 @@ import {
 } from "motion/react";
 
 import type { AgentModelDto } from "@/api/agent/type";
+import { ASSISTANT_NAME } from "@/constants/agent";
 import type { AgentController } from "@/hooks/use-agent-controller";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { DURATION, EASE_OUT, SPRING } from "@/lib/motion";
@@ -25,7 +26,8 @@ import { DOCK_WIDTH, useAgentSettings } from "@/store/agent-settings";
 import { useAgentAttachments } from "@/hooks/use-agent-attachments";
 import { toAttachmentsPayload } from "@/utils/agent/attachments";
 
-import { AgentComposer } from "./agent-composer";
+import { AgentComposer, type ComposerFeatures } from "./agent-composer";
+import type { ContextRef } from "./context-chips";
 import type { RefNode } from "@/utils/agent/selection-refs";
 
 import type { AgentEditorHandle, NodeOption } from "./agent-editor";
@@ -73,8 +75,13 @@ export function AgentPanel({
   refNodes,
   onClose,
   variant = "floating",
-  label = "画布 Agent",
+  label = ASSISTANT_NAME,
   emptyCopy,
+  features,
+  placeholder,
+  contextRefs,
+  onRemoveContextRef,
+  closeShortcut,
 }: {
   ctl: AgentController;
   models: AgentModelDto[];
@@ -95,6 +102,15 @@ export function AgentPanel({
   label?: string;
   /** 空会话的文案，默认是画布 Agent 的 */
   emptyCopy?: AgentEmptyCopy;
+  /** 输入区的画布能力开关（附件、@ 节点、插入模型、技能），缺省全开；后台助手全部关掉 */
+  features?: ComposerFeatures;
+  /** 输入框占位文字，缺省是画布 Agent 的 */
+  placeholder?: string;
+  /** 页面上下文引用（后台助手）：显示在输入框里，可移除；缺省没有 */
+  contextRefs?: readonly ContextRef[];
+  onRemoveContextRef?: (id: string) => void;
+  /** 「收起」按钮提示里的快捷键，缺省是画布的 ⌘/ */
+  closeShortcut?: string;
 }) {
   const mobile = useIsMobile();
   const reduce = useReducedMotion();
@@ -204,6 +220,7 @@ export function AgentPanel({
         scrolled={!empty && !loading && scrolled}
         onToggleDock={() => useAgentSettings.getState().patch({ docked: !docked })}
         onClose={onClose}
+        closeShortcut={closeShortcut}
         onDragStart={mobile || docked || embedded ? undefined : (e) => controls.start(e)}
       />
       {/* 后台等待生成的监听条：头部下方，审批和输入时都看得到；没有进行中的批时不出现 */}
@@ -276,6 +293,10 @@ export function AgentPanel({
             nodes={nodes}
             attachments={attachments}
             vision={vision}
+            features={features}
+            placeholder={placeholder}
+            contextRefs={contextRefs}
+            onRemoveContextRef={onRemoveContextRef}
           />
         </div>
       </motion.div>

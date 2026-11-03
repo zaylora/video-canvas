@@ -137,6 +137,12 @@ services:
       AGENT_BRIDGE_URL: http://backend:47001
       AGENT_ID_KEY: ${AGENT_ID_KEY:-id_key}
       AGENT_RESUME_WINDOW_SECONDS: ${AGENT_RESUME_WINDOW_SECONDS:-300}
+      # 可选搜索凭据只交给 Agent 的联网 MCP，不经过 Go
+      EXA_API_KEY: ${EXA_API_KEY:-}
+      BRAVE_API_KEY: ${BRAVE_API_KEY:-}
+      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
+      FIRECRAWL_API_KEY: ${FIRECRAWL_API_KEY:-}
+      SEARXNG_BASE_URL: ${APP_AGENT_SEARXNG_URL:-}
       NODE_OPTIONS: --max-old-space-size=1536
     mem_limit: ${AGENT_MEM_LIMIT:-2g}
     volumes:

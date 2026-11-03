@@ -24,6 +24,13 @@ type aiResolvedChannel struct {
 	settings map[string]any
 }
 
+// CheckEnable 对助手候选正文执行与启用、保存已启用模型一致的检查，不落库。
+func (s *AIConfigService) CheckEnable(ctx context.Context, key string, body []byte) error {
+	// 1. 复用启用规则，确保审批阶段能完整显示渠道、协议和凭证问题。
+	_, err := s.checkEnableable(ctx, key, body)
+	return err
+}
+
 // SetModelEnabled 启用 / 停用模型，启用后用户才能使用。启用前按 checkEnableable 检查已保存的配置，不通过不能启用；停用立即生效，进行中的任务不受影响。
 func (s *AIConfigService) SetModelEnabled(ctx context.Context, key string, enabled bool, adminID uint64) error {
 	// 1. 模型必须存在
@@ -74,6 +81,9 @@ func (s *AIConfigService) checkEnableable(ctx context.Context, key string, body 
 	}
 	if len(issues) > 0 || cfg == nil {
 		return repository.ConfigPointer{}, errcode.ErrConfigInvalid.WithMsg("配置校验未通过：" + aiFormatIssues(issues))
+	}
+	if cfg.Pricing.Pending {
+		return repository.ConfigPointer{}, errcode.ErrConfigInvalid.WithMsg("模型售价待确认，仅可管理员试跑；完成定价后才能启用")
 	}
 	// 2. 渠道与协议可用：否则启用后模型也不会出现在清单里
 	rc, err := s.resolveChannel(ctx, cfg)

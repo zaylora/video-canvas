@@ -97,6 +97,13 @@ describe("筛选 → 查询参数", () => {
     expect(runListQuery(DEFAULT_RUN_FILTERS, NOW)).toEqual({});
   });
 
+  test("场景：画布是接口的缺省不带参数；后台助手带 scene=admin，并算作有筛选在生效", () => {
+    expect(DEFAULT_RUN_FILTERS.scene).toBe("canvas");
+    expect(runListQuery(filters({ scene: "canvas" }), NOW).scene).toBeUndefined();
+    expect(runListQuery(filters({ scene: "admin" }), NOW).scene).toBe("admin");
+    expect(hasActiveRunFilters(filters({ scene: "admin" }))).toBe(true);
+  });
+
   test("时间预设：近 7 天、近 30 天按当前时间往回推；全部不带 since", () => {
     expect(runListQuery(filters({ range: "7d" }), NOW).since).toBe("2026-10-15T10:30:00.000Z");
     expect(runListQuery(filters({ range: "30d" }), NOW).since).toBe("2026-09-22T10:30:00.000Z");

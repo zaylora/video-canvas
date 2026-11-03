@@ -28,6 +28,7 @@ import (
 	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/pkg/videoframe"
 	"video-canvas/internal/pkg/ws"
+	"video-canvas/internal/provider/fx"
 	"video-canvas/internal/provider/plugin"
 	"video-canvas/internal/provider/pluginrunner"
 	"video-canvas/internal/provider/queue"
@@ -42,6 +43,7 @@ import (
 )
 
 type App struct {
+	fx     *fx.Service
 	cfg    *config.Config
 	db     *gorm.DB
 	rdb    *redis.Client
@@ -78,6 +80,8 @@ func NewApp(cfg *config.Config) (*App, error) {
 	// 发信与主机校验都经 netguard，拒绝内网 / 回环 / 链路本地
 	auditRepo := repository.NewAdminAuditRepository(db)
 	settingsSvc := service.NewSettingsService(repository.NewSystemSettingRepository(db), auditRepo)
+	pricingRepo := repository.NewSystemSettingRepository(db)
+	pricingSvc := service.NewPricingSettingsService(pricingRepo, nil)
 	smtpSvc := service.NewSMTPService(repository.NewSMTPSettingRepository(db), mailer.NewSMTPSender(nil), auditRepo, cfg.AI.SecretKey, service.NewNetguardHostChecker())
 	userSvc := service.NewUserService(service.UserDeps{
 		Repo: userRepo, Cache: userCache, Codes: cache.NewRegisterCodeStore(rdb), Policy: settingsSvc, Mail: smtpSvc,
@@ -209,7 +213,12 @@ func NewApp(cfg *config.Config) (*App, error) {
 	} else if n > 0 {
 		logger.Warn("Go 库里有旧的 Agent 运行还停在进行中，已标为中断", zap.Int64("runs", n))
 	}
-	agentRT, err := newAgentRuntime(cfg, agentDeps{tasks: taskSvc, assets: assetSvc, assetLinks: assetSvc, frames: newVideoFrames(), frameStore: assetFrameStore{assetSvc}, repo: agentRepo, agent: agentSvc, canvas: agentCanvasSvc, registry: aiCfgSvc, secrets: aiCfgSvc, skills: skillSvc, drama: dramaSvc, segments: dramaSegments, toolCalls: observeRepo, modelRequests: observeRepo, ipAllowed: outboundIPPolicy(cfg), broadcaster: hub})
+	// 插件与渠道管理同助手共用服务；审批写入复用原有预检、校验与版本分配。
+	aiPluginSvc := service.NewAIPluginService(aiPluginRepo, aiCfgSvc, aiChannelRepo, plugin.NewPrechecker(runnerClient), aiCfgSvc)
+	aiChannelSvc := service.NewAIChannelService(aiChannelRepo, aiCfgSvc, aiCfgSvc, executor, aiChannelRepo, aiCfgSvc)
+	adminAuditRepo := repository.NewAdminAssistantRepository(db)
+	adminAssistant := agentsvc.NewAdminAssistantService(agentsvc.AdminAssistantDeps{Models: aiConfigRepo, Writer: aiCfgSvc, Users: userRepo, Channels: aiChannelRepo, Settings: pricingSvc, Audit: adminAuditRepo, History: adminAuditRepo, Plugins: aiPluginRepo, PluginWriter: aiPluginSvc, ChannelWriter: aiChannelSvc, Checker: plugin.NewDraftChecker(runnerClient), Trials: aiCfgSvc, Attempts: adminAuditRepo})
+	agentRT, err := newAgentRuntime(cfg, agentDeps{admin: adminAssistant, tasks: taskSvc, assets: assetSvc, assetLinks: assetSvc, frames: newVideoFrames(), frameStore: assetFrameStore{assetSvc}, repo: agentRepo, agent: agentSvc, canvas: agentCanvasSvc, registry: aiCfgSvc, secrets: aiCfgSvc, skills: skillSvc, drama: dramaSvc, segments: dramaSegments, toolCalls: observeRepo, modelRequests: observeRepo, ipAllowed: outboundIPPolicy(cfg), broadcaster: hub})
 	if err != nil {
 		stopRunner(runnerStop)
 		closeRedis(rdb)
@@ -218,8 +227,6 @@ func NewApp(cfg *config.Config) (*App, error) {
 	}
 
 	// 插件与渠道管理：aiChannelRepo 同时负责审计日志；变更后经 aiCfgSvc 刷新 Registry
-	aiPluginSvc := service.NewAIPluginService(aiPluginRepo, aiCfgSvc, aiChannelRepo, plugin.NewPrechecker(runnerClient), aiCfgSvc)
-	aiChannelSvc := service.NewAIChannelService(aiChannelRepo, aiCfgSvc, aiCfgSvc, executor, aiChannelRepo, aiCfgSvc)
 	// 内置插件按 key + version 登记（在 runner 就绪之后）；失败只记日志，不阻止启动
 	regCtx, regCancel := context.WithTimeout(context.Background(), time.Minute)
 	registerBuiltinPlugins(regCtx, aiPluginSvc)
@@ -285,14 +292,18 @@ func NewApp(cfg *config.Config) (*App, error) {
 		closeDB(db)
 		return nil, err
 	}
+	if agentProxy != nil {
+		agentProxy.WithRoleLookup(roleLookup)
+	}
 	engineHTTP := router.New(cfg.Server.Mode, cfg.JWT.Secret, router.Handlers{
-		AgentProxy:    agentProxy,
-		Health:        handler.NewHealthHandler(db, rdb),
-		User:          handler.NewUserHandler(userSvc),
-		Me:            handler.NewMeHandler(meSvc),
-		CanvasProject: handler.NewCanvasProjectHandler(canvasProjectSvc),
-		Drama:         handler.NewDramaHandler(dramaSvc),
-		DramaSegment:  handler.NewDramaSegmentHandler(dramaSegments),
+		PricingSettings: handler.NewPricingSettingsHandler(pricingSvc),
+		AgentProxy:      agentProxy,
+		Health:          handler.NewHealthHandler(db, rdb),
+		User:            handler.NewUserHandler(userSvc),
+		Me:              handler.NewMeHandler(meSvc),
+		CanvasProject:   handler.NewCanvasProjectHandler(canvasProjectSvc),
+		Drama:           handler.NewDramaHandler(dramaSvc),
+		DramaSegment:    handler.NewDramaSegmentHandler(dramaSegments),
 		CanvasTransfer: handler.NewCanvasTransferHandler(service.NewCanvasTransferService(service.CanvasTransferDeps{
 			Canvases: canvasProjectRepo, Assets: assetSvc,
 			Tx: repository.NewCanvasTransferRepository(db), AppVersion: version.Version,
@@ -354,6 +365,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 	})
 
 	return &App{
+		fx:         fx.New(pricingRepo, outboundIPPolicy(cfg)),
 		cfg:        cfg,
 		db:         db,
 		rdb:        rdb,
@@ -475,6 +487,16 @@ func (p cmdProcess) Kill() error {
 // Run 启动 HTTP 服务，ctx 取消（收到退出信号）后优雅关闭并释放资源。
 func (a *App) Run(ctx context.Context) error {
 	defer a.close()
+	// 与现有清理和同步任务共用可取消 ticker 的生命周期，不依赖生成 worker 是否启用。
+	fxCtx, fxCancel := context.WithCancel(context.Background())
+	fxDone := make(chan struct{})
+	go func() {
+		defer close(fxDone)
+		if a.fx != nil {
+			a.fx.Run(fxCtx)
+		}
+	}()
+	defer func() { fxCancel(); <-fxDone }()
 
 	// 生成任务队列：状态全在 DB 里，重启后自然接着处理（对账会把没有 job 的任务补上）；退出时先停 HTTP 再等在途任务处理完，最后才关库
 	queueCtx, queueCancel := context.WithCancel(context.Background())

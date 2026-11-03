@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { getRegisterSettings, getSmtpSettings } from "@/api/admin/settings";
-import type { RegisterSettings, SmtpSettings } from "@/api/admin/settings/type.d";
+import { getPricingSettings, getRegisterSettings, getSmtpSettings } from "@/api/admin/settings";
+import type {
+  PricingSettingsView,
+  RegisterSettings,
+  SmtpSettings,
+} from "@/api/admin/settings/type.d";
 
 import { useAliveRef, type LoadStatus } from "../use-admin";
 
@@ -39,3 +43,6 @@ export const useRegisterSettings = () => useSettings<RegisterSettings>(getRegist
 
 /** SMTP 设置（密码永不返回） */
 export const useSmtpSettings = () => useSettings<SmtpSettings>(getSmtpSettings);
+
+/** 定价设置（积分换算、默认加价率、汇率覆盖与当前汇率） */
+export const usePricingSettings = () => useSettings<PricingSettingsView>(getPricingSettings);

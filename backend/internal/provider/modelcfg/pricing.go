@@ -24,6 +24,7 @@ const DurationParam = "duration"
 
 // Pricing 是模型定价。
 type Pricing struct {
+	Pending   bool        `json:"pending,omitempty"`    // 售价待确认，只允许未启用的测试草稿
 	Billing   string      `json:"billing"`              // per_call / per_second / token
 	Unit      int         `json:"unit,omitempty"`       // per_call：积分 / 次
 	PerSecond int         `json:"per_second,omitempty"` // per_second：积分 / 秒

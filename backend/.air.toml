@@ -2,10 +2,14 @@ root = "."
 tmp_dir = "tmp"
 
 [build]
-cmd = "go build -o ./tmp/server ./cmd/server"
-bin = "./tmp/server"
+# 二进制留在容器文件系统，避免跨文件系统复制时覆盖 Windows 挂载目录内正在运行的文件（text file busy）。
+cmd = "go build -o /tmp/video-canvas-dev-server ./cmd/server"
+bin = "/tmp/video-canvas-dev-server"
 args_bin = ["-c", "configs/config.yaml"]
 delay = 1000
+# Windows / Docker 挂载目录可能不发送文件事件，轮询确保源码与嵌入提示词变更能生效。
+poll = true
+poll_interval = 1000
 exclude_dir = ["tmp", "bin", "data", "logs", "internal/tests", "docs"]
 exclude_file = []
 exclude_regex = ["_test.go"]

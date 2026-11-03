@@ -14,7 +14,7 @@ import { Notice } from "@/components/admin-ui/notice";
 import { Segmented, SegmentedItem } from "@/components/admin-ui/segmented";
 import { Tag } from "@/components/admin-ui/tag";
 import { Switch } from "@/components/ui/switch";
-import { readModelPricing, withModelField } from "@/utils/admin/model-body";
+import { patchPricing, readModelPricing, withModelField } from "@/utils/admin/model-body";
 import { defaultPricing } from "@/utils/admin/model-template";
 import { costValue, fallbackUnit } from "@/utils/admin/price-cost";
 
@@ -68,7 +68,7 @@ export function ModelPriceForm({
   const dims = tierDimensions(caps);
   const cost = pricing.cost;
   const setPricing = (next: Pricing) => onChange((body) => withModelField(body, "pricing", next));
-  const patch = (partial: Partial<Pricing>) => setPricing({ ...pricing, ...partial });
+  const patch = (partial: Partial<Pricing>) => setPricing(patchPricing(pricing, partial));
   const setTiers = (next: PriceTier[]) => {
     const base = fallbackUnit(next);
     patch({
@@ -253,7 +253,7 @@ export function ModelPriceForm({
                   <PriceInput
                     id="model-price"
                     label="默认价格"
-                    value={defaultUnit(pricing)}
+                    value={pricing.pending ? undefined : defaultUnit(pricing)}
                     unit={UNIT_LABEL[pricing.billing]}
                     invalid={!!issueFor(issues, `pricing.${field}`)}
                     onChange={(value) => patch({ [field]: value })}

@@ -35,6 +35,9 @@ func (b *AgentBridge) ProxyModelPlatform(ctx context.Context, rc RunContext, bod
 	if err := rc.validate(); err != nil {
 		return err
 	}
+	if err := b.requireAdminRun(ctx, rc); err != nil {
+		return err
+	}
 	if rc.ModelKey == "" {
 		return errcode.ErrInvalidParams.WithMsg("运行上下文缺少 model_key")
 	}
@@ -82,7 +85,7 @@ func (b *AgentBridge) ProxyModelPlatform(ctx context.Context, rc RunContext, bod
 		}
 		write(line)
 	})
-	meta := CallMeta{Purpose: firstNonEmpty(ModelPurposeFrom(ctx), "main"), ChannelKey: snap.Channel.Key, UpstreamModel: snap.Model.UpstreamModel, Latency: b.d.Now().Sub(began)}
+	meta := CallMeta{Mode: rc.Mode, Purpose: firstNonEmpty(ModelPurposeFrom(ctx), "main"), ChannelKey: snap.Channel.Key, UpstreamModel: snap.Model.UpstreamModel, Latency: b.d.Now().Sub(began)}
 	if !first {
 		meta.TTFT = firstByte.Sub(began)
 	}

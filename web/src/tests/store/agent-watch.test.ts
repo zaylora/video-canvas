@@ -15,6 +15,7 @@ let served: AgentWatchBatchDto[] = [];
 let canceled: AgentWatchBatchDto[] = [];
 const cancelCalls: string[] = [];
 mock.module("@/api/agent", () => ({
+  listAdminAssistantSessions: async () => [],
   listAgentSessions: async () => [],
   getAgentHistory: async () => ({ events: [], has_more: false }),
   getAgentEvents: async () => [],

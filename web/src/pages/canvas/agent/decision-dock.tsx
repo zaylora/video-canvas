@@ -1,11 +1,22 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
 import { motion } from "motion/react";
-import { ChevronRight, FilePen, MessageCircleQuestion, Sparkles, Trash2 } from "lucide-react";
+import {
+  ChevronRight,
+  ClipboardList,
+  FilePen,
+  MessageCircleQuestion,
+  KeyRound,
+  Play,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
 
 import type {
   AgentApprovalDto,
   AgentAskPayload,
   AgentGeneratePayload,
+  AdminSecretPayload,
+  AdminTestRunPayload,
   DecideAgentApprovalReq,
 } from "@/api/agent/type";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -13,9 +24,22 @@ import type { AgentController } from "@/hooks/use-agent-controller";
 import { SPRING } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { useAgentHighlight } from "@/store/agent-highlight";
+import { useAdminStore } from "@/store/admin";
 import { useCreditsStore } from "@/store/credits";
+import {
+  adminChangePayload,
+  buildApproveDecision,
+  buildRejectDecision,
+  defaultSelection,
+  selectedCount,
+  resolveSelection,
+  roleSatisfies,
+  toggleSelection,
+} from "@/utils/admin/assistant/change-order";
 import { editChanges, editPayload, type EditPayload } from "@/utils/agent/drama";
 
+import { AdminChangeDetail } from "./admin-change-detail";
+import { AdminSecretDetail, AdminTestRunDetail } from "./admin-approval-detail";
 import { approvalTitle, deletePayload } from "./approval-row";
 
 /** 决定框里的一个编号选项 */
@@ -42,6 +66,9 @@ const TONE = {
   delete: "var(--destructive)",
   ask: "var(--status-warning)",
   edit: "var(--status-warning)",
+  admin_change: "var(--status-warning)",
+  admin_secret: "var(--status-warning)",
+  admin_test_run: "var(--status-warning)",
 } as const;
 
 const ICON = {
@@ -49,6 +76,9 @@ const ICON = {
   delete: Trash2,
   ask: MessageCircleQuestion,
   edit: FilePen,
+  admin_change: ClipboardList,
+  admin_secret: KeyRound,
+  admin_test_run: Play,
 } as const;
 
 /** 不认识的审批种类按通用修改卡（edit）处理 */
@@ -135,6 +165,16 @@ export function DecisionDock({
   const ask = approval.kind === "ask" ? (approval.payload as AgentAskPayload) : null;
   const kind = kindOf(approval.kind);
   const edit = kind === "edit" ? editPayload(approval.payload) : null;
+  // 后台助手的变更单：勾选的是条目下标集合（没动过时按默认：能勾选且有实际改动的）
+  const role = useAdminStore((s) => s.role);
+  const admin = kind === "admin_change" ? adminChangePayload(approval) : null;
+  const secret = kind === "admin_secret" ? (approval.payload as AdminSecretPayload) : null;
+  const trial = kind === "admin_test_run" ? (approval.payload as AdminTestRunPayload) : null;
+  const [adminPicked, setAdminPicked] = useState<ReadonlySet<number> | null>(null);
+  const adminSel = admin
+    ? resolveSelection(admin.items, role, adminPicked ?? defaultSelection(admin.items, role))
+    : null;
+  const adminCount = admin && adminSel ? selectedCount(admin.items, role, adminSel) : 0;
   const items = gen?.items.length ?? del?.node_ids.length ?? 0;
   /** 每一项勾没勾 */
   const [picks, setPicks] = useState(() => Array.from({ length: items }, () => true));
@@ -186,6 +226,38 @@ export function DecisionDock({
         input: "比如：只删空的那个文本节点",
         decide: (answer) => ({ decision: "reject", answer }),
       },
+    );
+  } else if (kind === "admin_change") {
+    // 后台助手的变更单：应用勾选的条目，或拒绝（可附上给助手的说明）
+    options.push(
+      {
+        key: "approve",
+        label: `应用 ${adminCount} 项变更`,
+        disabled: !admin || !adminSel || adminCount === 0,
+        decide: () =>
+          admin && adminSel
+            ? buildApproveDecision(admin.items, role, adminSel)
+            : { decision: "reject" },
+      },
+      { key: "reject", label: "拒绝", decide: () => buildRejectDecision("") },
+      {
+        key: "explain",
+        label: "拒绝，并告诉助手怎么改…",
+        input: "比如：只调可灵，别动其他模型",
+        decide: (answer) => buildRejectDecision(answer ?? ""),
+      },
+    );
+  } else if (trial) {
+    const allowed = roleSatisfies(trial.required_role, role);
+    options.push(
+      {
+        key: "approve",
+        label: "同意试跑",
+        disabled: !allowed,
+        note: allowed ? undefined : "需 admin 才能同意试跑",
+        decide: () => ({ decision: "approve" }),
+      },
+      { key: "reject", label: "不试跑", decide: () => ({ decision: "reject" }) },
     );
   } else if (edit) {
     // 短剧助手的修改：批准后才写入；提交任务带积分估价，余额不足时不能批准
@@ -248,8 +320,11 @@ export function DecisionDock({
 
   const submit = async (option: Option, answer?: string) => {
     setBusy(true);
-    await ctl.decide(approval.id, option.decide(answer));
-    setBusy(false);
+    try {
+      await ctl.decide(approval.id, option.decide(answer));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const choose = (i: number) => {
@@ -274,7 +349,7 @@ export function DecisionDock({
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
-    if (editing || (e.target as HTMLElement).closest("input, [role=checkbox]")) return;
+    if (secret || editing || (e.target as HTMLElement).closest("input, [role=checkbox]")) return;
     if (/^[1-9]$/.test(e.key) && Number(e.key) <= options.length) {
       e.preventDefault();
       choose(Number(e.key) - 1);
@@ -285,7 +360,15 @@ export function DecisionDock({
   };
 
   const Icon = ICON[kind];
-  const reason = gen?.reason || del?.reason || edit?.reason || "";
+  const reason =
+    gen?.reason ||
+    del?.reason ||
+    edit?.reason ||
+    admin?.reason ||
+    secret?.reason ||
+    trial?.reason ||
+    "";
+  const isAdmin = kind.startsWith("admin_");
 
   return (
     <div
@@ -293,13 +376,22 @@ export function DecisionDock({
       aria-label={approvalTitle(approval)}
       onKeyDown={onKeyDown}
       style={{ "--tone": TONE[kind] } as CSSProperties}
-      className="relative flex flex-col gap-2 bg-[linear-gradient(180deg,color-mix(in_oklab,var(--tone)_10%,transparent),transparent_72px)] p-3"
+      className={cn(
+        "relative flex flex-col gap-2 p-3",
+        !isAdmin &&
+          "bg-[linear-gradient(180deg,color-mix(in_oklab,var(--tone)_10%,transparent),transparent_72px)]",
+      )}
       onMouseEnter={() => del && useAgentHighlight.getState().setDanger(del.node_ids)}
       onMouseLeave={() => del && useAgentHighlight.getState().setDanger([])}
     >
       <span
         aria-hidden
-        className="absolute inset-x-4 top-0 h-px bg-[linear-gradient(90deg,transparent,color-mix(in_oklab,var(--tone)_70%,transparent),transparent)]"
+        className={cn(
+          "absolute inset-x-4 top-0 h-px",
+          isAdmin
+            ? "bg-chrome-border"
+            : "bg-[linear-gradient(90deg,transparent,color-mix(in_oklab,var(--tone)_70%,transparent),transparent)]",
+        )}
       />
       <div className="flex items-center gap-2 text-[13.5px] font-semibold">
         <Icon className="size-4 shrink-0 text-(--tone)" />
@@ -310,6 +402,25 @@ export function DecisionDock({
       </div>
       {reason && <p className="text-muted-foreground -mt-1 text-[12.5px]">{reason}</p>}
       {edit && (edit.before || edit.after) && <EditDiff edit={edit} />}
+      {secret && (
+        <AdminSecretDetail
+          key={approval.id}
+          payload={secret}
+          approvalId={approval.id}
+          role={role}
+          ctl={ctl}
+        />
+      )}
+      {trial && <AdminTestRunDetail payload={trial} />}
+      {admin && adminSel && (
+        <AdminChangeDetail
+          payload={admin}
+          role={role}
+          picked={adminSel}
+          disabled={busy}
+          onToggle={(index) => setAdminPicked(toggleSelection(adminSel, index, admin.items, role))}
+        />
+      )}
 
       {items > 0 && (
         <>
@@ -364,91 +475,95 @@ export function DecisionDock({
         </>
       )}
 
-      <div role="listbox" aria-label="你的决定" className="flex flex-col">
-        {options.map((option, i) => {
-          const selected = i === active;
-          if (editing && selected && option.input)
-            return (
-              <form
-                key={option.key}
-                className="flex h-9 items-center gap-2.5 rounded-lg px-2.5"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (text.trim()) void submit(option, text.trim());
-                }}
-              >
-                <Num n={i + 1} />
-                <input
-                  ref={input}
-                  value={text}
-                  maxLength={2000}
-                  disabled={busy}
-                  placeholder={option.input}
-                  aria-label={option.label}
-                  onChange={(e) => setText(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key !== "Escape") return;
-                    e.stopPropagation();
-                    setEditing(false);
-                    requestAnimationFrame(() => buttons.current[i]?.focus());
+      {!secret && (
+        <div role="listbox" aria-label="你的决定" className="flex flex-col">
+          {options.map((option, i) => {
+            const selected = i === active;
+            if (editing && selected && option.input)
+              return (
+                <form
+                  key={option.key}
+                  className="flex h-9 items-center gap-2.5 rounded-lg px-2.5"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (text.trim()) void submit(option, text.trim());
                   }}
-                  className="placeholder:text-muted-foreground min-w-0 flex-1 bg-transparent text-[13px] outline-none"
-                />
-              </form>
-            );
-          return (
-            <div key={option.key}>
-              <button
-                ref={(el) => {
-                  buttons.current[i] = el;
-                }}
-                type="button"
-                role="option"
-                aria-selected={selected}
-                disabled={option.disabled || busy}
-                onClick={() => choose(i)}
-                onMouseEnter={() => !option.disabled && setIdx(i)}
-                onFocus={() => setIdx(i)}
-                className={cn(
-                  "relative flex min-h-9 w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] outline-none disabled:opacity-45",
-                  option.danger && "text-destructive",
-                )}
-              >
-                {selected && (
-                  <motion.span
-                    layoutId={`decision-hl-${approval.id}`}
-                    transition={SPRING}
-                    aria-hidden
-                    className="agent-inset bg-foreground/7 absolute inset-0 rounded-lg"
+                >
+                  <Num n={i + 1} />
+                  <input
+                    ref={input}
+                    value={text}
+                    maxLength={2000}
+                    disabled={busy}
+                    placeholder={option.input}
+                    aria-label={option.label}
+                    onChange={(e) => setText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key !== "Escape") return;
+                      e.stopPropagation();
+                      setEditing(false);
+                      requestAnimationFrame(() => buttons.current[i]?.focus());
+                    }}
+                    className="placeholder:text-muted-foreground min-w-0 flex-1 bg-transparent text-[13px] outline-none"
                   />
+                </form>
+              );
+            return (
+              <div key={option.key}>
+                <button
+                  ref={(el) => {
+                    buttons.current[i] = el;
+                  }}
+                  type="button"
+                  role="option"
+                  aria-selected={selected}
+                  disabled={option.disabled || busy}
+                  onClick={() => choose(i)}
+                  onMouseEnter={() => !option.disabled && setIdx(i)}
+                  onFocus={() => setIdx(i)}
+                  className={cn(
+                    "relative flex min-h-9 w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] outline-none disabled:opacity-45",
+                    option.danger && "text-destructive",
+                  )}
+                >
+                  {selected && (
+                    <motion.span
+                      layoutId={`decision-hl-${approval.id}`}
+                      transition={SPRING}
+                      aria-hidden
+                      className="agent-inset bg-foreground/7 absolute inset-0 rounded-lg"
+                    />
+                  )}
+                  <Num n={i + 1} className="relative mt-px" />
+                  <span className="relative min-w-0 leading-5 wrap-anywhere">{option.label}</span>
+                  {option.sub && (
+                    <span className="text-muted-foreground relative min-w-0 text-xs leading-5 wrap-anywhere">
+                      {option.sub}
+                    </span>
+                  )}
+                  {option.meta && (
+                    <span className="text-credit relative ml-auto shrink-0 text-xs leading-5 tabular-nums">
+                      {option.meta}
+                    </span>
+                  )}
+                </button>
+                {option.note && (
+                  <p className="text-destructive -mt-0.5 pr-2.5 pb-1 pl-[38px] text-[11.5px]">
+                    {option.note}
+                  </p>
                 )}
-                <Num n={i + 1} className="relative mt-px" />
-                <span className="relative min-w-0 leading-5 wrap-anywhere">{option.label}</span>
-                {option.sub && (
-                  <span className="text-muted-foreground relative min-w-0 text-xs leading-5 wrap-anywhere">
-                    {option.sub}
-                  </span>
-                )}
-                {option.meta && (
-                  <span className="text-credit relative ml-auto shrink-0 text-xs leading-5 tabular-nums">
-                    {option.meta}
-                  </span>
-                )}
-              </button>
-              {option.note && (
-                <p className="text-destructive -mt-0.5 pr-2.5 pb-1 pl-[38px] text-[11.5px]">
-                  {option.note}
-                </p>
-              )}
-            </div>
-          );
-        })}
-      </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       <div className="text-muted-foreground flex items-center gap-2 pt-0.5 text-[11px]">
-        <span>
-          1–{options.length} 选择 · ↑↓ 移动 · Enter 确认{editing && " · Esc 返回"}
-        </span>
+        {!isAdmin && (
+          <span>
+            1–{options.length} 选择 · ↑↓ 移动 · Enter 确认{editing && " · Esc 返回"}
+          </span>
+        )}
         <button
           type="button"
           onClick={() => void ctl.stop()}

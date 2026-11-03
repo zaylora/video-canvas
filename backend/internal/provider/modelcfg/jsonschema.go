@@ -110,6 +110,7 @@ func priceInt(desc string) obj {
 // pricingSchema 是 pricing 的 Schema。
 func pricingSchema() obj {
 	return object("定价：价格一律是整数积分", obj{
+		"pending":    boolean("售价待确认，仅未启用的测试草稿可用；不要填写占位售价，发布前必须完成定价并移除此标识"),
 		"billing":    enum("计费方式：per_call 按次 / per_second 按秒（乘以时长参数 duration）/ token 按 Token（仅文本）", Billings...),
 		"unit":       priceInt("按次：积分 / 次"),
 		"per_second": priceInt("按秒：积分 / 秒"),

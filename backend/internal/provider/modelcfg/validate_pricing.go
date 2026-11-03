@@ -11,9 +11,12 @@ import (
 const maxPrice = 1_000_000
 
 // validatePricing 校验 pricing，问题的路径以 "pricing" 开头。能力（capabilities）已先校验过。
-func validatePricing(kind string, c *Capabilities, p *Pricing, issues *[]Issue) {
+func validatePricing(kind string, c *Capabilities, p *Pricing, enabled bool, issues *[]Issue) {
 	add := func(path, msg string) {
 		*issues = append(*issues, Issue{Path: joinPath("pricing", path), Message: msg})
+	}
+	if p.Pending {
+		validatePendingPricing(p, enabled, add)
 	}
 	if kind == KindAgent && p.Billing != BillingToken {
 		add("billing", "Agent 模型只能按 Token 计费")
@@ -21,28 +24,14 @@ func validatePricing(kind string, c *Capabilities, p *Pricing, issues *[]Issue) 
 	}
 	switch p.Billing {
 	case BillingPerCall:
-		checkPrice("unit", p.Unit, true, add)
+		checkPrice("unit", p.Unit, !p.Pending, add)
 	case BillingPerSecond:
 		if f, ok := c.Params.Get(DurationParam); !ok || f.Type != ParamNumber {
 			add("billing", "按秒计费需要一个名为 duration 的数字参数（视频时长）")
 		}
-		checkPrice("per_second", p.PerSecond, true, add)
+		checkPrice("per_second", p.PerSecond, !p.Pending, add)
 	case BillingToken:
-		if kind != KindText && kind != KindAgent {
-			add("billing", "只有文本、Agent 模型可以按 Token 计费")
-		}
-		if p.Token == nil {
-			add("token", "按 Token 计费需要设置输入价与输出价")
-		} else {
-			checkPrice("token.in", p.Token.In, false, add)
-			checkPrice("token.out", p.Token.Out, false, add)
-			if p.Token.In == 0 && p.Token.Out == 0 {
-				add("token", "输入价与输出价不能都为 0")
-			}
-		}
-		if len(p.Tiers) > 0 {
-			add("tiers", "按 Token 计费不支持规格价格")
-		}
+		validateTokenPricing(kind, p, add)
 	default:
 		add("billing", oneOfMsg(Billings))
 		return
@@ -54,6 +43,37 @@ func validatePricing(kind string, c *Capabilities, p *Pricing, issues *[]Issue) 
 		}
 	}
 	validateCost(p.Billing, p.Cost, "cost", add)
+}
+
+// validatePendingPricing 未知售价使用明确状态，不能同时夹带占位售价或被启用。
+func validatePendingPricing(p *Pricing, enabled bool, add func(string, string)) {
+	if enabled {
+		add("pending", "售价待确认的草稿不能启用，请先完成定价")
+	}
+	if p.Unit != 0 || p.PerSecond != 0 || p.Token != nil || len(p.Tiers) != 0 {
+		add("pending", "售价待确认时不能填写占位售价或规格价格")
+	}
+}
+
+// validateTokenPricing 按 Token 校验售价；未定价草稿只省略价格，不放宽模型种类约束。
+func validateTokenPricing(kind string, p *Pricing, add func(string, string)) {
+	if kind != KindText && kind != KindAgent {
+		add("billing", "只有文本、Agent 模型可以按 Token 计费")
+	}
+	if p.Token == nil {
+		if !p.Pending {
+			add("token", "按 Token 计费需要设置输入价与输出价")
+		}
+	} else {
+		checkPrice("token.in", p.Token.In, false, add)
+		checkPrice("token.out", p.Token.Out, false, add)
+		if p.Token.In == 0 && p.Token.Out == 0 {
+			add("token", "输入价与输出价不能都为 0")
+		}
+	}
+	if len(p.Tiers) > 0 {
+		add("tiers", "按 Token 计费不支持规格价格")
+	}
 }
 
 // checkPrice 价格必须是 0 – maxPrice 的整数；positive 为 true 时必须大于 0（发布前当前计费方式下的默认价）。

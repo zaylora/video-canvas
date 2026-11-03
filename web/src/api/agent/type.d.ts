@@ -1,7 +1,10 @@
 import type { GraphChange } from "@/utils/canvas/graph-changes";
 
-/** 任务模式：全能创作 / 剧本创编 / 分镜搭建 / 提示词优化 / 短剧助手（只有短剧画布能建，契约 §15） */
-export type AgentMode = "all" | "script" | "storyboard" | "prompt" | "drama";
+/**
+ * 任务模式：全能创作 / 剧本创编 / 分镜搭建 / 提示词优化 / 短剧助手（只有短剧画布能建，契约 §15）/
+ * 后台助手（admin，不绑画布，只有管理员能建，契约见 docs/design/后台Agent助手/一期接口契约.md）
+ */
+export type AgentMode = "all" | "script" | "storyboard" | "prompt" | "drama" | "admin";
 
 /** 运行状态 */
 export type AgentRunStatus =
@@ -102,7 +105,21 @@ export interface AgentRunDto {
  * 审批种类：生成 / 删除 / 提问；短剧助手的写工具（改大纲、改剧本、改片段、提交任务）走 edit，
  * 前端对任何不认识的种类都按 edit 的通用修改卡展示（读 payload 的 title / reason / before / after）
  */
-export type AgentApprovalKind = "generate" | "delete" | "ask" | "edit";
+export type AgentApprovalKind =
+  /** 生成节点 */
+  | "generate"
+  /** 删除节点 */
+  | "delete"
+  /** 提问 */
+  | "ask"
+  /** 修改短剧 */
+  | "edit"
+  /** 后台配置变更 */
+  | "admin_change"
+  /** 安全填写渠道密钥 */
+  | "admin_secret"
+  /** 真实试跑授权 */
+  | "admin_test_run";
 
 /** 审批状态 */
 export type AgentApprovalStatus =
@@ -180,6 +197,264 @@ export interface AgentEditPayload {
   after?: string;
 }
 
+/** 变更单里一条字段级差异 */
+export interface AdminChangeDiff {
+  /** 字段路径，如 "pricing.per_second"、"pricing.tiers[1].unit"、"default_markup_pct" */
+  path: string;
+  /** 改前的值（JSON），null 表示原来没有 */
+  before: unknown;
+  /** 改后的值（JSON），null 表示删除 */
+  after: unknown;
+}
+
+/** 价格的计算依据：mode = cost 是上游成本加价，relative 是相对调价 */
+export interface AdminPricingBasis {
+  /** 对应 diff 里售价那一条的 path */
+  path: string;
+  /** 计算方式 */
+  mode: "cost" | "relative";
+  /** 上游报价（mode = cost） */
+  upstream?: {
+    amount: number;
+    currency: "USD" | "CNY";
+    unit: string;
+    source_url: string;
+    note?: string;
+  };
+  /** 汇率（mode = cost，上游是美元时） */
+  fx?: { rate: number; date: string | null; source: "live" | "override"; stale: boolean };
+  /** 1 元折合的积分（mode = cost） */
+  credits_per_yuan?: number;
+  /** 换算后的人民币，4 位小数（mode = cost） */
+  yuan?: number;
+  /** 成本积分 ⌈yuan × credits_per_yuan⌉（mode = cost） */
+  cost?: number;
+  /** 加价率（mode = cost） */
+  markup_pct?: number;
+  /** 调价前的售价（mode = relative） */
+  from?: number;
+  /** 涨跌百分比，可为负数（mode = relative） */
+  pct?: number;
+  /** 最终售价（整数积分） */
+  price: number;
+}
+
+/** 插件变更的展示摘要，代码草稿只随审批 payload 保存 */
+export interface PluginDetail {
+  /** 插件 key */
+  plugin_key: string;
+  /** 当前版本，新插件为 null */
+  version_before: string | null;
+  /** 预计新版本，最终以执行结果为准 */
+  version_after: string;
+  /** 插件元信息的一行摘要 */
+  meta: {
+    /** 名称 */
+    name: string;
+    /** 厂商 */
+    vendor?: string;
+    /** 鉴权方式 */
+    auth: string;
+    /** 端点摘要 */
+    endpoints: string;
+  };
+  /** 代码行数 */
+  code_lines: number;
+  /** unified diff，新插件为空串 */
+  code_diff: string;
+  /** 最近一次静态验证结论 */
+  check: {
+    /** 是否通过 */
+    ok: boolean;
+    /** 渲染出的请求，不含鉴权信息 */
+    request?: {
+      /** HTTP 方法 */
+      method: string;
+      /** 请求地址 */
+      url: string;
+    };
+    /** 验证问题 */
+    issues: string[];
+  };
+}
+
+/** 新建渠道的展示摘要，不包含密钥或请求头值 */
+export interface ChannelDetail {
+  /** 基础地址 */
+  base_url: string;
+  /** 请求头名字 */
+  headers: string[];
+  /** 限流设置 */
+  rate_limit?: {
+    /** 每秒请求数 */
+    rps?: number;
+    /** 并发数 */
+    concurrency?: number;
+  };
+  /** 密钥状态 */
+  secret: "configured" | "missing";
+}
+
+/** 新建模型的展示摘要，新建后默认禁用 */
+export interface ModelCreateDetail {
+  /** 模型种类 */
+  kind: string;
+  /** 渠道 key */
+  channel: string;
+  /** 上游模型名 */
+  upstream_model: string;
+  /** plugin_key@version，版本可为 latest */
+  plugin: string;
+}
+
+/** 变更单里的一项 */
+export interface AdminChangeItem {
+  /** 改动对象 */
+  target:
+    /** 修改模型 */
+    | "model"
+    /** 定价设置 */
+    | "pricing_settings"
+    /** 上传插件 */
+    | "plugin"
+    /** 新建渠道 */
+    | "channel"
+    /** 新建模型 */
+    | "model_create";
+  /** 模型 key；定价设置固定为 "pricing" */
+  key: string;
+  /** 展示名 */
+  label: string;
+  /** 目标当前已上线：应用即生效 */
+  live: boolean;
+  /** ok 可应用；invalid 校验不通过；stale 提案后配置已变；mismatch 价格复算和助手给的不一致 */
+  status: "ok" | "invalid" | "stale" | "mismatch";
+  /** status 不是 ok 时的原因，中文 */
+  issues: string[];
+  /** 不阻止应用的提醒 */
+  warnings: string[];
+  /** 确认这一项需要的角色 */
+  required_role: "admin" | "super_admin";
+  /** 字段级差异，至少一条 */
+  diff: AdminChangeDiff[];
+  /** 价格计算依据，不涉及价格时为空数组 */
+  basis: AdminPricingBasis[];
+  /** 同单内依赖的条目下标，依赖未应用则跳过 */
+  depends_on?: number[];
+  /** 按 target 展示的新建摘要 */
+  detail?: PluginDetail | ChannelDetail | ModelCreateDetail;
+}
+
+/** 变更单审批的内容（approval.kind = admin_change） */
+export interface AdminChangePayload {
+  /** 展示用的变更单号，如 CO-251102-7F3A */
+  order_no: string;
+  /** 一句话标题 */
+  title: string;
+  /** 为什么改 */
+  reason: string;
+  /** 回滚单：被回滚的变更单号 */
+  revert_of?: string;
+  /** 变更项，至少一项；决定时用下标指代 */
+  items: AdminChangeItem[];
+}
+
+/** 变更单里一项的执行结果 */
+export interface AdminChangeItemResult {
+  /** 条目下标 */
+  index: number;
+  /** 已应用 / 失败 / 跳过 / 被拒绝 */
+  status: "applied" | "failed" | "skipped" | "rejected";
+  /** failed、skipped 的原因 */
+  message?: string;
+  /** 实际创建出的版本号或 key */
+  created?: {
+    /** 插件最终版本 */
+    plugin_version?: string;
+    /** 渠道 key */
+    channel_key?: string;
+    /** 模型 key */
+    model_key?: string;
+  };
+}
+
+/** 安全填写渠道密钥的审批内容，绝不含密钥明文 */
+export interface AdminSecretPayload {
+  /** 渠道 key */
+  channel_key: string;
+  /** 渠道展示名 */
+  channel_label: string;
+  /** 渠道是否已经创建 */
+  exists: boolean;
+  /** 当前是否已经配置密钥 */
+  secret_configured: boolean;
+  /** 请求配置密钥的原因 */
+  reason: string;
+  /** 保存密钥需要超级管理员 */
+  required_role: "super_admin";
+}
+
+/** 密钥审批结果，只含配置状态 */
+export interface AdminSecretResult {
+  /** 是否已配置密钥 */
+  configured: boolean;
+}
+
+/** 真实试跑的审批内容，预估费用仅作示意 */
+export interface AdminTestRunPayload {
+  /** 模型 key */
+  model_key: string;
+  /** 模型展示名 */
+  model_label: string;
+  /** 输入的一行摘要 */
+  input_summary: string;
+  /** 按上游成本估算的费用 */
+  estimate: {
+    /** 成本积分，未配 cost 为 null */
+    credits: number | null;
+    /** 人民币金额，无法换算为 null */
+    yuan: number | null;
+  };
+  /** 本运行内第几次试跑，从 1 起 */
+  attempt: number;
+  /** 剩余试跑次数，上限共 3 次 */
+  attempts_left: number;
+  /** 试跑原因 */
+  reason: string;
+  /** 需要管理员权限 */
+  required_role: "admin";
+}
+
+/** 真实试跑结果，尚未结束时 result 为 null */
+export interface AdminTestRunResult {
+  /** 试跑任务 ID */
+  test_run_id: string;
+  /** 成功、失败或超时 */
+  status: "succeeded" | "failed" | "timeout";
+  /** 失败原因 */
+  error?: string;
+  /** 首个产物地址 */
+  output_url?: string;
+  /** 可选扩展：耗时，毫秒；契约尚未定义 */
+  duration_ms?: number;
+  /** 可选扩展：错误分类；契约尚未定义 */
+  error_class?: string;
+  /** 可选扩展：trace 地址；契约尚未定义 */
+  trace_url?: string;
+}
+
+/** 变更单的执行结果（审批的 result 字段，执行前为 null） */
+export interface AdminChangeResult {
+  /** 逐项结果 */
+  items: AdminChangeItemResult[];
+  /** 确认人的用户名 */
+  applied_by: string;
+  /** 执行时间，ISO 8601 */
+  applied_at: string;
+  /** 写入的审计记录 id，每个已应用的条目一条 */
+  audit_ids: number[];
+}
+
 /** 审批（后端返回的原始结构，payload 按种类解析前是 JSON） */
 export interface AgentApprovalDto {
   /** 审批 ID */
@@ -191,11 +466,25 @@ export interface AgentApprovalDto {
   /** 审批状态 */
   status: AgentApprovalStatus;
   /** 待决定的内容，形状由 kind 决定：AgentGeneratePayload / AgentDeletePayload / AgentAskPayload */
-  payload: AgentGeneratePayload | AgentDeletePayload | AgentAskPayload | AgentEditPayload;
+  payload:
+    | AgentGeneratePayload
+    | AgentDeletePayload
+    | AgentAskPayload
+    | AgentEditPayload
+    | AdminChangePayload
+    | AdminSecretPayload
+    | AdminTestRunPayload;
   /** 预估积分 */
   quote_credits: number;
   /** 用户的决定，未决定为 null */
   decision: Record<string, unknown> | null;
+  /** 执行结果：admin_change 是 AdminChangeResult；执行前、旧服务没有这个字段，为 null 或缺省 */
+  result?:
+    | AdminChangeResult
+    | AdminSecretResult
+    | AdminTestRunResult
+    | Record<string, unknown>
+    | null;
   /** 过期时间 */
   expires_at: string;
 }
@@ -276,6 +565,26 @@ export interface CanvasPatchDto {
   changes: GraphChange[];
 }
 
+/** 后台助手每次发送带上的页面上下文（只对 admin 会话生效） */
+export interface AdminPageContext {
+  /** 当前后台路由，如 /admin/ai/channels */
+  route: string;
+  /** 当前选中的模型 */
+  model_key?: string;
+  /** 当前选中的渠道 */
+  channel_key?: string;
+  /** 当前选中的插件 */
+  plugin_key?: string;
+}
+
+/** 新建后台助手会话 */
+export interface CreateAdminAssistantSessionReq {
+  /** 标题，不传由服务端命名 */
+  title?: string;
+  /** Agent 模型 key，不传取第一个可用的 */
+  model_key?: string;
+}
+
 /** 新建会话 */
 export interface CreateAgentSessionReq {
   /** 标题，不传默认「新对话」 */
@@ -325,6 +634,8 @@ export interface StartAgentRunReq {
   agent_model_key?: string;
   /** 图片附件，最多 9 张；当前模型不能看图时不能带 */
   attachments?: AgentAttachmentReq[];
+  /** 页面上下文，只对后台助手会话生效，画布会话忽略 */
+  page_context?: AdminPageContext;
 }
 
 /** 对审批里某一项的决定 */

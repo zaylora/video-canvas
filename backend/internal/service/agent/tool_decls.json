@@ -661,5 +661,229 @@
     "name": "drama_run_job",
     "description": "申请运行短剧任务。先估价显示积分并审批，批准后提交，不等待任务结束；同项目同时只能有一个进行中任务（67004）。compose 合成一集采用视频，免费。",
     "parameters": {"type":"object","required":["step","episodes"],"additionalProperties":false,"properties":{"reason":{"type":"string","maxLength":500},"step":{"type":"string","enum":["analyze","outline","scripts","breakdown","asset_prompts","storyboard","compose"]},"episodes":{"type":"array","maxItems":100,"items":{"type":"integer","minimum":1,"maximum":100}},"ratio":{"type":"string","enum":["9:16","16:9","21:9","3:4","4:3","1:1"]},"max_seconds":{"type":"integer","minimum":4,"maximum":60}}}
+  },
+{
+  "name": "admin_list_models",
+  "description": "列出后台模型概要（含未启用），可按 kind 筛选。",
+  "parameters": {
+  "type": "object",
+  "properties": {
+    "kind": {
+      "type": "string"
+    },
+    "enabled": {
+      "type": "boolean"
+    },
+    "channel": {
+      "type": "string"
+    },
+    "q": {
+      "type": "string",
+      "description": "模型 key 或名称关键字"
+    }
   }
+}
+},
+{
+  "name": "admin_get_model",
+  "description": "读模型完整配置、live 和 body_sha256。修改前必须读取，摘要包含实际 enabled 状态。",
+  "parameters": {
+    "type": "object",
+    "required": [
+      "key"
+    ],
+    "properties": {
+      "key": {
+        "type": "string"
+      }
+    }
+  }
+},
+{
+  "name": "admin_list_channels",
+  "description": "读取安全渠道概要，不含请求头或凭证。",
+  "parameters": {
+    "type": "object",
+    "properties": {}
+  }
+},
+{
+  "name": "admin_get_pricing_settings",
+  "description": "读定价设置和 body_sha256（摘要只包含三个可编辑人工字段，不包含实时汇率）。",
+  "parameters": {
+    "type": "object",
+    "properties": {}
+  }
+},
+{
+  "name": "admin_quote_preview",
+  "description": "按给定模型配置与生成输入调用平台 quote.go 预览积分，不落库。input 只需给影响价格的参数（规格、时长、数量），提示词和素材可省略。",
+  "parameters": {
+  "type": "object",
+  "properties": {
+    "key": {
+      "type": "string",
+      "description": "读取已保存配置的模型 key；与 body 二选一"
+    },
+    "body": {
+      "type": "object",
+      "description": "待验证的完整 ModelConfig，不写库"
+    },
+    "input": {
+      "type": "object",
+      "description": "只需给影响价格的参数（规格、时长、数量），提示词和素材可省略；其余按模型能力补全和校验"
+    }
+  }
+}
+},
+{
+  "name": "admin_propose_changes",
+  "description": "申请后台变更，必须等待用户审批后平台才写入。先读后改，每个改动的售价提供 pricing_basis；回滚只传 revert_of。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "title": {
+        "type": "string"
+      },
+      "reason": {
+        "type": "string"
+      },
+      "revert_of": {
+        "type": "string"
+      },
+      "items": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 50,
+        "items": {
+          "type": "object",
+          "required": [
+            "target",
+            "key",
+            "patch"
+          ],
+          "properties": {
+            "target": {
+              "type": "string",
+              "enum": [
+                "model",
+                "pricing_settings",
+                "plugin",
+                "channel",
+                "model_create"
+              ]
+            },
+            "key": {
+              "type": "string"
+            },
+            "base_sha256": {
+              "type": "string"
+            },
+            "patch": {
+              "type": "object",
+              "description": "JSON Merge Patch；model 仅允许 pricing/capabilities/label/hint/tags/enabled。plugin 的 patch={code:源码}，必须先 admin_plugin_check；channel 的 patch={name,base_url,headers?,rate_limit?,enabled?}，不能含密钥；model_create 的 patch=完整 ModelConfig，强制 enabled=false，协议 version 可填 latest。创建目标必须给稳定 key；更新 model/pricing_settings 必须给 base_sha256。"
+            },
+            "depends_on": { "type":"array", "items":{"type":"integer","minimum":0}, "description":"依赖的本单条目下标，必须先应用；可将插件、渠道、模型放在同一单" },
+            "pricing_basis": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "path",
+                  "mode",
+                  "price"
+                ],
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "售价字段路径，推荐点号 + 方括号，如 pricing.per_second、pricing.tiers[0].unit；也接受 JSON Pointer，如 /pricing/per_second、/pricing/tiers/0/unit。平台统一输出点号 + 方括号格式。"
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "cost",
+                      "relative"
+                    ]
+                  },
+                  "upstream": {
+                    "type": "object",
+                    "required": [
+                      "amount",
+                      "currency",
+                      "unit",
+                      "source_url"
+                    ],
+                    "properties": {
+                      "amount": {
+                        "type": "number"
+                      },
+                      "currency": {
+                        "type": "string",
+                        "enum": [
+                          "USD",
+                          "CNY"
+                        ]
+                      },
+                      "unit": {
+                        "type": "string"
+                      },
+                      "source_url": {
+                        "type": "string"
+                      },
+                      "note": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "markup_pct": {
+                    "type": "number"
+                  },
+                  "from": {
+                    "type": "number"
+                  },
+                  "pct": {
+                    "type": "number"
+                  },
+                  "price": {
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+},
+{
+  "name":"admin_list_plugins",
+  "description":"读取现有插件的最新版本、vendor、kind、auth、endpoints、builtin 和 enabled。对接平台先判断已有插件能否复用。",
+  "parameters":{"type":"object","properties":{}}
+},
+{
+  "name":"admin_get_plugin",
+  "description":"读取指定插件版本的 meta 和完整代码，version 缺省为最新；写新插件前先读内置插件作样例。",
+  "parameters":{"type":"object","required":["key"],"properties":{"key":{"type":"string"},"version":{"type":"string"}}}
+},
+{
+  "name":"admin_plugin_check",
+  "description":"对未上传代码在 runner 沙箱预检及执行代表性样例钩子，不发上游网络。ctx_sample.input 的媒体数组可用非空占位值，钩子收到 input:images.0 等宿主引用。返回 ok/meta/issues/request/parsed/logs/coverage/attempt/attempts_left；必须检查 ok 和 coverage，不能删掉用户样例中的图片来绕过失败。仅验证样例，不代表真实生成成功。同运行同 meta.key 最多 3 次，不传真实密钥。",
+  "parameters":{"type":"object","required":["code"],"properties":{"code":{"type":"string","maxLength":524288},"ctx_sample":{"type":"object"},"responses":{"type":"object","properties":{"submit":{"type":"object","required":["status","body"],"properties":{"status":{"type":"integer"},"headers":{"type":"object"},"body":{}}},"query":{"type":"object","required":["status","body"],"properties":{"status":{"type":"integer"},"headers":{"type":"object"},"body":{}}}}}}}
+},
+{
+  "name":"admin_request_secret",
+  "description":"请用户在安全卡片配置渠道 API Key。密钥由前端直接保存，不得在聊天、工具参数或决定文字中填写密钥。需要 super_admin。",
+  "parameters":{"type":"object","required":["channel_key","reason"],"properties":{"channel_key":{"type":"string"},"reason":{"type":"string"}},"additionalProperties":false}
+},
+{
+  "name":"admin_test_run",
+  "description":"申请真实试跑，必须用户点同意才调用上游，不扣管理员积分。同运行同 model_key 最多 3 次；结果含状态和 trace 摘要，十分钟超时保留运行中的任务。",
+  "parameters":{"type":"object","required":["model_key","input","reason"],"properties":{"model_key":{"type":"string"},"input":{"type":"object"},"reason":{"type":"string"}},"additionalProperties":false}
+},
+{
+  "name":"admin_get_recent_errors",
+  "description":"只读查询当前管理员最近失败的生成/试跑请求，按模型、渠道或任务 ID 定位，返回脱敏 HTTP 状态、路径与响应摘要。排查401/403/超时先用它，不发起收费请求。不含其他用户记录；无记录时不能推断密钥无效。",
+  "parameters":{"type":"object","additionalProperties":false,"properties":{"model_key":{"type":"string"},"channel_key":{"type":"string"},"task_id":{"type":"string"},"hours":{"type":"integer","minimum":1,"maximum":168},"limit":{"type":"integer","minimum":1,"maximum":10}}}
+}
 ]

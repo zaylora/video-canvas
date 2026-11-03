@@ -1,6 +1,7 @@
 package agent_test
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,43 @@ import (
 	agenthandler "video-canvas/internal/handler/agent"
 	"video-canvas/internal/middleware"
 )
+
+func TestAgentProxy_AdminRoutesAndRealtimeRole(t *testing.T) {
+	srv, seen := upstreamStub(t, 200, `{"code":0}`)
+	p, err := agenthandler.NewAgentProxy(srv.URL, proxyToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	role := "admin"
+	p.WithRoleLookup(func(_ context.Context, id uint64) (string, error) {
+		calls++
+		if id != 42 {
+			t.Fatal(id)
+		}
+		return role, nil
+	})
+	r := gin.New()
+	r.Use(func(c *gin.Context) { c.Set(middleware.CtxUserIDKey, uint(42)); c.Next() })
+	r.Any("/api/v1/admin/assistant/sessions", p.Forward)
+	r.Any("/api/v1/agent/*rest", p.Forward)
+	for _, path := range []string{"/api/v1/admin/assistant/sessions", "/api/v1/agent/sessions/s/history"} {
+		req := httptest.NewRequest("GET", path, nil)
+		req.Header.Set("X-Agent-Role", "super_admin")
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if seen().header.Get("X-Agent-Role") != role {
+			t.Fatal(seen())
+		}
+		if strings.Contains(path, "assistant") && seen().path != "/admin/sessions" {
+			t.Fatal(seen())
+		}
+		role = "user"
+	}
+	if calls != 2 {
+		t.Fatal(calls)
+	}
+}
 
 const proxyToken = "0123456789abcdef0123456789abcdef"
 

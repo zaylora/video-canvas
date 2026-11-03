@@ -4,6 +4,7 @@ import {
   checkDeadline,
   checkIdleTimeout,
   describeDefaultPrice,
+  patchPricing,
   readModelApiFormat,
   readModelBool,
   readModelChannel,
@@ -28,6 +29,14 @@ const body = {
   params: { b: 1, a: 2 },
   capabilities: { ops: [], refs: {}, prompt: {}, params: { b: {}, a: {} } },
 };
+
+test("未定价草稿显示待定价，设置正式售价后移除待确认标识", () => {
+  const draft = { pricing: { billing: "per_call" as const, pending: true } };
+  expect(describeDefaultPrice(draft.pricing)).toBe("待定价");
+  expect(withDefaultPrice(draft, 5)?.pricing).toEqual({ billing: "per_call", unit: 5 });
+  expect(patchPricing(draft.pricing, { cost: { on: true, unit: 2 } }).pending).toBe(true);
+  expect(draft.pricing.pending).toBe(true);
+});
 
 describe("读取正文字段", () => {
   test("kind 与 channels[0]；缺失返回空串", () => {

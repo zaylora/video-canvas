@@ -94,6 +94,8 @@ export interface PriceCost {
 
 /** 模型定价：价格一律是整数积分 */
 export interface Pricing {
+  /** 售价待确认，仅管理端未启用草稿使用 */
+  pending?: boolean;
   billing: Billing;
   /** 按次：积分 / 次 */
   unit?: number;

@@ -47,6 +47,7 @@ func All() []any {
 		&AgentMutation{},
 		&AgentCanvasRead{},
 		&AgentApproval{},
+		&AgentAdminAttempt{},
 		&AgentModelCall{},
 		&AgentToolCall{},
 		&AgentModelCallBody{},

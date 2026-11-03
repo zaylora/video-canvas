@@ -26,6 +26,9 @@ const historyCalls: number[] = [];
 let failNext = false;
 let gate: Promise<void> | null = null;
 mock.module("@/api/agent", () => ({
+  listAdminAssistantSessions: async () => [],
+  getAgentWatches: async () => [],
+  cancelAgentWatches: async () => [],
   listAgentSessions: async () => [],
   getAgentHistory: async (_sid: string, before: number) => {
     historyCalls.push(before);

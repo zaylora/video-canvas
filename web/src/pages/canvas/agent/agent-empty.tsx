@@ -3,6 +3,7 @@ import { motion } from "motion/react";
 import { ArrowUpRight, Clapperboard, LayoutGrid, Users, type LucideIcon } from "lucide-react";
 
 import { TAP_CARD } from "@/lib/motion";
+import { cn } from "@/lib/utils";
 
 /** 键位提示的小方块 */
 function Key({ children }: { children: string }) {
@@ -13,10 +14,11 @@ function Key({ children }: { children: string }) {
   );
 }
 
-/** 空会话的文案：标题、副标题、起步建议、底部提示。画布 Agent 用默认的，短剧助手传自己的 */
+/** 空会话的文案：标题、副标题、起步建议、底部提示。画布 Agent 用默认的，短剧助手和后台助手传自己的 */
 export type AgentEmptyCopy = {
   title: string;
-  subtitle: string;
+  /** 副标题；不传或 null 不显示（后台助手不放说明文字） */
+  subtitle?: string | null;
   starters: ReadonlyArray<{ icon: LucideIcon; text: string }>;
   /** 底部的键位提示；null 不显示 */
   hint: ReactNode | null;
@@ -56,8 +58,17 @@ export function AgentEmpty({
     <div className="agent-scroll flex min-h-0 flex-1 flex-col px-5 py-5">
       <div className="m-auto flex w-full flex-col items-center gap-1">
         <div aria-hidden className="agent-orb mb-1 size-10 shrink-0 rounded-full" />
-        <p className="text-[15px] font-semibold tracking-[-0.01em]">{copy.title}</p>
-        <p className="text-muted-foreground mb-4 text-center text-xs">{copy.subtitle}</p>
+        <p
+          className={cn(
+            "text-center text-[15px] font-semibold tracking-[-0.01em]",
+            !copy.subtitle && "mb-4",
+          )}
+        >
+          {copy.title}
+        </p>
+        {copy.subtitle && (
+          <p className="text-muted-foreground mb-4 text-center text-xs">{copy.subtitle}</p>
+        )}
         <div className="mb-4 flex w-full flex-col gap-1.5">
           {copy.starters.map(({ icon: Icon, text }) => (
             <motion.button

@@ -122,3 +122,15 @@ func TestEventRelay_BatchSizeLimit(t *testing.T) {
 	}
 	_ = time.Now
 }
+
+func TestEventRelay_AdminWithoutCanvas(t *testing.T) {
+	bc := &relayBroadcaster{}
+	event := goodEvent()
+	event.CanvasID = "0"
+	if err := NewEventRelay(bc).Publish(context.Background(), []RelayEvent{event}); err != nil {
+		t.Fatal(err)
+	}
+	if len(bc.msgs) != 1 {
+		t.Fatal("后台会话仍应推送用户频道")
+	}
+}

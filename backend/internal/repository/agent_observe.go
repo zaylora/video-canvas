@@ -176,6 +176,11 @@ func (r *AgentObserveRepository) GetDigest(ctx context.Context, runID uint64) (*
 // digestFilter 把筛选条件（不含分页）拼到查询上，列表和计数共用，保证总数和列表命中的是同一批。
 func (r *AgentObserveRepository) digestFilter(ctx context.Context, q model.DigestQuery) *gorm.DB {
 	tx := r.db.WithContext(ctx).Model(&model.AgentRunDigest{})
+	if q.Scene == "admin" {
+		tx = tx.Where("mode = ?", model.AgentModeAdmin)
+	} else {
+		tx = tx.Where("mode <> ?", model.AgentModeAdmin)
+	}
 	if !q.Since.IsZero() {
 		tx = tx.Where("created_at >= ?", q.Since)
 	}

@@ -521,6 +521,19 @@ type VersionAdjusted struct {
 	To   string `json:"to"`
 }
 
+// PreviewPluginVersion 复用上传的版本分配规则，仅用于审批展示，不写入数据库。
+func PreviewPluginVersion(declared string, code []byte, existing []model.AIPluginVersion) (string, error) {
+	// 1. 执行时 Upload 会重新分配；并发上传可能使预计值发生变化。
+	d, err := decideVersion(declared, codeSHA256(code), existing)
+	if err != nil {
+		return "", err
+	}
+	if d.reject != "" {
+		return "", errcode.ErrInvalidParams.WithMsg(d.reject)
+	}
+	return d.version, nil
+}
+
 // versionDecision 是一次版本号决定的结果：要么是最终版本号，要么是拒绝的原因。
 type versionDecision struct {
 	version string

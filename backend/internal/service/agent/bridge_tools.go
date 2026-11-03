@@ -29,6 +29,7 @@ const (
 
 // ToolResult 是一次工具调用的结果，Node 里的工具原样转给 pi。
 type ToolResult struct {
+	Data      any         `json:"data,omitempty"`   // 已脱敏的结构化工具结果
 	Content   string      `json:"content"`          // 给模型看的文字
 	IsError   bool        `json:"is_error"`         // 工具没做成，模型会看到并自行处理
 	Images    []ToolImage `json:"images,omitempty"` // 随结果交给模型看的图片（看图工具）
@@ -56,10 +57,12 @@ func fail(format string, a ...any) error { return &toolFailure{msg: fmt.Sprintf(
 
 // toolOut 是一个工具处理函数的产出。
 type toolOut struct {
+	data      any
 	content   string
 	summary   string // 记进 tool.end 事件，前端工具行显示它
 	images    []ToolImage
 	terminate bool
+	isError   bool           // 保留结构化校验结果，同时明确业务检查失败
 	extra     map[string]any // 一并记进 tool.end 的附加信息，如被改动的节点
 }
 
@@ -113,7 +116,7 @@ func withParent(ev map[string]any, parentID string) map[string]any {
 // 画布校验错误列出每一项问题；其余基础设施错误只告诉模型「内部错误」，细节记日志，不外泄。
 func (b *AgentBridge) finishTool(out *toolOut, err error) *ToolResult {
 	if err == nil {
-		return &ToolResult{Content: out.content, Terminate: out.terminate, Images: out.images}
+		return &ToolResult{Content: out.content, Terminate: out.terminate, Images: out.images, Data: out.data, IsError: out.isError}
 	}
 	var tf *toolFailure
 	var ve *canvasgraph.ValidationError

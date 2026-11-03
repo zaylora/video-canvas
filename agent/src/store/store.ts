@@ -24,7 +24,7 @@ type SqlValue = bigint | number | string | null;
 
 const num = (v: unknown): number => Number(v);
 const id = (v: unknown): string => String(v);
-const dec = (v: unknown): bigint => parseDecimal(String(v));
+const dec = (v: unknown): bigint => v === "0" ? 0n : parseDecimal(String(v));
 const json = (v: unknown): string => JSON.stringify(v === undefined ? {} : v);
 
 function sessionOf(r: Row): Session {
@@ -364,8 +364,8 @@ export class AgentStore {
   }
 
   /** 某画布上占着位置的活跃运行，没有返回 undefined */
-  activeRun(canvasId: string): Run | undefined {
-    const row = this.#get("SELECT * FROM agent_runs WHERE canvas_id = ? AND status IN ('queued','running','waiting_approval','waiting_input')", dec(canvasId));
+  activeRun(canvasId: string, userId = "0"): Run | undefined {
+    const row = this.#get("SELECT * FROM agent_runs WHERE canvas_id = ? AND (canvas_id > 0 OR user_id = ?) AND status IN ('queued','running','waiting_approval','waiting_input')", dec(canvasId), dec(userId));
     return row ? runOf(row) : undefined;
   }
 

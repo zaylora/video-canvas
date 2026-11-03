@@ -22,6 +22,8 @@ import { usePageTitle } from "@/hooks/use-page-title";
 import { adminPageTitle } from "@/utils/page-title";
 
 import { findNav } from "./admin-nav";
+import { AssistantDrawer } from "./assistant/assistant-drawer";
+import { AssistantTrigger, useAssistantHotkey } from "./assistant/assistant-trigger";
 import { ForbiddenView } from "./shared";
 
 /** 入场动画播多久后摘掉 data-entering，和画布页一致 */
@@ -81,6 +83,7 @@ function AdminBody() {
   const load = useAdminStore((state) => state.load);
   const { pathname } = useLocation();
   usePageTitle(adminPageTitle(pathname));
+  useAssistantHotkey();
 
   useEffect(() => {
     void load();
@@ -142,14 +145,18 @@ function AdminBody() {
               </BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>
-          <ChromePill className="ml-auto">
-            <ThemeToggle />
-          </ChromePill>
+          <div className="ml-auto flex items-center gap-2">
+            <AssistantTrigger />
+            <ChromePill>
+              <ThemeToggle />
+            </ChromePill>
+          </div>
         </header>
         <div data-slot="admin-outlet" className="min-h-0 flex-1">
           <Outlet />
         </div>
       </SidebarInset>
+      <AssistantDrawer />
     </SidebarProvider>
   );
 }

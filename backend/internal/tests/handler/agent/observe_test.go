@@ -109,6 +109,19 @@ func newObserveRouter(api ObserveAPI, tokenID uint64) *gin.Engine {
 }
 
 func TestObserveHandler_ListRuns(t *testing.T) {
+	t.Run("scene 筛选与参数错误", func(t *testing.T) {
+		for _, scene := range []string{"canvas", "admin"} {
+			api := &fakeObserveAPI{}
+			status, _ := agentCall(t, newObserveRouter(api, 0), "GET", "/api/v1/admin/agent/runs?scene="+scene, "")
+			if status != 200 || api.filter.Scene != scene {
+				t.Fatalf("%d %+v", status, api.filter)
+			}
+		}
+		status, body := agentCall(t, newObserveRouter(&fakeObserveAPI{}, 0), "GET", "/api/v1/admin/agent/runs?scene=typo", "")
+		if status != 400 || body["code"] != float64(10001) {
+			t.Fatalf("%d %+v", status, body)
+		}
+	})
 	t.Run("筛选参数全部解析并交给业务层；返回编码 id 的摘要和游标", func(t *testing.T) {
 		api := &fakeObserveAPI{}
 		q := "?since=2026-10-01&until=2026-10-20T08:00:00Z&status=failed,%20step_limit&feedback=down&undone=true&harness_key=hk9&prompt_version=9&model_key=claude&user_id=7&cursor=c1&limit=50"

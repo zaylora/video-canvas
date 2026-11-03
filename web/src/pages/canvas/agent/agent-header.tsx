@@ -178,6 +178,7 @@ export function AgentHeader({
   scrolled,
   onToggleDock,
   onClose,
+  closeShortcut = "⌘/",
   onDragStart,
 }: {
   ctl: AgentController;
@@ -191,6 +192,8 @@ export function AgentHeader({
   onToggleDock: () => void;
   /** 收起；嵌在页面里的助手（短剧工作台右栏）没有「收起」，不传 */
   onClose?: () => void;
+  /** 「收起」提示里的快捷键，缺省是画布的 ⌘/ */
+  closeShortcut?: string;
   /** 在顶栏空白处按下：开始拖动；停靠和窄屏不传 */
   onDragStart?: (e: ReactPointerEvent) => void;
 }) {
@@ -240,7 +243,7 @@ export function AgentHeader({
       )}
       <SettingsPopover />
       {onClose && (
-        <ChromeTooltip label="收起" shortcut="⌘/" side="bottom">
+        <ChromeTooltip label="收起" shortcut={closeShortcut} side="bottom">
           <button type="button" aria-label="收起 Agent" onClick={onClose} className={ICON_BTN}>
             <Minus />
           </button>

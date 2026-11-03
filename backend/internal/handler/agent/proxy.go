@@ -37,6 +37,13 @@ const agentProxyHeaderTimeout = 30 * time.Second
 type AgentProxyHandler struct {
 	proxy *httputil.ReverseProxy
 	token string
+	roles middleware.RoleLookup
+}
+
+// WithRoleLookup 注入实时角色查询，所有转发覆盖客户端伪造的角色头。
+func (h *AgentProxyHandler) WithRoleLookup(roles middleware.RoleLookup) *AgentProxyHandler {
+	h.roles = roles
+	return h
 }
 
 // NewAgentProxy 创建代理。target 是 Agent 服务的根地址（http(s)://host:port，不带路径），token 是服务令牌。
@@ -58,6 +65,10 @@ func NewAgentProxy(target, token string) (*AgentProxyHandler, error) {
 			// Agent 服务的路由不带 /api/v1 前缀（它不是对外的 API 网关）
 			pr.Out.URL.Path = strings.TrimPrefix(pr.Out.URL.Path, apiPrefix)
 			pr.Out.URL.RawPath = strings.TrimPrefix(pr.Out.URL.RawPath, apiPrefix)
+			if pr.Out.URL.Path == "/admin/assistant/sessions" {
+				pr.Out.URL.Path = "/admin/sessions"
+				pr.Out.URL.RawPath = ""
+			}
 			pr.Out.Host = u.Host
 			// 用户的登录凭据到此为止（身份头由 Forward 覆盖成可信的值）
 			pr.Out.Header.Del("Authorization")
@@ -82,6 +93,16 @@ func (h *AgentProxyHandler) Forward(c *gin.Context) {
 	}
 	c.Request.Header.Set(agentServiceTokenHeader, h.token)
 	c.Request.Header.Set(agentUserHeader, strconv.FormatUint(uint64(uid), 10))
+	role := ""
+	if h.roles != nil {
+		var err error
+		role, err = h.roles(c.Request.Context(), uint64(uid))
+		if err != nil {
+			response.Fail(c, err)
+			return
+		}
+	}
+	c.Request.Header.Set("X-Agent-Role", role)
 	h.proxy.ServeHTTP(plainWriter{c.Writer}, c.Request)
 }
 

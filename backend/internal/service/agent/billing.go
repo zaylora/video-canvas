@@ -49,6 +49,7 @@ type CallOutcome struct {
 
 // CallMeta 是一次模型调用的观测信息。
 type CallMeta struct {
+	Mode          string        // admin 只记录用量，不扣积分
 	Purpose       string        // main 对话、summary 摘要、title 命名、video 视频理解；为空按 main
 	ChannelKey    string        // 实际走的渠道
 	UpstreamModel string        // 实际调用的上游模型
@@ -72,6 +73,9 @@ func (b *AgentBilling) Preflight(ctx context.Context, run *model.AgentRun, p mod
 	// 1. Agent 模型只能按 Token 计费，别的计费方式说明配置有问题，按模型不可用处理
 	if p.Billing != modelcfg.BillingToken || p.Token == nil {
 		return errcode.ErrAgentModelNA
+	}
+	if run.Mode == model.AgentModeAdmin {
+		return nil
 	}
 	upper := modelcfg.Quote(p, caps, modelcfg.Spec{PromptChars: inputChars})
 	// 2. 本轮预算：已花加上最坏情况不能超过预算；预算为 0 表示不限制，只看下面的账户积分
@@ -99,6 +103,7 @@ func (b *AgentBilling) Begin(ctx context.Context, run *model.AgentRun, modelKey 
 // 上游给了用量就用它；没给就按字数估（1 字 = 1 Token，偏保守），并在记录上标出是估的。
 // 一个字都没收到时不收费，只记下原因。实扣额记入本轮已花。
 func (b *AgentBilling) Settle(ctx context.Context, run *model.AgentRun, call *model.AgentModelCall, p modelcfg.Pricing, out CallOutcome) (*SettleResult, error) {
+	out.Meta.Mode = run.Mode
 	res, err := b.SettleExternal(ctx, call, p, out)
 	if err != nil {
 		return nil, err
@@ -127,6 +132,9 @@ func (b *AgentBilling) SettleExternal(ctx context.Context, call *model.AgentMode
 			in.InputTokens, in.OutputTokens, in.CachedTokens = r.Usage.InputTokens, r.Usage.OutputTokens, r.Usage.CachedTokens
 		}
 		in.Credits = modelcfg.TokenCost(p, in.InputTokens, in.OutputTokens)
+		if out.Meta.Mode == model.AgentModeAdmin {
+			in.Credits = 0
+		}
 	}
 	settled, err := b.repo.SettleModelCall(ctx, in)
 	if err != nil {

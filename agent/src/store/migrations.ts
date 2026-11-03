@@ -129,6 +129,15 @@ CREATE TABLE agent_feedback (
     // 标题是谁起的：draft 草稿（首条消息截出来的）、llm 模型命名、user 用户手动起的。只有草稿才会被模型命名覆盖
     sql: `ALTER TABLE agent_sessions ADD COLUMN title_source TEXT NOT NULL DEFAULT 'draft';`,
   },
+  {
+    version: 5,
+    name: "admin-active-runs",
+    sql: `
+DROP INDEX uk_agent_runs_active;
+CREATE UNIQUE INDEX uk_agent_runs_active_canvas ON agent_runs (canvas_id) WHERE canvas_id > 0 AND status IN (${ACTIVE_RUN_STATUSES});
+CREATE UNIQUE INDEX uk_agent_runs_active_admin ON agent_runs (user_id) WHERE canvas_id = 0 AND status IN (${ACTIVE_RUN_STATUSES});
+`,
+  },
 ];
 
 const checksum = (sql: string): string => createHash("sha256").update(sql).digest("hex");

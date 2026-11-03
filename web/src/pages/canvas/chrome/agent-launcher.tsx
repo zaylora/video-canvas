@@ -1,6 +1,7 @@
 import { Sparkles } from "lucide-react";
 
 import { ChromeButton, ChromePill, ChromeTooltip } from "@/components/canvas/chrome/chrome";
+import { ASSISTANT_NAME } from "@/constants/agent";
 import { cn } from "@/lib/utils";
 
 /** 右下角的 Agent 入口：浮窗打开时是按下态；没有已发布的 Agent 模型时变淡并说明原因 */
@@ -22,12 +23,18 @@ export function AgentLauncher({
   return (
     <ChromePill>
       <ChromeTooltip
-        label={disabled ? "管理员尚未配置 Agent 模型" : open ? "收起 Agent" : "打开 Agent"}
+        label={
+          disabled
+            ? "管理员尚未配置 Agent 模型"
+            : open
+              ? `收起${ASSISTANT_NAME}`
+              : `打开${ASSISTANT_NAME}`
+        }
         shortcut={disabled ? undefined : "⌘/"}
         side="top"
       >
         <ChromeButton
-          aria-label="画布 Agent"
+          aria-label={ASSISTANT_NAME}
           aria-pressed={open}
           aria-disabled={disabled}
           active={open}
@@ -37,7 +44,7 @@ export function AgentLauncher({
           onClick={() => !disabled && onToggle()}
         >
           <Sparkles className="text-preset" />
-          <span>Agent</span>
+          <span>{ASSISTANT_NAME}</span>
           {running && !open && (
             <span
               className="bg-status-running size-1.5 animate-pulse rounded-full"

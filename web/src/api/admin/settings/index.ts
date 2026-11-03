@@ -1,5 +1,11 @@
 import service from "@/utils/requests/service";
-import type { RegisterSettings, SmtpSettings, SmtpUpdateRequest } from "./type";
+import type {
+  PricingSettingsReq,
+  PricingSettingsView,
+  RegisterSettings,
+  SmtpSettings,
+  SmtpUpdateRequest,
+} from "./type";
 
 /**
  * 读取注册设置（admin 可读）
@@ -43,3 +49,18 @@ export const replaceSmtpPassword = (body: { password: string }) =>
  */
 export const sendSmtpTest = (body: { to: string }) =>
   service.post<null>("/admin/settings/smtp/test", body);
+
+/**
+ * 读取定价设置（admin 和 super_admin 都可读）：积分换算、默认加价率、汇率覆盖与当前生效汇率
+ * @returns 定价设置视图
+ */
+export const getPricingSettings = () =>
+  service.get<PricingSettingsView>("/admin/settings/pricing", undefined);
+
+/**
+ * 保存定价设置（admin 和 super_admin）；参数越界后端返回 400
+ * @param body 积分换算、默认加价率、美元汇率覆盖（null 表示用实时汇率）
+ * @returns 保存后的视图
+ */
+export const updatePricingSettings = (body: PricingSettingsReq) =>
+  service.put<PricingSettingsView>("/admin/settings/pricing", body);

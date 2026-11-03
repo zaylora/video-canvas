@@ -166,11 +166,15 @@ func (s *AIConfigService) SetInvalidator(i RegistryInvalidator) { s.invalidator 
 
 // ModelSaveInput 是保存模型配置的参数。
 type ModelSaveInput struct {
-	Key     string          // 更新时是路径里的 key；新建时忽略（取正文里的 key）
-	Create  bool            // true 新建（key 已存在则报错），false 更新（key 必须已存在）
-	Body    json.RawMessage // 配置正文（JSON 对象）
-	Note    string          // 本次修改说明
-	AdminID uint64          // 操作人
+	BaseSHA256      string            // 助手审批快照；非空时事务内比较正文摘要
+	ExpectedEnabled *bool             // 同时检测人工启停，避免正文未变但启用状态已变
+	Enabled         *bool             // 仅审批流程使用，与正文和审计原子写入
+	Audit           *model.AIAuditLog // 与配置同事务的助手审计
+	Key             string            // 更新时是路径里的 key；新建时忽略（取正文里的 key）
+	Create          bool              // true 新建（key 已存在则报错），false 更新（key 必须已存在）
+	Body            json.RawMessage   // 配置正文（JSON 对象）
+	Note            string            // 本次修改说明
+	AdminID         uint64            // 操作人
 }
 
 // SaveModelResult 是保存的结果：配置一定已保存，Issues 是当前校验发现的问题（有问题时不能启用）。

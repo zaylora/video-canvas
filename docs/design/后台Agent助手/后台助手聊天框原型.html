@@ -1,0 +1,776 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>后台助手聊天框原型</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+    <style>
+      /* 令牌取自 web/src/index.css 的 .admin-theme 与 --chrome*，原型和真实后台同一套颜色 */
+      :root {
+        --background: hsl(0 0% 100%);
+        --foreground: hsl(240 10% 3.9%);
+        --card: hsl(0 0% 100%);
+        --muted: hsl(240 4.8% 95.9%);
+        --muted-foreground: hsl(240 3.8% 46.1%);
+        --primary: hsl(240 5.9% 10%);
+        --primary-foreground: hsl(0 0% 98%);
+        --accent: hsl(240 4.8% 95.9%);
+        --border: hsl(240 5.9% 91.5%);
+        --input: hsl(240 5.9% 90%);
+        --sidebar: hsl(0 0% 98%);
+        --chrome: oklch(1 0 0 / 0.82);
+        --chrome-border: oklch(0 0 0 / 0.08);
+        --chrome-hover: oklch(0 0 0 / 0.05);
+        --page: hsl(240 5% 96.5%);
+        --ok: oklch(0.6 0.13 155);
+        --bad: oklch(0.58 0.2 27);
+        --warn: oklch(0.68 0.15 70);
+        --add: oklch(0.6 0.13 155);
+        --del: oklch(0.58 0.2 27);
+        --note: oklch(0.55 0.2 295);
+        color-scheme: light;
+      }
+      .dark {
+        --background: hsl(240 10% 3.9%);
+        --foreground: hsl(0 0% 98%);
+        --card: hsl(240 6% 7.5%);
+        --muted: hsl(240 3.7% 15.9%);
+        --muted-foreground: hsl(240 5% 64.9%);
+        --primary: hsl(0 0% 98%);
+        --primary-foreground: hsl(240 5.9% 10%);
+        --accent: hsl(240 3.7% 15.9%);
+        --border: hsl(240 3.7% 13.5%);
+        --input: hsl(240 3.7% 18%);
+        --sidebar: hsl(240 5.9% 10%);
+        --chrome: oklch(0.145 0.002 286 / 0.72);
+        --chrome-border: oklch(1 0 0 / 0.08);
+        --chrome-hover: oklch(1 0 0 / 0.06);
+        --page: hsl(240 8% 2.5%);
+        --ok: oklch(0.75 0.14 155);
+        --bad: oklch(0.7 0.17 25);
+        --warn: oklch(0.8 0.14 75);
+        --add: oklch(0.75 0.14 155);
+        --del: oklch(0.7 0.17 25);
+        --note: oklch(0.72 0.15 295);
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; font-family: Geist, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; background: var(--page); color: var(--foreground); -webkit-font-smoothing: antialiased; line-height: 1.5; font-size: 14px; }
+      .mono, code, kbd { font-family: "Geist Mono", "SF Mono", Consolas, monospace; }
+      .num { font-variant-numeric: tabular-nums; }
+      [data-lucide] { width: 1em; height: 1em; flex: none; stroke-width: 1.75; }
+      button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+      button:disabled { cursor: not-allowed; opacity: 0.45; }
+      textarea, input, select { font: inherit; color: inherit; }
+      [hidden] { display: none !important; }
+      .muted { color: var(--muted-foreground); }
+      .row { display: flex; align-items: center; gap: 8px; }
+      .sp { margin-left: auto; }
+      kbd { font-size: 10.5px; padding: 1px 4px; border-radius: 4px; border: 1px solid currentColor; opacity: 0.6; }
+
+      /* ---- 文档外层：顶栏 + 说明 ---- */
+      .doc-top { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 12px; height: 52px; padding: 0 20px; background: color-mix(in oklch, var(--page) 88%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--border); font-size: 13px; }
+      .doc-top b { font-weight: 600; }
+      .wrap { max-width: 1320px; margin: 0 auto; padding: 24px 20px 64px; }
+      .lead { max-width: 900px; color: var(--muted-foreground); font-size: 14px; }
+      .lead b { color: var(--foreground); font-weight: 600; }
+      .ctl { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin: 16px 0 12px; font-size: 12.5px; }
+      .ctl .grp { display: flex; align-items: center; gap: 6px; }
+      .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; background: var(--card); }
+      .seg button { height: 26px; padding: 0 9px; font-size: 12px; }
+      .seg button[aria-pressed="true"] { background: var(--primary); color: var(--primary-foreground); }
+      .tbtn { height: 26px; padding: 0 9px; border-radius: 7px; border: 1px solid var(--border); background: var(--card); font-size: 12px; display: inline-flex; align-items: center; gap: 5px; }
+      .tbtn:hover:not(:disabled) { background: var(--accent); }
+      .sw { width: 30px; height: 18px; border-radius: 99px; background: var(--input); position: relative; flex: none; }
+      .sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: transform 0.15s; box-shadow: 0 1px 2px rgb(0 0 0 / 0.2); }
+      .sw[aria-checked="true"] { background: var(--primary); }
+      .sw[aria-checked="true"]::after { transform: translateX(12px); background: var(--primary-foreground); }
+
+      /* 设计标注层 */
+      .note { outline: 1.5px dashed var(--note); outline-offset: 2px; }
+      body:not(.show-notes) .note { outline: none; }
+      .note-txt { display: none; font-size: 11.5px; color: var(--note); margin-top: 6px; line-height: 1.5; }
+      .show-notes .note-txt { display: block; }
+      .notes { display: none; margin-top: 14px; gap: 10px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .show-notes .notes { display: grid; }
+      .notes > div { border: 1.5px dashed var(--note); border-radius: 10px; padding: 10px 12px; font-size: 12px; color: var(--note); }
+      .notes b { display: block; margin-bottom: 2px; }
+
+      /* ---- 假浏览器 ---- */
+      .frame { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--background); box-shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 8px 32px rgb(0 0 0 / 0.06); }
+      .fbar { display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; background: var(--muted); font-size: 11.5px; color: var(--muted-foreground); border-bottom: 1px solid var(--border); }
+      .fbar i.d { width: 9px; height: 9px; border-radius: 50%; background: var(--input); display: inline-block; }
+      .app { display: flex; height: 720px; background: var(--sidebar); }
+
+      /* 后台侧栏与正文（示意，非本次设计重点） */
+      .side { width: 188px; padding: 14px 10px; display: grid; align-content: start; gap: 1px; font-size: 13px; flex: none; }
+      .side .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; padding: 2px 8px 14px; }
+      .side .grp { font-size: 11px; color: var(--muted-foreground); padding: 10px 8px 4px; }
+      .side .it { height: 32px; display: flex; align-items: center; gap: 9px; padding: 0 9px; border-radius: 8px; color: var(--muted-foreground); }
+      .side .it.on { background: var(--accent); color: var(--foreground); font-weight: 500; }
+      .content { flex: 1; min-width: 0; display: flex; gap: 8px; padding: 8px 8px 8px 0; }
+      .pane { flex: 1; min-width: 0; background: var(--background); border: 1px solid var(--border); border-radius: 12px; display: flex; flex-direction: column; overflow: hidden; }
+      .pane-top { height: 52px; display: flex; align-items: center; gap: 8px; padding: 0 16px; font-size: 13px; border-bottom: 1px solid var(--border); flex: none; }
+      .pill { height: 30px; padding: 0 11px; border-radius: 999px; background: var(--chrome); border: 1px solid var(--chrome-border); backdrop-filter: blur(12px); display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 500; }
+      .pill:hover { background: var(--chrome-hover); }
+      .pill[aria-pressed="true"] { background: var(--primary); color: var(--primary-foreground); border-color: transparent; }
+      .pane-body { flex: 1; overflow: auto; padding: 18px 20px; }
+      .ptitle { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
+      .mt { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 13px; }
+      .mt th { text-align: left; font-weight: 500; font-size: 12px; color: var(--muted-foreground); padding: 8px 10px; border-bottom: 1px solid var(--border); }
+      .mt td { padding: 9px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+      .mt tr { cursor: pointer; }
+      .mt tr.sel td { background: var(--accent); }
+      .mt tr.flash td { animation: flash 1.4s ease-out; }
+      @keyframes flash { from { background: color-mix(in oklch, var(--add) 18%, transparent); } to { background: transparent; } }
+      .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; flex: none; }
+
+      /* ---- 助手面板：浮起的清透面板，推挤正文 ---- */
+      .asst { width: 0; flex: none; overflow: hidden; transition: width 0.24s cubic-bezier(0.2, 0.8, 0.2, 1); }
+      .asst.open { width: 460px; }
+      .asst-in { width: 460px; height: 100%; display: flex; flex-direction: column; background: var(--chrome); border: 1px solid var(--chrome-border); border-radius: 12px; backdrop-filter: blur(16px); overflow: hidden; }
+      .ahead { height: 52px; flex: none; display: flex; align-items: center; gap: 4px; padding: 0 8px 0 14px; border-bottom: 1px solid var(--chrome-border); }
+      .sess { display: flex; align-items: center; gap: 6px; min-width: 0; height: 30px; padding: 0 8px; margin-left: -8px; border-radius: 7px; font-size: 13px; font-weight: 600; }
+      .sess:hover { background: var(--chrome-hover); }
+      .sess span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 250px; }
+      .ib { width: 30px; height: 30px; border-radius: 7px; display: grid; place-items: center; color: var(--muted-foreground); }
+      .ib:hover { background: var(--chrome-hover); color: var(--foreground); }
+      .menu { position: absolute; top: 46px; left: 10px; z-index: 5; width: 300px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 4px; box-shadow: 0 12px 32px rgb(0 0 0 / 0.14); font-size: 13px; }
+      .menu .mi { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border-radius: 6px; width: 100%; text-align: left; }
+      .menu .mi:hover { background: var(--accent); }
+      .menu .mi small { margin-left: auto; color: var(--muted-foreground); font-size: 11.5px; }
+      .menu .sep { height: 1px; background: var(--border); margin: 4px 0; }
+
+      .log { flex: 1; overflow: auto; padding: 6px 0 16px; }
+      .ev { padding: 12px 16px 0; }
+      .who { display: flex; align-items: center; gap: 8px; font-size: 12px; margin-bottom: 4px; }
+      .who b { font-weight: 600; font-size: 12.5px; }
+      .av { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font-size: 10.5px; font-weight: 600; background: var(--muted); color: var(--muted-foreground); flex: none; }
+      .av.sys { border-radius: 5px; background: var(--primary); color: var(--primary-foreground); }
+      .body { padding-left: 28px; font-size: 13.5px; }
+      .refs { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
+      .ref { height: 20px; padding: 0 6px; border-radius: 5px; background: var(--muted); font-size: 11.5px; display: inline-flex; align-items: center; gap: 4px; color: var(--muted-foreground); }
+      .ref b { color: var(--foreground); font-weight: 500; }
+      .day { display: flex; align-items: center; gap: 10px; padding: 14px 16px 0; font-size: 11px; color: var(--muted-foreground); }
+      .day::before, .day::after { content: ""; flex: 1; height: 1px; background: var(--chrome-border); }
+
+      /* 执行步骤：日志式，可折叠 */
+      .steps { margin-top: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--background); font-size: 12px; overflow: hidden; }
+      .steps-h { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; width: 100%; text-align: left; color: var(--muted-foreground); }
+      .steps-h:hover { background: var(--accent); }
+      .steps-h b { color: var(--foreground); font-weight: 500; }
+      .bar { height: 2px; background: var(--muted); position: relative; overflow: hidden; }
+      .bar::after { content: ""; position: absolute; inset: 0 auto 0 0; width: 30%; background: var(--foreground); opacity: 0.5; animation: slide 1.1s ease-in-out infinite; }
+      @keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+      .sl { display: grid; grid-template-columns: 14px 1fr auto; gap: 8px; align-items: center; padding: 4px 10px; border-top: 1px solid var(--border); }
+      .sl .arg { color: var(--muted-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .sl .t { color: var(--muted-foreground); font-size: 11px; }
+      .run-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--foreground); animation: pulse 1s ease-in-out infinite; justify-self: center; }
+      @keyframes pulse { 50% { opacity: 0.25; } }
+
+      /* 变更单：评审式表格 */
+      .co { margin-top: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--background); overflow: hidden; font-size: 12.5px; }
+      .co-h { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+      .co-h .t1 { display: flex; align-items: center; gap: 8px; }
+      .co-h .id { font-size: 11.5px; color: var(--muted-foreground); }
+      .co-h .tt { font-weight: 600; font-size: 13px; }
+      .co-h .meta { margin-top: 2px; font-size: 11.5px; color: var(--muted-foreground); }
+      .state { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--muted-foreground); }
+      .it { border-bottom: 1px solid var(--border); }
+      .co-f, .rej { border-top: 0 !important; }
+      .it-h { display: flex; align-items: center; gap: 8px; padding: 8px 12px 4px; }
+      .it-h .nm { font-weight: 500; }
+      .it-h .k { font-size: 11px; color: var(--muted-foreground); }
+      .it.off .it-h .nm, .it.off .fx { opacity: 0.55; }
+      .cb { width: 14px; height: 14px; accent-color: var(--primary); margin: 0; flex: none; }
+      .fx { display: grid; grid-template-columns: minmax(0, 1fr) 64px 14px 64px; gap: 2px 8px; padding: 0 12px 8px 34px; font-size: 12px; align-items: baseline; }
+      .fx .p { color: var(--muted-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .fx .b { text-align: right; color: var(--muted-foreground); }
+      .fx .b.del { color: var(--del); text-decoration: line-through; text-decoration-thickness: 1px; }
+      .fx .ar { color: var(--muted-foreground); text-align: center; }
+      .fx .a { text-align: right; color: var(--add); font-weight: 500; }
+      .iss { margin: 0 12px 8px 34px; padding: 6px 8px; border-radius: 6px; background: color-mix(in oklch, var(--bad) 8%, transparent); color: var(--bad); font-size: 11.5px; display: flex; gap: 6px; }
+      .iss.w { background: color-mix(in oklch, var(--warn) 10%, transparent); color: color-mix(in oklch, var(--warn) 80%, var(--foreground)); }
+      .more { margin: -2px 12px 8px 34px; font-size: 11.5px; color: var(--muted-foreground); display: inline-flex; align-items: center; gap: 3px; }
+      .more:hover { color: var(--foreground); }
+      .basis { margin: 0 12px 10px 34px; display: grid; grid-template-columns: 72px 1fr; gap: 3px 10px; font-size: 11.5px; padding: 8px 10px; background: var(--muted); border-radius: 6px; }
+      .basis dt { color: var(--muted-foreground); }
+      .basis dd { margin: 0; word-break: break-all; }
+      .basis a { color: inherit; }
+      .co-f { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-top: 1px solid var(--border); background: var(--card); }
+      .co-f .info { font-size: 11.5px; color: var(--muted-foreground); }
+      .btn { height: 28px; padding: 0 11px; border-radius: 7px; font-size: 12.5px; font-weight: 500; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+      .btn-p { background: var(--primary); color: var(--primary-foreground); }
+      .btn-p:hover:not(:disabled) { opacity: 0.9; }
+      .btn-o { border: 1px solid var(--border); background: var(--background); }
+      .btn-o:hover:not(:disabled) { background: var(--accent); }
+      .btn-g { color: var(--muted-foreground); }
+      .btn-g:hover { color: var(--foreground); background: var(--accent); }
+      .rej { padding: 10px 12px; border-top: 1px solid var(--border); background: var(--card); display: grid; gap: 8px; }
+      .rej textarea { width: 100%; min-height: 54px; resize: none; border: 1px solid var(--input); border-radius: 7px; padding: 6px 8px; background: var(--background); font-size: 12.5px; outline: none; }
+      .rej textarea:focus { border-color: var(--muted-foreground); }
+
+      /* 小卡片：密钥 / 试跑 */
+      .mini { margin-top: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--background); font-size: 12.5px; overflow: hidden; }
+      .mini-h { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid var(--border); font-weight: 600; font-size: 12.5px; }
+      .mini-b { padding: 10px 12px; display: grid; gap: 8px; }
+      .kv { display: grid; grid-template-columns: 72px 1fr; gap: 3px 10px; font-size: 12px; }
+      .kv dt { color: var(--muted-foreground); }
+      .kv dd { margin: 0; }
+      .field { display: flex; gap: 6px; }
+      .field input { flex: 1; min-width: 0; height: 28px; border: 1px solid var(--input); border-radius: 7px; padding: 0 8px; background: var(--background); font-size: 12.5px; outline: none; }
+      .field input:focus { border-color: var(--muted-foreground); }
+
+      /* 输入区 */
+      .compose { flex: none; padding: 10px 12px 12px; border-top: 1px solid var(--chrome-border); }
+      .box { border: 1px solid var(--input); border-radius: 10px; background: var(--background); transition: border-color 0.15s; }
+      .box:focus-within { border-color: var(--muted-foreground); }
+      .box textarea { display: block; width: 100%; border: 0; outline: none; resize: none; background: transparent; padding: 10px 12px 4px; font-size: 13.5px; min-height: 44px; max-height: 160px; line-height: 1.5; }
+      .box-f { display: flex; align-items: center; gap: 6px; padding: 4px 6px 6px 8px; }
+      .chip { height: 22px; padding: 0 4px 0 7px; border-radius: 5px; background: var(--muted); font-size: 11.5px; display: inline-flex; align-items: center; gap: 4px; max-width: 170px; }
+      .chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .chip button { width: 16px; height: 16px; border-radius: 4px; display: grid; place-items: center; color: var(--muted-foreground); }
+      .chip button:hover { background: var(--accent); color: var(--foreground); }
+      .msel { height: 24px; padding: 0 6px; border-radius: 6px; font-size: 11.5px; color: var(--muted-foreground); display: inline-flex; align-items: center; gap: 3px; }
+      .msel:hover { background: var(--accent); color: var(--foreground); }
+      .send { height: 26px; padding: 0 8px 0 10px; border-radius: 7px; background: var(--primary); color: var(--primary-foreground); font-size: 12px; font-weight: 500; display: inline-flex; align-items: center; gap: 6px; }
+      .send kbd { border-color: currentColor; }
+      .send.stop { background: var(--background); color: var(--foreground); border: 1px solid var(--border); }
+      .pending { display: flex; align-items: center; gap: 8px; padding: 0 2px 8px; font-size: 12px; color: var(--muted-foreground); }
+
+      .empty { height: 100%; display: grid; place-items: center; padding: 24px; }
+      .empty-in { width: 100%; max-width: 360px; }
+      .empty .ic { width: 36px; height: 36px; border-radius: 9px; border: 1px solid var(--border); display: grid; place-items: center; color: var(--muted-foreground); background: var(--background); }
+      .empty h3 { margin: 12px 0 0; font-size: 14px; font-weight: 600; }
+      .recent { margin-top: 18px; font-size: 12.5px; }
+      .recent .rh { font-size: 11px; color: var(--muted-foreground); padding: 0 8px 4px; }
+      .recent button { display: flex; width: 100%; gap: 8px; align-items: center; padding: 7px 8px; border-radius: 7px; text-align: left; }
+      .recent button:hover { background: var(--chrome-hover); }
+      .recent small { margin-left: auto; color: var(--muted-foreground); font-size: 11.5px; }
+
+      .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 60; pointer-events: none; }
+      .toast > div { display: flex; align-items: center; gap: 8px; background: var(--primary); color: var(--primary-foreground); border-radius: 8px; padding: 8px 12px; font-size: 12.5px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.18); }
+
+      @media (max-width: 900px) {
+        .side { display: none; }
+        .content { padding: 8px; flex-direction: column; }
+        .app { height: auto; }
+        .pane { min-height: 260px; }
+        .asst.open, .asst-in { width: 100%; }
+        .asst.open { height: 640px; }
+        .notes { grid-template-columns: 1fr; }
+        .mt th:nth-child(n + 4), .mt td:nth-child(n + 4) { display: none; }
+      }
+    </style>
+  </head>
+  <body class="show-notes">
+    <div class="doc-top">
+      <b>后台助手 · 聊天框原型</b>
+      <span class="muted">v2 · 2026-11-02 · 提案，未实现</span>
+      <span class="sp"></span>
+      <label class="row muted">设计标注 <button class="sw" id="noteSw" role="switch" aria-checked="true"></button></label>
+      <button class="tbtn" id="themeBtn"><i data-lucide="sun-moon"></i>明暗</button>
+    </div>
+
+    <div class="wrap">
+      <p class="lead">
+        重做的聊天框：<b>像一个配置工具，而不是一个聊天机器人</b>。颜色和半透明面板沿用后台真实令牌（<code>.admin-theme</code>、<code>--chrome</code>）。
+        对话按时间线排成记录，助手的执行步骤写成可折叠的日志，改动用评审式变更单展示。数据都在内存里，刷新即复原；助手的回复用定时器模拟，不是真实调用。
+        下面的按钮会把示例指令<b>填进输入框</b>，按 <kbd>Ctrl</kbd> <kbd>Enter</kbd> 或点「发送」执行。
+      </p>
+
+      <div class="notes">
+        <div><b>去掉了什么</b>闪光图标、紫色渐变、对话气泡、快捷指令胶囊、打字光效、「我是你的 AI 助手」欢迎语。这些都在提醒「这是 AI」，对完成任务没有帮助。</div>
+        <div><b>换成了什么</b>时间线记录（头像 + 名字 + 时间），日志式执行步骤（等宽字体、耗时右对齐），评审式变更单（字段 / 当前 / 变更后），带快捷键提示的发送按钮。</div>
+        <div><b>和项目规范的关系</b>面板用清透 chrome 令牌、圆角胶囊入口（见 coding-standards 6.1）；界面里不加操作说明小字，空状态只放图标、标题和最近会话（见 6.2）。</div>
+      </div>
+
+      <div class="ctl">
+        <div class="grp"><span class="muted">示例指令</span>
+          <button class="tbtn" data-fill="把视频模型按成本加价 30%">按成本加价</button>
+          <button class="tbtn" data-fill="图片和音频模型统一涨 10%">相对涨价</button>
+          <button class="tbtn" data-fill="默认加价率改成 35%">改定价设置</button>
+          <button class="tbtn" data-fill="对接 Example 的视频生成接口">对接新平台（二期）</button>
+        </div>
+        <div class="grp"><span class="muted">角色</span><span class="seg" id="roleSeg"><button data-r="super_admin" aria-pressed="true">super_admin</button><button data-r="admin" aria-pressed="false">admin</button></span></div>
+        <div class="grp"><button class="tbtn" id="conflictBtn" disabled><i data-lucide="git-merge"></i>模拟他人修改 kling-v2-1</button></div>
+        <div class="grp"><span class="muted">无可用助手模型</span><button class="sw" id="noModelSw" role="switch" aria-checked="false"></button></div>
+        <div class="grp"><button class="tbtn" id="resetBtn"><i data-lucide="rotate-ccw"></i>重置</button></div>
+      </div>
+
+      <div class="frame">
+        <div class="fbar"><i class="d"></i><i class="d"></i><i class="d"></i><span style="margin-left: 8px">连镜 / AI 配置 / 模型渠道</span></div>
+        <div class="app">
+          <nav class="side">
+            <div class="brand"><span class="mono" style="font-size: 15px">()</span>连镜</div>
+            <div class="grp">AI 配置</div>
+            <div class="it"><i data-lucide="layout-grid"></i>总览</div>
+            <div class="it"><i data-lucide="list-ordered"></i>任务队列</div>
+            <div class="it on"><i data-lucide="radio-tower"></i>模型渠道</div>
+            <div class="it"><i data-lucide="puzzle"></i>插件</div>
+            <div class="it"><i data-lucide="history"></i>运行记录</div>
+            <div class="grp">系统设置</div>
+            <div class="it"><i data-lucide="coins"></i>定价设置</div>
+          </nav>
+          <div class="content">
+            <section class="pane">
+              <div class="pane-top">
+                <i data-lucide="panel-left" class="muted"></i><span class="muted">AI 配置</span><i data-lucide="chevron-right" class="muted"></i><span>模型渠道</span>
+                <span class="sp"></span>
+                <button class="pill note" id="asstBtn" aria-pressed="true"><i data-lucide="message-square-text"></i>助手<kbd style="margin-left: 2px">Ctrl J</kbd></button>
+              </div>
+              <div class="pane-body">
+                <div class="row"><div class="ptitle">模型</div><span class="sp"></span><span class="muted num" style="font-size: 12px" id="setLine"></span></div>
+                <table class="mt"><thead><tr><th>模型</th><th>计费</th><th class="num">售价</th><th class="num">成本</th><th>状态</th></tr></thead><tbody id="mtBody"></tbody></table>
+                <div class="note-txt">点一行就把它设为助手的上下文，输入框里会出现对应的引用标签。变更单应用后，这张表即时刷新，改动的行闪一下。</div>
+              </div>
+            </section>
+            <aside class="asst open" id="asst">
+              <div class="asst-in" style="position: relative">
+                <div class="ahead">
+                  <button class="sess" id="sessBtn"><span id="sessTitle">新会话</span><i data-lucide="chevrons-up-down" class="muted"></i></button>
+                  <span class="sp"></span>
+                  <button class="ib" id="newBtn" title="新会话"><i data-lucide="square-pen"></i></button>
+                  <button class="ib" id="closeBtn" title="关闭"><i data-lucide="x"></i></button>
+                </div>
+                <div class="menu" id="menu" hidden></div>
+                <div class="log" id="log"></div>
+                <div class="compose" id="compose">
+                  <div class="pending" id="pending" hidden></div>
+                  <div class="box">
+                    <textarea id="ta" rows="2" placeholder="描述要调整的配置"></textarea>
+                    <div class="box-f">
+                      <div class="row" id="chips" style="gap: 4px; min-width: 0; flex-wrap: wrap"></div>
+                      <span class="sp"></span>
+                      <button class="msel" title="助手模型"><span id="modelName">gemini-3-pro</span><i data-lucide="chevron-down"></i></button>
+                      <button class="send" id="sendBtn"></button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </aside>
+          </div>
+        </div>
+      </div>
+
+      <div class="notes" style="margin-top: 12px">
+        <div><b>变更单为什么做成表格</b>调价一次就是十几行数字，表格能逐行对齐比较「当前」和「变更后」。删除线和绿色只用在数值上，不把整行涂色。有问题的行照样显示但不能勾选，让人看到助手哪里没做对。</div>
+        <div><b>执行步骤为什么默认折叠</b>管理员关心的是结果和变更单，过程只在需要排查时展开看。运行中只显示一行「第 3/6 步」加一条细进度条，不用会动的文字特效。</div>
+        <div><b>待审核时输入框不锁</b>输入框上方固定一行提示「变更单 CO-xxxx 待审核」，点一下就跳回那张单。这时仍然可以继续补充要求，助手会作废旧单、重新出一张。</div>
+      </div>
+    </div>
+    <div class="toast" id="toast"></div>
+
+    <script>
+      const $ = (s, r = document) => r.querySelector(s);
+      const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const icons = () => window.lucide && lucide.createIcons();
+      let tt;
+      function toast(m) { $("#toast").innerHTML = `<div>${esc(m)}</div>`; clearTimeout(tt); tt = setTimeout(() => ($("#toast").innerHTML = ""), 2200); }
+
+      /* ---------- 调价公式（与设计文档 §6.5 一致） ---------- */
+      const FX = 6.6529; // 2026-10-30 ECB
+      const ceil = (x) => Math.ceil(Math.round(x * 1e6) / 1e6);
+      const costPrice = (amount, cur, cpy, markup) => { const yuan = amount * (cur === "USD" ? FX : 1); const cost = ceil(yuan * cpy); return { yuan, cost, price: ceil(cost * (1 + markup / 100)) }; };
+
+      /* ---------- 状态（内存，刷新复原） ---------- */
+      const MODELS = () => [
+        { key: "kling-v2-1", label: "可灵 2.1", kind: "video", billing: "per_second", price: 8, cost: null, up: [0.14, "USD", "klingai.com/global/dev/pricing"] },
+        { key: "seedance-pro", label: "Seedance Pro 1080p", kind: "video", billing: "per_second", price: 9, cost: 6, up: [0.9, "CNY", "volcengine.com/docs/82379/1544106"] },
+        { key: "vidu-q2", label: "Vidu Q2", kind: "video", billing: "per_call", price: 20, cost: null, up: [2.5, "CNY", "platform.vidu.cn/docs/pricing"] },
+        { key: "sora-2", label: "Sora 2", kind: "video", billing: "per_second", price: 15, cost: null, up: [0.1, "USD", "openai.com/api/pricing"], noKey: true },
+        { key: "gpt-image-2", label: "GPT Image 2", kind: "image", billing: "per_call", price: 2, cost: 1 },
+        { key: "seed-audio-1", label: "Seed Audio 1.0", kind: "audio", billing: "per_call", price: 1, cost: null },
+      ];
+      const BILL = { per_second: "按秒", per_call: "按次" };
+      const S = {};
+      let clock;
+      function reset() {
+        Object.assign(S, { role: S.role || "super_admin", noModel: false, conflict: false, models: MODELS(), set: { cpy: 7.5, markup: 30 }, open: true, title: "新会话", ev: [], busy: false, order: null, coSeq: 11, selected: "kling-v2-1", ctxOn: true, flash: [], rejecting: false, rejectText: "", timer: null });
+        clock = new Date(2026, 10, 2, 14, 31);
+        $("#noModelSw").setAttribute("aria-checked", "false");
+        $("#ta").value = "";
+        renderAll();
+      }
+      const now = () => { clock = new Date(clock.getTime() + 37000); return clock; };
+      const hm = (d) => d.toTimeString().slice(0, 5);
+
+      /* ---------- 左侧模型表 ---------- */
+      function renderPage() {
+        $("#setLine").textContent = `1 元 = ${S.set.cpy} 积分 · 默认加价 ${S.set.markup}% · USD/CNY ${FX}`;
+        $("#mtBody").innerHTML = S.models.map((m) => `
+          <tr data-row="${m.key}" class="${m.key === S.selected ? "sel" : ""} ${S.flash.includes(m.key) ? "flash" : ""}">
+            <td><div style="font-weight: 500">${esc(m.label)}</div><div class="mono muted" style="font-size: 11px">${esc(m.key)}</div></td>
+            <td class="muted">${BILL[m.billing]}</td>
+            <td class="num">${m.price}</td>
+            <td class="num ${m.cost == null ? "muted" : ""}">${m.cost ?? "—"}</td>
+            <td><span class="row" style="gap: 6px; font-size: 12.5px"><i class="dot" style="background: ${m.noKey ? "var(--warn)" : "var(--ok)"}"></i>${m.noKey ? "渠道缺 Key" : "在线"}</span></td>
+          </tr>`).join("");
+        S.flash = [];
+        document.querySelectorAll("[data-row]").forEach((r) => (r.onclick = () => { S.selected = r.dataset.row; S.ctxOn = true; renderPage(); renderCompose(); }));
+      }
+
+      /* ---------- 助手：头部 / 记录 / 输入区 ---------- */
+      function renderAll() { renderPage(); renderHead(); renderLog(); renderCompose(); icons(); }
+      function renderHead() {
+        $("#asst").classList.toggle("open", S.open);
+        $("#asstBtn").setAttribute("aria-pressed", String(S.open));
+        $("#sessTitle").textContent = S.title;
+        $("#conflictBtn").disabled = !S.order || S.conflict;
+      }
+      function renderLog() {
+        const log = $("#log");
+        if (S.noModel) {
+          log.innerHTML = `<div class="empty"><div class="empty-in" style="text-align: center"><div class="ic" style="margin: 0 auto"><i data-lucide="cpu"></i></div><h3>没有可用的助手模型</h3><button class="btn btn-o" style="margin-top: 14px" onclick="toast('跳转：模型渠道，筛选类型 agent')">前往模型渠道</button></div></div>`;
+          icons();
+          return;
+        }
+        if (!S.ev.length) {
+          log.innerHTML = `<div class="empty"><div class="empty-in"><div class="ic"><i data-lucide="message-square-text"></i></div><h3>新会话</h3>
+            <div class="recent"><div class="rh">最近</div>
+              <button><i data-lucide="message-square" class="muted"></i>Seedance 规格价补齐<small>昨天</small></button>
+              <button><i data-lucide="message-square" class="muted"></i>文本模型 Token 价格同步<small>10-29</small></button>
+              <button><i data-lucide="message-square" class="muted"></i>可灵参数按官方文档更新<small>10-27</small></button>
+            </div></div></div>`;
+          icons();
+          return;
+        }
+        log.innerHTML = `<div class="day">今天</div>` + S.ev.map(renderEv).join("");
+        bindLog();
+        icons();
+        log.scrollTop = log.scrollHeight;
+      }
+      function who(sys, t) {
+        return sys
+          ? `<div class="who"><span class="av sys">助</span><b>助手</b><span class="muted">${hm(t)}</span></div>`
+          : `<div class="who"><span class="av">张</span><b>zhanghuizhong</b><span class="muted">${hm(t)}</span></div>`;
+      }
+      function renderEv(e, i) {
+        if (e.t === "user") return `<div class="ev">${who(false, e.at)}<div class="body">${esc(e.text)}${e.refs.length ? `<div class="refs">${e.refs.map((r) => `<span class="ref"><i data-lucide="${r.icon}"></i><b>${esc(r.label)}</b></span>`).join("")}</div>` : ""}</div></div>`;
+        if (e.t === "asst") {
+          return `<div class="ev">${who(true, e.at)}<div class="body">
+            ${e.steps ? renderSteps(e, i) : ""}
+            ${e.text ? `<div style="margin-top: ${e.steps ? 8 : 0}px">${e.text}</div>` : ""}
+            ${e.order ? renderOrder(e.order) : ""}
+            ${e.secret ? renderSecret(e.secret) : ""}
+            ${e.test ? renderTest(e.test) : ""}
+          </div></div>`;
+        }
+        return "";
+      }
+      function renderSteps(e, i) {
+        const st = e.steps;
+        const done = st.items.filter((s) => s.ms != null).length;
+        const total = st.plan.length;
+        const running = done < total && !st.stopped;
+        const secs = (st.items.reduce((a, s) => a + (s.ms || 0), 0) / 1000).toFixed(1);
+        const head = running ? `<b>执行中</b><span>第 ${done + 1}/${total} 步</span>` : st.stopped ? `<b>已停止</b><span>${done}/${total} 步</span>` : `<b>执行了 ${total} 步</b><span class="num">${secs}s</span>`;
+        return `<div class="steps">
+          <button class="steps-h" data-steps="${i}"><i data-lucide="${st.open ? "chevron-down" : "chevron-right"}"></i>${head}<span class="sp"></span><span class="mono" style="font-size: 11px">${esc(st.items[st.items.length - 1]?.tool || "")}</span></button>
+          ${running ? '<div class="bar"></div>' : ""}
+          ${st.open ? st.items.map((s) => `<div class="sl mono">${s.ms == null ? (st.stopped ? '<i data-lucide="minus" class="muted"></i>' : '<span class="run-dot"></span>') : s.err ? '<i data-lucide="x" style="color: var(--bad)"></i>' : '<i data-lucide="check" style="color: var(--ok)"></i>'}<span class="arg"><span style="color: var(--foreground)">${esc(s.tool)}</span> ${esc(s.arg)}</span><span class="t num">${s.ms == null ? "" : s.ms + "ms"}</span></div>`).join("") : ""}
+        </div>`;
+      }
+
+      /* ---------- 变更单 ---------- */
+      const ST = { ok: ["var(--ok)", "可应用"], invalid: ["var(--bad)", "校验未通过"], stale: ["var(--warn)", "已过期"], done: ["var(--ok)", "已应用"], failed: ["var(--bad)", "应用失败"], skipped: ["var(--muted-foreground)", "未应用"], rejected: ["var(--muted-foreground)", "已拒绝"] };
+      const roleOk = (it) => it.role === "admin" || S.role === "super_admin";
+      const pickable = (it) => it.status === "ok" && roleOk(it);
+      function renderOrder(o) {
+        const live = o === S.order;
+        const n = o.items.filter((x) => x.on && pickable(x)).length;
+        const stateTxt = live ? '<span class="state"><i class="dot" style="background: var(--warn)"></i>待审核</span>' : o.rejected ? '<span class="state"><i class="dot" style="background: var(--muted-foreground)"></i>已拒绝</span>' : '<span class="state"><i class="dot" style="background: var(--ok)"></i>已应用</span>';
+        const items = o.items.map((it) => {
+          const s = it.res || it.status;
+          const off = live ? !pickable(it) : s !== "done";
+          return `<div class="it ${off ? "off" : ""}">
+            <div class="it-h">
+              ${live ? `<input type="checkbox" class="cb" data-ck="${it.id}" ${it.on && pickable(it) ? "checked" : ""} ${pickable(it) ? "" : "disabled"} />` : `<i data-lucide="${s === "done" ? "check" : "minus"}" style="width: 14px; height: 14px; color: ${ST[s][0]}"></i>`}
+              <span class="nm">${esc(it.label)}</span><span class="k mono">${esc(it.key)}</span>
+              <span class="sp"></span>
+              ${live && !roleOk(it) ? '<span class="state"><i data-lucide="lock"></i>需 super_admin</span>' : `<span class="state"><i class="dot" style="background: ${ST[s][0]}"></i>${ST[s][1]}</span>`}
+            </div>
+            <div class="fx mono num">${it.diff.map((d) => `<span class="p">${esc(d.path)}</span><span class="b ${d.before !== d.after && d.before !== "—" ? "del" : ""}">${esc(d.before)}</span><span class="ar">→</span><span class="a">${esc(d.after)}</span>`).join("")}</div>
+            ${it.issue ? `<div class="iss"><i data-lucide="circle-alert"></i><span>${esc(it.issue)}</span></div>` : ""}
+            ${it.warn ? `<div class="iss w"><i data-lucide="triangle-alert"></i><span>${esc(it.warn)}</span></div>` : ""}
+            ${it.resMsg ? `<div class="iss"><i data-lucide="circle-x"></i><span>${esc(it.resMsg)}</span></div>` : ""}
+            ${it.basis ? `<button class="more" data-bs="${it.id}"><i data-lucide="${it.bo ? "chevron-down" : "chevron-right"}"></i>计算依据</button>${it.bo ? `<dl class="basis mono">${it.basis.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join("")}</dl>` : ""}` : ""}
+          </div>`;
+        }).join("");
+        let foot;
+        if (live && S.rejecting) {
+          foot = `<div class="rej"><textarea id="rejTa" placeholder="拒绝原因（会回传给助手）">${esc(S.rejectText)}</textarea><div class="row"><span class="sp"></span><button class="btn btn-g" id="rejCancel">取消</button><button class="btn btn-o" id="rejOk">确认拒绝</button></div></div>`;
+        } else if (live) {
+          foot = `<div class="co-f"><span class="info num">已选 ${n} / ${o.items.length}</span><span class="sp"></span><button class="btn btn-g" id="rejBtn">拒绝</button><button class="btn btn-p" id="applyBtn" ${n ? "" : "disabled"}>应用 ${n} 项变更</button></div>`;
+        } else {
+          foot = `<div class="co-f"><span class="info">${esc(o.footer)}</span><span class="sp"></span>${o.revertable ? `<button class="btn btn-g" data-revert="${o.id}"><i data-lucide="undo-2"></i>回滚</button>` : ""}</div>`;
+        }
+        return `<div class="co ${live ? "note" : ""}" id="co-${o.id}">
+          <div class="co-h"><div class="t1"><span class="id mono">${o.id}</span>${stateTxt}</div><div class="tt" style="margin-top: 2px">${esc(o.title)}</div><div class="meta">${esc(o.meta)}</div></div>
+          ${items}${foot}
+        </div>${live ? '<div class="note-txt">勾选框、状态点、等宽数字列：读起来像代码评审，不像聊天回复。「计算依据」默认收起，展开后是一张键值表，来源链接可以点。</div>' : ""}`;
+      }
+
+      /* ---------- 二期：密钥与试跑 ---------- */
+      function renderSecret(s) {
+        return `<div class="mini note"><div class="mini-h"><i data-lucide="key-round" class="muted"></i>渠道凭证<span class="sp"></span><span class="state mono" style="font-weight: 400">example</span></div>
+          <div class="mini-b">${s.saved ? '<div class="row" style="font-size: 12.5px"><i data-lucide="check" style="color: var(--ok)"></i>已加密保存 · 助手只知道「已配置」</div>'
+            : `<dl class="kv"><dt>渠道</dt><dd class="mono">example</dd><dt>Base URL</dt><dd class="mono">https://api.example.com</dd></dl><div class="field"><input type="password" id="keyIn" placeholder="API Key" autocomplete="off" /><button class="btn btn-p" id="keySave">保存</button></div>`}</div></div>
+          <div class="note-txt">密钥由前端直接提交到 PUT /admin/ai/channels/:key/secret，不进对话记录，也不发给模型。</div>`;
+      }
+      function renderTest(t) {
+        const body = t.s === "ask"
+          ? `<dl class="kv"><dt>模型</dt><dd class="mono">example-video-1</dd><dt>输入</dt><dd>文生视频 · 5 秒 · 720p</dd><dt>预估费用</dt><dd class="num">≈ ¥2.70 上游费用（按成本换算，示意）</dd></dl><div class="row"><span class="sp"></span><button class="btn btn-g" id="testNo">跳过</button><button class="btn btn-p" id="testGo">运行试跑</button></div>`
+          : t.s === "run" ? '<div class="row muted"><span class="run-dot"></span>试跑中…</div>'
+          : t.s === "ok" ? `<dl class="kv"><dt>第 1 次</dt><dd style="color: var(--bad)">失败 · 400 duration must be string</dd><dt>修复</dt><dd>插件 1.0.1：duration 改为字符串（已应用 CO-${t.fixId}）</dd><dt>第 2 次</dt><dd style="color: var(--ok)">成功 · 41.2s · 1 个视频</dd></dl>`
+          : '<div class="muted">已跳过试跑。</div>';
+        return `<div class="mini"><div class="mini-h"><i data-lucide="flask-conical" class="muted"></i>真实试跑<span class="sp"></span><span class="state" style="font-weight: 400">会产生上游费用</span></div><div class="mini-b">${body}</div></div>`;
+      }
+
+      function bindLog() {
+        document.querySelectorAll("[data-steps]").forEach((b) => (b.onclick = () => { const st = S.ev[+b.dataset.steps].steps; st.open = !st.open; renderLog(); }));
+        document.querySelectorAll("[data-ck]").forEach((c) => (c.onchange = () => { findItem(c.dataset.ck).on = c.checked; refreshFoot(); }));
+        document.querySelectorAll("[data-bs]").forEach((b) => (b.onclick = () => { const it = findItem(b.dataset.bs); it.bo = !it.bo; renderLog(); }));
+        document.querySelectorAll("[data-revert]").forEach((b) => (b.onclick = () => revert(b.dataset.revert)));
+        bindFoot();
+        const ks = $("#keySave"); if (ks) ks.onclick = saveKey;
+        const tg = $("#testGo"); if (tg) tg.onclick = () => runTest(true);
+        const tn = $("#testNo"); if (tn) tn.onclick = () => runTest(false);
+      }
+      function bindFoot() {
+        const ab = $("#applyBtn"); if (ab) ab.onclick = apply;
+        const rb = $("#rejBtn"); if (rb) rb.onclick = () => { S.rejecting = true; renderLog(); $("#rejTa").focus(); };
+        const rc = $("#rejCancel"); if (rc) rc.onclick = () => { S.rejecting = false; renderLog(); };
+        const ro = $("#rejOk"); if (ro) ro.onclick = reject;
+        const rt = $("#rejTa"); if (rt) rt.oninput = () => (S.rejectText = rt.value); // 只改状态，不重绘，免得失焦
+      }
+      function refreshFoot() {
+        // 勾选只更新底栏的计数和按钮，不重绘整段记录
+        const o = S.order; if (!o) return;
+        const n = o.items.filter((x) => x.on && pickable(x)).length;
+        const info = $(`#co-${o.id} .co-f .info`); if (info) info.textContent = `已选 ${n} / ${o.items.length}`;
+        const ab = $("#applyBtn"); if (ab) { ab.disabled = !n; ab.textContent = `应用 ${n} 项变更`; }
+      }
+      const findItem = (id) => S.ev.flatMap((e) => e.order?.items || []).find((x) => x.id === id);
+
+      function renderCompose() {
+        const sel = S.models.find((m) => m.key === S.selected);
+        $("#chips").innerHTML = S.ctxOn && sel ? `<span class="chip"><i data-lucide="box" class="muted"></i><span>${esc(sel.label)}</span><button id="ctxX" title="移除"><i data-lucide="x"></i></button></span>` : "";
+        const x = $("#ctxX"); if (x) x.onclick = () => { S.ctxOn = false; renderCompose(); };
+        $("#sendBtn").className = "send" + (S.busy ? " stop" : "");
+        $("#sendBtn").innerHTML = S.busy ? '<i data-lucide="square"></i>停止' : "发送<kbd>Ctrl ↵</kbd>";
+        $("#ta").disabled = S.noModel;
+        $("#sendBtn").disabled = S.noModel;
+        $("#modelName").textContent = S.noModel ? "无可用模型" : "gemini-3-pro";
+        const p = $("#pending");
+        p.hidden = !S.order;
+        if (S.order) p.innerHTML = `<i class="dot" style="background: var(--warn)"></i>变更单 <button class="mono" id="jump" style="text-decoration: underline; text-underline-offset: 2px">${S.order.id}</button> 待审核<span class="sp"></span><span class="num">${S.order.items.length} 项</span>`;
+        const j = $("#jump"); if (j) j.onclick = () => $(`#co-${S.order.id}`).scrollIntoView({ behavior: "smooth", block: "center" });
+        icons();
+      }
+
+      /* ---------- 发送 / 模拟运行（setTimeout，非真实调用） ---------- */
+      function send() {
+        if (S.busy) return stop();
+        const text = $("#ta").value.trim();
+        if (!text) return $("#ta").focus();
+        const sel = S.models.find((m) => m.key === S.selected);
+        const refs = [{ icon: "file", label: "模型渠道" }];
+        if (S.ctxOn && sel) refs.unshift({ icon: "box", label: sel.label });
+        S.ev.push({ t: "user", text, refs, at: now() });
+        $("#ta").value = "";
+        if (S.order) { // 待审核时补充要求：旧单作废、重新出单（原型只示意作废）
+          S.order.items.forEach((x) => (x.res = "skipped"));
+          S.order.footer = "已作废 · 被新的要求替换";
+          S.order.revertable = false;
+          S.order = null;
+        }
+        const kind = /默认/.test(text) ? "setting" : /加价|成本/.test(text) ? "markup" : /涨|降|%/.test(text) ? "rel" : /对接|接入|接一下/.test(text) ? "plugin" : "other";
+        if (S.title === "新会话") S.title = text.length > 18 ? text.slice(0, 18) + "…" : text;
+        start(kind);
+      }
+      const PLAN = {
+        markup: [["admin_get_pricing_settings", ""], ["admin_list_models", "kind=video"], ["web_search", "\"可灵 API 价格\" \"Seedance 定价\" …"], ["web_fetch", "4 个价格页"], ["admin_quote_preview", "4 个模型"], ["admin_propose_changes", "4 项"]],
+        rel: [["admin_list_models", "kind=image,audio"], ["admin_quote_preview", "2 个模型"], ["admin_propose_changes", "2 项"]],
+        setting: [["admin_get_pricing_settings", ""], ["admin_propose_changes", "1 项"]],
+        plugin: [["web_search", "\"Example video API\""], ["web_fetch", "docs.example.com/api/video"], ["admin_list_plugins", "vendor=example"], ["admin_plugin_check", "example-video 1.0.0"], ["admin_propose_changes", "3 项"]],
+        other: [["admin_list_models", ""]],
+      };
+      function start(kind) {
+        const ev = { t: "asst", at: now(), steps: { plan: PLAN[kind], items: [], open: false }, kind };
+        S.ev.push(ev);
+        S.busy = true;
+        renderAll();
+        let i = 0;
+        const step = () => {
+          const st = ev.steps;
+          if (st.stopped) return;
+          if (i > 0) st.items[i - 1].ms = 180 + Math.round(Math.random() * 900);
+          if (i < st.plan.length) {
+            st.items.push({ tool: st.plan[i][0], arg: st.plan[i][1], ms: null });
+            i++;
+            renderLog();
+            S.timer = setTimeout(step, 480);
+          } else {
+            S.busy = false;
+            finish(ev, kind);
+          }
+        };
+        step();
+      }
+      function stop() {
+        clearTimeout(S.timer);
+        const ev = S.ev[S.ev.length - 1];
+        ev.steps.stopped = true;
+        ev.text = '<span class="muted">已停止，没有产生任何改动。</span>';
+        S.busy = false;
+        renderAll();
+      }
+      function mkOrder(title, meta, items) {
+        const id = "CO-" + String(++S.coSeq).padStart(4, "0");
+        return { id, title, meta, items: items.map((x, k) => Object.assign({ id: id + "-" + k, on: true, bo: false }, x)) };
+      }
+      function finish(ev, kind) {
+        const set = S.set;
+        if (kind === "markup") {
+          const items = S.models.filter((m) => m.kind === "video").map((m) => {
+            const r = costPrice(m.up[0], m.up[1], set.cpy, 30);
+            const priceField = m.billing === "per_second" ? "pricing.per_second" : "pricing.unit";
+            return {
+              key: m.key, label: m.label, role: "admin", status: m.noKey ? "invalid" : "ok",
+              issue: m.noKey ? "已上线模型保存即生效，启用检查未通过：渠道 openai-main 未配置 API Key" : "",
+              diff: [{ path: priceField, before: m.price, after: r.price }, { path: priceField.replace("pricing.", "pricing.cost."), before: m.cost ?? "—", after: r.cost }],
+              basis: [["上游价", `${m.up[0]} ${m.up[1]} / ${m.billing === "per_second" ? "秒" : "次"}`], ["来源", `<a href="#" onclick="return false">${esc(m.up[2])}</a>`], ...(m.up[1] === "USD" ? [["汇率", `USD/CNY ${FX} · 2026-10-30 · 实时`]] : []), ["人民币", `¥${r.yuan.toFixed(4)}`], ["成本", `⌈${r.yuan.toFixed(4)} × ${set.cpy}⌉ = ${r.cost}`], ["售价", `⌈${r.cost} × 1.30⌉ = ${r.price}`]],
+              apply: { price: r.price, cost: r.cost }, before: { price: m.price, cost: m.cost },
+            };
+          });
+          ev.text = "按「1 元 = 7.5 积分」和 30% 加价算出 4 个视频模型的新价格。Sora 2 的渠道还没配置 API Key，它是已上线的模型，保存会被启用检查拦下，所以这一项不能应用。";
+          ev.order = mkOrder("视频模型按成本加价 30%", "4 项 · 均为已上线模型，应用即生效", items);
+        } else if (kind === "rel") {
+          const items = S.models.filter((m) => m.kind !== "video").map((m) => {
+            const to = ceil(m.price * 1.1);
+            const pct = Math.round(((to - m.price) / m.price) * 100);
+            return { key: m.key, label: m.label, role: "admin", status: "ok", warn: `取整后实际 +${pct}%`, diff: [{ path: "pricing.unit", before: m.price, after: to }], basis: [["规则", "相对调价 +10%，向上取整"], ["计算", `⌈${m.price} × 1.10⌉ = ${to}`]], apply: { price: to }, before: { price: m.price } };
+          });
+          ev.text = "两个模型的单价很低，向上取整后实际涨幅明显高于 10%，每一项都标出了实际涨幅。";
+          ev.order = mkOrder("图片、音频模型涨 10%", "2 项 · 已上线模型，应用即生效", items);
+        } else if (kind === "setting") {
+          ev.text = "只改默认值，已有模型的价格不受影响。之后按成本调价时，没有指定加价率的就按 35% 计算。";
+          ev.order = mkOrder("默认加价率 30% → 35%", "1 项 · 系统设置", [{ key: "pricing_default_markup_pct", label: "定价设置 · 默认加价率", role: "admin", status: "ok", target: "setting", diff: [{ path: "default_markup_pct", before: set.markup + "%", after: "35%" }], apply: { markup: 35 }, before: { markup: set.markup } }]);
+        } else if (kind === "plugin") {
+          ev.text = "没有能复用的插件，已按文档写好 <code class='mono'>example-video</code>，并在 runner 里用文档样例验证通过：提交请求能正确渲染，提交和查询的响应样例都能正确解析。应用后需要填写渠道的 API Key。";
+          ev.order = mkOrder("对接 Example 视频生成", "3 项 · 新建插件、渠道、模型（模型默认不上线）", [
+            { key: "example-video@1.0.0", label: "新插件", role: "super_admin", status: "ok", target: "create", diff: [{ path: "auth", before: "—", after: "bearer" }, { path: "endpoints.video", before: "—", after: "async" }, { path: "code", before: "—", after: "142 行" }], basis: [["文档", '<a href="#" onclick="return false">docs.example.com/api/video</a>'], ["预检", "通过"], ["渲染请求", "POST /v1/videos · Authorization: Bearer ••••"], ["解析样例", "providerTaskId=task_123 → succeeded"]] },
+            { key: "example", label: "新渠道", role: "super_admin", status: "ok", target: "create", diff: [{ path: "base_url", before: "—", after: "api.example.com" }, { path: "rate_limit.rps", before: "—", after: "5" }] },
+            { key: "example-video-1", label: "新模型", role: "admin", status: "ok", target: "create", diff: [{ path: "ops", before: "—", after: "t2v,i2v" }, { path: "pricing.per_second", before: "—", after: "6" }, { path: "pricing.cost.per_second", before: "—", after: "4" }] },
+          ]);
+        } else {
+          ev.text = '<span class="muted">原型只模拟了上方四条示例指令；真实助手能理解任意表述。</span>';
+        }
+        if (ev.order) S.order = ev.order;
+        S.rejecting = false;
+        S.rejectText = "";
+        renderAll();
+      }
+
+      /* ---------- 审核 ---------- */
+      function apply() {
+        const o = S.order;
+        let ok = 0, fail = 0;
+        o.items.forEach((it) => {
+          if (!(it.on && pickable(it))) { it.res = it.status === "ok" ? "skipped" : it.status; return; }
+          if (it.key === "kling-v2-1" && S.conflict) { it.res = "failed"; it.resMsg = "审核期间配置已被他人修改（base_sha256 不一致），未覆盖"; fail++; return; }
+          it.res = "done"; ok++;
+          if (it.target === "setting") Object.assign(S.set, it.apply);
+          else if (it.target === "create") { if (it.key === "example-video-1") S.models.push({ key: it.key, label: "Example Video 1", kind: "video", billing: "per_second", price: 6, cost: 4, noKey: true }); }
+          else { const m = S.models.find((x) => x.key === it.key); Object.assign(m, it.apply); S.flash.push(m.key); }
+        });
+        const audit = 8840 + S.coSeq * 3;
+        o.footer = `${ok} 项已应用${fail ? ` · ${fail} 项失败` : ""} · zhanghuizhong · ${hm(now())} · 审计 #${audit}`;
+        o.revertable = ok > 0 && o.items.every((x) => x.target !== "create");
+        S.order = null;
+        S.conflict = false;
+        const reply = { t: "asst", at: now(), text: fail ? `已应用 ${ok} 项。可灵 2.1 在审核期间被修改过，我没有覆盖；需要的话我重新读取后再算一次。` : `已应用 ${ok} 项，模型列表已刷新。` };
+        if (o.title.startsWith("对接") && ok) { reply.text = "插件、渠道和模型已创建。请填写渠道的 API Key："; reply.secret = { saved: false }; }
+        S.ev.push(reply);
+        renderAll();
+        toast(fail ? `${ok} 项已应用，${fail} 项失败` : `${ok} 项已应用`);
+      }
+      function reject() {
+        const o = S.order;
+        o.items.forEach((x) => (x.res = "rejected"));
+        o.rejected = true;
+        o.footer = `已拒绝 · ${hm(now())}${S.rejectText ? " · 原因：" + S.rejectText : ""}`;
+        S.order = null;
+        S.rejecting = false;
+        S.ev.push({ t: "asst", at: now(), text: S.rejectText ? "收到，我按你的意见重新调整。" : "好的，这张变更单不执行。需要怎么改？" });
+        S.rejectText = "";
+        renderAll();
+      }
+      function revert(id) {
+        if (S.order) return toast("请先处理待审核的变更单");
+        const src = S.ev.find((e) => e.order?.id === id).order;
+        src.revertable = false;
+        S.ev.push({ t: "user", text: `回滚 ${id}`, refs: [], at: now() });
+        const items = src.items.filter((x) => x.res === "done").map((x) => ({ key: x.key, label: x.label, role: x.role, status: "ok", target: x.target, diff: x.diff.map((d) => ({ path: d.path, before: d.after, after: d.before })), apply: x.before, before: x.apply }));
+        const ev = { t: "asst", at: now(), text: "回滚也走变更单：同样要审核，同样做冲突检测。", order: mkOrder(`回滚 ${id}`, `${items.length} 项 · 恢复到 ${id} 应用前的值`, items) };
+        S.order = ev.order;
+        S.ev.push(ev);
+        renderAll();
+      }
+      function saveKey() {
+        if (!$("#keyIn").value.trim()) { $("#keyIn").focus(); return; }
+        const e = S.ev.find((x) => x.secret && !x.secret.saved);
+        e.secret.saved = true;
+        const m = S.models.find((x) => x.key === "example-video-1"); if (m) m.noKey = false;
+        S.ev.push({ t: "asst", at: now(), text: "凭证已配置。要不要真实试跑一次？", test: { s: "ask" } });
+        renderAll();
+      }
+      function runTest(go) {
+        const t = S.ev.find((x) => x.test && x.test.s === "ask").test;
+        if (!go) { t.s = "skip"; renderAll(); return; }
+        t.s = "run"; renderAll();
+        setTimeout(() => { t.s = "ok"; t.fixId = String(S.coSeq + 1).padStart(4, "0"); S.coSeq++; renderAll(); toast("试跑成功（模拟）"); }, 1600);
+      }
+
+      /* ---------- 会话菜单与全局控件 ---------- */
+      $("#sessBtn").onclick = (e) => {
+        e.stopPropagation();
+        const m = $("#menu");
+        if (!m.hidden) { m.hidden = true; return; }
+        m.innerHTML = `<button class="mi"><i data-lucide="check"></i>${esc(S.title)}<small>现在</small></button>
+          <button class="mi"><span style="width: 14px"></span>Seedance 规格价补齐<small>昨天</small></button>
+          <button class="mi"><span style="width: 14px"></span>文本模型 Token 价格同步<small>10-29</small></button>
+          <div class="sep"></div><button class="mi"><i data-lucide="pencil"></i>重命名</button><button class="mi" style="color: var(--bad)"><i data-lucide="trash-2"></i>删除会话</button>`;
+        m.hidden = false;
+        icons();
+      };
+      document.addEventListener("click", () => ($("#menu").hidden = true));
+      $("#newBtn").onclick = () => { if (S.busy) return; S.ev = []; S.order = null; S.title = "新会话"; renderAll(); $("#ta").focus(); };
+      $("#closeBtn").onclick = () => { S.open = false; renderHead(); };
+      $("#asstBtn").onclick = () => { S.open = !S.open; renderHead(); };
+      document.addEventListener("keydown", (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "j") { e.preventDefault(); S.open = !S.open; renderHead(); if (S.open) $("#ta").focus(); }
+        if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && document.activeElement === $("#ta") && !S.busy) { e.preventDefault(); send(); }
+      });
+      $("#sendBtn").onclick = send;
+      $("#ta").addEventListener("input", (e) => { e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 160) + "px"; });
+      document.querySelectorAll("[data-fill]").forEach((b) => (b.onclick = () => { S.open = true; renderHead(); const ta = $("#ta"); ta.value = b.dataset.fill; ta.focus(); ta.dispatchEvent(new Event("input")); }));
+      document.querySelectorAll("#roleSeg button").forEach((b) => (b.onclick = () => {
+        S.role = b.dataset.r;
+        document.querySelectorAll("#roleSeg button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+        renderLog(); toast("当前角色：" + S.role);
+      }));
+      $("#conflictBtn").onclick = () => { S.conflict = true; const m = S.models.find((x) => x.key === "kling-v2-1"); m.price = 11; S.flash.push(m.key); renderPage(); renderHead(); toast("另一位管理员把 kling-v2-1 改成了 11"); };
+      $("#noModelSw").onclick = (e) => { S.noModel = !S.noModel; e.currentTarget.setAttribute("aria-checked", String(S.noModel)); renderLog(); renderCompose(); };
+      $("#resetBtn").onclick = () => { clearTimeout(S.timer); reset(); };
+      $("#noteSw").onclick = (e) => { const on = document.body.classList.toggle("show-notes"); e.currentTarget.setAttribute("aria-checked", String(on)); };
+      $("#themeBtn").onclick = () => document.documentElement.classList.toggle("dark");
+
+      reset();
+    </script>
+  </body>
+</html>

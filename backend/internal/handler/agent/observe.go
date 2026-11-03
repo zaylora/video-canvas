@@ -52,6 +52,7 @@ func actor(c *gin.Context) agentsvc.ObserveActor {
 
 // runListQuery 是运行摘要列表的查询参数。
 type runListQuery struct {
+	Scene         string `form:"scene" binding:"omitempty,oneof=canvas admin" label:"scene"`
 	Since         string `form:"since" binding:"max=64" label:"since"`                            // 起，RFC3339 或 YYYY-MM-DD
 	Until         string `form:"until" binding:"max=64" label:"until"`                            // 止（不含）
 	Status        string `form:"status" binding:"max=400" label:"status"`                         // 逗号分隔的运行状态
@@ -103,6 +104,7 @@ func (h *AgentObserveHandler) ListRuns(c *gin.Context) {
 		}
 	}
 	page, err := h.svc.ListRuns(c.Request.Context(), actor(c), &agentsvc.RunListFilter{
+		Scene: q.Scene,
 		Since: since, Until: until, Statuses: statuses, Feedback: q.Feedback, Undone: q.Undone, HarnessKey: q.HarnessKey,
 		PromptVersion: q.PromptVersion, ModelKey: q.ModelKey, UserID: q.UserID, Cursor: q.Cursor, Page: q.Page, Limit: q.Limit,
 	})

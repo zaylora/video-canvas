@@ -8,6 +8,7 @@ import (
 
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/logger"
+	"video-canvas/internal/repository"
 )
 
 // AIAuditWriter 是审计日志的写入依赖，由 repository.AIChannelRepository 实现。
@@ -31,7 +32,7 @@ func (s *AIConfigService) NotifyChanged(ctx context.Context, reason string) {
 // 审计写入失败不回滚已经提交的业务变更（变更已生效，回滚不了），但必须留下 Error 日志让运维补记：
 // 这是故意的取舍——为了写一条日志让整个运维操作失败，比偶尔丢一条审计更糟。
 func aiAudit(ctx context.Context, w AIAuditWriter, actorID uint64, action, targetType, targetKey string, detail map[string]any) {
-	if w == nil {
+	if w == nil || repository.HasAssistantAudit(ctx) {
 		return
 	}
 	entry := &model.AIAuditLog{ActorID: actorID, Action: action, TargetType: targetType, TargetKey: targetKey}

@@ -19,6 +19,7 @@ import { runStatusText } from "@/constants/agent";
 import type { AgentController } from "@/hooks/use-agent-controller";
 import { DURATION, EASE_OUT, SPRING } from "@/lib/motion";
 import { cn } from "@/lib/utils";
+import { describePageContext } from "@/utils/admin/assistant/page-context";
 import { parseMessage } from "@/utils/agent/chips";
 import { contextUsage, formatTokens } from "@/utils/agent/context-usage";
 import { anchoredScrollTop, trackHistoryKeys } from "@/utils/agent/message-scroll";
@@ -34,6 +35,7 @@ import type { RefNode } from "@/utils/agent/selection-refs";
 import type { NodeOption } from "./agent-editor";
 import { SelectionRefs } from "./selection-refs";
 import { ApprovalRow } from "./approval-row";
+import { ContextChips } from "./context-chips";
 import { Markdown } from "./markdown";
 import { MessageAttachments } from "./message-attachments";
 import { RunFeedback } from "./run-feedback";
@@ -351,6 +353,7 @@ function Item({
         <div className="flex flex-col items-end gap-1">
           {item.steer && <span className="text-muted-foreground text-[11px]">插话</span>}
           <SelectionRefs ids={item.selection} nodes={refNodes} />
+          <ContextChips refs={describePageContext(item.pageContext)} />
           <MessageAttachments items={item.attachments} />
           <div className="agent-inset bg-foreground/7 max-w-[88%] rounded-2xl rounded-br-sm px-3 py-2 text-[13.5px] leading-[1.7] break-words whitespace-pre-wrap">
             <MessageText text={item.text} />

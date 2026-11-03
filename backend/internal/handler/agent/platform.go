@@ -247,7 +247,15 @@ func (h *PlatformHandler) ProposeApproval(c *gin.Context) {
 	if len(args) == 0 {
 		args = json.RawMessage(`{}`)
 	}
-	out, err := h.svc.ProposeApproval(c.Request.Context(), rc, req.Kind, args)
+	ctx := c.Request.Context()
+	if key := c.GetHeader(IdempotencyKeyHeader); key != "" {
+		if !idemKeyPattern.MatchString(key) {
+			response.Fail(c, errcode.ErrInvalidParams.WithMsg("审批幂等键不合法"))
+			return
+		}
+		ctx = agentsvc.WithIdempotencyKey(ctx, key)
+	}
+	out, err := h.svc.ProposeApproval(ctx, rc, req.Kind, args)
 	if err != nil {
 		response.Fail(c, err)
 		return

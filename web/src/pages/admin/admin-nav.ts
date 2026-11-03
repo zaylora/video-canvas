@@ -1,6 +1,7 @@
 import {
   Activity,
   ArrowUpCircle,
+  Coins,
   Film,
   HardDrive,
   History,
@@ -61,6 +62,7 @@ export const ADMIN_NAV: AdminNavSection[] = [
       { to: "settings/storage", label: "存储配置", icon: HardDrive },
       { to: "settings/image-processor", label: "图片服务", icon: ImageDown },
       { to: "settings/register", label: "注册设置", icon: UserPlus },
+      { to: "settings/pricing", label: "定价设置", icon: Coins },
       { to: "settings/email", label: "邮件服务", icon: Mail },
       { to: "settings/showcase", label: "登录页展示", icon: Film },
       { to: "settings/version", label: "版本与升级", icon: ArrowUpCircle },

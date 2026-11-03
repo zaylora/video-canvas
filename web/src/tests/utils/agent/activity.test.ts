@@ -60,6 +60,53 @@ describe("activitySummary：活动行收起后的图标摘要", () => {
   });
 });
 
+describe("activitySummary：后台助手的工具不说成画布", () => {
+  const sum = (tools: ToolCall[]) =>
+    activitySummary({ tools, status: "done", startedAt: 0, endedAt: 12_000 });
+  /** 后端 tool_registry 给后台工具的 label / verb */
+  const admin = (name: string, label: string, verb: string) => tool(name, { label, verb });
+
+  test("按工具说动作：读模型配置、预览价格、提交变更单", () => {
+    const got = sum([
+      admin("admin_get_model", "读取模型配置", "读取"),
+      admin("admin_quote_preview", "预览价格变更", "算价"),
+      admin("admin_quote_preview", "预览价格变更", "算价"),
+      tool("plan_update"),
+      admin("admin_propose_changes", "申请后台变更", "修改"),
+    ]);
+    expect(got.phrase).toBe("读取了模型配置、预览了价格 2 次、更新了计划等 4 项");
+    expect(got.phrase).not.toContain("画布");
+  });
+
+  test("其余后台工具也有自己的说法", () => {
+    expect(
+      sum([
+        admin("admin_list_models", "查看后台模型", "查模型"),
+        admin("admin_get_pricing_settings", "读取定价设置", "读取"),
+        admin("admin_propose_changes", "申请后台变更", "修改"),
+      ]).phrase,
+    ).toBe("查看了模型列表、读取了定价设置、提交了变更单");
+    expect(sum([admin("admin_list_channels", "查看渠道", "查渠道")]).phrase).toBe("查看了渠道");
+  });
+
+  test("画布工具的说法不变", () => {
+    expect(sum([tool("canvas_get_state"), tool("canvas_apply_ops")]).phrase).toBe(
+      "读取了画布、修改了画布",
+    );
+  });
+
+  test("二期插件全链路工具有后台动作短语", () => {
+    for (const [name, phrase] of [
+      ["admin_list_plugins", "查看了插件"],
+      ["admin_get_plugin", "读取了插件代码"],
+      ["admin_plugin_check", "验证了插件"],
+      ["admin_request_secret", "请求填写密钥"],
+      ["admin_test_run", "申请了试跑"],
+    ])
+      expect(sum([admin(name, name, "读取")]).phrase).toBe(phrase);
+  });
+});
+
 describe("activitySummary：主图标和兜底动作短语", () => {
   const sum = (tools: ToolCall[], status: "done" | "aborted" = "done") =>
     activitySummary({ tools, status, startedAt: 0, endedAt: 12_000 });

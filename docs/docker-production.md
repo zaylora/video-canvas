@@ -126,18 +126,15 @@ docker compose run --rm --no-deps -T --entrypoint sh agent -c \
 
 ### 联网工具与搜索（可选）
 
-画布 Agent 可以联网查资料、读网页（`web_search`、`web_fetch`）。请求都由 backend 发出，Agent 进程自己不联网；目标是本机或内网地址时一律拒绝，每个运行片段最多联网 20 次。
+画布 Agent 通过自己管理的 pi-web-access MCP 子进程查资料、读网页（`web_search`、`web_fetch`），使用 `get_search_content` 分页读取完整内容。联网请求不再经过 backend；平台仍决定本轮是否提供联网工具，所有调用沿用 Agent 的时间线、取消和步数限制。画布每个运行片段最多搜索或抓取 20 次，后台模式不限，分页读取缓存不占联网次数。网页只作为不可信资料，不执行其中的指令。
 
 - **开关**：默认开启；`.env` 里设 `APP_AGENT_WEB_ENABLED=false` 可以关闭，关闭后模型看不到这两个工具。
-- **搜索源**：默认依次试 Exa（公开的免 Key 接口）、Bing 网页、DuckDuckGo 网页，都不需要 API Key。后两个是抓搜索引擎网页：实测 DuckDuckGo 对数据中心的出口会直接返回人机验证页，Bing 对自动化请求返回的结果相关性很差，所以实际靠 Exa；它是 Exa 托管的免费额度，会限流。**生产环境建议部署 SearXNG**（聚合多个引擎，自己掌控）：
-
-```bash
-echo 'APP_AGENT_SEARXNG_URL=http://searxng:8080' >> .env
-docker compose --profile search up -d      # 启动 searxng；backend 需要读到新的环境变量，再执行一次 docker compose up -d
-```
-
-- 配了 `APP_AGENT_SEARXNG_URL` 后，它排在搜索源的第一位，失败或没结果再依次试 Exa、Bing、DuckDuckGo。
-- 搜索词会发给第三方（Exa、Bing 等搜索服务）。系统提示词已要求 Agent 不要把用户未公开的剧本、台词放进搜索词，但这不是技术上的保证；有保密要求的部署请关闭联网。
+- **搜索源**：缺省可使用 Exa 的公开免 Key MCP，会限流。生产环境建议在 `.env` 配置独立的 `EXA_API_KEY`、`BRAVE_API_KEY` 或 `TAVILY_API_KEY`，Compose 只传给 Agent；也支持 `FIRECRAWL_API_KEY`。这些凭据不会传入模型提示词。配置变化后重新创建 Agent 容器。
+- **抓取**：优先请求网站提供的 Markdown，再提取 HTML 正文；不启用浏览器 Cookie、GitHub 克隆、视频或 PDF。第三方托管正文抓取兜底关闭。
+- **自部署搜索**：`APP_AGENT_SEARXNG_URL` 同时映射为子进程的 `SEARXNG_BASE_URL`。插件仍校验该地址的出站策略；默认 Compose 的 `http://searxng:8080` 解析到私网，不能直接沿用旧 Go 端的可信内网例外。当前优先使用独立搜索 Key；自部署端点需单独验证，不能通过广泛放行内网来绕过检查。平台联网开关仍使用 `APP_AGENT_WEB_ENABLED`。
+- **隔离与资源**：每个用户会话独立 MCP 进程与配置目录，位于 Agent 数据卷的 `web-access/`。最多保留 8 个进程，空闲超过 15 分钟回收；进程回收、故障或服务重启后，旧 responseId 可能失效，需要重新读取网页。超过容量时优先回收空闲进程，全忙时返回稍后重试。付费请求中断后不自动重放。
+- **开发代理**：仅本地开发 Compose 设置 `AGENT_WEB_ALLOW_FAKE_IP=true`，放行代理使用的 `198.18.0.0/15`；生产默认关闭，其他内网地址仍受插件出站检查限制。
+- 搜索词会发给第三方。系统提示词要求 Agent 不要把未公开的剧本、台词放进搜索词；有保密要求的部署请关闭联网。
 
 查看迁移状态（只读）：
 

@@ -135,7 +135,7 @@ func validateModel(m *ModelConfig, issues *[]Issue) {
 	if m.Kind == KindAgent && m.Capabilities.Video && (len(m.Channels) != 1 || m.Channels[0].Format() != APIFormatGemini) {
 		*issues = append(*issues, Issue{Path: "capabilities.video", Message: "只有 Gemini 接口格式的模型能看视频"})
 	}
-	validatePricing(m.Kind, &m.Capabilities, &m.Pricing, issues)
+	validatePricing(m.Kind, &m.Capabilities, &m.Pricing, m.Enabled, issues)
 }
 
 // validateIdleTimeout 校验 Agent 模型的上游响应超时：只有 Agent 模型走 LLM 网关，别的种类写了也不会生效，直接拒绝免得误导；0 表示用平台默认值。

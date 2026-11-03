@@ -92,6 +92,11 @@ export function parseServerMessage(raw: unknown): ServerMessage | null {
     case "agent.event": {
       if (typeof data !== "object" || data === null) return null;
       const event = data as Partial<AgentEventDto>;
+      /**
+       * 后台助手会话不绑画布，Go 的 idcodec 把零画布编成 null：
+       * 收下并归到后台作用域 "0"（同 store/agent 的 ADMIN_SESSION_SCOPE），否则后台助手收不到任何实时事件
+       */
+      if ((event.canvas_id as unknown) === null) event.canvas_id = "0";
       if (
         typeof event.session_id !== "string" ||
         typeof event.canvas_id !== "string" ||

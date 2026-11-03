@@ -1,11 +1,15 @@
 import {
   Check,
+  ClipboardList,
   CornerDownRight,
   FilePen,
   Hand,
   MessageCircleQuestion,
+  KeyRound,
+  Play,
   Sparkles,
   Trash2,
+  Undo2,
   X,
 } from "lucide-react";
 
@@ -14,11 +18,23 @@ import type {
   AgentAskPayload,
   AgentDeletePayload,
   AgentGeneratePayload,
+  AdminSecretPayload,
+  AdminSecretResult,
+  AdminTestRunPayload,
+  AdminTestRunResult,
 } from "@/api/agent/type";
 import type { AgentController } from "@/hooks/use-agent-controller";
 import { cn } from "@/lib/utils";
 import { useAgentHighlight } from "@/store/agent-highlight";
+import {
+  adminChangeTitle,
+  canRollback,
+  adminChangePayload,
+  resultSummary,
+  rollbackMessage,
+} from "@/utils/admin/assistant/change-order";
 import { editPayload, editTitle } from "@/utils/agent/drama";
+import { formatSeconds } from "@/utils/agent/activity";
 
 /** 删除审批的内容；服务端的空列表可能是 null（旧数据），统一补成空数组 */
 export function deletePayload(raw: unknown): AgentDeletePayload {
@@ -43,6 +59,13 @@ export function approvalTitle(approval: AgentApprovalDto) {
     }
     case "ask":
       return (approval.payload as AgentAskPayload).question;
+    // 后台助手的变更单
+    case "admin_change":
+      return adminChangeTitle(approval);
+    case "admin_secret":
+      return `填写密钥：${(approval.payload as AdminSecretPayload).channel_label}`;
+    case "admin_test_run":
+      return `申请试跑：${(approval.payload as AdminTestRunPayload).model_label}`;
     // 短剧助手的修改审批；不认识的种类也按它显示
     default:
       return editTitle(editPayload(approval.payload));
@@ -51,7 +74,13 @@ export function approvalTitle(approval: AgentApprovalDto) {
 
 /** 决定里附带的文字：提问的回答，或拒绝时给 Agent 的说明 */
 const answerOf = (approval: AgentApprovalDto) =>
-  typeof approval.decision?.answer === "string" ? approval.decision.answer : "";
+  approval.kind !== "admin_secret" && typeof approval.decision?.answer === "string"
+    ? approval.decision.answer
+    : "";
+
+/** 结果链接允许 http(s) 或站内绝对路径，禁止脚本与协议相对地址 */
+const safeResultLink = (url?: string) =>
+  url && (/^https?:\/\//i.test(url) || /^\/(?![/\\])/.test(url)) ? url : undefined;
 
 /**
  * 消息流里的审批 / 提问记录：只占一行，完整的决定框钉在输入框的位置。
@@ -64,6 +93,10 @@ export function ApprovalRow({ approvalId, ctl }: { approvalId: string; ctl: Agen
   const answer = answerOf(approval);
   const pending = approval.status === "pending";
   const ask = approval.kind === "ask";
+  const adminChange = approval.kind === "admin_change";
+  const secret = approval.kind === "admin_secret";
+  const trial = approval.kind === "admin_test_run";
+  const trialResult = trial ? (approval.result as AdminTestRunResult | null) : null;
 
   let icon = pending ? (
     approval.kind === "generate" ? (
@@ -72,6 +105,12 @@ export function ApprovalRow({ approvalId, ctl }: { approvalId: string; ctl: Agen
       <Trash2 className="text-destructive" />
     ) : ask ? (
       <MessageCircleQuestion className="text-status-warning" />
+    ) : adminChange ? (
+      <ClipboardList className="text-status-warning" />
+    ) : secret ? (
+      <KeyRound className="text-status-warning" />
+    ) : trial ? (
+      <Play className="text-status-warning" />
     ) : (
       <FilePen className="text-status-warning" />
     )
@@ -101,9 +140,56 @@ export function ApprovalRow({ approvalId, ctl }: { approvalId: string; ctl: Agen
       default:
         text = `已批准：${title}`;
     }
+    // 变更单决定之后写明结果：几项已应用 / 失败 / 跳过、谁在什么时候应用的
+    const summary = adminChange && approval.status !== "rejected" ? resultSummary(approval) : null;
+    if (summary) text = `变更单 ${adminChangePayload(approval)?.order_no ?? ""} · ${summary}`;
+  }
+  if (secret && !pending) {
+    const configured = (approval.result as AdminSecretResult | null)?.configured;
+    text =
+      approval.status === "rejected"
+        ? "已跳过"
+        : configured
+          ? "已保存密钥"
+          : approval.status === "failed" || configured === false
+            ? "密钥未保存"
+            : approval.status === "expired"
+              ? "密钥请求已失效"
+              : "正在确认密钥";
+  }
+  if (trial && !pending) {
+    const state = trialResult?.status;
+    const outcome =
+      state === "succeeded"
+        ? "试跑成功"
+        : state === "timeout"
+          ? /** 后端等满十分钟就交回结果，上游任务没有取消、仍在跑，不算失败 */
+            "试跑仍在运行（已等 10 分钟）"
+          : state === "failed" || approval.status === "failed"
+            ? "试跑失败"
+            : approval.status === "rejected"
+              ? "未试跑"
+              : approval.status === "expired"
+                ? "试跑请求已失效"
+                : "仍在运行";
+    text = [
+      outcome,
+      (approval.payload as AdminTestRunPayload).model_label,
+      trialResult?.duration_ms !== undefined
+        ? `耗时 ${formatSeconds(trialResult.duration_ms / 1000)}`
+        : null,
+      trialResult?.error_class ? `错误分类：${trialResult.error_class}` : null,
+      trialResult?.error,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    if (state === "failed") icon = <X className="text-destructive" />;
   }
   const quote =
-    approval.kind !== "ask" && approval.kind !== "delete" && approval.quote_credits > 0
+    !approval.kind.startsWith("admin_") &&
+    approval.kind !== "ask" &&
+    approval.kind !== "delete" &&
+    approval.quote_credits > 0
       ? approval.quote_credits
       : null;
 
@@ -132,13 +218,57 @@ export function ApprovalRow({ approvalId, ctl }: { approvalId: string; ctl: Agen
     >
       {pending && <span className="bg-status-warning size-1.5 shrink-0 rounded-full" />}
       {icon}
-      <span className={cn("min-w-0 truncate", pending && "text-foreground")}>{text}</span>
+      <span
+        title={trial ? text : undefined}
+        className={cn(
+          "min-w-0",
+          trial ? "wrap-anywhere" : "truncate",
+          pending && "text-foreground",
+        )}
+      >
+        {text}
+      </span>
+      {trial && safeResultLink(trialResult?.trace_url) && (
+        <a
+          href={safeResultLink(trialResult?.trace_url)}
+          target="_blank"
+          rel="noreferrer noopener"
+          className="shrink-0 underline underline-offset-2"
+        >
+          查看 trace
+        </a>
+      )}
+      {trial && safeResultLink(trialResult?.output_url) && (
+        <a
+          href={safeResultLink(trialResult?.output_url)}
+          target="_blank"
+          rel="noreferrer noopener"
+          className="shrink-0 underline underline-offset-2"
+        >
+          查看产物
+        </a>
+      )}
       {quote !== null && <span className="text-credit shrink-0 tabular-nums">· ✦ {quote}</span>}
       {pending && (
         <span className="flex shrink-0 items-center gap-1">
           · 等你{ask ? "回答" : "确认"}
           <Hand />
         </span>
+      )}
+      {adminChange && canRollback(approval) && (
+        <button
+          type="button"
+          disabled={ctl.busy}
+          title={ctl.busy ? "运行中不能回滚" : undefined}
+          onClick={() => {
+            const orderNo = adminChangePayload(approval)?.order_no;
+            if (orderNo) void ctl.send(rollbackMessage(orderNo));
+          }}
+          className="hover:bg-chrome-hover hover:text-foreground focus-visible:ring-node-ring/60 ml-auto inline-flex h-6 shrink-0 items-center gap-1 rounded-md px-2 text-xs outline-none transition-colors duration-120 focus-visible:ring-2 disabled:opacity-40"
+        >
+          <Undo2 aria-hidden />
+          回滚
+        </button>
       )}
     </div>
   );

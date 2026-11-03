@@ -25,6 +25,7 @@ import { ModelTable } from "./model-table";
 import { useModelBatch } from "./use-model-batch";
 import { useModelRowActions } from "./use-model-row-actions";
 import { useModelWorkspace, type ModelCatalog } from "./use-model-workspace";
+import { usePageHints } from "@/store/admin-page-hints";
 
 /** 列表认的筛选参数：能力（含“待配置”）、状态；渠道由面板固定，不进筛选 */
 const MODEL_FILTERS = ["kind", "status"] as const;
@@ -113,6 +114,8 @@ function PanelBody({
     onChangedRef.current();
   }, [reload]);
   const ws = useModelWorkspace(catalog, route, reloadAll);
+  // 后台助手的页面上下文：打开了某个模型的编辑弹窗时，它就是「当前选中的模型」
+  usePageHints({ modelKey: ws.selection === "model" ? ws.modelKey || undefined : undefined });
   const testOnly = test && ws.selection === "model";
 
   // 外部递增 reloadToken（拉取并导入完成等）：重新拉取；首次渲染不算

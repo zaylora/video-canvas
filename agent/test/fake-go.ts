@@ -41,7 +41,7 @@ export interface FakeGoOptions {
   /** 审批解析：默认拒绝 → rejected，否则 approved；预估积分取 payload.quote_credits */
   resolve?: (body: any) => Record<string, unknown> | { error: { status: number; code: number; msg: string } };
   /** 审批执行：默认批准的删除 / 生成 executed，拒绝和提问 none */
-  execute?: (body: any) => Record<string, unknown> | { error: { status: number; code: number; msg: string } } | "down";
+  execute?: (body: any) => Record<string, unknown> | { error: { status: number; code: number; msg: string } } | "down" | Promise<Record<string, unknown> | "down">;
   /** 摘要请求（X-Agent-Purpose: summary）的回答；函数形式可以按请求变化或出错。不消耗 turns */
   summary?: string | ((body: any, n: number) => string | { error: { status: number; message: string } });
   /** 会话命名请求（X-Agent-Purpose: title）的回答；函数形式可以按请求变化或出错。不消耗 turns */
@@ -161,7 +161,7 @@ export async function fakeGo(opts: FakeGoOptions) {
           return ok(res, r);
         }
         if (path === `${base}/approvals/execute`) {
-          const r = opts.execute?.(body) ?? defaultExecute(body);
+          const r = await (opts.execute?.(body) ?? defaultExecute(body));
           if (r === "down") return void res.destroy();
           if (isFailure(r)) return json(res, r.error.status, { code: r.error.code, msg: r.error.msg });
           return ok(res, r);

@@ -97,9 +97,11 @@ type ObserveDeps struct {
 type ObserveService struct {
 	d ObserveDeps
 
-	// 同步 Agent 服务里的运行：游标是已处理到的更新时间（毫秒），只在内存里
-	syncMu     sync.Mutex
-	syncCursor int64
+	// 同步 Agent 服务里的运行：游标是已完成扫描的时间水位（毫秒），只在内存里。
+	// 重叠窗口内记录已成功汇总的版本，迟到的其他运行或真实更新仍会处理。
+	syncMu       sync.Mutex
+	syncCursor   int64
+	syncVersions map[string]int64
 
 	mu      sync.Mutex
 	windows map[uint64]*rateWindow // 令牌 id → 当前分钟的请求计数
