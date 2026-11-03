@@ -128,8 +128,9 @@ func (f *fakePlatform) PrepareRun(_ context.Context, rc agentsvc.RunContext, req
 	return f.setup, nil
 }
 
-func (f *fakePlatform) ProposeApproval(_ context.Context, rc agentsvc.RunContext, kind string, args json.RawMessage) (*agentsvc.ApprovalProposal, error) {
+func (f *fakePlatform) ProposeApproval(ctx context.Context, rc agentsvc.RunContext, kind string, args json.RawMessage) (*agentsvc.ApprovalProposal, error) {
 	f.rc, f.kind, f.args = rc, kind, string(args)
+	f.idemKey = agentsvc.IdempotencyKeyFrom(ctx)
 	if f.err != nil {
 		return nil, f.err
 	}

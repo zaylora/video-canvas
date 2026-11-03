@@ -10,6 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import {
   RUN_FEEDBACK_OPTIONS,
   RUN_RANGE_OPTIONS,
+  RUN_SCENE_OPTIONS,
   RUN_STATUS_OPTIONS,
   harnessOptions,
   modelOptions,
@@ -17,6 +18,7 @@ import {
   type RunFeedbackChoice,
   type RunFilters,
   type RunRange,
+  type RunScene,
   type RunStatusGroup,
 } from "@/utils/admin/agent-run";
 
@@ -70,7 +72,7 @@ export function UserIdInput({
 }
 
 /**
- * 运行记录的筛选栏：时间范围、状态、反馈、仅看被撤销、Harness 版本、模型、用户 ID，以及「重置筛选」。
+ * 运行记录的筛选栏：场景（画布 / 后台助手）、时间范围、状态、反馈、仅看被撤销、Harness 版本、模型、用户 ID，以及「重置筛选」。
  * 任一项变化都由上层重置分页回第一页。Harness 与模型的选项来自统计，当前选中的值即使不在统计里也会保留。
  * @param filters 当前筛选
  * @param active 有没有筛选在生效，没有时「重置筛选」置灰
@@ -94,6 +96,12 @@ export function RunFilterBar({
 }) {
   return (
     <TableToolbar data-slot="run-filter-bar" role="search" aria-label="筛选运行记录">
+      <FilterSelect
+        aria-label="场景"
+        value={filters.scene === "canvas" ? "" : filters.scene}
+        options={RUN_SCENE_OPTIONS.map(([v, l]) => [v === "canvas" ? "" : v, l] as const)}
+        onValueChange={(v) => onChange({ scene: (v || "canvas") as RunScene })}
+      />
       <FilterSelect
         aria-label="时间范围"
         value={toSelect(filters.range)}

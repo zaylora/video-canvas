@@ -3,7 +3,7 @@
  * 用环境变量配置（见 configFromEnv）；Go 反向代理 /api/v1/agent/* 过来，Agent 经平台 API 向 Go 要它才有的东西。
  */
 import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { createApiApp } from "./api/http.ts";
 import { AgentApiService } from "./api/service.ts";
@@ -13,6 +13,7 @@ import { startIdCheck, type IdCheck } from "./id-check.ts";
 import { createIdCodec } from "./ids.ts";
 import { createPlatform } from "./platform-client.ts";
 import { openStore } from "./store/store.ts";
+import { WebAccess } from "./web-access.ts";
 
 const MIN_TOKEN_LEN = 32;
 const DEFAULT_RESUME_WINDOW_SECONDS = 300;
@@ -30,6 +31,8 @@ export interface DurableConfig {
   /** 启动时没跑完的运行，停机不超过这么久就自动续跑（毫秒） */
   resumeWindowMs: number;
   listen: { host: string; port: number };
+  /** 仅用于受控开发代理的 Fake-IP 地址，生产保持 false。 */
+  webAllowFakeIP?: boolean;
 }
 
 function fail(msg: string): never {
@@ -61,6 +64,7 @@ export function configFromEnv(env: Record<string, string | undefined>): DurableC
     workerId: int("AGENT_WORKER_ID", 1, 0, 1023),
     resumeWindowMs: int("AGENT_RESUME_WINDOW_SECONDS", DEFAULT_RESUME_WINDOW_SECONDS, 0, 7 * 24 * 3600) * 1000,
     listen: { host: m[1].replace(/^\[|\]$/g, ""), port: Number(m[2]) },
+    webAllowFakeIP: env.AGENT_WEB_ALLOW_FAKE_IP === "true",
   };
 }
 
@@ -84,6 +88,7 @@ export async function startDurable(cfg: DurableConfig, log: (msg: string, extra?
   let engine: AgentEngine | undefined;
   let pusher: EventPusher | undefined;
   let idCheck: IdCheck | undefined;
+  const web = new WebAccess({ dataDir: join(dirname(cfg.dbPath), "web-access"), allowFakeIP: cfg.webAllowFakeIP });
   try {
     const platform = createPlatform({ baseUrl: cfg.bridgeUrl, serviceToken: cfg.serviceToken });
     // 事件推给 Go，由它经 WebSocket 发给前端；丢了前端会按 seq 回放补回，所以这里失败只记日志（成串的失败合并成一条）
@@ -97,7 +102,7 @@ export async function startDurable(cfg: DurableConfig, log: (msg: string, extra?
       },
     }));
     engine = await AgentEngine.open({
-      store, platform, baseUrl: cfg.bridgeUrl, serviceToken: cfg.serviceToken, codec,
+      store, platform, baseUrl: cfg.bridgeUrl, serviceToken: cfg.serviceToken, codec, web,
       storage: await openNodeSqliteStorage(cfg.dbPath, { prefix: "pi_" }), resumeWindowMs: cfg.resumeWindowMs,
       onEvent: (ev) => p.publish(ev),
     });
@@ -122,6 +127,7 @@ export async function startDurable(cfg: DurableConfig, log: (msg: string, extra?
   } catch (e) {
     await idCheck?.stop();
     await engine?.close().catch(() => {});
+    await web.close();
     await pusher?.close(0);
     store.close();
     throw e;

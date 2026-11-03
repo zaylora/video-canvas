@@ -1,4 +1,5 @@
 import type {
+  AdminPageContext,
   AgentApprovalDto,
   AgentAttachmentDto,
   AgentDeletePayload,
@@ -6,6 +7,7 @@ import type {
   AgentRunStatus,
 } from "@/api/agent/type";
 import { toolLabel } from "@/constants/agent";
+import { parseCard, type AgentCard } from "./card";
 import {
   ACTIVE_RUN_STATUSES,
   activeRunId,
@@ -44,6 +46,8 @@ export type TimelineItem =
       selection: string[];
       /** 随消息发出的图片附件（显示在气泡上方）；没有、旧事件都是空数组 */
       attachments: AgentAttachmentDto[];
+      /** 后台助手：发送这条消息时的页面上下文；画布、短剧和旧事件没有 */
+      pageContext?: AdminPageContext;
       /** 插话的 id（后端收下它时给的）；旧事件的插话没有，也不排队 */
       steerId?: string;
       /** 插话属于哪一轮运行 */
@@ -143,6 +147,12 @@ export type TimelineItem =
       text: string;
     }
   | {
+      /** 助手用 show_card 展示的结论卡 / 对比表：独立条目，不折进活动组，位置就在它出现的地方 */
+      type: "card";
+      key: string;
+      card: AgentCard;
+    }
+  | {
       /** 计划全部完成 */
       type: "plan-done";
       key: string;
@@ -167,6 +177,9 @@ const NOTABLE_STATUSES: readonly AgentRunStatus[] = [
   "canceled",
   "expired",
 ];
+
+/** 结果直接以独立条目出现在消息流里、成功时不在活动组里重复一行的工具 */
+const HIDDEN_TOOL = "show_card";
 
 /** 会改画布内容、「撤销本轮」能倒回去的工具（生成不在其中：已提交的任务撤销不了） */
 const WRITE_TOOLS = ["canvas_apply_ops", "canvas_arrange", "canvas_delete", "canvas_capture_frame"];
@@ -223,6 +236,19 @@ function attachmentsOf(v: unknown): AgentAttachmentDto[] {
   return out;
 }
 
+/** 事件里的页面上下文（后台助手）：route 必须是字符串，其余键只留非空字符串 */
+function pageContextOf(v: unknown): AdminPageContext | undefined {
+  if (!v || typeof v !== "object") return undefined;
+  const c = v as Record<string, unknown>;
+  if (!str(c.route)) return undefined;
+  return {
+    route: str(c.route),
+    ...(str(c.model_key) && { model_key: str(c.model_key) }),
+    ...(str(c.channel_key) && { channel_key: str(c.channel_key) }),
+    ...(str(c.plugin_key) && { plugin_key: str(c.plugin_key) }),
+  };
+}
+
 /** 一轮运行的画布改动，按节点去重 */
 type RunChanges = { created: Set<string>; updated: Set<string> };
 
@@ -234,7 +260,10 @@ const assistantKey = (runId: string, n: number) => `a:${runId}:${n}`;
  * 先按事件顺序排出用户消息、助手回复、工具调用、审批、状态卡片，
  * 再把同一轮里连续的工具调用合成活动块，最后在每轮运行后面放收尾的卡片：改过画布且已收尾的先放改动摘要，再放反馈位。
  */
-export function buildTimeline(state: AgentSessionState): TimelineItem[] {
+export function buildTimeline(
+  state: AgentSessionState,
+  sentContexts: Readonly<Record<string, AdminPageContext>> = {},
+): TimelineItem[] {
   const items: (TimelineItem | RawTool)[] = [];
   const toolAt = new Map<string, number>();
   const seenStatus = new Set<string>();
@@ -258,6 +287,8 @@ export function buildTimeline(state: AgentSessionState): TimelineItem[] {
   const summaries = new Map<string, string>();
   /** 还在等压缩后第一条用量的分隔行（按运行分开） */
   const awaitingUsage = new Map<string, CompactionItem[]>();
+  /** 已经用过本机记录的运行 */
+  const usedSent = new Set<string>();
   const steerItem = (
     id: string,
     p: { seq: number; text: string; runId: string; attachments: AgentAttachmentDto[] },
@@ -289,14 +320,22 @@ export function buildTimeline(state: AgentSessionState): TimelineItem[] {
           break;
         }
         if (d.steer !== true) lastUserSeq = ev.seq;
-        items.push({
-          type: "user",
-          key: `e${ev.seq}`,
-          text: str(d.text),
-          steer: d.steer === true,
-          selection: strs(d.selection).filter(Boolean),
-          attachments: attachmentsOf(d.attachments),
-        });
+        {
+          // 事件里的 page_context 优先；没有时用本机发这一轮时记下的（只给每轮的第一条，插话不带）
+          const pageContext =
+            pageContextOf(d.page_context) ??
+            (d.steer !== true && !usedSent.has(runId) ? sentContexts[runId] : undefined);
+          if (d.steer !== true) usedSent.add(runId);
+          items.push({
+            type: "user",
+            key: `e${ev.seq}`,
+            text: str(d.text),
+            steer: d.steer === true,
+            selection: strs(d.selection).filter(Boolean),
+            attachments: attachmentsOf(d.attachments),
+            ...(pageContext && { pageContext }),
+          });
+        }
         break;
       case "steer.read":
         for (const id of strs(d.ids)) {
@@ -430,6 +469,12 @@ export function buildTimeline(state: AgentSessionState): TimelineItem[] {
         }
         break;
       }
+      case "card.shown": {
+        // 结构不对的卡不渲染（不画半张）；key 用工具调用 id，回放和重连后是同一个元素
+        const card = parseCard(d.card);
+        if (card) items.push({ type: "card", key: `c${str(d.id) || ev.seq}`, card });
+        break;
+      }
       case "plan.updated": {
         const steps = Array.isArray(d.steps) ? (d.steps as AgentPlanStep[]) : [];
         if (planFinished(steps) && !doneRuns.has(runId)) {
@@ -545,6 +590,8 @@ function groupTools(
       out.push(item);
       continue;
     }
+    // show_card 成功的那一次调用不在活动组里留记录（卡片本身就是结果）；失败的留着，让人看到模型改过参数
+    if (item.name === HIDDEN_TOOL && item.status !== "error") continue;
     const { type: _type, callId, runId, startedAt, endedAt, ...call } = item;
     if (!block || block.runId !== runId) {
       const summary = summaries.get(callId);

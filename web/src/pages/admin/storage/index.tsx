@@ -1,3 +1,4 @@
+import { useAdminConfigChanged } from "@/hooks/use-admin-config-changed";
 import { Plus } from "lucide-react";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
@@ -45,6 +46,7 @@ export default function StoragePage() {
   const list = useStorages();
   const processing = useStorageProcessing();
   const { items: storages, presets, state: status, reload, defaultStorage: current } = list;
+  useAdminConfigChanged("storage", () => void reload());
   const [target, setTarget] = useState<StorageDialogTarget | null>(null);
   /** 正在测试或做删除预检的存储，对应行的按钮转圈并禁用 */
   const [busyId, setBusyId] = useState<number | null>(null);

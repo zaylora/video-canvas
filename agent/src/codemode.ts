@@ -32,8 +32,16 @@ export function createCodemode(host: ToolHost, limits: Partial<typeof CODEMODE_L
       if (t.name !== CODEMODE_TOOL_NAME) return t;
       return {
         ...t,
+        description: t.description + "\n只有允许脚本调用的工具才会出现在 tools / ALL_TOOLS / searchTools 中。admin_propose_changes、admin_request_secret、admin_test_run、ask_user 等审批工具必须从主工具列表直接调用，不要在脚本中查找或调用。脚本结束不等于业务检查通过；验证结果 ok=false 时先修复，并保留用户的代表性输入。",
         execute: (args: never, api: ToolExecutionApi, context: Context) =>
           trackedCall(host, info, args, api, context, async (_run, call) => {
+            const direct = new Set((await api.agent(context)).tools.filter(tool => !tool.callers?.includes("tools") && tool.name !== CODEMODE_TOOL_NAME).map(tool => tool.name));
+            const code = (args as { code?: string }).code ?? "";
+            const blocked = [...code.matchAll(/(?:\b(?:searchTools|describeTool)\s*\(\s*["']|\btools\.)([A-Za-z_]\w*)/g)].map(match => match[1]).find(name => direct.has(name));
+            if (blocked) {
+              const message = `${blocked} 必须从主工具列表直接调用，不能在 codemode 内查找或执行。请保留已有脚本结果，直接调用该工具。`;
+              return { result: { output: [{ type: "text", text: message }], isError: true }, end: endEvent(call, true, message) };
+            }
             const res = await t.execute(args, api, context);
             const output = (res.output ?? []) as Array<{ type: string; text?: string }>;
             const message = output.filter((o) => o.type === "text").map((o) => o.text).join(" ");

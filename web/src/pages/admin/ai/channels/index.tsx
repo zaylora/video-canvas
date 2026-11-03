@@ -18,7 +18,9 @@ import { Notice } from "@/components/admin-ui/notice";
 import { ReasonTooltip } from "@/components/admin-ui/reason-tooltip";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAdminConfigChanged } from "@/hooks/use-admin-config-changed";
 import { useAdminStore } from "@/store/admin";
+import { usePageHints } from "@/store/admin-page-hints";
 import {
   parseChannelsQuery,
   pickSelectedChannel,
@@ -141,6 +143,15 @@ export default function ChannelsPage() {
     void reloadChannels();
     void reloadModelCounts();
   }, [reloadChannels, reloadModelCounts]);
+
+  // 后台助手应用了模型变更单：重新拉渠道、模型数和模型表
+  useAdminConfigChanged("model", () => {
+    refreshAll();
+    setReloadToken((n) => n + 1);
+  });
+  useAdminConfigChanged("channel", refreshAll);
+  // 后台助手的页面上下文：当前选中的渠道
+  usePageHints({ channelKey: selectedKey ?? undefined });
 
   const newChannel = () =>
     openChannelDialog({

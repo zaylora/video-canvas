@@ -1,5 +1,11 @@
 import type { AgentMode } from "@/api/agent/type";
 
+/**
+ * 助手的名字：画布、短剧、后台是同一个助手，按所在位置拿到不同的工具。
+ * 和后端提示词（backend/internal/agent/prompts 的 system.md、admin.md）里的自称一致
+ */
+export const ASSISTANT_NAME = "小镜";
+
 /** 任务模式：名称、一句说明（模式下拉里显示） */
 export const AGENT_MODES: ReadonlyArray<{ value: AgentMode; label: string; hint: string }> = [
   { value: "all", label: "全能创作", hint: "按你的想法搭建、修改、整理画布，需要时申请生成" },
@@ -16,6 +22,7 @@ export const TOOL_LABELS: Record<string, string> = {
   canvas_delete: "申请删除",
   canvas_inspect_image: "查看图片",
   plan_update: "更新计划",
+  show_card: "展示卡片",
   ask_user: "向你提问",
   model_list: "查看可用模型",
   generate_media: "申请生成",
@@ -42,6 +49,7 @@ export const TOOL_VERBS: Record<string, string> = {
   canvas_delete: "删除",
   canvas_inspect_image: "看图",
   plan_update: "计划",
+  show_card: "展示",
   ask_user: "提问",
   model_list: "查模型",
   generate_media: "生成",

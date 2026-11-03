@@ -14,7 +14,9 @@ import {
 } from "@/components/admin-ui/page-header";
 import { ReasonTooltip } from "@/components/admin-ui/reason-tooltip";
 import { Button } from "@/components/ui/button";
+import { useAdminConfigChanged } from "@/hooks/use-admin-config-changed";
 import { useAdminStore } from "@/store/admin";
+import { usePageHints } from "@/store/admin-page-hints";
 import { channelsPagePath } from "@/utils/admin/channel-route";
 import { canManageInfra } from "@/utils/admin/role";
 
@@ -66,6 +68,11 @@ export default function PluginsPage() {
   const [detail, setDetail] = useState<PluginView | null>(null);
   /** 弹窗里的改动（删版本、启停）后加一，重新取详情 */
   const [detailVersion, setDetailVersion] = useState(0);
+  usePageHints({ pluginKey: routeKey ?? undefined });
+  useAdminConfigChanged("plugin", () => {
+    void refresh();
+    setDetailVersion((version) => version + 1);
+  });
   useEffect(() => {
     if (!routeKey) return;
     let cancelled = false;

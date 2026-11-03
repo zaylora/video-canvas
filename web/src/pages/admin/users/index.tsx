@@ -1,3 +1,4 @@
+import { useAdminConfigChanged } from "@/hooks/use-admin-config-changed";
 import { Loader2, X } from "lucide-react";
 import { MotionConfig } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -91,6 +92,7 @@ export default function UsersPage() {
     },
     [reload, reloadDetail, userId],
   );
+  useAdminConfigChanged("user", () => refresh());
   const actions = useUserActions({ actor, patch, refresh });
 
   // ---------------------------------------------------------------- 搜索（300ms 防抖，同步到 ?q=）

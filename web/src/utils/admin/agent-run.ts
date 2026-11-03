@@ -15,6 +15,9 @@ import type { TagTone } from "@/components/admin-ui/tag";
 /** 时间范围预设：today 今天（本地 0 点起）、7d 近 7 天、30d 近 30 天、all 不限 */
 export type RunRange = "today" | "7d" | "30d" | "all";
 
+/** 场景：画布 Agent 的运行，或后台助手的运行 */
+export type RunScene = "canvas" | "admin";
+
 /** 状态分组：把后端十来个状态收成管理员会用的几类 */
 export type RunStatusGroup = "all" | "succeeded" | "failed" | "canceled" | "waiting";
 
@@ -23,6 +26,8 @@ export type RunFeedbackChoice = "all" | "up" | "down" | "none";
 
 /** 筛选栏里的全部条件；Harness、模型是空串表示不限，用户 ID 是输入框里生效的文本 */
 export type RunFilters = {
+  /** 场景：默认看画布；后台助手的运行要切到 admin 才看得到 */
+  scene: RunScene;
   /** 时间范围 */
   range: RunRange;
   /** 状态分组 */
@@ -41,6 +46,7 @@ export type RunFilters = {
 
 /** 默认筛选：什么都不限 */
 export const DEFAULT_RUN_FILTERS: RunFilters = {
+  scene: "canvas",
   range: "all",
   status: "all",
   feedback: "all",
@@ -49,6 +55,12 @@ export const DEFAULT_RUN_FILTERS: RunFilters = {
   modelKey: "",
   userId: "",
 };
+
+/** 场景下拉：[值, 文字] */
+export const RUN_SCENE_OPTIONS: ReadonlyArray<readonly [RunScene, string]> = [
+  ["canvas", "画布"],
+  ["admin", "后台助手"],
+];
 
 /** 时间范围下拉：[值, 文字] */
 export const RUN_RANGE_OPTIONS: ReadonlyArray<readonly [RunRange, string]> = [
@@ -132,6 +144,8 @@ export function runListQuery(
     query.page = paging.page;
     query.limit = paging.pageSize;
   }
+  // canvas 是接口的缺省，不传；只有看后台助手才带 scene
+  if (filters.scene === "admin") query.scene = "admin";
   const since = rangeSince(filters.range, now);
   if (since) query.since = since;
   if (filters.status !== "all") query.status = STATUS_GROUP_STATUSES[filters.status].join(",");

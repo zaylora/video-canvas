@@ -150,14 +150,14 @@ func TestToolRegistry_FilterByModeAndVision(t *testing.T) {
 	}
 	// 顺序：过滤后保持登记的相对顺序
 	names := declNames(AgentToolDecls("prompt", false, false))
-	want := []string{"canvas_get_state", "canvas_apply_ops", "plan_update", "ask_user", "model_list", "task_get", "skill_search", "skill_read", "web_search", "web_fetch"}
+	want := []string{"canvas_get_state", "canvas_apply_ops", "plan_update", "ask_user", "model_list", "task_get", "skill_search", "skill_read", "web_search", "web_fetch", "show_card"}
 	if !reflect.DeepEqual(names, want) {
 		t.Errorf("过滤后的顺序 %v，应为 %v", names, want)
 	}
 }
 
 func TestToolRegistry_Scriptable(t *testing.T) {
-	notScriptable := map[string]bool{"canvas_delete": true, "ask_user": true, "generate_media": true, "canvas_inspect_image": true, "canvas_inspect_video": true, "canvas_capture_frame": true}
+	notScriptable := map[string]bool{"show_card": true, "canvas_delete": true, "ask_user": true, "generate_media": true, "canvas_inspect_image": true, "canvas_inspect_video": true, "canvas_capture_frame": true}
 	for _, d := range AgentToolDecls("all", true, false) {
 		if d.Scriptable == notScriptable[d.Name] {
 			t.Errorf("%s 的 scriptable=%v：会创建审批或返回图片的工具不能给脚本调用，其余都可以", d.Name, d.Scriptable)
@@ -174,6 +174,7 @@ func TestToolRegistry_LabelsMatchFrontend(t *testing.T) {
 		"task_get": {"查询任务", "查任务"}, "skill_search": {"搜索技能", "技能"}, "skill_read": {"读取技能", "技能"},
 		"web_search": {"搜索网页", "搜索"}, "web_fetch": {"读取网页", "读网页"},
 		"canvas_inspect_video": {"查看视频", "看视频"}, "canvas_capture_frame": {"截取视频帧", "截帧"},
+		"show_card": {"展示卡片", "展示"},
 	}
 	for _, d := range AgentToolDecls("all", true, false) {
 		w, ok := want[d.Name]
@@ -207,7 +208,7 @@ func TestToolEnd_CarriesLabel(t *testing.T) {
 func TestToolRegistry_WebToolsAreAppended(t *testing.T) {
 	names := declNames(AgentToolDecls("all", true, false))
 	n := len(names)
-	if n < 14 || names[n-2] != "web_search" || names[n-1] != "web_fetch" {
+	if n < 15 || names[n-3] != "web_search" || names[n-2] != "web_fetch" || names[n-1] != "show_card" {
 		t.Errorf("联网工具追加在末尾，不动原有的顺序（提示词缓存）: %v", names)
 	}
 	// 所有任务模式都能用联网工具；它们的结果是资料，可以被脚本调用

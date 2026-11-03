@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"slices"
+	"strings"
 	"sync"
 
 	"video-canvas/internal/model"
@@ -69,6 +70,22 @@ var toolSpecs = []toolSpec{
 	{name: "drama_update_episode", label: "修改分集", verb: "修改", modes: []string{model.AgentModeDrama}, run: (*AgentBridge).toolDramaEpisode},
 	{name: "drama_update_segment", label: "修改片段", verb: "修改", modes: []string{model.AgentModeDrama}, run: (*AgentBridge).toolDramaSegment},
 	{name: "drama_run_job", label: "运行短剧任务", verb: "生成", modes: []string{model.AgentModeDrama}, run: (*AgentBridge).toolDramaJob},
+	{name: "admin_list_models", label: "查看后台模型", verb: "查模型", scriptable: true, modes: []string{model.AgentModeAdmin}, run: (*AgentBridge).toolAdminListModels},
+	{name: "admin_get_model", label: "读取模型配置", verb: "读取", scriptable: true, modes: []string{model.AgentModeAdmin}, run: (*AgentBridge).toolAdminGetModel},
+	{name: "admin_list_channels", label: "查看渠道", verb: "查渠道", scriptable: true, modes: []string{model.AgentModeAdmin}, run: (*AgentBridge).toolAdminListChannels},
+	{name: "admin_get_pricing_settings", label: "读取定价设置", verb: "读取", scriptable: true, modes: []string{model.AgentModeAdmin}, run: (*AgentBridge).toolAdminGetPricing},
+	{name: "admin_get_recent_errors", label: "查看失败请求", verb: "查错误", scriptable: true, modes: []string{model.AgentModeAdmin}, run: (*AgentBridge).toolAdminRecentErrors},
+	{name: "admin_quote_preview", label: "预览价格变更", verb: "算价", scriptable: true, modes: []string{model.AgentModeAdmin}, run: (*AgentBridge).toolAdminQuotePreview},
+	{name: "admin_propose_changes", label: "申请后台变更", verb: "修改", modes: []string{model.AgentModeAdmin}, run: (*AgentBridge).toolAdminPropose},
+	{name: "admin_list_plugins", label: "查看插件列表", verb: "查插件", scriptable: true, modes: []string{model.AgentModeAdmin}, run: (*AgentBridge).toolAdminListPlugins},
+	{name: "admin_get_plugin", label: "读取插件", verb: "读插件", scriptable: true, modes: []string{model.AgentModeAdmin}, run: (*AgentBridge).toolAdminGetPlugin},
+	{name: "admin_plugin_check", label: "验证插件", verb: "验证", scriptable: true, modes: []string{model.AgentModeAdmin}, run: (*AgentBridge).toolAdminPluginCheck},
+	{name: "admin_request_secret", label: "请你填写密钥", verb: "配密钥", modes: []string{model.AgentModeAdmin}, run: (*AgentBridge).toolAdminRequestSecret},
+	{name: "admin_test_run", label: "请你同意试跑", verb: "试跑", modes: []string{model.AgentModeAdmin}, run: (*AgentBridge).toolAdminTestRun},
+	// 展示卡片：纯展示，校验和 card.shown 事件都在 Agent 服务里（platformExcluded）；所有模式都能用，追加在末尾以保持提示词缓存稳定。
+	{name: "show_card", label: "展示卡片", verb: "展示", run: nil},
+	{name: "admin_query", label: "查询后台记录", verb: "查询", scriptable: true, modes: []string{model.AgentModeAdmin}, run: (*AgentBridge).toolAdminQuery},
+	{name: "admin_get_resource", label: "读取后台资源", verb: "读取", scriptable: true, modes: []string{model.AgentModeAdmin}, run: (*AgentBridge).toolAdminGetResource},
 }
 
 // layoutModes 是能排列、删除和生成的任务模式：全能创作、分镜搭建和短剧助手。
@@ -76,6 +93,9 @@ var layoutModes = []string{model.AgentModeAll, model.AgentModeStoryboard, model.
 
 // allowsMode 判断任务模式能不能用这个工具；空模式按全能创作算。
 func (s *toolSpec) allowsMode(mode string) bool {
+	if mode == model.AgentModeAdmin && !strings.HasPrefix(s.name, "admin_") && s.name != "web_search" && s.name != "web_fetch" && s.name != "plan_update" && s.name != "show_card" {
+		return false
+	}
 	if s.modes == nil {
 		return true
 	}

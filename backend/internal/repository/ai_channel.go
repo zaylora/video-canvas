@@ -35,11 +35,13 @@ func (r *AIChannelRepository) CreateChannel(ctx context.Context, c *model.AIChan
 		if err := tx.Create(c).Error; err != nil {
 			return err
 		}
-		if wantEnabled {
-			return nil
+		if !wantEnabled {
+			c.Enabled = false
+			if err := tx.Model(&model.AIChannel{}).Where("key = ?", c.Key).UpdateColumn("enabled", false).Error; err != nil {
+				return err
+			}
 		}
-		c.Enabled = false
-		return tx.Model(&model.AIChannel{}).Where("key = ?", c.Key).UpdateColumn("enabled", false).Error
+		return insertAssistantAudit(ctx, tx, map[string]string{"channel_key": c.Key})
 	})
 	if isUniqueViolation(err) {
 		return ErrDuplicate

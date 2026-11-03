@@ -1,0 +1,1054 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>后台 Agent 助手演示</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+    <style>
+      :root {
+        --radius: 0.625rem;
+        --background: 0 0% 100%;
+        --foreground: 240 10% 3.9%;
+        --card: 0 0% 100%;
+        --muted: 240 4.8% 95.9%;
+        --muted-foreground: 240 3.8% 46.1%;
+        --primary: 240 5.9% 10%;
+        --primary-foreground: 0 0% 98%;
+        --accent: 240 4.8% 95.9%;
+        --border: 240 5.9% 90%;
+        --ok: 5 150 105;
+        --bad: 220 38 38;
+        --warn: 180 83 9;
+        --info: 2 132 199;
+        --violet: 124 58 237;
+        color-scheme: light;
+      }
+      .dark {
+        --background: 240 10% 3.9%;
+        --foreground: 0 0% 98%;
+        --card: 240 10% 5.5%;
+        --muted: 240 3.7% 15.9%;
+        --muted-foreground: 240 5% 64.9%;
+        --primary: 0 0% 98%;
+        --primary-foreground: 240 5.9% 10%;
+        --accent: 240 3.7% 15.9%;
+        --border: 240 3.7% 17%;
+        --ok: 52 211 153;
+        --bad: 248 113 113;
+        --warn: 251 191 36;
+        --info: 56 189 248;
+        --violet: 167 139 250;
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        font-family: Geist, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        background: hsl(var(--background));
+        color: hsl(var(--foreground));
+        -webkit-font-smoothing: antialiased;
+        line-height: 1.55;
+      }
+      code, .mono { font-family: "Geist Mono", "SF Mono", Consolas, monospace; }
+      code { font-size: 0.92em; background: hsl(var(--muted)); padding: 1px 5px; border-radius: 5px; }
+      [data-lucide] { width: 1em; height: 1em; flex: none; }
+      h1, h2, h3, h4, p { margin: 0; }
+      button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+      input, select { font: inherit; color: inherit; }
+      table { border-collapse: collapse; width: 100%; }
+      th { font-weight: 500; text-align: left; }
+      [hidden] { display: none !important; }
+      .muted { color: hsl(var(--muted-foreground)); }
+      .row { display: flex; align-items: center; gap: 8px; }
+      .wrapflex { flex-wrap: wrap; }
+      .spacer { margin-left: auto; }
+
+      .top { position: sticky; top: 0; z-index: 30; background: hsl(var(--background) / 0.92); backdrop-filter: blur(8px); border-bottom: 1px solid hsl(var(--border)); }
+      .top-in { max-width: 1240px; margin: 0 auto; padding: 0 20px; display: flex; align-items: center; gap: 16px; height: 56px; }
+      .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; white-space: nowrap; }
+      .logo { width: 28px; height: 28px; border-radius: 8px; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; }
+      .tabs { display: flex; gap: 2px; margin-left: 8px; overflow-x: auto; }
+      .tab { height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13px; font-weight: 500; color: hsl(var(--muted-foreground)); white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; transition: background 0.15s, color 0.15s; }
+      .tab:hover { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+      .tab[aria-selected="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn { height: 32px; padding: 0 10px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; white-space: nowrap; }
+      .btn:hover { background: hsl(var(--accent)); }
+      .btn-primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn-primary:hover { background: hsl(var(--primary) / 0.9); }
+      .btn-outline { border: 1px solid hsl(var(--border)); }
+      .btn-sm { height: 26px; font-size: 12px; padding: 0 8px; }
+      .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+      .switch { width: 34px; height: 20px; border-radius: 999px; background: hsl(var(--border)); position: relative; transition: background 0.15s; flex: none; }
+      .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+      .switch[aria-checked="true"] { background: rgb(var(--violet)); }
+      .switch[aria-checked="true"]::after { transform: translateX(14px); }
+
+      .wrap { max-width: 1240px; margin: 0 auto; padding: 32px 20px 80px; }
+      .h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+      .lead { margin-top: 10px; max-width: 860px; font-size: 15px; color: hsl(var(--muted-foreground)); }
+      .lead b { color: hsl(var(--foreground)); }
+      .sec { margin-top: 36px; }
+      .sec > h2 { font-size: 18px; font-weight: 600; }
+      .sec > .sub { margin: 4px 0 14px; max-width: 860px; font-size: 13.5px; color: hsl(var(--muted-foreground)); }
+      .card { border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: var(--radius); padding: 16px; }
+      .grid { display: grid; gap: 12px; }
+      .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      ul.list { margin: 0; padding-left: 18px; font-size: 13.5px; }
+
+      .tag { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 7px; border-radius: 999px; font-size: 11.5px; font-weight: 500; white-space: nowrap; }
+      .t-ok { background: rgb(var(--ok) / 0.12); color: rgb(var(--ok)); }
+      .t-bad { background: rgb(var(--bad) / 0.12); color: rgb(var(--bad)); }
+      .t-warn { background: rgb(var(--warn) / 0.12); color: rgb(var(--warn)); }
+      .t-info { background: rgb(var(--info) / 0.12); color: rgb(var(--info)); }
+      .t-vio { background: rgb(var(--violet) / 0.12); color: rgb(var(--violet)); }
+      .t-mute { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
+
+      .callout { display: flex; gap: 10px; padding: 12px 14px; border-radius: var(--radius); font-size: 13.5px; border: 1px solid; }
+      .callout > i { margin-top: 3px; }
+      .c-info { background: rgb(var(--info) / 0.07); border-color: rgb(var(--info) / 0.3); }
+      .c-info > i { color: rgb(var(--info)); }
+      .c-warn { background: rgb(var(--warn) / 0.07); border-color: rgb(var(--warn) / 0.3); }
+      .c-warn > i { color: rgb(var(--warn)); }
+      .c-bad { background: rgb(var(--bad) / 0.07); border-color: rgb(var(--bad) / 0.3); }
+      .c-bad > i { color: rgb(var(--bad)); }
+      .c-ok { background: rgb(var(--ok) / 0.07); border-color: rgb(var(--ok) / 0.3); }
+      .c-ok > i { color: rgb(var(--ok)); }
+
+      .flow { display: flex; align-items: stretch; gap: 6px; flex-wrap: wrap; padding: 14px; border-radius: var(--radius); }
+      .flow .node { flex: 1 1 140px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 12px; font-size: 12.5px; }
+      .flow .node b { display: block; font-size: 13px; margin-bottom: 2px; }
+      .flow .node.hl { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+      .flow .arrow { display: grid; place-items: center; color: hsl(var(--muted-foreground)); }
+
+      .cmp-wrap { overflow-x: auto; border: 1px solid hsl(var(--border)); border-radius: var(--radius); }
+      .cmp th, .cmp td { padding: 9px 12px; font-size: 13px; vertical-align: top; border-bottom: 1px solid hsl(var(--border)); }
+      .cmp tr:last-child th, .cmp tr:last-child td { border-bottom: 0; }
+      .cmp thead th { background: hsl(var(--muted)); font-size: 12.5px; white-space: nowrap; }
+      .cmp tbody th { width: 150px; color: hsl(var(--muted-foreground)); font-weight: 500; }
+      .cmp .y { color: rgb(var(--ok)); }
+      .cmp .m { color: rgb(var(--warn)); font-weight: 500; }
+
+      .steps { list-style: none; counter-reset: s; display: grid; gap: 12px; }
+      .steps li { counter-increment: s; position: relative; padding-left: 32px; font-size: 13.5px; }
+      .steps li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 22px; height: 22px; border-radius: 50%; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; font-size: 12px; font-weight: 600; }
+      .steps li small { display: block; color: hsl(var(--muted-foreground)); font-size: 12.5px; }
+
+      .codeblock { background: hsl(var(--muted)); border-radius: var(--radius); padding: 14px; font-family: "Geist Mono", "SF Mono", Consolas, monospace; font-size: 12.5px; overflow-x: auto; }
+
+      .frame { border: 1px solid hsl(var(--border)); border-radius: 12px; overflow: hidden; background: hsl(var(--background)); }
+      .frame-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: hsl(var(--muted)); font-size: 12px; color: hsl(var(--muted-foreground)); }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: hsl(var(--border)); }
+
+      .note { outline: 1.5px dashed rgb(var(--violet)); outline-offset: 3px; position: relative; }
+      .note-txt { display: none; margin-top: 6px; font-size: 11.5px; line-height: 1.5; color: rgb(var(--violet)); }
+      .show-notes .note-txt { display: block; }
+      body:not(.show-notes) .note { outline: none; }
+
+      .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 60; pointer-events: none; }
+      .toast > div { display: flex; align-items: center; gap: 8px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 14px; font-size: 13px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); }
+
+      /* ---- 交互演示：调价计算器 ---- */
+      .opt { text-align: left; border: 1px solid hsl(var(--border)); border-radius: 10px; padding: 10px 12px; font-size: 13px; background: hsl(var(--card)); }
+      .opt[aria-pressed="true"] { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+      .opt small { display: block; color: hsl(var(--muted-foreground)); font-size: 12px; }
+      .field { display: grid; gap: 4px; font-size: 12.5px; }
+      .field input, .field select { height: 32px; border: 1px solid hsl(var(--border)); background: hsl(var(--background)); border-radius: 8px; padding: 0 10px; font-size: 13px; }
+      .formula { display: grid; gap: 6px; font-size: 13px; }
+      .formula .ln { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+      .formula .ln b { font-family: "Geist Mono", Consolas, monospace; }
+      .big { font-size: 26px; font-weight: 700; font-family: "Geist Mono", Consolas, monospace; }
+
+      /* ---- 原型：后台 + 抽屉 ---- */
+      .app { display: flex; height: 640px; background: hsl(var(--background)); }
+      .side { width: 168px; border-right: 1px solid hsl(var(--border)); padding: 12px 8px; font-size: 12.5px; display: grid; align-content: start; gap: 2px; flex: none; }
+      .side .it { padding: 6px 10px; border-radius: 8px; color: hsl(var(--muted-foreground)); display: flex; align-items: center; gap: 8px; }
+      .side .it.on { background: hsl(var(--accent)); color: hsl(var(--foreground)); font-weight: 500; }
+      .side .grp { font-size: 11px; color: hsl(var(--muted-foreground)); padding: 8px 10px 4px; }
+      .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+      .main-top { height: 48px; display: flex; align-items: center; gap: 8px; padding: 0 14px; border-bottom: 1px solid hsl(var(--border)); font-size: 12.5px; }
+      .pill { height: 30px; padding: 0 12px; border-radius: 999px; border: 1px solid hsl(var(--border) / 0.8); background: hsl(var(--card) / 0.6); backdrop-filter: blur(10px); display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; }
+      .pill.on { border-color: rgb(var(--violet) / 0.5); background: rgb(var(--violet) / 0.1); color: rgb(var(--violet)); }
+      .main-body { flex: 1; overflow: auto; padding: 16px; }
+      .mtable th, .mtable td { padding: 7px 10px; font-size: 12.5px; border-bottom: 1px solid hsl(var(--border)); white-space: nowrap; }
+      .mtable thead th { color: hsl(var(--muted-foreground)); font-size: 11.5px; }
+      .mtable tr.sel td { background: hsl(var(--accent)); }
+      .mtable tr.flash td { animation: flash 1.6s ease-out; }
+      @keyframes flash { 0% { background: rgb(var(--ok) / 0.25); } 100% { background: transparent; } }
+      .drawer { width: 0; overflow: hidden; border-left: 1px solid hsl(var(--border)); transition: width 0.22s ease; display: flex; flex-direction: column; background: hsl(var(--card)); flex: none; }
+      .drawer.open { width: 440px; }
+      .dr-empty { flex: 1; display: grid; place-items: center; min-width: 440px; text-align: center; padding: 24px; }
+      .dr-head { min-width: 440px; height: 48px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-bottom: 1px solid hsl(var(--border)); font-size: 13px; flex: none; }
+      .dr-msgs { flex: 1; overflow: auto; padding: 14px 12px; display: grid; gap: 12px; align-content: start; min-width: 440px; }
+      .dr-foot { border-top: 1px solid hsl(var(--border)); padding: 10px 12px; display: grid; gap: 8px; min-width: 440px; flex: none; }
+      .bubble { justify-self: end; max-width: 85%; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); padding: 8px 12px; border-radius: 14px 14px 4px 14px; font-size: 13px; }
+      .amsg { font-size: 13px; }
+      .act { display: grid; gap: 4px; font-size: 12px; color: hsl(var(--muted-foreground)); border-left: 2px solid hsl(var(--border)); padding-left: 10px; }
+      .act .a { display: flex; align-items: center; gap: 6px; }
+      .spin { animation: spin 1s linear infinite; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      .composer { display: flex; gap: 6px; align-items: center; border: 1px solid hsl(var(--border)); border-radius: 12px; padding: 4px 4px 4px 10px; background: hsl(var(--background)); }
+      .composer input { flex: 1; border: 0; outline: 0; background: transparent; font-size: 13px; height: 30px; min-width: 0; }
+      .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+      .chip { height: 24px; padding: 0 9px; border-radius: 999px; border: 1px solid hsl(var(--border)); font-size: 11.5px; display: inline-flex; align-items: center; gap: 4px; background: hsl(var(--background)); }
+      .chip:hover { background: hsl(var(--accent)); }
+      .ctx { height: 22px; padding: 0 8px; border-radius: 6px; background: hsl(var(--muted)); font-size: 11.5px; display: inline-flex; align-items: center; gap: 4px; }
+      .order { border: 1px solid hsl(var(--border)); border-radius: 12px; overflow: hidden; background: hsl(var(--background)); }
+      .order-h { padding: 10px 12px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid hsl(var(--border)); font-size: 13px; }
+      .oi { padding: 9px 12px; border-bottom: 1px solid hsl(var(--border)); font-size: 12.5px; display: grid; gap: 6px; }
+      .oi:last-child { border-bottom: 0; }
+      .oi.dis { opacity: 0.62; }
+      .oi .hd { display: flex; align-items: center; gap: 8px; }
+      .oi input[type="checkbox"] { width: 15px; height: 15px; accent-color: hsl(var(--primary)); }
+      .diff { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-family: "Geist Mono", Consolas, monospace; font-size: 11.5px; padding-left: 23px; }
+      .diff .b { text-decoration: line-through; color: hsl(var(--muted-foreground)); }
+      .diff .a { color: rgb(var(--ok)); }
+      .basis { padding-left: 23px; font-size: 11.5px; color: hsl(var(--muted-foreground)); font-family: "Geist Mono", Consolas, monospace; }
+      .secret { display: flex; gap: 6px; }
+      .secret input { flex: 1; height: 30px; border: 1px solid hsl(var(--border)); border-radius: 8px; padding: 0 10px; background: hsl(var(--background)); font-size: 13px; min-width: 0; }
+      .ctrlbar { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; font-size: 12.5px; margin-top: 14px; }
+      .seg { display: inline-flex; border: 1px solid hsl(var(--border)); border-radius: 8px; overflow: hidden; }
+      .seg button { height: 28px; padding: 0 10px; font-size: 12px; }
+      .seg button[aria-pressed="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+
+      @media (max-width: 860px) {
+        .g2, .g3 { grid-template-columns: 1fr; }
+        .top-in { padding: 0 12px; }
+        .wrap { padding: 24px 16px 64px; }
+        .side { display: none; }
+        .app { height: auto; min-height: 640px; flex-direction: column; }
+        .drawer.open { width: 100%; }
+        .dr-msgs, .dr-foot, .dr-head, .dr-empty { min-width: 0; }
+        .demo-grid { grid-template-columns: 1fr !important; }
+      }
+    </style>
+  </head>
+
+  <body class="show-notes">
+    <header class="top">
+      <div class="top-in">
+        <div class="brand"><span class="logo"><i data-lucide="sparkles"></i></span>后台 Agent 助手</div>
+        <div class="tabs" role="tablist">
+          <button class="tab" role="tab" data-tab="overview" aria-selected="true"><i data-lucide="map"></i>总览</button>
+          <button class="tab" role="tab" data-tab="demo" aria-selected="false"><i data-lucide="calculator"></i>调价怎么算</button>
+          <button class="tab" role="tab" data-tab="proto" aria-selected="false"><i data-lucide="layout-dashboard"></i>可点击原型</button>
+          <button class="tab" role="tab" data-tab="impl" aria-selected="false"><i data-lucide="database"></i>数据与接口</button>
+        </div>
+        <div class="spacer row">
+          <label class="row muted" style="font-size: 12px">设计标注<button class="switch" id="notesSw" role="switch" aria-checked="true" onclick="toggleNotes()"></button></label>
+          <button class="btn" onclick="document.documentElement.classList.toggle('dark')" aria-label="切换明暗主题"><i data-lucide="sun-moon"></i></button>
+        </div>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <!-- ============ 1. 总览 ============ -->
+      <section id="tab-overview">
+        <h1 class="h1">一句话改配置，确认后才生效</h1>
+        <p class="lead">
+          在后台任何页面都能唤出助手，比如说「视频模型按成本加价 30%」「按官方文档补齐可灵的参数」「接一下 xx 平台」。助手负责查文档、查价格、算数、写配置，
+          <b>但它不会直接改线上配置：每个写操作都先整理成一张变更单，你逐条确认后才落库</b>。
+          宿主复用项目现有的 pi agent（<code>agent/</code> 服务），<b>一期做模型参数与调价，二期做插件对接全链路</b>。
+        </p>
+
+        <div class="callout c-info" style="margin-top: 16px">
+          <i data-lucide="info"></i>
+          <div>
+            <b>阅读说明。</b>仓库现状来自 2026-11-02 的代码阅读；本页所有界面和数字都是<b>设计提案</b>，尚未实现。完整依据、来源和工程细节见同目录 <code>后台Agent助手.md</code>，本页和它保持一致。<br />
+            <span class="muted">核实度图例：</span>
+            <span class="tag t-ok">已核对</span>
+            <span class="tag t-info">调研检索，未逐条复核</span>
+            <span class="tag t-warn">未验证 · 需实测</span>
+            <span class="tag t-vio">提案</span>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>一次对话怎么走</h2>
+          <p class="sub">从你说一句话，到配置真正生效，中间只有「确认变更单」这一步需要你动手。</p>
+          <div class="flow note">
+            <div class="node"><b>你说一句话</b>抽屉自动带上当前页面的上下文，比如正在看的模型</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>助手读 + 查</b>读配置、搜官方文档和价格页、算价格<br /><span class="tag t-mute" style="margin-top: 4px">自动执行</span></div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>出变更单</b>Go 复算价格、跑校验，逐条标出 正常 / 无效 / 已过期 / 算错</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>你确认</b>整单、逐条勾选，或拒绝并说明原因</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>落库 + 审计</b>按原接口权限复核、冲突检测，写入审计（<code>via=assistant</code>）</div>
+          </div>
+          <div class="note-txt">设计：「读自动、写确认」学自 Supabase 助手，「先预览 diff 再应用」学自 New API 的同步上游。放弃了「授权后全自动」：调价直接影响扣费，宁可多点一下。落库仍走现有的 <code>SaveModel</code>，规则只有一份。</div>
+          <div class="callout c-warn" style="margin-top: 10px">
+            <i data-lucide="corner-down-right"></i>
+            <div>
+              <b>出问题时（兜底）：</b>确认期间有人手动改了同一个模型，该条执行失败，其余照常生效。已启用模型改完过不了启用检查的，该条不能勾选。汇率源断了就沿用上次的汇率并标「可能过期」。
+              没有可用的 Agent 模型时，抽屉显示空状态，<b>后台所有手动操作和今天完全一样</b>。
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>助手能做的三类事</h2>
+          <p class="sub">同一个助手、同一张变更单，按风险和期次分三类。</p>
+          <div class="grid g3">
+            <div class="card">
+              <div class="row"><i data-lucide="badge-dollar-sign"></i><b>调价</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-ok">一期</span><span class="tag t-mute">admin 可确认</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>上游官方价 → 实时汇率 → 积分成本 → 加价。</b>也支持「全体涨 10%」这种纯指令。每个价格都附算式。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="sliders-horizontal"></i><b>调模型参数</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-ok">一期</span><span class="tag t-mute">admin 可确认</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>生成方式、参数选项、默认值、参考素材上限、规格价。</b>按官方文档补齐，改已启用的模型要过启用检查。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="plug"></i><b>对接新平台</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-info">二期</span><span class="tag t-warn">super_admin 确认</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>搜文档 → 复用或写插件 → 静态验证 → 建渠道与模型。</b>密钥走安全卡片；真实试跑要花钱，另外确认。</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>写操作怎么把关：三种做法对比</h2>
+          <p class="sub">这是本设计最关键的分叉。你选的是中间一列。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th></th><th>逐次审批（Shopify Sidekick）</th><th>变更单批量预览（已选）</th><th>授权后全自动</th></tr></thead>
+              <tbody>
+                <tr><th>安全</th><td class="y">高 · 每次都确认</td><td class="y">高 · 逐条可拒，确认时按角色复核</td><td class="m">低 · 改错了只能事后看审计</td></tr>
+                <tr><th>批量调价 20 个模型</th><td class="m">要点 20 次</td><td class="y">一张单，勾选后点一次</td><td class="y">零次</td></tr>
+                <tr><th>能不能看懂改了什么</th><td>每次只看一项</td><td class="y">字段 diff + 算式 + 校验结果都在单上</td><td class="m">只能看审计日志</td></tr>
+                <tr><th>和现有 pi agent 的匹配度</th><td class="y">高</td><td class="y">高 · 审批已支持 <code>partial</code> 部分批准</td><td class="m">要新加「授权」状态</td></tr>
+                <tr><th>核实度</th><td><span class="tag t-ok">已核对官方文档</span></td><td><span class="tag t-ok">已核对 New API 文档</span> <span class="tag t-ok">已核对仓库代码</span></td><td><span class="tag t-vio">提案（已放弃）</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>你说「视频模型按成本加价 30%」时，会发生什么</h2>
+          <p class="sub">一期最典型的一条路径，以及交付前要先讲清楚的边界。</p>
+          <div class="grid g2">
+            <div class="card">
+              <ol class="steps" style="margin: 0; padding: 0">
+                <li><b>列出所有视频模型</b><small><code>admin_list_models(kind=video)</code>，并找出哪些还没填成本</small></li>
+                <li><b>逐个查上游官方价格</b><small><code>web_search</code> / <code>web_fetch</code>，复用画布 Agent 已有的联网能力（Exa → Bing → DuckDuckGo）</small></li>
+                <li><b>换算成积分</b><small>美元先按实时汇率换成人民币，再乘以「1 元 = N 积分」，向上取整得到成本，再乘以 1.3 向上取整得到售价</small></li>
+                <li><b>提交变更单</b><small>Go 重新算一遍价格，和助手的结果不一致就标「算错」；已启用的模型还要跑启用检查</small></li>
+                <li><b>你勾选、确认</b><small>逐条在各自的事务里写入，写审计；模型页即时刷新</small></li>
+              </ol>
+            </div>
+            <div class="card">
+              <div class="callout c-warn">
+                <i data-lucide="triangle-alert"></i>
+                <div>
+                  <b>边界：助手找不到价格时不编，已启用的模型保存即生效。</b>
+                  <ul class="list" style="margin-top: 6px">
+                    <li>找不到官方价格的模型会被跳过并列出来，或者让你直接粘贴价格。</li>
+                    <li>有些价格页是 JS 渲染的，<code>web_fetch</code> 可能抓不到正文 <span class="tag t-warn">未验证</span></li>
+                    <li>售价低于成本时只标红警告，不禁止勾选（有时是故意做活动）。</li>
+                    <li>「1 元 = N 积分」没设置时，助手拒绝按成本调价，会先让你去「定价设置」页填。</li>
+                  </ul>
+                </div>
+              </div>
+              <p class="muted" style="font-size: 12.5px; margin-top: 10px">交付时要提前告知：国内平台（火山、可灵、阿里）的文档站能不能搜准还没实测，一期上线后要先验证。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 2. 调价怎么算 ============ -->
+      <section id="tab-demo" hidden>
+        <h1 class="h1">调价怎么算</h1>
+        <p class="lead">
+          选一种调价方式，改几个数，就能看到助手写进变更单的算式和结果。<b>Go 在提交变更单时会用同一套公式复算</b>，助手算错的条目不能勾选。
+          汇率 6.6529 是 2026-10-30 欧洲央行的美元兑人民币汇率（2026-11-02 实测 Frankfurter 接口所得），其余数字都是示意。
+        </p>
+        <div class="grid demo-grid" style="margin-top: 20px; grid-template-columns: 260px minmax(0, 1fr)">
+          <div id="optList" class="grid" style="align-content: start"></div>
+          <div id="optPanel" class="card"></div>
+        </div>
+      </section>
+
+      <!-- ============ 3. 可点击原型 ============ -->
+      <section id="tab-proto" hidden>
+        <h1 class="h1">可点击原型：后台右侧抽屉</h1>
+        <p class="lead">
+          数据在内存里，刷新复原；助手的回复用定时器模拟，<b>不是真实调用</b>。抽屉已经打开，当前页面是「模型渠道」。点输入框上方的快捷指令就能走一遍。
+          想看失败长什么样：<b>确认前</b>点模型表上方的「模拟他人修改 kling-v2-1」，或者打开「汇率源不可用」；把角色切到 <code>admin</code> 再试「对接新平台」，插件和渠道条目会锁住。
+        </p>
+        <div class="ctrlbar">
+          <span class="muted">当前角色</span>
+          <span class="seg" id="roleSeg">
+            <button data-role="super_admin" aria-pressed="true">super_admin</button>
+            <button data-role="admin" aria-pressed="false">admin</button>
+          </span>
+          <label class="row"><span class="muted">汇率源不可用</span><button class="switch" id="fxSw" role="switch" aria-checked="false"></button></label>
+          <label class="row"><span class="muted">没有可用的 Agent 模型</span><button class="switch" id="noModelSw" role="switch" aria-checked="false"></button></label>
+          <button class="btn btn-outline btn-sm" onclick="resetProto()"><i data-lucide="rotate-ccw"></i>重置原型</button>
+        </div>
+        <div class="frame" style="margin-top: 12px">
+          <div class="frame-bar">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            <span style="margin-left: 8px">连镜 / AI 配置 / 模型渠道</span>
+          </div>
+          <div class="app" id="app"></div>
+        </div>
+      </section>
+
+      <!-- ============ 4. 数据与接口（提案） ============ -->
+      <section id="tab-impl" hidden>
+        <h1 class="h1">数据与接口（提案）</h1>
+        <p class="lead">下面都是设计提案，尚未实现，对应 Markdown 设计文档的 §6、§8。<b>原则是能复用就复用</b>：会话、审批状态机、SSE、联网工具、<code>SaveModel</code> 的校验、密钥加密、审计表都是现成的。</p>
+
+        <div class="sec">
+          <h2>复用什么、改什么</h2>
+          <p class="sub">pi agent 能直接复用，但有 5 处和画布耦合，必须改。这些都已在代码里抽查确认。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>位置</th><th>现状</th><th>改法</th></tr></thead>
+              <tbody>
+                <tr><th><code>agent/src/store/migrations.ts:67</code></th><td><code>uk_agent_runs_active(canvas_id)</code>：一个画布同时只能有一个活跃运行 <span class="tag t-ok">已核对</span></td><td>拆成两条部分唯一索引：<code>canvas_id&gt;0</code> 时按画布互斥；<code>canvas_id=0</code>（后台）时按 <code>user_id</code> 互斥。否则全站同时只能有一个管理员在用</td></tr>
+                <tr><th><code>agent/src/durable-tools.ts:55</code></th><td><code>APPROVAL_KIND</code> / <code>SAFE</code> 写死在 TS 里 <span class="tag t-ok">已核对</span></td><td>加入 <code>admin_propose_changes → admin_change</code>（二期再加 <code>admin_secret</code>、<code>admin_test_run</code>）。长期改为由 Go 下发 <code>approval_kind</code></td></tr>
+                <tr><th><code>service/agent/run_setup.go</code></th><td>会强制读画布目录拼进第一条消息；<code>ValidAgentMode</code> 只认识 5 种画布模式</td><td>加入 <code>admin</code> 模式：提示词 <code>prompts/admin.md</code>、只下发 <code>admin_*</code> 工具和 <code>web_*</code>、<code>plan_update</code>；第一条消息拼入页面上下文和定价设置</td></tr>
+                <tr><th><code>handler/agent/proxy.go:83</code></th><td>只传 <code>X-Agent-User</code>，没传角色</td><td>加 <code>X-Agent-Role</code>，只用来决定入口可见性；<b>执行变更时 Go 按 user_id 从数据库实时查角色</b>，不信任请求头</td></tr>
+                <tr><th>运行记录</th><td>同步时不区分场景，后台会话会混进画布统计</td><td><code>agent_run_digests.mode</code> 已有，默认过滤掉 <code>admin</code>，另加场景筛选</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>数据模型</h2>
+          <p class="sub">一期不新建业务表：会话进 agent 服务的 SQLite；定价设置用现有的 <code>system_settings</code> 键值表；变更单就是审批的 payload。</p>
+          <div class="grid g2">
+            <div class="cmp-wrap">
+              <table class="cmp">
+                <thead><tr><th colspan="2"><code>system_settings</code> 新增键</th></tr></thead>
+                <tbody>
+                  <tr><th><code>pricing_credits_per_yuan</code></th><td>1 元 = N 积分；正数，最多两位小数；未设置时拒绝按成本换算</td></tr>
+                  <tr><th><code>pricing_default_markup_pct</code></th><td>默认加价率，整数 0–1000，缺省 30</td></tr>
+                  <tr><th><code>pricing_usd_cny_override</code></th><td>手动覆盖的美元汇率，可空；为空时用实时汇率</td></tr>
+                  <tr><th><code>pricing_usd_cny_last</code> / <code>_date</code> / <code>_fetched_at</code></th><td>最近一次拉到的实时汇率，由系统写入；每 6 小时请求 <code>api.frankfurter.dev</code>，失败沿用上次的值，超过 7 天标过期</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="cmp-wrap">
+              <table class="cmp">
+                <thead><tr><th colspan="2">变更单条目（审批 payload 的 <code>items[]</code>）</th></tr></thead>
+                <tbody>
+                  <tr><th><code>id</code></th><td>条目 id，partial 决定时按它勾选</td></tr>
+                  <tr><th><code>target</code> / <code>key</code></th><td><code>model</code> | <code>pricing_settings</code>；二期加 <code>plugin</code> | <code>channel</code> | <code>model_create</code></td></tr>
+                  <tr><th><code>base_sha256</code></th><td>助手读取时配置正文的哈希；提案和执行时各比对一次，<b>替代缺失的乐观锁</b></td></tr>
+                  <tr><th><code>patch</code> / <code>before</code> / <code>after</code> / <code>diff</code></th><td>patch 只允许改 pricing / capabilities / label / hint / tags / enabled</td></tr>
+                  <tr><th><code>pricing_basis[]</code></th><td>每个价位一条：上游价、币种、来源 URL、汇率、积分率、成本、加价率、售价</td></tr>
+                  <tr><th><code>status</code> / <code>issues</code></th><td><code>ok</code> | <code>invalid</code> | <code>stale</code> | <code>mismatch</code>；后三种不能勾选</td></tr>
+                  <tr><th><code>required_role</code></th><td><code>admin</code> | <code>super_admin</code>；角色不够时勾选框禁用</td></tr>
+                  <tr><th><code>signature</code>（整单）</th><td>HMAC 覆盖 after 和 base_sha256，防止执行前被篡改（沿用短剧审批的做法）</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>接口</h2>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>方法与路径</th><th>说明</th><th>业务错误</th></tr></thead>
+              <tbody>
+                <tr><th><code>GET/POST /api/v1/admin/assistant/sessions</code></th><td>本人的后台助手会话列表和新建会话（<code>/admin/agent</code> 已被技能、运行记录、分析令牌占用，所以换一个前缀）</td><td>403 非管理员；60005 无可用模型</td></tr>
+                <tr><th><code>POST /api/v1/agent/sessions/:sid/runs</code></th><td>复用；body 增加 <code>page_context {route, model_key?, channel_key?, plugin_key?}</code></td><td>60001 本人已有活跃运行</td></tr>
+                <tr><th><code>POST /api/v1/agent/approvals/:aid/decision</code></th><td>复用；<code>admin_change</code> 的决定是 <code>{action: approve|partial|reject, item_ids?, note?}</code></td><td>签名不符；角色不够按条目返回</td></tr>
+                <tr><th><code>GET/PUT /api/v1/admin/settings/pricing</code></th><td>定价设置和汇率状态；admin 和 super_admin 都能读写</td><td>400 越界；403</td></tr>
+                <tr><th><code>POST /internal/platform/v1/tools/admin_*</code></th><td>内部读工具：list_models、get_model、list_channels、get_pricing_settings、quote_preview</td><td>—</td></tr>
+                <tr><th>二期 <code>…/tools/admin_plugin_check</code></th><td>对还没上传的插件代码做 runner 预检，再用样例跑各个钩子；不落库、不发网络请求</td><td>按 issues 返回</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>变更单执行（伪代码，提案）</h2>
+          <div class="codeblock"><pre style="margin: 0; font: inherit; white-space: pre-wrap">// backend/internal/service/agent/admin_change.go（提案）
+func ExecuteAdminChange(ctx, rc, payload, decision) Result {
+  verifySignature(payload)                          // 篡改直接拒绝
+  role := roleLookup(rc.UserID)                     // 实时查库，不信任请求头
+  for item in payload.items where item.id ∈ decision.item_ids {
+    if !roleSatisfies(role, item.required_role) { res.fail(item, "需超级管理员确认"); continue }
+    tx {
+      cur := loadBody(item.target, item.key)
+      if sha256(cur) != item.base_sha256 { res.fail(item, "配置已被他人修改，请让助手重新读取"); rollback; continue }
+      switch item.target {
+        case model:            SaveModel(item.after)          // 已启用 → 启用检查不过就拒绝
+        case pricing_settings: putSystemSettings(item.after)
+      }
+      audit(action, actor=rc.UserID, detail={via:"assistant", session, run, approval, diff})
+    }
+    res.ok(item, before=cur)                        // before 留给「撤销」生成反向变更单
+  }
+  return res.textForModel()                         // 「已生效 3 条；1 条失败：…」
+}</pre></div>
+        </div>
+
+        <div class="sec">
+          <h2>已确认的决定</h2>
+          <div class="card">
+            <ol class="list" style="padding-left: 18px; display: grid; gap: 4px">
+              <li><b>写操作一律出变更单</b>：确认后才落库，可以逐条勾选。</li>
+              <li><b>调价依据是上游成本加加价率</b>：也支持「全体涨 10%」这种纯指令。</li>
+              <li><b>联网复用现有的 <code>web_search</code> / <code>web_fetch</code></b>：你原本选的是「接搜索 API + 网页抓取」，核对代码发现已经有了，所以改为复用，不新接服务（已确认）。</li>
+              <li><b>宿主复用项目现有的 pi agent</b>：在 <code>agent/</code> 里加 <code>admin</code> 场景。</li>
+              <li><b>插件先自动做静态验证</b>：真实试跑另出卡片确认，失败后自动修，最多 3 次。（二期）</li>
+              <li><b>入口是全后台右侧抽屉</b>：自动带上当前页面的上下文。</li>
+              <li><b>权限沿用现有接口</b>：确认时重新校验，admin 不能确认插件和渠道（二期）。</li>
+              <li><b>密钥走安全输入卡片</b>：直达 <code>PUT /channels/:key/secret</code>，不进对话、不发给模型。（二期）</li>
+              <li><b>新增定价设置</b>：「1 元 = N 积分」人工填，美元汇率实时获取。</li>
+              <li><b>一期做模型与调价，二期做插件</b>。</li>
+              <li><b>已搁置</b>：会话内授权全自动执行、付费搜索源、助手定时自动调价。</li>
+              <li><b>后台助手不扣管理员积分</b>：只记录 Token 用量。</li>
+              <li><b>定价设置 admin 也能改</b>：积分汇率、默认加价率、美元汇率覆盖，admin 和 super_admin 都能改。</li>
+            </ol>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+      const $ = (s, r = document) => r.querySelector(s);
+      const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const icons = () => { if (window.lucide) lucide.createIcons(); };
+      function toggleNotes() {
+        const on = document.body.classList.toggle("show-notes");
+        $("#notesSw").setAttribute("aria-checked", String(on));
+      }
+      let toastTimer;
+      function toast(msg, kind = "ok") {
+        const icon = { ok: "circle-check", bad: "circle-x", warn: "triangle-alert" }[kind] || "info";
+        $("#toast").innerHTML = `<div><i data-lucide="${icon}" style="color: rgb(var(--${kind}))"></i>${esc(msg)}</div>`;
+        icons();
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => ($("#toast").innerHTML = ""), 2400);
+      }
+      function showTab(id) {
+        document.querySelectorAll("main > section").forEach((s) => (s.hidden = s.id !== "tab-" + id));
+        document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === id)));
+        window.scrollTo(0, 0);
+      }
+      document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab)));
+
+      /* ================= 调价公式（与 Markdown §6.5 一致） ================= */
+      const FX = 6.6529; // 2026-10-30 ECB，2026-11-02 实测
+      // 浮点误差会让 7.0000000001 向上取整成 8，先按 6 位小数修正再取整
+      const ceil = (x) => Math.ceil(Math.round(x * 1e6) / 1e6);
+      function costPrice({ amount, currency, fx, cpy, markup }) {
+        const yuan = amount * (currency === "USD" ? fx : 1);
+        const cost = ceil(yuan * cpy);
+        const price = ceil(cost * (1 + markup / 100));
+        return { yuan, cost, price };
+      }
+      const relative = (from, pct) => ceil(from * (1 + pct / 100));
+
+      /* ================= 交互演示：调价计算器 ================= */
+      const calc = { mode: "cost", amount: 0.14, currency: "USD", cpy: 7.5, markup: 30, fx: FX, from: 2, pct: 10 };
+      const OPTS = [
+        { id: "cost", title: "按上游成本加价", desc: "「视频模型按成本加价 30%」" },
+        { id: "rel", title: "相对调价", desc: "「全体涨 10%」" },
+        { id: "noset", title: "积分汇率没设置", desc: "失败路径：助手会怎么回应" },
+      ];
+      function renderOpts() {
+        $("#optList").innerHTML = OPTS.map((o) => `<button class="opt" aria-pressed="${calc.mode === o.id}" data-opt="${o.id}"><b>${esc(o.title)}</b><small>${esc(o.desc)}</small></button>`).join("");
+        document.querySelectorAll("[data-opt]").forEach((b) => b.addEventListener("click", () => { calc.mode = b.dataset.opt; renderOpts(); renderPanel(); }));
+      }
+      function field(label, key, attrs = "") {
+        return `<label class="field"><span class="muted">${esc(label)}</span><input data-k="${key}" value="${esc(calc[key])}" ${attrs} /></label>`;
+      }
+      function renderPanel() {
+        const p = $("#optPanel");
+        if (calc.mode === "cost") {
+          p.innerHTML = `
+            <div class="grid g3">
+              ${field("上游价格（每秒）", "amount", 'type="number" step="0.01" min="0"')}
+              <label class="field"><span class="muted">币种</span><select data-k="currency"><option ${calc.currency === "USD" ? "selected" : ""}>USD</option><option ${calc.currency === "CNY" ? "selected" : ""}>CNY</option></select></label>
+              ${field("美元汇率（实时）", "fx", 'type="number" step="0.0001" min="0"')}
+              ${field("1 元 = N 积分", "cpy", 'type="number" step="0.5" min="0"')}
+              ${field("加价率 %", "markup", 'type="number" step="1" min="0"')}
+            </div>
+            <div id="calcOut" style="margin-top: 16px"></div>`;
+        } else if (calc.mode === "rel") {
+          p.innerHTML = `
+            <div class="grid g2">${field("原价（积分）", "from", 'type="number" step="1" min="1"')}${field("调整 %", "pct", 'type="number" step="1"')}</div>
+            <div id="calcOut" style="margin-top: 16px"></div>`;
+        } else {
+          p.innerHTML = `
+            <div class="callout c-bad"><i data-lucide="circle-x"></i><div><b>助手不会提交变更单。</b>它会回复：「定价设置里还没有填『1 元 = N 积分』，没法把上游价格换成积分成本。请先到 系统设置 → 定价设置 填写；也可以改成相对调价，比如『全体涨 10%』，这种不需要汇率。」</div></div>
+            <p class="muted" style="font-size: 12.5px; margin-top: 10px">为什么不从充值套餐推算：套餐一改价，所有模型的成本都会跟着漂；有多个套餐时也说不清该用哪一个。<span class="tag t-vio">提案</span></p>`;
+          icons();
+          return;
+        }
+        p.querySelectorAll("[data-k]").forEach((el) =>
+          el.addEventListener("input", () => {
+            calc[el.dataset.k] = el.tagName === "SELECT" ? el.value : Number(el.value);
+            renderCalcOut(); // 局部重绘，输入框不失焦
+          }),
+        );
+        renderCalcOut();
+      }
+      function renderCalcOut() {
+        const o = $("#calcOut");
+        if (!o) return;
+        if (calc.mode === "cost") {
+          const { yuan, cost, price } = costPrice(calc);
+          const below = price < cost;
+          o.innerHTML = `
+            <div class="formula">
+              <div class="ln"><span class="muted">换成人民币</span><b>${calc.amount} ${esc(calc.currency)}${calc.currency === "USD" ? " × " + calc.fx : ""} = ¥${yuan.toFixed(4)}</b></div>
+              <div class="ln"><span class="muted">积分成本</span><b>⌈${yuan.toFixed(4)} × ${calc.cpy}⌉ = ${cost}</b><span class="muted">→ 写入 pricing.cost.per_second</span></div>
+              <div class="ln"><span class="muted">售价</span><b>⌈${cost} × ${(1 + calc.markup / 100).toFixed(2)}⌉ = ${price}</b><span class="muted">→ 写入 pricing.per_second</span></div>
+            </div>
+            <div class="row" style="margin-top: 14px; gap: 18px">
+              <div><div class="muted" style="font-size: 12px">成本</div><div class="big">${cost}</div></div>
+              <div><div class="muted" style="font-size: 12px">售价（积分/秒）</div><div class="big">${price}</div></div>
+              <div><div class="muted" style="font-size: 12px">毛利率</div><div class="big">${price ? Math.round(((price - cost) / price) * 100) : 0}%</div></div>
+            </div>
+            ${below ? '<div class="callout c-bad" style="margin-top: 12px"><i data-lucide="triangle-alert"></i><div>售价低于成本：变更单会标红警告，但不禁止勾选。</div></div>' : ""}
+            <p class="muted" style="font-size: 12.5px; margin-top: 12px">每一步都向上取整，平台只收整数积分，宁可多收不少收。上游按「每 5 秒」或「每 1K tokens」报价的，由助手先换算成平台单位，并在算式里写明。</p>`;
+        } else {
+          const to = relative(calc.from, calc.pct);
+          const real = calc.from ? Math.round(((to - calc.from) / calc.from) * 100) : 0;
+          o.innerHTML = `
+            <div class="formula">
+              <div class="ln"><span class="muted">按比例，向上取整</span><b>⌈${calc.from} × ${(1 + calc.pct / 100).toFixed(2)}⌉ = ${to}</b></div>
+              <div class="ln"><span class="muted">实际涨幅</span><b>${real > 0 ? "+" : ""}${real}%</b>${real !== calc.pct ? '<span class="tag t-warn">与指令不同，单上写明</span>' : ""}</div>
+            </div>
+            <div class="row" style="margin-top: 14px; gap: 18px">
+              <div><div class="muted" style="font-size: 12px">原价</div><div class="big">${calc.from}</div></div>
+              <i data-lucide="arrow-right" class="muted"></i>
+              <div><div class="muted" style="font-size: 12px">新价</div><div class="big">${to}</div></div>
+            </div>
+            ${to === calc.from ? '<div class="callout c-warn" style="margin-top: 12px"><i data-lucide="triangle-alert"></i><div><b>取整后未变化。</b>降价时向上取整可能让小价位原地不动（如 2 降 10% → ⌈1.8⌉ = 2），这类条目默认不勾选。</div></div>' : ""}
+            <p class="muted" style="font-size: 12.5px; margin-top: 12px">小价位取整后的实际涨幅会大于指令，比如 2 涨 10% 变成 3，实际 +50%。试试把调整改成 -10。</p>`;
+        }
+        icons();
+      }
+
+      /* ================= 可点击原型 ================= */
+      const INIT_MODELS = () => [
+        { key: "kling-v2-1", label: "可灵 2.1", kind: "video", billing: "按秒", price: 8, cost: null, enabled: true, upstream: { amount: 0.14, currency: "USD", url: "https://app.klingai.com/…/pricing" } },
+        { key: "seedance-pro", label: "Seedance Pro 1080p", kind: "video", billing: "按秒", price: 9, cost: 6, enabled: true, upstream: { amount: 0.9, currency: "CNY", url: "https://www.volcengine.com/…/pricing" } },
+        { key: "vidu-q2", label: "Vidu Q2", kind: "video", billing: "按次", price: 20, cost: null, enabled: true, upstream: { amount: 2.5, currency: "CNY", url: "https://platform.vidu.cn/…/pricing" } },
+        { key: "sora-2", label: "Sora 2", kind: "video", billing: "按秒", price: 15, cost: null, enabled: true, upstream: { amount: 0.1, currency: "USD", url: "https://openai.com/api/pricing" }, brokenChannel: true },
+        { key: "gpt-image-2", label: "GPT Image 2", kind: "image", billing: "按次", price: 2, cost: 1, enabled: true },
+        { key: "seed-audio-1", label: "Seed Audio 1.0", kind: "audio", billing: "按次", price: 1, cost: null, enabled: true },
+      ];
+      const P = {};
+      function resetProto() {
+        Object.assign(P, {
+          role: P.role || "super_admin",
+          fxDown: false,
+          externalEdit: false,
+          noModel: false,
+          models: INIT_MODELS(),
+          settings: { cpy: 7.5, markup: 30 },
+          drawer: true,
+          msgs: [],
+          busy: false,
+          order: null, // 当前待确认的变更单
+          selected: "kling-v2-1",
+          flash: [],
+          seq: 0,
+        });
+        $("#fxSw").setAttribute("aria-checked", "false");
+        $("#noModelSw").setAttribute("aria-checked", "false");
+        renderApp();
+      }
+      document.querySelectorAll("#roleSeg button").forEach((b) =>
+        b.addEventListener("click", () => {
+          P.role = b.dataset.role;
+          document.querySelectorAll("#roleSeg button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+          renderApp();
+          toast("已切换为 " + P.role + "，确认时按这个角色复核", "warn");
+        }),
+      );
+      $("#fxSw").addEventListener("click", (e) => { P.fxDown = !P.fxDown; e.currentTarget.setAttribute("aria-checked", String(P.fxDown)); renderApp(); });
+      $("#noModelSw").addEventListener("click", (e) => { P.noModel = !P.noModel; e.currentTarget.setAttribute("aria-checked", String(P.noModel)); renderApp(); });
+
+      const QUICK = [
+        { id: "markup", text: "把视频模型按成本加价 30%" },
+        { id: "rel", text: "所有图片和音频模型涨 10%" },
+        { id: "setting", text: "把默认加价率改成 35%" },
+        { id: "plugin", text: "接一下 Example 视频生成接口（二期）" },
+      ];
+
+      function renderApp() {
+        const m = P.models;
+        const sel = m.find((x) => x.key === P.selected);
+        $("#app").innerHTML = `
+          <nav class="side">
+            <div class="grp">AI 配置</div>
+            <div class="it"><i data-lucide="layout-grid"></i>总览</div>
+            <div class="it"><i data-lucide="list-ordered"></i>任务队列</div>
+            <div class="it on"><i data-lucide="radio-tower"></i>模型渠道</div>
+            <div class="it"><i data-lucide="puzzle"></i>插件</div>
+            <div class="grp">系统设置</div>
+            <div class="it"><i data-lucide="badge-dollar-sign"></i>定价设置 <span class="tag t-vio" style="margin-left:auto">新</span></div>
+          </nav>
+          <div class="main">
+            <div class="main-top">
+              <span class="muted">AI 配置</span><i data-lucide="chevron-right" class="muted"></i><b>模型渠道</b>
+              <span class="spacer"></span>
+              <span class="note"><button class="pill ${P.drawer ? "on" : ""}" id="openDrawer"><i data-lucide="sparkles"></i>助手</button></span>
+            </div>
+            <div class="main-body">
+              <div class="row" style="margin-bottom: 10px">
+                <b style="font-size: 14px">模型</b>
+                <span class="muted" style="font-size: 12px">1 元 = ${P.settings.cpy} 积分 · 默认加价 ${P.settings.markup}% · 美元汇率 ${P.fxDown ? '<span style="color: rgb(var(--warn))">6.6529（7 天前，可能过期）</span>' : "6.6529（2026-10-30）"}</span>
+                <span class="spacer"></span>
+                <button class="btn btn-outline btn-sm" id="extEdit" ${P.order ? "" : "disabled"} title="${P.order ? "" : "有待确认的变更单时才有意义"}"><i data-lucide="user-pen"></i>模拟他人修改 kling-v2-1</button>
+              </div>
+              <div class="cmp-wrap">
+                <table class="mtable">
+                  <thead><tr><th>模型</th><th>类型</th><th>计费</th><th>售价</th><th>成本</th><th>状态</th></tr></thead>
+                  <tbody>${m.map((x) => `
+                    <tr data-row="${x.key}" class="${x.key === P.selected ? "sel" : ""} ${P.flash.includes(x.key) ? "flash" : ""}" style="cursor: pointer">
+                      <td><b>${esc(x.label)}</b><div class="muted mono" style="font-size: 11px">${esc(x.key)}</div></td>
+                      <td>${esc(x.kind)}</td><td>${esc(x.billing)}</td>
+                      <td class="mono">${x.price}</td>
+                      <td class="mono">${x.cost == null ? '<span class="muted">未填</span>' : x.cost}</td>
+                      <td>${x.brokenChannel ? '<span class="tag t-warn">渠道未配 Key</span>' : '<span class="tag t-ok">在线</span>'}</td>
+                    </tr>`).join("")}
+                  </tbody>
+                </table>
+              </div>
+              <div class="note-txt">设计：点一行就会把它设为页面上下文，抽屉输入框上方会出现「模型：xxx」标签，助手自动知道你说的「这个模型」是哪个。确认变更单后，这张表即时刷新并闪一下改动的行。</div>
+            </div>
+          </div>
+          <aside class="drawer ${P.drawer ? "open" : ""}">
+            <div class="dr-head">
+              <i data-lucide="sparkles" style="color: rgb(var(--violet))"></i><b>后台助手</b>
+              <span class="tag t-mute">新会话</span>
+              <span class="spacer"></span>
+              <span class="muted" style="font-size: 12px">${P.noModel ? "无可用模型" : "gemini-3-pro"}</span>
+              <button class="btn btn-sm" id="closeDrawer" aria-label="关闭"><i data-lucide="x"></i></button>
+            </div>
+            ${P.noModel ? emptyDrawer() : `
+            <div class="dr-msgs" id="msgs">${P.msgs.length ? P.msgs.map(renderMsg).join("") : welcome()}</div>
+            <div class="dr-foot">
+              ${P.order ? "" : `<div class="chips">${QUICK.map((q) => `<button class="chip" data-q="${q.id}" ${P.busy ? "disabled" : ""}>${esc(q.text)}</button>`).join("")}</div>`}
+              <div class="row"><span class="ctx"><i data-lucide="at-sign"></i>模型：${esc(sel ? sel.label : "—")}</span><span class="ctx"><i data-lucide="file"></i>页面：模型渠道</span></div>
+              <div class="composer">
+                <input id="ask" placeholder="${P.order ? "有一张变更单待确认，可以继续补充要求…" : "说说要改什么…"}" ${P.busy ? "disabled" : ""} />
+                <button class="btn btn-primary btn-sm" id="send" ${P.busy ? "disabled" : ""}><i data-lucide="arrow-up"></i></button>
+              </div>
+            </div>`}
+          </aside>`;
+        bindApp();
+        renderOrderFoot(); // 整体重绘会清空确认栏，补回来
+        icons();
+        const box = $("#msgs");
+        if (box) box.scrollTop = box.scrollHeight;
+        P.flash = [];
+      }
+      function emptyDrawer() {
+        return `<div class="dr-empty">
+          <div><i data-lucide="bot-off" style="width: 32px; height: 32px" class="muted"></i>
+          <div style="margin-top: 10px; font-weight: 600">暂无可用的助手模型</div>
+          <button class="btn btn-outline btn-sm" style="margin-top: 12px" onclick="toast('跳到模型渠道页，筛选 kind=agent','ok')">去配置模型</button></div></div>`;
+      }
+      function welcome() {
+        return `<div class="amsg muted" style="text-align: center; padding: 30px 10px"><i data-lucide="sparkles" style="width: 26px; height: 26px; color: rgb(var(--violet))"></i><div style="margin-top: 8px; font-weight: 600; color: hsl(var(--foreground))">后台助手</div></div>`;
+      }
+      function bindApp() {
+        const od = $("#openDrawer"); if (od) od.onclick = () => { P.drawer = !P.drawer; renderApp(); };
+        const cd = $("#closeDrawer"); if (cd) cd.onclick = () => { P.drawer = false; renderApp(); };
+        document.querySelectorAll("[data-row]").forEach((r) => (r.onclick = () => { P.selected = r.dataset.row; renderApp(); }));
+        document.querySelectorAll("[data-q]").forEach((b) => (b.onclick = () => run(b.dataset.q)));
+        const send = $("#send");
+        if (send) send.onclick = () => {
+          const v = $("#ask").value.trim();
+          if (!v) return;
+          if (/加价|成本/.test(v)) return run("markup", v);
+          if (/涨|降|%/.test(v) && !/默认/.test(v)) return run("rel", v);
+          if (/默认/.test(v)) return run("setting", v);
+          if (/接|对接|插件/.test(v)) return run("plugin", v);
+          P.msgs.push({ t: "user", text: v }, { t: "ai", text: "（原型只模拟了四条快捷指令；真实助手会理解任意说法。）" });
+          renderApp();
+        };
+        const ext = $("#extEdit");
+        if (ext) ext.onclick = () => { P.externalEdit = true; P.models.find((x) => x.key === "kling-v2-1").price = 11; renderApp(); toast("另一位管理员把 kling-v2-1 改成了 11 积分/秒", "warn"); };
+        document.querySelectorAll("[data-ck]").forEach((c) => (c.onchange = () => { const it = P.order.items.find((i) => i.id === c.dataset.ck); it.checked = c.checked; renderOrderFoot(); }));
+        document.querySelectorAll("[data-basis]").forEach((b) => (b.onclick = () => { const it = P.order.items.find((i) => i.id === b.dataset.basis); it.open = !it.open; renderApp(); }));
+        const ap = $("#approve"); if (ap) ap.onclick = () => decide("approve");
+        const rj = $("#reject"); if (rj) rj.onclick = () => decide("reject");
+        document.querySelectorAll("[data-undo]").forEach((b) => (b.onclick = () => undo(b.dataset.undo)));
+        const sv = $("#saveSecret"); if (sv) sv.onclick = saveSecret;
+        const tr = $("#testRun"); if (tr) tr.onclick = () => testRun(true);
+        const tn = $("#testSkip"); if (tn) tn.onclick = () => testRun(false);
+      }
+
+      function renderMsg(m) {
+        if (m.t === "user") return `<div class="bubble">${esc(m.text)}</div>`;
+        if (m.t === "ai") return `<div class="amsg">${m.html || esc(m.text)}</div>`;
+        if (m.t === "act") return `<div class="act">${m.items.map((a) => `<div class="a"><i data-lucide="${a.done ? "check" : "loader"}" class="${a.done ? "" : "spin"}" style="${a.done ? "color: rgb(var(--ok))" : ""}"></i>${esc(a.text)}</div>`).join("")}</div>`;
+        if (m.t === "order") return renderOrder(m.order);
+        if (m.t === "secret") return renderSecret(m);
+        if (m.t === "testrun") return renderTestRun(m);
+        return "";
+      }
+
+      /* ---- 变更单 ---- */
+      const STATUS = {
+        ok: ["t-ok", "正常"],
+        invalid: ["t-bad", "无效"],
+        stale: ["t-warn", "已过期"],
+        mismatch: ["t-bad", "算错"],
+        below: ["t-bad", "低于成本"],
+        done: ["t-ok", "已生效"],
+        failed: ["t-bad", "执行失败"],
+        skipped: ["t-mute", "未勾选"],
+        rejected: ["t-mute", "已拒绝"],
+      };
+      const canRole = (it) => it.role === "admin" || P.role === "super_admin";
+      const selectable = (it) => it.status === "ok" && canRole(it);
+      function renderOrder(o) {
+        const live = o === P.order;
+        const items = o.items.map((it) => {
+          const st = it.result || it.status;
+          const [cls, label] = STATUS[st];
+          const lock = live && !selectable(it);
+          return `<div class="oi ${lock ? "dis" : ""}">
+            <div class="hd">
+              ${live ? `<input type="checkbox" data-ck="${it.id}" ${it.checked && selectable(it) ? "checked" : ""} ${lock ? "disabled" : ""} />` : `<i data-lucide="${it.result === "done" ? "check" : "minus"}" style="width: 15px; height: 15px"></i>`}
+              <b>${esc(it.title)}</b>
+              <span class="tag ${cls}">${label}</span>
+              ${it.warn ? `<span class="tag t-bad">${esc(it.warn)}</span>` : ""}
+              ${live && !canRole(it) ? '<span class="tag t-warn">需 super_admin 确认</span>' : ""}
+              ${it.target === "plugin" ? '<span class="tag t-info">二期</span>' : ""}
+            </div>
+            ${it.diff.length ? `<div class="diff">${it.diff.map((d) => `<span class="muted">${esc(d.path)}</span><span><span class="b">${esc(d.before)}</span> → <span class="a">${esc(d.after)}</span></span>`).join("")}</div>` : ""}
+            ${it.issues ? `<div class="basis" style="color: rgb(var(--bad))">${esc(it.issues)}</div>` : ""}
+            ${it.basis ? `<button class="basis" data-basis="${it.id}" style="text-align: left">${it.open ? "▾" : "▸"} 算式${P.fxDown && it.basis.includes("USD") ? '  <span class="tag t-warn">汇率可能过期</span>' : ""}</button>${it.open ? `<div class="basis">${esc(it.basis)}<br />来源：${esc(it.url || "—")}</div>` : ""}` : ""}
+            ${it.resultMsg ? `<div class="basis" style="color: rgb(var(--${it.result === "done" ? "ok" : "bad"}))">${esc(it.resultMsg)}</div>` : ""}
+          </div>`;
+        }).join("");
+        const foot = live
+          ? `<div class="oi" id="orderFoot"></div>`
+          : o.undoable ? `<div class="oi"><div class="row"><span class="muted" style="font-size: 12px">${esc(o.summary || "")}</span><span class="spacer"></span><button class="btn btn-outline btn-sm" data-undo="${o.id}"><i data-lucide="undo-2"></i>撤销</button></div></div>`
+          : o.summary ? `<div class="oi"><span class="muted" style="font-size: 12px">${esc(o.summary)}</span></div>` : "";
+        return `<div class="${live ? "note" : ""}"><div class="order">
+          <div class="order-h"><i data-lucide="file-diff"></i><b>${esc(o.title)}</b><span class="spacer"></span><span class="tag ${live ? "t-vio" : "t-mute"}">${live ? "待确认" : "已处理"}</span></div>
+          ${items}${foot}
+        </div></div>${live ? `<div class="note-txt">设计：有问题的条目照样展示，但不能勾选，让你看到助手哪里没做对；角色不够的条目也是一样。「算式」默认收起，以免长单太占地方。Go 提交时会用同一套公式复算，助手算错的条目会标「算错」。</div>` : ""}`;
+      }
+      function renderOrderFoot() {
+        const f = $("#orderFoot");
+        if (!f || !P.order) return;
+        const n = P.order.items.filter((i) => i.checked && selectable(i)).length;
+        const total = P.order.items.length;
+        f.innerHTML = `<div class="row"><span class="muted" style="font-size: 12px">已勾选 ${n} / ${total} 条</span><span class="spacer"></span>
+          <button class="btn btn-sm" id="reject">拒绝</button>
+          <button class="btn btn-primary btn-sm" id="approve" ${n ? "" : "disabled"}>确认 ${n} 条</button></div>`;
+        $("#approve").onclick = () => decide("approve");
+        $("#reject").onclick = () => decide("reject");
+      }
+
+      /* ---- 模拟助手运行（setTimeout，非真实调用） ---- */
+      function run(kind, text) {
+        if (P.busy) return;
+        if (P.order) {
+          P.msgs.push({ t: "user", text: text || kind }, { t: "ai", text: "（原型里请先确认或拒绝当前变更单。真实产品里可以插话补充，助手会作废旧单、重新出一张。）" });
+          renderApp();
+          return;
+        }
+        const q = QUICK.find((x) => x.id === kind);
+        P.msgs.push({ t: "user", text: text || q.text });
+        P.busy = true;
+        const steps = {
+          markup: ["读取定价设置", "列出视频模型（4 个）", "搜索 可灵 / Seedance / Vidu / Sora 官方价格", "读取 4 个价格页", "计算成本与售价", "提交变更单"],
+          rel: ["列出图片、音频模型（2 个）", "按 +10% 计算新价", "提交变更单"],
+          setting: ["读取定价设置", "提交变更单"],
+          plugin: ["搜索 Example 视频 API 文档", "读取文档：鉴权、提交、查询接口", "比对已有插件：没有匹配的", "编写插件草稿", "静态验证：预检 ✓ 渲染请求 ✓ 解析样例 ✓", "提交变更单"],
+        }[kind];
+        const act = { t: "act", items: [] };
+        P.msgs.push(act);
+        let i = 0;
+        const tick = () => {
+          if (i > 0) act.items[i - 1].done = true;
+          if (i < steps.length) {
+            act.items.push({ text: steps[i], done: false });
+            i++;
+            renderApp();
+            setTimeout(tick, 420);
+          } else {
+            P.busy = false;
+            finish(kind);
+          }
+        };
+        tick();
+      }
+      function finish(kind) {
+        const id = "o" + ++P.seq;
+        const S = P.settings;
+        const mk = (it) => Object.assign({ checked: true, open: false, diff: [] }, it);
+        let order;
+        if (kind === "markup") {
+          const items = P.models.filter((m) => m.kind === "video").map((m, idx) => {
+            const r = costPrice({ amount: m.upstream.amount, currency: m.upstream.currency, fx: FX, cpy: S.cpy, markup: 30 });
+            const it = mk({
+              id: id + "-" + idx, target: "model", key: m.key, title: m.label, role: "admin",
+              status: "ok", url: m.upstream.url,
+              diff: [
+                { path: m.billing === "按秒" ? "pricing.per_second" : "pricing.unit", before: m.price, after: r.price },
+                { path: "pricing.cost", before: m.cost ?? "未填", after: r.cost },
+              ],
+              basis: `${m.upstream.amount} ${m.upstream.currency}${m.upstream.currency === "USD" ? " × " + FX : ""} → ⌈× ${S.cpy}⌉ = ${r.cost} → ⌈× 1.30⌉ = ${r.price}`,
+              apply: { price: r.price, cost: r.cost },
+              before: { price: m.price, cost: m.cost },
+            });
+            if (m.brokenChannel) {
+              it.status = "invalid";
+              it.issues = "已启用的模型保存即生效，但启用检查未通过：渠道 openai-main 未配置 API Key";
+            }
+            return it;
+          });
+          order = { id, title: "视频模型按成本加价 30%", items };
+          P.msgs.push({ t: "ai", text: "查到了 4 个视频模型的官方价格，按「1 元 = 7.5 积分」和 30% 加价算好了。Sora 2 的渠道还没配 Key，已启用的模型改了也保存不了，这条先跳过。请确认：" });
+        } else if (kind === "rel") {
+          const items = P.models.filter((m) => m.kind !== "video").map((m, idx) => {
+            const to = relative(m.price, 10);
+            return mk({
+              id: id + "-" + idx, target: "model", key: m.key, title: m.label, role: "admin", status: "ok",
+              warn: `实际 +${Math.round(((to - m.price) / m.price) * 100)}%`,
+              diff: [{ path: "pricing.unit", before: m.price, after: to }],
+              basis: `相对调价：⌈${m.price} × 1.10⌉ = ${to}`,
+              apply: { price: to }, before: { price: m.price },
+            });
+          });
+          order = { id, title: "图片、音频模型涨 10%", items };
+          P.msgs.push({ t: "ai", text: "这两个模型价格很低，向上取整后实际涨幅远大于 10%（2→3、1→2），每条都标了实际涨幅，请留意。" });
+        } else if (kind === "setting") {
+          order = { id, title: "默认加价率 30% → 35%", items: [mk({
+            id: id + "-0", target: "pricing_settings", key: "pricing_default_markup_pct", title: "定价设置 · 默认加价率", role: "admin", status: "ok",
+            diff: [{ path: "pricing_default_markup_pct", before: S.markup, after: 35 }], apply: { markup: 35 }, before: { markup: S.markup },
+          })] };
+          P.msgs.push({ t: "ai", text: "只改默认值，已有模型的价格不变。以后按成本调价时，没说加价率的就按 35% 算。" });
+        } else {
+          order = { id, title: "对接 Example 视频生成", items: [
+            mk({ id: id + "-0", target: "plugin", key: "example-video", title: "新插件 example-video 1.0.0", role: "super_admin", status: "ok",
+              diff: [{ path: "auth", before: "—", after: "bearer" }, { path: "endpoints.video", before: "—", after: "async · POST /v1/videos" }, { path: "代码", before: "—", after: "142 行（可展开查看）" }],
+              basis: "静态验证：runner 预检通过；buildSubmitRequest 渲染出 POST https://api.example.com/v1/videos；用文档里的响应样例跑 parseSubmitResponse → providerTaskId=task_123；parseQueryResponse → state=succeeded", url: "https://docs.example.com/api/video" }),
+            mk({ id: id + "-1", target: "channel", key: "example", title: "新渠道 example", role: "super_admin", status: "ok",
+              diff: [{ path: "base_url", before: "—", after: "https://api.example.com" }, { path: "API Key", before: "—", after: "确认后用安全卡片填写" }] }),
+            mk({ id: id + "-2", target: "model_create", key: "example-video-1", title: "新模型 Example Video 1（不启用）", role: "admin", status: "ok",
+              diff: [{ path: "ops", before: "—", after: "t2v, i2v" }, { path: "params.duration", before: "—", after: "enum [5, 10]" }, { path: "pricing", before: "—", after: "按秒 · 成本 4 · 售价 6" }] }),
+          ] };
+          P.msgs.push({ t: "ai", text: "没找到能复用的插件，按文档写了一个，静态验证通过。确认后我会请你填 API Key，再问你要不要真实试跑一次。（这是二期功能，原型只示意流程。）" });
+        }
+        order.kind = kind;
+        P.order = order;
+        P.msgs.push({ t: "order", order });
+        renderApp();
+        renderOrderFoot();
+      }
+
+      function decide(action) {
+        const o = P.order;
+        if (action === "reject") {
+          o.items.forEach((it) => (it.result = "rejected"));
+          o.summary = "已拒绝。拒绝理由会喂回助手，它会重新规划。";
+          P.order = null;
+          P.msgs.push({ t: "ai", text: "好的，这张单不执行了。要调整什么？" });
+          renderApp();
+          return;
+        }
+        let ok = 0, fail = 0;
+        o.items.forEach((it) => {
+          if (!(it.checked && selectable(it))) { it.result = it.status === "ok" ? "skipped" : it.status; return; }
+          if (it.key === "kling-v2-1" && P.externalEdit) {
+            it.result = "failed"; it.resultMsg = "配置已被他人修改（base_sha256 不一致），请让助手重新读取"; fail++; return;
+          }
+          it.result = "done"; ok++;
+          const m = P.models.find((x) => x.key === it.key);
+          if (it.target === "model" && m) { Object.assign(m, it.apply); P.flash.push(m.key); }
+          if (it.target === "pricing_settings") Object.assign(P.settings, it.apply);
+          if (it.target === "model_create") P.models.push({ key: it.key, label: "Example Video 1", kind: "video", billing: "按秒", price: 6, cost: 4, enabled: false, brokenChannel: true });
+        });
+        o.summary = `已生效 ${ok} 条${fail ? `，失败 ${fail} 条` : ""}；每条都写了审计（via=assistant）`;
+        o.undoable = ok > 0 && o.kind !== "plugin";
+        P.order = null;
+        P.externalEdit = false; // 冲突只模拟一次，之后助手重新读取到的就是改后的值
+        P.msgs.push({ t: "ai", text: fail ? `已生效 ${ok} 条。kling-v2-1 在你确认前被人改过，我没覆盖它；要我重新读取后再算一次吗？` : `已生效 ${ok} 条，模型页已刷新。` });
+        if (o.kind === "plugin" && ok) P.msgs.push({ t: "secret", saved: false });
+        renderApp();
+        toast(fail ? `已生效 ${ok} 条，${fail} 条失败` : `已生效 ${ok} 条`, fail ? "warn" : "ok");
+      }
+      function undo(orderId) {
+        if (P.order) return toast("先处理当前待确认的变更单", "warn");
+        const src = P.msgs.find((m) => m.t === "order" && m.order.id === orderId).order;
+        src.undoable = false;
+        const id = "o" + ++P.seq;
+        const items = src.items.filter((it) => it.result === "done").map((it, idx) => Object.assign({ checked: true, open: false }, {
+          id: id + "-" + idx, target: it.target, key: it.key, title: it.title, role: it.role, status: "ok",
+          diff: it.diff.map((d) => ({ path: d.path, before: d.after, after: d.before })),
+          apply: Object.fromEntries(Object.entries(it.before).map(([k, v]) => [k, v])),
+          before: it.apply,
+        }));
+        P.msgs.push({ t: "user", text: "撤销「" + src.title + "」" });
+        P.order = { id, title: "撤销：" + src.title, items, kind: "undo" };
+        P.msgs.push({ t: "ai", text: "撤销也是一张变更单，同样要确认，也同样做冲突检测。" });
+        P.msgs.push({ t: "order", order: P.order });
+        renderApp();
+        renderOrderFoot();
+      }
+
+      /* ---- 二期：密钥卡片与试跑卡片 ---- */
+      function renderSecret(m) {
+        return `<div class="note"><div class="order"><div class="order-h"><i data-lucide="key-round"></i><b>填写渠道 example 的 API Key</b><span class="spacer"></span><span class="tag t-info">二期</span></div>
+          <div class="oi">${m.saved ? '<div class="row"><i data-lucide="check" style="color: rgb(var(--ok))"></i>已加密保存。助手只知道「已配置」。</div>'
+            : `<div class="secret"><input type="password" id="secretIn" placeholder="sk-…" /><button class="btn btn-primary btn-sm" id="saveSecret">保存</button></div>`}</div></div></div>
+          <div class="note-txt">设计：这里由前端直接调用 <code>PUT /admin/ai/channels/:key/secret</code>；回给助手的决定只有 {configured:true}。密钥不经过 agent 服务、不写进 SQLite、不发给模型。</div>`;
+      }
+      function saveSecret() {
+        const v = $("#secretIn").value.trim();
+        if (!v) return toast("请填写 API Key", "bad");
+        P.msgs.find((m) => m.t === "secret").saved = true;
+        const nm = P.models.find((x) => x.key === "example-video-1");
+        if (nm) nm.brokenChannel = false;
+        P.msgs.push({ t: "ai", text: "Key 已配置。要不要真实试跑一次？" }, { t: "testrun", state: "ask" });
+        renderApp();
+      }
+      function renderTestRun(m) {
+        const body = m.state === "ask"
+          ? `<div class="basis" style="padding-left: 0">模型 example-video-1 · 文生视频 5 秒 · 预估上游费用约 ¥2.7（按成本换算，示意）</div>
+             <div class="row" style="margin-top: 6px"><span class="spacer"></span><button class="btn btn-sm" id="testSkip">先不跑</button><button class="btn btn-primary btn-sm" id="testRun">同意试跑</button></div>`
+          : m.state === "running" ? '<div class="row"><i data-lucide="loader" class="spin"></i>试跑中…（模拟）</div>'
+          : m.state === "fail1" ? '<div class="row" style="color: rgb(var(--bad))"><i data-lucide="circle-x"></i>第 1 次失败：上游返回 400 "duration must be string"。助手看了 trace，正在修…</div>'
+          : m.state === "ok" ? '<div class="row" style="color: rgb(var(--ok))"><i data-lucide="check"></i>第 2 次试跑成功（插件已出 1.0.1 版本，同样经过确认）。模型可以启用了。</div>'
+          : '<div class="row muted">已跳过。你可以随时到模型页手动试跑。</div>';
+        return `<div class="order"><div class="order-h"><i data-lucide="flask-conical"></i><b>真实试跑（会产生上游费用）</b><span class="spacer"></span><span class="tag t-info">二期</span></div><div class="oi">${body}</div></div>`;
+      }
+      function testRun(go) {
+        const m = P.msgs.find((x) => x.t === "testrun");
+        if (!go) { m.state = "skip"; renderApp(); return; }
+        m.state = "running"; renderApp();
+        setTimeout(() => { m.state = "fail1"; renderApp(); }, 900);
+        setTimeout(() => { m.state = "ok"; renderApp(); toast("试跑成功（模拟）"); }, 2200);
+      }
+
+      renderOpts();
+      renderPanel();
+      resetProto();
+      icons();
+    </script>
+  </body>
+</html>

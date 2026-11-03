@@ -2,13 +2,16 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
 	"video-canvas/internal/model"
+	"video-canvas/internal/pkg/configbody"
 )
 
 // AIConfigRepository 是 AI 配置（模型 / 凭证）的数据访问。
@@ -32,10 +35,15 @@ type ConfigPointer struct {
 
 // SaveModelInput 保存模型配置的参数。
 type SaveModelInput struct {
-	Pointer   ConfigPointer
-	Body      []byte
-	CreatedBy uint64
-	Note      string
+	CreateOnly      bool // 并发新建由唯一索引拒绝同 key，不覆盖既有配置。
+	BaseSHA256      string
+	ExpectedEnabled *bool
+	Enabled         *bool
+	Audit           *model.AIAuditLog
+	Pointer         ConfigPointer
+	Body            []byte
+	CreatedBy       uint64
+	Note            string
 	// InitialEnabled / InitialSort 只在 model 指针行首次创建时使用；
 	// 之后上下架与排序只由管理接口修改，不受正文影响。
 	InitialEnabled bool
@@ -66,6 +74,44 @@ func (r *AIConfigRepository) SaveModel(ctx context.Context, in SaveModelInput) (
 		var ptr model.AIModel
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&ptr, "key = ?", in.Pointer.Key).Error; err != nil {
 			return err
+		}
+		// 助手重放先返回原审计；正常更新在持有同一模型行锁时比对，防止人工保存穿过 SHA 检查。
+		if in.Audit != nil {
+			var prior model.AIAuditLog
+			var detail map[string]any
+			if err := json.Unmarshal(in.Audit.DetailJSON, &detail); err != nil {
+				return err
+			}
+			err := tx.Where("action = ? AND target_key = ? AND detail_json->>'approval_id' = ? AND detail_json->>'index' = ?", model.AuditModelUpdate, in.Pointer.Key, detail["approval_id"], fmt.Sprint(detail["index"])).First(&prior).Error
+			if err == nil {
+				in.Audit.ID = prior.ID
+				return tx.First(&rev, *ptr.PublishedRevisionID).Error
+			}
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
+		}
+		if in.BaseSHA256 != "" {
+			var current model.AIConfigRevision
+			if ptr.PublishedRevisionID == nil {
+				return ErrRevisionConflict
+			}
+			if err := tx.First(&current, *ptr.PublishedRevisionID).Error; err != nil {
+				return err
+			}
+			if configbody.ModelSHA256(current.BodyJSON, ptr.Enabled) != in.BaseSHA256 || (in.ExpectedEnabled != nil && *in.ExpectedEnabled != ptr.Enabled) {
+				return ErrRevisionConflict
+			}
+		}
+		if in.Enabled != nil {
+			if err := tx.Model(&ptr).Update("enabled", *in.Enabled).Error; err != nil {
+				return err
+			}
+		}
+		if in.Audit != nil {
+			if err := tx.Create(in.Audit).Error; err != nil {
+				return err
+			}
 		}
 		// 2. 已有配置行：原地覆盖
 		if ptr.PublishedRevisionID != nil {
@@ -115,6 +161,9 @@ func upsertPointer(tx *gorm.DB, in SaveModelInput) error {
 		sort = 100
 	}
 	row := &model.AIModel{Key: p.Key, Kind: p.Kind, Enabled: in.InitialEnabled, Sort: sort}
+	if in.CreateOnly {
+		return translate(tx.Create(row).Error)
+	}
 	return tx.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "key"}},
 		DoUpdates: clause.AssignmentColumns([]string{"kind", "updated_at"}),

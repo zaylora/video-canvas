@@ -22,6 +22,7 @@ test("批准生成：解析 → 登记已花积分 → 执行 → 结果交给�
     propose: GEN,
   }, async (e) => {
     const { run, approval } = await waitingApproval(e, { budgetCredits: 20 });
+    assert.equal(e.persisted("approval.created")[0].result, null);
     const view = await e.engine.decide("1", approval.id, { decision: "approve", add_budget: 10 });
     await e.engine.idle();
 
@@ -51,6 +52,7 @@ test("批准生成：解析 → 登记已花积分 → 执行 → 结果交给�
     assert.deepEqual(seq.filter((t) => ["approval.created", "run.status", "run.usage", "approval.decided"].includes(t)).slice(0, 5), ["approval.created", "run.status", "run.status", "run.usage", "approval.decided"]);
     assert.deepEqual(e.persisted("run.status").slice(-3).map((x) => x.status), ["waiting_approval", "running", "succeeded"]);
     const decided = e.persisted("approval.decided")[0];
+    assert.deepEqual(decided.result, e.store.getApproval("1", approval.id).result);
     assert.deepEqual([decided.status, decided.id], ["executed", codec.encode(BigInt(approval.id))]);
 
     // 模型下一次请求里，那次工具调用的结果是执行的结果文字，不是占位

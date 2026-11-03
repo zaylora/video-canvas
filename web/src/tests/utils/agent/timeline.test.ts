@@ -1094,3 +1094,55 @@ function activity(item: TimelineItem | undefined) {
   if (item?.type !== "activity") throw new Error("不是活动块");
   return item;
 }
+
+describe("后台助手：用户消息的页面上下文", () => {
+  test("message.user 带 page_context：用户消息项带上它，空字段不带", () => {
+    reset();
+    const items = buildTimeline(
+      fold([
+        ev("message.user", {
+          text: "改价",
+          page_context: { route: "/admin/ai/channels", model_key: "m1", channel_key: "" },
+        }),
+      ]),
+    );
+    expect((items[0] as { pageContext?: unknown }).pageContext).toEqual({
+      route: "/admin/ai/channels",
+      model_key: "m1",
+    });
+  });
+
+  test("没带 page_context、route 不是字符串：没有 pageContext 字段（画布消息不受影响）", () => {
+    reset();
+    const items = buildTimeline(
+      fold([
+        ev("message.user", { text: "画布消息" }),
+        ev("message.user", { text: "坏数据", page_context: { route: 1 } }),
+      ]),
+    );
+    expect("pageContext" in items[0]).toBe(false);
+    expect("pageContext" in items[1]).toBe(false);
+  });
+
+  test("事件里没有时，用本机发这一轮时记下的（按运行 id，只给每轮第一条，插话不带）", () => {
+    reset();
+    const state = fold([
+      ev("message.user", { text: "改价" }, "r1"),
+      ev("message.user", { text: "再补一句", steer: true }, "r1"),
+    ]);
+    const items = buildTimeline(state, { r1: { route: "/admin/settings/pricing" } });
+    expect((items[0] as { pageContext?: unknown }).pageContext).toEqual({
+      route: "/admin/settings/pricing",
+    });
+    expect("pageContext" in items[1]).toBe(false);
+  });
+
+  test("事件里的 page_context 优先于本机记录", () => {
+    reset();
+    const items = buildTimeline(
+      fold([ev("message.user", { text: "x", page_context: { route: "/a" } }, "r1")]),
+      { r1: { route: "/b" } },
+    );
+    expect((items[0] as { pageContext?: unknown }).pageContext).toEqual({ route: "/a" });
+  });
+});

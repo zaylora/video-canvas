@@ -308,12 +308,13 @@ func (s *ObserveService) exportFacts(ctx context.Context, runID uint64) (*model.
 
 const (
 	remoteSyncPage     = 200
-	remoteSyncOverlap  = 5 * time.Second // 游标往回多读一点：容忍提交顺序和同一毫秒的并列，汇总是幂等的
+	remoteSyncOverlap  = 5 * time.Second // 游标往回多读一点：容忍提交顺序和同一毫秒的并列
 	remoteSyncLookback = 24 * time.Hour  // 第一次同步（进程刚启动）回看多久
 )
 
 // SyncRemote 把 Agent 服务里变过的运行汇总进摘要表（列表、统计、版本对比读它）：问 Agent 哪些运行更新过，
-// 对每个不在「排队、运行中」的运行重新汇总。游标只在内存里，重启后回看 24 小时；汇总是幂等的。
+// 对每个不在「排队、运行中」的运行重新汇总。成功扫描后游标至少推进到扫描开始时间，避免空闲时永久重拉最后一条运行；
+// 5 秒重叠窗口内只汇总未成功处理的版本。游标和窗口版本只在内存里，重启后回看 24 小时。
 // 某个运行汇总失败（比如库暂时不通）时游标停在它前面，下一轮重试；返回成功汇总的条数和第一个错误。没有配置 Agent 服务时什么都不做。
 func (s *ObserveService) SyncRemote(ctx context.Context) (int, error) {
 	if s.d.Remote == nil {
@@ -321,10 +322,16 @@ func (s *ObserveService) SyncRemote(ctx context.Context) (int, error) {
 	}
 	s.syncMu.Lock()
 	defer s.syncMu.Unlock()
+	// 1. 以扫描开始时间为水位，不能用结束时间，否则扫描期间提交的更新可能被跳过。
+	scanAt := s.d.Now()
+	if s.syncVersions == nil {
+		s.syncVersions = make(map[string]int64)
+	}
 	after := s.syncCursor - remoteSyncOverlap.Milliseconds()
 	if s.syncCursor == 0 {
-		after = s.d.Now().Add(-remoteSyncLookback).UnixMilli()
+		after = scanAt.Add(-remoteSyncLookback).UnixMilli()
 	}
+	// 2. 完整扫描增量列表；读取失败时不推进游标，已成功汇总的窗口版本可供重试复用。
 	var t syncTally
 	for {
 		refs, err := s.d.Remote.ListUpdated(ctx, after, remoteSyncPage)
@@ -339,12 +346,19 @@ func (s *ObserveService) SyncRemote(ctx context.Context) (int, error) {
 		}
 		after = refs[len(refs)-1].UpdatedAt
 	}
-	next := t.maxOK
+	// 3. 无新运行时也推进水位；汇总失败仍停在失败版本前面，下一轮重试。
+	next := max(t.maxOK, scanAt.UnixMilli())
 	if t.firstFail > 0 {
 		next = t.firstFail - 1 // 游标停在第一个失败的前面，下一轮从它重试
 	}
 	if next > s.syncCursor {
 		s.syncCursor = next
+	}
+	// 4. 仅保留下轮重叠查询可能返回的版本，避免随历史运行数量增长。
+	for id, at := range s.syncVersions {
+		if at <= s.syncCursor-remoteSyncOverlap.Milliseconds() {
+			delete(s.syncVersions, id)
+		}
 	}
 	return t.refreshed, t.firstErr
 }
@@ -358,6 +372,10 @@ type syncTally struct {
 
 // syncOne 汇总一个变过的运行并记入统计。
 func (s *ObserveService) syncOne(ctx context.Context, ref RemoteRunRef, t *syncTally) {
+	if at, ok := s.syncVersions[ref.ID]; ok && at == ref.UpdatedAt {
+		t.maxOK = max(t.maxOK, ref.UpdatedAt)
+		return
+	}
 	if ref.Status == model.RunQueued || ref.Status == model.RunRunning {
 		t.maxOK = max(t.maxOK, ref.UpdatedAt) // 运行中的不汇总：结束时更新时间会再变大
 		return
@@ -368,6 +386,7 @@ func (s *ObserveService) syncOne(ctx context.Context, ref RemoteRunRef, t *syncT
 	}
 	switch {
 	case err == nil:
+		s.syncVersions[ref.ID] = ref.UpdatedAt
 		t.refreshed++
 		t.maxOK = max(t.maxOK, ref.UpdatedAt)
 	case errors.Is(err, repository.ErrNotFound):

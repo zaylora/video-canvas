@@ -17,22 +17,23 @@ import {
 } from "motion/react";
 
 import type { AgentModelDto } from "@/api/agent/type";
+import { ASSISTANT_NAME } from "@/constants/agent";
 import type { AgentController } from "@/hooks/use-agent-controller";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { DURATION, EASE_OUT, SPRING } from "@/lib/motion";
+import { DURATION, EASE_OUT } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { DOCK_WIDTH, useAgentSettings } from "@/store/agent-settings";
 import { useAgentAttachments } from "@/hooks/use-agent-attachments";
 import { toAttachmentsPayload } from "@/utils/agent/attachments";
 
-import { AgentComposer } from "./agent-composer";
+import { AgentComposer, type ComposerFeatures } from "./agent-composer";
+import type { ContextRef } from "./context-chips";
 import type { RefNode } from "@/utils/agent/selection-refs";
 
 import type { AgentEditorHandle, NodeOption } from "./agent-editor";
 import { AgentEmpty, type AgentEmptyCopy } from "./agent-empty";
 import { AgentLoading } from "./agent-loading";
 import { AgentHeader } from "./agent-header";
-import { DecisionDock } from "./decision-dock";
 import { WatchStrip } from "./watch-strip";
 import { MessageList } from "./message-list";
 import { RunStrip } from "./run-strip";
@@ -63,7 +64,7 @@ function useWindowWidth() {
  * - 浮窗：右下角 400×600 的圆角面板，拖顶栏移动、限制在画布内；
  * - 停靠：画布右侧的全高侧栏，作为和画布并列的一列让出宽度；拖左边缘调宽（拖动时侧栏跟手、松手后画布才让出），双击复位；
  * - 窄屏：底部 Sheet，不能拖动、不能停靠。
- * 停靠后窗口变窄放不下时临时退回浮窗，偏好不变。等你决定时，决定框替换输入框钉在原位。
+ * 停靠后窗口变窄放不下时临时退回浮窗，偏好不变。等你决定的审批和提问在消息流里是交互卡片，输入框始终可用。
  */
 export function AgentPanel({
   ctl,
@@ -73,8 +74,13 @@ export function AgentPanel({
   refNodes,
   onClose,
   variant = "floating",
-  label = "画布 Agent",
+  label = ASSISTANT_NAME,
   emptyCopy,
+  features,
+  placeholder,
+  contextRefs,
+  onRemoveContextRef,
+  closeShortcut,
 }: {
   ctl: AgentController;
   models: AgentModelDto[];
@@ -95,6 +101,15 @@ export function AgentPanel({
   label?: string;
   /** 空会话的文案，默认是画布 Agent 的 */
   emptyCopy?: AgentEmptyCopy;
+  /** 输入区的画布能力开关（附件、@ 节点、插入模型、技能），缺省全开；后台助手全部关掉 */
+  features?: ComposerFeatures;
+  /** 输入框占位文字，缺省是画布 Agent 的 */
+  placeholder?: string;
+  /** 页面上下文引用（后台助手）：显示在输入框里，可移除；缺省没有 */
+  contextRefs?: readonly ContextRef[];
+  onRemoveContextRef?: (id: string) => void;
+  /** 「收起」按钮提示里的快捷键，缺省是画布的 ⌘/ */
+  closeShortcut?: string;
 }) {
   const mobile = useIsMobile();
   const reduce = useReducedMotion();
@@ -204,6 +219,7 @@ export function AgentPanel({
         scrolled={!empty && !loading && scrolled}
         onToggleDock={() => useAgentSettings.getState().patch({ docked: !docked })}
         onClose={onClose}
+        closeShortcut={closeShortcut}
         onDragStart={mobile || docked || embedded ? undefined : (e) => controls.start(e)}
       />
       {/* 后台等待生成的监听条：头部下方，审批和输入时都看得到；没有进行中的批时不出现 */}
@@ -228,31 +244,12 @@ export function AgentPanel({
           onScrolled={setScrolled}
         />
       )}
-      {/* 决定框和输入框共用一个容器：互换时容器用 layout 过渡高度，只在互换时触发（打字换行不做动画） */}
-      <motion.div
-        layout
-        layoutDependency={ctl.pending?.id ?? null}
-        transition={{ layout: SPRING }}
-        style={{ borderRadius: 18 }}
+      {/* 审批和提问是消息流里的交互卡片，输入框始终可用：等回答时发消息，视为新消息，这张卡被跳过 */}
+      <div
         className="agent-composer mx-3 mb-3 shrink-0 overflow-hidden"
+        style={{ borderRadius: 18 }}
       >
-        <AnimatePresence mode="popLayout" initial={false}>
-          {ctl.pending && (
-            <motion.div
-              key={ctl.pending.id}
-              layout="position"
-              layoutDependency={ctl.pending.id}
-              initial={reduce ? { opacity: 0 } : { opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, transition: { duration: DURATION.exit } }}
-              transition={{ duration: DURATION.base, ease: EASE_OUT }}
-            >
-              <DecisionDock approval={ctl.pending} ctl={ctl} />
-            </motion.div>
-          )}
-        </AnimatePresence>
-        {/* 等你决定时输入框只是藏起来，不卸载：里面写了一半的话还在 */}
-        <div hidden={ctl.pending !== null}>
+        <div>
           {/* 计划条并进输入框顶部（设计稿 6.12），不再悬在输入框上方 */}
           <AnimatePresence initial={false}>
             {ctl.strip && (
@@ -276,9 +273,13 @@ export function AgentPanel({
             nodes={nodes}
             attachments={attachments}
             vision={vision}
+            features={features}
+            placeholder={placeholder}
+            contextRefs={contextRefs}
+            onRemoveContextRef={onRemoveContextRef}
           />
         </div>
-      </motion.div>
+      </div>
     </>
   );
 

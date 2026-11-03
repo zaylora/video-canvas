@@ -10,6 +10,7 @@ import type {
   AgentSessionDto,
   AgentUndoResult,
   AgentWatchBatchDto,
+  CreateAdminAssistantSessionReq,
   CreateAgentSessionReq,
   DecideAgentApprovalReq,
   SetAgentFeedbackReq,
@@ -40,6 +41,21 @@ export const listAgentSessions = async (canvasId: string): Promise<AgentSessionD
  */
 export const createAgentSession = (canvasId: string, data: CreateAgentSessionReq) =>
   service.post<AgentSessionDto>(`/canvas/${canvasId}/agent/sessions`, data);
+
+/**
+ * 列出本人的后台助手会话（mode = admin），最近更新的在前；需要 admin 或 super_admin
+ * @returns 会话列表
+ */
+export const listAdminAssistantSessions = async (): Promise<AgentSessionDto[]> =>
+  (await service.get<AgentSessionDto[] | null>("/admin/assistant/sessions", undefined)) ?? [];
+
+/**
+ * 新建后台助手会话：不绑画布，canvas_id 恒为 "0"；没有可用 Agent 模型时返回 60002（与画布一致）
+ * @param data 标题、模型
+ * @returns 新会话
+ */
+export const createAdminAssistantSession = (data: CreateAdminAssistantSessionReq) =>
+  service.post<AgentSessionDto>("/admin/assistant/sessions", data);
 
 /**
  * 重命名会话

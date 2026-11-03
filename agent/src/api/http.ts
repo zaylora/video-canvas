@@ -17,7 +17,7 @@ import { ValidationError, queryInt, validateBody, type FieldSpec } from "./valid
 export const USER_HEADER = "x-agent-user";
 const SERVICE_TOKEN_HEADER = "x-agent-service-token";
 const DEFAULT_MAX_BODY = 1 << 20;
-const MODES = ["all", "script", "storyboard", "prompt", "drama"] as const;
+const MODES = ["all", "script", "storyboard", "prompt", "drama", "admin"] as const;
 const DEFAULT_OBSERVE_PAGE = 200;
 const BUDGET = { min: 0, max: 100000 };
 
@@ -28,6 +28,7 @@ const CREATE_SESSION: FieldSpec[] = [
 ];
 const RENAME: FieldSpec[] = [{ key: "title", label: "标题", kind: "string", required: true, max: 40 }];
 const START_RUN: FieldSpec[] = [
+  { key: "page_context", label: "页面上下文", kind: "any" },
   { key: "message", label: "消息", kind: "string", required: true, max: 20000 },
   { key: "mode", label: "任务模式", kind: "string", oneof: MODES },
   { key: "selection", label: "选中节点", kind: "strings", max: 200, itemMax: 64 },
@@ -48,6 +49,10 @@ const DECIDE: FieldSpec[] = [
     item: [{ key: "index", label: "序号", kind: "int", min: 0 }, { key: "approve", label: "approve", kind: "bool" }, { key: "count", label: "数量", kind: "int", min: 0, max: 4 }],
   },
   { key: "answer", label: "回答", kind: "string", max: 2000 },
+  {
+    key: "answers", label: "回答列表", kind: "items", max: 5,
+    item: [{ key: "id", label: "题目标识", kind: "string", required: true, max: 64 }, { key: "value", label: "回答", kind: "any" }],
+  },
   { key: "add_budget", label: "追加预算", kind: "int", ...BUDGET },
 ];
 
@@ -158,12 +163,24 @@ export function createApiApp(o: ApiOptions): FastifyInstance {
       return dec;
     };
     const user = (req: FastifyRequest) => String(req.headers[USER_HEADER]);
+    app.addHook("preHandler", async (req) => {
+      const role = String(req.headers["x-agent-role"] ?? "");
+      if (new URL(req.url, "http://x").pathname === "/admin/sessions") service.requireAdmin(role);
+      const params = req.params as Record<string, string>;
+      const resource: { sid?: string; rid?: string; aid?: string } = {};
+      for (const key of ["sid", "rid", "aid"] as const) {
+        if (params[key]) resource[key] = id(req as Req, key);
+      }
+      service.authorize(user(req), role, resource);
+    });
     const body = (req: FastifyRequest) => req.body ?? {};
     const query = (req: FastifyRequest) => new URL(req.url, "http://x").searchParams;
     const ok = (reply: FastifyReply, data?: unknown, status = 200) =>
       reply.code(status).header("cache-control", "no-store").send({ code: 0, msg: "success", ...(data !== undefined && { data }) });
 
     app.get("/agent/models", async (_req, reply) => ok(reply, await service.models()));
+    app.get("/admin/sessions", async (req, reply) => ok(reply, await service.listAdminSessions(user(req))));
+    app.post("/admin/sessions", async (req, reply) => ok(reply, await service.createAdminSession(user(req), validateBody(body(req), CREATE_SESSION.filter((f) => f.key !== "mode")))));
     app.get("/canvas/:id/agent/sessions", async (req: Req, reply) => ok(reply, await service.listSessions(user(req), id(req, "id"))));
     app.post("/canvas/:id/agent/sessions", async (req: Req, reply) => {
       const canvas = id(req, "id");
@@ -189,7 +206,8 @@ export function createApiApp(o: ApiOptions): FastifyInstance {
     });
     app.post("/agent/sessions/:sid/runs", async (req: Req, reply) => {
       const sid = id(req, "sid");
-      return ok(reply, await service.startRun(user(req), sid, validateBody(body(req), START_RUN) as never), 202);
+      const specs = service.isAdminSession(user(req), sid) ? START_RUN.filter((s) => !["selection", "viewport", "attachments"].includes(s.key)) : START_RUN;
+      return ok(reply, await service.startRun(user(req), sid, validateBody(body(req), specs) as never), 202);
     });
     app.get("/agent/sessions/:sid/watches", async (req: Req, reply) => ok(reply, await service.watches(user(req), id(req, "sid"))));
     app.post("/agent/sessions/:sid/watches/cancel", async (req: Req, reply) => ok(reply, await service.cancelWatches(user(req), id(req, "sid"))));

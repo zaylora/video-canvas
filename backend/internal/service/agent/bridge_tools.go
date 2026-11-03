@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"slices"
 	"strconv"
-	"strings"
-	"unicode/utf8"
 
 	"go.uber.org/zap"
 
@@ -29,6 +27,7 @@ const (
 
 // ToolResult 是一次工具调用的结果，Node 里的工具原样转给 pi。
 type ToolResult struct {
+	Data      any         `json:"data,omitempty"`   // 已脱敏的结构化工具结果
 	Content   string      `json:"content"`          // 给模型看的文字
 	IsError   bool        `json:"is_error"`         // 工具没做成，模型会看到并自行处理
 	Images    []ToolImage `json:"images,omitempty"` // 随结果交给模型看的图片（看图工具）
@@ -56,10 +55,12 @@ func fail(format string, a ...any) error { return &toolFailure{msg: fmt.Sprintf(
 
 // toolOut 是一个工具处理函数的产出。
 type toolOut struct {
+	data      any
 	content   string
 	summary   string // 记进 tool.end 事件，前端工具行显示它
 	images    []ToolImage
 	terminate bool
+	isError   bool           // 保留结构化校验结果，同时明确业务检查失败
 	extra     map[string]any // 一并记进 tool.end 的附加信息，如被改动的节点
 }
 
@@ -113,7 +114,7 @@ func withParent(ev map[string]any, parentID string) map[string]any {
 // 画布校验错误列出每一项问题；其余基础设施错误只告诉模型「内部错误」，细节记日志，不外泄。
 func (b *AgentBridge) finishTool(out *toolOut, err error) *ToolResult {
 	if err == nil {
-		return &ToolResult{Content: out.content, Terminate: out.terminate, Images: out.images}
+		return &ToolResult{Content: out.content, Terminate: out.terminate, Images: out.images, Data: out.data, IsError: out.isError}
 	}
 	var tf *toolFailure
 	var ve *canvasgraph.ValidationError
@@ -357,44 +358,6 @@ func (b *AgentBridge) toolDelete(ctx context.Context, tc *toolCall) (*toolOut, e
 	}
 	return &toolOut{content: "已提交给用户确认，等待决定。用户决定后你会收到结果。", terminate: true,
 		summary: fmt.Sprintf("申请删除 %d 个节点", len(a.NodeIDs))}, nil
-}
-
-// toolAsk 向用户提问：选项题或选模型题，创建提问并让本轮停下等回答。
-func (b *AgentBridge) toolAsk(ctx context.Context, tc *toolCall) (*toolOut, error) {
-	var a struct {
-		Question    string   `json:"question"`
-		Kind        string   `json:"kind"`
-		Options     []string `json:"options"`
-		ModelKind   string   `json:"modelKind"`
-		AllowCustom bool     `json:"allowCustom"`
-	}
-	if err := json.Unmarshal(tc.args, &a); err != nil {
-		return nil, fail("参数格式不对：%v", err)
-	}
-	q := strings.TrimSpace(a.Question)
-	if q == "" || utf8.RuneCountInString(q) > maxQuestionLen {
-		return nil, fail("问题不能为空，且不超过 %d 个字", maxQuestionLen)
-	}
-	p := AskPayload{Question: q, Kind: a.Kind, AllowCustom: a.AllowCustom}
-	switch a.Kind {
-	case "choice":
-		if len(a.Options) < 2 || len(a.Options) > 4 {
-			return nil, fail("选项题需要 2 到 4 个选项")
-		}
-		p.Options = a.Options
-	case "model":
-		models, err := b.askModels(ctx, a.ModelKind)
-		if err != nil {
-			return nil, err
-		}
-		p.ModelKind, p.Models = a.ModelKind, models
-	default:
-		return nil, fail("kind 只能是 choice 或 model")
-	}
-	if err := b.requestApproval(ctx, tc, model.ApprovalAsk, p, 0); err != nil {
-		return nil, err
-	}
-	return &toolOut{content: "已向用户提问，等待回答。用户回答后你会收到结果。", terminate: true, summary: "向用户提问：" + truncateRunes(q, 40)}, nil
 }
 
 // askModels 列出某类已发布的生成模型，给「选模型」提问用。

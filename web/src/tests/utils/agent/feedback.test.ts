@@ -1,4 +1,6 @@
-import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+
+import { mockAgentApi } from "@/tests/helpers/agent-api";
 import { toast } from "sonner";
 
 import type { AgentEventDto, AgentFeedbackDto, SetAgentFeedbackReq } from "@/api/agent/type";
@@ -225,7 +227,10 @@ describe("每轮运行末尾的反馈位", () => {
 /** 服务端的假实现：按需让提交失败 */
 let failNext = false;
 const calls: string[] = [];
-mock.module("@/api/agent", () => ({
+const fakeApi = () => ({
+  listAdminAssistantSessions: async () => [],
+  getAgentWatches: async () => [],
+  cancelAgentWatches: async () => [],
   listAgentSessions: async () => [],
   getAgentHistory: async () => ({ events: [], has_more: false }),
   getAgentEvents: async () => [],
@@ -238,7 +243,14 @@ mock.module("@/api/agent", () => ({
     calls.push(`DELETE ${runId}`);
     if (failNext) throw new Error("boom");
   },
-}));
+});
+/** 替身只在当前用例内生效，避免污染其他文件的 API 模块。 */
+let restoreApi: () => void;
+beforeEach(() => {
+  restoreApi = mockAgentApi(fakeApi());
+});
+afterEach(() => restoreApi());
+
 const { useAgentStore } = await import("@/store/agent");
 
 const feedbackOf = () => useAgentStore.getState().sessions.s1?.feedback.r1;

@@ -18,6 +18,7 @@ import UsagePage from "@/pages/admin/usage";
 import AuditsPage from "@/pages/admin/logs";
 import EmailSettingsPage from "@/pages/admin/settings/email-settings";
 import ShowcaseSettingsPage from "@/pages/admin/settings/showcase";
+import PricingSettingsPage from "@/pages/admin/settings/pricing-settings";
 import RegisterSettingsPage from "@/pages/admin/settings/register-settings";
 import VersionSettingsPage from "@/pages/admin/settings/version-settings";
 import Assets from "@/pages/assets";
@@ -163,6 +164,7 @@ export const router = createBrowserRouter([
               { path: "settings/storage", element: <StoragePage /> },
               { path: "settings/image-processor", element: <ImageProcessorPage /> },
               { path: "settings/register", element: <RegisterSettingsPage /> },
+              { path: "settings/pricing", element: <PricingSettingsPage /> },
               { path: "settings/email", element: <EmailSettingsPage /> },
               { path: "settings/showcase", element: <ShowcaseSettingsPage /> },
               { path: "settings/version", element: <VersionSettingsPage /> },

@@ -22,13 +22,22 @@ const CHIP =
  * 用户消息上方的「引用了哪些节点」：发送这条消息时画布上选中的节点，一个节点（或组）一个标签，组前面是组的图标、节点前面是小圆点。
  * 最多直接显示 3 个，其余折成「+N」，点它原地展开（展开出来的标签淡入上浮 2px，只动 transform 和 opacity）；
  * 点标签飞到画布上并让节点闪一下描边，节点已经被删除的置灰、不能点。没有引用时什么都不渲染。
+ * 没有引用时在取画布 hook 之前就返回：后台助手等没有画布的入口也渲染消息列表，外面没有 ReactFlowProvider。
  */
 export function SelectionRefs({ ids, nodes }: { ids: readonly string[]; nodes: RefNode[] }) {
+  const refs = resolveSelection(ids, nodes);
+  if (refs.length === 0) return null;
+  return <SelectionRefChips refs={refs} />;
+}
+
+/**
+ * 有引用时的标签组：点标签要飞到画布上，依赖 ReactFlowProvider
+ * @param refs 解析好的引用
+ */
+function SelectionRefChips({ refs }: { refs: ReturnType<typeof resolveSelection> }) {
   const [expanded, setExpanded] = useState(false);
   const focus = useFocusNode();
   const reduce = useReducedMotion();
-  const refs = resolveSelection(ids, nodes);
-  if (refs.length === 0) return null;
   const { shown, hidden } = splitSelection(refs, expanded);
 
   return (

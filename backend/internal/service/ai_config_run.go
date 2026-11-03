@@ -20,6 +20,14 @@ import (
 // aiRedactMask 是凭证明文在输出里的替换文本。
 const aiRedactMask = "***"
 
+type testRunKey struct{}
+
+// TestRunIdempotent 以审批标识调用原有试跑；崩溃恢复和并发决定只创建一次任务。
+func (s *AIConfigService) TestRunIdempotent(ctx context.Context, adminID uint64, modelKey string, input map[string]any, key string) (*model.GenerationTaskView, error) {
+	// 1. 幂等键只在 Go 服务内传递，不接受模型或前端指定任务归属。
+	return s.TestRun(context.WithValue(ctx, testRunKey{}, key), adminID, modelKey, input)
+}
+
 // DryRun 用模型已保存的配置 + 渠道当前配置 + 渠道固定的插件版本组装快照，按模型能力校验示例输入，
 // 交给宿主渲染请求但不发送，返回脱敏后的渲染结果（插件返回的请求描述与宿主注入鉴权后的最终请求）。
 // adminID 是发起的管理员：输入里的参考素材要属于他，与 TestRun 一致。

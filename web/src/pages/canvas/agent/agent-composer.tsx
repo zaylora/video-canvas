@@ -17,6 +17,7 @@ import type { RefNode } from "@/utils/agent/selection-refs";
 import { AgentEditor, type AgentEditorHandle, type NodeOption } from "./agent-editor";
 import { AttachPopover } from "./attach-popover";
 import { AttachmentTray } from "./attachment-tray";
+import { ContextChips, type ContextRef } from "./context-chips";
 import { ContextRing } from "./context-ring";
 import { ModelPopover } from "./model-popover";
 import { SkillPopover } from "./skill-popover";
@@ -92,6 +93,18 @@ function AgentModelMenu({
   );
 }
 
+/** 输入区里哪些画布能力可用；后台助手没有画布，全部关掉 */
+export type ComposerFeatures = {
+  /** 图片 / 文档附件：＋ 按钮、粘贴和拖入图片 */
+  attachments?: boolean;
+  /** @ 引用节点（和选中节点占位） */
+  mentions?: boolean;
+  /** 插入生成模型 */
+  models?: boolean;
+  /** / 插入技能 */
+  skills?: boolean;
+};
+
 /**
  * 输入区（设计稿 6.8、6.9）：编辑区（画布选中的节点在光标处先是浅色占位，激活输入框后变成行内引用）；
  * 底栏左侧 ＋ 附件、模式、插入模型、插入技能，右侧 Agent 模型、上下文环、发送。
@@ -113,6 +126,10 @@ export function AgentComposer({
   nodes,
   attachments,
   vision,
+  features,
+  placeholder,
+  contextRefs,
+  onRemoveContextRef,
 }: {
   /** 编辑器里现在的消息文本 */
   text: string;
@@ -140,7 +157,18 @@ export function AgentComposer({
   attachments: AgentAttachments;
   /** 当前模型能不能看图：不能看图时托盘里有图就不能发送 */
   vision: boolean;
+  /** 哪些画布能力可用，缺省全部可用（画布现状） */
+  features?: ComposerFeatures;
+  /** 输入框的占位文字，缺省是画布 Agent 的 */
+  placeholder?: string;
+  /** 页面上下文引用（后台助手）：编辑区上方的可移除 chip；缺省没有 */
+  contextRefs?: readonly ContextRef[];
+  onRemoveContextRef?: (id: string) => void;
 }) {
+  const canAttach = features?.attachments ?? true;
+  const canMention = features?.mentions ?? true;
+  const canPickModel = features?.models ?? true;
+  const canSkill = features?.skills ?? true;
   const handle = editorRef as { current: AgentEditorHandle | null };
   const empty = text.trim() === "";
   const stopMode = busy && empty;
@@ -151,33 +179,46 @@ export function AgentComposer({
   const sendLabel = stopMode ? "停止" : (blocked ?? (busy ? "插话" : "发送"));
   return (
     <div className="flex flex-col gap-1.5 p-2.5">
-      <AttachmentTray
-        items={attachments.items}
-        vision={vision}
-        onRetry={attachments.retry}
-        onRemove={attachments.remove}
-      />
+      {canAttach && (
+        <AttachmentTray
+          items={attachments.items}
+          vision={vision}
+          onRetry={attachments.retry}
+          onRemove={attachments.remove}
+        />
+      )}
+      {contextRefs && contextRefs.length > 0 && (
+        <ContextChips refs={contextRefs} onRemove={onRemoveContextRef} />
+      )}
       <AgentEditor
         handleRef={editorRef}
-        nodes={nodes}
-        selection={selection}
+        nodes={canMention ? nodes : []}
+        selection={canMention ? selection : []}
         refNodes={refNodes}
         placeholder={
-          busy ? "补充要求，Agent 会在下一步看到" : "描述你的想法，@ 引用节点，/ 插入技能"
+          busy
+            ? "补充要求，Agent 会在下一步看到"
+            : (placeholder ?? "描述你的想法，@ 引用节点，/ 插入技能")
         }
         onChange={onTextChange}
         onSubmit={() => !empty && !sending && !blocked && onSend()}
-        onImages={attachments.add}
+        onImages={canAttach ? attachments.add : undefined}
+        mentions={canMention}
+        skills={canSkill}
       />
       {/* 底栏永远一行：放不下时先截断模型名、再截断模式名，窄到 360px 以下只留模型 logo */}
       <div className="flex min-w-0 flex-nowrap items-center gap-0.5">
-        <AttachPopover
-          onAttachDocuments={attachments.addDocuments}
-          onAttachImages={attachments.add}
-        />
-        <span aria-hidden className="bg-foreground/8 mx-1 h-3.5 w-px shrink-0" />
-        <ModelPopover onPick={(chip) => handle.current?.insertChip(chip)} />
-        <SkillPopover onPick={(chip) => handle.current?.insertChip(chip)} />
+        {canAttach && (
+          <>
+            <AttachPopover
+              onAttachDocuments={attachments.addDocuments}
+              onAttachImages={attachments.add}
+            />
+            <span aria-hidden className="bg-foreground/8 mx-1 h-3.5 w-px shrink-0" />
+          </>
+        )}
+        {canPickModel && <ModelPopover onPick={(chip) => handle.current?.insertChip(chip)} />}
+        {canSkill && <SkillPopover onPick={(chip) => handle.current?.insertChip(chip)} />}
         <span className="min-w-1 flex-1" />
         <AgentModelMenu models={models} modelKey={modelKey} busy={busy} />
         <ContextRing tokens={context.tokens} window={context.window} />

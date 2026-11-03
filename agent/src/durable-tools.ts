@@ -1,18 +1,21 @@
 /**
  * 工具扩展：把 Go 下发的工具声明变成 Pi Durable 的工具。
  *
- * 工具的名字、说明、参数 schema 都由 Go 定（这里不内置任何业务工具），execute 回调 Go 的平台 API：
+ * 平台工具的名字、说明、参数 schema 由 Go 定，execute 回调平台 API；联网工具保留平台开关，由 Agent 管理的 MCP 执行：
  *   - 普通工具 → POST /tools/:name，幂等键是 Pi 的工具任务 id（每次调用唯一，同一次调用重放时不变），
  *     所以崩溃后重放写画布不会写两遍，也不会因为模型给的 tool_call_id 重复而悄悄丢掉真实的写入；
  *   - 审批工具（生成、删除、提问、短剧写入）→ 先 propose 预估，通过后交给宿主创建审批，本轮停下；
- *   - plan_update 在这里本地校验（它只产生一个事件，没有平台副作用）。
+ *   - plan_update、show_card 在这里本地校验（它们只产生一个事件，没有平台副作用）。
  *
  * 运行状态（步数、事件、审批、暂停）归运行引擎，工具层只通过 ToolHost 和它交互，所以可以单独测试。
  */
-import type { Context } from "@earendil-works/chord";
+import type { Context, JsonValue } from "@earendil-works/chord";
 import { defineExtension, type Extension, type ToolExecutionApi, type ToolRegistration } from "@earendil-works/pi-durable";
 import { wrapScalarArrays } from "./tools.ts";
 import { PlatformError, platformToolCallId, type ApprovalKind, type Platform, type PlatformToolResult, type RunContext, type ToolDecl, type ToolEndEvent } from "./platform-client.ts";
+import { CARD_LIMITS, validateCard, type Card } from "./card.ts";
+import type { WebTools } from "./web-access.ts";
+import { callWebTool, WEB_TOOL_NAMES } from "./web-tools.ts";
 
 /** 工具所在的运行 */
 export interface ToolRun {
@@ -36,12 +39,18 @@ export interface ToolHost {
   runOf(conversationId: string): ToolRun | undefined;
   /** 本轮是否已经暂停（等审批、等回答、步数用尽）：同一轮里后面的调用不再执行 */
   isPaused(run: ToolRun): boolean;
+  /** 搜索和抓取共享本片段的联网额度；缓存读取不占用，后台模式不限。 */
+  takeWebCall?(run: ToolRun): boolean;
   /** 工具开始：发 tool.start，检查步数上限。返回值表示拒绝执行（步数用尽等），工具层把 content 当结果交给模型 */
   begin(run: ToolRun, call: ToolCallInfo): Promise<{ content: string; terminate: boolean } | undefined>;
   /** 工具结束：发 tool.end（内容由 Go 给出），并计步数 */
   end(run: ToolRun, call: ToolCallInfo, event: ToolEndEvent): Promise<void>;
   /** 计划更新：发 plan.updated */
   plan(run: ToolRun, steps: PlanStep[]): Promise<void>;
+  /** 展示卡片占一个名额：本轮已展示的卡片数没到上限返回 true 并计数；不提供则不限 */
+  takeCard?(run: ToolRun): boolean;
+  /** 展示卡片：发 card.shown（id 是工具调用 id，前端靠它把卡片和活动组里的这次调用对上） */
+  card(run: ToolRun, id: string, card: Card): Promise<void>;
   /** 创建审批并让运行进入等待状态。必须按 toolCallId 幂等：崩溃后重放同一个调用不能出现两个审批 */
   approval(run: ToolRun, a: { kind: ApprovalKind; toolCallId: string; payload: unknown; quoteCredits: number; summary: string }): Promise<void>;
 }
@@ -53,6 +62,8 @@ export interface PlanStep {
 
 /** 这几个工具要用户决定，对应的审批种类 */
 const APPROVAL_KIND: Record<string, ApprovalKind> = {
+  admin_propose_changes: "admin_change",
+  admin_request_secret: "admin_secret", admin_test_run: "admin_test_run",
   generate_media: "generate", canvas_delete: "delete", ask_user: "ask",
   drama_update_outline: "drama_update_outline", drama_update_episode: "drama_update_episode",
   drama_update_segment: "drama_update_segment", drama_run_job: "drama_run_job",
@@ -66,8 +77,11 @@ const APPROVAL_KIND: Record<string, ApprovalKind> = {
  *  - 其余（截帧会写素材）和没登记的新工具：unsafe，崩溃后模型会收到「被中断，可能已经执行」，自己确认现状。
  */
 const SAFE = new Set([
+  "admin_query", "admin_get_resource",
+  "admin_list_plugins", "admin_get_plugin", "admin_plugin_check", "admin_request_secret", "admin_test_run",
+  "admin_list_models", "admin_get_model", "admin_list_channels", "admin_get_pricing_settings", "admin_get_recent_errors", "admin_quote_preview", "admin_propose_changes",
   "canvas_get_state", "model_list", "task_get", "skill_search", "skill_read", "canvas_inspect_image", "canvas_inspect_video", "web_search", "web_fetch",
-  "canvas_apply_ops", "canvas_arrange", "plan_update", "generate_media", "canvas_delete", "ask_user",
+  "canvas_apply_ops", "canvas_arrange", "plan_update", "show_card", "generate_media", "canvas_delete", "ask_user",
   "drama_read", "drama_update_outline", "drama_update_episode", "drama_update_segment", "drama_run_job",
 ]);
 export const replayOf = (name: string): "safe" | "unsafe" => (SAFE.has(name) ? "safe" : "unsafe");
@@ -79,6 +93,7 @@ const MAX_SUMMARY = 120;
 
 export type Output = Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }>;
 export interface Result {
+  details?: JsonValue;
   output: Output;
   isError?: boolean;
   control?: { terminate: boolean };
@@ -99,17 +114,20 @@ export interface ToolsExtensionOptions {
   decls: readonly ToolDecl[];
   host: ToolHost;
   name?: string;
+  web?: WebTools;
 }
 
-export function createToolsExtension({ platform, decls, host, name = "canvas-tools" }: ToolsExtensionOptions): Extension {
+export function createToolsExtension({ platform, decls, host, name = "canvas-tools", web }: ToolsExtensionOptions): Extension {
   const tools: ToolRegistration[] = decls.map((d) => {
-    if ((d.executor ?? "server") !== "server") throw new Error(`不支持的工具执行方：${d.name}（${d.executor}）`);
+    const localWeb = !!web && WEB_TOOL_NAMES.has(d.name);
+    if (!localWeb && (d.executor ?? "server") !== "server") throw new Error(`不支持的工具执行方：${d.name}（${d.executor}）`);
     return {
       name: d.name,
       description: d.description,
       // Go 下发的是普通 JSON Schema，pi 的校验接受它
       parameters: d.parameters as never,
-      replay: replayOf(d.name),
+      // 搜索供应商可能收费，中断后不自动重放；让模型决定是否重新查。
+      replay: localWeb ? "unsafe" : replayOf(d.name),
       // 会创建审批并终止本轮的、返回图片的工具，脚本没法在「等审批」处停下，只能由模型直接调用
       callers: d.scriptable ? ["model", "tools"] : ["model"],
       // 同一轮里的多个调用必须一个个执行，否则同一条消息里的多个画布写入会并发
@@ -125,14 +143,22 @@ export function createToolsExtension({ platform, decls, host, name = "canvas-too
   }
 
   async function dispatch(d: ToolDecl, args: unknown, run: ToolRun, api: ToolExecutionApi, context: Context, call: ToolCallInfo): Promise<{ result: Result; end: ToolEndEvent }> {
+    if (web && WEB_TOOL_NAMES.has(d.name)) {
+      if (d.name !== "get_search_content" && host.takeWebCall?.(run) === false) {
+        return { result: text("本轮联网次数已达上限（20 次），请基于已有资料继续；缓存内容仍可用 get_search_content 读取。", true), end: endEvent(call, true, "本轮联网次数已达上限") };
+      }
+      const r = await callWebTool(web, run.rc, d.name, args as Record<string, unknown>, context.abortSignal);
+      return { result: text(r.content, r.isError), end: endEvent(call, r.isError, r.summary) };
+    }
     const kind = APPROVAL_KIND[d.name];
     if (kind) {
-      const p = await platform.propose(run.rc, kind, args, context.abortSignal);
+      const p = await platform.propose(run.rc, kind, args, context.abortSignal, String(api.taskId));
       if (p.is_error) return { result: text(p.content, true), end: endEvent(call, true, clip(p.content, MAX_SUMMARY)) };
       await host.approval(run, { kind, toolCallId: api.callId, payload: p.payload, quoteCredits: p.quote_credits, summary: p.summary ?? "" });
       return { result: text(p.content, false, p.terminate), end: endEvent(call, false, p.summary ?? "") };
     }
     if (d.name === "plan_update") return plan(call, run, args);
+    if (d.name === "show_card") return showCard(call, run, args);
     const r = await platform.tool(run.rc, d.name, args, { toolCallId: call.id, idemKey: String(api.taskId), signal: context.abortSignal });
     return { result: toResult(r), end: r.tool_end ?? endEvent(call, r.is_error, r.is_error ? clip(r.content, MAX_SUMMARY) : "") };
   }
@@ -151,6 +177,16 @@ export function createToolsExtension({ platform, decls, host, name = "canvas-too
     }
     await host.plan(run, steps);
     return { result: text("计划已更新。"), end: endEvent(call, false, `更新计划（${steps.length} 步）`) };
+  }
+
+  /** 展示卡片：本地校验，通过后交给宿主发 card.shown；校验不过或超过一轮的上限返回错误，让模型自己改 */
+  async function showCard(call: Pick<ToolCallInfo, "id" | "name" | "label" | "verb">, run: ToolRun, args: unknown): Promise<{ result: Result; end: ToolEndEvent }> {
+    const fail = (msg: string) => ({ result: text(msg, true), end: endEvent(call, true, clip(msg, MAX_SUMMARY)) });
+    const v = validateCard(args);
+    if (!v.ok) return fail(`卡片参数不合法：${v.error}。请按要求修改后重新调用 show_card。`);
+    if (host.takeCard?.(run) === false) return fail(`本轮最多展示 ${CARD_LIMITS.perRun} 张卡片，已经用完；把剩下的内容用一两句话写进正文。`);
+    await host.card(run, call.id, v.card);
+    return { result: text("卡片已展示给用户，正文不要重复卡片里的内容。"), end: endEvent(call, false, `展示卡片：${v.card.title}`) };
   }
 
   return defineExtension({ name, tools });
@@ -201,5 +237,5 @@ export function endEvent(call: Pick<ToolCallInfo, "id" | "name" | "label" | "ver
 function toResult(r: PlatformToolResult): Result {
   // 对象存储里的图片只有地址：放进 data，发请求前由模型提供方还原成 URL
   const images = (r.images ?? []).map((i) => ({ type: "image" as const, data: (i.url ?? i.data) as string, mimeType: i.mime_type }));
-  return { output: [{ type: "text", text: r.content }, ...images], ...(r.is_error && { isError: true }), ...(r.terminate && { control: { terminate: true } }) };
+  return { output: [{ type: "text", text: r.content }, ...images], ...(r.data !== undefined && { details: r.data }), ...(r.is_error && { isError: true }), ...(r.terminate && { control: { terminate: true } }) };
 }

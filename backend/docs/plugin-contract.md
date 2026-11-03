@@ -249,3 +249,9 @@ meta: {
 ## 9. 沙箱预算（提案值，压测后定）
 
 单次钩子 200ms；`ctx` 与返回值编码后各 ≤1MB；`state` ≤64KB；插件文件 ≤512KB；每个插件版本最多 8 个 Runtime；每次调用最多 50 条 `utils.log`。
+
+## 10. 后台助手离线样例检查
+
+`admin_plugin_check` 不读取真实凭证、不下载媒体、不调用上游。`ctx_sample.input.images / audios / videos` 的非空占位值、URL 或素材 ID 会按槽位规范为 `input:images.0` 等生产钩子引用，插件在请求 JSON 中仍使用 `{__fileRef:"input:images.0",as:"url"}`。越界引用、空占位值与错误类型会被拒绝。
+
+返回的 `coverage.input_media` 是本次样例各类媒体数量，`coverage.checked_hooks` 是执行成功的钩子。`ok=false` 同时标记工具失败并保留结构化问题。`ok=true` 只证明本次代表性样例，不代表真实生成已成功；不得删除用户样例中的图片来规避失败后宣称完整通过。

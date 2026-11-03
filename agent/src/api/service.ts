@@ -45,6 +45,7 @@ export interface CreateSessionRequest {
 
 export interface StartRunRequest {
   message: string;
+  page_context?: unknown;
   mode?: string;
   selection?: string[];
   viewport?: unknown;
@@ -80,10 +81,47 @@ export class AgentApiService {
 
   async listSessions(userId: string, canvasId: string): Promise<SessionView[]> {
     await this.#platform(() => this.#o.platform.checkCanvas(userId, canvasId));
-    return this.#o.store.listSessions(userId, canvasId).map((s) => sessionView(this.#o.codec, s));
+    return this.#o.store.listSessions(userId, canvasId).filter((s) => s.mode !== "admin").map((s) => sessionView(this.#o.codec, s));
+  }
+
+  /** HTTP 每次请求都检查 Go 实时传来的角色；先查归属，避免泄漏别人的会话。 */
+  authorize(userId: string, role: string, resource: { sid?: string; rid?: string; aid?: string }): void {
+    try {
+      let sid = resource.sid;
+      if (resource.rid) sid = this.#run(userId, resource.rid).sessionId;
+      if (resource.aid) {
+        try { sid = this.#o.store.getApproval(userId, resource.aid).sessionId; }
+        catch (e) { if (e instanceof NotFoundError) throw Err.approvalMissing(); throw e; }
+      }
+      if (sid && this.#session(userId, sid).mode === "admin") this.requireAdmin(role);
+    } catch (e) {
+      // 没有属于此人的资源时交回原处理函数，使原有参数校验和 404 顺序保持一致。
+      if (e instanceof AgentError && e.status === 404) return;
+      throw e;
+    }
+  }
+
+  requireAdmin(role: string): void {
+    if (role !== "admin" && role !== "super_admin") throw new AgentError(10004, 403, "没有权限");
+  }
+
+  async listAdminSessions(userId: string): Promise<SessionView[]> {
+    return this.#o.store.listSessions(userId, "0").filter((s) => s.mode === "admin").map((s) => sessionView(this.#o.codec, s));
+  }
+
+  async createAdminSession(userId: string, req: CreateSessionRequest): Promise<SessionView> {
+    const modelKey = await this.#pickModel(req.model_key ?? "");
+    const title = cleanTitle(req.title ?? "", "");
+    const s = this.#o.store.createSession({ userId, canvasId: "0", title: title || DEFAULT_TITLE, titleSource: title ? "user" : "draft", mode: "admin", modelKey });
+    return sessionView(this.#o.codec, s);
+  }
+
+  isAdminSession(userId: string, sessionId: string): boolean {
+    return this.#session(userId, sessionId).mode === "admin";
   }
 
   async createSession(userId: string, canvasId: string, req: CreateSessionRequest): Promise<SessionView> {
+    if (req.mode === "admin") throw Err.invalidParams("画布会话不能使用 admin 模式");
     await this.#platform(() => this.#o.platform.checkCanvas(userId, canvasId, undefined, req.mode === "drama" ? req.mode : undefined));
     // 每个画布最多 50 个会话，避免历史无限增长
     if (this.#o.store.countSessions(userId, canvasId) >= MAX_SESSIONS_PER_CANVAS) throw new AgentError(60010, 409, "这个画布的会话数量已达上限");
@@ -105,7 +143,7 @@ export class AgentApiService {
   /** 删除会话（软删除）。这个会话正占着画布时不允许，免得 Agent 往一个看不见的会话里继续写 */
   async deleteSession(userId: string, sessionId: string): Promise<void> {
     const sess = this.#session(userId, sessionId);
-    const active = this.#o.store.activeRun(sess.canvasId);
+    const active = this.#o.store.activeRun(sess.canvasId, userId);
     if (active && active.sessionId === sessionId) throw Err.runActive();
     await this.#o.engine.cancelWatches(userId, sessionId).catch(() => {}); // 后台等待的监听任务一并收掉
     this.#o.store.deleteSession(userId, sessionId);
@@ -170,15 +208,16 @@ export class AgentApiService {
 
   async startRun(userId: string, sessionId: string, req: StartRunRequest): Promise<RunView> {
     const sess = this.#session(userId, sessionId);
+    if ((sess.mode === "admin" && req.mode && req.mode !== "admin") || (sess.mode !== "admin" && req.mode === "admin")) throw Err.invalidParams("后台会话只能使用 admin 模式");
     const message = req.message.trim();
     if (!message) throw Err.invalidParams("消息不能为空");
     if ((req.mode || sess.mode) === "drama") await this.#platform(() => this.#o.platform.checkCanvas(userId, sess.canvasId, undefined, "drama"));
     // 消息里的引用（节点、模型、技能）必须有效；选中的节点里已不存在的去掉
-    const selection = await this.#platform(() => this.#o.platform.checkMessage(userId, sess.canvasId, message, req.selection ?? []));
+    const selection = sess.mode === "admin" ? [] : await this.#platform(() => this.#o.platform.checkMessage(userId, sess.canvasId, message, req.selection ?? []));
     const modelKey = await this.#pickModel(req.agent_model_key || sess.modelKey);
-    const attachments = await this.#checkAttachments(userId, req.attachments, modelKey);
+    const attachments = sess.mode === "admin" ? [] : await this.#checkAttachments(userId, req.attachments, modelKey);
     const run = await this.#o.engine.startRun({
-      userId, sessionId, message, mode: req.mode || undefined, modelKey, selection, attachments, budgetCredits: req.budget_credits ?? 0,
+      userId, sessionId, message, mode: req.mode || undefined, modelKey, selection, attachments, budgetCredits: req.budget_credits ?? 0, pageContext: sess.mode === "admin" ? req.page_context : undefined,
     });
     return runView(this.#o.codec, run);
   }
@@ -188,8 +227,8 @@ export class AgentApiService {
     const msg = message.trim();
     if (!msg) throw Err.invalidParams("消息不能为空");
     if (run.status !== "running") throw Err.state();
-    await this.#platform(() => this.#o.platform.checkMessage(userId, run.canvasId, msg, []));
-    const checked = await this.#checkAttachments(userId, attachments, this.#session(userId, run.sessionId).modelKey);
+    if (run.mode !== "admin") await this.#platform(() => this.#o.platform.checkMessage(userId, run.canvasId, msg, []));
+    const checked = run.mode === "admin" ? [] : await this.#checkAttachments(userId, attachments, this.#session(userId, run.sessionId).modelKey);
     await this.#o.engine.interject(userId, runId, msg, checked);
   }
 

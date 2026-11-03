@@ -83,6 +83,13 @@ services:
       AGENT_BRIDGE_URL: http://backend:47001
       # 对外 ID 的编码密钥：要和 backend 的一致（backend 默认用配置文件里的 id_key）
       AGENT_ID_KEY: ${AGENT_ID_KEY:-id_key}
+      # 联网由 Agent 的 pi-web-access MCP 执行；开发代理 Fake-IP 与 backend 保持一致
+      AGENT_WEB_ALLOW_FAKE_IP: "true"
+      EXA_API_KEY: ${EXA_API_KEY:-}
+      BRAVE_API_KEY: ${BRAVE_API_KEY:-}
+      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
+      FIRECRAWL_API_KEY: ${FIRECRAWL_API_KEY:-}
+      SEARXNG_BASE_URL: ${APP_AGENT_SEARXNG_URL:-}
     expose:
       - "8090"
     volumes:

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   cancelAgentRun,
+  createAdminAssistantSession,
   createAgentSession,
   decideAgentApproval,
   deleteAgentSession,
@@ -13,6 +14,7 @@ import {
   undoAgentRun,
 } from "@/api/agent";
 import type {
+  AdminPageContext,
   AgentAttachmentReq,
   AgentMode,
   AgentModelDto,
@@ -21,7 +23,7 @@ import type {
   SetAgentFeedbackReq,
 } from "@/api/agent/type";
 import { useAgentSettings } from "@/store/agent-settings";
-import { useAgentStore } from "@/store/agent";
+import { ADMIN_SESSION_SCOPE, useAgentStore } from "@/store/agent";
 import { useCreditsStore } from "@/store/credits";
 import { visibleSessions } from "@/utils/agent/drama";
 import { activeRunId, emptySession } from "@/utils/agent/session-state";
@@ -54,12 +56,15 @@ export function useAgentModels() {
  * 数据都来自 agent store（WebSocket 推送 + HTTP 回放）；这里只管「现在看哪个会话」和调用接口。
  * 接口失败的提示由全局请求拦截器弹出，这里只恢复状态。
  * 同一个控制器也驱动短剧助手：传 mode: "drama"，会话建在短剧画布上，只列 drama 会话，不带视口。
+ * 还驱动后台助手：传 mode: "admin" 和 canvasId: ADMIN_SESSION_SCOPE，会话列表 / 新建走 /admin/assistant/sessions，
+ * 不带视口，发起运行时带上 pageContext。
  */
 export function useAgentController({
   canvasId,
   models,
   getViewport,
   mode = DEFAULT_MODE,
+  pageContext,
 }: {
   canvasId: string;
   models: AgentModelDto[];
@@ -67,7 +72,10 @@ export function useAgentController({
   getViewport?: () => { x: number; y: number; zoom: number };
   /** 会话与运行的任务模式，默认全能创作 */
   mode?: AgentMode;
+  /** 后台助手（mode 为 admin）：发起运行时带上的页面上下文，没有为 undefined；其他入口忽略 */
+  pageContext?: AdminPageContext;
 }) {
+  const admin = mode === "admin" && canvasId === ADMIN_SESSION_SCOPE;
   const settings = useAgentSettings();
   const allSessions = useAgentStore((s) => s.sessionsByCanvas[canvasId]) ?? NO_SESSIONS;
   const sessions = useMemo(() => visibleSessions(allSessions, mode), [allSessions, mode]);
@@ -81,6 +89,8 @@ export function useAgentController({
     useAgentStore((s) => (sessionId ? s.sessions[sessionId] : undefined)) ?? emptySession();
   const session = sessions.find((s) => s.id === sessionId) ?? null;
   const sendingRef = useRef(false);
+  /** 本机发起的运行带的页面上下文（运行 id → 上下文）：事件里没带 page_context 时，消息下面的引用靠它 */
+  const [sentContexts, setSentContexts] = useState<Record<string, AdminPageContext>>({});
   /** 画布上的会话列表拿到了（成功或失败都算）：之前正文区不该闪出「空会话」 */
   const [loadedCanvas, setLoadedCanvas] = useState<string | null>(null);
   const listLoaded = loadedCanvas === canvasId;
@@ -90,22 +100,25 @@ export function useAgentController({
     : (models[0]?.key ?? "");
 
   /** 切到一个会话：先放上去，再取最新一页聊天记录（加载过的不重复取）；更早的往上翻时再取 */
-  const openSession = useCallback((target: AgentSessionDto | null) => {
-    setSessionId(target?.id ?? null);
-    if (target) {
-      void useAgentStore
-        .getState()
-        .loadLatest(target.id)
-        .then(() => useAgentStore.getState().loadWatches(target.id));
-    }
-  }, []);
+  const openSession = useCallback(
+    (target: AgentSessionDto | null) => {
+      setSessionId(target?.id ?? null);
+      if (target) {
+        const loading = useAgentStore.getState().loadLatest(target.id);
+        // 后台助手没有生成任务，不需要拉后台等待
+        void (admin
+          ? loading
+          : loading.then(() => useAgentStore.getState().loadWatches(target.id)));
+      }
+    },
+    [admin],
+  );
 
   // 打开画布：拉会话列表，默认接着最近的一个
   useEffect(() => {
     let active = true;
-    void useAgentStore
-      .getState()
-      .loadSessions(canvasId)
+    const store = useAgentStore.getState();
+    void (admin ? store.loadAdminSessions() : store.loadSessions(canvasId))
       .then((list) => {
         if (!active) return;
         setLoadedCanvas(canvasId);
@@ -115,7 +128,7 @@ export function useAgentController({
     return () => {
       active = false;
     };
-  }, [canvasId, mode, openSession]);
+  }, [admin, canvasId, mode, openSession]);
 
   /** 正在打开：会话列表或这个会话最近一页聊天记录还在加载（新建的会话没有历史，不算） */
   const opening =
@@ -136,7 +149,7 @@ export function useAgentController({
   }, [sessionId]);
 
   const activeRun = useMemo(() => activeRunId(state), [state]);
-  const timeline = useMemo(() => buildTimeline(state), [state]);
+  const timeline = useMemo(() => buildTimeline(state, sentContexts), [state, sentContexts]);
   const strip = useMemo(() => buildRunStrip(state, hiddenPlans), [state, hiddenPlans]);
   const statusLine = useMemo(() => buildStatusLine(state), [state]);
   /** 进行中那一轮在等你决定的审批或提问（运行到审批就暂停，同一时间最多一个）：决定框钉在输入框的位置 */
@@ -167,16 +180,43 @@ export function useAgentController({
   /** 确保有会话可发：没有就按当前模式和模型新建一个 */
   const ensureSession = useCallback(async () => {
     if (session) return session;
-    const created = await createAgentSession(canvasId, {
-      mode,
-      model_key: modelKey || undefined,
-    });
+    const created = admin
+      ? await createAdminAssistantSession({ model_key: modelKey || undefined })
+      : await createAgentSession(canvasId, { mode, model_key: modelKey || undefined });
     useAgentStore.getState().upsertSession(created);
     setSessionId(created.id);
     return created;
-  }, [canvasId, mode, modelKey, session]);
+  }, [admin, canvasId, mode, modelKey, session]);
 
-  /** 发送：运行中就是插话，否则发起新一轮。返回是否发出去了（没发出去输入框要保留原文） */
+  /** 对审批做决定；接口失败的提示由全局请求拦截器弹出，返回是否成功 */
+  const decide = useCallback(
+    async (approvalId: string, req: DecideAgentApprovalReq): Promise<"ok" | "failed"> => {
+      // 第一次批准生成时顺带问一次系统通知权限：之后生成结束、需要批准时页面在后台也能提醒；拒绝或不支持就算了
+      if (req.decision === "approve" && state.approvals[approvalId]?.kind === "generate") {
+        ensureNotificationPermission();
+      }
+      try {
+        const decided = await decideAgentApproval(approvalId, req);
+        // 后台助手：决定的结果立刻并进会话，变更单马上从「待审核」变成结果
+        if (admin && sessionId && decided?.id) {
+          useAgentStore.getState().ingestApproval(sessionId, decided);
+        }
+        if (!admin) void useCreditsStore.getState().refresh();
+        return "ok";
+      } catch {
+        return "failed";
+      }
+    },
+    [admin, sessionId, state.approvals],
+  );
+
+  /**
+   * 发送：运行中就是插话，否则发起新一轮。返回是否发出去了（没发出去输入框要保留原文）。
+   * 运行正停在一条提问上时，发消息视为新消息：先拒绝（不回答）这个提问，运行恢复后再把消息作为插话交给 Agent，
+   * Agent 收到的工具结果是「用户没有回答」；拒绝没成功就不发，输入框保留原文。
+   * 停在其他审批（生成、删除、变更单等）上时，卡片保持待确认：消息直接作为插话发出，Agent 服务先扣着，
+   * 等你做出决定、运行重新开始时再交给模型（期间时间线上它显示为排队中，读到后进入对话）。
+   */
   const send = useCallback(
     async (text: string, attachments?: AgentAttachmentReq[]) => {
       const message = text.trim();
@@ -185,6 +225,11 @@ export function useAgentController({
       setSending(true);
       try {
         if (activeRun) {
+          if (
+            pending?.kind === "ask" &&
+            (await decide(pending.id, { decision: "reject" })) !== "ok"
+          )
+            return false;
           await interjectAgentRun(activeRun, message, attachments);
           return true;
         }
@@ -196,9 +241,11 @@ export function useAgentController({
           viewport: getViewport?.(),
           agent_model_key: modelKey || undefined,
           ...(attachments?.length && { attachments }),
+          ...(admin && pageContext && { page_context: pageContext }),
         });
+        if (admin && pageContext) setSentContexts((prev) => ({ ...prev, [run.id]: pageContext }));
         useAgentStore.getState().ingestRun(run);
-        void useCreditsStore.getState().refresh();
+        if (!admin) void useCreditsStore.getState().refresh();
         return true;
       } catch {
         return false;
@@ -207,7 +254,7 @@ export function useAgentController({
         setSending(false);
       }
     },
-    [activeRun, ensureSession, getViewport, mode, modelKey],
+    [activeRun, admin, decide, ensureSession, getViewport, mode, modelKey, pageContext, pending],
   );
 
   const stop = useCallback(async () => {
@@ -226,24 +273,6 @@ export function useAgentController({
       // 全局提示已经弹了
     }
   }, []);
-
-  /** 对审批做决定；接口失败的提示由全局请求拦截器弹出，返回是否成功 */
-  const decide = useCallback(
-    async (approvalId: string, req: DecideAgentApprovalReq): Promise<"ok" | "failed"> => {
-      // 第一次批准生成时顺带问一次系统通知权限：之后生成结束、需要批准时页面在后台也能提醒；拒绝或不支持就算了
-      if (req.decision === "approve" && state.approvals[approvalId]?.kind === "generate") {
-        ensureNotificationPermission();
-      }
-      try {
-        await decideAgentApproval(approvalId, req);
-        void useCreditsStore.getState().refresh();
-        return "ok";
-      } catch {
-        return "failed";
-      }
-    },
-    [state.approvals],
-  );
 
   /** 撤销本轮；返回结果（成功）或 null */
   const undo = useCallback(async (runId: string) => {
@@ -315,6 +344,8 @@ export function useAgentController({
   );
 
   return {
+    /** 展示卡片里的 ref 能去哪：后台助手跳后台页面，其余在画布里定位节点 */
+    scope: (admin ? "admin" : "canvas") as "admin" | "canvas",
     sessions,
     session,
     state,

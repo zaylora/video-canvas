@@ -135,6 +135,9 @@ test("审批类工具：预估通过后创建审批，运行进入 waiting_appro
     turns: [{ tools: [{ id: "call_g", name: "generate_media", args: { items: [{ nodeId: "n1" }] } }] }, { text: "不该到这里" }],
     propose: { generate: { payload: { items: [{ node_id: "n1", price: 5 }] }, quote_credits: 5, summary: "生成 1 个，预估 5 积分", content: "已提交给用户批准，等待决定。" } },
   }, async (e) => {
+    // 确定性复现计算过期时间后、写入创建时间前跨过毫秒边界，审批仍应完整保留 24 小时。
+    const createApproval = e.store.createApproval.bind(e.store);
+    e.store.createApproval = (...args) => { e.advanceClock(1); return createApproval(...args); };
     const r = await e.start();
     await e.engine.idle();
     assert.equal(e.run(r.id).status, "waiting_approval");

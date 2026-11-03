@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="zh-CN" class="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>助手卡片消息原型</title>
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+    <style>
+      /* 令牌取自 web/src/index.css 的 .admin-theme 与 --chrome*（同 后台助手聊天框原型.html） */
+      :root {
+        --background: hsl(0 0% 100%); --foreground: hsl(240 10% 3.9%); --card: hsl(0 0% 100%);
+        --muted: hsl(240 4.8% 95.9%); --muted-foreground: hsl(240 3.8% 46.1%);
+        --primary: hsl(240 5.9% 10%); --primary-foreground: hsl(0 0% 98%);
+        --border: hsl(240 5.9% 91.5%); --input: hsl(240 5.9% 90%);
+        --chrome: oklch(1 0 0 / 0.82); --chrome-border: oklch(0 0 0 / 0.08); --chrome-hover: oklch(0 0 0 / 0.05);
+        --page: hsl(240 5% 96.5%);
+        --ok: oklch(0.6 0.13 155); --bad: oklch(0.58 0.2 27); --warn: oklch(0.68 0.15 70); --info: oklch(0.6 0.12 250);
+        --note: oklch(0.55 0.2 295);
+        color-scheme: light;
+      }
+      .dark {
+        --background: hsl(240 10% 3.9%); --foreground: hsl(0 0% 98%); --card: hsl(240 6% 7.5%);
+        --muted: hsl(240 3.7% 15.9%); --muted-foreground: hsl(240 5% 64.9%);
+        --primary: hsl(0 0% 98%); --primary-foreground: hsl(240 5.9% 10%);
+        --border: hsl(240 3.7% 13.5%); --input: hsl(240 3.7% 18%);
+        --chrome: oklch(0.145 0.002 286 / 0.72); --chrome-border: oklch(1 0 0 / 0.08); --chrome-hover: oklch(1 0 0 / 0.06);
+        --page: hsl(240 8% 2.5%);
+        --ok: oklch(0.75 0.14 155); --bad: oklch(0.7 0.17 25); --warn: oklch(0.8 0.14 75); --info: oklch(0.72 0.11 250);
+        --note: oklch(0.72 0.15 295);
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; font-family: Geist, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; background: var(--page); color: var(--foreground); -webkit-font-smoothing: antialiased; line-height: 1.55; font-size: 14px; }
+      .mono, code { font-family: "Geist Mono", Consolas, monospace; font-size: 12px; }
+      [data-lucide] { width: 1em; height: 1em; flex: none; stroke-width: 1.75; }
+      button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+      button:disabled { cursor: not-allowed; opacity: 0.45; }
+      input, textarea { font: inherit; color: inherit; }
+      [hidden] { display: none !important; }
+      .muted { color: var(--muted-foreground); }
+
+      .top { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 12px; height: 50px; padding: 0 20px; border-bottom: 1px solid var(--border); background: color-mix(in oklch, var(--page) 88%, transparent); backdrop-filter: blur(8px); font-size: 13px; }
+      .top b { font-weight: 600; }
+      .tbtn { margin-left: auto; height: 28px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--chrome-border); background: var(--chrome); display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+      .tbtn + .tbtn { margin-left: 0; }
+      .wrap { display: grid; grid-template-columns: minmax(0, 1fr) 440px; gap: 28px; max-width: 1180px; margin: 0 auto; padding: 24px 16px 60px; }
+      @media (max-width: 960px) { .wrap { grid-template-columns: 1fr; } }
+      .side h2 { font-size: 15px; margin: 22px 0 6px; font-weight: 600; }
+      .side h2:first-child { margin-top: 0; }
+      .side p, .side li { color: var(--muted-foreground); font-size: 13px; margin: 4px 0; }
+      .side b { color: var(--foreground); font-weight: 500; }
+      .side ul { padding-left: 18px; margin: 4px 0; }
+
+      /* ---- 助手面板 ---- */
+      .panel { height: 780px; display: flex; flex-direction: column; background: var(--chrome); border: 1px solid var(--chrome-border); border-radius: 14px; backdrop-filter: blur(16px); overflow: hidden; }
+      .phead { height: 50px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 14px; border-bottom: 1px solid var(--chrome-border); font-weight: 600; font-size: 13.5px; }
+      .avatar { width: 18px; height: 18px; border-radius: 6px; background: linear-gradient(135deg, oklch(0.8 0.15 75), oklch(0.7 0.17 45)); }
+      .flow { flex: 1; overflow: auto; padding: 16px 14px 24px; display: grid; gap: 12px; align-content: start; scroll-behavior: smooth; }
+      .user { justify-self: end; max-width: 86%; padding: 9px 13px; border-radius: 14px; background: var(--muted); font-size: 13.5px; overflow-wrap: anywhere; }
+      .act { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--muted-foreground); }
+      .act .bad { color: var(--bad); }
+      .say { font-size: 13.5px; }
+
+      /* 卡片通用：清透胶囊风格，不用实心卡片 */
+      .card { border: 1px solid var(--chrome-border); background: var(--chrome-hover); border-radius: 12px; padding: 12px 12px 10px; animation: in 0.28s cubic-bezier(0.2, 0.8, 0.2, 1); }
+      @keyframes in { from { opacity: 0; transform: translateY(6px); } }
+      .ctitle { display: flex; align-items: center; gap: 7px; font-weight: 600; font-size: 13.5px; margin-bottom: 8px; }
+      .ctitle .sp { margin-left: auto; }
+      .tone-ok { color: var(--ok); } .tone-warn { color: var(--warn); } .tone-bad { color: var(--bad); } .tone-info { color: var(--info); }
+      .kv { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; gap: 2px 10px; }
+      .kv > .k { font-size: 12px; color: var(--muted-foreground); }
+      .kv > .v { min-width: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .kv > .v .mono { color: var(--muted-foreground); margin-left: 4px; }
+      .badge { font-size: 11px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--chrome-border); display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+      .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; display: inline-block; }
+      .ref { display: inline-flex; align-items: center; gap: 2px; border-radius: 6px; padding: 1px 4px; margin: -1px -4px; }
+      .ref:hover { background: var(--chrome-hover); text-decoration: underline; text-underline-offset: 2px; }
+      .ref [data-lucide] { font-size: 11px; opacity: 0.6; }
+      .kvrow { display: contents; }
+      .kvrow > * { padding: 5px 0; border-top: 1px solid var(--chrome-border); }
+      .kvrow:first-child > * { border-top: 0; }
+      .notes { margin-top: 8px; display: grid; gap: 4px; }
+      .notes div { display: flex; gap: 7px; font-size: 12.5px; align-items: baseline; }
+      .notes div [data-lucide] { transform: translateY(2px); }
+      .src { margin-top: 8px; display: flex; gap: 8px; font-size: 12px; color: var(--muted-foreground); }
+      .src a { color: inherit; display: inline-flex; align-items: center; gap: 3px; }
+
+      /* 提问卡 */
+      .q { font-size: 13.5px; font-weight: 500; margin-bottom: 8px; display: flex; gap: 7px; }
+      .opts { display: grid; gap: 6px; }
+      .opt { display: flex; align-items: center; gap: 9px; min-height: 36px; padding: 6px 10px; border-radius: 9px; border: 1px solid var(--chrome-border); text-align: left; font-size: 13px; }
+      .opt:hover { background: var(--chrome-hover); }
+      .opt .num { width: 18px; height: 18px; border-radius: 5px; border: 1px solid var(--chrome-border); display: grid; place-items: center; font-size: 11px; color: var(--muted-foreground); flex: none; }
+      .opt[aria-checked="true"] { border-color: color-mix(in oklch, var(--foreground) 35%, transparent); background: var(--chrome-hover); }
+      .opt[aria-checked="true"] .num { background: var(--primary); color: var(--primary-foreground); border-color: transparent; }
+      .field { margin-top: 8px; display: grid; gap: 4px; }
+      .field label { font-size: 12px; color: var(--muted-foreground); }
+      .inp { height: 34px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--chrome-border); background: transparent; outline: none; width: 100%; }
+      .inp:focus { border-color: color-mix(in oklch, var(--foreground) 35%, transparent); }
+      .actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 10px; }
+      .btn { height: 30px; padding: 0 12px; border-radius: 999px; font-size: 12.5px; border: 1px solid var(--chrome-border); display: inline-flex; align-items: center; gap: 5px; }
+      .btn:hover:not(:disabled) { background: var(--chrome-hover); }
+      .btn.pri { background: var(--primary); color: var(--primary-foreground); border-color: transparent; }
+      .btn.pri:hover:not(:disabled) { background: color-mix(in oklch, var(--primary) 88%, transparent); }
+      .answered { display: flex; align-items: center; gap: 8px; height: 26px; font-size: 12.5px; color: var(--muted-foreground); white-space: nowrap; animation: in 0.2s; }
+      .answered .a { color: var(--foreground); font-weight: 500; overflow: hidden; text-overflow: ellipsis; }
+      .answered .qq { max-width: 55%; overflow: hidden; text-overflow: ellipsis; }
+
+      /* 变更单 / 结果卡 */
+      .order { font-size: 11.5px; color: var(--muted-foreground); font-weight: 400; }
+      .grp { margin-top: 8px; }
+      .grp:first-of-type { margin-top: 0; }
+      .gh { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--muted-foreground); margin-bottom: 4px; }
+      .item { border: 1px solid var(--chrome-border); border-radius: 9px; padding: 7px 9px; display: grid; gap: 4px; }
+      .item + .item { margin-top: 6px; }
+      .ihead { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; }
+      .ihead .sp { margin-left: auto; }
+      .ck { width: 15px; height: 15px; border-radius: 4px; border: 1px solid color-mix(in oklch, var(--foreground) 30%, transparent); display: grid; place-items: center; flex: none; font-size: 11px; }
+      .ck[aria-checked="true"] { background: var(--primary); color: var(--primary-foreground); border-color: transparent; }
+      .ck[aria-checked="false"] [data-lucide] { visibility: hidden; }
+      .diff { display: grid; grid-template-columns: minmax(70px, auto) minmax(0, 1fr); gap: 2px 10px; font-size: 12.5px; padding-left: 23px; }
+      .diff .f { color: var(--muted-foreground); }
+      .diff .ch { min-width: 0; overflow-wrap: anywhere; }
+      .del { color: var(--bad); text-decoration: line-through; text-decoration-thickness: 1px; }
+      .add { color: var(--ok); }
+      .arrow { color: var(--muted-foreground); margin: 0 4px; }
+      .result .item { padding-left: 9px; }
+      .result .diff { padding-left: 0; }
+      .fail { color: var(--bad); font-size: 12px; }
+      .flash { animation: flash 1.6s ease-out; }
+      @keyframes flash { from { background: color-mix(in oklch, var(--ok) 22%, transparent); } }
+
+      .composer { flex: none; margin: 0 12px 12px; border: 1px solid var(--chrome-border); border-radius: 14px; padding: 10px 10px 8px 12px; display: grid; gap: 6px; }
+      .composer textarea { border: 0; outline: none; background: transparent; resize: none; height: 42px; font-size: 13px; }
+      .crow { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted-foreground); }
+      .crow .btn { margin-left: auto; }
+      .qblock { padding: 8px 0; border-top: 1px solid var(--chrome-border); }
+      .qblock:first-of-type { border-top: 0; padding-top: 0; }
+      .qt { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 500; margin-bottom: 6px; }
+      .qn { width: 18px; height: 18px; border-radius: 50%; background: var(--chrome-hover); border: 1px solid var(--chrome-border); display: grid; place-items: center; font-size: 11px; flex: none; }
+      .opt-tag { font-size: 11.5px; font-weight: 400; }
+      .follow { margin: -2px 0 2px; }
+      .actions .prog { margin-right: auto; align-self: center; font-size: 12px; }
+      .answers { display: grid; }
+      .more { display: inline-flex; align-items: center; gap: 4px; margin-top: 6px; height: 26px; padding: 0 9px; border-radius: 999px; font-size: 12px; color: var(--muted-foreground); }
+      .more:hover { background: var(--chrome-hover); color: var(--foreground); }
+      .hint-chip { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border-radius: 999px; background: var(--chrome-hover); font-size: 11.5px; }
+
+      .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); padding: 8px 14px; border-radius: 999px; background: var(--primary); color: var(--primary-foreground); font-size: 12.5px; opacity: 0; transition: opacity 0.2s; pointer-events: none; }
+      .toast.show { opacity: 1; }
+    </style>
+  </head>
+  <body>
+    <div class="top">
+      <b>助手卡片消息 · 原型</b><span class="muted">截图同一个问题，换成卡片后的样子</span>
+      <button class="tbtn" id="replay"><i data-lucide="rotate-ccw"></i>重来</button>
+      <button class="tbtn" id="theme"><i data-lucide="sun-moon"></i>深浅色</button>
+    </div>
+
+    <div class="wrap">
+      <div class="side">
+        <h2>看什么</h2>
+        <p>右边是后台小镜的面板。从上往下依次是：<b>结论卡</b>代替原来的长文字；<b>提问卡</b>直接插在消息里，不再钉在输入框上方；回答后小镜提出<b>变更单</b>，同样在消息里勾选、批准；执行后原地变成<b>结果卡</b>，按「页面 › 对象」分组，写明改了哪个字段，点 ↗ 跳到后台对应页面。</p>
+        <h2>对照截图</h2>
+        <ul>
+          <li>原来是三段约 150 字的文字，现在是 1 句过渡 + 1 张结论卡 + 1 张提问卡。</li>
+          <li>「你想用价格页里的哪个模型？」原来写在正文里，用户只能自己打字回答；现在是带选项和输入框的卡片。</li>
+          <li>插件、渠道、模型三者是什么关系，一眼就能看清；每一项都能点开对应的后台页面。</li>
+        </ul>
+        <h2>交互细节</h2>
+        <ul>
+          <li>一张提问卡可以列多个问题，按编号排；必填题都答完才能提交，选填题可以空着。有的选项选中后会原地展开输入框。</li>
+          <li>答完后每个问题收成一行「↳ 问题　回答」。</li>
+          <li>还没回答时，在输入框打字发送算新消息：这张提问卡收成「跳过了 N 个问题」，小镜会知道你没回答。</li>
+          <li>变更单条目超过 3 项时，只露出前 3 项，剩下的收进「还有 N 项」；批准的范围仍然是全部勾选的条目。第 1 题选「都接一遍」就能看到效果。</li>
+          <li>变更单可以逐条取消勾选；有问题的条目置灰，不能勾选（现有逻辑不变）。</li>
+          <li>结果卡右上角是「回滚」，点了会生成一张反向变更单（现有逻辑不变）。</li>
+        </ul>
+        <h2>不做</h2>
+        <ul><li>模型不写 HTML，也没有 iframe；卡片样式都由前端控制，跳转只能用白名单里的引用。</li></ul>
+      </div>
+
+      <div class="panel">
+        <div class="phead"><span class="avatar"></span>查询网站对应插件<i data-lucide="chevron-down" class="muted"></i></div>
+        <div class="flow" id="flow"></div>
+        <div class="composer">
+          <textarea id="ta" placeholder="描述要调整的配置"></textarea>
+          <div class="crow"><span>小镜 · Claude</span><button class="btn pri" id="send"><i data-lucide="arrow-up"></i><span>发送</span></button></div>
+        </div>
+      </div>
+    </div>
+    <div class="toast" id="toast"></div>
+
+    <script>
+      const $ = (s, el = document) => el.querySelector(s);
+      const flow = $("#flow");
+      const icons = () => lucide.createIcons();
+      const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+      const toast = (t) => { const el = $("#toast"); el.textContent = t; el.classList.add("show"); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove("show"), 1600); };
+      const add = (html) => { const d = document.createElement("div"); d.innerHTML = html.trim(); const el = d.firstElementChild; flow.appendChild(el); icons(); flow.scrollTop = flow.scrollHeight; return el; };
+      const ref = (text, where) => `<button class="ref" data-go="${where}">${text}<i data-lucide="arrow-up-right"></i></button>`;
+      flow.addEventListener("click", (e) => { const b = e.target.closest("[data-go]"); if (b) toast(`跳到后台：${b.dataset.go}，并高亮该行`); });
+
+      let pendingAsk = null;
+
+      async function start() {
+        flow.innerHTML = ""; pendingAsk = null;
+        add(`<div class="user">https://newapi.vbing.site/pricing 帮我看看这个有没有对应的插件可以使用的</div>`);
+        await wait(300);
+        add(`<div class="act"><i data-lucide="search"></i>读取网页、查看插件与渠道 · <span class="bad">1 项失败</span> · 39s<i data-lucide="chevron-right"></i></div>`);
+        await wait(300);
+        add(`<div class="say">插件和渠道都已经有了，还差几件事要你定。</div>`);
+        await wait(250);
+        add(`<div class="card">
+          <div class="ctitle"><i data-lucide="circle-check" class="tone-ok"></i>有可复用的插件</div>
+          <div class="kv">
+            <div class="kvrow"><span class="k">插件</span><span class="v">${ref("New API 视频", "插件 › new-api-video")}<span class="mono">/v1/videos</span></span><span class="badge tone-ok"><span class="dot"></span>已启用</span></div>
+            <div class="kvrow"><span class="k">渠道</span><span class="v">${ref("newapi.vbing.site", "渠道 › newapi.vbing.site")}</span><span class="badge tone-ok"><span class="dot"></span>已接入</span></div>
+            <div class="kvrow"><span class="k">模型</span><span class="v">${ref("MiniMax-H3", "模型配置 › MiniMax-H3")}</span><span class="badge muted">已绑定 1 个</span></div>
+          </div>
+          <div class="notes">
+            <div class="tone-warn"><i data-lucide="triangle-alert"></i><span>价格页是动态加载的，没能读到模型清单和价格</span></div>
+            <div class="muted"><i data-lucide="info"></i><span>能否复用取决于目标模型的接口协议，暂未实际试跑</span></div>
+          </div>
+          <div class="src">来源 <a href="#" onclick="return false"><i data-lucide="link"></i>价格页</a></div>
+        </div>`);
+        await wait(250);
+        askCard();
+      }
+
+      /** 一张卡里多个问题；follow 表示选中后原地展开输入框 */
+      const QUESTIONS = [
+        { id: "model", title: "要接哪个模型？", required: true, options: [
+          { v: "name", label: "告诉你模型名称", follow: "如 kling-v3、veo-4" },
+          { v: "doc", label: "给 API 文档链接", follow: "https://" },
+          { v: "all", label: "价格页上的视频模型都接一遍" } ] },
+        { id: "price", title: "售价怎么定？", required: true, options: [
+          { v: "markup", label: "上游成本加价 30%" },
+          { v: "same", label: "和 MiniMax-H3 同价" },
+          { v: "own", label: "我来定（积分/秒）", follow: "如 12" } ] },
+        { id: "launch", title: "接好后直接上架吗？", options: [
+          { v: "trial", label: "先试跑一次再上架" },
+          { v: "now", label: "直接上架" } ] },
+      ];
+
+      function askCard() {
+        const el = add(`<div class="card">
+          <div class="q"><i data-lucide="message-circle-question" class="tone-warn"></i>还差 ${QUESTIONS.length} 件事要你定</div>
+          ${QUESTIONS.map((q, qi) => `<div class="qblock" data-q="${q.id}">
+            <div class="qt"><span class="qn">${qi + 1}</span>${q.title}${q.required ? "" : `<span class="muted opt-tag">选填</span>`}</div>
+            <div class="opts" role="radiogroup">
+              ${q.options.map((o, oi) => `<button class="opt" role="radio" aria-checked="false" data-v="${o.v}"><span class="num">${String.fromCharCode(65 + oi)}</span>${o.label}</button>
+              ${o.follow ? `<input class="inp follow" data-for="${o.v}" placeholder="${o.follow}" hidden />` : ""}`).join("")}
+            </div>
+          </div>`).join("")}
+          <div class="actions"><span class="muted prog"></span><button class="btn pri" data-submit disabled>提交</button></div>
+        </div>`);
+        const pick = {};
+        el.querySelectorAll(".qblock").forEach((b) => b.querySelectorAll(".opt").forEach((o) => o.onclick = () => {
+          pick[b.dataset.q] = o.dataset.v;
+          b.querySelectorAll(".opt").forEach((x) => x.setAttribute("aria-checked", x === o));
+          b.querySelectorAll(".follow").forEach((f) => f.hidden = f.dataset.for !== o.dataset.v);
+          b.querySelector(`.follow[data-for="${o.dataset.v}"]`)?.focus();
+          sync();
+        }));
+        el.querySelectorAll("input").forEach((i) => i.oninput = sync);
+        const valueOf = (q) => {
+          const v = pick[q.id]; if (!v) return "";
+          const inp = el.querySelector(`[data-q="${q.id}"] .follow[data-for="${v}"]`);
+          return inp ? inp.value.trim() : q.options.find((o) => o.v === v).label;
+        };
+        function sync() {
+          const done = QUESTIONS.filter((q) => valueOf(q)).length;
+          el.querySelector(".prog").textContent = `${done} / ${QUESTIONS.length}`;
+          el.querySelector("[data-submit]").disabled = QUESTIONS.some((q) => q.required && !valueOf(q));
+        }
+        sync();
+        el.querySelector("[data-submit]").onclick = () => {
+          const ans = QUESTIONS.map((q) => ({ q, a: valueOf(q), v: pick[q.id] }));
+          el.outerHTML = `<div class="answers">${ans.map(({ q, a }) => `<div class="answered"><i data-lucide="corner-down-right"></i><span class="qq">${q.title}</span><span class="a ${a ? "" : "muted"}">${a || "没回答"}</span></div>`).join("")}</div>`;
+          icons(); pendingAsk = null; afterAnswer(ans);
+        };
+        pendingAsk = { skip: () => {
+          el.outerHTML = `<div class="answered"><i data-lucide="corner-down-right"></i><span class="qq">跳过了 ${QUESTIONS.length} 个问题</span></div>`;
+          icons(); pendingAsk = null;
+        } };
+      }
+
+      async function afterAnswer(ans) {
+        const m = ans[0];
+        const names = m.v === "all" ? ["kling-v3", "veo-4", "seedance-2", "hailuo-03", "vidu-q2"] : [m.v === "doc" ? "doc-model" : m.a];
+        const price = ans[1].v === "own" ? `${ans[1].a} 积分/秒` : ans[1].v === "same" ? "8 积分/秒（同 MiniMax-H3）" : "成本 × 1.3 · 12 积分/秒";
+        const live = ans[2].v !== "trial";
+        await wait(400);
+        add(`<div class="act"><i data-lucide="check"></i>查看插件协议、对照上游文档 · 12s<i data-lucide="chevron-right"></i></div>`);
+        await wait(300);
+        add(`<div class="say">${names.length > 1 ? `这 ${names.length} 个模型` : `「${names[0]}」`}走的也是 <code class="mono">/v1/videos</code>，可以直接复用这个插件。我拟了一张变更单，确认后生效。</div>`);
+        await wait(250);
+        orderCard(names, price, live);
+      }
+
+      const diffHtml = (diff) => `<div class="diff">${diff.map(([f, a, b]) => `<span class="f">${f}</span><span class="ch">${a ? `<span class="del">${a}</span><span class="arrow">→</span>` : ""}<span class="add">${b}</span></span>`).join("")}</div>`;
+      const FOLD = 3;
+      const moreBtn = (n) => `<button class="more" onclick="this.parentElement.querySelectorAll('[data-fold]').forEach((x) => (x.hidden = false)); this.remove()"><i data-lucide="chevron-down"></i>还有 ${n} 项</button>`;
+
+      function orderCard(names, price, live) {
+        const items = [
+          ...names.map((n, i) => ({ id: "m" + i, obj: `新增 ${n}`, name: n, go: `模型配置 › ${n}`, diff: [["渠道", "", "newapi.vbing.site"], ["插件", "", "new-api-video"], ["计费", "", price], ["启用", "", live ? "是" : "否（试跑后再开）"]] })),
+          { id: "x", obj: "MiniMax-H3", name: "MiniMax-H3", go: "模型配置 › MiniMax-H3", diff: [["排序", "1", String(names.length + 1)]] },
+        ];
+        const title = names.length > 1 ? `接入 ${names.length} 个视频模型` : `接入 ${names[0]}`;
+        const el = add(`<div class="card">
+          <div class="ctitle"><i data-lucide="clipboard-list" class="tone-warn"></i>${title}<span class="order">#C-0417</span></div>
+          <div class="grp"><div class="gh"><i data-lucide="box"></i>模型配置</div>
+            ${items.map((it, i) => `<div class="item" data-id="${it.id}" ${i >= FOLD ? "data-fold hidden" : ""}>
+              <div class="ihead"><button class="ck" role="checkbox" aria-checked="true"><i data-lucide="check"></i></button>${it.obj}</div>
+              ${diffHtml(it.diff)}
+            </div>`).join("")}
+            ${items.length > FOLD ? moreBtn(items.length - FOLD) : ""}
+          </div>
+          <div class="actions"><button class="btn" data-reject>拒绝</button><button class="btn pri" data-ok><i data-lucide="check"></i><span>批准 ${items.length} 项</span></button></div>
+        </div>`);
+        el.querySelectorAll(".ck").forEach((c) => c.onclick = () => {
+          c.setAttribute("aria-checked", c.getAttribute("aria-checked") !== "true");
+          const n = el.querySelectorAll('.ck[aria-checked="true"]').length;
+          el.querySelector("[data-ok] span").textContent = n ? `批准 ${n} 项` : "批准";
+          el.querySelector("[data-ok]").disabled = !n;
+        });
+        el.querySelector("[data-reject]").onclick = () => {
+          el.outerHTML = `<div class="answered"><i data-lucide="x"></i><span class="a">已拒绝：${title}</span></div>`; icons();
+        };
+        el.querySelector("[data-ok]").onclick = async () => {
+          const on = [...el.querySelectorAll('.ck[aria-checked="true"]')].map((c) => c.closest(".item").dataset.id);
+          el.querySelector("[data-ok]").innerHTML = `<i data-lucide="loader"></i>执行中`; icons();
+          el.querySelectorAll("button").forEach((b) => b.disabled = true);
+          await wait(700);
+          const done = items.filter((i) => on.includes(i.id)), skip = items.filter((i) => !on.includes(i.id));
+          el.outerHTML = `<div class="card result flash">
+            <div class="ctitle"><i data-lucide="circle-check" class="tone-ok"></i>已生效 ${done.length} 项<span class="order">#C-0417 · 刚刚 · 你</span><span class="sp"></span><button class="btn" onclick="toast('生成一张反向变更单，等你确认')"><i data-lucide="undo-2"></i>回滚</button></div>
+            <div class="grp"><div class="gh"><i data-lucide="box"></i>模型配置</div>
+              ${done.map((it, i) => `<div class="item" ${i >= FOLD ? "data-fold hidden" : ""}>
+                <div class="ihead">${ref(it.name, it.go)}${it.obj.startsWith("新增") ? `<span class="badge tone-ok">新增</span>` : ""}</div>
+                ${diffHtml(it.diff)}
+              </div>`).join("")}
+              ${done.length > FOLD ? moreBtn(done.length - FOLD) : ""}
+            </div>
+            ${skip.length ? `<div class="notes">${skip.map((s) => `<div class="muted"><i data-lucide="minus"></i><span>跳过：${s.obj}（你取消了勾选）</span></div>`).join("")}</div>` : ""}
+          </div>`;
+          icons(); flow.scrollTop = flow.scrollHeight;
+          await wait(400);
+          add(`<div class="say">${live ? "已经上架，用户在画布的模型列表里就能看到。" : "已经配好但还没启用，要我现在试跑一次吗？"}</div>`);
+        };
+      }
+
+      $("#send").onclick = async () => {
+        const v = $("#ta").value.trim(); if (!v) return;
+        $("#ta").value = "";
+        // 等回答时打字算新消息：提问卡标为已跳过
+        const skipped = !!pendingAsk;
+        pendingAsk?.skip();
+        add(`<div class="user">${v.replace(/</g, "&lt;")}</div>`);
+        if (skipped) { await wait(500); add(`<div class="say muted">（小镜收到：用户没有回答，改发了新消息）</div>`); }
+      };
+      $("#ta").onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("#send").click(); } };
+      $("#theme").onclick = () => document.documentElement.classList.toggle("dark");
+      $("#replay").onclick = start;
+      icons(); start();
+    </script>
+  </body>
+</html>

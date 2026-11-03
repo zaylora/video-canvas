@@ -17,11 +17,18 @@ type ApprovalItemDecision struct {
 	Count   int  `json:"count" binding:"min=0,max=4" label:"数量"` // 生成张数，只能不大于申请的数量，0 表示按申请的
 }
 
+// ApprovalAnswer 是多题提问里对某一题的回答。
+type ApprovalAnswer struct {
+	ID    string `json:"id" binding:"required,max=64" label:"题目标识"` // 题目 id，对应提问内容里 questions[].id
+	Value any    `json:"value"`                                     // 回答：字符串；多选题是字符串数组；选填题不答可以省略或给空串
+}
+
 // DecideAgentApprovalReq 是对审批的决定。
 type DecideAgentApprovalReq struct {
 	Decision  string                 `json:"decision" binding:"required,oneof=approve reject" label:"决定"` // approve 或 reject
 	Items     []ApprovalItemDecision `json:"items" binding:"max=50,dive" label:"条目"`                      // 逐项决定，不传表示整体按 decision 处理
-	Answer    string                 `json:"answer" binding:"max=2000" label:"回答"`                        // 提问的回答
+	Answer    string                 `json:"answer" binding:"max=2000" label:"回答"`                        // 提问的回答（单题旧客户端只传它；多题时是拼好的一句可读文字）
+	Answers   []ApprovalAnswer       `json:"answers" binding:"max=5,dive" label:"回答列表"`                   // 提问逐题的回答
 	AddBudget int                    `json:"add_budget" binding:"min=0,max=100000" label:"追加预算"`          // 批准时追加的积分预算
 }
 

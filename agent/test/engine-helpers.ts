@@ -5,6 +5,7 @@ import { createPlatform } from "../src/platform-client.ts";
 import { openStore, type AgentStore } from "../src/store/store.ts";
 import type { Run } from "../src/store/types.ts";
 import { fakeGo, type FakeGoOptions } from "./fake-go.ts";
+import type { WebTools } from "../src/web-access.ts";
 
 export const TOKEN = "service-token-0123456789abcdef0123456789";
 export const codec = createIdCodec("test-key");
@@ -25,7 +26,7 @@ export interface Env {
   run(id: string): Run;
 }
 
-export async function withEngine(go: FakeGoOptions, fn: (e: Env) => Promise<void>, opts: { approvalTtlMs?: number; canvasId?: string; autoTitle?: boolean; activitySummary?: boolean; piClock?: boolean; watchGraceMs?: number; watchPollMs?: number } = {}) {
+export async function withEngine(go: FakeGoOptions, fn: (e: Env) => Promise<void>, opts: { approvalTtlMs?: number; canvasId?: string; autoTitle?: boolean; activitySummary?: boolean; piClock?: boolean; watchGraceMs?: number; watchPollMs?: number; web?: WebTools } = {}) {
   const g = await fakeGo(go);
   let skew = 0; // advanceClock 往后拨的量；平时用真实时间，时间戳才会随时间前进
   const clock = () => Date.now() + skew;
@@ -44,7 +45,7 @@ export async function withEngine(go: FakeGoOptions, fn: (e: Env) => Promise<void
   };
   const platform = createPlatform({ baseUrl: g.url, serviceToken: TOKEN });
   const engine = await AgentEngine.open({
-    store, platform, baseUrl: g.url, serviceToken: TOKEN,
+    store, platform, baseUrl: g.url, serviceToken: TOKEN, web: opts.web,
     storage: new MemoryStorage(), codec, onEvent: (ev) => events.push(ev), now: clock, approvalTtlMs: opts.approvalTtlMs,
     ...(opts.piClock && { harness: { now: clock, setTimer } }), watchGraceMs: opts.watchGraceMs, watchPollMs: opts.watchPollMs,
     autoTitle: opts.autoTitle ?? false, // 默认不命名：命名多一次模型调用，会改变别的用例数的调用次数和用量；要测命名的用例自己打开

@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
 	"video-canvas/internal/provider"
+	. "video-canvas/internal/service/agent"
 )
 
 // fakeWeb 扮演联网能力：记下调用，按脚本回放。
@@ -174,6 +176,26 @@ func TestWebTools_PerSegmentCallLimit(t *testing.T) {
 	}
 	if len(b.web().searches) != 10 {
 		t.Errorf("被挡住的调用不该真的去搜索: %d", len(b.web().searches))
+	}
+}
+
+// 后台的小镜要查官方文档、价格页来对接平台，搜索和读网页次数多，不受每轮 20 次的限制；画布照旧有上限。
+func TestWebTools_AdminModeHasNoCallLimit(t *testing.T) {
+	web := &fakeWeb{}
+	svc, _, rc := adminEnv(newAdminFake())
+	bridge := NewAgentBridge(BridgeDeps{Admin: svc, Web: web, DramaApprovalKey: []byte("stable-test-service-key")})
+	for i := range 30 {
+		name, args := "web_search", `{"query":"x"}`
+		if i%2 == 1 {
+			name, args = "web_fetch", `{"url":"https://s.example"}`
+		}
+		res, err := bridge.ExecutePlatformTool(context.Background(), rc, fmt.Sprintf("tc-%d", i), name, json.RawMessage(args))
+		if err != nil || res.IsError {
+			t.Fatalf("后台第 %d 次联网不该被拦: %+v %v", i+1, res, err)
+		}
+	}
+	if len(web.searches) != 15 {
+		t.Errorf("30 次里有 15 次搜索，都应真的发出去: %d", len(web.searches))
 	}
 }
 

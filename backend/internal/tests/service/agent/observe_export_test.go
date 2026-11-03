@@ -43,6 +43,7 @@ func exportFacts() *model.AgentExportFacts {
 			e(12, "approval.created", `{"id":"a1","kind":"generate","status":"pending","quote_credits":96}`),
 			e(13, "approval.decided", `{"id":"a1","kind":"generate","status":"rejected"}`),
 			e(14, "plan.updated", `{"steps":[{"title":"读技能","status":"done"},{"title":"建镜头","status":"doing"}]}`),
+			e(141, "card.shown", `{"id":"tc9","card":{"kind":"summary","title":"有可复用的插件","tone":"ok","rows":[{"label":"插件","value":"New API 视频"}]}}`),
 			e(15, "run.undone", `{"reverted":3}`),
 			e(16, "feedback.set", `{"rating":-1,"reasons":["misread","slow"],"comment":"我要 6 个，它给了 12 个"}`),
 			e(17, "runtime.notice", `{"text":"丢弃了一条插话"}`),
@@ -163,6 +164,12 @@ func TestRenderRunMarkdown(t *testing.T) {
 		has("rejected")
 		has("读技能")
 		has("建镜头")
+	})
+
+	t.Run("展示卡片：标题和类型进时间线", func(t *testing.T) {
+		has("[展示卡片]")
+		has("summary")
+		has("有可复用的插件")
 	})
 
 	t.Run("画布改动：种类、条数、是否撤销", func(t *testing.T) {

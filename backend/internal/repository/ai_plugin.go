@@ -65,7 +65,10 @@ func (r *AIPluginRepository) SaveVersion(ctx context.Context, p *model.AIPlugin,
 			return err
 		}
 		// 2. 插入版本行，(plugin_key, version) 重复由唯一索引兜底
-		return tx.Create(v).Error
+		if err := tx.Create(v).Error; err != nil {
+			return err
+		}
+		return insertAssistantAudit(ctx, tx, map[string]string{"plugin_version": v.Version})
 	})
 	if isUniqueViolation(err) {
 		return ErrDuplicate

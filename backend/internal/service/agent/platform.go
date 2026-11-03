@@ -35,7 +35,7 @@ type RunContext struct {
 
 // validate 检查上下文：身份字段必须齐，任务模式必须认识（空模式按全能创作）。
 func (rc RunContext) validate() error {
-	if rc.RunID == 0 || rc.UserID == 0 || rc.SessionID == 0 || rc.CanvasID == 0 {
+	if rc.RunID == 0 || rc.UserID == 0 || rc.SessionID == 0 || (rc.Mode == model.AgentModeAdmin) != (rc.CanvasID == 0) {
 		return errcode.ErrInvalidParams.WithMsg("运行上下文缺少 run_id、user_id、session_id 或 canvas_id")
 	}
 	if rc.Mode != "" && !model.ValidAgentMode(rc.Mode) {
@@ -87,11 +87,17 @@ func (b *AgentBridge) EndPlatformRun(runID uint64) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	delete(b.platformRuns, runID)
+	if b.d.Admin != nil {
+		b.d.Admin.forgetDraftChecks(runID)
+	}
 }
 
 // platformExcluded 是不能经通用入口执行的工具：计划和提问只在 Agent 服务里；生成和删除会创建审批，审批归 Agent 服务，
 // Go 只提供「预估」和「执行」两个专门的接口（见 platform_approval.go）。
-var platformExcluded = map[string]bool{"plan_update": true, "ask_user": true, "canvas_delete": true, "generate_media": true,
+var platformExcluded = map[string]bool{"plan_update": true, "show_card": true, "ask_user": true, "canvas_delete": true, "generate_media": true,
+
+	"admin_propose_changes": true,
+	"admin_request_secret":  true, "admin_test_run": true,
 	"drama_update_outline": true, "drama_update_episode": true, "drama_update_segment": true, "drama_run_job": true}
 
 // ExecutePlatformTool 在上下文模式下执行一次工具调用。和令牌模式的 ExecuteTool 的区别：
@@ -101,6 +107,9 @@ var platformExcluded = map[string]bool{"plan_update": true, "ask_user": true, "c
 // 或基础设施出错才返回 error。幂等键由调用方放进 ctx（WithIdempotencyKey），带了键的画布写入重放时不会再写一遍。
 func (b *AgentBridge) ExecutePlatformTool(ctx context.Context, rc RunContext, toolCallID, name string, args json.RawMessage) (*ToolResult, error) {
 	if err := rc.validate(); err != nil {
+		return nil, err
+	}
+	if err := b.requireAdminRun(ctx, rc); err != nil {
 		return nil, err
 	}
 	spec := findTool(name)

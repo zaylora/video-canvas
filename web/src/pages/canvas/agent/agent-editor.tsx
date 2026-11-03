@@ -303,6 +303,8 @@ export function AgentEditor({
   onChange,
   onSubmit,
   onImages,
+  mentions = true,
+  skills = true,
 }: {
   handleRef: Ref<AgentEditorHandle>;
   /** 画布上能 @ 引用的节点 */
@@ -318,6 +320,10 @@ export function AgentEditor({
   onSubmit: () => void;
   /** 粘贴或拖入了图片：调用方把它们落到画布并作为 chip 插回来；不传则走默认行为 */
   onImages?: (files: File[]) => void;
+  /** 能不能用 @ 引用节点；后台助手没有画布，关掉。创建编辑器时读一次 */
+  mentions?: boolean;
+  /** 能不能用 / 插入技能；后台助手关掉。创建编辑器时读一次 */
+  skills?: boolean;
 }) {
   const [menu, setMenu] = useState<MenuState | null>(null);
   const onImagesRef = useRef(onImages);
@@ -395,10 +401,14 @@ export function AgentEditor({
       HardBreak,
       UndoRedo,
       SelectionGhost,
-      skillSuggestion((state) => {
-        setSkillMenu(state);
-        if (state) setSkillActive(0);
-      }),
+      ...(skills
+        ? [
+            skillSuggestion((state) => {
+              setSkillMenu(state);
+              if (state) setSkillActive(0);
+            }),
+          ]
+        : []),
       Mention.extend({
         addAttributes: () => ({
           id: { default: "" },
@@ -415,6 +425,7 @@ export function AgentEditor({
         deleteTriggerWithBackspace: true,
         suggestion: {
           char: "@",
+          allow: () => mentions,
           // 中文前面没有空格，@ 紧跟在字后面也要能触发
           allowedPrefixes: null,
           items: () => [],

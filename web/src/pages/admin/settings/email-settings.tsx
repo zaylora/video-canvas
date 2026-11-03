@@ -354,7 +354,13 @@ export default function EmailSettingsPage() {
         {status === "loading" && <SettingsSkeleton />}
         {status === "error" && <SettingsError onRetry={() => void reload()} />}
         {status === "ready" && data && (
-          <SmtpForm settings={data} canWrite={canWrite} onSaved={setData} reload={reload} />
+          <SmtpForm
+            key={JSON.stringify(toValues(data))}
+            settings={data}
+            canWrite={canWrite}
+            onSaved={setData}
+            reload={reload}
+          />
         )}
       </main>
     </div>

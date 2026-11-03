@@ -11,6 +11,8 @@ import { configFromEnv, startDurable } from "./durable.ts";
  *   AGENT_LISTEN                 监听地址，默认 0.0.0.0:8090；写 127.0.0.1:0 表示本机随机端口（测试用）
  *   AGENT_WORKER_ID              雪花 ID 的节点号 0..1023，默认 1
  *   AGENT_RESUME_WINDOW_SECONDS  重启后自动续跑的窗口，默认 300
+ *   AGENT_WEB_ALLOW_FAKE_IP      开发代理 Fake-IP 放行，生产默认关闭
+ *   EXA_API_KEY / BRAVE_API_KEY / TAVILY_API_KEY / FIRECRAWL_API_KEY  可选，传给联网 MCP；缺省使用免 Key 搜索
  * 日志写 stderr（JSON 行）。收到 SIGTERM / SIGINT 只关闭服务和存储，不中止运行：运行留在原状态，下次启动按窗口续跑或标为中断。
  */
 const log = (msg: string, extra: Record<string, unknown> = {}) => process.stderr.write(JSON.stringify({ msg, ...extra }) + "\n");

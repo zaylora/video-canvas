@@ -241,6 +241,8 @@ func eventStep(typ string, p map[string]any) (TimelineStep, bool) {
 		return TimelineStep{Kind: TimelineApproval, Label: "审批请求", Text: compactPayload(p, "kind", "status", "quote_credits")}, true
 	case "approval.decided":
 		return TimelineStep{Kind: TimelineApproval, Label: "审批结果", Text: compactPayload(p, "kind", "status", "decision")}, true
+	case "card.shown":
+		return TimelineStep{Kind: TimelineOther, Label: "展示卡片", Text: describeCard(p)}, true
 	case "plan.updated":
 		return TimelineStep{Kind: TimelinePlan, Label: "计划", Text: describePlan(p)}, true
 	case "run.undone":
@@ -544,4 +546,10 @@ func writeModelCalls(sb *strings.Builder, f *model.AgentExportFacts) {
 		}
 		sb.WriteString("\n")
 	}
+}
+
+// describeCard 把展示卡片写成「类型：标题」，细节在卡片本身里，时间线上只要知道展示过什么。
+func describeCard(p map[string]any) string {
+	c, _ := p["card"].(map[string]any)
+	return clipBytes(str(c["kind"])+"："+str(c["title"]), mdSegmentBytes)
 }

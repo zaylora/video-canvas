@@ -8,16 +8,19 @@ import {
   getAgentEvents,
   getAgentHistory,
   getAgentWatches,
+  listAdminAssistantSessions,
   listAgentSessions,
   setAgentFeedback,
 } from "@/api/agent";
 import type {
+  AgentApprovalDto,
   AgentEventDto,
   AgentRunDto,
   AgentSessionDto,
   AgentWatchBatchDto,
   SetAgentFeedbackReq,
 } from "@/api/agent/type";
+import { notifyAdminConfigChanged } from "@/utils/admin/config-changed";
 import {
   FEEDBACK_SAVE_FAILED,
   normalizeFeedback,
@@ -46,6 +49,12 @@ export function subscribeLiveAgentEvents(listener: LiveListener): () => void {
   };
 }
 
+/**
+ * 后台助手会话在 sessionsByCanvas 里的作用域 key：后台助手会话不绑画布，服务端给的 canvas_id 恒为 "0"，
+ * 所以 upsertSession / removeSession / session.titled 对它们天然生效，不需要另一份列表
+ */
+export const ADMIN_SESSION_SCOPE = "0";
+
 /** 一页回放最多拉多少页，防止服务端异常时死循环 */
 const MAX_REPLAY_PAGES = 50;
 
@@ -56,6 +65,8 @@ type AgentStore = {
   sessions: Record<string, AgentSessionState>;
   /** 加载画布上的会话列表 */
   loadSessions: (canvasId: string) => Promise<AgentSessionDto[]>;
+  /** 加载本人的后台助手会话（存在 ADMIN_SESSION_SCOPE 下） */
+  loadAdminSessions: () => Promise<AgentSessionDto[]>;
   /** 把会话放进列表（新建、改名后） */
   upsertSession: (session: AgentSessionDto) => void;
   /** 从列表里去掉会话（删除后） */
@@ -76,6 +87,8 @@ type AgentStore = {
   sync: (sessionId: string) => Promise<void>;
   /** 把 HTTP 返回的运行快照并进会话（发起、停止、继续之后，不必等事件） */
   ingestRun: (run: AgentRunDto) => void;
+  /** 把决定审批后 HTTP 返回的审批并进会话：只在本地还是待决定时才写，已经被事件更新过的不倒回去 */
+  ingestApproval: (sessionId: string, approval: AgentApprovalDto) => void;
   /**
    * 给一轮已结束的运行打分（再次提交即覆盖）：先乐观更新，保存失败回到提交前的评价并提示。
    * @returns 是否保存成功
@@ -95,6 +108,12 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
   loadSessions: async (canvasId) => {
     const list = await listAgentSessions(canvasId);
     set((s) => ({ sessionsByCanvas: { ...s.sessionsByCanvas, [canvasId]: list } }));
+    return list;
+  },
+
+  loadAdminSessions: async () => {
+    const list = await listAdminAssistantSessions();
+    set((s) => ({ sessionsByCanvas: { ...s.sessionsByCanvas, [ADMIN_SESSION_SCOPE]: list } }));
     return list;
   },
 
@@ -123,14 +142,16 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     // 会话标题变了（开始运行时的草稿、首轮结束后模型命名的结果）：改会话列表里的标题，不属于会话的事件流
     if (event.type === "session.titled") {
       const title = typeof event.data?.title === "string" ? event.data.title.trim() : "";
+      /** 后台助手会话不绑画布：Go 推送和回放里零画布编成 null，归到后台作用域 */
+      const scope = event.canvas_id || ADMIN_SESSION_SCOPE;
       if (title)
         set((s) => {
-          const list = s.sessionsByCanvas[event.canvas_id];
+          const list = s.sessionsByCanvas[scope];
           if (!list?.some((x) => x.id === event.session_id)) return s;
           return {
             sessionsByCanvas: {
               ...s.sessionsByCanvas,
-              [event.canvas_id]: list.map((x) => (x.id === event.session_id ? { ...x, title } : x)),
+              [scope]: list.map((x) => (x.id === event.session_id ? { ...x, title } : x)),
             },
           };
         });
@@ -142,7 +163,11 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
       const next = applyAgentEvent(current, event);
       return next === current ? s : { sessions: { ...s.sessions, [event.session_id]: next } };
     });
-    if (opts?.live && event.seq > 0 && !known) for (const fn of [...liveListeners]) fn(event);
+    if (opts?.live && event.seq > 0 && !known) {
+      // 后台助手的变更单刚被应用：通知模型渠道页、定价设置页重新拉数据（回放补来的旧事件不算）
+      notifyAdminConfigChanged(event);
+      for (const fn of [...liveListeners]) fn(event);
+    }
   },
 
   loadWatches: async (sessionId) => {
@@ -230,6 +255,22 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
       };
       return {
         sessions: { ...s.sessions, [run.session_id]: { ...current, runs, contextTokens } },
+      };
+    }),
+
+  ingestApproval: (sessionId, approval) =>
+    set((s) => {
+      const current = s.sessions[sessionId] ?? emptySession();
+      const known = current.approvals[approval.id];
+      if (known && known.status !== "pending") return s;
+      return {
+        sessions: {
+          ...s.sessions,
+          [sessionId]: {
+            ...current,
+            approvals: { ...current.approvals, [approval.id]: approval },
+          },
+        },
       };
     }),
 

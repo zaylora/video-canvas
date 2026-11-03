@@ -20,8 +20,9 @@ type Handlers struct {
 	Conversation   *handler.ConversationHandler   // 首页生成：对话与生成记录
 	// AgentProxy：画布 Agent 的会话、运行、审批、评价由独立的 Agent 服务负责，这些接口只校验登录态后反向代理过去
 	// （路径、方法、信封不变）；技能目录等仍由 Go 自己处理。为 nil 表示没有启用 Agent，这些接口统一返回「Agent 暂不可用」。
-	AgentProxy *agenthandler.AgentProxyHandler
-	AgentSkill *agenthandler.SkillHandler // Agent 技能：用户端目录 + 管理端导入 / 版本 / 启停
+	AgentProxy      *agenthandler.AgentProxyHandler
+	PricingSettings *handler.PricingSettingsHandler
+	AgentSkill      *agenthandler.SkillHandler // Agent 技能：用户端目录 + 管理端导入 / 版本 / 启停
 
 	// Agent 运行观测：后台只读查看与导出、分析令牌
 	AgentObserve  *agenthandler.AgentObserveHandler // 后台运行记录（只读）和分析令牌管理
@@ -368,6 +369,11 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		// 系统设置（注册 / 邮件）：读 = admin 或 super_admin；写 = 仅 super_admin。SMTP 密码只写不读。
 		settings := auth.Group("/admin/settings", middleware.RequireAdmin(h.AdminRole))
 		settings.GET("/register", h.AdminSettings.GetRegister)
+		assistant := auth.Group("/admin/assistant", middleware.RequireAdmin(h.AdminRole))
+		assistant.GET("/sessions", agentRoute(h.AgentProxy))
+		assistant.POST("/sessions", agentRoute(h.AgentProxy))
+		settings.GET("/pricing", h.PricingSettings.Get)
+		settings.PUT("/pricing", h.PricingSettings.Update)
 		settings.PUT("/register", superOnly, h.AdminSettings.UpdateRegister)
 		settings.GET("/smtp", h.AdminSettings.GetSMTP)
 		settings.PUT("/smtp", superOnly, h.AdminSettings.UpdateSMTP)

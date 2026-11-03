@@ -68,7 +68,7 @@ func (s *AIConfigService) SaveModel(ctx context.Context, in ModelSaveInput) (*Sa
 	}
 
 	// 3. 已启用的模型保存即生效：先过启用检查，不通过就拒绝，不落库
-	if exists && ptr.Enabled {
+	if exists && (ptr.Enabled || (in.Enabled != nil && *in.Enabled)) {
 		if _, err := s.checkEnableable(ctx, key, body); err != nil {
 			return nil, err
 		}
@@ -84,6 +84,8 @@ func (s *AIConfigService) SaveModel(ctx context.Context, in ModelSaveInput) (*Sa
 	//    新建的模型一律未启用（不看正文里的 enabled），得在列表里点启用并通过检查后用户才能用；
 	//    sort 只在首次创建时取正文里的值，之后启停与排序由接口独占，避免改 JSON 时悄悄改变上架状态
 	if _, err := s.repo.SaveModel(ctx, repository.SaveModelInput{
+		CreateOnly: in.Create,
+		BaseSHA256: in.BaseSHA256, ExpectedEnabled: in.ExpectedEnabled, Enabled: in.Enabled, Audit: in.Audit,
 		Pointer:        aiPointer(meta),
 		Body:           body,
 		CreatedBy:      in.AdminID,

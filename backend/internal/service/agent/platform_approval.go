@@ -21,6 +21,9 @@ import (
 
 // approvalTools 是审批种类对应的工具：模式限制、参数校验、预检和算价都沿用这些工具里已有的逻辑。
 var approvalTools = map[string]string{
+	"admin_secret":         "admin_request_secret",
+	"admin_test_run":       "admin_test_run",
+	"admin_change":         "admin_propose_changes",
 	model.ApprovalGenerate: "generate_media",
 	model.ApprovalDelete:   "canvas_delete",
 	model.ApprovalAsk:      "ask_user",
@@ -45,6 +48,9 @@ type ApprovalProposal struct {
 // 工具层的失败（参数不对、节点没有产物、没选模型……）是 IsError 的结果；上下文或 kind 不合法才返回 error。
 func (b *AgentBridge) ProposeApproval(ctx context.Context, rc RunContext, kind string, args json.RawMessage) (*ApprovalProposal, error) {
 	if err := rc.validate(); err != nil {
+		return nil, err
+	}
+	if err := b.requireAdminRun(ctx, rc); err != nil {
 		return nil, err
 	}
 	name, ok := approvalTools[kind]
@@ -74,14 +80,18 @@ func (b *AgentBridge) ProposeApproval(ctx context.Context, rc RunContext, kind s
 
 // ApprovalOutcome 是用户的决定解析出来的结果：落库的状态、写进审批的决定、预估积分，以及批准后要执行的内容。
 type ApprovalOutcome struct {
-	Status         string                `json:"status"`                    // approved 整体批准、partial 部分批准、rejected 拒绝
-	Decision       map[string]any        `json:"decision"`                  // 写进审批的决定（含实际批准的条目）
-	QuoteCredits   int                   `json:"quote_credits"`             // 按批准的内容重新算出的积分，只有生成不为 0
-	Items          []GenerateItem        `json:"items,omitempty"`           // 批准的生成条目（张数已按批准的算）
-	NodeIDs        []string              `json:"node_ids,omitempty"`        // 批准删除的节点
-	EdgeIDs        []string              `json:"edge_ids,omitempty"`        // 批准删除的连线
-	Drama          *DramaApprovalPayload `json:"drama,omitempty"`           // 短剧审批原文和签名
-	DramaSignature string                `json:"drama_signature,omitempty"` // 绑定决定与预估积分，阻止执行前篡改
+	AdminAction          *AdminActionPayload   `json:"admin_action,omitempty"`
+	AdminActionSignature string                `json:"admin_action_signature,omitempty"`
+	AdminChange          *AdminChangePayload   `json:"admin_change,omitempty"`
+	AdminSignature       string                `json:"admin_signature,omitempty"`
+	Status               string                `json:"status"`                    // approved 整体批准、partial 部分批准、rejected 拒绝
+	Decision             map[string]any        `json:"decision"`                  // 写进审批的决定（含实际批准的条目）
+	QuoteCredits         int                   `json:"quote_credits"`             // 按批准的内容重新算出的积分，只有生成不为 0
+	Items                []GenerateItem        `json:"items,omitempty"`           // 批准的生成条目（张数已按批准的算）
+	NodeIDs              []string              `json:"node_ids,omitempty"`        // 批准删除的节点
+	EdgeIDs              []string              `json:"edge_ids,omitempty"`        // 批准删除的连线
+	Drama                *DramaApprovalPayload `json:"drama,omitempty"`           // 短剧审批原文和签名
+	DramaSignature       string                `json:"drama_signature,omitempty"` // 绑定决定与预估积分，阻止执行前篡改
 }
 
 func (o *outcome) export() *ApprovalOutcome {
@@ -103,6 +113,12 @@ func (b *AgentBridge) ResolveApproval(ctx context.Context, rc RunContext, kind s
 	}
 	if isDramaApproval(kind) {
 		return b.resolveDramaApproval(ctx, rc, kind, payload, req)
+	}
+	if kind == "admin_change" {
+		return b.resolveAdminApproval(rc, payload, req)
+	}
+	if kind == "admin_secret" || kind == "admin_test_run" {
+		return b.resolveAdminAction(ctx, rc, kind, payload, req)
 	}
 	run, err := b.platformRunState(ctx, rc)
 	if err != nil {
@@ -153,6 +169,12 @@ func (b *AgentBridge) ExecuteApproval(ctx context.Context, rc RunContext, kind s
 	}
 	if isDramaApproval(kind) {
 		return b.executeDramaApproval(ctx, rc, kind, approvalID, o)
+	}
+	if kind == "admin_change" {
+		return b.executeAdminApproval(ctx, rc, approvalID, o)
+	}
+	if kind == "admin_secret" || kind == "admin_test_run" {
+		return b.executeAdminAction(ctx, rc, kind, approvalID, o)
 	}
 	out := &outcome{status: o.Status, decision: o.Decision, quote: o.QuoteCredits, gen: o.Items, nodeIDs: o.NodeIDs, edgeIDs: o.EdgeIDs}
 	ctx = WithIdempotencyKey(ctx, fmt.Sprintf("approval-%d", approvalID))

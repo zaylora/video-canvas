@@ -80,8 +80,8 @@ func convertRelayEvent(e RelayEvent) (relayItem, error) {
 		return relayItem{}, relayErr("的 session_id 必须是正整数")
 	}
 	canvasID, ok := positiveID(e.CanvasID)
-	if !ok {
-		return relayItem{}, relayErr("的 canvas_id 必须是正整数")
+	if !ok && e.CanvasID != "0" {
+		return relayItem{}, relayErr("的 canvas_id 必须是非负整数")
 	}
 	var runID *idcodec.ID
 	if e.RunID != "" && e.RunID != "0" {

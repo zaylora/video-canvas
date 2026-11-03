@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
 import { getAdminMe } from "@/api/admin/ai";
 import type { AdminRole } from "@/api/admin/ai/type";
@@ -26,6 +27,8 @@ export type AdminStore = {
   userId: number | null;
   /** 加载状态 */
   status: AdminStatus;
+  /** 后台助手抽屉是否展开：只记在本浏览器，刷新后保持 */
+  assistantOpen: boolean;
   /**
    * 调用 GET /admin/ai/me 取角色。已在加载中时忽略；ready 后再调用不重新请求，除非 force。
    * 403 记为 forbidden，其余错误记为 error，请求错误的全局提示由拦截器负责，这里不重复弹。
@@ -34,28 +37,50 @@ export type AdminStore = {
   load: (force?: boolean) => Promise<void>;
   /** 清空角色（退出登录等场景） */
   reset: () => void;
+  /** 展开或收起后台助手抽屉 */
+  setAssistantOpen: (open: boolean) => void;
+  /** 切换后台助手抽屉 */
+  toggleAssistant: () => void;
 };
 
-export const useAdminStore = create<AdminStore>((set, get) => ({
-  role: null,
-  userId: null,
-  status: "idle",
-  load: async (force = false) => {
-    const { status } = get();
-    if (status === "loading" || (status === "ready" && !force)) return;
-    set({ status: "loading" });
-    try {
-      const me = await getAdminMe();
-      const role = normalizeRole(me?.role);
-      saveRole(role);
-      set({
-        role,
-        userId: typeof me?.user_id === "number" ? me.user_id : null,
-        status: "ready",
-      });
-    } catch (error) {
-      set({ role: null, userId: null, status: isForbiddenError(error) ? "forbidden" : "error" });
-    }
-  },
-  reset: () => set({ role: null, userId: null, status: "idle" }),
-}));
+export const useAdminStore = create<AdminStore>()(
+  persist(
+    (set, get) => ({
+      role: null,
+      userId: null,
+      status: "idle",
+      assistantOpen: false,
+      load: async (force = false) => {
+        const { status } = get();
+        if (status === "loading" || (status === "ready" && !force)) return;
+        set({ status: "loading" });
+        try {
+          const me = await getAdminMe();
+          const role = normalizeRole(me?.role);
+          saveRole(role);
+          set({
+            role,
+            userId: typeof me?.user_id === "number" ? me.user_id : null,
+            status: "ready",
+          });
+        } catch (error) {
+          set({
+            role: null,
+            userId: null,
+            status: isForbiddenError(error) ? "forbidden" : "error",
+          });
+        }
+      },
+      reset: () => set({ role: null, userId: null, status: "idle" }),
+      setAssistantOpen: (open) => set({ assistantOpen: open }),
+      toggleAssistant: () => set((state) => ({ assistantOpen: !state.assistantOpen })),
+    }),
+    {
+      name: "video-canvas-admin-ui",
+      // 角色和加载状态每次进后台都要重新确认，只记界面偏好
+      partialize: (state) => ({
+        assistantOpen: state.assistantOpen,
+      }),
+    },
+  ),
+);

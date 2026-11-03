@@ -173,3 +173,72 @@ test("步数用尽暂停时同样扣着：暂停期间不读，点「继续」�
     assert.deepEqual(e.persisted("steer.read"), [{ ids: [steers(e)[0].id] }]);
     assert.equal(e.run(r.id).status, "succeeded");
   }));
+
+// ---- 等审批（waiting_approval）期间的插话：只落库、不交给 Pi，决定后续跑时带给模型 ----
+
+const GEN = { generate: { payload: { items: [{ node_id: "n1", price: 5 }], quote_credits: 5 }, quote_credits: 5, summary: "生成 1 个，预估 5 积分", content: "已提交给用户批准，等待决定。" } };
+const GEN_TURNS = [{ tools: [{ id: "call_g", name: "generate_media", args: { items: [{ nodeId: "n1" }] } }] }, { text: "按补充继续" }];
+
+test("等审批时插话：收下并落库，不提交给 Pi（模型不被再请求），也不发 steer.read / steer.dropped", () =>
+  withEngine({ turns: GEN_TURNS, propose: GEN }, async (e) => {
+    const r = await e.start({ budgetCredits: 20 });
+    await e.engine.idle();
+    assert.equal(e.run(r.id).status, "waiting_approval");
+    await e.engine.interject("1", r.id, "背景换成夜景");
+    await sleep(300);
+
+    assert.equal(steers(e).length, 1);
+    assert.equal(steers(e)[0].text, "背景换成夜景");
+    assert.equal(e.run(r.id).status, "waiting_approval", "审批保持待确认");
+    assert.equal(e.store.listApprovals(r.id)[0].status, "pending");
+    assert.equal(e.go.modelRequests.length, 1, "只落库，不交给 Pi");
+    assert.deepEqual(e.persisted("steer.read"), []);
+    assert.deepEqual(e.persisted("steer.dropped"), []);
+  }));
+
+for (const decision of ["approve", "reject"] as const) {
+  test(`等审批时插话，之后${decision === "approve" ? "批准" : "拒绝"}：续跑的输入里带上这句补充，并发 steer.read`, () =>
+    withEngine({ turns: GEN_TURNS, propose: GEN }, async (e) => {
+      const r = await e.start({ budgetCredits: 20 });
+      await e.engine.idle();
+      await e.engine.interject("1", r.id, "背景换成夜景");
+      await e.engine.interject("1", r.id, "再加一只猫");
+      const [approval] = e.store.listApprovals(r.id);
+      await e.engine.decide("1", approval.id, { decision });
+      await e.engine.idle();
+
+      assert.equal(e.go.modelRequests.length, 2);
+      const seen = JSON.stringify(e.go.modelRequests[1].body.messages);
+      assert.match(seen, /用户在等待期间补充了/);
+      assert.match(seen, /背景换成夜景/);
+      assert.match(seen, /再加一只猫/);
+      assert.deepEqual(e.persisted("steer.read"), [{ ids: steers(e).map((s) => s.id) }], "两条一起读到");
+      const types = e.types();
+      assert.ok(types.indexOf("approval.decided") < types.indexOf("steer.read"));
+      assert.ok(types.indexOf("steer.read") < types.lastIndexOf("message.done"));
+      assert.deepEqual(e.persisted("steer.dropped"), []);
+      assert.equal(e.run(r.id).status, "succeeded");
+    }));
+}
+
+test("等审批期间插话后点停止：这条插话发 steer.dropped（canceled），在「已停止」之前", () =>
+  withEngine({ turns: GEN_TURNS, propose: GEN }, async (e) => {
+    const r = await e.start({ budgetCredits: 20 });
+    await e.engine.idle();
+    await e.engine.interject("1", r.id, "背景换成夜景");
+    await e.engine.cancel("1", r.id);
+    await sleep(200);
+
+    assert.deepEqual(e.persisted("steer.dropped").map((p) => [p.ids, p.reason]), [[[steers(e)[0].id], "canceled"]]);
+    assert.deepEqual(e.persisted("steer.read"), []);
+    const types = e.types();
+    assert.ok(types.indexOf("steer.dropped") < types.lastIndexOf("run.status"));
+    assert.equal(e.go.modelRequests.length, 1);
+  }));
+
+test("运行不在等审批也不在运行中（已成功）：插话仍报状态错误", () =>
+  withEngine({ turns: [{ text: "done" }] }, async (e) => {
+    const r = await e.start();
+    await e.engine.idle();
+    await assert.rejects(e.engine.interject("1", r.id, "晚了"), (err: AgentError) => err.code === 60003);
+  }));

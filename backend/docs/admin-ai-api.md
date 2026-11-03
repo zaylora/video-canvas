@@ -290,3 +290,9 @@
 - **视频理解**：`canvas_inspect_video` 对当前模型发起独立子请求；本地视频传 inlineData（原文件最大 20 MB），对象存储传签名 URL。失败时只有支持看图且 ffmpeg 可用才退回抽帧，明确注明「音频未分析」。子请求按 Token 计费，用途为 `video`，计入本轮积分，不计入主对话上下文大小。
 - **计费**：只能 `pricing.billing = "token"`，`token.in` / `token.out` 是每百万 Token 的积分价。
 - 上架后出现在 `GET /api/v1/models?kind=agent` 和 `GET /api/v1/agent/models`。
+
+## 未定价测试草稿
+
+新平台接入可保存 `enabled=false`、`pricing={"billing":"per_call","pending":true}` 的测试草稿。`pending` 表示售价尚未确认，不是免费；不能同时填写占位售价或规格价格。能力、渠道与协议仍按正常配置校验。管理员 dry-run / 真实试跑可使用该草稿，真实试跑继续经过审批并可能产生上游费用。公开启用接口会拒绝未定价配置，填写实际售价并移除 `pending` 后才能上架。
+
+后台助手的 `admin_get_recent_errors` 可按 `channel_key`、`model_key`、编码后的 `task_id`、`hours`（默认 24、最多 168）查询当前管理员自己的失败生成/试跑记录，默认 5 条、最多 10 条。试跑附带脱敏 HTTP 路径、状态与响应摘要；不返回请求头、请求体或钩子输入。普通生成可能没有详细 trace；没有查询结果不等于凭证错误。

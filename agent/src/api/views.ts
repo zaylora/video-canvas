@@ -20,7 +20,7 @@ export interface SessionView {
 
 export function sessionView(c: IdCodec, s: Session): SessionView {
   return {
-    id: c.encodeDecimal(s.id), canvas_id: c.encodeDecimal(s.canvasId), title: s.title, mode: s.mode, model_key: s.modelKey,
+    id: c.encodeDecimal(s.id), canvas_id: s.canvasId === "0" ? "0" : c.encodeDecimal(s.canvasId), title: s.title, mode: s.mode, model_key: s.modelKey,
     last_seq: s.lastSeq, created_at: iso(s.createdAt), updated_at: iso(s.updatedAt),
   };
 }
@@ -44,7 +44,7 @@ export interface RunView {
 
 export function runView(c: IdCodec, r: Run): RunView {
   return {
-    id: c.encodeDecimal(r.id), session_id: c.encodeDecimal(r.sessionId), canvas_id: c.encodeDecimal(r.canvasId), status: r.status, mode: r.mode,
+    id: c.encodeDecimal(r.id), session_id: c.encodeDecimal(r.sessionId), canvas_id: r.canvasId === "0" ? "0" : c.encodeDecimal(r.canvasId), status: r.status, mode: r.mode,
     budget_credits: r.budgetCredits, spent_credits: r.spentCredits, context_tokens: r.contextTokens, steps: r.steps, max_steps: r.maxSteps,
     error_code: r.errorCode, error_message: r.errorMessage, created_at: iso(r.createdAt), ended_at: r.endedAt === null ? null : iso(r.endedAt),
   };

@@ -67,6 +67,26 @@ const VERB_PHRASES: Record<string, string> = {
   读网页: "读取了网页",
 };
 
+/**
+ * 后台助手工具 → 兜底动作短语。后台工具和画布工具共用「读取」「修改」等动词（图标照用），
+ * 但短语不能说成「读取了画布」「修改了画布」，所以按工具名单独给说法
+ */
+const ADMIN_TOOL_PHRASES: Record<string, string> = {
+  admin_query: "查询了后台记录",
+  admin_get_resource: "读取了后台资源",
+  admin_list_models: "查看了模型列表",
+  admin_get_model: "读取了模型配置",
+  admin_list_channels: "查看了渠道",
+  admin_get_pricing_settings: "读取了定价设置",
+  admin_quote_preview: "预览了价格",
+  admin_propose_changes: "提交了变更单",
+  admin_list_plugins: "查看了插件",
+  admin_get_plugin: "读取了插件代码",
+  admin_plugin_check: "验证了插件",
+  admin_request_secret: "请求填写密钥",
+  admin_test_run: "申请了试跑",
+};
+
 /** 主图标的优先级：一段里有多种动作时，取排在最前面的那种（改动和产出比查看更重要） */
 const VERB_PRIORITY = [
   "生成",
@@ -91,14 +111,19 @@ const VERB_PRIORITY = [
 const PHRASE_KINDS = 3;
 
 /**
- * 兜底动作短语：按动词首次出现的顺序，同一动作多次写「N 次」；超过 3 种动作只写前 3 种加「等 N 项」（N 是动作种类数）。
+ * 兜底动作短语：按动作首次出现的顺序，同一动作多次写「N 次」；超过 3 种动作只写前 3 种加「等 N 项」（N 是动作种类数）。
+ * 动作的说法：后台助手工具按工具名（ADMIN_TOOL_PHRASES），其余按动词（VERB_PHRASES）。
  * 如「读取了画布、搜索了网页 2 次、修改了画布」。
+ * @param tools 这一段的工具调用
  */
-function phraseOf(verbs: { verb: string; count: number }[]) {
-  const parts = verbs.map(
-    ({ verb, count }) =>
-      (VERB_PHRASES[verb] ?? `调用了「${verb}」`) + (count > 1 ? ` ${count} 次` : ""),
-  );
+function phraseOf(tools: Pick<ToolCall, "name" | "verb" | "label">[]) {
+  const counts = new Map<string, number>();
+  for (const t of tools) {
+    const verb = toolVerb(t.name, t.verb, t.label);
+    const phrase = ADMIN_TOOL_PHRASES[t.name] ?? VERB_PHRASES[verb] ?? `调用了「${verb}」`;
+    counts.set(phrase, (counts.get(phrase) ?? 0) + 1);
+  }
+  const parts = [...counts].map(([phrase, count]) => phrase + (count > 1 ? ` ${count} 次` : ""));
   return parts.length > PHRASE_KINDS
     ? `${parts.slice(0, PHRASE_KINDS).join("、")}等 ${parts.length} 项`
     : parts.join("、");
@@ -133,7 +158,7 @@ export function activitySummary(item: Activity) {
     verbs,
     text,
     icon,
-    phrase: phraseOf([...counts].map(([verb, count]) => ({ verb, count }))),
+    phrase: phraseOf(item.tools),
   };
 }
 

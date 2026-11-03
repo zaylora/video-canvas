@@ -230,9 +230,18 @@ describe("parseServerMessage：Agent 的两种消息", () => {
       { ...event, seq: "2" },
       { ...event, type: undefined },
       { ...event, session_id: 7 },
+      { ...event, canvas_id: 7 },
     ]) {
       expect(parseServerMessage(JSON.stringify({ type: "agent.event", data: bad }))).toBeNull();
     }
+  });
+
+  test('后台助手会话不绑画布：Go 把零画布编成 null，收下并归到后台作用域 "0"', () => {
+    const msg = parseServerMessage(
+      JSON.stringify({ type: "agent.event", data: { ...event, canvas_id: null } }),
+    );
+    expect(msg?.type).toBe("agent.event");
+    expect((msg?.data as { canvas_id: string } | undefined)?.canvas_id).toBe("0");
   });
 });
 

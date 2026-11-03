@@ -27,6 +27,7 @@ type ObserveActor struct {
 
 // RunListFilter 是运行摘要列表的筛选条件，零值表示不限。
 type RunListFilter struct {
+	Scene         string    // canvas（默认）或 admin
 	Since, Until  time.Time // 运行创建时间的范围，Since 含、Until 不含
 	Statuses      []string  // 运行状态
 	Feedback      string    // down / up / none / any
@@ -100,6 +101,9 @@ type RunListPage struct {
 
 // ListRuns 按条件列出运行摘要。管理员 JWT 访问不写审计；用分析令牌访问写一条（含条件和条数）。
 func (s *ObserveService) ListRuns(ctx context.Context, who ObserveActor, f *RunListFilter) (*RunListPage, error) {
+	if f.Scene != "" && f.Scene != "canvas" && f.Scene != "admin" {
+		return nil, errcode.ErrInvalidParams.WithMsg("scene 只能是 canvas 或 admin")
+	}
 	// 1. 筛选值校验：不认识的反馈值直接拒绝，而不是悄悄当成不限（拼错了会拉回全部数据）
 	if !slices.Contains([]string{"", "any", "down", "up", "none"}, f.Feedback) {
 		return nil, errcode.ErrInvalidParams.WithMsg("feedback 只能是 down、up、none 或 any")
@@ -112,6 +116,7 @@ func (s *ObserveService) ListRuns(ctx context.Context, who ObserveActor, f *RunL
 	}
 	// 2. 查询；游标损坏是调用方的错，不是服务端的
 	q := model.DigestQuery{
+		Scene: f.Scene,
 		Since: f.Since, Until: f.Until, Statuses: f.Statuses, Feedback: f.Feedback, Undone: f.Undone, HarnessKey: f.HarnessKey,
 		PromptVersion: f.PromptVersion, ModelKey: f.ModelKey, UserID: f.UserID, Cursor: f.Cursor, Page: f.Page, Limit: f.Limit,
 	}

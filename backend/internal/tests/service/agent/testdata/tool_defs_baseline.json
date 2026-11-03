@@ -333,52 +333,113 @@
   },
   {
     "name": "ask_user",
-    "description": "信息不够时向用户提问，而不是猜。kind=choice 给 2 到 4 个选项；kind=model 让用户从已发布的图片或视频模型里选一个。提问后本轮暂停，用户回答后你会收到结果。",
+    "description": "信息不够时向用户提问，而不是猜；需要用户补的信息必须用它问，不要在正文里反问。需要补的信息一次问完，放进同一张卡：questions 填 1 到 5 个问题，用户在一张卡上逐题回答后一次提交，不要分多轮问。每题的 kind：choice 给 2 到 4 个选项（可多选、可让选项选中后再填一句）；model 让用户从已发布的图片或视频模型里选一个；text / url / number 让用户直接填文字、链接、数字。选填的问题把 required 设为 false。提问后本轮暂停，用户回答后你会收到逐题的回答；如果用户没有回答、改发了新消息，以新消息为准。",
     "parameters": {
       "type": "object",
       "required": [
-        "question",
-        "kind"
+        "questions"
       ],
       "properties": {
-        "question": {
-          "type": "string"
-        },
-        "kind": {
-          "anyOf": [
-            {
-              "type": "string",
-              "const": "choice"
-            },
-            {
-              "type": "string",
-              "const": "model"
-            }
-          ]
-        },
-        "options": {
+        "questions": {
           "type": "array",
+          "description": "要问的问题，1 到 5 个，一次问完",
           "items": {
-            "type": "string"
-          },
-          "description": "kind=choice 的选项"
-        },
-        "modelKind": {
-          "anyOf": [
-            {
-              "type": "string",
-              "const": "image"
-            },
-            {
-              "type": "string",
-              "const": "video"
+            "type": "object",
+            "required": [
+              "question",
+              "kind"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "题目的短标识，同一张卡里不能重复；不填就用序号"
+              },
+              "question": {
+                "type": "string",
+                "description": "问题，不超过 200 个字"
+              },
+              "kind": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "const": "choice"
+                  },
+                  {
+                    "type": "string",
+                    "const": "model"
+                  },
+                  {
+                    "type": "string",
+                    "const": "text"
+                  },
+                  {
+                    "type": "string",
+                    "const": "url"
+                  },
+                  {
+                    "type": "string",
+                    "const": "number"
+                  }
+                ]
+              },
+              "required": {
+                "type": "boolean",
+                "description": "是否必答，默认 true"
+              },
+              "options": {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "label"
+                      ],
+                      "properties": {
+                        "label": {
+                          "type": "string",
+                          "description": "选项文字"
+                        },
+                        "follow": {
+                          "type": "string",
+                          "description": "选中后在原地展开一个输入框，这里写输入框的占位文字，如「如 kling-v3」；不需要就不写"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "description": "kind=choice 的选项，2 到 4 个；每个是字符串，或 {label, follow}"
+              },
+              "multi": {
+                "type": "boolean",
+                "description": "kind=choice 时允许多选"
+              },
+              "allowCustom": {
+                "type": "boolean",
+                "description": "kind=choice 时多一个「其他，我来说」输入项，让用户自己填答案"
+              },
+              "modelKind": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "const": "image"
+                  },
+                  {
+                    "type": "string",
+                    "const": "video"
+                  }
+                ],
+                "description": "kind=model 时选哪类模型"
+              },
+              "placeholder": {
+                "type": "string",
+                "description": "kind=text / url / number 时输入框的占位文字"
+              }
             }
-          ],
-          "description": "kind=model 时选哪类模型"
-        },
-        "allowCustom": {
-          "type": "boolean",
-          "description": "是否允许用户自己输入答案"
+          }
         }
       }
     }
