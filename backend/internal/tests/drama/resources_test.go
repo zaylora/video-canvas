@@ -42,15 +42,14 @@ func TestParseSource(t *testing.T) {
 		{"空白", "empty.md", []byte("\xef\xbb\xbf \t\r\n"), "", ErrSourceInvalid},
 		{"非法UTF8", "bad.txt", []byte{0xff}, "", ErrSourceInvalid},
 		{"非文本控制符", "bad.txt", []byte("原\x00文"), "", ErrSourceInvalid},
-		{"上限按汉字", "large.txt", []byte(strings.Repeat("汉", 300000)), strings.Repeat("汉", 300000), nil},
-		{"超过汉字上限", "large.txt", []byte(strings.Repeat("汉", 300001)), "", ErrSourceTooLong},
+		{"不限字数", "large.txt", []byte(strings.Repeat("汉", 300001)), strings.Repeat("汉", 300001), nil},
 		{"未支持格式", "script.pdf", []byte("正文"), "", ErrSourceInvalid},
 		{"无扩展名", "script", []byte("正文"), "", ErrSourceInvalid},
 		{"损坏Word", "bad.docx", []byte("正文"), "", ErrSourceInvalid},
 		{"Word缺正文", "bad.docx", docxFile(t, "word/header1.xml", document), "", ErrSourceInvalid},
 		{"WordXML损坏", "bad.docx", docxFile(t, "word/document.xml", "<w:document>"), "", ErrSourceInvalid},
 		{"Word空正文", "empty.docx", docxFile(t, "word/document.xml", `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p/></w:body></w:document>`), "", ErrSourceInvalid},
-		{"Word超长", "large.docx", docxFile(t, "word/document.xml", `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>`+strings.Repeat("汉", 300001)+`</w:t></w:r></w:p></w:body></w:document>`), "", ErrSourceTooLong},
+		{"Word不限字数", "large.docx", docxFile(t, "word/document.xml", `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>`+strings.Repeat("汉", 300001)+`</w:t></w:r></w:p></w:body></w:document>`), strings.Repeat("汉", 300001), nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

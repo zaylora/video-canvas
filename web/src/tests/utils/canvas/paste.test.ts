@@ -1,10 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
 import {
-  TEXT_BODY_MAX,
   clipboardTextOf,
   clipFileName,
-  clipText,
   decidePaste,
   readClipboard,
   type ClipboardLike,
@@ -108,18 +106,5 @@ describe("clipFileName：粘贴的文件起名", () => {
   test("有真名字的原样保留", () => {
     expect(clipFileName(png("角色.png"))).toBe("角色.png");
     expect(clipFileName(new File(["a"], "image.mp4", { type: "video/mp4" }))).toBe("image.mp4");
-  });
-});
-
-describe("clipText：正文上限", () => {
-  test("不超过上限原样放", () => {
-    expect(clipText("abc")).toEqual({ text: "abc", clipped: false });
-  });
-
-  test("超过上限按字符截断（不拆开代理对）并标记", () => {
-    const long = "😀".repeat(TEXT_BODY_MAX + 5);
-    const got = clipText(long);
-    expect(got.clipped).toBe(true);
-    expect([...got.text]).toHaveLength(TEXT_BODY_MAX);
   });
 });

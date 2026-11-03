@@ -23,7 +23,7 @@ func (c *deleteEpisodeCanvas) ApplyBreakdown(context.Context, uint64, uint64, ui
 	return nil, nil
 }
 
-func (c *deleteEpisodeCanvas) ApplyPrompts(context.Context, uint64, uint64, uint64, []drama.AssetPrompt) error {
+func (c *deleteEpisodeCanvas) ApplyPrompts(context.Context, uint64, uint64, uint64, []drama.AssetPrompt, string) error {
 	return nil
 }
 

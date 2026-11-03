@@ -52,3 +52,16 @@ func TestStoryboardPromptResource(t *testing.T) {
 		}
 	}
 }
+
+// 镜头结构与时间写法交给所选平台的写法资料，认不出平台才用起止秒数的通用写法；不补剧本和资产没有的细节
+func TestStoryboardPromptDefersFormatToPlatform(t *testing.T) {
+	prompt, err := drama.Prompt("storyboard", map[string]any{"max_seconds": 15})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, word := range []string{"按该平台写法资料", "没有平台写法资料时", "不自行补充剧本和资产里没有的"} {
+		if !strings.Contains(prompt, word) {
+			t.Fatalf("提示词缺少 %s", word)
+		}
+	}
+}

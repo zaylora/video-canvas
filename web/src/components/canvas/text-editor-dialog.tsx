@@ -15,13 +15,11 @@ import {
   Strikethrough,
   Undo2,
 } from "lucide-react";
-import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { canvasDialogGuards } from "@/utils/canvas/dialog-guards";
-import { TEXT_BODY_MAX, clipText } from "@/utils/canvas/paste";
 
 import { TEXT_EDITOR_EXTENSIONS } from "./text-editor-extensions";
 
@@ -271,8 +269,7 @@ export function TextEditorDialog({
 
   const handleOpenChange = (next: boolean) => {
     if (!next && editable && onSave && readMarkdown.current) {
-      const { text: draft, clipped } = clipText(readMarkdown.current());
-      if (clipped) toast.info(`文字太长，只保存了前 ${TEXT_BODY_MAX} 个字`);
+      const draft = readMarkdown.current();
       if (draft !== text) onSave(draft);
     }
     onOpenChange(next);

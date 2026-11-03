@@ -9,6 +9,7 @@ import { createDrama } from "@/api/drama";
 import { DRAMA_ERR, dramaErrorMessage, isDramaError } from "@/api/drama/errors";
 import type { DramaRatio } from "@/api/drama/type";
 import { AgentModelPicker } from "@/components/drama/agent-model-picker";
+import { describeVideoModel, ModelMenu } from "@/components/drama/video-model-menu";
 import {
   ChipPopover,
   EpisodesPicker,
@@ -19,15 +20,16 @@ import {
 import { Segmented } from "@/components/home/segmented";
 import { Textarea } from "@/components/ui/textarea";
 import { useDramaStyles } from "@/hooks/use-drama-styles";
+import { useRemoteModels } from "@/hooks/use-models";
 import { TAP } from "@/lib/motion";
 import { cn } from "@/lib/utils";
+import { pickVideoModel } from "@/utils/drama/video-models";
 import {
   checkSourceFile,
   checkSourceText,
   CUSTOM_STYLE_KEY,
   DEFAULT_EPISODE_SECONDS,
   DEFAULT_STYLE_KEY,
-  SOURCE_MAX_CHARS,
   targetEpisodesLabel,
 } from "@/utils/drama/options";
 
@@ -52,7 +54,7 @@ const paneState = (active: boolean) => ({
  * 新建短剧的创作卡（设计稿 §6.3、原型首页）：半透明胶囊面板，「上传剧本 / 小说 | 粘贴正文」二选一，
  * 两块面板叠放、同高，切换只淡入淡出；提交时只用当前那一种。上传区可拖入文件；
  * 底部的题材、画风、比例、集数与时长都是浮层选择；提交后建好短剧并进入工作台等研读。
- * 内容为空、格式不对、超长（67002 / 67003）都就地提示在卡片里，不弹全局错误。
+ * 内容为空、格式不对、文件过大（67002 / 67003）都就地提示在卡片里，不弹全局错误。
  */
 export function UploadCard() {
   const navigate = useNavigate();
@@ -66,6 +68,10 @@ export function UploadCard() {
   // 画风、比例、模型进了工作台就不能再改：比例默认竖屏短剧常用的 9:16
   const [ratio, setRatio] = useState<DramaRatio>("9:16");
   const [textModel, setTextModel] = useState("");
+  // 视频平台一开始就定：拆解写角色试音和分镜写提示词都按它的要求；没选时取第一个能用的
+  const videoModels = useRemoteModels("video");
+  const [videoKey, setVideoKey] = useState("");
+  const videoModel = pickVideoModel(videoModels.models, videoKey);
   const [target, setTarget] = useState(0);
   const [seconds, setSeconds] = useState(DEFAULT_EPISODE_SECONDS);
   const [error, setError] = useState<string | null>(null);
@@ -119,6 +125,7 @@ export function UploadCard() {
         targetEpisodes: target,
         episodeSeconds: seconds,
         textModel: textModel || undefined,
+        videoModel: videoModel?.key,
       });
       navigate(`/drama/${drama.id}`);
     } catch (e) {
@@ -215,9 +222,7 @@ export function UploadCard() {
                   选择文件
                 </span>
               </div>
-              <div className="text-muted-foreground text-[13px] tracking-wide">
-                txt · md · docx　30 万字以内
-              </div>
+              <div className="text-muted-foreground text-[13px] tracking-wide">txt · md · docx</div>
             </>
           )}
         </div>
@@ -240,13 +245,8 @@ export function UploadCard() {
             className="h-full resize-none border-0 bg-transparent px-5 pt-4 pb-9 text-[15.5px] leading-relaxed shadow-none focus-visible:ring-0 dark:bg-transparent"
           />
           {text.length > 0 && (
-            <div
-              className={cn(
-                "text-muted-foreground pointer-events-none absolute right-4 bottom-3 text-xs tabular-nums",
-                text.length > SOURCE_MAX_CHARS && "text-destructive",
-              )}
-            >
-              {text.length.toLocaleString()} / {SOURCE_MAX_CHARS.toLocaleString()} 字
+            <div className="text-muted-foreground pointer-events-none absolute right-4 bottom-3 text-xs tabular-nums">
+              {text.length.toLocaleString()} 字
             </div>
           )}
         </div>
@@ -318,6 +318,18 @@ export function UploadCard() {
             />
           )}
         </ChipPopover>
+        <ModelMenu
+          variant="chrome"
+          size="lg"
+          prefix="视频"
+          noun="视频"
+          title="视频平台：拆解和分镜都按它的要求来"
+          models={videoModels.models}
+          loading={videoModels.status === "idle" || videoModels.status === "loading"}
+          model={videoModel}
+          onPick={setVideoKey}
+          describe={describeVideoModel}
+        />
         <AgentModelPicker variant="chrome" value={textModel} onChange={setTextModel} />
         <motion.button
           type="button"

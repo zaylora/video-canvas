@@ -118,6 +118,8 @@ func (s *DramaService) executeDrama(ctx context.Context, run *dramaRun) (*dramaR
 		return saved, err
 	}
 	vars := s.dramaVariables(run.project)
+	targets := s.dramaTargets(ctx, run.project)
+	vars["target_models"], vars["voice_seconds"] = targets, drama.VoiceSeconds(targets)
 	selected := selectedEpisodes(run.episodes, run.job.Episodes)
 	result := &dramaResult{}
 	var err error
@@ -192,7 +194,7 @@ func (s *DramaService) runAssetPrompts(ctx context.Context, run *dramaRun, vars 
 	if s.canvas == nil {
 		return nil, errcode.ErrInternal
 	}
-	if err = s.canvas.ApplyPrompts(ctx, run.job.UserID, run.project.CanvasID, run.job.ID, out.(drama.AssetPromptsOutput).Prompts); err != nil {
+	if err = s.canvas.ApplyPrompts(ctx, run.job.UserID, run.project.CanvasID, run.job.ID, out.(drama.AssetPromptsOutput).Prompts, run.project.ImageModel); err != nil {
 		return nil, err
 	}
 	return result, nil

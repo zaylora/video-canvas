@@ -240,7 +240,7 @@ var (
 var (
 	ErrDramaNotFound            = New(67001, "短剧不存在", http.StatusNotFound)
 	ErrDramaSourceInvalid       = New(67002, "原文格式不支持或内容为空", http.StatusBadRequest)
-	ErrDramaSourceTooLong       = New(67003, "原文超过 30 万字", http.StatusBadRequest)
+	ErrDramaSourceTooLong       = New(67003, "原文文件超过 32MB", http.StatusBadRequest)
 	ErrDramaJobBusy             = New(67004, "已有进行中的任务，完成后再试", http.StatusConflict)
 	ErrDramaEpisodeLocked       = New(67005, "这一集已拆解资产，剧本已锁定", http.StatusConflict)
 	ErrDramaStepNotReady        = New(67006, "前置步骤未完成", http.StatusBadRequest)

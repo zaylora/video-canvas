@@ -14,16 +14,10 @@ import (
 	"unicode/utf8"
 )
 
-// MaxSourceRunes 是提取后原文允许的最大 Unicode 字符数。
-const MaxSourceRunes = 300000
-
 // ErrSourceInvalid 表示不支持的文件格式、无法解析的文件或空正文。
 var ErrSourceInvalid = errors.New("原文格式不支持或内容为空")
 
-// ErrSourceTooLong 表示提取后的原文超过 30 万字。
-var ErrSourceTooLong = errors.New("原文超过 30 万字")
-
-// ParseSource 提取 UTF-8 txt、md 或 docx 正文，去除 BOM 和首尾空白后限制为 1–300000 字。
+// ParseSource 提取 UTF-8 txt、md 或 docx 正文，去除 BOM 和首尾空白后要求非空；不限字数，体积由上传上限兜底。
 func ParseSource(filename string, data []byte) (string, error) {
 	var source string
 	switch strings.ToLower(filepath.Ext(filename)) {
@@ -46,9 +40,6 @@ func ParseSource(filename string, data []byte) (string, error) {
 	source = strings.ReplaceAll(strings.ReplaceAll(source, "\r\n", "\n"), "\r", "\n")
 	if source == "" {
 		return "", fmt.Errorf("%w：没有可读取的正文", ErrSourceInvalid)
-	}
-	if utf8.RuneCountInString(source) > MaxSourceRunes {
-		return "", ErrSourceTooLong
 	}
 	for _, r := range source {
 		if unicode.IsControl(r) && r != '\n' && r != '\t' {

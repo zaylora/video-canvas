@@ -252,7 +252,7 @@ func TestDramaCanvasBreakdownCreatesAndMergesAtomically(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(replayed, created) || f.canvas.Revision != 2 || len(bc.messages) != 1 {
 		t.Fatalf("durable replay changed canvas: replay=%+v err=%v", replayed, err)
 	}
-	if err := svc.ApplyPrompts(ctx, 1, 7, 10, []drama.AssetPrompt{{NodeID: created[0].NodeID, Prompt: "原有资产提示词"}}); err != nil {
+	if err := svc.ApplyPrompts(ctx, 1, 7, 10, []drama.AssetPrompt{{NodeID: created[0].NodeID, Prompt: "原有资产提示词"}}, ""); err != nil {
 		t.Fatal(err)
 	}
 	assets := dramaCanvasAssets(2)
@@ -379,7 +379,7 @@ func TestDramaCanvasPromptsRejectUnclassifiedAndPreserveParams(t *testing.T) {
 	bc := &dramaCanvasBroadcast{}
 	svc := service.NewDramaCanvasService(f, bc)
 	ctx := context.Background()
-	if err := svc.ApplyPrompts(ctx, 1, 7, 10, []drama.AssetPrompt{{NodeID: "scene", Prompt: "雨夜街道"}}); err != nil {
+	if err := svc.ApplyPrompts(ctx, 1, 7, 10, []drama.AssetPrompt{{NodeID: "scene", Prompt: "雨夜街道"}}, ""); err != nil {
 		t.Fatal(err)
 	}
 	params := dramaGraph(t, f).Node("scene").Data()["params"].(map[string]any)
@@ -387,7 +387,7 @@ func TestDramaCanvasPromptsRejectUnclassifiedAndPreserveParams(t *testing.T) {
 		t.Fatalf("params=%+v", params)
 	}
 	for _, id := range []string{"manual", "missing"} {
-		err := svc.ApplyPrompts(ctx, 1, 7, 12, []drama.AssetPrompt{{NodeID: id, Prompt: "不可写"}})
+		err := svc.ApplyPrompts(ctx, 1, 7, 12, []drama.AssetPrompt{{NodeID: id, Prompt: "不可写"}}, "")
 		var business *errcode.Error
 		if !errors.As(err, &business) || business.Code != 67008 {
 			t.Fatalf("id=%s err=%v", id, err)
@@ -459,7 +459,7 @@ func TestDramaCanvasPromptsRollbackAndReplay(t *testing.T) {
 				f.updateErr = repository.ErrRevisionConflict
 			}
 			prompts := []drama.AssetPrompt{{NodeID: "scene", Prompt: "夜色街道"}}
-			err := svc.ApplyPrompts(context.Background(), 1, 7, 10, prompts)
+			err := svc.ApplyPrompts(context.Background(), 1, 7, 10, prompts, "")
 			if failure != "none" {
 				if err == nil || f.canvas.Revision != 1 || string(f.canvas.PayloadJSON) != before || len(bc.messages) != 0 {
 					t.Fatalf("failed prompt transaction leaked: err=%v canvas=%+v", err, f.canvas)
@@ -469,7 +469,7 @@ func TestDramaCanvasPromptsRollbackAndReplay(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := svc.ApplyPrompts(context.Background(), 1, 7, 10, prompts); err != nil {
+			if err := svc.ApplyPrompts(context.Background(), 1, 7, 10, prompts, ""); err != nil {
 				t.Fatal(err)
 			}
 			if f.canvas.Revision != 2 || len(bc.messages) != 1 {
@@ -481,5 +481,23 @@ func TestDramaCanvasPromptsRollbackAndReplay(t *testing.T) {
 				t.Fatalf("checkpoint=%+v", checkpoint)
 			}
 		})
+	}
+}
+
+// 写提示词时把拆解所选的图片模型写进还没选模型的资产节点，用户已选的模型不覆盖
+func TestDramaCanvasPromptsSetDefaultImageModel(t *testing.T) {
+	f := newDramaCanvasFake()
+	f.canvas.PayloadJSON = datatypes.JSON(`{"nodes":[{"id":"scene","type":"canvas","position":{"x":0,"y":0},"data":{"kind":"image","drama":{"type":"scene","name":"街道","look":"","episodes":[]}}},{"id":"prop","type":"canvas","position":{"x":0,"y":0},"data":{"kind":"image","model":"mine","drama":{"type":"prop","name":"伞","look":"","episodes":[]}}}],"edges":[]}`)
+	svc := service.NewDramaCanvasService(f, &dramaCanvasBroadcast{})
+	prompts := []drama.AssetPrompt{{NodeID: "scene", Prompt: "雨夜街道"}, {NodeID: "prop", Prompt: "黑伞"}}
+	if err := svc.ApplyPrompts(context.Background(), 1, 7, 10, prompts, "img"); err != nil {
+		t.Fatal(err)
+	}
+	g := dramaGraph(t, f)
+	if got := g.Node("scene").Data()["model"]; got != "img" {
+		t.Fatalf("scene model=%v", got)
+	}
+	if got := g.Node("prop").Data()["model"]; got != "mine" {
+		t.Fatalf("用户已选的模型被覆盖：%v", got)
 	}
 }

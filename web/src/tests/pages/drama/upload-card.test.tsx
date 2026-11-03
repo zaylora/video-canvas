@@ -33,7 +33,7 @@ describe("短剧创作卡：上传和粘贴二选一", () => {
     expect(out).toContain("拖入剧本文件，或");
     expect(out).toContain("选择文件");
     expect(out).toContain("txt · md · docx");
-    expect(out).toContain("30 万字以内");
+    expect(out).not.toContain("万字");
   });
 
   test("创作卡是半透明胶囊面板", () => {

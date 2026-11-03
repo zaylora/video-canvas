@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"io"
 	"net/http"
 
@@ -15,7 +16,7 @@ import (
 	"video-canvas/pkg/pagination"
 )
 
-// maxDramaMultipartBytes 限制包含 docx 图片等附件的上传体；正文字符上限仍由服务解析后校验。
+// maxDramaMultipartBytes 限制包含 docx 图片等附件的上传体；正文不限字数，这是原文唯一的大小上限。
 const maxDramaMultipartBytes = 32 << 20
 
 // DramaHandler 提供短剧项目、分集剧本与持久流水线接口。
@@ -49,7 +50,13 @@ func (h *DramaHandler) List(c *gin.Context) {
 func (h *DramaHandler) Create(c *gin.Context) {
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxDramaMultipartBytes)
 	var req model.CreateDramaReq
-	if !bindWith(c, c.ShouldBindWith(&req, binding.FormMultipart)) {
+	if err := c.ShouldBindWith(&req, binding.FormMultipart); err != nil {
+		var mbe *http.MaxBytesError
+		if errors.As(err, &mbe) {
+			response.Fail(c, errcode.ErrDramaSourceTooLong)
+			return
+		}
+		bindWith(c, err)
 		return
 	}
 	if c.Request.MultipartForm != nil {

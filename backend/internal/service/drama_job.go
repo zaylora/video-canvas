@@ -22,6 +22,9 @@ func (s *DramaService) Estimate(ctx context.Context, userID, id uint64, req *mod
 	if err := checkStoryboardRequest(req); err != nil {
 		return 0, err
 	}
+	if err := s.checkTargetModels(ctx, req); err != nil {
+		return 0, err
+	}
 	if req.Step == "storyboard" {
 		return s.estimateStoryboard(ctx, userID, id, req)
 	}
@@ -52,7 +55,8 @@ func (s *DramaService) Estimate(ctx context.Context, userID, id uint64, req *mod
 	if err != nil {
 		return 0, err
 	}
-	return dramaQuote(p, req.Step, selected, snap), nil
+	p = withTargetModels(p, req)
+	return dramaQuote(p, req.Step, selected, snap, s.referenceChars(ctx, p, req.Step)), nil
 }
 
 // CreateJob 同项目任务串行提交，模型任务冻结积分，合成任务不访问模型或账户。
@@ -63,6 +67,9 @@ func (s *DramaService) CreateJob(ctx context.Context, userID, id uint64, req *mo
 // createDramaJob 统一普通提交和审批提交，审批ID与任务在同一事务登记。
 func (s *DramaService) createDramaJob(ctx context.Context, userID, id uint64, approvalID *uint64, req *model.DramaJobReq) (*model.DramaJobView, error) {
 	if err := checkStoryboardRequest(req); err != nil {
+		return nil, err
+	}
+	if err := s.checkTargetModels(ctx, req); err != nil {
 		return nil, err
 	}
 	// 1. 审批重试先恢复原任务，即使模型配置后来失效也不能创建第二个任务。
@@ -157,16 +164,24 @@ func (s *DramaService) prepareDramaJob(ctx context.Context, tx repository.DramaT
 			return nil, e
 		}
 	}
-	if req.Step != "breakdown" || p.Ratio != "" {
+	fields := targetModelFields(p, req)
+	if req.Step == "breakdown" && p.Ratio == "" {
+		if req.Ratio == "" {
+			return nil, errcode.ErrDramaStepNotReady.WithMsg("拆解前请选择画面比例")
+		}
+		fields["ratio"] = req.Ratio
+	}
+	if len(fields) == 0 {
 		return selected, nil
 	}
-	if req.Ratio == "" {
-		return nil, errcode.ErrDramaStepNotReady.WithMsg("拆解前请选择画面比例")
-	}
-	if e := tx.UpdateProject(ctx, p.UserID, p.ID, p.Revision, map[string]any{"ratio": req.Ratio}); e != nil {
+	if e := tx.UpdateProject(ctx, p.UserID, p.ID, p.Revision, fields); e != nil {
 		return nil, e
 	}
-	p.Ratio = req.Ratio
+	// 原地更新：调用方随后用同一个项目对象入队，revision 要跟上
+	*p = *withTargetModels(p, req)
+	if r, ok := fields["ratio"].(string); ok {
+		p.Ratio = r
+	}
 	p.Revision++
 	return selected, nil
 }
@@ -262,7 +277,7 @@ func (s *DramaService) enqueue(ctx context.Context, tx repository.DramaTx, p *mo
 	for _, ep := range eps {
 		scope = append(scope, ep.No)
 	}
-	j := &model.DramaJob{UserID: p.UserID, DramaID: p.ID, Step: req.Step, Episodes: scope, Status: "queued", FrozenCredits: dramaQuote(p, req.Step, eps, snap), ConfigSnapshot: raw, InputJSON: []byte(`{}`), Output: []byte(`{}`), ModelID: snap.ModelRevisionID}
+	j := &model.DramaJob{UserID: p.UserID, DramaID: p.ID, Step: req.Step, Episodes: scope, Status: "queued", FrozenCredits: dramaQuote(p, req.Step, eps, snap, s.referenceChars(ctx, p, req.Step)), ConfigSnapshot: raw, InputJSON: []byte(`{}`), Output: []byte(`{}`), ModelID: snap.ModelRevisionID}
 	j.ApprovalID = approvalID
 	if req.Step == "storyboard" {
 		if e := enqueueStoryboard(ctx, tx, j, req, eps); e != nil {
@@ -405,12 +420,12 @@ func checkDramaEpisodeStep(ep model.DramaEpisode, step string) error {
 }
 
 // dramaQuote 复用现有定价，脚本逐集计费、研读按上下文分块计费。
-func dramaQuote(p *model.DramaProject, step string, eps []model.DramaEpisode, snap *provider.Snapshot) int {
+func dramaQuote(p *model.DramaProject, step string, eps []model.DramaEpisode, snap *provider.Snapshot, refChars int) int {
 	if step == "outline" && len(dramaMarkedEpisodes(p.SourceText)) > 0 {
 		return 0
 	}
 	requests := 1
-	chars := utf8.RuneCountInString(p.SourceSummary) + utf8.RuneCountInString(p.OutlineMD) + 4096
+	chars := utf8.RuneCountInString(p.SourceSummary) + utf8.RuneCountInString(p.OutlineMD) + 4096 + refChars
 	switch step {
 	case "scripts":
 		requests = max(1, len(eps))
@@ -419,7 +434,7 @@ func dramaQuote(p *model.DramaProject, step string, eps []model.DramaEpisode, sn
 		if requests > 1 {
 			requests++
 		}
-		chars = min(utf8.RuneCountInString(p.SourceText)+2048, dramaContextLimit(snap))
+		chars = min(utf8.RuneCountInString(p.SourceText)+2048, dramaContextLimit(snap)) + refChars
 	case "breakdown", "storyboard":
 		for _, ep := range eps {
 			chars += utf8.RuneCountInString(ep.ScriptMD)

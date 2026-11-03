@@ -115,6 +115,7 @@ describe("api/drama：请求体", () => {
       targetEpisodes: 10,
       episodeSeconds: 90,
       textModel: "pro",
+      videoModel: "seedance",
     });
     expect(form.get("text")).toBe("正文");
     expect(form.get("file")).toBeNull();
@@ -124,6 +125,7 @@ describe("api/drama：请求体", () => {
     expect(form.get("target_episodes")).toBe("10");
     expect(form.get("episode_seconds")).toBe("90");
     expect(form.get("text_model")).toBe("pro");
+    expect(form.get("video_model")).toBe("seedance");
   });
 
   test("改短剧 / 改集：只带传了的字段", () => {
@@ -139,6 +141,24 @@ describe("api/drama：请求体", () => {
     expect(toUpdateEpisodeBody({ revision: 2, scriptMd: "正文" })).toEqual({
       revision: 2,
       script_md: "正文",
+    });
+  });
+
+  test("详情带上拆解时选的图片 / 视频模型，老数据缺字段兜底为空串", () => {
+    expect(mapDrama(rawDrama({ image_model: "img", video_model: "vid" }))).toMatchObject({
+      imageModel: "img",
+      videoModel: "vid",
+    });
+    expect(mapDrama(rawDrama())).toMatchObject({ imageModel: "", videoModel: "" });
+  });
+
+  test("任务请求体：带上所选模型，空串不发", () => {
+    expect(
+      toJobBody({ step: "breakdown", episodes: [1], imageModel: "img", videoModel: "vid" }),
+    ).toEqual({ step: "breakdown", episodes: [1], image_model: "img", video_model: "vid" });
+    expect(toJobBody({ step: "storyboard", episodes: [1], videoModel: "" })).toEqual({
+      step: "storyboard",
+      episodes: [1],
     });
   });
 
