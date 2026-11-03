@@ -49,6 +49,10 @@ const DECIDE: FieldSpec[] = [
     item: [{ key: "index", label: "序号", kind: "int", min: 0 }, { key: "approve", label: "approve", kind: "bool" }, { key: "count", label: "数量", kind: "int", min: 0, max: 4 }],
   },
   { key: "answer", label: "回答", kind: "string", max: 2000 },
+  {
+    key: "answers", label: "回答列表", kind: "items", max: 5,
+    item: [{ key: "id", label: "题目标识", kind: "string", required: true, max: 64 }, { key: "value", label: "回答", kind: "any" }],
+  },
   { key: "add_budget", label: "追加预算", kind: "int", ...BUDGET },
 ];
 

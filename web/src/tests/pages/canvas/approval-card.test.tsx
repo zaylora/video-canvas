@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import type { AgentApprovalDto, AgentAskPayload } from "@/api/agent/type";
 import type { AgentController } from "@/hooks/use-agent-controller";
-import { DecisionDock } from "@/pages/canvas/agent/decision-dock";
+import { ApprovalCard } from "@/pages/canvas/agent/approval-card";
 
 const LONG =
   "合并组：立绘＋设定板合成一个组（立绘在上、设定板在下，框住所有节点，把竖图和横图都放进同一个组，之后再统一整理）";
@@ -25,7 +25,7 @@ const ask = (options: string[]): AgentApprovalDto => ({
 
 const render = (options: string[]) =>
   renderToStaticMarkup(
-    <DecisionDock
+    <ApprovalCard
       approval={ask(options)}
       ctl={{ decide: async () => {} } as unknown as AgentController}
     />,
@@ -37,7 +37,7 @@ const optionClasses = (html: string) =>
     (m) => /class="([^"]*)"/.exec(m[0])?.[1] ?? "",
   );
 
-describe("决定框：Agent 提问的选项", () => {
+describe("审批卡：Agent 提问的选项", () => {
   test("长选项完整显示，按钮不再写死 h-9", () => {
     const html = render([LONG, "算了"]);
     expect(html).toContain(LONG);

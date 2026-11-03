@@ -12,6 +12,8 @@ import {
   resolveSelection,
 } from "@/utils/admin/assistant/change-order";
 
+import { MoreButton, useFold } from "./fold-list";
+
 /** 待审核时条目自己的状态：点的颜色 + 文字 */
 const ITEM_STATUS: Record<AdminChangeItem["status"], { dot: string; label: string }> = {
   ok: { dot: "bg-status-success", label: "可应用" },
@@ -229,8 +231,8 @@ function Basis({ item }: { item: AdminChangeItem }) {
 }
 
 /**
- * 变更单审批的明细（决定框里）：单号和条数；每一项有勾选框、名称、key、状态，下面是「当前 → 变更后」、
- * 校验问题、警告和可展开的计算依据。有问题的条目、角色不够的条目照样展示（让人看到助手哪里没做对），但不能勾选。
+ * 变更单审批的明细（消息流里的审批卡）：单号和条数；每一项有勾选框、名称、key、状态，下面是「当前 → 变更后」、
+ * 校验问题、警告和可展开的计算依据。超过 3 项时只露前 3 项，其余收进「还有 N 项」，折叠不影响勾选。有问题的条目、角色不够的条目照样展示（让人看到助手哪里没做对），但不能勾选。
  * @param payload 变更单内容
  * @param role 当前管理员角色，决定哪些条目能勾选
  * @param picked 勾选的条目下标
@@ -252,6 +254,7 @@ export function AdminChangeDetail({
 }) {
   const liveCount = payload.items.filter((i) => i.live).length;
   const selection = resolveSelection(payload.items, role, picked);
+  const fold = useFold(payload.items.length);
   return (
     <div className="flex flex-col gap-1.5">
       <p className="text-muted-foreground text-[11.5px]">
@@ -259,8 +262,8 @@ export function AdminChangeDetail({
         {payload.items.length} 项{liveCount > 0 && ` · ${liveCount} 项应用即生效`}
         {payload.revert_of && ` · 回滚 ${payload.revert_of}`}
       </p>
-      <ul className="flex max-h-[min(280px,38vh)] flex-col gap-2.5 overflow-y-auto pr-1">
-        {payload.items.map((item, index) => {
+      <ul className="flex flex-col gap-2.5">
+        {payload.items.slice(0, fold.visible).map((item, index) => {
           const allowed = isPickable(item, role);
           const pickable = allowed && (item.depends_on ?? []).every((i) => selection.has(i));
           const roleShort = item.status === "ok" && !allowed;
@@ -319,6 +322,7 @@ export function AdminChangeDetail({
           );
         })}
       </ul>
+      <MoreButton count={fold.hidden} onClick={fold.expand} />
     </div>
   );
 }

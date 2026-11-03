@@ -33,7 +33,7 @@ func TestRunContextAdminCanvas(t *testing.T) {
 		t.Fatal("admin 模式未注册")
 	}
 	for _, name := range AgentToolsForMode("admin") {
-		if name != "web_search" && name != "web_fetch" && name != "plan_update" && len(name) > 0 && name[:6] != "admin_" {
+		if name != "web_search" && name != "web_fetch" && name != "plan_update" && name != "show_card" && len(name) > 0 && name[:6] != "admin_" {
 			t.Fatalf("泄漏工具 %s", name)
 		}
 	}

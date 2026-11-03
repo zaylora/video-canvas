@@ -8,7 +8,7 @@ import (
 )
 
 func TestSystem_DramaAppendsRulesOnlyForDrama(t *testing.T) {
-	if prompts.Version != 22 {
+	if prompts.Version != 24 {
 		t.Fatalf("短剧提示词版本=%d", prompts.Version)
 	}
 	base := strings.TrimRight(prompts.System("all"), "\n")

@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"slices"
 	"strconv"
-	"strings"
-	"unicode/utf8"
 
 	"go.uber.org/zap"
 
@@ -360,44 +358,6 @@ func (b *AgentBridge) toolDelete(ctx context.Context, tc *toolCall) (*toolOut, e
 	}
 	return &toolOut{content: "已提交给用户确认，等待决定。用户决定后你会收到结果。", terminate: true,
 		summary: fmt.Sprintf("申请删除 %d 个节点", len(a.NodeIDs))}, nil
-}
-
-// toolAsk 向用户提问：选项题或选模型题，创建提问并让本轮停下等回答。
-func (b *AgentBridge) toolAsk(ctx context.Context, tc *toolCall) (*toolOut, error) {
-	var a struct {
-		Question    string   `json:"question"`
-		Kind        string   `json:"kind"`
-		Options     []string `json:"options"`
-		ModelKind   string   `json:"modelKind"`
-		AllowCustom bool     `json:"allowCustom"`
-	}
-	if err := json.Unmarshal(tc.args, &a); err != nil {
-		return nil, fail("参数格式不对：%v", err)
-	}
-	q := strings.TrimSpace(a.Question)
-	if q == "" || utf8.RuneCountInString(q) > maxQuestionLen {
-		return nil, fail("问题不能为空，且不超过 %d 个字", maxQuestionLen)
-	}
-	p := AskPayload{Question: q, Kind: a.Kind, AllowCustom: a.AllowCustom}
-	switch a.Kind {
-	case "choice":
-		if len(a.Options) < 2 || len(a.Options) > 4 {
-			return nil, fail("选项题需要 2 到 4 个选项")
-		}
-		p.Options = a.Options
-	case "model":
-		models, err := b.askModels(ctx, a.ModelKind)
-		if err != nil {
-			return nil, err
-		}
-		p.ModelKind, p.Models = a.ModelKind, models
-	default:
-		return nil, fail("kind 只能是 choice 或 model")
-	}
-	if err := b.requestApproval(ctx, tc, model.ApprovalAsk, p, 0); err != nil {
-		return nil, err
-	}
-	return &toolOut{content: "已向用户提问，等待回答。用户回答后你会收到结果。", terminate: true, summary: "向用户提问：" + truncateRunes(q, 40)}, nil
 }
 
 // askModels 列出某类已发布的生成模型，给「选模型」提问用。

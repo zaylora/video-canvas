@@ -215,3 +215,34 @@ func TestSystem_NoRemovedBuiltInSkills(t *testing.T) {
 		}
 	}
 }
+
+// 需要用户补信息时必须走 ask_user，不能在正文里反问；要问的一次问完，放进同一张卡。画布和后台两份提示词都要写。
+func TestPrompts_AskUserRule(t *testing.T) {
+	for name, got := range map[string]string{"画布": prompts.System("all"), "后台": prompts.Admin([]byte(`{}`))} {
+		for _, must := range []string{"必须调用 ask_user", "禁止在正文里反问", "一次问完", "同一张卡"} {
+			if !strings.Contains(got, must) {
+				t.Errorf("%s提示词应包含 %q", name, must)
+			}
+		}
+		if n := strings.Count(got, "禁止在正文里反问"); n != 1 {
+			t.Errorf("%s提示词里这条规则应只出现一次，实际 %d 次", name, n)
+		}
+	}
+}
+
+// 有结构的结论用 show_card，正文只留过渡；引用对象带 ref；一轮最多 3 张。画布和后台两份提示词都要写，后台再点明插件/渠道/模型关系用 summary 卡。
+func TestPrompts_ShowCardRule(t *testing.T) {
+	for name, got := range map[string]string{"画布": prompts.System("all"), "后台": prompts.Admin([]byte(`{}`))} {
+		for _, must := range []string{"show_card", "不重复卡片里的内容", "带 ref", "不要在正文里写路径", "最多 3 张"} {
+			if !strings.Contains(got, must) {
+				t.Errorf("%s提示词应包含 %q", name, must)
+			}
+		}
+		if n := strings.Count(got, "最多 3 张"); n != 1 {
+			t.Errorf("%s提示词里展示卡规则应只出现一次，实际 %d 次", name, n)
+		}
+	}
+	if !strings.Contains(prompts.Admin([]byte(`{}`)), "插件、渠道、模型的关系与状态用 summary 卡") {
+		t.Error("后台提示词应点明插件、渠道、模型的关系与状态用 summary 卡表达")
+	}
+}

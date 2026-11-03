@@ -19,6 +19,7 @@ const DECLS: ToolDecl[] = [
   decl("canvas_get_state", "读取", { type: "object", properties: { nodeIds: { type: "array", items: { type: "string" } } } }),
   decl("canvas_apply_ops"), decl("canvas_capture_frame"), decl("canvas_inspect_image"), decl("canvas_inspect_video"), decl("web_search"),
   decl("plan_update", "计划", { type: "object", properties: { steps: { type: "array", items: { type: "object" } } } }),
+  decl("show_card", "展示", { type: "object", properties: { kind: { type: "string" }, title: { type: "string" } } }),
   decl("generate_media"), decl("canvas_delete", "删除", { type: "object", properties: { nodeIds: { type: "array", items: { type: "string" } } } }), decl("ask_user"),
 ];
 
@@ -28,6 +29,8 @@ function fakeHost(over: Partial<{ blockWith: { content: string; terminate: boole
   const begun: ToolCallInfo[] = [];
   const ended: Array<{ call: ToolCallInfo; event: ToolEndEvent }> = [];
   const plans: Array<Array<{ title: string; status: string }>> = [];
+  const cards: Array<{ id: string; card: unknown }> = [];
+  let cardCount = 0;
   const approvals: Array<{ kind: ApprovalKind; toolCallId: string; payload: unknown; quoteCredits: number; summary: string }> = [];
   let paused = false;
   const host: ToolHost = {
@@ -36,9 +39,11 @@ function fakeHost(over: Partial<{ blockWith: { content: string; terminate: boole
     begin: async (_r, call) => { log.push("begin:" + call.name); begun.push(call); return over.blockWith; },
     end: async (_r, call, event) => { log.push("end:" + call.name); ended.push({ call, event }); },
     plan: async (_r, steps) => { log.push("plan"); plans.push(steps); },
+    takeCard: () => cardCount++ < 3,
+    card: async (_r, id, card) => { log.push("card"); cards.push({ id, card }); },
     approval: async (_r, a) => { log.push("approval:" + a.kind); approvals.push(a); paused = true; },
   };
-  return { host, log, begun, ended, plans, approvals };
+  return { host, log, begun, ended, plans, cards, approvals };
 }
 
 async function withEnv(steps: Parameters<typeof fauxModels>[0], hostOver: Parameters<typeof fakeHost>[0], fn: (e: Env) => Promise<void>) {
@@ -128,7 +133,7 @@ test("重放策略：读工具和 Go 已经幂等的写工具可重放；会写�
   }
   for (const n of ["canvas_capture_frame", "something_new"]) assert.equal(replayOf(n), "unsafe", n);
   // 审批类和计划：宿主按调用 id 幂等，可重放
-  for (const n of ["plan_update", "generate_media", "canvas_delete", "ask_user"]) assert.equal(replayOf(n), "safe", n);
+  for (const n of ["plan_update", "show_card", "generate_media", "canvas_delete", "ask_user"]) assert.equal(replayOf(n), "safe", n);
 });
 
 test("步数上限：宿主拒绝开始时不调平台，模型收到宿主给的文字，本轮停下", () =>
@@ -179,6 +184,51 @@ test("plan_update 的错误：步数过多、标题为空或过长、状态不�
     });
   }
 });
+
+const CARD = { kind: "summary", title: " 有可复用的插件 ", tone: "ok", rows: [{ label: "插件", value: "New API 视频", badge: "已启用", ref: { type: "plugin", key: "new-api-video" } }] };
+
+test("show_card：本地校验，通过后交给宿主发 card.shown（id 是工具调用 id，内容是归一化后的卡片）；不调平台", () =>
+  withEnv([callTools({ id: "c1", name: "show_card", args: CARD }), fauxAssistantMessage("好")], {}, async (e) => {
+    await e.ask();
+    assert.equal(e.h.cards.length, 1);
+    assert.equal(e.h.cards[0].id, e.h.begun[0].id, "card.shown 的 id 和 tool.start 的 id 一致");
+    assert.deepEqual(e.h.cards[0].card, { kind: "summary", title: "有可复用的插件", tone: "ok", rows: [{ label: "插件", value: "New API 视频", badge: "已启用", ref: { type: "plugin", key: "new-api-video" } }] });
+    assert.equal(e.f.seen.length, 0);
+    assert.equal(e.h.ended[0].event.is_error, false);
+    assert.equal(e.h.ended[0].event.summary, "展示卡片：有可复用的插件");
+    assert.equal(e.h.ended[0].event.label, "标签-show_card");
+    assert.match(textOf(e.m.seen[1].find((m) => m.role === "toolResult")!), /卡片已展示/);
+  }));
+
+test("show_card 的错误：非法参数返回 IsError 和中文原因，不发事件", async () => {
+  const bad: Array<[Record<string, unknown>, RegExp]> = [
+    [{ ...CARD, kind: "chart" }, /kind 只能是 summary 或 table/],
+    [{ ...CARD, title: "字".repeat(41) }, /title 不能为空，且不超过 40 个字/],
+    [{ ...CARD, rows: [{ label: "a", value: "b", ref: { type: "user", key: "1" } }] }, /rows\[0\]\.ref\.type 只能是 model/],
+    [{ ...CARD, sources: [{ title: "t", url: "javascript:alert(1)" }] }, /sources\[0\]\.url 必须是 http 或 https/],
+    [{ kind: "table", title: "t", columns: ["a", "b"], rows: [{ cells: ["x"] }] }, /rows\[0\]\.cells.*等于列数 2/],
+  ];
+  for (const [args, want] of bad) {
+    await withEnv([callTools({ id: "c1", name: "show_card", args }), fauxAssistantMessage("好")], {}, async (e) => {
+      await e.ask();
+      const r = e.m.seen[1].find((m) => m.role === "toolResult")! as { isError?: boolean };
+      assert.equal(r.isError, true);
+      assert.match(textOf(r as never), want);
+      assert.equal(e.h.cards.length, 0, "不合法的卡片不能发事件");
+      assert.equal(e.h.ended[0].event.is_error, true);
+    });
+  }
+});
+
+test("show_card：一轮最多 3 张，第 4 张返回错误且不发事件", () =>
+  withEnv([callTools(...[1, 2, 3, 4].map((i) => ({ id: "c" + i, name: "show_card", args: { ...CARD, title: "卡" + i } }))), fauxAssistantMessage("好")], {}, async (e) => {
+    await e.ask();
+    assert.deepEqual(e.h.cards.map((c) => (c.card as { title: string }).title), ["卡1", "卡2", "卡3"]);
+    const results = e.m.seen[1].filter((m) => m.role === "toolResult") as Array<{ isError?: boolean }>;
+    assert.equal(results.length, 4);
+    assert.equal(results[3].isError, true);
+    assert.match(textOf(results[3] as never), /最多展示 3 张/);
+  }));
 
 test("审批类工具：先向平台预估，通过后交给宿主创建审批（审批内容、预估积分、调用 id），本轮停下", () =>
   withEnv([callTools({ id: "call_g", name: "generate_media", args: { items: [{ nodeId: "n1" }], reason: "出图" } }), fauxAssistantMessage("不该到这里")], {}, async (e) => {

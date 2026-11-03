@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
 import { motion } from "motion/react";
 import {
-  ChevronRight,
   ClipboardList,
   FilePen,
   MessageCircleQuestion,
@@ -36,13 +35,16 @@ import {
   roleSatisfies,
   toggleSelection,
 } from "@/utils/admin/assistant/change-order";
+import { askQuestions, isQuickAsk, readableAnswer } from "@/utils/agent/ask";
 import { editChanges, editPayload, type EditPayload } from "@/utils/agent/drama";
 
 import { AdminChangeDetail } from "./admin-change-detail";
 import { AdminSecretDetail, AdminTestRunDetail } from "./admin-approval-detail";
-import { approvalTitle, deletePayload } from "./approval-row";
+import { AskForm } from "./ask-form";
+import { approvalTitle, deletePayload } from "./approval-title";
+import { MoreButton, useFold } from "./fold-list";
 
-/** 决定框里的一个编号选项 */
+/** 审批卡里的一个编号选项 */
 type Option = {
   key: string;
   label: string;
@@ -145,17 +147,24 @@ function EditDiff({ edit }: { edit: EditPayload }) {
 }
 
 /**
- * 决定框：等你批准生成 / 删除、或回答提问时，替换输入框钉在原位，不会被滚到看不见的地方。
- * 编号选项：数字键直接选，↑↓ 移动、Enter 确认；「…并告诉 Agent 怎么改」原地变输入框，Esc 退回。
- * 明细默认 ≤3 项展开、更多收起；可以逐项取消勾选。余额不足时批准项禁用并写明原因。
+ * 审批卡：消息流里等你批准生成 / 删除、回答提问、确认变更单时的交互卡片，决定后原地变回一行记录或结果卡。
+ * 编号选项：焦点在卡片里时数字键直接选，↑↓ 移动、Enter 确认；「…并告诉 Agent 怎么改」原地变输入框，Esc 退回。
+ * 明细超过 3 项时只露前 3 项，其余收进「还有 N 项」；可以逐项取消勾选，折叠不影响批准范围。余额不足时批准项禁用并写明原因。
  */
-export function DecisionDock({
+export function ApprovalCard({
   approval,
   ctl,
 }: {
   approval: AgentApprovalDto;
   ctl: AgentController;
 }) {
+  // 提问里要填写、多选或一次答几题的，用表单；单题点选即提交的沿用下面的快速选项
+  if (approval.kind === "ask" && !isQuickAsk(askQuestions(approval.payload as AgentAskPayload)))
+    return <AskForm key={approval.id} approval={approval} ctl={ctl} />;
+  return <DecisionCard approval={approval} ctl={ctl} />;
+}
+
+function DecisionCard({ approval, ctl }: { approval: AgentApprovalDto; ctl: AgentController }) {
   const credits = useCreditsStore((s) => s.credits);
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -178,8 +187,9 @@ export function DecisionDock({
   const items = gen?.items.length ?? del?.node_ids.length ?? 0;
   /** 每一项勾没勾 */
   const [picks, setPicks] = useState(() => Array.from({ length: items }, () => true));
-  const [detail, setDetail] = useState(items <= 3);
+  const fold = useFold(items);
   const chosen = picks.filter(Boolean).length;
+  const isDelete = del !== null;
 
   const options: Option[] = [];
   if (gen) {
@@ -280,24 +290,28 @@ export function DecisionDock({
         decide: (answer) => ({ decision: "reject", answer }),
       },
     );
-  } else if (ask?.kind === "model") {
-    for (const m of ask.models ?? [])
-      options.push({
-        key: m.key,
-        label: m.name,
-        sub: m.hint,
-        decide: () => ({ decision: "approve", answer: `${m.name}（模型 key：${m.key}）` }),
-      });
   } else if (ask) {
-    for (const o of ask.options ?? [])
-      options.push({ key: o, label: o, decide: () => ({ decision: "approve", answer: o }) });
-    if (ask.allow_custom || (ask.options ?? []).length === 0)
-      options.push({
-        key: "explain",
-        label: "其他…",
-        input: "自己写",
-        decide: (answer) => ({ decision: "approve", answer }),
-      });
+    // 单题点选即提交：新提问同时带 answers（按题目 id），历史里的旧提问只带 answer
+    const q = askQuestions(ask)[0];
+    const reply = (value: string): DecideAgentApprovalReq => ({
+      decision: "approve",
+      answer: readableAnswer(q, value),
+      ...(ask.questions?.length && { answers: [{ id: q.id, value }] }),
+    });
+    if (q.kind === "model") {
+      for (const m of q.models ?? [])
+        options.push({ key: m.key, label: m.name, sub: m.hint, decide: () => reply(m.key) });
+    } else {
+      for (const o of q.options ?? [])
+        options.push({ key: o.label, label: o.label, decide: () => reply(o.label) });
+      if (q.allow_custom || (q.options ?? []).length === 0)
+        options.push({
+          key: "explain",
+          label: "其他…",
+          input: "自己写",
+          decide: (answer) => reply(answer ?? ""),
+        });
+    }
   }
 
   const firstEnabled = Math.max(
@@ -309,10 +323,17 @@ export function DecisionDock({
   const buttons = useRef<(HTMLButtonElement | null)[]>([]);
   const input = useRef<HTMLInputElement>(null);
 
-  // 钉上来时把焦点放到第一个能选的选项：键盘马上就能操作
+  // 卡片出现时：只有没有别处焦点（比如用户不在输入框里打字）才把焦点放到第一个能选的选项
   useEffect(() => {
+    const focused = document.activeElement;
+    if (focused && focused !== document.body) return;
     buttons.current.find((b) => b && !b.disabled)?.focus({ preventScroll: true });
   }, [approval.id]);
+  // 卡片消失（决定后变成记录行）时撤掉画布上的删除高亮：此时鼠标不会再触发 mouseleave
+  useEffect(() => {
+    if (!isDelete) return;
+    return () => useAgentHighlight.getState().setDanger([]);
+  }, [isDelete]);
   // 「…并告诉 Agent 怎么改」变成输入框后，焦点跟过去
   useEffect(() => {
     if (editing) input.current?.focus();
@@ -368,7 +389,6 @@ export function DecisionDock({
     secret?.reason ||
     trial?.reason ||
     "";
-  const isAdmin = kind.startsWith("admin_");
 
   return (
     <div
@@ -376,26 +396,13 @@ export function DecisionDock({
       aria-label={approvalTitle(approval)}
       onKeyDown={onKeyDown}
       style={{ "--tone": TONE[kind] } as CSSProperties}
-      className={cn(
-        "relative flex flex-col gap-2 p-3",
-        !isAdmin &&
-          "bg-[linear-gradient(180deg,color-mix(in_oklab,var(--tone)_10%,transparent),transparent_72px)]",
-      )}
+      className="bg-chrome-hover ring-chrome-border relative flex flex-col gap-2 rounded-2xl p-3 ring-1"
       onMouseEnter={() => del && useAgentHighlight.getState().setDanger(del.node_ids)}
       onMouseLeave={() => del && useAgentHighlight.getState().setDanger([])}
     >
-      <span
-        aria-hidden
-        className={cn(
-          "absolute inset-x-4 top-0 h-px",
-          isAdmin
-            ? "bg-chrome-border"
-            : "bg-[linear-gradient(90deg,transparent,color-mix(in_oklab,var(--tone)_70%,transparent),transparent)]",
-        )}
-      />
       <div className="flex items-center gap-2 text-[13.5px] font-semibold">
         <Icon className="size-4 shrink-0 text-(--tone)" />
-        <span className="min-w-0 flex-1">{approvalTitle(approval)}</span>
+        <span className="min-w-0 flex-1 wrap-anywhere">{approvalTitle(approval)}</span>
         {(gen || edit) && options[0]?.meta && (
           <span className="text-credit shrink-0 font-medium tabular-nums">{options[0].meta}</span>
         )}
@@ -423,56 +430,44 @@ export function DecisionDock({
       )}
 
       {items > 0 && (
-        <>
-          <button
-            type="button"
-            aria-expanded={detail}
-            onClick={() => setDetail((v) => !v)}
-            className="text-muted-foreground hover:text-foreground focus-visible:ring-node-ring/60 flex items-center gap-1 self-start rounded-md text-xs outline-none focus-visible:ring-2"
-          >
-            <ChevronRight
-              className={cn("size-3.5 transition-transform duration-120", detail && "rotate-90")}
-            />
-            明细 {items} 项
-            {del && del.outputs.some(Boolean) && (
-              <span className="text-destructive">
-                · 含 {del.outputs.filter(Boolean).length} 个产物
-              </span>
-            )}
-          </button>
-          {detail && (
-            <ul className="flex max-h-32 flex-col gap-0.5 overflow-y-auto">
-              {Array.from({ length: items }, (_, i) => {
-                const label = gen ? gen.items[i].label : (del?.labels[i] ?? del?.node_ids[i]);
-                return (
-                  <li key={i} className="flex items-center gap-2 py-0.5 text-xs">
-                    <Checkbox
-                      checked={picks[i]}
-                      disabled={busy}
-                      onCheckedChange={(on) =>
-                        setPicks((prev) => prev.map((v, j) => (j === i ? on === true : v)))
-                      }
-                      aria-label={`${gen ? "生成" : "删除"}「${label}」`}
-                    />
-                    <span className="min-w-0 flex-1 truncate">{label}</span>
-                    {gen && (
-                      <>
-                        <span className="text-muted-foreground shrink-0">
-                          {gen.items[i].model_name}
-                          {gen.items[i].count > 1 && ` × ${gen.items[i].count}`}
-                        </span>
-                        <span className="text-credit shrink-0 tabular-nums">
-                          ✦ {gen.items[i].price * gen.items[i].count}
-                        </span>
-                      </>
-                    )}
-                    {del?.outputs[i] && <span className="text-destructive shrink-0">含产物</span>}
-                  </li>
-                );
-              })}
-            </ul>
+        <div className="flex flex-col gap-0.5">
+          {del && del.outputs.some(Boolean) && (
+            <p className="text-destructive text-xs">
+              含 {del.outputs.filter(Boolean).length} 个产物
+            </p>
           )}
-        </>
+          <ul className="flex flex-col gap-0.5">
+            {Array.from({ length: fold.visible }, (_, i) => {
+              const label = gen ? gen.items[i].label : (del?.labels[i] ?? del?.node_ids[i]);
+              return (
+                <li key={i} className="flex items-center gap-2 py-0.5 text-xs">
+                  <Checkbox
+                    checked={picks[i]}
+                    disabled={busy}
+                    onCheckedChange={(on) =>
+                      setPicks((prev) => prev.map((v, j) => (j === i ? on === true : v)))
+                    }
+                    aria-label={`${gen ? "生成" : "删除"}「${label}」`}
+                  />
+                  <span className="min-w-0 flex-1 truncate">{label}</span>
+                  {gen && (
+                    <>
+                      <span className="text-muted-foreground shrink-0">
+                        {gen.items[i].model_name}
+                        {gen.items[i].count > 1 && ` × ${gen.items[i].count}`}
+                      </span>
+                      <span className="text-credit shrink-0 tabular-nums">
+                        ✦ {gen.items[i].price * gen.items[i].count}
+                      </span>
+                    </>
+                  )}
+                  {del?.outputs[i] && <span className="text-destructive shrink-0">含产物</span>}
+                </li>
+              );
+            })}
+          </ul>
+          <MoreButton count={fold.hidden} onClick={fold.expand} />
+        </div>
       )}
 
       {!secret && (
@@ -528,10 +523,10 @@ export function DecisionDock({
                 >
                   {selected && (
                     <motion.span
-                      layoutId={`decision-hl-${approval.id}`}
+                      layoutId={`approval-hl-${approval.id}`}
                       transition={SPRING}
                       aria-hidden
-                      className="agent-inset bg-foreground/7 absolute inset-0 rounded-lg"
+                      className="bg-foreground/7 absolute inset-0 rounded-lg"
                     />
                   )}
                   <Num n={i + 1} className="relative mt-px" />
@@ -557,21 +552,6 @@ export function DecisionDock({
           })}
         </div>
       )}
-
-      <div className="text-muted-foreground flex items-center gap-2 pt-0.5 text-[11px]">
-        {!isAdmin && (
-          <span>
-            1–{options.length} 选择 · ↑↓ 移动 · Enter 确认{editing && " · Esc 返回"}
-          </span>
-        )}
-        <button
-          type="button"
-          onClick={() => void ctl.stop()}
-          className="hover:bg-chrome-hover hover:text-foreground focus-visible:ring-node-ring/60 ml-auto h-6 rounded-md px-2 outline-none transition-colors duration-120 focus-visible:ring-2"
-        >
-          停止本轮
-        </button>
-      </div>
     </div>
   );
 }

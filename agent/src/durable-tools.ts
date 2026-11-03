@@ -5,7 +5,7 @@
  *   - 普通工具 → POST /tools/:name，幂等键是 Pi 的工具任务 id（每次调用唯一，同一次调用重放时不变），
  *     所以崩溃后重放写画布不会写两遍，也不会因为模型给的 tool_call_id 重复而悄悄丢掉真实的写入；
  *   - 审批工具（生成、删除、提问、短剧写入）→ 先 propose 预估，通过后交给宿主创建审批，本轮停下；
- *   - plan_update 在这里本地校验（它只产生一个事件，没有平台副作用）。
+ *   - plan_update、show_card 在这里本地校验（它们只产生一个事件，没有平台副作用）。
  *
  * 运行状态（步数、事件、审批、暂停）归运行引擎，工具层只通过 ToolHost 和它交互，所以可以单独测试。
  */
@@ -13,6 +13,7 @@ import type { Context, JsonValue } from "@earendil-works/chord";
 import { defineExtension, type Extension, type ToolExecutionApi, type ToolRegistration } from "@earendil-works/pi-durable";
 import { wrapScalarArrays } from "./tools.ts";
 import { PlatformError, platformToolCallId, type ApprovalKind, type Platform, type PlatformToolResult, type RunContext, type ToolDecl, type ToolEndEvent } from "./platform-client.ts";
+import { CARD_LIMITS, validateCard, type Card } from "./card.ts";
 import type { WebTools } from "./web-access.ts";
 import { callWebTool, WEB_TOOL_NAMES } from "./web-tools.ts";
 
@@ -46,6 +47,10 @@ export interface ToolHost {
   end(run: ToolRun, call: ToolCallInfo, event: ToolEndEvent): Promise<void>;
   /** 计划更新：发 plan.updated */
   plan(run: ToolRun, steps: PlanStep[]): Promise<void>;
+  /** 展示卡片占一个名额：本轮已展示的卡片数没到上限返回 true 并计数；不提供则不限 */
+  takeCard?(run: ToolRun): boolean;
+  /** 展示卡片：发 card.shown（id 是工具调用 id，前端靠它把卡片和活动组里的这次调用对上） */
+  card(run: ToolRun, id: string, card: Card): Promise<void>;
   /** 创建审批并让运行进入等待状态。必须按 toolCallId 幂等：崩溃后重放同一个调用不能出现两个审批 */
   approval(run: ToolRun, a: { kind: ApprovalKind; toolCallId: string; payload: unknown; quoteCredits: number; summary: string }): Promise<void>;
 }
@@ -75,7 +80,7 @@ const SAFE = new Set([
   "admin_list_plugins", "admin_get_plugin", "admin_plugin_check", "admin_request_secret", "admin_test_run",
   "admin_list_models", "admin_get_model", "admin_list_channels", "admin_get_pricing_settings", "admin_get_recent_errors", "admin_quote_preview", "admin_propose_changes",
   "canvas_get_state", "model_list", "task_get", "skill_search", "skill_read", "canvas_inspect_image", "canvas_inspect_video", "web_search", "web_fetch",
-  "canvas_apply_ops", "canvas_arrange", "plan_update", "generate_media", "canvas_delete", "ask_user",
+  "canvas_apply_ops", "canvas_arrange", "plan_update", "show_card", "generate_media", "canvas_delete", "ask_user",
   "drama_read", "drama_update_outline", "drama_update_episode", "drama_update_segment", "drama_run_job",
 ]);
 export const replayOf = (name: string): "safe" | "unsafe" => (SAFE.has(name) ? "safe" : "unsafe");
@@ -152,6 +157,7 @@ export function createToolsExtension({ platform, decls, host, name = "canvas-too
       return { result: text(p.content, false, p.terminate), end: endEvent(call, false, p.summary ?? "") };
     }
     if (d.name === "plan_update") return plan(call, run, args);
+    if (d.name === "show_card") return showCard(call, run, args);
     const r = await platform.tool(run.rc, d.name, args, { toolCallId: call.id, idemKey: String(api.taskId), signal: context.abortSignal });
     return { result: toResult(r), end: r.tool_end ?? endEvent(call, r.is_error, r.is_error ? clip(r.content, MAX_SUMMARY) : "") };
   }
@@ -170,6 +176,16 @@ export function createToolsExtension({ platform, decls, host, name = "canvas-too
     }
     await host.plan(run, steps);
     return { result: text("计划已更新。"), end: endEvent(call, false, `更新计划（${steps.length} 步）`) };
+  }
+
+  /** 展示卡片：本地校验，通过后交给宿主发 card.shown；校验不过或超过一轮的上限返回错误，让模型自己改 */
+  async function showCard(call: Pick<ToolCallInfo, "id" | "name" | "label" | "verb">, run: ToolRun, args: unknown): Promise<{ result: Result; end: ToolEndEvent }> {
+    const fail = (msg: string) => ({ result: text(msg, true), end: endEvent(call, true, clip(msg, MAX_SUMMARY)) });
+    const v = validateCard(args);
+    if (!v.ok) return fail(`卡片参数不合法：${v.error}。请按要求修改后重新调用 show_card。`);
+    if (host.takeCard?.(run) === false) return fail(`本轮最多展示 ${CARD_LIMITS.perRun} 张卡片，已经用完；把剩下的内容用一两句话写进正文。`);
+    await host.card(run, call.id, v.card);
+    return { result: text("卡片已展示给用户，正文不要重复卡片里的内容。"), end: endEvent(call, false, `展示卡片：${v.card.title}`) };
   }
 
   return defineExtension({ name, tools });

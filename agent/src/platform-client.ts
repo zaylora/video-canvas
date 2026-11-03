@@ -140,6 +140,8 @@ export interface ApprovalDecision {
   decision: "approve" | "reject";
   items?: Array<{ index: number; approve: boolean; count?: number; value?: string }>;
   answer?: string;
+  /** 提问逐题的回答；value 是字符串，多选题是字符串数组，选填题不答可省略 */
+  answers?: Array<{ id: string; value?: string | string[] }>;
   add_budget?: number;
 }
 

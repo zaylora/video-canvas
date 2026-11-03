@@ -41,7 +41,7 @@
   },
   "提问：不回答": {
     "code": 0,
-    "decision": "{\"decision\":\"reject\"}",
+    "decision": "{\"decision\":\"reject\",\"question_count\":1}",
     "gen": null,
     "node_ids": null,
     "quote": 0

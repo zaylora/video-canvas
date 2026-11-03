@@ -43,7 +43,7 @@ test("联网工具：经 MCP 而非 Go，模型收到正文，时间线和步数
   const host: ToolHost = {
     runOf: () => ({ id: "1", rc }), isPaused: () => false,
     begin: async (_r, c) => { events.push("begin:" + c.name); },
-    end: async (_r, c) => { events.push("end:" + c.name); }, plan: async () => {}, approval: async () => {},
+    end: async (_r, c) => { events.push("end:" + c.name); }, plan: async () => {}, card: async () => {}, approval: async () => {},
   };
   const web = { call: async (_rc: unknown, name: string, args: unknown) => { calls.push({ name, args }); return { content: [{ type: "text" as const, text: "接口正文 /openapi/v2/query" }] }; }, close: async () => {} };
   const registry = createRegistry();

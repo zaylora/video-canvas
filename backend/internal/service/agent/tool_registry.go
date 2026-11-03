@@ -82,6 +82,8 @@ var toolSpecs = []toolSpec{
 	{name: "admin_plugin_check", label: "验证插件", verb: "验证", scriptable: true, modes: []string{model.AgentModeAdmin}, run: (*AgentBridge).toolAdminPluginCheck},
 	{name: "admin_request_secret", label: "请你填写密钥", verb: "配密钥", modes: []string{model.AgentModeAdmin}, run: (*AgentBridge).toolAdminRequestSecret},
 	{name: "admin_test_run", label: "请你同意试跑", verb: "试跑", modes: []string{model.AgentModeAdmin}, run: (*AgentBridge).toolAdminTestRun},
+	// 展示卡片：纯展示，校验和 card.shown 事件都在 Agent 服务里（platformExcluded）；所有模式都能用，追加在末尾以保持提示词缓存稳定。
+	{name: "show_card", label: "展示卡片", verb: "展示", run: nil},
 }
 
 // layoutModes 是能排列、删除和生成的任务模式：全能创作、分镜搭建和短剧助手。
@@ -89,7 +91,7 @@ var layoutModes = []string{model.AgentModeAll, model.AgentModeStoryboard, model.
 
 // allowsMode 判断任务模式能不能用这个工具；空模式按全能创作算。
 func (s *toolSpec) allowsMode(mode string) bool {
-	if mode == model.AgentModeAdmin && !strings.HasPrefix(s.name, "admin_") && s.name != "web_search" && s.name != "web_fetch" && s.name != "plan_update" {
+	if mode == model.AgentModeAdmin && !strings.HasPrefix(s.name, "admin_") && s.name != "web_search" && s.name != "web_fetch" && s.name != "plan_update" && s.name != "show_card" {
 		return false
 	}
 	if s.modes == nil {

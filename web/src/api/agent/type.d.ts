@@ -169,12 +169,48 @@ export interface AgentDeletePayload {
   edge_ids: string[];
 }
 
-/** 提问的内容（approval.kind = ask） */
-export interface AgentAskPayload {
+/** 提问里选择题的一个选项 */
+export interface AgentAskOption {
+  /** 选项文字 */
+  label: string;
+  /** 非空：选中后原地展开一个输入框，值是占位文字 */
+  follow?: string;
+}
+
+/** 提问里的一道题（一张卡可以列 1 到 5 题） */
+export interface AgentAskQuestion {
+  /** 题目标识，同一张卡里唯一，回答按它对应 */
+  id: string;
   /** 问题 */
   question: string;
-  /** choice 选项题；model 选模型题 */
-  kind: "choice" | "model";
+  /** choice 选项题；model 选模型题；text / url / number 直接填写 */
+  kind: "choice" | "model" | "text" | "url" | "number";
+  /** 是否必答 */
+  required: boolean;
+  /** 选项（choice） */
+  options?: AgentAskOption[];
+  /** 允许多选（choice） */
+  multi?: boolean;
+  /** 多一个「其他，我来说」输入项（choice） */
+  allow_custom?: boolean;
+  /** 要选哪类模型（model） */
+  model_kind?: "image" | "video";
+  /** 可选的已发布模型（model） */
+  models?: Array<{ key: string; name: string; hint: string }>;
+  /** 输入框占位文字（text / url / number） */
+  placeholder?: string;
+}
+
+/**
+ * 提问的内容（approval.kind = ask）。
+ * 新提问带 questions；顶层的 question / kind / options / models 是给旧数据和老客户端留的：
+ * 单题时就是这一题，多题时 question 是卡片标题、其余是第一题。历史里的旧提问没有 questions。
+ */
+export interface AgentAskPayload {
+  /** 问题；多题时是卡片标题（如「还差 3 件事要你定」） */
+  question: string;
+  /** choice 选项题；model 选模型题（旧数据只有这两种） */
+  kind: "choice" | "model" | "text" | "url" | "number";
   /** 选项（choice） */
   options?: string[];
   /** 要选哪类模型（model） */
@@ -183,6 +219,19 @@ export interface AgentAskPayload {
   allow_custom?: boolean;
   /** 可选的已发布模型（model） */
   models?: Array<{ key: string; name: string; hint: string }>;
+  /** 各题；旧提问没有 */
+  questions?: AgentAskQuestion[];
+}
+
+/** 提问决定里逐题的回答（approval.decision.answers 的一项） */
+export interface AgentAskDecidedAnswer {
+  id: string;
+  /** 题目原文 */
+  question: string;
+  /** 人类可读的一句；没回答是空串 */
+  answer: string;
+  /** 原始回答：字符串，多选是字符串数组；没回答是空串 */
+  value: string | string[];
 }
 
 /** 通用修改审批的内容（approval.kind = edit，短剧助手）：before / after 是修改前后的文本摘要 */
@@ -656,6 +705,8 @@ export interface DecideAgentApprovalReq {
   items?: ApprovalItemDecision[];
   /** 提问的回答；拒绝时是给 Agent 的说明（「拒绝，并告诉 Agent 怎么改」） */
   answer?: string;
+  /** 提问逐题的回答，选填题不答可省略；value 多选题是字符串数组 */
+  answers?: Array<{ id: string; value: string | string[] }>;
 }
 
 /** 撤销本轮的结果 */

@@ -94,7 +94,7 @@ func (b *AgentBridge) EndPlatformRun(runID uint64) {
 
 // platformExcluded 是不能经通用入口执行的工具：计划和提问只在 Agent 服务里；生成和删除会创建审批，审批归 Agent 服务，
 // Go 只提供「预估」和「执行」两个专门的接口（见 platform_approval.go）。
-var platformExcluded = map[string]bool{"plan_update": true, "ask_user": true, "canvas_delete": true, "generate_media": true,
+var platformExcluded = map[string]bool{"plan_update": true, "show_card": true, "ask_user": true, "canvas_delete": true, "generate_media": true,
 
 	"admin_propose_changes": true,
 	"admin_request_secret":  true, "admin_test_run": true,

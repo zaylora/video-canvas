@@ -19,7 +19,7 @@ import type {
 } from "@/api/agent/type";
 import type { AgentController } from "@/hooks/use-agent-controller";
 import type { ApprovalRow as ApprovalRowType } from "@/pages/canvas/agent/approval-row";
-import type { DecisionDock as DecisionDockType } from "@/pages/canvas/agent/decision-dock";
+import type { ApprovalCard as ApprovalCardType } from "@/pages/canvas/agent/approval-card";
 import type { useAdminStore as UseAdminStore } from "@/store/admin";
 import { useAgentStore } from "@/store/agent";
 import service from "@/utils/requests/service";
@@ -89,7 +89,7 @@ const saved: Record<string, unknown> = {};
 let win: Window & typeof globalThis;
 let act: typeof ReactAct;
 let createRoot: typeof CreateRoot;
-let DecisionDock: typeof DecisionDockType;
+let ApprovalCard: typeof ApprovalCardType;
 let ApprovalRow: typeof ApprovalRowType;
 let useAdminStore: typeof UseAdminStore;
 
@@ -112,7 +112,7 @@ beforeAll(async () => {
   g.IS_REACT_ACT_ENVIRONMENT = true;
   act = (await import("react")).act;
   createRoot = (await import("react-dom/client")).createRoot;
-  DecisionDock = (await import("@/pages/canvas/agent/decision-dock")).DecisionDock;
+  ApprovalCard = (await import("@/pages/canvas/agent/approval-card")).ApprovalCard;
   ApprovalRow = (await import("@/pages/canvas/agent/approval-row")).ApprovalRow;
   useAdminStore = (await import("@/store/admin")).useAdminStore;
 });
@@ -135,10 +135,16 @@ let secretRequest: ReturnType<typeof spyOn<typeof service, "put">> | undefined;
 
 type Calls = { decisions: DecideAgentApprovalReq[]; sent: string[] };
 
-/** 最小的控制器：决定框只用 decide / stop，记录行只用 state.approvals / busy / send */
-function fakeCtl(a: AgentApprovalDto, calls: Calls, busy = false): AgentController {
+/** 最小的控制器：审批卡只用 decide / stop，消息流里的行只用 state.approvals / pending / busy / send */
+function fakeCtl(
+  a: AgentApprovalDto,
+  calls: Calls,
+  busy = false,
+  actionable = a.status === "pending",
+): AgentController {
   return {
     busy,
+    pending: actionable ? a : null,
     state: { approvals: { [a.id]: a } },
     decide: async (_id: string, req: DecideAgentApprovalReq) => {
       calls.decisions.push(req);
@@ -161,19 +167,19 @@ async function mountDock(a: AgentApprovalDto, decide?: AgentController["decide"]
     root = createRoot(container);
     const ctl = fakeCtl(a, calls);
     if (decide) ctl.decide = decide;
-    root.render(<DecisionDock approval={a} ctl={ctl} />);
+    root.render(<ApprovalCard approval={a} ctl={ctl} />);
   });
   return { container, calls, unmount: () => act(async () => root.unmount()) };
 }
 
-async function mountRow(a: AgentApprovalDto, busy = false) {
+async function mountRow(a: AgentApprovalDto, busy = false, actionable?: boolean) {
   const container = win.document.createElement("div");
   win.document.body.appendChild(container);
   const calls: Calls = { decisions: [], sent: [] };
   let root: Root;
   await act(async () => {
     root = createRoot(container);
-    root.render(<ApprovalRow approvalId={a.id} ctl={fakeCtl(a, calls, busy)} />);
+    root.render(<ApprovalRow approvalId={a.id} ctl={fakeCtl(a, calls, busy, actionable)} />);
   });
   return { container, calls, unmount: () => act(async () => root.unmount()) };
 }
@@ -500,7 +506,7 @@ describe("试跑卡片和时间线", () => {
   });
 });
 
-describe("共用决定区：画布与短剧回归", () => {
+describe("共用审批卡：画布与短剧回归", () => {
   test("生成、删除、提问和短剧修改继续提交各自的决定", async () => {
     const cases: { a: AgentApprovalDto; label: string; expected: DecideAgentApprovalReq }[] = [
       {
@@ -564,7 +570,7 @@ describe("共用决定区：画布与短剧回归", () => {
   });
 });
 
-describe("决定框：变更单内容", () => {
+describe("审批卡：变更单内容", () => {
   test("单号、条数、理由、逐项名称和「当前 → 变更后」", async () => {
     const m = await mountDock(approval([item("a"), item("b")]));
     const text = m.container.textContent ?? "";
@@ -628,7 +634,7 @@ describe("决定框：变更单内容", () => {
   });
 });
 
-describe("决定框：勾选与决定", () => {
+describe("审批卡：勾选与决定", () => {
   test("取消勾选一项：按钮文字跟着变，partial 请求体里每项都有 approve", async () => {
     const m = await mountDock(approval([item("a"), item("b"), item("c")]));
     expect(option(m.container, "应用 3 项变更")).toBeTruthy();
@@ -691,7 +697,7 @@ describe("决定框：勾选与决定", () => {
   });
 });
 
-describe("记录行：变更单", () => {
+describe("消息流里的变更单", () => {
   const applied = (over: Partial<AgentApprovalDto> = {}) =>
     approval([item("a"), item("b")], {
       status: "partially_approved",
@@ -707,11 +713,23 @@ describe("记录行：变更单", () => {
       ...over,
     });
 
-  test("待审核：标题 + 等你确认", async () => {
+  test("待审核且运行停在它上面：直接是可操作的审批卡，不是一行记录", async () => {
     const m = await mountRow(approval([item("a")]));
+    expect(m.container.querySelector("[role=group][aria-label=调价]")).not.toBeNull();
+    expect(option(m.container, "应用 1 项变更")).toBeTruthy();
+    expect(m.container.textContent).not.toContain("回滚");
+    await click(option(m.container, "应用 1 项变更"));
+    expect(m.calls.decisions).toEqual([
+      { decision: "approve", items: [{ index: 0, approve: true }] },
+    ]);
+    await m.unmount();
+  });
+
+  test("待审核但运行已结束（作废的单）：只读的一行，不能操作", async () => {
+    const m = await mountRow(approval([item("a")]), false, false);
     expect(m.container.textContent).toContain("调价");
     expect(m.container.textContent).toContain("等你确认");
-    expect(m.container.textContent).not.toContain("回滚");
+    expect(m.container.querySelector("button[role=option]")).toBeNull();
     await m.unmount();
   });
 
@@ -761,5 +779,227 @@ describe("记录行：变更单", () => {
     expect(rejected.container.textContent).toContain("已拒绝");
     expect(rejected.container.textContent).not.toContain("回滚");
     await rejected.unmount();
+  });
+});
+
+const checkboxLabels = (container: HTMLElement) =>
+  [...container.querySelectorAll('[aria-label^="选择 "]')].map((el) =>
+    el.getAttribute("aria-label"),
+  );
+
+const moreButton = (container: HTMLElement) =>
+  [...container.querySelectorAll("button")].find((b) => b.textContent?.includes("还有"));
+
+describe("审批卡：条目多时折叠", () => {
+  test("变更单超过 3 项：只露前 3 项，「还有 N 项」点开展开；折叠的项照样在批准范围里", async () => {
+    const m = await mountDock(approval(["a", "b", "c", "d", "e"].map((k) => item(k))));
+    expect(checkboxLabels(m.container)).toEqual(["选择 a", "选择 b", "选择 c"]);
+    expect(moreButton(m.container)?.textContent).toContain("还有 2 项");
+    // 折叠着也能批准：5 项都在批准范围里
+    expect(option(m.container, "应用 5 项变更")).toBeTruthy();
+    await toggle(m.container, "b");
+    await click(moreButton(m.container));
+    expect(checkboxLabels(m.container)).toHaveLength(5);
+    expect(moreButton(m.container)).toBeUndefined();
+    await click(option(m.container, "应用 4 项变更"));
+    expect(m.calls.decisions).toEqual([
+      {
+        decision: "approve",
+        items: [
+          { index: 0, approve: true },
+          { index: 1, approve: false },
+          { index: 2, approve: true },
+          { index: 3, approve: true },
+          { index: 4, approve: true },
+        ],
+      },
+    ]);
+    await m.unmount();
+  });
+
+  test("正好 3 项不折叠，没有「还有」按钮", async () => {
+    const m = await mountDock(approval(["a", "b", "c"].map((k) => item(k))));
+    expect(checkboxLabels(m.container)).toHaveLength(3);
+    expect(moreButton(m.container)).toBeUndefined();
+    await m.unmount();
+  });
+
+  test("生成审批超过 3 个节点：只露前 3 个，展开后取消勾选的那项不在批准里", async () => {
+    const gen = (n: number): AgentApprovalDto =>
+      approval([], {
+        kind: "generate",
+        payload: {
+          reason: "批量生成",
+          items: Array.from({ length: n }, (_, i) => ({
+            node_id: `n${i}`,
+            label: `画面${i}`,
+            model_key: "m1",
+            model_name: "模型",
+            price: 0,
+            count: 1,
+          })),
+        },
+      });
+    const m = await mountDock(gen(5));
+    const boxes = () => m.container.querySelectorAll('[aria-label^="生成「"]').length;
+    expect(boxes()).toBe(3);
+    expect(m.container.textContent).not.toContain("画面4");
+    await click(moreButton(m.container));
+    expect(boxes()).toBe(5);
+    await click(m.container.querySelector('[aria-label="生成「画面4」"]')?.nextElementSibling);
+    await click(option(m.container, "批准生成"));
+    expect(m.calls.decisions[0]).toEqual({
+      decision: "approve",
+      items: [0, 1, 2, 3, 4].map((index) => ({ index, approve: index !== 4, count: 1 })),
+    });
+    await m.unmount();
+  });
+});
+
+describe("变更单执行后的结果卡", () => {
+  const field = (path: string, before: unknown, after: unknown) => ({ path, before, after });
+  const done = (over: Partial<AgentApprovalDto> = {}) =>
+    approval(
+      [
+        item("kling", {
+          label: "可灵",
+          diff: [field("pricing.per_second", 8, 10), field("tags[1]", "旧标签", null)],
+        }),
+        item("pricing", {
+          target: "pricing_settings",
+          label: "定价设置",
+          diff: [field("default_markup_pct", null, 25)],
+        }),
+        item("new-api-video", {
+          target: "plugin",
+          label: "视频插件",
+          diff: [field("version", "1", "2")],
+        }),
+        item("bad", { label: "坏模型" }),
+        item("same", { label: "没勾选的" }),
+      ],
+      {
+        status: "partially_approved",
+        result: {
+          items: [
+            { index: 0, status: "applied" },
+            { index: 1, status: "applied" },
+            { index: 2, status: "applied" },
+            { index: 3, status: "failed", message: "渠道不可用" },
+            { index: 4, status: "rejected" },
+          ],
+          applied_by: "zhang",
+          applied_at: "2026-11-02T06:00:00Z",
+          audit_ids: [1, 2, 3],
+        },
+        ...over,
+      },
+    );
+
+  test("按页面分组，对象标题是指向后台对应页面的链接", async () => {
+    const m = await mountRow(done());
+    const sections = [...m.container.querySelectorAll("section")].map((s) =>
+      s.getAttribute("aria-label"),
+    );
+    expect(sections).toEqual(["模型配置", "定价设置", "插件"]);
+    const links = [...m.container.querySelectorAll("a")].map((a) => [
+      a.textContent,
+      a.getAttribute("href"),
+    ]);
+    expect(links).toEqual([
+      ["可灵", "/admin/ai/channels?model=kling"],
+      ["定价设置", "/admin/settings/pricing"],
+      ["视频插件", "/admin/ai/plugins"],
+    ]);
+    await m.unmount();
+  });
+
+  test("逐字段列改前 → 改后：改动、新增、删除各自的样子", async () => {
+    const m = await mountRow(done());
+    const rows = [...m.container.querySelectorAll('[aria-label="改前到改后"] > div')];
+    const text = (i: number) => rows[i].textContent;
+    expect(text(0)).toContain("pricing.per_second");
+    expect(text(0)).toContain("8");
+    expect(text(0)).toContain("→");
+    expect(text(0)).toContain("10");
+    expect(rows[0].querySelector(".line-through")?.textContent).toBe("8");
+    expect(rows[0].querySelector(".text-status-success")?.textContent).toBe("10");
+    // 删除：只有红色删除线的旧值
+    expect(rows[1].querySelector(".text-destructive.line-through")?.textContent).toBe("旧标签");
+    expect(rows[1].querySelector(".text-status-success")).toBeNull();
+    // 新增：只有绿色的新值，没有删除线
+    expect(rows[2].querySelector(".line-through")).toBeNull();
+    expect(rows[2].querySelector(".text-status-success")?.textContent).toBe("25");
+    await m.unmount();
+  });
+
+  test("失败和你没勾选的条目单独列出，写明原因", async () => {
+    const m = await mountRow(done());
+    const list = m.container.querySelector('[aria-label="未应用的条目"]');
+    expect(list?.textContent).toContain("失败：坏模型 · 渠道不可用");
+    expect(list?.textContent).toContain("未应用：没勾选的");
+    expect(list?.querySelector(".text-destructive")?.textContent).toContain("坏模型");
+    await m.unmount();
+  });
+
+  test("已应用超过 3 项时折叠，展开后全部可见", async () => {
+    const items = ["a", "b", "c", "d"].map((k) => item(k, { label: `模型${k}` }));
+    const m = await mountRow(
+      approval(items, {
+        status: "executed",
+        result: {
+          items: items.map((_, index) => ({ index, status: "applied" })),
+          applied_by: "z",
+          applied_at: "",
+          audit_ids: [],
+        } as never,
+      }),
+    );
+    expect(m.container.textContent).toContain("模型c");
+    expect(m.container.textContent).not.toContain("模型d");
+    expect(moreButton(m.container)?.textContent).toContain("还有 1 项");
+    await click(moreButton(m.container));
+    expect(m.container.textContent).toContain("模型d");
+    await m.unmount();
+  });
+
+  test("头部写明单号、条数、操作人，右上角「回滚」发出回滚消息", async () => {
+    const m = await mountRow(done());
+    const text = m.container.textContent ?? "";
+    expect(text).toContain("CO-1");
+    expect(text).toContain("已应用 3 项");
+    expect(text).toContain("失败 1 项");
+    expect(text).toContain("zhang");
+    await click(
+      [...m.container.querySelectorAll("button")].find((b) => b.textContent?.includes("回滚")),
+    );
+    expect(m.calls.sent).toEqual(["回滚变更单 CO-1"]);
+    await m.unmount();
+  });
+
+  test("回滚单自己不能再回滚；一项都没应用时标题不报成功", async () => {
+    const revert = await mountRow(
+      approval([item("a")], {
+        status: "executed",
+        payload: {
+          order_no: "CO-2",
+          title: "回滚",
+          reason: "",
+          revert_of: "CO-1",
+          items: [item("a")],
+        } as never,
+        result: {
+          items: [{ index: 0, status: "applied" }],
+          applied_by: "z",
+          applied_at: "",
+          audit_ids: [],
+        } as never,
+      }),
+    );
+    expect(revert.container.textContent).not.toContain("回滚变更单");
+    expect(
+      [...revert.container.querySelectorAll("button")].some((b) => b.textContent?.includes("回滚")),
+    ).toBe(false);
+    await revert.unmount();
   });
 });

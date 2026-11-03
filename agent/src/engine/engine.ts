@@ -3,7 +3,7 @@
  * 取代 Go 里 run.go / approval.go / bridge.go / runtime.go 的编排；钱、画布、生成任务、素材仍在 Go，经平台 API 调用。
  *
  * 一个会话对应一个 Pi 会话（对话历史归 Pi）；一次运行 = 向这个会话提交一条用户输入，直到 Pi 空闲。
- * 持久化的事件（run.status、message.done、tool.*、approval.*、run.usage、plan.updated、message.user）由引擎写进 AgentStore
+ * 持久化的事件（run.status、message.done、tool.*、approval.*、run.usage、plan.updated、card.shown、message.user）由引擎写进 AgentStore
  * 并通过 onEvent 交出去；文字增量（message.delta / thinking.delta）只交出去不落库。
  */
 import { randomUUID } from "node:crypto";
@@ -18,6 +18,7 @@ import { createCodemode } from "../codemode.ts";
 import { TITLE_SYSTEM_PROMPT, buildTitlePrompt, draftTitle, parseTitle, stripMentions } from "../title.ts";
 import { attachmentViews, inputContent, type AttachmentCheck } from "../attachments.ts";
 import { ACTIVITY_CONCURRENCY, ACTIVITY_MIN_TOOLS, ACTIVITY_SYSTEM_PROMPT, buildActivityPrompt, type GroupTool } from "../activity-summary.ts";
+import { CARD_LIMITS } from "../card.ts";
 import { createToolsExtension, type ToolHost, type ToolRun } from "../durable-tools.ts";
 import type { IdCodec } from "../ids.ts";
 import { PROVIDER_ID, createModelRegistry, createRunContexts, runContextExtension, type RunContexts } from "../model-provider.ts";
@@ -148,6 +149,8 @@ interface Active {
   steps: number;
   maxSteps: number;
   webCalls: number;
+  /** 本片段已展示的卡片数（show_card 一轮最多 3 张） */
+  cards: number;
   /** 模型调用 id（响应头），按请求顺序，assistant 消息结束时取走一个 */
   callIds: string[];
   /** 摘要调用的 id，写完摘要后单独结算 */
@@ -651,7 +654,7 @@ export class AgentEngine {
     const convId = String(conv.id);
     await this.#watch(conv, convId);
     this.#contexts.set(convId, rc);
-    const a: Active = { run, convId, rc, conv, paused: false, finishing: false, steps: run.steps, maxSteps: run.maxSteps, webCalls: 0, callIds: [], summaryCallIds: [], compactionDisabled: false, recovering: false, startedBefore: new Set(), steers: new Map(), unread: new Map(loadUnread ? this.#unreadSteers(run) : []), wakes: new Map(), lock: Promise.resolve(), activityQueue: [], activityActive: 0, activityAbort: new AbortController() };
+    const a: Active = { run, convId, rc, conv, paused: false, finishing: false, steps: run.steps, maxSteps: run.maxSteps, webCalls: 0, cards: 0, callIds: [], summaryCallIds: [], compactionDisabled: false, recovering: false, startedBefore: new Set(), steers: new Map(), unread: new Map(loadUnread ? this.#unreadSteers(run) : []), wakes: new Map(), lock: Promise.resolve(), activityQueue: [], activityActive: 0, activityAbort: new AbortController() };
     this.#active.set(convId, a);
     this.#answered.set(convId, 0);
     this.#byRun.set(run.id, a);
@@ -1063,6 +1066,8 @@ export class AgentEngine {
     const run = this.#run(userId, runId);
     const msg = text.trim();
     if (!msg) throw Err.invalidParams("消息不能为空");
+    // 等审批：只落库、不交给 Pi，决定后续跑时再带给模型（等回答 waiting_input 不放开：前端会先拒绝那个提问）
+    if (run.status === "waiting_approval") return this.#holdInterject(userId, run, msg, attachments);
     if (run.status !== "running") throw Err.state();
     const a = this.#byRun.get(runId);
     if (!a) throw Err.unavailable();
@@ -1082,6 +1087,21 @@ export class AgentEngine {
         throw e;
       }
     });
+  }
+
+  /**
+   * 等审批期间的插话：落库成 message.user（steer）后扣着，不调用 conv.submit。
+   * 等审批时一段运行的 Active 通常已经释放（#byRun 里没有）：这时只靠事件，决定后 #attach 会用 #unreadSteers 从事件里恢复，
+   * 由 #submitWithHeld 附在续跑输入后面并发 steer.read；Active 还没释放的短暂窗口里同时放进 a.unread。
+   * 停止 / 过期走 #dropUnread（有 Active 看 a.unread，没有就从事件推），不会无声丢失。
+   * 这里没有 await：状态检查和落库在同一个同步段里，与 decide 的状态迁移（同步 CAS）不会交错——
+   * 要么落在决定之前（续跑时从事件恢复），要么决定之后状态已是 running，走不到这里。
+   */
+  #holdInterject(userId: string, run: Run, msg: string, attachments: AttachmentCheck[]): void {
+    if (this.#o.store.getRun(userId, run.id).status !== "waiting_approval") throw Err.state();
+    const id = randomUUID();
+    this.#emit({ id: run.id, userId: run.userId, sessionId: run.sessionId, canvasId: run.canvasId }, "message.user", { id, text: msg, steer: true, ...(attachments.length > 0 && { attachments: attachmentViews(attachments) }) });
+    this.#byRun.get(run.id)?.unread.set(id, msg);
   }
 
   /** 这个运行里没读到、也没丢掉的插话，按收下的顺序（从落库的事件推出来，重启后也在） */
@@ -1647,6 +1667,11 @@ export class AgentEngine {
       }
     },
     plan: async (run, steps) => this.#emit(this.#ev(this.#byRun.get(run.id)!), "plan.updated", { steps }),
+    takeCard: (run) => {
+      const a = this.#byRun.get(run.id)!;
+      return a.cards < CARD_LIMITS.perRun && ++a.cards > 0;
+    },
+    card: async (run, id, card) => this.#emit(this.#ev(this.#byRun.get(run.id)!), "card.shown", { id, card }),
     approval: async (run, x) => {
       const a = this.#byRun.get(run.id)!;
       this.#createApproval(a, x);

@@ -70,7 +70,7 @@ export interface FakeGoOptions {
 /** 和 Go 里登记的界面名称、短动词一致 */
 const LABELS: Record<string, [string, string]> = {
   canvas_get_state: ["读取画布", "读取"], canvas_apply_ops: ["修改画布", "修改"], generate_media: ["申请生成", "生成"], canvas_delete: ["申请删除", "删除"],
-  ask_user: ["向你提问", "提问"], plan_update: ["更新计划", "计划"], model_list: ["查看可用模型", "查模型"],
+  ask_user: ["向你提问", "提问"], plan_update: ["更新计划", "计划"], show_card: ["展示卡片", "展示"], model_list: ["查看可用模型", "查模型"],
 };
 
 export const DECLS: ToolDecl[] = Object.keys(LABELS).map((name) => ({

@@ -188,7 +188,35 @@ export function useAgentController({
     return created;
   }, [admin, canvasId, mode, modelKey, session]);
 
-  /** 发送：运行中就是插话，否则发起新一轮。返回是否发出去了（没发出去输入框要保留原文） */
+  /** 对审批做决定；接口失败的提示由全局请求拦截器弹出，返回是否成功 */
+  const decide = useCallback(
+    async (approvalId: string, req: DecideAgentApprovalReq): Promise<"ok" | "failed"> => {
+      // 第一次批准生成时顺带问一次系统通知权限：之后生成结束、需要批准时页面在后台也能提醒；拒绝或不支持就算了
+      if (req.decision === "approve" && state.approvals[approvalId]?.kind === "generate") {
+        ensureNotificationPermission();
+      }
+      try {
+        const decided = await decideAgentApproval(approvalId, req);
+        // 后台助手：决定的结果立刻并进会话，变更单马上从「待审核」变成结果
+        if (admin && sessionId && decided?.id) {
+          useAgentStore.getState().ingestApproval(sessionId, decided);
+        }
+        if (!admin) void useCreditsStore.getState().refresh();
+        return "ok";
+      } catch {
+        return "failed";
+      }
+    },
+    [admin, sessionId, state.approvals],
+  );
+
+  /**
+   * 发送：运行中就是插话，否则发起新一轮。返回是否发出去了（没发出去输入框要保留原文）。
+   * 运行正停在一条提问上时，发消息视为新消息：先拒绝（不回答）这个提问，运行恢复后再把消息作为插话交给 Agent，
+   * Agent 收到的工具结果是「用户没有回答」；拒绝没成功就不发，输入框保留原文。
+   * 停在其他审批（生成、删除、变更单等）上时，卡片保持待确认：消息直接作为插话发出，Agent 服务先扣着，
+   * 等你做出决定、运行重新开始时再交给模型（期间时间线上它显示为排队中，读到后进入对话）。
+   */
   const send = useCallback(
     async (text: string, attachments?: AgentAttachmentReq[]) => {
       const message = text.trim();
@@ -197,6 +225,11 @@ export function useAgentController({
       setSending(true);
       try {
         if (activeRun) {
+          if (
+            pending?.kind === "ask" &&
+            (await decide(pending.id, { decision: "reject" })) !== "ok"
+          )
+            return false;
           await interjectAgentRun(activeRun, message, attachments);
           return true;
         }
@@ -221,7 +254,7 @@ export function useAgentController({
         setSending(false);
       }
     },
-    [activeRun, admin, ensureSession, getViewport, mode, modelKey, pageContext],
+    [activeRun, admin, decide, ensureSession, getViewport, mode, modelKey, pageContext, pending],
   );
 
   const stop = useCallback(async () => {
@@ -240,28 +273,6 @@ export function useAgentController({
       // 全局提示已经弹了
     }
   }, []);
-
-  /** 对审批做决定；接口失败的提示由全局请求拦截器弹出，返回是否成功 */
-  const decide = useCallback(
-    async (approvalId: string, req: DecideAgentApprovalReq): Promise<"ok" | "failed"> => {
-      // 第一次批准生成时顺带问一次系统通知权限：之后生成结束、需要批准时页面在后台也能提醒；拒绝或不支持就算了
-      if (req.decision === "approve" && state.approvals[approvalId]?.kind === "generate") {
-        ensureNotificationPermission();
-      }
-      try {
-        const decided = await decideAgentApproval(approvalId, req);
-        // 后台助手：决定的结果立刻并进会话，变更单马上从「待审核」变成结果
-        if (admin && sessionId && decided?.id) {
-          useAgentStore.getState().ingestApproval(sessionId, decided);
-        }
-        if (!admin) void useCreditsStore.getState().refresh();
-        return "ok";
-      } catch {
-        return "failed";
-      }
-    },
-    [admin, sessionId, state.approvals],
-  );
 
   /** 撤销本轮；返回结果（成功）或 null */
   const undo = useCallback(async (runId: string) => {
@@ -333,6 +344,8 @@ export function useAgentController({
   );
 
   return {
+    /** 展示卡片里的 ref 能去哪：后台助手跳后台页面，其余在画布里定位节点 */
+    scope: (admin ? "admin" : "canvas") as "admin" | "canvas",
     sessions,
     session,
     state,

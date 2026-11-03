@@ -36,14 +36,16 @@ type DeletePayload struct {
 	EdgeIDs []string `json:"edge_ids"` // 要删的连线
 }
 
-// AskPayload 是提问的内容。
+// AskPayload 是提问的内容。顶层的 question / kind / options / models 是为只认识旧字段的老客户端和历史记录保留的：
+// 单题时就是这一题，多题时 question 是标题、其余填第一题。新客户端读 questions。
 type AskPayload struct {
-	Question    string     `json:"question"`               // 问题
-	Kind        string     `json:"kind"`                   // choice 或 model
-	Options     []string   `json:"options,omitempty"`      // 选项
-	ModelKind   string     `json:"model_kind,omitempty"`   // kind=model 时要选哪类模型
-	AllowCustom bool       `json:"allow_custom,omitempty"` // 是否允许自定义回答
-	Models      []AskModel `json:"models,omitempty"`       // kind=model 时可选的已发布模型
+	Question    string        `json:"question"`               // 问题；多题时是卡片标题
+	Kind        string        `json:"kind"`                   // 第一题的种类
+	Options     []string      `json:"options,omitempty"`      // 第一题的选项文字
+	ModelKind   string        `json:"model_kind,omitempty"`   // 第一题 kind=model 时要选哪类模型
+	AllowCustom bool          `json:"allow_custom,omitempty"` // 第一题是否允许自定义回答
+	Models      []AskModel    `json:"models,omitempty"`       // 第一题 kind=model 时可选的已发布模型
+	Questions   []AskQuestion `json:"questions,omitempty"`    // 归一化后的各题（1 到 5 题）；历史里的旧提问没有这个字段
 }
 
 // AskModel 是提问里可选的一个生成模型。
@@ -77,25 +79,23 @@ func (s *AgentService) resolveDecision(a *model.AgentApproval, run *model.AgentR
 		if reason := strings.TrimSpace(req.Answer); reason != "" {
 			decision["answer"] = reason
 		}
+		if a.Kind == model.ApprovalAsk { // 跳过时交给模型的文字要分单题和多题
+			var p AskPayload
+			if json.Unmarshal(a.PayloadJSON, &p) == nil {
+				decision["question_count"] = len(p.askQuestions())
+			}
+		}
 		return &outcome{status: model.ApprovalRejected, decision: decision}, nil
 	}
 	switch a.Kind {
 	case model.ApprovalAsk:
-		return resolveAsk(req)
+		return resolveAsk(a, req)
 	case model.ApprovalDelete:
 		return resolveDelete(a, req)
 	case model.ApprovalGenerate:
 		return resolveGenerate(a, run, req)
 	}
 	return nil, errcode.ErrAgentApprovalGone
-}
-
-// resolveAsk 回答提问：回答不能为空。
-func resolveAsk(req *model.DecideAgentApprovalReq) (*outcome, error) {
-	if len([]rune(req.Answer)) == 0 {
-		return nil, errcode.ErrInvalidParams.WithMsg("请先回答")
-	}
-	return &outcome{status: model.ApprovalApproved, decision: map[string]any{"decision": "approve", "answer": req.Answer}}, nil
 }
 
 // resolveDelete 批准删除：可以逐项取消勾选，至少要留一项。
@@ -231,9 +231,9 @@ func approvalOutcomeBase(a *model.AgentApproval, out *outcome) string {
 	switch a.Kind {
 	case model.ApprovalAsk:
 		if rejected {
-			return "用户没有回答这个问题。"
+			return askSkippedText(out)
 		}
-		return "用户回答：" + fmt.Sprint(out.decision["answer"])
+		return askOutcomeText(out)
 	case model.ApprovalDelete:
 		return deleteOutcome(a, out, rejected)
 	case model.ApprovalGenerate:

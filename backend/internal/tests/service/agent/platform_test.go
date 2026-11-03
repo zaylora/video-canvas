@@ -89,7 +89,7 @@ func TestExecutePlatformTool_UnknownAndAgentSideTools(t *testing.T) {
 	}
 	// 这几个工具要么只在 Agent 服务里（计划、提问），要么会创建审批（生成、删除）：审批归 Agent 服务，
 	// Go 只提供「预估」和「执行」两个接口，不能经这个通用入口调用。这是调用方的编码错误，返回参数错误而不是工具错误
-	for _, name := range []string{"plan_update", "ask_user", "canvas_delete", "generate_media"} {
+	for _, name := range []string{"plan_update", "show_card", "ask_user", "canvas_delete", "generate_media"} {
 		_, err := b.br.ExecutePlatformTool(context.Background(), rc, "c2", name, []byte(`{}`))
 		wantAgentCode(t, err, errcode.ErrInvalidParams)
 	}

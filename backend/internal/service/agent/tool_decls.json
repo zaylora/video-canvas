@@ -333,52 +333,113 @@
   },
   {
     "name": "ask_user",
-    "description": "信息不够时向用户提问，而不是猜。kind=choice 给 2 到 4 个选项；kind=model 让用户从已发布的图片或视频模型里选一个。提问后本轮暂停，用户回答后你会收到结果。",
+    "description": "信息不够时向用户提问，而不是猜；需要用户补的信息必须用它问，不要在正文里反问。需要补的信息一次问完，放进同一张卡：questions 填 1 到 5 个问题，用户在一张卡上逐题回答后一次提交，不要分多轮问。每题的 kind：choice 给 2 到 4 个选项（可多选、可让选项选中后再填一句）；model 让用户从已发布的图片或视频模型里选一个；text / url / number 让用户直接填文字、链接、数字。选填的问题把 required 设为 false。提问后本轮暂停，用户回答后你会收到逐题的回答；如果用户没有回答、改发了新消息，以新消息为准。",
     "parameters": {
       "type": "object",
       "required": [
-        "question",
-        "kind"
+        "questions"
       ],
       "properties": {
-        "question": {
-          "type": "string"
-        },
-        "kind": {
-          "anyOf": [
-            {
-              "type": "string",
-              "const": "choice"
-            },
-            {
-              "type": "string",
-              "const": "model"
-            }
-          ]
-        },
-        "options": {
+        "questions": {
           "type": "array",
+          "description": "要问的问题，1 到 5 个，一次问完",
           "items": {
-            "type": "string"
-          },
-          "description": "kind=choice 的选项"
-        },
-        "modelKind": {
-          "anyOf": [
-            {
-              "type": "string",
-              "const": "image"
-            },
-            {
-              "type": "string",
-              "const": "video"
+            "type": "object",
+            "required": [
+              "question",
+              "kind"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "题目的短标识，同一张卡里不能重复；不填就用序号"
+              },
+              "question": {
+                "type": "string",
+                "description": "问题，不超过 200 个字"
+              },
+              "kind": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "const": "choice"
+                  },
+                  {
+                    "type": "string",
+                    "const": "model"
+                  },
+                  {
+                    "type": "string",
+                    "const": "text"
+                  },
+                  {
+                    "type": "string",
+                    "const": "url"
+                  },
+                  {
+                    "type": "string",
+                    "const": "number"
+                  }
+                ]
+              },
+              "required": {
+                "type": "boolean",
+                "description": "是否必答，默认 true"
+              },
+              "options": {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "label"
+                      ],
+                      "properties": {
+                        "label": {
+                          "type": "string",
+                          "description": "选项文字"
+                        },
+                        "follow": {
+                          "type": "string",
+                          "description": "选中后在原地展开一个输入框，这里写输入框的占位文字，如「如 kling-v3」；不需要就不写"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "description": "kind=choice 的选项，2 到 4 个；每个是字符串，或 {label, follow}"
+              },
+              "multi": {
+                "type": "boolean",
+                "description": "kind=choice 时允许多选"
+              },
+              "allowCustom": {
+                "type": "boolean",
+                "description": "kind=choice 时多一个「其他，我来说」输入项，让用户自己填答案"
+              },
+              "modelKind": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "const": "image"
+                  },
+                  {
+                    "type": "string",
+                    "const": "video"
+                  }
+                ],
+                "description": "kind=model 时选哪类模型"
+              },
+              "placeholder": {
+                "type": "string",
+                "description": "kind=text / url / number 时输入框的占位文字"
+              }
             }
-          ],
-          "description": "kind=model 时选哪类模型"
-        },
-        "allowCustom": {
-          "type": "boolean",
-          "description": "是否允许用户自己输入答案"
+          }
         }
       }
     }
@@ -885,5 +946,210 @@
   "name":"admin_get_recent_errors",
   "description":"只读查询当前管理员最近失败的生成/试跑请求，按模型、渠道或任务 ID 定位，返回脱敏 HTTP 状态、路径与响应摘要。排查401/403/超时先用它，不发起收费请求。不含其他用户记录；无记录时不能推断密钥无效。",
   "parameters":{"type":"object","additionalProperties":false,"properties":{"model_key":{"type":"string"},"channel_key":{"type":"string"},"task_id":{"type":"string"},"hours":{"type":"integer","minimum":1,"maximum":168},"limit":{"type":"integer","minimum":1,"maximum":10}}}
+},
+{
+  "name": "show_card",
+  "description": "把有结构的结论用卡片展示给用户，替代大段文字。kind=summary 是结论卡：标题加 1 到 12 行「标签｜值｜徽标」，适合说明查到的对象、状态、清单；kind=table 是对比表：2 到 5 列、1 到 20 行（每行单元格数必须等于列数），适合多行同构数据的对照。卡片之外正文只留一两句过渡或下一步，不要重复卡片里的内容。引用后台对象（模型、渠道、插件、定价设置）或画布节点时在行或单元格里带 ref（type 取 model / channel / plugin / pricing_settings / node，key 是对象的标识：模型 key、渠道 key、插件 key、节点 id；pricing_settings 不需要 key），前端会渲染成可点击跳转，不要在正文里写路径或网址；外部链接只能放在 sources 里（仅 http/https）。notes 最多 3 条提示，tone 取 ok / warn / bad / info。每一轮最多展示 3 张卡。需要用户回答的问题不要放进卡片，用 ask_user。参数超限或不合法会返回错误，按提示改后重调。",
+  "parameters": {
+    "type": "object",
+    "required": [
+      "kind",
+      "title",
+      "rows"
+    ],
+    "properties": {
+      "kind": {
+        "type": "string",
+        "enum": [
+          "summary",
+          "table"
+        ],
+        "description": "summary 结论卡；table 对比表"
+      },
+      "title": {
+        "type": "string",
+        "description": "卡片标题，40 字以内"
+      },
+      "tone": {
+        "type": "string",
+        "enum": [
+          "ok",
+          "warn",
+          "bad",
+          "info"
+        ],
+        "description": "整张卡的状态色，决定标题前图标的颜色；缺省 info"
+      },
+      "columns": {
+        "type": "array",
+        "minItems": 2,
+        "maxItems": 5,
+        "items": {
+          "type": "string",
+          "description": "列名，12 字以内"
+        },
+        "description": "仅 table：列名，2 到 5 列"
+      },
+      "rows": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 20,
+        "description": "summary：1 到 12 行 {label,value,sub?,badge?,tone?,ref?}；table：1 到 20 行 {cells:[…]}，cells 的个数等于 columns 的个数，每个单元格是字符串或 {text,tone?,ref?}",
+        "items": {
+          "type": "object",
+          "properties": {
+            "label": {
+              "type": "string",
+              "description": "summary 行标签，12 字以内"
+            },
+            "value": {
+              "type": "string",
+              "description": "summary 行的值，120 字以内"
+            },
+            "sub": {
+              "type": "string",
+              "description": "summary 行的补充说明（如路径），120 字以内"
+            },
+            "badge": {
+              "type": "string",
+              "description": "summary 行的徽标，12 字以内，如「已启用」"
+            },
+            "tone": {
+              "type": "string",
+              "enum": [
+                "ok",
+                "warn",
+                "bad",
+                "info"
+              ]
+            },
+            "ref": {
+              "type": "object",
+              "required": [
+                "type"
+              ],
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "model",
+                    "channel",
+                    "plugin",
+                    "pricing_settings",
+                    "node"
+                  ]
+                },
+                "key": {
+                  "type": "string",
+                  "description": "对象标识；pricing_settings 可省略"
+                }
+              },
+              "description": "点击跳转的后台对象或画布节点"
+            },
+            "cells": {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "text"
+                    ],
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "description": "120 字以内"
+                      },
+                      "tone": {
+                        "type": "string",
+                        "enum": [
+                          "ok",
+                          "warn",
+                          "bad",
+                          "info"
+                        ]
+                      },
+                      "ref": {
+                        "type": "object",
+                        "required": [
+                          "type"
+                        ],
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "enum": [
+                              "model",
+                              "channel",
+                              "plugin",
+                              "pricing_settings",
+                              "node"
+                            ]
+                          },
+                          "key": {
+                            "type": "string",
+                            "description": "对象标识；pricing_settings 可省略"
+                          }
+                        },
+                        "description": "点击跳转的后台对象或画布节点"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "notes": {
+        "type": "array",
+        "maxItems": 3,
+        "items": {
+          "type": "object",
+          "required": [
+            "text"
+          ],
+          "properties": {
+            "tone": {
+              "type": "string",
+              "enum": [
+                "ok",
+                "warn",
+                "bad",
+                "info"
+              ]
+            },
+            "text": {
+              "type": "string",
+              "description": "提示，120 字以内"
+            }
+          }
+        }
+      },
+      "sources": {
+        "type": "array",
+        "maxItems": 5,
+        "items": {
+          "type": "object",
+          "required": [
+            "title",
+            "url"
+          ],
+          "properties": {
+            "title": {
+              "type": "string",
+              "description": "来源标题，40 字以内"
+            },
+            "url": {
+              "type": "string",
+              "description": "仅 http 或 https"
+            }
+          }
+        }
+      }
+    }
+  }
 }
 ]

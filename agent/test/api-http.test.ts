@@ -246,3 +246,29 @@ test("删除会话：它的后台等待一并收掉（不会留下没人认领�
     for (let i = 0; i < 100 && (await e.engine.liveTaskCount()) > 0; i++) await new Promise((r) => setTimeout(r, 20));
     assert.equal(await e.engine.liveTaskCount(), 0);
   }, { engine: { piClock: true } }));
+
+test("提问的决定：answers 逐题回答原样转给平台解析；格式不对是 10001", () =>
+  withHttp({
+    turns: [{ tools: [{ id: "c1", name: "ask_user", args: { questions: [{ question: "a?", kind: "text" }, { question: "b?", kind: "text" }] } }] }, { text: "好" }],
+    propose: { ask: { payload: { question: "还差 2 件事要你定" }, quote_credits: 0, summary: "s", content: "已提问", terminate: true } },
+  }, async (h, e) => {
+    const run = await e.start();
+    await e.engine.idle();
+    const [approval] = e.store.listApprovals(run.id);
+    const url = "/agent/approvals/" + enc(approval.id) + "/decision";
+    for (const bad of [
+      { decision: "approve", answers: [{ value: "x" }] },
+      { decision: "approve", answers: [{ id: "1" }, { id: "2" }, { id: "3" }, { id: "4" }, { id: "5" }, { id: "6" }] },
+      { decision: "approve", answers: "x" },
+    ]) {
+      const r = await h.call("POST", url, bad);
+      assert.deepEqual([r.status, r.body.code], [400, 10001], JSON.stringify(bad));
+    }
+    const answers = [{ id: "1", value: "甲" }, { id: "2", value: ["乙", "丙"] }];
+    const ok = await h.call("POST", url, { decision: "approve", answer: "a?：甲；b?：乙、丙", answers });
+    assert.equal(ok.status, 200);
+    await e.engine.idle();
+    const resolved = e.go.seen.find((s) => s.path.endsWith("/approvals/resolve"))!;
+    assert.deepEqual(resolved.body.decision.answers, answers);
+    assert.equal(resolved.body.decision.answer, "a?：甲；b?：乙、丙");
+  }));

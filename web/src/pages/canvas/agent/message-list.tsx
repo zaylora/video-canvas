@@ -35,6 +35,7 @@ import type { RefNode } from "@/utils/agent/selection-refs";
 import type { NodeOption } from "./agent-editor";
 import { SelectionRefs } from "./selection-refs";
 import { ApprovalRow } from "./approval-row";
+import { InfoCard } from "./info-card";
 import { ContextChips } from "./context-chips";
 import { Markdown } from "./markdown";
 import { MessageAttachments } from "./message-attachments";
@@ -366,6 +367,8 @@ function Item({
       return <ActivityGroup item={item} />;
     case "approval":
       return <ApprovalRow approvalId={item.approvalId} ctl={ctl} />;
+    case "card":
+      return <InfoCard card={item.card} scope={ctl.scope} />;
     case "status":
       return <StatusCard item={item} ctl={ctl} />;
     case "compaction":

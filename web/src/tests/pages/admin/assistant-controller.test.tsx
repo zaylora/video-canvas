@@ -85,6 +85,8 @@ type Call = { name: string; args: unknown[] };
 let calls: Call[];
 /** 后台助手会话列表接口返回的会话 */
 let adminList: AgentSessionDto[];
+/** 为 true 时决定审批的接口报错 */
+let failDecide = false;
 
 const names = (name: string) => calls.filter((c) => c.name === name);
 const rec =
@@ -117,7 +119,10 @@ const fakeApi = () => ({
   cancelAgentRun: rec("cancelAgentRun", () => ({ id: "r1", session_id: "x", status: "canceled" })),
   resumeAgentRun: rec("resumeAgentRun", () => ({ id: "r1", session_id: "x", status: "running" })),
   undoAgentRun: rec("undoAgentRun", () => ({})),
-  decideAgentApproval: rec("decideAgentApproval", () => decided),
+  decideAgentApproval: rec("decideAgentApproval", () => {
+    if (failDecide) throw new Error("网络错误");
+    return decided;
+  }),
   setAgentFeedback: rec("setAgentFeedback", () => ({ rating: 1, reasons: [], comment: "" })),
   deleteAgentFeedback: rec("deleteAgentFeedback", () => undefined),
   getAgentWatches: rec("getAgentWatches", () => []),
@@ -169,6 +174,7 @@ const mounted: Array<() => Promise<void>> = [];
 beforeEach(() => {
   calls = [];
   adminList = [];
+  failDecide = false;
   useAgentStore.setState({ sessions: {}, sessionsByCanvas: {} });
   // 画布发送后会刷新积分，不让它真的发请求（afterEach 还原）
   useCreditsStore.setState({ refresh: async () => {} });
@@ -331,6 +337,104 @@ describe("useAgentController：画布和短剧的调用不变", () => {
     const m = await mount({ canvasId: "c1", models, mode: "admin" });
     expect(names("listAgentSessions")[0].args).toEqual(["c1"]);
     expect(names("listAdminAssistantSessions")).toHaveLength(0);
+    await m.unmount();
+  });
+});
+
+describe("useAgentController：等你回答时在输入框打字", () => {
+  const waitingAsk = (): AgentApprovalDto => ({
+    id: "ask1",
+    run_id: "r1",
+    kind: "ask",
+    status: "pending",
+    payload: { question: "画幅？", kind: "choice", options: ["横屏", "竖屏"] },
+    quote_credits: 0,
+    decision: null,
+    result: null,
+    expires_at: "",
+  });
+
+  /** 会话里有一轮停在提问上的运行 */
+  async function mountWaiting() {
+    adminList = [sessionOf("as1", "0", "admin")];
+    const m = await mount({ canvasId: "0", models, mode: "admin" });
+    await act(async () => {
+      useAgentStore.getState().ingestRun({
+        id: "r1",
+        session_id: "as1",
+        status: "waiting_input",
+        context_tokens: 0,
+        spent_credits: 0,
+      } as never);
+      useAgentStore.getState().ingestApproval("as1", waitingAsk());
+    });
+    expect(m.out.ctl?.pending?.id).toBe("ask1");
+    return m;
+  }
+
+  test("发消息算新消息：先拒绝（不回答）这条提问，再把消息作为插话交给运行", async () => {
+    const m = await mountWaiting();
+    let sent = false;
+    await act(async () => {
+      sent = await m.out.ctl!.send("改成竖屏吧");
+    });
+    expect(sent).toBe(true);
+    expect(names("decideAgentApproval")[0].args).toEqual(["ask1", { decision: "reject" }]);
+    expect(names("interjectAgentRun")[0].args.slice(0, 2)).toEqual(["r1", "改成竖屏吧"]);
+    expect(names("startAgentRun")).toHaveLength(0);
+    // 先拒绝、后插话：顺序不能反
+    expect(
+      calls
+        .map((c) => c.name)
+        .filter((n) => n === "decideAgentApproval" || n === "interjectAgentRun"),
+    ).toEqual(["decideAgentApproval", "interjectAgentRun"]);
+    await m.unmount();
+  });
+
+  test("非提问的审批待确认时发消息：不调用 decide，直接插话，审批保持待确认", async () => {
+    const m = await mountWaiting();
+    await act(async () => {
+      useAgentStore.getState().ingestRun({
+        id: "r1",
+        session_id: "as1",
+        status: "waiting_approval",
+        context_tokens: 0,
+        spent_credits: 0,
+      } as never);
+      useAgentStore
+        .getState()
+        .ingestApproval("as1", {
+          ...waitingAsk(),
+          id: "gen1",
+          kind: "generate",
+          payload: {} as never,
+        });
+    });
+    // 提问那条换成已处理，剩下待确认的只有生成审批
+    await act(async () => {
+      useAgentStore.getState().ingestApproval("as1", { ...waitingAsk(), status: "rejected" });
+    });
+    expect(m.out.ctl?.pending?.id).toBe("gen1");
+    let sent = false;
+    await act(async () => {
+      sent = await m.out.ctl!.send("背景换成夜景");
+    });
+    expect(sent).toBe(true);
+    expect(names("decideAgentApproval")).toHaveLength(0);
+    expect(names("interjectAgentRun")[0].args.slice(0, 2)).toEqual(["r1", "背景换成夜景"]);
+    expect(m.out.ctl?.pending?.id).toBe("gen1");
+    await m.unmount();
+  });
+
+  test("拒绝没成功就不发消息，输入框保留原文", async () => {
+    const m = await mountWaiting();
+    failDecide = true;
+    let sent = true;
+    await act(async () => {
+      sent = await m.out.ctl!.send("改成竖屏吧");
+    });
+    expect(sent).toBe(false);
+    expect(names("interjectAgentRun")).toHaveLength(0);
     await m.unmount();
   });
 });

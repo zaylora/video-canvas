@@ -7,6 +7,7 @@ import type {
   AgentRunStatus,
 } from "@/api/agent/type";
 import { toolLabel } from "@/constants/agent";
+import { parseCard, type AgentCard } from "./card";
 import {
   ACTIVE_RUN_STATUSES,
   activeRunId,
@@ -146,6 +147,12 @@ export type TimelineItem =
       text: string;
     }
   | {
+      /** 助手用 show_card 展示的结论卡 / 对比表：独立条目，不折进活动组，位置就在它出现的地方 */
+      type: "card";
+      key: string;
+      card: AgentCard;
+    }
+  | {
       /** 计划全部完成 */
       type: "plan-done";
       key: string;
@@ -170,6 +177,9 @@ const NOTABLE_STATUSES: readonly AgentRunStatus[] = [
   "canceled",
   "expired",
 ];
+
+/** 结果直接以独立条目出现在消息流里、成功时不在活动组里重复一行的工具 */
+const HIDDEN_TOOL = "show_card";
 
 /** 会改画布内容、「撤销本轮」能倒回去的工具（生成不在其中：已提交的任务撤销不了） */
 const WRITE_TOOLS = ["canvas_apply_ops", "canvas_arrange", "canvas_delete", "canvas_capture_frame"];
@@ -459,6 +469,12 @@ export function buildTimeline(
         }
         break;
       }
+      case "card.shown": {
+        // 结构不对的卡不渲染（不画半张）；key 用工具调用 id，回放和重连后是同一个元素
+        const card = parseCard(d.card);
+        if (card) items.push({ type: "card", key: `c${str(d.id) || ev.seq}`, card });
+        break;
+      }
       case "plan.updated": {
         const steps = Array.isArray(d.steps) ? (d.steps as AgentPlanStep[]) : [];
         if (planFinished(steps) && !doneRuns.has(runId)) {
@@ -574,6 +590,8 @@ function groupTools(
       out.push(item);
       continue;
     }
+    // show_card 成功的那一次调用不在活动组里留记录（卡片本身就是结果）；失败的留着，让人看到模型改过参数
+    if (item.name === HIDDEN_TOOL && item.status !== "error") continue;
     const { type: _type, callId, runId, startedAt, endedAt, ...call } = item;
     if (!block || block.runId !== runId) {
       const summary = summaries.get(callId);
