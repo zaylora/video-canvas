@@ -358,6 +358,8 @@ export interface ModelCreateDetail {
 
 /** 变更单里的一项 */
 export interface AdminChangeItem {
+  /** 用户或系统管理的具体操作 */
+  action?: string;
   /** 改动对象 */
   target:
     /** 修改模型 */
@@ -369,7 +371,17 @@ export interface AdminChangeItem {
     /** 新建渠道 */
     | "channel"
     /** 新建模型 */
-    | "model_create";
+    | "model_create"
+    /** 用户管理 */
+    | "user"
+    /** 注册设置 */
+    | "register_settings"
+    /** 邮件服务 */
+    | "smtp_settings"
+    /** 存储配置 */
+    | "storage"
+    /** 图片服务 */
+    | "image_processor";
   /** 模型 key；定价设置固定为 "pricing" */
   key: string;
   /** 展示名 */

@@ -56,6 +56,7 @@ type AdminAuditReader interface {
 
 // AdminAssistantDeps 集中装配后台助手依赖。
 type AdminAssistantDeps struct {
+	Management    *AdminManagementDeps
 	History       AdminDiagnosticReader
 	Plugins       AdminPluginReader
 	PluginWriter  AdminPluginWriter
@@ -126,6 +127,7 @@ type AdminChangePayload struct {
 
 // AdminChangeItem 包含展示差异及执行必需的固定快照。
 type AdminChangeItem struct {
+	Action       string            `json:"action,omitempty"`
 	DependsOn    []int             `json:"depends_on,omitempty"`
 	Detail       any               `json:"detail,omitempty"`
 	Target       string            `json:"target"`

@@ -267,6 +267,22 @@ describe("变更单：读审批", () => {
 });
 
 describe("变更单：整单状态与回滚", () => {
+  test("管理操作不显示自动回滚入口，保留动作供审批展示", () => {
+    for (const target of [
+      "user",
+      "register_settings",
+      "smtp_settings",
+      "storage",
+      "image_processor",
+    ] as const) {
+      const managed = approval(
+        { status: "executed", result: result([{ index: 0, status: "applied" }]) },
+        [item({ target, action: "delete" })],
+      );
+      expect(canRollback(managed)).toBe(false);
+      expect(adminChangePayload(managed)?.items[0]?.action).toBe("delete");
+    }
+  });
   test("按审批状态给出整单状态", () => {
     expect(orderPhase(approval())).toBe("pending");
     expect(orderPhase(approval({ status: "executed" }))).toBe("applied");

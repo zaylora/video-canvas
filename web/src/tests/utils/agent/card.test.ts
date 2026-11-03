@@ -106,7 +106,7 @@ describe("resolveRef", () => {
 
   test("后台里出现 node、不认识的类型、模型缺 key、没有 ref：都只显示文字", () => {
     expect(resolveRef({ type: "node", key: "n1" }, "admin")).toBeNull();
-    expect(resolveRef({ type: "user", key: "1" }, "admin")).toBeNull();
+    expect(resolveRef({ type: "unknown", key: "1" }, "admin")).toBeNull();
     expect(resolveRef({ type: "model" }, "admin")).toBeNull();
     expect(resolveRef({ type: "node" }, "canvas")).toBeNull();
     expect(resolveRef(undefined, "admin")).toBeNull();

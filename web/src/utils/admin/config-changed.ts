@@ -16,7 +16,17 @@ export type AdminConfigTarget =
   /** 插件 */
   | "plugin"
   /** 渠道 */
-  | "channel";
+  | "channel"
+  /** 用户管理 */
+  | "user"
+  /** 注册设置 */
+  | "register_settings"
+  /** 邮件服务 */
+  | "smtp_settings"
+  /** 存储配置 */
+  | "storage"
+  /** 图片服务 */
+  | "image_processor";
 
 /** admin-config-changed 事件的 detail */
 export type AdminConfigChangedDetail = {
@@ -25,7 +35,7 @@ export type AdminConfigChangedDetail = {
 };
 
 /**
- * 一条事件造成了哪些配置变更：只有 approval.decided、种类是 admin_change、结果里有已应用条目才算
+ * 变更单完成后要刷新哪些页面；管理操作失败也可能已经记录检查结果或完成部分取消，必须重新读取。
  * @param event Agent 事件
  * @returns 受影响的对象（去重，按出现顺序）；不算配置变更返回 null
  */
@@ -37,8 +47,15 @@ export function adminConfigChangeTargets(event: AgentEventDto): AdminConfigTarge
   if (!payload || !result) return null;
   const targets: AdminConfigTarget[] = [];
   for (const outcome of result.items) {
-    if (outcome.status !== "applied") continue;
     const raw = payload.items[outcome.index]?.target;
+    const managed = [
+      "user",
+      "register_settings",
+      "smtp_settings",
+      "storage",
+      "image_processor",
+    ].includes(raw ?? "");
+    if (outcome.status !== "applied" && !(managed && outcome.status === "failed")) continue;
     const target = raw === "model_create" ? "model" : raw;
     if (target && !targets.includes(target)) targets.push(target);
   }

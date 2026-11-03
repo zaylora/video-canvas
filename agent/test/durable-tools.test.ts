@@ -204,7 +204,7 @@ test("show_card 的错误：非法参数返回 IsError 和中文原因，不发�
   const bad: Array<[Record<string, unknown>, RegExp]> = [
     [{ ...CARD, kind: "chart" }, /kind 只能是 summary 或 table/],
     [{ ...CARD, title: "字".repeat(41) }, /title 不能为空，且不超过 40 个字/],
-    [{ ...CARD, rows: [{ label: "a", value: "b", ref: { type: "user", key: "1" } }] }, /rows\[0\]\.ref\.type 只能是 model/],
+    [{ ...CARD, rows: [{ label: "a", value: "b", ref: { type: "payment", key: "1" } }] }, /rows\[0\]\.ref\.type 只能是 model/],
     [{ ...CARD, sources: [{ title: "t", url: "javascript:alert(1)" }] }, /sources\[0\]\.url 必须是 http 或 https/],
     [{ kind: "table", title: "t", columns: ["a", "b"], rows: [{ cells: ["x"] }] }, /rows\[0\]\.cells.*等于列数 2/],
   ];

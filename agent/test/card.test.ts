@@ -49,6 +49,13 @@ test("pricing_settings 的 ref 不需要 key；其他类型必须有 key", () =>
   bad(summary({ rows: [{ label: "模型", value: "x", ref: { type: "model" } }] }), /rows\[0\]\.ref.*key/);
 });
 
+test("新增后台管理对象可作为卡片引用", () => {
+  for (const type of ["user", "register_settings", "smtp_settings", "storage", "image_processor"]) {
+    const result = validateCard({ kind: "summary", title: "后台状态", rows: [{ label: "对象", value: "已读取", ref: { type, key: "1" } }] });
+    assert.equal(result.ok, true);
+  }
+});
+
 test("非法参数：返回中文错误，指出位置", () => {
   bad(null, /参数/);
   bad(summary({ kind: "chart" }), /kind.*summary.*table/);
@@ -63,7 +70,7 @@ test("非法参数：返回中文错误，指出位置", () => {
   bad(summary({ rows: [{ label: "a", value: "b", badge: "徽".repeat(13) }] }), /rows\[0\]\.badge.*12/);
   bad(summary({ rows: [{ label: "a", value: "b", sub: "s".repeat(121) }] }), /rows\[0\]\.sub.*120/);
   bad(summary({ rows: [{ label: "a", value: "b", tone: "x" }] }), /rows\[0\]\.tone/);
-  bad(summary({ rows: [{ label: "a", value: "b", ref: { type: "user", key: "1" } }] }), /rows\[0\]\.ref\.type.*model/);
+  bad(summary({ rows: [{ label: "a", value: "b", ref: { type: "payment", key: "1" } }] }), /rows\[0\]\.ref\.type.*model/);
   bad(summary({ rows: [{ label: "a", value: "b", ref: "model" }] }), /rows\[0\]\.ref/);
   bad(summary({ notes: Array.from({ length: 4 }, () => ({ text: "x" })) }), /notes.*3/);
   bad(summary({ notes: [{ text: "提".repeat(121) }] }), /notes\[0\]\.text.*120/);

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { ReactFlowProvider } from "@xyflow/react";
-import { Bot, Coins, ListChecks, Scale } from "lucide-react";
+import { Bot, History, ListChecks, Settings2 } from "lucide-react";
 
 import { MOD } from "@/components/canvas-editor/keys";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -22,9 +22,9 @@ const EMPTY_COPY: AgentEmptyCopy = {
   title: "让助手帮你调整后台配置",
   subtitle: null,
   starters: [
-    { icon: Scale, text: "核对当前页面模型的价格有没有异常" },
-    { icon: Coins, text: "把选中模型的价格整体上调 10%" },
-    { icon: ListChecks, text: "列出还没有配置价格的模型" },
+    { icon: Settings2, text: "查看当前页面的配置和状态" },
+    { icon: History, text: "查询最近失败的任务和运行记录" },
+    { icon: ListChecks, text: "查看最近的操作审计" },
   ],
   hint: null,
 };

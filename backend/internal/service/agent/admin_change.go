@@ -83,7 +83,9 @@ func (s *AdminAssistantService) buildChanges(ctx context.Context, req AdminChang
 	for _, input := range req.Items {
 		var item AdminChangeItem
 		var err error
-		if isAdminCreateTarget(input.Target) {
+		if isManagementTarget(input.Target) {
+			item, err = s.buildManagementItem(ctx, input, req.RevertOf != "")
+		} else if isAdminCreateTarget(input.Target) {
 			item, err = s.buildCreateItem(ctx, input, req.RevertOf != "", runID)
 		} else {
 			item, err = s.buildItem(ctx, input, req.RevertOf != "")
@@ -334,6 +336,12 @@ func appendPriceWarnings(item *AdminChangeItem, basis PricingBasis, actual, cost
 
 // publicAdminError 只公开业务错误，仓储故障不得写进审批或发给模型。
 func publicAdminError(err error) string {
+	if errors.Is(err, repository.ErrAdminOperationUncertain) {
+		return "操作已开始但结果未确认，请先核对后台现状，再申请新的审批；本次未重复执行"
+	}
+	if errors.Is(err, repository.ErrAdminOperationFailed) {
+		return "该审批条目此前执行失败，请核对现状后重新申请审批"
+	}
 	var e *errcode.Error
 	if errors.As(err, &e) {
 		return e.Msg
@@ -355,6 +363,9 @@ func (s *AdminAssistantService) reverseRequest(ctx context.Context, order string
 		return req, errcode.ErrInvalidParams.WithMsg("没有找到该变更单的已应用记录")
 	}
 	for _, row := range rows {
+		if isManagementTarget(row.Target) {
+			return req, errcode.ErrInvalidParams.WithMsg("管理操作不支持整单自动回滚，请读取当前状态后重新申请变更")
+		}
 		var data struct {
 			Before map[string]any    `json:"before"`
 			After  map[string]any    `json:"after"`

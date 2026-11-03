@@ -84,6 +84,8 @@ var toolSpecs = []toolSpec{
 	{name: "admin_test_run", label: "请你同意试跑", verb: "试跑", modes: []string{model.AgentModeAdmin}, run: (*AgentBridge).toolAdminTestRun},
 	// 展示卡片：纯展示，校验和 card.shown 事件都在 Agent 服务里（platformExcluded）；所有模式都能用，追加在末尾以保持提示词缓存稳定。
 	{name: "show_card", label: "展示卡片", verb: "展示", run: nil},
+	{name: "admin_query", label: "查询后台记录", verb: "查询", scriptable: true, modes: []string{model.AgentModeAdmin}, run: (*AgentBridge).toolAdminQuery},
+	{name: "admin_get_resource", label: "读取后台资源", verb: "读取", scriptable: true, modes: []string{model.AgentModeAdmin}, run: (*AgentBridge).toolAdminGetResource},
 }
 
 // layoutModes 是能排列、删除和生成的任务模式：全能创作、分镜搭建和短剧助手。

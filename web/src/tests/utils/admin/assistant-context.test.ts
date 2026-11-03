@@ -117,6 +117,29 @@ const approvalEvent = (
 });
 
 describe("admin-config-changed", () => {
+  test("用户和系统设置操作成功后刷新对应页面", () => {
+    const targets = ["user", "register_settings", "smtp_settings", "storage", "image_processor"];
+    const ev = approvalEvent({});
+    ev.data.payload = { items: targets.map((target) => ({ target, key: "1" })) };
+    ev.data.result = { items: targets.map((_, index) => ({ index, status: "applied" })) };
+    expect(adminConfigChangeTargets(ev)).toEqual(targets);
+  });
+  test("管理操作失败后重新读取部分生效的用户状态或检查结果", () => {
+    const ev = approvalEvent({});
+    ev.data.payload = {
+      items: [
+        { target: "storage", key: "1" },
+        { target: "user", key: "2" },
+      ],
+    };
+    ev.data.result = {
+      items: [
+        { index: 0, status: "failed" },
+        { index: 1, status: "failed" },
+      ],
+    };
+    expect(adminConfigChangeTargets(ev)).toEqual(["storage", "user"]);
+  });
   test("插件、渠道和新建模型分别刷新对应配置列表", () => {
     const ev = approvalEvent({});
     const p = ev.data.payload as { items: unknown[] };

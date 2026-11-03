@@ -1,3 +1,4 @@
+import { useAdminConfigChanged } from "@/hooks/use-admin-config-changed";
 import { useCallback, useEffect, useState } from "react";
 
 import { getPricingSettings, getRegisterSettings, getSmtpSettings } from "@/api/admin/settings";
@@ -39,10 +40,18 @@ function useSettings<T>(fetcher: () => Promise<T>) {
 }
 
 /** 注册设置 */
-export const useRegisterSettings = () => useSettings<RegisterSettings>(getRegisterSettings);
+export const useRegisterSettings = () => {
+  const settings = useSettings<RegisterSettings>(getRegisterSettings);
+  useAdminConfigChanged("register_settings", () => void settings.reload());
+  return settings;
+};
 
 /** SMTP 设置（密码永不返回） */
-export const useSmtpSettings = () => useSettings<SmtpSettings>(getSmtpSettings);
+export const useSmtpSettings = () => {
+  const settings = useSettings<SmtpSettings>(getSmtpSettings);
+  useAdminConfigChanged("smtp_settings", () => void settings.reload());
+  return settings;
+};
 
 /** 定价设置（积分换算、默认加价率、汇率覆盖与当前汇率） */
 export const usePricingSettings = () => useSettings<PricingSettingsView>(getPricingSettings);

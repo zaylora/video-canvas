@@ -204,7 +204,12 @@ export default function RegisterSettingsPage() {
         {status === "loading" && <SettingsSkeleton />}
         {status === "error" && <SettingsError onRetry={() => void reload()} />}
         {status === "ready" && data && (
-          <RegisterForm settings={data} canWrite={canWrite} onSaved={setData} />
+          <RegisterForm
+            key={JSON.stringify(data)}
+            settings={data}
+            canWrite={canWrite}
+            onSaved={setData}
+          />
         )}
       </main>
     </div>

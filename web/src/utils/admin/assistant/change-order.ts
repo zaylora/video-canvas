@@ -184,6 +184,7 @@ export function adminChangePayload(approval: AgentApprovalDto): AdminChangePaylo
       const it = raw as Partial<AdminChangeItem>;
       return {
         target: it.target ?? "model",
+        action: it.action,
         key: it.key ?? "",
         label: it.label ?? it.key ?? "",
         live: it.live === true,
@@ -273,7 +274,15 @@ export function canRollback(approval: AgentApprovalDto): boolean {
   const payload = adminChangePayload(approval);
   const result = adminChangeResult(approval);
   if (!payload || !result || payload.revert_of) return false;
-  return result.items.some((x) => x.status === "applied");
+  return (
+    result.items.some((x) => x.status === "applied") &&
+    payload.items.every(
+      (x) =>
+        !["user", "register_settings", "smtp_settings", "storage", "image_processor"].includes(
+          x.target,
+        ),
+    )
+  );
 }
 
 /**

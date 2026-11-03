@@ -9,7 +9,7 @@
 export type CardTone = "ok" | "warn" | "bad" | "info";
 export const CARD_TONES: readonly CardTone[] = ["ok", "warn", "bad", "info"];
 /** ref 的白名单；前端把它映射成路由，未知类型只显示文字 */
-export const REF_TYPES = ["model", "channel", "plugin", "pricing_settings", "node"] as const;
+export const REF_TYPES = ["model", "channel", "plugin", "pricing_settings", "user", "register_settings", "smtp_settings", "storage", "image_processor", "node"] as const;
 export type CardRefType = (typeof REF_TYPES)[number];
 export interface CardRef { type: CardRefType; key?: string }
 

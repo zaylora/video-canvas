@@ -109,7 +109,7 @@ func (b *AgentBridge) executeAdminApproval(ctx context.Context, rc RunContext, a
 	return &ApprovalExecution{Status: status, Result: raw, OutcomeText: fmt.Sprintf("变更单 %s：%d/%d 项已应用。逐条结果：%s", o.AdminChange.OrderNo, applied, len(result.Items), raw)}, nil
 }
 
-// ExecuteChanges 执行已验签的固定快照：每项实时查角色，再由仓储事务比较 SHA 并原子写审计。
+// ExecuteChanges 执行已验签的固定快照并实时查角色；模型与定价原子写入，管理操作持久化占位后复查快照。
 func (s *AdminAssistantService) ExecuteChanges(ctx context.Context, rc RunContext, approvalID uint64, p AdminChangePayload, o ApprovalOutcome) (*AdminChangeResult, error) {
 	// 1. 已成功项以原子审计为准；重放不重新创建或重复写审计。
 	prior, err := s.d.Audit.ChangeAudits(ctx, p.OrderNo)
@@ -243,8 +243,9 @@ func replayAuditIDs(rows []repository.AssistantAuditRecord, approvalID uint64) m
 		var detail struct {
 			ApprovalID string `json:"approval_id"`
 			Index      int    `json:"index"`
+			State      string `json:"state"`
 		}
-		if json.Unmarshal(row.Detail, &detail) == nil && detail.ApprovalID == strconv.FormatUint(approvalID, 10) {
+		if json.Unmarshal(row.Detail, &detail) == nil && (detail.State == "" || detail.State == "applied") && detail.ApprovalID == strconv.FormatUint(approvalID, 10) {
 			out[detail.Index] = row.ID
 		}
 	}
@@ -256,8 +257,11 @@ func adminRoleAllows(role, required string) bool {
 	return role == model.RoleSuperAdmin || (role == model.RoleAdmin && required == model.RoleAdmin)
 }
 
-// applyChangeItem 使用现有 SaveModel 或定价服务，审计失败和 SHA 冲突都会回滚该条。
+// applyChangeItem 分派管理操作或模型、定价变更；模型与定价的审计失败和 SHA 冲突会回滚该条。
 func (s *AdminAssistantService) applyChangeItem(ctx context.Context, rc RunContext, approvalID uint64, p AdminChangePayload, index int, item AdminChangeItem) (uint64, error) {
+	if isManagementTarget(item.Target) {
+		return s.applyManagementItem(ctx, rc, approvalID, p, index, item)
+	}
 	detail := map[string]any{"via": "assistant", "order_no": p.OrderNo, "session_id": strconv.FormatUint(rc.SessionID, 10), "run_id": strconv.FormatUint(rc.RunID, 10), "approval_id": strconv.FormatUint(approvalID, 10), "index": index, "diff": item.Diff, "before": item.Before, "after": item.After}
 	switch item.Target {
 	case "pricing_settings":

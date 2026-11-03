@@ -16,6 +16,11 @@ const PAGE_LABEL: Record<AdminChangeItem["target"], string> = {
   model: "模型配置",
   model_create: "模型配置",
   pricing_settings: "定价设置",
+  user: "用户管理",
+  register_settings: "注册设置",
+  smtp_settings: "邮件服务",
+  storage: "存储配置",
+  image_processor: "图片服务",
   plugin: "插件",
   channel: "渠道",
 };
@@ -43,6 +48,16 @@ export function adminTargetPath(target: string, key: string): string | null {
       return channelsPagePath({ channel: key });
     case "plugin":
       return "/admin/ai/plugins";
+    case "user":
+      return "/admin/users";
+    case "register_settings":
+      return "/admin/settings/register";
+    case "smtp_settings":
+      return "/admin/settings/email";
+    case "storage":
+      return "/admin/settings/storage";
+    case "image_processor":
+      return "/admin/settings/image-processor";
     case "pricing_settings":
       return "/admin/settings/pricing";
     default:

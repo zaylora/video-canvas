@@ -77,6 +77,7 @@ const APPROVAL_KIND: Record<string, ApprovalKind> = {
  *  - 其余（截帧会写素材）和没登记的新工具：unsafe，崩溃后模型会收到「被中断，可能已经执行」，自己确认现状。
  */
 const SAFE = new Set([
+  "admin_query", "admin_get_resource",
   "admin_list_plugins", "admin_get_plugin", "admin_plugin_check", "admin_request_secret", "admin_test_run",
   "admin_list_models", "admin_get_model", "admin_list_channels", "admin_get_pricing_settings", "admin_get_recent_errors", "admin_quote_preview", "admin_propose_changes",
   "canvas_get_state", "model_list", "task_get", "skill_search", "skill_read", "canvas_inspect_image", "canvas_inspect_video", "web_search", "web_fetch",

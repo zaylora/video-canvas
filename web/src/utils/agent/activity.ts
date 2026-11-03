@@ -72,6 +72,8 @@ const VERB_PHRASES: Record<string, string> = {
  * 但短语不能说成「读取了画布」「修改了画布」，所以按工具名单独给说法
  */
 const ADMIN_TOOL_PHRASES: Record<string, string> = {
+  admin_query: "查询了后台记录",
+  admin_get_resource: "读取了后台资源",
   admin_list_models: "查看了模型列表",
   admin_get_model: "读取了模型配置",
   admin_list_channels: "查看了渠道",

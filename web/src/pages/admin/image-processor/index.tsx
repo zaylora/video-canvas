@@ -1,3 +1,4 @@
+import { useAdminConfigChanged } from "@/hooks/use-admin-config-changed";
 import { Plus } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
@@ -62,6 +63,7 @@ export default function ImageProcessorPage() {
     [],
   );
   const refresh = useCallback(() => void reload(), [reload]);
+  useAdminConfigChanged("image_processor", () => void reload());
 
   /** 存储配置页的「启用」带 ?new=<存储 ID> 跳过来：数据就绪后打开新建弹窗并预选该存储，随即清掉参数 */
   const [params, setParams] = useSearchParams();

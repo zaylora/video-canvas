@@ -217,7 +217,16 @@ func NewApp(cfg *config.Config) (*App, error) {
 	aiPluginSvc := service.NewAIPluginService(aiPluginRepo, aiCfgSvc, aiChannelRepo, plugin.NewPrechecker(runnerClient), aiCfgSvc)
 	aiChannelSvc := service.NewAIChannelService(aiChannelRepo, aiCfgSvc, aiCfgSvc, executor, aiChannelRepo, aiCfgSvc)
 	adminAuditRepo := repository.NewAdminAssistantRepository(db)
-	adminAssistant := agentsvc.NewAdminAssistantService(agentsvc.AdminAssistantDeps{Models: aiConfigRepo, Writer: aiCfgSvc, Users: userRepo, Channels: aiChannelRepo, Settings: pricingSvc, Audit: adminAuditRepo, History: adminAuditRepo, Plugins: aiPluginRepo, PluginWriter: aiPluginSvc, ChannelWriter: aiChannelSvc, Checker: plugin.NewDraftChecker(runnerClient), Trials: aiCfgSvc, Attempts: adminAuditRepo})
+	adminUsers := service.NewAdminUserService(userRepo, auditRepo, settingsSvc, service.WithAdminControls(service.AdminControls{
+		Credits: taskRepo, // 积分调整与任务冻结 / 结算共用 LockCredit 行锁
+		Users:   userSvc,  // 封禁 / 启用 / 改并发后清用户状态缓存
+		Tasks:   taskSvc,  // 封禁并取消任务：复用任务服务的取消与退款流程
+		Conns:   hub,      // 封禁后断开该用户全部 WebSocket
+	}))
+	adminUsage := service.NewAdminUsageService(repository.NewAdminUsageRepository(db))
+	adminLogs := service.NewAuditLogService(auditRepo)
+	management := agentsvc.AdminManagementDeps{Users: adminUsers, Register: settingsSvc, SMTP: smtpSvc, Storages: storageSvc, Processors: processorSvc, Usage: adminUsage, Logs: adminLogs, Operations: adminAuditRepo}
+	adminAssistant := agentsvc.NewAdminAssistantService(agentsvc.AdminAssistantDeps{Management: &management, Models: aiConfigRepo, Writer: aiCfgSvc, Users: userRepo, Channels: aiChannelRepo, Settings: pricingSvc, Audit: adminAuditRepo, History: adminAuditRepo, Plugins: aiPluginRepo, PluginWriter: aiPluginSvc, ChannelWriter: aiChannelSvc, Checker: plugin.NewDraftChecker(runnerClient), Trials: aiCfgSvc, Attempts: adminAuditRepo})
 	agentRT, err := newAgentRuntime(cfg, agentDeps{admin: adminAssistant, tasks: taskSvc, assets: assetSvc, assetLinks: assetSvc, frames: newVideoFrames(), frameStore: assetFrameStore{assetSvc}, repo: agentRepo, agent: agentSvc, canvas: agentCanvasSvc, registry: aiCfgSvc, secrets: aiCfgSvc, skills: skillSvc, drama: dramaSvc, segments: dramaSegments, toolCalls: observeRepo, modelRequests: observeRepo, ipAllowed: outboundIPPolicy(cfg), broadcaster: hub})
 	if err != nil {
 		stopRunner(runnerStop)
@@ -285,6 +294,9 @@ func NewApp(cfg *config.Config) (*App, error) {
 		Repo: observeRepo, Audit: auditRepo, Roles: roleLookup, Remote: AgentRemoteRunsFor(cfg.Agent),
 	})
 
+	adminQueue := service.NewQueueAdminService(repository.NewQueueRepository(db), aiChannelRepo, settingsSvc, taskQueue, auditRepo)
+	management.Queue, management.Runs = adminQueue, observeSvc
+
 	agentProxy, err := AgentProxyFor(cfg.Agent)
 	if err != nil {
 		stopRunner(runnerStop)
@@ -334,8 +346,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 		AdminPlugin:  handler.NewAdminPluginHandler(aiPluginSvc),
 		AdminChannel: handler.NewAdminChannelHandler(aiChannelSvc, aiCfgSvc),
 		AdminStats:   handler.NewAdminStatsHandler(service.NewAIStatsService(repository.NewAIStatsRepository(db), aiCfgSvc)),
-		AdminQueue: handler.NewAdminQueueHandler(service.NewQueueAdminService(
-			repository.NewQueueRepository(db), aiChannelRepo, settingsSvc, taskQueue, auditRepo)),
+		AdminQueue:   handler.NewAdminQueueHandler(adminQueue),
 		// River UI 能重试和删除 job，只许仍然启用的 super_admin 打开：停用的账号即使 cookie 还没过期也立即失效
 		RiverUI: handler.NewRiverUIHandler(riverUI, ticketStore, func(ctx context.Context, id uint64) (string, error) {
 			st, err := stateLookup(ctx, id)
@@ -347,21 +358,16 @@ func NewApp(cfg *config.Config) (*App, error) {
 		AdminStorage:   handler.NewAdminStorageHandler(storageSvc),
 		AdminImageProc: handler.NewAdminImageProcessorHandler(processorSvc),
 		AdminMe:        handler.NewAdminMeHandler(roleLookup),
-		AdminUser: handler.NewAdminUserHandler(service.NewAdminUserService(userRepo, auditRepo, settingsSvc, service.WithAdminControls(service.AdminControls{
-			Credits: taskRepo, // 积分调整与任务冻结 / 结算共用 LockCredit 行锁
-			Users:   userSvc,  // 封禁 / 启用 / 改并发后清用户状态缓存
-			Tasks:   taskSvc,  // 封禁并取消任务：复用任务服务的取消与退款流程
-			Conns:   hub,      // 封禁后断开该用户全部 WebSocket
-		}))),
-		AdminUsage:    handler.NewAdminUsageHandler(service.NewAdminUsageService(repository.NewAdminUsageRepository(db))),
-		AdminLogs:     handler.NewAdminLogHandler(service.NewAuditLogService(auditRepo)),
-		AdminSettings: handler.NewAdminSettingsHandler(settingsSvc, smtpSvc),
-		AdminSystem:   newAdminSystemHandler(cfg, db, taskRepo, auditRepo),
-		Showcase:      handler.NewShowcaseHandler(showcaseSvc),
-		Payment:       pay.user,
-		AdminPayment:  pay.admin,
-		AdminRole:     roleLookup,
-		UserState:     stateLookup,
+		AdminUser:      handler.NewAdminUserHandler(adminUsers),
+		AdminUsage:     handler.NewAdminUsageHandler(adminUsage),
+		AdminLogs:      handler.NewAdminLogHandler(adminLogs),
+		AdminSettings:  handler.NewAdminSettingsHandler(settingsSvc, smtpSvc),
+		AdminSystem:    newAdminSystemHandler(cfg, db, taskRepo, auditRepo),
+		Showcase:       handler.NewShowcaseHandler(showcaseSvc),
+		Payment:        pay.user,
+		AdminPayment:   pay.admin,
+		AdminRole:      roleLookup,
+		UserState:      stateLookup,
 	})
 
 	return &App{

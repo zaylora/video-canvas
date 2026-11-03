@@ -15,7 +15,7 @@ import { codec, TOKEN } from "./engine-helpers.ts";
 import { withHttp } from "./http-helpers.ts";
 
 test("二期工具均可安全重放", () => {
-  for (const name of ["admin_list_plugins", "admin_get_plugin", "admin_plugin_check", "admin_request_secret", "admin_test_run"]) assert.equal(replayOf(name), "safe");
+  for (const name of ["admin_query", "admin_get_resource", "admin_list_plugins", "admin_get_plugin", "admin_plugin_check", "admin_request_secret", "admin_test_run"]) assert.equal(replayOf(name), "safe");
 });
 
 test("真实试跑先审批，决定立即返回，终态经事件和历史交付", async () => {

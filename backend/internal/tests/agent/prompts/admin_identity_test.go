@@ -34,3 +34,15 @@ func TestAdmin_KnowsCanvasWorkHappensOnCanvas(t *testing.T) {
 		t.Fatal("后台提示词应说明画布上的事要到画布里找小镜")
 	}
 }
+
+func TestAdmin_ManagementScope(t *testing.T) {
+	got := prompts.Admin([]byte(`{}`))
+	for _, want := range []string{"任务队列", "运行记录", "用户管理", "使用记录", "操作审计", "图片服务", "注册设置", "邮件服务", "存储设置", "admin_query", "admin_get_resource", "超级管理员", "专用表单"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("缺少后台管理能力说明：%s", want)
+		}
+	}
+	if strings.Contains(got, "不操作用户、支付或存储") {
+		t.Fatal("残留旧能力限制")
+	}
+}
