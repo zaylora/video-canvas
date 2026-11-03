@@ -96,12 +96,21 @@ describe("结论卡", () => {
     const out = html(
       summary({
         sources: [],
-        rows: [{ label: "用户", value: "张三", ref: { type: "user", key: "1" } }],
+        rows: [{ label: "用户", value: "张三", ref: { type: "unknown", key: "1" } }],
       }),
     );
     expect(out).toContain("张三");
     expect(out).not.toContain("<a ");
     expect(out).not.toContain("<button");
+  });
+
+  test("用户引用在后台跳转到用户管理，在画布中只显示文字", () => {
+    const raw = summary({
+      sources: [],
+      rows: [{ label: "用户", value: "张三", ref: { type: "user", key: "1" } }],
+    });
+    expect(html(raw, "admin")).toContain('href="/admin/users"');
+    expect(html(raw, "canvas")).not.toContain("<a ");
   });
 
   test("来源链接新窗口打开且带 noreferrer noopener；不合法的 URL 不渲染链接", () => {

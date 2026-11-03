@@ -401,14 +401,12 @@ describe("useAgentController：等你回答时在输入框打字", () => {
         context_tokens: 0,
         spent_credits: 0,
       } as never);
-      useAgentStore
-        .getState()
-        .ingestApproval("as1", {
-          ...waitingAsk(),
-          id: "gen1",
-          kind: "generate",
-          payload: {} as never,
-        });
+      useAgentStore.getState().ingestApproval("as1", {
+        ...waitingAsk(),
+        id: "gen1",
+        kind: "generate",
+        payload: {} as never,
+      });
     });
     // 提问那条换成已处理，剩下待确认的只有生成审批
     await act(async () => {

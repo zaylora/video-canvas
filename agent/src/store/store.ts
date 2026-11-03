@@ -417,8 +417,8 @@ export class AgentStore {
 
   // ---- 审批 ----
 
-  createApproval(in_: NewApproval): Approval {
-    const t = this.#now();
+  /** 使用与过期时间相同的创建时刻，避免两次读取时钟使审批有效期少一个毫秒 */
+  createApproval(in_: NewApproval, t = this.#now()): Approval {
     try {
       const row = this.#get(
         `INSERT INTO agent_approvals (id, run_id, session_id, canvas_id, user_id, kind, tool_call_id, payload, quote_credits, status, expires_at, created_at, updated_at)

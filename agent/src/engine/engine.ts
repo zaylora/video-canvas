@@ -1703,10 +1703,11 @@ export class AgentEngine {
       if (e instanceof StateConflictError) throw Err.state();
       throw e;
     }
+    const createdAt = this.#now();
     const approval = store.createApproval({
       runId: a.run.id, sessionId: a.run.sessionId, canvasId: a.run.canvasId, userId: a.run.userId, kind: x.kind, toolCallId: x.toolCallId,
-      payload: x.payload, quoteCredits: x.quoteCredits, status: "pending", expiresAt: this.#now() + (this.#o.approvalTtlMs ?? APPROVAL_TTL_MS),
-    });
+      payload: x.payload, quoteCredits: x.quoteCredits, status: "pending", expiresAt: createdAt + (this.#o.approvalTtlMs ?? APPROVAL_TTL_MS),
+    }, createdAt);
     this.#emit(this.#ev(a), "approval.created", this.#approvalView(approval));
     this.#emit(this.#ev(a), "run.status", statusEvent(next));
   }
