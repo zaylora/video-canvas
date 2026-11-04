@@ -110,6 +110,10 @@ func (r *dramaMemory) UpdateProject(_ context.Context, userID, id uint64, revisi
 			r.project.Title = v.(string)
 		case "text_model":
 			r.project.TextModel = v.(string)
+		case "video_model":
+			r.project.VideoModel = v.(string)
+		case "image_models":
+			r.project.ImageModels = v.([]byte)
 		}
 	}
 	r.project.Revision++
@@ -277,6 +281,8 @@ type dramaRegistry struct {
 	models      []provider.ModelInfo
 	unavailable map[string]bool
 	requested   []string
+	// snaps 按模型 key 返回专属快照（视频 / 图片模型）；没登记的 key 回落到 snap
+	snaps map[string]*provider.Snapshot
 }
 
 func (r *dramaRegistry) ListModels(_ context.Context, kind string) ([]provider.ModelInfo, error) {
@@ -292,6 +298,9 @@ func (r *dramaRegistry) Snapshot(_ context.Context, key string) (*provider.Snaps
 	r.requested = append(r.requested, key)
 	if r.unavailable[key] {
 		return nil, provider.ErrModelUnavailable
+	}
+	if snap, ok := r.snaps[key]; ok {
+		return snap, nil
 	}
 	return r.snap, nil
 }
@@ -338,6 +347,7 @@ type dramaPipelineCanvas struct {
 	applied  int
 	prompted int
 	created  []service.DramaCanvasAsset
+	models   map[string]string
 	// deleted 记录删集调用：短剧 id、画布 id、集号
 	deleted [][3]uint64
 }
@@ -347,8 +357,9 @@ func (c *dramaPipelineCanvas) DeleteEpisode(_ context.Context, _, dramaID, canva
 	return nil
 }
 
-func (c *dramaPipelineCanvas) ApplyBreakdown(context.Context, uint64, uint64, uint64, uint64, []int, []drama.Asset) ([]service.DramaCanvasAsset, error) {
+func (c *dramaPipelineCanvas) ApplyBreakdown(_ context.Context, _, _, _, _ uint64, _ []int, _ []drama.Asset, models map[string]string) ([]service.DramaCanvasAsset, error) {
 	c.applied++
+	c.models = models
 	return c.created, nil
 }
 func (c *dramaPipelineCanvas) ApplyPrompts(context.Context, uint64, uint64, uint64, []drama.AssetPrompt) error {

@@ -170,16 +170,12 @@ export type InPlaceView = {
 
 /**
  * 这条任务的进度页面里已经就地显示了，顶部进度条不再重复：
- * 研读视图里的研读 / 大纲，片场里当前集的分镜。只管进行中的，失败照常进顶部（带原因和重试）。
+ * 只有研读视图里的研读 / 大纲。分镜任务即使在当前集的片场也进顶部（那里的进度和顶部并存），
+ * 这样看自己那集和看别的集一样有取消入口和进度条。只管进行中的，失败照常进顶部（带原因和重试）。
  */
 export function coveredInPlace(job: DramaJob, view: InPlaceView): boolean {
   if (!isActiveJob(job)) return false;
-  if (view.analyzingView && (job.step === "analyze" || job.step === "outline")) return true;
-  return (
-    view.storyboardEp !== null &&
-    job.step === "storyboard" &&
-    job.episodes.includes(view.storyboardEp)
-  );
+  return view.analyzingView && (job.step === "analyze" || job.step === "outline");
 }
 
 /** 页内进度条要显示的任务：全部进行中的；没有进行中时，最新一条若失败也显示（带重试） */

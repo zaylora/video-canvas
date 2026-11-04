@@ -38,6 +38,8 @@ type DramaProject struct {
 	TargetEpisodes int            `gorm:"not null;default:0"`
 	EpisodeSeconds int            `gorm:"not null;default:60"`
 	TextModel      string         `gorm:"size:128;not null;default:''"`
+	VideoModel     string         `gorm:"size:128;not null;default:''"`
+	ImageModels    datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
 	OutlineMD      string         `gorm:"type:text;not null;default:''"`
 	CharactersMD   string         `gorm:"type:text;not null;default:''"`
 	Status         string         `gorm:"size:16;not null;default:analyzing"`
@@ -114,6 +116,28 @@ type CreateDramaReq struct {
 	EpisodeSeconds int                          `json:"episode_seconds" binding:"omitempty,min=30,max=180"`
 	// TextModel 流水线用的 Agent 模型 key；空串跟随后台第一个，选的模型停用时也回落到它
 	TextModel string `json:"text_model" binding:"max=128"`
+	// VideoModel 分镜与片段用的视频模型 key；空串表示不指定
+	VideoModel string `json:"video_model" binding:"max=128"`
+	// ImageModels 人物 / 场景 / 物品资产节点新建时默认的图片模型 key；空串表示不指定
+	ImageModels DramaImageModels `json:"image_models"`
+}
+
+// DramaImageModels 三类资产各自默认的图片模型 key，空串表示不指定。
+type DramaImageModels struct {
+	Character string `json:"character" binding:"max=128"`
+	Scene     string `json:"scene" binding:"max=128"`
+	Prop      string `json:"prop" binding:"max=128"`
+}
+
+// ByType 返回资产类型（character / scene / prop）到模型 key 的映射，只含已指定的项。
+func (m DramaImageModels) ByType() map[string]string {
+	out := map[string]string{}
+	for typ, key := range map[string]string{"character": m.Character, "scene": m.Scene, "prop": m.Prop} {
+		if key != "" {
+			out[typ] = key
+		}
+	}
+	return out
 }
 
 // UpdateDramaReq 部分更新项目，revision 用于乐观锁。
@@ -126,6 +150,8 @@ type UpdateDramaReq struct {
 	StyleCustom  *string                      `json:"style_custom" binding:"omitempty,max=500"`
 	Ratio        *string                      `json:"ratio" binding:"omitempty,oneof=9:16 16:9 21:9 3:4 4:3 1:1"`
 	TextModel    *string                      `json:"text_model" binding:"omitempty,max=128"`
+	VideoModel   *string                      `json:"video_model" binding:"omitempty,max=128"`
+	ImageModels  *DramaImageModels            `json:"image_models"`
 	OutlineMD    *string                      `json:"outline_md"`
 	CharactersMD *string                      `json:"characters_md"`
 }
@@ -240,6 +266,8 @@ type DramaView struct {
 	TargetEpisodes int                           `json:"target_episodes"`
 	EpisodeSeconds int                           `json:"episode_seconds"`
 	TextModel      string                        `json:"text_model"`
+	VideoModel     string                        `json:"video_model"`
+	ImageModels    DramaImageModels              `json:"image_models"`
 	OutlineMD      string                        `json:"outline_md"`
 	CharactersMD   string                        `json:"characters_md"`
 	Revision       int64                         `json:"revision"`

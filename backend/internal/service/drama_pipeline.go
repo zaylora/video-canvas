@@ -157,7 +157,7 @@ func (s *DramaService) runBreakdown(ctx context.Context, run *dramaRun, vars map
 	if s.canvas == nil {
 		return nil, errcode.ErrInternal
 	}
-	result.newAssets, err = s.canvas.ApplyBreakdown(ctx, run.job.UserID, run.job.DramaID, run.project.CanvasID, run.job.ID, run.job.Episodes, out.Assets)
+	result.newAssets, err = s.canvas.ApplyBreakdown(ctx, run.job.UserID, run.job.DramaID, run.project.CanvasID, run.job.ID, run.job.Episodes, out.Assets, dramaImageModels(run.project).ByType())
 	if err != nil {
 		return nil, err
 	}

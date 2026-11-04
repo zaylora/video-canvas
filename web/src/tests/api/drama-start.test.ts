@@ -168,6 +168,27 @@ describe("api/drama 开拍设置：建剧", () => {
     expect("target_episodes" in body).toBe(false);
   });
 
+  test("建剧请求体：视频模型与图片模型用 snake_case，空的不发", () => {
+    const base = {
+      sourceToken: "t",
+      sourceKind: "novel" as const,
+      rangeEnd: 0,
+      ratio: "9:16" as const,
+      styleKey: "xianxia",
+      episodeSeconds: 60,
+    };
+    const body = toCreateDramaBody({
+      ...base,
+      videoModel: "v1",
+      imageModels: { character: "c1", scene: "", prop: "p1" },
+    });
+    expect(body.video_model).toBe("v1");
+    expect(body.image_models).toEqual({ character: "c1", prop: "p1" });
+    const bare = toCreateDramaBody({ ...base, videoModel: "", imageModels: {} });
+    expect("video_model" in bare).toBe(false);
+    expect("image_models" in bare).toBe(false);
+  });
+
   test("建剧：POST /dramas（JSON），67002 等错误由调用方展示", async () => {
     post.mockResolvedValue({ id: "d1", title: "霜刃", episodes: null, active_jobs: null });
     const drama = await createDrama({
@@ -416,6 +437,19 @@ describe("api/drama 开拍设置：视图新字段映射", () => {
     });
     // 0 = 未关联单元，前端统一成 null
     expect(drama.episodes[1]).toMatchObject({ hook: "", cliffhanger: "", unitFrom: null });
+  });
+
+  test("详情：video_model / image_models 映射为 videoModel / imageModels，老数据为空串", () => {
+    const withModels = mapDrama({
+      ...raw,
+      video_model: "v1",
+      image_models: { character: "c1", scene: "s1" },
+    } as unknown as BackendDramaView);
+    expect(withModels.videoModel).toBe("v1");
+    expect(withModels.imageModels).toEqual({ character: "c1", scene: "s1", prop: "" });
+    const old = mapDrama(raw);
+    expect(old.videoModel).toBe("");
+    expect(old.imageModels).toEqual({ character: "", scene: "", prop: "" });
   });
 
   test("老后端没有新字段：phase 按 done，提示词全是内置，任务线按用户线", () => {

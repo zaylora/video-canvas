@@ -1,6 +1,6 @@
 import type { Capabilities, ModelInfo, ParamField } from "@/api/model/type";
 import { ratioParam } from "@/utils/canvas/node-frame";
-import { matchOption } from "@/utils/tasks/capabilities";
+import { matchOption, PROMPT_FORMATS } from "@/utils/tasks/capabilities";
 
 /** 短剧分镜单段时长的合法范围与缺省（契约 §10 的 max_seconds） */
 export const STORYBOARD_SECONDS = { min: 4, max: 60, fallback: 15 } as const;
@@ -64,10 +64,12 @@ export function fitDuration(
   return { value, adjusted: value !== seconds };
 }
 
-/** 模型的一行摘要：「参考图 ≤9 · 参考音频 · ≤15s」 */
+/** 模型的一行摘要：「Seedance · 参考图 ≤9 · 参考音频 · ≤15s」；通用格式不显示格式名 */
 export function modelSummary(info: ModelInfo): string {
   const caps = info.capabilities;
   const parts: string[] = [];
+  const format = PROMPT_FORMATS.find((item) => item.value && item.value === caps.prompt_format);
+  if (format) parts.push(format.label);
   if (caps.refs?.image?.on) parts.push(`参考图 ≤${caps.refs.image.max}`);
   if (caps.refs?.audio?.on) parts.push("参考音频");
   const max = modelMaxSeconds(caps);
@@ -106,12 +108,21 @@ export function segmentParams(
 }
 
 /**
- * 默认选哪个视频模型：存过选择且仍可用就沿用，否则取第一个可用的；一个都没有为 undefined。
+ * 默认选哪个视频模型：本机存过选择且仍可用就沿用；没有则用短剧建剧时选的；都不可用取第一个可用的；
+ * 一个都没有为 undefined。
+ * @param models 视频模型清单
+ * @param savedKey 本机偏好里的模型 key，空串 = 没选
+ * @param projectKey 短剧项目自带的视频模型 key，空串 = 没指定
  */
 export function pickVideoModel(
   models: readonly ModelInfo[],
   savedKey: string,
+  projectKey = "",
 ): ModelInfo | undefined {
   const usable = models.filter((info) => videoModelSupport(info).ok);
-  return usable.find((info) => info.key === savedKey) ?? usable[0];
+  return (
+    usable.find((info) => !!savedKey && info.key === savedKey) ??
+    usable.find((info) => !!projectKey && info.key === projectKey) ??
+    usable[0]
+  );
 }

@@ -144,9 +144,9 @@ describe("展示与禁用原因", () => {
 describe("页面里就地显示进度的任务，顶部进度条不再重复", () => {
   const view = { analyzingView: false, storyboardEp: null };
 
-  test("正在看第 1 集片场：这一集的分镜任务在页面里显示，不进顶部", () => {
+  test("正在看第 1 集片场：这一集的分镜任务也进顶部，和看别的集时一致", () => {
     const sb = job({ step: "storyboard", episodes: [1] });
-    expect(coveredInPlace(sb, { ...view, storyboardEp: 1 })).toBe(true);
+    expect(coveredInPlace(sb, { ...view, storyboardEp: 1 })).toBe(false);
   });
 
   test("看的是别的集或不在片场：照常进顶部", () => {

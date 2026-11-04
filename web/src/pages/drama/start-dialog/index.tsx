@@ -24,11 +24,14 @@ import {
   usePromptLibrary,
   type PromptLibrary,
 } from "@/components/drama/prompts/use-prompt-library";
+import { ModelMenu, VideoModelMenu } from "@/components/drama/video-model-menu";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useDramaStyles } from "@/hooks/use-drama-styles";
+import { useRemoteModels } from "@/hooks/use-models";
 import { cn } from "@/lib/utils";
+import type { ModelInfo } from "@/api/model/type";
 import {
   CUSTOM_STYLE_KEY,
   DEFAULT_EPISODE_SECONDS,
@@ -41,6 +44,7 @@ import {
   builtinPrompts,
   charsLabel,
   durationLabel,
+  emptyImageModels,
   episodesLabel,
   loadStartPrefs,
   modelDisabledReason,
@@ -72,9 +76,22 @@ function initialForm(pre: SourcePreflight): StartForm {
     styleCustom: prefs?.styleCustom ?? "",
     seconds: prefs?.seconds ?? DEFAULT_EPISODE_SECONDS,
     textModel: prefs?.textModel ?? "",
+    videoModel: prefs?.videoModel ?? "",
+    imageModels: prefs?.imageModels ?? emptyImageModels(),
     prompts: prefs?.prompts ?? builtinPrompts(),
   };
 }
+
+/** 资产图片模型三个胶囊：键对应请求里的 image_models，前缀是胶囊上的字样 */
+const IMAGE_MODEL_SLOTS = [
+  { key: "character", prefix: "人物" },
+  { key: "scene", prefix: "场景" },
+  { key: "prop", prefix: "物品" },
+] as const;
+
+/** 选的模型已被下线（清单加载完且里面没有）时回落为空串；只在读取时推导，不回写 */
+const liveModelKey = (key: string, remote: { status: string; models: ModelInfo[] }): string =>
+  key && remote.status === "ready" && !remote.models.some((m) => m.key === key) ? "" : key;
 
 /** 两行之间的分隔线 */
 const Divider = () => <div className="bg-chrome-border h-px" />;
@@ -242,6 +259,17 @@ export function StartBody({
     modelDisabledReason(agent.model?.capabilities.context?.window) !== null && !!agent.model;
   const block = startBlockReason({ kind: form.kind, styleKey, modelBlocked });
 
+  const videoRemote = useRemoteModels("video");
+  const imageRemote = useRemoteModels("image");
+  const videoModel = liveModelKey(form.videoModel, videoRemote);
+  const imageModels = {
+    character: liveModelKey(form.imageModels.character, imageRemote),
+    scene: liveModelKey(form.imageModels.scene, imageRemote),
+    prop: liveModelKey(form.imageModels.prop, imageRemote),
+  };
+  const modelsLoading = (remote: { status: string }) =>
+    remote.status === "idle" || remote.status === "loading";
+
   const estimate = useSourceEstimate(
     pre.sourceToken,
     form.kind
@@ -269,7 +297,7 @@ export function StartBody({
     setSubmitting(true);
     setError(null);
     try {
-      const next = { ...form, styleKey, prompts };
+      const next = { ...form, styleKey, prompts, videoModel, imageModels };
       await onSubmit(buildCreateInput(pre, next));
       saveStartPrefs(next);
     } catch (e) {
@@ -478,6 +506,37 @@ export function StartBody({
                   {modelDisabledReason(agent.model?.capabilities.context?.window)}
                 </p>
               )}
+            </div>
+          </Field>
+
+          <Field label="视频模型">
+            <div>
+              <VideoModelMenu
+                variant="field"
+                models={videoRemote.models}
+                loading={modelsLoading(videoRemote)}
+                model={videoRemote.models.find((m) => m.key === videoModel)}
+                onPick={(key) => patch({ videoModel: key })}
+                defaultLabel="跟随默认"
+              />
+            </div>
+          </Field>
+
+          <Field label="资产图片模型">
+            <div className="flex flex-wrap gap-2">
+              {IMAGE_MODEL_SLOTS.map(({ key, prefix }) => (
+                <ModelMenu
+                  key={key}
+                  variant="field"
+                  prefix={prefix}
+                  kindName="图片"
+                  models={imageRemote.models}
+                  loading={modelsLoading(imageRemote)}
+                  model={imageRemote.models.find((m) => m.key === imageModels[key])}
+                  onPick={(picked) => patch({ imageModels: { ...imageModels, [key]: picked } })}
+                  defaultLabel="跟随默认"
+                />
+              ))}
             </div>
           </Field>
 

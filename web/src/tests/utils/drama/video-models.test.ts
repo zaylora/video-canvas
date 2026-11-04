@@ -110,6 +110,16 @@ describe("时长上限与适配", () => {
     });
     expect(modelSummary(model("a", noAudio))).toBe("参考图 ≤9 · ≤15s");
   });
+
+  test("摘要带提示词格式名放在最前，通用不显示", () => {
+    expect(modelSummary(model("a", caps({ prompt_format: "seedance" })))).toBe(
+      "Seedance · 参考图 ≤9 · 参考音频 · ≤15s",
+    );
+    expect(modelSummary(model("a", caps({ prompt_format: "h3" })))).toContain("MiniMax H3 · ");
+    expect(modelSummary(model("a", caps({ prompt_format: "" })))).toBe(
+      "参考图 ≤9 · 参考音频 · ≤15s",
+    );
+  });
 });
 
 describe("提交参数：时长跟片段、比例跟短剧", () => {
@@ -144,5 +154,13 @@ describe("默认模型", () => {
     expect(pickVideoModel(list, "nope")?.key).toBe("first");
     expect(pickVideoModel(list, "gone")?.key).toBe("first");
     expect(pickVideoModel([list[0]], "")).toBeUndefined();
+  });
+
+  test("回退顺序：本机偏好 > 项目建剧时选的 > 第一个可用；项目的模型不可用 / 下线也回到第一个", () => {
+    expect(pickVideoModel(list, "", "second")?.key).toBe("second");
+    expect(pickVideoModel(list, "first", "second")?.key).toBe("first");
+    expect(pickVideoModel(list, "gone", "second")?.key).toBe("second");
+    expect(pickVideoModel(list, "", "nope")?.key).toBe("first");
+    expect(pickVideoModel(list, "", "gone")?.key).toBe("first");
   });
 });

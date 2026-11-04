@@ -210,7 +210,7 @@ func TestDramaCanvasBreakdownCreatesAndMergesAtomically(t *testing.T) {
 	f := newDramaCanvasFake()
 	bc := &dramaCanvasBroadcast{}
 	svc := service.NewDramaCanvasService(f, bc)
-	created, err := svc.ApplyBreakdown(ctx, 1, 3, 7, 9, []int{1}, dramaCanvasAssets(1))
+	created, err := svc.ApplyBreakdown(ctx, 1, 3, 7, 9, []int{1}, dramaCanvasAssets(1), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,7 +250,7 @@ func TestDramaCanvasBreakdownCreatesAndMergesAtomically(t *testing.T) {
 	if checkpoint["canvas_committed"] != true || checkpoint["cost"] != float64(5) || checkpoint["result"] == nil {
 		t.Fatalf("checkpoint lost model result or billing cost: %+v", checkpoint)
 	}
-	replayed, err := svc.ApplyBreakdown(ctx, 1, 3, 7, 9, []int{1}, dramaCanvasAssets(1))
+	replayed, err := svc.ApplyBreakdown(ctx, 1, 3, 7, 9, []int{1}, dramaCanvasAssets(1), nil)
 	if err != nil || !reflect.DeepEqual(replayed, created) || f.canvas.Revision != 2 || len(bc.messages) != 1 {
 		t.Fatalf("durable replay changed canvas: replay=%+v err=%v", replayed, err)
 	}
@@ -261,7 +261,7 @@ func TestDramaCanvasBreakdownCreatesAndMergesAtomically(t *testing.T) {
 	assets[0].Name = "小川"
 	assets[0].Aliases = []string{" 林川 "}
 	assets = append(assets, drama.Asset{Type: "prop", Name: "玉佩", Aliases: []string{}, Episodes: []int{2}, Description: "双鱼玉佩"})
-	second, err := svc.ApplyBreakdown(ctx, 1, 3, 7, 11, []int{2}, assets)
+	second, err := svc.ApplyBreakdown(ctx, 1, 3, 7, 11, []int{2}, assets, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -289,7 +289,7 @@ func TestDramaCanvasCASReplaysWithoutDuplicateNodes(t *testing.T) {
 		f.canvas.PayloadJSON = datatypes.JSON(`{"nodes":[{"id":"manual","type":"canvas","position":{"x":0,"y":0},"data":{"kind":"image","label":"用户新增"}}],"edges":[]}`)
 		f.canvas.Revision++
 	}
-	created, err := service.NewDramaCanvasService(f, bc).ApplyBreakdown(context.Background(), 1, 3, 7, 9, []int{1}, dramaCanvasAssets(1))
+	created, err := service.NewDramaCanvasService(f, bc).ApplyBreakdown(context.Background(), 1, 3, 7, 9, []int{1}, dramaCanvasAssets(1), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -351,7 +351,7 @@ func TestDramaCanvasFailureRollsBackEverything(t *testing.T) {
 			if episodes == nil {
 				episodes = []int{1}
 			}
-			_, err := service.NewDramaCanvasService(f, bc).ApplyBreakdown(context.Background(), user, dramaID, 7, 9, episodes, dramaCanvasAssets(1))
+			_, err := service.NewDramaCanvasService(f, bc).ApplyBreakdown(context.Background(), user, dramaID, 7, 9, episodes, dramaCanvasAssets(1), nil)
 			if tc.raw != nil {
 				if !errors.Is(err, tc.raw) {
 					t.Fatalf("err=%v", err)

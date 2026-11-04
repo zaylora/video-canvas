@@ -58,7 +58,15 @@ type Capabilities struct {
 	System  string       `json:"system,omitempty"`  // 固定系统提示，仅 text，用户看不到
 	Vision  bool         `json:"vision,omitempty"`  // 能不能看图，仅 agent；不能看图的模型不会收到「看图」工具
 	Video   bool         `json:"video,omitempty"`   // 能不能理解视频画面和声音，仅 Gemini 格式的 agent
+	// PromptFormat 是视频模型的提示词写法，短剧分镜据此选模板：空 = 通用，seedance，h3；仅 video
+	PromptFormat string `json:"prompt_format,omitempty"`
 }
+
+// 视频模型的提示词写法（Capabilities.PromptFormat 的取值；空串 = 通用）。
+const (
+	PromptFormatSeedance = "seedance"
+	PromptFormatH3       = "h3"
+)
 
 // Refs 是三种参考素材的配置。
 type Refs struct {

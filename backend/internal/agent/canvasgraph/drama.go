@@ -307,6 +307,9 @@ func newDramaNode(opt Options, asset DramaAsset) Node {
 	if kind == KindCharacter {
 		n.Data()["character"] = newCharacterMeta(asset)
 	}
+	if key := opt.DramaModels[asset.Type]; key != "" {
+		n.Data()["model"] = key
+	}
 	return n
 }
 

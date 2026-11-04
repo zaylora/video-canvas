@@ -280,3 +280,120 @@ describe("开拍设置：点「开始」建剧", () => {
     await m.unmount();
   });
 });
+
+describe("开拍设置：视频 / 图片模型", () => {
+  const videoModel = (key: string, withImageRef: boolean) =>
+    ({
+      key,
+      kind: "video",
+      label: key,
+      pricing: {},
+      capabilities: {
+        ops: withImageRef ? ["t2v", "i2v"] : ["t2v"],
+        refs: { image: { on: withImageRef, max: withImageRef ? 9 : 0, max_mb: 10 } },
+        params: { duration: { type: "number", label: "时长", open: true, min: 4, max: 15 } },
+      },
+    }) as never;
+  const imageModel = (key: string) =>
+    ({ key, kind: "image", label: key, pricing: {}, capabilities: {} }) as never;
+
+  beforeEach(() => {
+    const byKind = useModelsStore.getState().byKind;
+    useModelsStore.setState({
+      byKind: {
+        ...byKind,
+        video: {
+          status: "ready",
+          loadedAt: Date.now(),
+          models: [videoModel("vid-a", true), videoModel("vid-text", false)],
+        },
+        image: {
+          status: "ready",
+          loadedAt: Date.now(),
+          models: [imageModel("img-a"), imageModel("img-b")],
+        },
+      },
+    });
+  });
+
+  const menuRows = () =>
+    [...dom.win.document.body.querySelectorAll("button")].filter((b) =>
+      b.className.includes("min-h-10"),
+    ) as HTMLButtonElement[];
+
+  const pickFromPopover = async (trigger: HTMLElement | undefined, name: string) => {
+    await dom.click(trigger);
+    await dom.flush();
+    await dom.click(menuRows().find((b) => (b.textContent ?? "").startsWith(name)));
+    await dom.flush();
+  };
+
+  test("文本模型下面依次是视频模型、资产图片模型（人物 / 场景 / 物品）", async () => {
+    const m = await mountBody(pre());
+    const text = m.container.textContent ?? "";
+    expect(text.indexOf("文本模型")).toBeLessThan(text.indexOf("视频模型"));
+    expect(text.indexOf("视频模型")).toBeLessThan(text.indexOf("资产图片模型"));
+    expect(byText(m.container, "人物 · 跟随默认")).toBeTruthy();
+    expect(byText(m.container, "场景 · 跟随默认")).toBeTruthy();
+    expect(byText(m.container, "物品 · 跟随默认")).toBeTruthy();
+    await m.unmount();
+  });
+
+  test("选视频模型和图片模型后点开始：请求体带上它们", async () => {
+    const calls: CreateDramaInput[] = [];
+    dom.win.localStorage.setItem(
+      "drama-start-prefs",
+      JSON.stringify({ styleKey: "real_city_film" }),
+    );
+    const m = await mountBody(pre(), async (input) => {
+      calls.push(input);
+    });
+    await pickFromPopover(byText(m.container, "跟随默认"), "vid-a");
+    await pickFromPopover(byText(m.container, "人物 · 跟随默认"), "img-a");
+    await pickFromPopover(byText(m.container, "物品 · 跟随默认"), "img-b");
+    await dom.click(startButton(m.container));
+    await dom.flush();
+    expect(calls[0].videoModel).toBe("vid-a");
+    expect(calls[0].imageModels).toMatchObject({ character: "img-a", prop: "img-b" });
+    expect(calls[0].imageModels?.scene).toBeUndefined();
+    await m.unmount();
+  });
+
+  test("不支持参考图的视频模型置灰并写原因，可用的副文案带时长上限", async () => {
+    const m = await mountBody(pre());
+    await dom.click(byText(m.container, "跟随默认"));
+    await dom.flush();
+    const rows = menuRows();
+    const ok = rows.find((b) => (b.textContent ?? "").startsWith("vid-a"))!;
+    const bad = rows.find((b) => (b.textContent ?? "").startsWith("vid-text"))!;
+    expect(ok.disabled).toBe(false);
+    expect(ok.textContent).toContain("≤15s");
+    expect(bad.disabled).toBe(true);
+    expect(bad.textContent).toContain("不支持参考图");
+    expect(bad.title).toContain("不支持参考图");
+    await m.unmount();
+  });
+
+  test("记住的模型已下线：读取时回落为不指定，提交不带它", async () => {
+    dom.win.localStorage.setItem(
+      "drama-start-prefs",
+      JSON.stringify({
+        styleKey: "real_city_film",
+        videoModel: "gone",
+        imageModels: { character: "gone", scene: "img-a" },
+      }),
+    );
+    const calls: CreateDramaInput[] = [];
+    const m = await mountBody(pre(), async (input) => {
+      calls.push(input);
+    });
+    expect(byText(m.container, "人物 · 跟随默认")).toBeTruthy();
+    expect(byText(m.container, "场景 · img-a")).toBeTruthy();
+    await dom.click(startButton(m.container));
+    await dom.flush();
+    expect(calls[0].videoModel).toBeUndefined();
+    expect(calls[0].imageModels?.character).toBeUndefined();
+    expect(calls[0].imageModels?.scene).toBe("img-a");
+    await m.unmount();
+  });
+});

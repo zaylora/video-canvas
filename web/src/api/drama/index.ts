@@ -119,6 +119,12 @@ export const mapDrama = (raw: BackendDramaView): Drama => ({
   targetEpisodes: raw.target_episodes,
   episodeSeconds: raw.episode_seconds,
   textModel: raw.text_model ?? "",
+  videoModel: raw.video_model ?? "",
+  imageModels: {
+    character: raw.image_models?.character ?? "",
+    scene: raw.image_models?.scene ?? "",
+    prop: raw.image_models?.prop ?? "",
+  },
   outlineMd: raw.outline_md ?? "",
   charactersMd: raw.characters_md ?? "",
   revision: raw.revision,
@@ -166,6 +172,12 @@ export const mapSegment = (raw: BackendSegmentView): Segment => ({
 const compact = <T extends Record<string, unknown>>(body: T): Partial<T> =>
   Object.fromEntries(Object.entries(body).filter(([, value]) => value !== undefined)) as Partial<T>;
 
+/** 图片模型三项里只发有值的；一个都没有整个字段不发 */
+const imageModelsBody = (models: CreateDramaInput["imageModels"]) => {
+  const picked = Object.fromEntries(Object.entries(models ?? {}).filter(([, key]) => !!key));
+  return Object.keys(picked).length > 0 ? picked : undefined;
+};
+
 /**
  * POST /dramas 请求体（契约 §2）：只带草稿 token 与开拍设置；空的可选字段不发，
  * 不再有 target_episodes。
@@ -182,6 +194,8 @@ export const toCreateDramaBody = (input: CreateDramaInput) =>
     style_custom: input.styleCustom || undefined,
     episode_seconds: input.episodeSeconds,
     text_model: input.textModel ?? "",
+    video_model: input.videoModel || undefined,
+    image_models: imageModelsBody(input.imageModels),
     prompts: input.prompts,
   });
 

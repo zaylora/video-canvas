@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { MessageSquareText } from "lucide-react";
+import { Sparkles } from "lucide-react";
 
 import { ChromeButton, ChromePill, Kbd } from "@/components/canvas/chrome/chrome";
 import { MOD } from "@/components/canvas-editor/keys";
@@ -49,7 +49,7 @@ export function AssistantTrigger() {
         className={open ? "bg-chrome-hover text-foreground" : undefined}
         onClick={toggle}
       >
-        <MessageSquareText aria-hidden />
+        <Sparkles aria-hidden />
         <span className="text-xs font-medium">{ASSISTANT_NAME}</span>
         <Kbd>{MOD === "⌘" ? "⌘J" : "Ctrl J"}</Kbd>
       </ChromeButton>

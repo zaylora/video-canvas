@@ -8,6 +8,7 @@ import {
   FormSectionTitle,
 } from "@/components/admin-ui/form-section";
 import { ToggleChip } from "@/components/admin-ui/toggle-chip";
+import { OptionSelect } from "@/components/admin-ui/option-select";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -20,6 +21,7 @@ import {
   withModelField,
 } from "@/utils/admin/model-body";
 import { suggestedMediaCapabilities } from "@/utils/admin/model-limits";
+import { PROMPT_FORMATS, withPromptFormat } from "@/utils/tasks/capabilities";
 
 import { ContextLimitsAssist } from "./context-limits-assist";
 import {
@@ -328,6 +330,25 @@ export function ModelParamsForm({
             }
           />
         </FormField>
+        {kind === "video" && (
+          <FormField
+            size="default"
+            className="mt-4"
+            label="提示词格式"
+            htmlFor="model-prompt-format"
+            error={issueFor(issues, "capabilities.prompt_format")}
+          >
+            <OptionSelect
+              id="model-prompt-format"
+              className="w-48"
+              value={caps.prompt_format ?? ""}
+              options={PROMPT_FORMATS}
+              onValueChange={(value) =>
+                setCaps(withPromptFormat(caps, value as NonNullable<Capabilities["prompt_format"]>))
+              }
+            />
+          </FormField>
+        )}
       </FormSection>
 
       {!isAgent && (

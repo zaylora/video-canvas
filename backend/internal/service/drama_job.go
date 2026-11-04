@@ -80,6 +80,15 @@ func (s *DramaService) createDramaJob(ctx context.Context, userID, id uint64, ap
 	if err != nil {
 		return nil, dramaError(err)
 	}
+	if req.Step == "storyboard" {
+		seconds, e := s.storyboardSeconds(ctx, p, req)
+		if e != nil {
+			return nil, e
+		}
+		resolved := *req
+		resolved.MaxSeconds = seconds
+		req = &resolved
+	}
 	snap, initial, err := s.jobFreeze(ctx, p, req)
 	if err != nil {
 		return nil, err

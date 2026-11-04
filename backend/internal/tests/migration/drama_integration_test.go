@@ -40,14 +40,14 @@ next:
 func TestDramaMigration_Upgrade(t *testing.T) {
 	db := isolatedDB(t)
 	// 短剧迁移（0017–0019）都留给升级步骤；0020 删表更晚，也不能提前跑
-	before := migrationsExcept(t, "0017_", "0018_", "0019_", "0020_", "0025_")
+	before := migrationsExcept(t, "0017_", "0018_", "0019_", "0020_", "0025_", "0026_")
 	if err := migration.Run(context.Background(), db, migration.Options{FS: before, Logger: testLogger()}); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Exec(`INSERT INTO character_cards (user_id, name, avatar_asset_id) VALUES (7, '母亲', 41)`).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := migration.Run(context.Background(), db, migration.Options{FS: migrationsExcept(t, "0020_", "0025_"), Logger: testLogger()}); err != nil {
+	if err := migration.Run(context.Background(), db, migration.Options{FS: migrationsExcept(t, "0020_", "0025_", "0026_"), Logger: testLogger()}); err != nil {
 		t.Fatal(err)
 	}
 	for _, table := range []string{"drama_projects", "drama_episodes", "drama_jobs"} {

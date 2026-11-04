@@ -24,6 +24,16 @@ export const DEFAULT_START_RATIO: StartRatio = "9:16";
 /** 文本模型上下文下限（Token）：低于它装不下一批完整原文 */
 export const MIN_MODEL_CONTEXT = 128_000;
 
+/** 三类资产各自的图片模型 */
+export interface StartImageModels {
+  character: string;
+  scene: string;
+  prop: string;
+}
+
+/** 图片模型全部不指定 */
+export const emptyImageModels = (): StartImageModels => ({ character: "", scene: "", prop: "" });
+
 /** 用户在弹窗里确认的原文类型；识别不出且没选时为 null */
 export type StartKind = "script" | "novel";
 
@@ -48,6 +58,10 @@ export interface StartForm {
   seconds: number;
   /** 文本模型 key，空串 = 默认模型 */
   textModel: string;
+  /** 视频模型 key，空串 = 不指定（跟随后端 / 画布默认） */
+  videoModel: string;
+  /** 人物 / 场景 / 物品资产各自的图片模型 key，空串 = 不指定 */
+  imageModels: StartImageModels;
   /** 四个环节的提示词选择 */
   prompts: StartPrompts;
 }
@@ -152,6 +166,12 @@ export function promptsToChoices(prompts: StartPrompts): Record<PromptStep, Prom
   return out;
 }
 
+/** 三个图片模型里只留有值的；一个都没选返回 undefined（请求里整个不带） */
+function pickedImageModels(models: StartImageModels): CreateDramaInput["imageModels"] {
+  const picked = Object.fromEntries(Object.entries(models).filter(([, key]) => !!key));
+  return Object.keys(picked).length > 0 ? picked : undefined;
+}
+
 /**
  * 弹窗内容转成建剧请求。剧本型输入：剧本改编强制内置、规划范围恒为全部（剧本一次切完）。
  * @param pre 预检结果
@@ -172,12 +192,16 @@ export function buildCreateInput(pre: SourcePreflight, form: StartForm): CreateD
     styleCustom: form.styleKey === CUSTOM_STYLE_KEY ? form.styleCustom.trim() : undefined,
     episodeSeconds: form.seconds,
     textModel: form.textModel,
+    videoModel: form.videoModel || undefined,
+    imageModels: pickedImageModels(form.imageModels),
     prompts,
   };
 }
 
 /** 记住上次选择用的 localStorage key */
 const PREFS_KEY = "drama-start-prefs";
+
+const str = (value: unknown): string => (typeof value === "string" ? value : "");
 
 /** 读上次的选择；没有、损坏或存储不可用时返回 null；画幅、时长不合法时回落默认 */
 export function loadStartPrefs(): StartPrefs | null {
@@ -202,6 +226,12 @@ export function loadStartPrefs(): StartPrefs | null {
         ? (data.seconds as number)
         : DEFAULT_EPISODE_SECONDS,
       textModel: typeof data.textModel === "string" ? data.textModel : "",
+      videoModel: typeof data.videoModel === "string" ? data.videoModel : "",
+      imageModels: {
+        character: str(data.imageModels?.character),
+        scene: str(data.imageModels?.scene),
+        prop: str(data.imageModels?.prop),
+      },
       prompts,
     };
   } catch {
@@ -219,6 +249,8 @@ export function saveStartPrefs(form: StartForm): void {
       styleCustom: form.styleCustom,
       seconds: form.seconds,
       textModel: form.textModel,
+      videoModel: form.videoModel,
+      imageModels: form.imageModels,
       prompts: form.prompts,
     };
     localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));

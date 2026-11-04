@@ -19,6 +19,9 @@ type Options struct {
 	ModelOps ModelOpsFunc
 	// Assets 是 create_node 里 assetId 指向的素材（调用方先校验归属并解析好）；没有的 assetId 一律不可用
 	Assets map[string]AssetRef
+	// DramaModels 是 MergeDrama 新建资产节点时写入 data.model 的默认模型 key，键为资产类型（character / scene / prop）；
+	// 缺项不写，已有节点不受影响
+	DramaModels map[string]string
 }
 
 // AssetRef 是已经解析好的一份图片素材：建已完成的图片节点要的信息。

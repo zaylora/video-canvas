@@ -49,6 +49,8 @@ const form = (patch: Partial<StartForm> = {}): StartForm => ({
   styleCustom: "",
   seconds: 60,
   textModel: "",
+  videoModel: "",
+  imageModels: { character: "", scene: "", prop: "" },
   prompts: {
     adapt: { source: "builtin" },
     assets: { source: "builtin" },
@@ -270,5 +272,66 @@ describe("开拍设置：记住上次选择", () => {
     expect(next.assets).toEqual({ source: "builtin" });
     expect(next.asset_prompts).toEqual({ source: "mine", id: "1f" });
     expect(next.video).toEqual({ source: "skill", skill: "on" });
+  });
+});
+
+describe("开拍设置：视频 / 图片模型", () => {
+  const store = new Map<string, string>();
+  const original = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  beforeEach(() => {
+    store.clear();
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      value: {
+        getItem: (k: string) => store.get(k) ?? null,
+        setItem: (k: string, v: string) => void store.set(k, v),
+      },
+    });
+  });
+  afterEach(() => {
+    if (original) Object.defineProperty(globalThis, "localStorage", original);
+    else delete (globalThis as { localStorage?: unknown }).localStorage;
+  });
+
+  test("记住的选择往返：视频模型与三个图片模型", () => {
+    saveStartPrefs(
+      form({ videoModel: "v1", imageModels: { character: "c1", scene: "s1", prop: "p1" } }),
+    );
+    const prefs = loadStartPrefs();
+    expect(prefs?.videoModel).toBe("v1");
+    expect(prefs?.imageModels).toEqual({ character: "c1", scene: "s1", prop: "p1" });
+  });
+
+  test("旧存档没有这些字段：回落为空串", () => {
+    localStorage.setItem("drama-start-prefs", JSON.stringify({ textModel: "m", styleKey: "x" }));
+    const prefs = loadStartPrefs();
+    expect(prefs?.videoModel).toBe("");
+    expect(prefs?.imageModels).toEqual({ character: "", scene: "", prop: "" });
+  });
+
+  test("字段类型不对：逐项回落为空串，不影响其他项", () => {
+    localStorage.setItem(
+      "drama-start-prefs",
+      JSON.stringify({ videoModel: 3, imageModels: { character: "c1", scene: 5, prop: null } }),
+    );
+    const prefs = loadStartPrefs();
+    expect(prefs?.videoModel).toBe("");
+    expect(prefs?.imageModels).toEqual({ character: "c1", scene: "", prop: "" });
+    localStorage.setItem("drama-start-prefs", JSON.stringify({ imageModels: "oops" }));
+    expect(loadStartPrefs()?.imageModels).toEqual({ character: "", scene: "", prop: "" });
+  });
+
+  test("建剧请求：带上选了的模型，空串不发", () => {
+    const input = buildCreateInput(
+      preflight(),
+      form({ videoModel: "v1", imageModels: { character: "c1", scene: "", prop: "p1" } }),
+    );
+    expect(input.videoModel).toBe("v1");
+    expect(input.imageModels?.character).toBe("c1");
+    expect(input.imageModels?.prop).toBe("p1");
+    expect(input.imageModels?.scene).toBeUndefined();
+    const bare = buildCreateInput(preflight(), form());
+    expect(bare.videoModel).toBeUndefined();
+    expect(bare.imageModels).toBeUndefined();
   });
 });

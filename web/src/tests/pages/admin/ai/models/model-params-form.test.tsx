@@ -107,4 +107,23 @@ describe("ModelParamsForm", () => {
     );
     expect(html).toContain("必须在 10s – 10m 之间");
   });
+
+  test("视频模型有「提示词格式」，旧数据缺省回显通用，已有值回显对应名称，其他种类没有", () => {
+    expect(render("video")).toContain("提示词格式");
+    expect(render("video")).toContain("通用");
+    const withFormat = renderToStaticMarkup(
+      <ModelParamsForm
+        body={{
+          kind: "video",
+          capabilities: { ...defaultCapabilities("video"), prompt_format: "h3" },
+        }}
+        issues={[]}
+        warnings={[]}
+        onChange={() => {}}
+      />,
+    );
+    expect(withFormat).toContain("MiniMax H3");
+    for (const kind of ["image", "audio", "text", "agent"])
+      expect(render(kind)).not.toContain("提示词格式");
+  });
 });

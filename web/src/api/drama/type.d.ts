@@ -146,6 +146,13 @@ export interface BackendJobView {
   batch_to?: number;
 }
 
+/** 三类资产各自的图片模型 key，空串 = 不指定 */
+export interface DramaImageModels {
+  character: string;
+  scene: string;
+  prop: string;
+}
+
 export interface BackendDramaView {
   id: string;
   title: string;
@@ -159,6 +166,8 @@ export interface BackendDramaView {
   target_episodes: number;
   episode_seconds: number;
   text_model: string;
+  video_model?: string;
+  image_models?: Partial<DramaImageModels> | null;
   outline_md: string;
   characters_md: string;
   revision: number;
@@ -287,6 +296,10 @@ export interface Drama {
   episodeSeconds: number;
   /** 空串 = 跟随后台「文本」类别第一个启用模型 */
   textModel: string;
+  /** 建剧时选的视频模型；空串 = 没指定 */
+  videoModel: string;
+  /** 建剧时选的人物 / 场景 / 物品图片模型；空串 = 没指定 */
+  imageModels: DramaImageModels;
   outlineMd: string;
   charactersMd: string;
   revision: number;
@@ -349,6 +362,10 @@ export interface CreateDramaInput {
   episodeSeconds: number;
   /** 文本模型 key；空串 = 默认模型 */
   textModel?: string;
+  /** 视频模型 key；省略 = 不指定 */
+  videoModel?: string;
+  /** 人物 / 场景 / 物品资产用的图片模型 key；省略的项 = 不指定 */
+  imageModels?: { character?: string; scene?: string; prop?: string };
   /** 四个环节的提示词选择；省略的环节 = 内置 */
   prompts?: PromptChoices;
 }
