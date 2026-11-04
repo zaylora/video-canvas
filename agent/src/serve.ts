@@ -15,7 +15,8 @@ import { configFromEnv, startDurable } from "./durable.ts";
  *   EXA_API_KEY / BRAVE_API_KEY / TAVILY_API_KEY / FIRECRAWL_API_KEY  可选，传给联网 MCP；缺省使用免 Key 搜索
  * 日志写 stderr（JSON 行）。收到 SIGTERM / SIGINT 只关闭服务和存储，不中止运行：运行留在原状态，下次启动按窗口续跑或标为中断。
  */
-const log = (msg: string, extra: Record<string, unknown> = {}) => process.stderr.write(JSON.stringify({ msg, ...extra }) + "\n");
+const log = (msg: string, extra: Record<string, unknown> = {}) =>
+  process.stderr.write(JSON.stringify({ msg, ...extra }) + "\n");
 
 /** 启动前自检失败：说清楚原因就退出，不要等到第一次请求才发现 */
 function die(msg: string): never {
@@ -30,7 +31,9 @@ try {
   die(String((e as Error)?.message ?? e));
 }
 log("Agent 服务已启动", { addr: svc.url.replace(/^https?:\/\//, "") });
-process.on("unhandledRejection", (e) => log("未处理的 Promise 异常", { error: String((e as Error)?.message ?? e) }));
+process.on("unhandledRejection", (e) =>
+  log("未处理的 Promise 异常", { error: String((e as Error)?.message ?? e) }),
+);
 let stopping = false;
 for (const sig of ["SIGTERM", "SIGINT"] as const) {
   process.on(sig, () => {
@@ -39,6 +42,12 @@ for (const sig of ["SIGTERM", "SIGINT"] as const) {
     log("收到停机信号，关闭服务（运行留在原状态，下次启动按窗口续跑）", { signal: sig });
     // 容器的停止宽限期是 30 秒，留 5 秒给进程退出
     const timer = setTimeout(() => process.exit(1), 25_000);
-    svc.close().then(() => process.exit(0), () => process.exit(1)).finally(() => clearTimeout(timer));
+    svc
+      .close()
+      .then(
+        () => process.exit(0),
+        () => process.exit(1),
+      )
+      .finally(() => clearTimeout(timer));
   });
 }

@@ -16,7 +16,10 @@ export const ACTIVE_STATUSES = ["queued", "running", "waiting_approval", "waitin
 export const isActive = (s: string): boolean => (ACTIVE_STATUSES as readonly string[]).includes(s);
 
 /** run.status 事件的内容：需要提示用户的状态带上 title 和 hint，extra 是附加字段（error、resumed 等） */
-export function statusEvent(status: string, extra: Record<string, unknown> = {}): Record<string, unknown> {
+export function statusEvent(
+  status: string,
+  extra: Record<string, unknown> = {},
+): Record<string, unknown> {
   const t = TEXTS[status];
   return { status, ...(t && { title: t.title, hint: t.hint }), ...extra };
 }

@@ -7,7 +7,13 @@
  *
  * 这个文件只放数据形状、纯函数和 Pi 的文档 / 任务定义；怎么查 Go、怎么交付由引擎经 WatchDeps 注入。
  */
-import { defineDoc, defineExtension, defineTask, type Extension, type Task } from "@earendil-works/pi-durable";
+import {
+  defineDoc,
+  defineExtension,
+  defineTask,
+  type Extension,
+  type Task,
+} from "@earendil-works/pi-durable";
 import type { TaskState } from "../platform-client.ts";
 
 export type WatchTaskStatus = "succeeded" | "failed" | "expired" | "canceled" | "missing";
@@ -64,10 +70,12 @@ export interface WatchDeps {
 }
 
 /** 这批是不是全部结束了 */
-export const allSettled = (b: WatchBatch): boolean => Object.values(b.tasks).every((t) => t.status === "settled");
+export const allSettled = (b: WatchBatch): boolean =>
+  Object.values(b.tasks).every((t) => t.status === "settled");
 
 /** 已经不用再守的批 */
-export const isClosed = (b: WatchBatch | undefined): boolean => !b || b.state === "delivered" || b.state === "canceled";
+export const isClosed = (b: WatchBatch | undefined): boolean =>
+  !b || b.state === "delivered" || b.state === "canceled";
 
 /** 清掉结束超过 keepMs 的批（原地改文档草稿） */
 export function pruneBatches(doc: WatchesDoc, now: number, keepMs = WATCH_KEEP_MS): void {
@@ -76,21 +84,42 @@ export function pruneBatches(doc: WatchesDoc, now: number, keepMs = WATCH_KEEP_M
   }
 }
 
-const KIND_NAME: Record<string, string> = { image: "图片", video: "视频", audio: "音频", text: "文本" };
+const KIND_NAME: Record<string, string> = {
+  image: "图片",
+  video: "视频",
+  audio: "音频",
+  text: "文本",
+};
 
 /** 一个任务在唤醒消息里的一行：节点、种类、结果。状态以 Go 刚查到的为准 */
-function taskLine(label: string, nodeId: string, s: TaskState | undefined, recorded: WatchTaskStatus | undefined): string {
+function taskLine(
+  label: string,
+  nodeId: string,
+  s: TaskState | undefined,
+  recorded: WatchTaskStatus | undefined,
+): string {
   const head = `- 节点「${label}」(node:${nodeId})`;
   const kind = KIND_NAME[s?.kind ?? ""] ?? "";
-  const status = s && s.status !== "missing" ? s.status : recorded === "missing" || s?.status === "missing" ? "missing" : (recorded ?? "missing");
+  const status =
+    s && s.status !== "missing"
+      ? s.status
+      : recorded === "missing" || s?.status === "missing"
+        ? "missing"
+        : (recorded ?? "missing");
   const outs = s?.outputs?.length ?? 0;
   switch (status) {
-    case "succeeded": return `${head} ${kind} 成功${outs ? `，${outs} 个产物` : ""}`;
-    case "failed": return `${head} ${kind} 失败${s?.error ? `：${s.error}` : ""}`;
-    case "expired": return `${head} ${kind} 超时没有完成${s?.error ? `：${s.error}` : ""}`;
-    case "canceled": return `${head} ${kind} 已取消`;
-    case "missing": return `${head} 查不到这个任务（可能已被删除）`;
-    default: return `${head} ${kind} 还在生成中（状态 ${status}）`;
+    case "succeeded":
+      return `${head} ${kind} 成功${outs ? `，${outs} 个产物` : ""}`;
+    case "failed":
+      return `${head} ${kind} 失败${s?.error ? `：${s.error}` : ""}`;
+    case "expired":
+      return `${head} ${kind} 超时没有完成${s?.error ? `：${s.error}` : ""}`;
+    case "canceled":
+      return `${head} ${kind} 已取消`;
+    case "missing":
+      return `${head} 查不到这个任务（可能已被删除）`;
+    default:
+      return `${head} ${kind} 还在生成中（状态 ${status}）`;
   }
 }
 
@@ -100,7 +129,11 @@ function taskLine(label: string, nodeId: string, s: TaskState | undefined, recor
  */
 export function wakeText(batches: WatchBatch[], states: TaskState[]): string {
   const byId = new Map(states.map((s) => [s.task_id, s]));
-  const lines = batches.flatMap((b) => Object.entries(b.tasks).map(([id, t]) => taskLine(t.label || t.nodeId, t.nodeId, byId.get(id), t.taskStatus)));
+  const lines = batches.flatMap((b) =>
+    Object.entries(b.tasks).map(([id, t]) =>
+      taskLine(t.label || t.nodeId, t.nodeId, byId.get(id), t.taskStatus),
+    ),
+  );
   return [
     "你之前申请的生成已全部结束：",
     ...lines,
@@ -127,14 +160,23 @@ export function createWatchExtension(deps: WatchDeps, name = "engine-watch"): Wa
       check: async (t, runtime, context) => {
         const finished = await deps.check(String(runtime.conversationId), t.input.batchId);
         if (finished) {
-          await runtime.commit(() => ({ status: "terminal", outcome: { status: "completed", result: { done: true } } }), context);
+          await runtime.commit(
+            () => ({
+              status: "terminal",
+              outcome: { status: "completed", result: { done: true } },
+            }),
+            context,
+          );
           return;
         }
         await runtime.sleepUntil(runtime.now() + deps.pollMs, { phase: "check" }, context);
       },
     },
     abort: async (_t, runtime, context) => {
-      await runtime.commit(() => ({ status: "terminal", outcome: { status: "aborted", reason: "不用等了" } }), context);
+      await runtime.commit(
+        () => ({ status: "terminal", outcome: { status: "aborted", reason: "不用等了" } }),
+        context,
+      );
     },
   });
   return { task, extension: defineExtension({ name, tasks: [task] }) };

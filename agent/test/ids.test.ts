@@ -70,7 +70,14 @@ test("雪花：结构是 41 位毫秒（自 2026-01-01）+ 10 位节点 + 12 位
 test("雪花：严格递增、不重复，同一毫秒用完 4096 个就等下一毫秒", () => {
   const c = clock(SNOWFLAKE_EPOCH_MS + 5);
   const waits: number[] = [];
-  const ids = createSnowflake({ workerId: 1, now: c.now, wait: () => { waits.push(c.t); c.t += 1; } });
+  const ids = createSnowflake({
+    workerId: 1,
+    now: c.now,
+    wait: () => {
+      waits.push(c.t);
+      c.t += 1;
+    },
+  });
   const seen = new Set<bigint>();
   let prev = 0n;
   for (let i = 0; i < 4096 * 3 + 10; i++) {
@@ -100,7 +107,10 @@ test("雪花：节点号只能是 0..1023，时钟早于纪元起点就报错；
   assert.throws(() => createSnowflake({ workerId: 1024 }), /节点号/);
   assert.throws(() => createSnowflake({ workerId: -1 }), /节点号/);
   assert.throws(() => createSnowflake({ workerId: 1.5 }), /节点号/);
-  assert.throws(() => createSnowflake({ workerId: 1, now: () => SNOWFLAKE_EPOCH_MS - 1 }).next(), /早于/);
+  assert.throws(
+    () => createSnowflake({ workerId: 1, now: () => SNOWFLAKE_EPOCH_MS - 1 }).next(),
+    /早于/,
+  );
   const ids = createSnowflake({ workerId: 1, now: clock(SNOWFLAKE_EPOCH_MS + 3e10).now });
   const s = ids.nextDecimal();
   assert.match(s, /^[1-9][0-9]{14,18}$/);
@@ -108,7 +118,10 @@ test("雪花：节点号只能是 0..1023，时钟早于纪元起点就报错；
 });
 
 test("雪花：纪元后一天起的 ID 就在 10^13 以上，远大于 Postgres 序列生成的旧 ID（不会撞号）", () => {
-  const ids = createSnowflake({ workerId: 1, now: clock(SNOWFLAKE_EPOCH_MS + 24 * 3600 * 1000).now });
+  const ids = createSnowflake({
+    workerId: 1,
+    now: clock(SNOWFLAKE_EPOCH_MS + 24 * 3600 * 1000).now,
+  });
   assert.ok(ids.next() > 10n ** 13n);
 });
 
@@ -119,7 +132,11 @@ test("雪花：notBefore 保证重启后时钟被拨回去也不会和之前发�
   for (let i = 0; i < 10; i++) lastBefore = before.next();
   // 重启：时钟比重启前慢了 10 秒；库里最大 ID 的时间戳是 notBefore
   c.t -= 10_000;
-  const after = createSnowflake({ workerId: 1, now: c.now, notBefore: before.parse(lastBefore).timestamp });
+  const after = createSnowflake({
+    workerId: 1,
+    now: c.now,
+    notBefore: before.parse(lastBefore).timestamp,
+  });
   const first = after.next();
   assert.ok(first > lastBefore, "重启后的第一个 ID 也比重启前最后一个大");
   assert.ok(after.next() > first);

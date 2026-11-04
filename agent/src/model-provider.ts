@@ -9,9 +9,23 @@
  *   - 提供方的流函数按 options.sessionId 查到会话，再查到它当前的运行上下文，加进请求头。
  * 每次请求前都会重新登记，所以同一会话的下一轮运行换了上下文（批准后已花积分变了）也生效。
  */
-import { createModels, createProvider, type Api, type Model, type Provider, type ProviderResponse, type StreamOptions } from "@earendil-works/pi-ai";
+import {
+  createModels,
+  createProvider,
+  type Api,
+  type Model,
+  type Provider,
+  type ProviderResponse,
+  type StreamOptions,
+} from "@earendil-works/pi-ai";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
-import { GenerationTask, ProviderDoc, defineExtension, hook, type Extension } from "@earendil-works/pi-durable";
+import {
+  GenerationTask,
+  ProviderDoc,
+  defineExtension,
+  hook,
+  type Extension,
+} from "@earendil-works/pi-durable";
 import { pruneOldImages, restoreImageUrls } from "./context.ts";
 import { encodeRunContext, type RunContext } from "./platform-client.ts";
 
@@ -24,7 +38,8 @@ const KEEP_IMAGE_MESSAGES = 2;
 
 /** 模型调用的用途：对话是助手的话；摘要（压缩上下文）、命名（给会话起标题）、活动说明（概括一段工具调用）是内部调用 */
 export type ModelPurpose = "main" | "summary" | "title" | "activity";
-const purposeOf = (header: string | null | undefined): ModelPurpose => (header === "summary" || header === "title" || header === "activity" ? header : "main");
+const purposeOf = (header: string | null | undefined): ModelPurpose =>
+  header === "summary" || header === "title" || header === "activity" ? header : "main";
 
 /** 一个 Agent 模型的规格，来自运行准备接口（Go 的模型配置） */
 export interface ModelSpec {
@@ -128,37 +143,75 @@ export function createModelRegistry(opts: ModelRegistryOptions) {
         const res = await (o.fetch ?? fetch)(input, init);
         if (res.status >= 400) {
           const code = Number(res.headers.get(ERROR_CODE_HEADER));
-          opts.onError?.({ sessionId: o.sessionId, status: res.status, code: Number.isInteger(code) && code > 0 ? code : undefined, purpose: purposeOf(o.headers?.[PURPOSE_HEADER]) });
+          opts.onError?.({
+            sessionId: o.sessionId,
+            status: res.status,
+            code: Number.isInteger(code) && code > 0 ? code : undefined,
+            purpose: purposeOf(o.headers?.[PURPOSE_HEADER]),
+          });
         }
         return res;
       },
       // 更早的图片省略掉；对象存储里的图片只有地址：工具结果和附件把地址放在 data 里，发出前还原成真正的地址
-      onPayload: async (payload: unknown, model: Model<Api>) => restoreImageUrls(pruneOldImages((await o.onPayload?.(payload, model)) ?? payload, KEEP_IMAGE_MESSAGES)),
+      onPayload: async (payload: unknown, model: Model<Api>) =>
+        restoreImageUrls(
+          pruneOldImages((await o.onPayload?.(payload, model)) ?? payload, KEEP_IMAGE_MESSAGES),
+        ),
       onResponse: async (res: ProviderResponse, model: Model<Api>) => {
         const callId = res.headers[CALL_ID_HEADER];
-        if (callId) opts.onCall?.({ sessionId: o.sessionId, callId, purpose: purposeOf(o.headers?.[PURPOSE_HEADER]) });
+        if (callId)
+          opts.onCall?.({
+            sessionId: o.sessionId,
+            callId,
+            purpose: purposeOf(o.headers?.[PURPOSE_HEADER]),
+          });
         await o.onResponse?.(res, model);
       },
     };
   };
   const api = {
     ...inner,
-    stream: (m: Model<Api>, c: Parameters<typeof inner.stream>[1], o?: StreamOptions) => inner.stream(m, c, wrap(o)),
-    streamSimple: (m: Model<Api>, c: Parameters<typeof inner.streamSimple>[1], o?: Parameters<typeof inner.streamSimple>[2]) => inner.streamSimple(m, c, wrap(o) as typeof o),
+    stream: (m: Model<Api>, c: Parameters<typeof inner.stream>[1], o?: StreamOptions) =>
+      inner.stream(m, c, wrap(o)),
+    streamSimple: (
+      m: Model<Api>,
+      c: Parameters<typeof inner.streamSimple>[1],
+      o?: Parameters<typeof inner.streamSimple>[2],
+    ) => inner.streamSimple(m, c, wrap(o) as typeof o),
   };
 
   const build = (): Provider =>
     createProvider({
-      id: PROVIDER_ID, name: PROVIDER_ID, baseUrl,
+      id: PROVIDER_ID,
+      name: PROVIDER_ID,
+      baseUrl,
       // 服务令牌随每个请求发出；pi 取的是认证结果里的请求头
-      auth: { apiKey: { name: PROVIDER_ID, resolve: async () => ({ auth: { apiKey: "unused", headers: { "X-Agent-Service-Token": opts.serviceToken } } }) } },
+      auth: {
+        apiKey: {
+          name: PROVIDER_ID,
+          resolve: async () => ({
+            auth: { apiKey: "unused", headers: { "X-Agent-Service-Token": opts.serviceToken } },
+          }),
+        },
+      },
       models: [...specs.values()].map((s) => ({
-        id: s.key, name: s.name, api: "openai-completions" as const, provider: PROVIDER_ID, baseUrl,
-        reasoning: false, input: s.vision ? (["text", "image"] as const) : (["text"] as const),
+        id: s.key,
+        name: s.name,
+        api: "openai-completions" as const,
+        provider: PROVIDER_ID,
+        baseUrl,
+        reasoning: false,
+        input: s.vision ? (["text", "image"] as const) : (["text"] as const),
         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, // 计费在 Go，这里不算钱
-        contextWindow: s.context_window, maxTokens: s.max_tokens,
+        contextWindow: s.context_window,
+        maxTokens: s.max_tokens,
         // 去掉 store 和 max_completion_tokens 等较新的字段，老的 OpenAI 兼容网关不一定认
-        compat: { maxTokensField: "max_tokens" as const, supportsStore: false, supportsDeveloperRole: false, supportsReasoningEffort: false },
+        compat: {
+          maxTokensField: "max_tokens" as const,
+          supportsStore: false,
+          supportsDeveloperRole: false,
+          supportsReasoningEffort: false,
+        },
       })),
       api,
     } as never);

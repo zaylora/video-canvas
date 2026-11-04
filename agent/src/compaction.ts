@@ -36,24 +36,35 @@ const FORMAT = `按下面的格式写，没有的部分写「无」，不要加�
 后面还要用的节点 id、组 id、任务 id、模型 key。`;
 
 /** 摘要请求的最大输出 Token：不超过 4096，窗口很小时不超过窗口的四分之一 */
-export const summaryMaxTokens = (window: number): number => Math.max(256, Math.min(4096, Math.floor(window * 0.25)));
+export const summaryMaxTokens = (window: number): number =>
+  Math.max(256, Math.min(4096, Math.floor(window * 0.25)));
 
 const TOOL_RESULT_CHARS = 1500; // 序列化时每条工具结果最多留多少字
 const TOOL_ARG_CHARS = 300;
 
 /** 触发线和保留量：默认 reserve 16384、keepRecent 20000，窗口小的模型按比例收紧 */
 export function compactionLimits(window: number): { reserve: number; keepRecent: number } {
-  return { reserve: Math.min(16384, Math.floor(window * 0.15)), keepRecent: Math.min(20000, Math.floor(window * 0.25)) };
+  return {
+    reserve: Math.min(16384, Math.floor(window * 0.15)),
+    keepRecent: Math.min(20000, Math.floor(window * 0.25)),
+  };
 }
 
-const textOf = (m: Msg): string => (typeof m.content === "string" ? m.content : (m.content ?? []).map((p) => (p.type === "text" ? p.text : "")).join(""));
+const textOf = (m: Msg): string =>
+  typeof m.content === "string"
+    ? m.content
+    : (m.content ?? []).map((p) => (p.type === "text" ? p.text : "")).join("");
 
 export function isSummaryMessage(m: Msg | undefined): boolean {
   return m?.role === "user" && textOf(m).startsWith(SUMMARY_PREFIX);
 }
 
 function makeSummaryMessage(summary: string) {
-  return { role: "user", content: [{ type: "text", text: `${SUMMARY_PREFIX}${SUMMARY_INTRO}\n\n${summary}` }], timestamp: Date.now() };
+  return {
+    role: "user",
+    content: [{ type: "text", text: `${SUMMARY_PREFIX}${SUMMARY_INTRO}\n\n${summary}` }],
+    timestamp: Date.now(),
+  };
 }
 
 /** 摘要消息里去掉前缀和说明后的正文 */
@@ -85,10 +96,17 @@ export function findCutPoint(messages: Msg[], keepRecent: number): number {
   return 0;
 }
 
-const clip = (t: string, n: number) => (t.length > n ? `${t.slice(0, n)}…（已截断，原 ${t.length} 字）` : t);
+const clip = (t: string, n: number) =>
+  t.length > n ? `${t.slice(0, n)}…（已截断，原 ${t.length} 字）` : t;
 
 /** 把消息拼成给摘要模型读的文字：工具结果和参数截短，图片只留占位 */
-export function serializeMessages(messages: Msg[], { maxResultChars = TOOL_RESULT_CHARS, maxArgChars = TOOL_ARG_CHARS }: { maxResultChars?: number; maxArgChars?: number } = {}): string {
+export function serializeMessages(
+  messages: Msg[],
+  {
+    maxResultChars = TOOL_RESULT_CHARS,
+    maxArgChars = TOOL_ARG_CHARS,
+  }: { maxResultChars?: number; maxArgChars?: number } = {},
+): string {
   const out: string[] = [];
   for (const m of messages) {
     if (m.role === "user") out.push(`[用户]\n${textOf(m)}`);
@@ -96,11 +114,16 @@ export function serializeMessages(messages: Msg[], { maxResultChars = TOOL_RESUL
       const parts: string[] = [];
       for (const p of (m.content as Part[] | undefined) ?? []) {
         if (p.type === "text" && p.text) parts.push(`[助手]\n${p.text}`);
-        else if (p.type === "toolCall") parts.push(`[助手调用工具] ${p.name}(${clip(JSON.stringify(p.arguments ?? {}), maxArgChars)})`);
+        else if (p.type === "toolCall")
+          parts.push(
+            `[助手调用工具] ${p.name}(${clip(JSON.stringify(p.arguments ?? {}), maxArgChars)})`,
+          );
       }
       if (parts.length) out.push(parts.join("\n"));
     } else if (m.role === "toolResult") {
-      const body = ((m.content as Part[] | undefined) ?? []).map((p) => (p.type === "text" ? p.text : "[图片]")).join("\n");
+      const body = ((m.content as Part[] | undefined) ?? [])
+        .map((p) => (p.type === "text" ? p.text : "[图片]"))
+        .join("\n");
       out.push(`[工具结果] ${m.toolName ?? ""}\n${clip(body, maxResultChars)}`);
     }
   }
@@ -109,9 +132,11 @@ export function serializeMessages(messages: Msg[], { maxResultChars = TOOL_RESUL
 
 export function buildPrompt(previous: string, conversation: string): string {
   if (previous) {
-    return `<之前的摘要>\n${previous}\n</之前的摘要>\n\n<对话>\n${conversation}\n</对话>\n\n` +
+    return (
+      `<之前的摘要>\n${previous}\n</之前的摘要>\n\n<对话>\n${conversation}\n</对话>\n\n` +
       `<对话> 是在之前的摘要之后新发生的内容。把它并入之前的摘要，写出更新后的完整摘要：保留仍然有效的内容，更新进度，` +
-      `已经做完的待办移到「已完成」，不要丢掉不能丢的数据。\n\n${FORMAT}`;
+      `已经做完的待办移到「已完成」，不要丢掉不能丢的数据。\n\n${FORMAT}`
+    );
   }
   return `<对话>\n${conversation}\n</对话>\n\n以上是需要摘要的对话。\n\n${FORMAT}`;
 }
@@ -131,7 +156,13 @@ export interface CompactorOptions<M extends Msg> {
 /**
  * 创建压缩器。
  */
-export function createCompactor<M extends Msg>({ summarize, window, overhead = 0, view = (m) => m, onError }: CompactorOptions<M>) {
+export function createCompactor<M extends Msg>({
+  summarize,
+  window,
+  overhead = 0,
+  view = (m) => m,
+  onError,
+}: CompactorOptions<M>) {
   const limits = compactionLimits(window);
   // 摘要失败后这个运行片段里不再重试，免得每个回合都白付一次钱
   let disabled = !(window > 0);
@@ -144,7 +175,12 @@ export function createCompactor<M extends Msg>({ summarize, window, overhead = 0
     } catch {
       /* 估算不出来就只用字数 */
     }
-    return Math.max(est, msgs.reduce((n, m) => n + charsOf(m), 0)) + overhead;
+    return (
+      Math.max(
+        est,
+        msgs.reduce((n, m) => n + charsOf(m), 0),
+      ) + overhead
+    );
   }
 
   return {
@@ -157,9 +193,15 @@ export function createCompactor<M extends Msg>({ summarize, window, overhead = 0
       if (cut <= 0) return null;
       let conversation = serializeMessages(rest.slice(0, cut));
       const maxChars = Math.floor(window * 0.7); // 摘要请求本身也要装得进窗口：留出提示词和输出的位置
-      if (conversation.length > maxChars) conversation = `…（更早的内容已省略）\n${conversation.slice(-maxChars)}`;
+      if (conversation.length > maxChars)
+        conversation = `…（更早的内容已省略）\n${conversation.slice(-maxChars)}`;
       try {
-        const summary = ((await summarize(buildPrompt(hasPrevious ? summaryBody(messages[0]) : "", conversation), signal)) ?? "").trim();
+        const summary = (
+          (await summarize(
+            buildPrompt(hasPrevious ? summaryBody(messages[0]) : "", conversation),
+            signal,
+          )) ?? ""
+        ).trim();
         if (!summary) throw new Error("摘要为空");
         return [makeSummaryMessage(summary) as unknown as M, ...rest.slice(cut)];
       } catch (e) {

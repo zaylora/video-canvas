@@ -11,13 +11,27 @@ import { fromPlatform } from "../engine/engine.ts";
 import { AgentError, Err } from "../engine/errors.ts";
 import { isActive } from "../engine/status.ts";
 import type { IdCodec } from "../ids.ts";
-import { platformToolCallId, type AgentModel, type ApprovalDecision, type Platform, type UndoResult } from "../platform-client.ts";
+import {
+  platformToolCallId,
+  type AgentModel,
+  type ApprovalDecision,
+  type Platform,
+  type UndoResult,
+} from "../platform-client.ts";
 import { NotFoundError } from "../store/errors.ts";
 import type { AgentStore } from "../store/store.ts";
 import type { AgentEventRecord, Run, Session } from "../store/types.ts";
 import {
-  eventView, observeEvent, runView, sessionView,
-  type EventView, type HistoryView, type ObserveFacts, type ObserveRunRef, type RunView, type SessionView,
+  eventView,
+  observeEvent,
+  runView,
+  sessionView,
+  type EventView,
+  type HistoryView,
+  type ObserveFacts,
+  type ObserveRunRef,
+  type RunView,
+  type SessionView,
 } from "./views.ts";
 
 const DEFAULT_TITLE = "新对话";
@@ -81,17 +95,28 @@ export class AgentApiService {
 
   async listSessions(userId: string, canvasId: string): Promise<SessionView[]> {
     await this.#platform(() => this.#o.platform.checkCanvas(userId, canvasId));
-    return this.#o.store.listSessions(userId, canvasId).filter((s) => s.mode !== "admin").map((s) => sessionView(this.#o.codec, s));
+    return this.#o.store
+      .listSessions(userId, canvasId)
+      .filter((s) => s.mode !== "admin")
+      .map((s) => sessionView(this.#o.codec, s));
   }
 
   /** HTTP 每次请求都检查 Go 实时传来的角色；先查归属，避免泄漏别人的会话。 */
-  authorize(userId: string, role: string, resource: { sid?: string; rid?: string; aid?: string }): void {
+  authorize(
+    userId: string,
+    role: string,
+    resource: { sid?: string; rid?: string; aid?: string },
+  ): void {
     try {
       let sid = resource.sid;
       if (resource.rid) sid = this.#run(userId, resource.rid).sessionId;
       if (resource.aid) {
-        try { sid = this.#o.store.getApproval(userId, resource.aid).sessionId; }
-        catch (e) { if (e instanceof NotFoundError) throw Err.approvalMissing(); throw e; }
+        try {
+          sid = this.#o.store.getApproval(userId, resource.aid).sessionId;
+        } catch (e) {
+          if (e instanceof NotFoundError) throw Err.approvalMissing();
+          throw e;
+        }
       }
       if (sid && this.#session(userId, sid).mode === "admin") this.requireAdmin(role);
     } catch (e) {
@@ -106,13 +131,23 @@ export class AgentApiService {
   }
 
   async listAdminSessions(userId: string): Promise<SessionView[]> {
-    return this.#o.store.listSessions(userId, "0").filter((s) => s.mode === "admin").map((s) => sessionView(this.#o.codec, s));
+    return this.#o.store
+      .listSessions(userId, "0")
+      .filter((s) => s.mode === "admin")
+      .map((s) => sessionView(this.#o.codec, s));
   }
 
   async createAdminSession(userId: string, req: CreateSessionRequest): Promise<SessionView> {
     const modelKey = await this.#pickModel(req.model_key ?? "");
     const title = cleanTitle(req.title ?? "", "");
-    const s = this.#o.store.createSession({ userId, canvasId: "0", title: title || DEFAULT_TITLE, titleSource: title ? "user" : "draft", mode: "admin", modelKey });
+    const s = this.#o.store.createSession({
+      userId,
+      canvasId: "0",
+      title: title || DEFAULT_TITLE,
+      titleSource: title ? "user" : "draft",
+      mode: "admin",
+      modelKey,
+    });
     return sessionView(this.#o.codec, s);
   }
 
@@ -120,14 +155,33 @@ export class AgentApiService {
     return this.#session(userId, sessionId).mode === "admin";
   }
 
-  async createSession(userId: string, canvasId: string, req: CreateSessionRequest): Promise<SessionView> {
+  async createSession(
+    userId: string,
+    canvasId: string,
+    req: CreateSessionRequest,
+  ): Promise<SessionView> {
     if (req.mode === "admin") throw Err.invalidParams("画布会话不能使用 admin 模式");
-    await this.#platform(() => this.#o.platform.checkCanvas(userId, canvasId, undefined, req.mode === "drama" ? req.mode : undefined));
+    await this.#platform(() =>
+      this.#o.platform.checkCanvas(
+        userId,
+        canvasId,
+        undefined,
+        req.mode === "drama" ? req.mode : undefined,
+      ),
+    );
     // 每个画布最多 50 个会话，避免历史无限增长
-    if (this.#o.store.countSessions(userId, canvasId) >= MAX_SESSIONS_PER_CANVAS) throw new AgentError(60010, 409, "这个画布的会话数量已达上限");
+    if (this.#o.store.countSessions(userId, canvasId) >= MAX_SESSIONS_PER_CANVAS)
+      throw new AgentError(60010, 409, "这个画布的会话数量已达上限");
     const title = cleanTitle(req.title ?? "", "");
     // 创建时就给了标题是用户起的，不会被自动命名覆盖；没给才是草稿，等首轮结束后由模型命名
-    const s = this.#o.store.createSession({ userId, canvasId, title: title || DEFAULT_TITLE, titleSource: title ? "user" : "draft", mode: req.mode || "all", modelKey: req.model_key ?? "" });
+    const s = this.#o.store.createSession({
+      userId,
+      canvasId,
+      title: title || DEFAULT_TITLE,
+      titleSource: title ? "user" : "draft",
+      mode: req.mode || "all",
+      modelKey: req.model_key ?? "",
+    });
     return sessionView(this.#o.codec, s);
   }
 
@@ -168,7 +222,12 @@ export class AgentApiService {
 
   // ---- 事件和历史 ----
 
-  async events(userId: string, sessionId: string, after: number, limit: number): Promise<EventView[]> {
+  async events(
+    userId: string,
+    sessionId: string,
+    after: number,
+    limit: number,
+  ): Promise<EventView[]> {
     this.#session(userId, sessionId);
     const n = limit <= 0 || limit > MAX_EVENT_PAGE ? MAX_EVENT_PAGE : limit;
     return this.#o.store.listEvents(sessionId, after, n).map((e) => eventView(this.#o.codec, e));
@@ -179,7 +238,12 @@ export class AgentApiService {
    * （用户发起的 message.user，插话不算），不把一轮拦腰截断：前端按一轮的事件折叠运行状态，拦腰截断会让最旧那轮缺开头。
    * 所以一页可能比 limit 多（一轮比 limit 长时）。has_more 说明更早还有没有。
    */
-  async history(userId: string, sessionId: string, before: number, limit: number): Promise<HistoryView> {
+  async history(
+    userId: string,
+    sessionId: string,
+    before: number,
+    limit: number,
+  ): Promise<HistoryView> {
     this.#session(userId, sessionId);
     const n = limit <= 0 || limit > MAX_EVENT_PAGE ? DEFAULT_HISTORY_PAGE : limit;
     let [events, older] = this.#historyChunk(sessionId, before, n);
@@ -208,27 +272,61 @@ export class AgentApiService {
 
   async startRun(userId: string, sessionId: string, req: StartRunRequest): Promise<RunView> {
     const sess = this.#session(userId, sessionId);
-    if ((sess.mode === "admin" && req.mode && req.mode !== "admin") || (sess.mode !== "admin" && req.mode === "admin")) throw Err.invalidParams("后台会话只能使用 admin 模式");
+    if (
+      (sess.mode === "admin" && req.mode && req.mode !== "admin") ||
+      (sess.mode !== "admin" && req.mode === "admin")
+    )
+      throw Err.invalidParams("后台会话只能使用 admin 模式");
     const message = req.message.trim();
     if (!message) throw Err.invalidParams("消息不能为空");
-    if ((req.mode || sess.mode) === "drama") await this.#platform(() => this.#o.platform.checkCanvas(userId, sess.canvasId, undefined, "drama"));
+    if ((req.mode || sess.mode) === "drama")
+      await this.#platform(() =>
+        this.#o.platform.checkCanvas(userId, sess.canvasId, undefined, "drama"),
+      );
     // 消息里的引用（节点、模型、技能）必须有效；选中的节点里已不存在的去掉
-    const selection = sess.mode === "admin" ? [] : await this.#platform(() => this.#o.platform.checkMessage(userId, sess.canvasId, message, req.selection ?? []));
+    const selection =
+      sess.mode === "admin"
+        ? []
+        : await this.#platform(() =>
+            this.#o.platform.checkMessage(userId, sess.canvasId, message, req.selection ?? []),
+          );
     const modelKey = await this.#pickModel(req.agent_model_key || sess.modelKey);
-    const attachments = sess.mode === "admin" ? [] : await this.#checkAttachments(userId, req.attachments, modelKey);
+    const attachments =
+      sess.mode === "admin" ? [] : await this.#checkAttachments(userId, req.attachments, modelKey);
     const run = await this.#o.engine.startRun({
-      userId, sessionId, message, mode: req.mode || undefined, modelKey, selection, attachments, budgetCredits: req.budget_credits ?? 0, pageContext: sess.mode === "admin" ? req.page_context : undefined,
+      userId,
+      sessionId,
+      message,
+      mode: req.mode || undefined,
+      modelKey,
+      selection,
+      attachments,
+      budgetCredits: req.budget_credits ?? 0,
+      pageContext: sess.mode === "admin" ? req.page_context : undefined,
     });
     return runView(this.#o.codec, run);
   }
 
-  async interject(userId: string, runId: string, message: string, attachments?: Array<{ asset_id: string }>): Promise<void> {
+  async interject(
+    userId: string,
+    runId: string,
+    message: string,
+    attachments?: Array<{ asset_id: string }>,
+  ): Promise<void> {
     const run = this.#run(userId, runId);
     const msg = message.trim();
     if (!msg) throw Err.invalidParams("消息不能为空");
     if (run.status !== "running") throw Err.state();
-    if (run.mode !== "admin") await this.#platform(() => this.#o.platform.checkMessage(userId, run.canvasId, msg, []));
-    const checked = run.mode === "admin" ? [] : await this.#checkAttachments(userId, attachments, this.#session(userId, run.sessionId).modelKey);
+    if (run.mode !== "admin")
+      await this.#platform(() => this.#o.platform.checkMessage(userId, run.canvasId, msg, []));
+    const checked =
+      run.mode === "admin"
+        ? []
+        : await this.#checkAttachments(
+            userId,
+            attachments,
+            this.#session(userId, run.sessionId).modelKey,
+          );
     await this.#o.engine.interject(userId, runId, msg, checked);
   }
 
@@ -253,10 +351,20 @@ export class AgentApiService {
     if (isActive(run.status)) throw Err.state();
     const sess = this.#session(userId, run.sessionId);
     const res = await this.#platform(() =>
-      this.#o.platform.undo({ run_id: run.id, user_id: userId, session_id: run.sessionId, canvas_id: run.canvasId, mode: run.mode, model_key: sess.modelKey }),
+      this.#o.platform.undo({
+        run_id: run.id,
+        user_id: userId,
+        session_id: run.sessionId,
+        canvas_id: run.canvasId,
+        mode: run.mode,
+        model_key: sess.modelKey,
+      }),
     );
     if (res.revision !== 0) {
-      this.#o.engine.recordEvent(run, "run.undone", { reverted: res.reverted, skipped: res.skipped.length });
+      this.#o.engine.recordEvent(run, "run.undone", {
+        reverted: res.reverted,
+        skipped: res.skipped.length,
+      });
       this.#o.store.touchRun(run.id); // Go 的摘要要把"被撤销过"汇总进去
     }
     return res;
@@ -265,11 +373,16 @@ export class AgentApiService {
   // ---- 评价 ----
 
   /** 记下用户对一次运行的评价（👍/👎），再次调用就是改选。评价的是一整轮的结果，所以运行得是自己的、已经结束 */
-  async setFeedback(userId: string, runId: string, req: { rating: number; reasons: string[]; comment: string }): Promise<FeedbackView> {
+  async setFeedback(
+    userId: string,
+    runId: string,
+    req: { rating: number; reasons: string[]; comment: string },
+  ): Promise<FeedbackView> {
     if (req.rating !== 1 && req.rating !== -1) throw Err.invalidParams("评价只能是 1 或 -1");
     const reasons = normalizeReasons(req.rating, req.reasons);
     const comment = req.comment.trim();
-    if (Array.from(comment).length > MAX_FEEDBACK_COMMENT) throw Err.invalidParams(`补充说明最多 ${MAX_FEEDBACK_COMMENT} 字`);
+    if (Array.from(comment).length > MAX_FEEDBACK_COMMENT)
+      throw Err.invalidParams(`补充说明最多 ${MAX_FEEDBACK_COMMENT} 字`);
     const run = this.#run(userId, runId);
     if (isActive(run.status)) throw new AgentError(60014, 409, "运行还没结束，结束后才能评价");
     this.#o.store.upsertFeedback({ runId, userId, rating: req.rating, reasons, comment });
@@ -293,8 +406,11 @@ export class AgentApiService {
 
   /** 更新时间晚于 afterMs 的运行（升序，最多 limit 条）：Go 的摘要同步靠它找出变过的运行 */
   async observeRuns(afterMs: number, limit: number): Promise<ObserveRunRef[]> {
-    if (!Number.isInteger(limit) || limit < 1 || limit > MAX_OBSERVE_PAGE) throw Err.invalidParams(`limit 必须是 1 到 ${MAX_OBSERVE_PAGE}`);
-    return this.#o.store.listRunsUpdatedAfter(afterMs, limit).map((r) => ({ id: r.id, status: r.status, updated_at: r.updatedAt }));
+    if (!Number.isInteger(limit) || limit < 1 || limit > MAX_OBSERVE_PAGE)
+      throw Err.invalidParams(`limit 必须是 1 到 ${MAX_OBSERVE_PAGE}`);
+    return this.#o.store
+      .listRunsUpdatedAfter(afterMs, limit)
+      .map((r) => ({ id: r.id, status: r.status, updated_at: r.updatedAt }));
   }
 
   /** 一次运行的事实：Agent 自己持有的那部分（运行、事件、审批、评价、上下文）；工具、模型调用、画布改动在 Go */
@@ -311,18 +427,48 @@ export class AgentApiService {
     const at = (ms: number | null) => (ms === null ? null : new Date(ms).toISOString());
     return {
       run: {
-        id: run.id, session_id: run.sessionId, canvas_id: run.canvasId, user_id: run.userId, status: run.status, mode: run.mode,
-        budget_credits: run.budgetCredits, spent_credits: run.spentCredits, context_tokens: run.contextTokens, steps: run.steps, max_steps: run.maxSteps,
-        error_code: run.errorCode, error_message: run.errorMessage, prompt_version: run.promptVersion, tools_hash: run.toolsHash, build_sha: run.buildSha,
-        harness_key: run.harnessKey, created_at: at(run.createdAt)!, ended_at: at(run.endedAt),
+        id: run.id,
+        session_id: run.sessionId,
+        canvas_id: run.canvasId,
+        user_id: run.userId,
+        status: run.status,
+        mode: run.mode,
+        budget_credits: run.budgetCredits,
+        spent_credits: run.spentCredits,
+        context_tokens: run.contextTokens,
+        steps: run.steps,
+        max_steps: run.maxSteps,
+        error_code: run.errorCode,
+        error_message: run.errorMessage,
+        prompt_version: run.promptVersion,
+        tools_hash: run.toolsHash,
+        build_sha: run.buildSha,
+        harness_key: run.harnessKey,
+        created_at: at(run.createdAt)!,
+        ended_at: at(run.endedAt),
       },
       session_deleted: store.isSessionDeleted(run.sessionId),
       events: store.listRunEvents(run.id).map(observeEvent),
       approvals: store.listApprovals(run.id).map((a) => ({
-        id: a.id, kind: a.kind, tool_call_id: platformToolCallId(a.toolCallId), status: a.status, quote_credits: a.quoteCredits, payload: a.payload,
-        decision: a.decision, result: a.result, decided_at: at(a.decidedAt), created_at: at(a.createdAt)!,
+        id: a.id,
+        kind: a.kind,
+        tool_call_id: platformToolCallId(a.toolCallId),
+        status: a.status,
+        quote_credits: a.quoteCredits,
+        payload: a.payload,
+        decision: a.decision,
+        result: a.result,
+        decided_at: at(a.decidedAt),
+        created_at: at(a.createdAt)!,
       })),
-      feedback: fb ? { rating: fb.rating, reasons: fb.reasons, comment: fb.comment, created_at: at(fb.createdAt)! } : null,
+      feedback: fb
+        ? {
+            rating: fb.rating,
+            reasons: fb.reasons,
+            comment: fb.comment,
+            created_at: at(fb.createdAt)!,
+          }
+        : null,
       context: store.listContextEvents(run.sessionId, run.id, CONTEXT_TURNS).map(observeEvent),
     };
   }
@@ -334,12 +480,23 @@ export class AgentApiService {
    * 校验消息的附件（图片和文本文件）：格式、总数在这里先拦住（不创建运行），素材的归属、格式、大小、分项数量交给 Go；
    * 里面有图片而当前模型不能看图时拒绝（只有文本文件不要求能看图）。没带附件就什么都不做。
    */
-  async #checkAttachments(userId: string, raw: unknown, modelKey: string): Promise<AttachmentCheck[]> {
+  async #checkAttachments(
+    userId: string,
+    raw: unknown,
+    modelKey: string,
+  ): Promise<AttachmentCheck[]> {
     if (raw === undefined || raw === null) return [];
     if (!Array.isArray(raw)) throw Err.invalidParams("附件格式不对");
     if (raw.length === 0) return [];
-    if (raw.length > MAX_ATTACHMENTS + MAX_DOCUMENTS) throw Err.invalidParams(`一条消息最多 ${MAX_ATTACHMENTS} 张图片和 ${MAX_DOCUMENTS} 个文本文件`);
-    const ids = raw.map((a) => (a && typeof a === "object" && typeof (a as { asset_id?: unknown }).asset_id === "string" ? (a as { asset_id: string }).asset_id.trim() : ""));
+    if (raw.length > MAX_ATTACHMENTS + MAX_DOCUMENTS)
+      throw Err.invalidParams(
+        `一条消息最多 ${MAX_ATTACHMENTS} 张图片和 ${MAX_DOCUMENTS} 个文本文件`,
+      );
+    const ids = raw.map((a) =>
+      a && typeof a === "object" && typeof (a as { asset_id?: unknown }).asset_id === "string"
+        ? (a as { asset_id: string }).asset_id.trim()
+        : "",
+    );
     if (ids.some((id) => !id || id.length > 32)) throw Err.invalidParams("附件格式不对");
     const checked = await this.#platform(() => this.#o.platform.checkAttachments(userId, ids));
     if (checked.some((a) => a.kind !== "document")) {
@@ -401,7 +558,8 @@ function normalizeReasons(rating: number, input: string[]): string[] {
   if (input.length > MAX_FEEDBACK_REASONS) throw Err.invalidParams("原因标签太多");
   const out: string[] = [];
   for (const r of input) {
-    if (!FEEDBACK_REASONS.includes(r)) throw Err.invalidParams("未知的原因标签：" + Array.from(r).slice(0, 32).join(""));
+    if (!FEEDBACK_REASONS.includes(r))
+      throw Err.invalidParams("未知的原因标签：" + Array.from(r).slice(0, 32).join(""));
     if (!out.includes(r)) out.push(r);
   }
   return out;
@@ -409,5 +567,7 @@ function normalizeReasons(rating: number, input: string[]): string[] {
 
 /** 第一个「一轮开头」事件的下标，没有返回 -1：用户发起的 message.user，运行中的插话（steer）不算 */
 function firstTurnStart(events: AgentEventRecord[]): number {
-  return events.findIndex((e) => e.type === "message.user" && !(e.payload as { steer?: boolean } | null)?.steer);
+  return events.findIndex(
+    (e) => e.type === "message.user" && !(e.payload as { steer?: boolean } | null)?.steer,
+  );
 }

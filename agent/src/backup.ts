@@ -29,9 +29,15 @@ export function backupDatabase(dbPath: string, dest: string): BackupResult {
     }
     const snap = new DatabaseSync(dest, { readOnly: true });
     try {
-      const integrity = String((snap.prepare("PRAGMA integrity_check").get() as { integrity_check: string }).integrity_check);
+      const integrity = String(
+        (snap.prepare("PRAGMA integrity_check").get() as { integrity_check: string })
+          .integrity_check,
+      );
       if (integrity !== "ok") throw new Error(`备份没有通过完整性检查：${integrity}`);
-      const migrations = Number((snap.prepare("SELECT COUNT(*) AS n FROM agent_schema_migrations").get() as { n: number }).n);
+      const migrations = Number(
+        (snap.prepare("SELECT COUNT(*) AS n FROM agent_schema_migrations").get() as { n: number })
+          .n,
+      );
       return { path: dest, bytes: statSync(dest).size, migrations, integrity };
     } finally {
       snap.close();

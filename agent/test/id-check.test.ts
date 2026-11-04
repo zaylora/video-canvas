@@ -28,10 +28,18 @@ async function until(cond: () => boolean, what: string) {
 test("密钥一致：核对成功后不再打扰 Go（包括超过 2^53 的雪花 id）", async () => {
   const go = fakeGo();
   const logs: string[] = [];
-  const check = startIdCheck({ platform: go, codec: goCodec, log: (m) => logs.push(m), intervalMs: 5 });
+  const check = startIdCheck({
+    platform: go,
+    codec: goCodec,
+    log: (m) => logs.push(m),
+    intervalMs: 5,
+  });
   await until(() => check.state() === "ok", "核对通过");
   const n = go.asked.length;
-  assert.ok(go.asked.some((x) => BigInt(x) > 2n ** 53n), "要用大 id 核对，才能发现编码里丢精度");
+  assert.ok(
+    go.asked.some((x) => BigInt(x) > 2n ** 53n),
+    "要用大 id 核对，才能发现编码里丢精度",
+  );
   await sleep(40);
   assert.equal(go.asked.length, n, "通过之后停止核对");
   assert.deepEqual(logs, []);
@@ -42,7 +50,9 @@ test("密钥不一致：状态是 mismatch，日志说清楚怎么改（不含�
   let key = "other-key";
   const logs: Array<[string, Record<string, unknown> | undefined]> = [];
   const check = startIdCheck({
-    platform: { encodeId: (n) => fakeGo({ key }).encodeId(n) }, codec: goCodec, intervalMs: 5,
+    platform: { encodeId: (n) => fakeGo({ key }).encodeId(n) },
+    codec: goCodec,
+    intervalMs: 5,
     log: (m, extra) => logs.push([m, extra]),
   });
   await until(() => check.state() === "mismatch", "发现不一致");

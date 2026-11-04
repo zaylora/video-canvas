@@ -19,9 +19,16 @@ export function wrapScalarArrays(schema: JsonSchema | undefined, value: unknown)
     const arr: unknown[] = Array.isArray(value) ? value : [value];
     return schema.items ? arr.map((v) => wrapScalarArrays(schema.items, v)) : arr;
   }
-  if (schema.type === "object" && schema.properties && value && typeof value === "object" && !Array.isArray(value)) {
+  if (
+    schema.type === "object" &&
+    schema.properties &&
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value)
+  ) {
     const out: Record<string, unknown> = { ...value };
-    for (const [k, s] of Object.entries(schema.properties)) if (k in out) out[k] = wrapScalarArrays(s, out[k]);
+    for (const [k, s] of Object.entries(schema.properties))
+      if (k in out) out[k] = wrapScalarArrays(s, out[k]);
     return out;
   }
   return value;

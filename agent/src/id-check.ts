@@ -40,7 +40,8 @@ export function startIdCheck(o: IdCheckOptions): IdCheck {
     let delay = interval;
     try {
       let same = true;
-      for (const n of PROBE_IDS) if ((await o.platform.encodeId(n)) !== o.codec.encode(BigInt(n))) same = false;
+      for (const n of PROBE_IDS)
+        if ((await o.platform.encodeId(n)) !== o.codec.encode(BigInt(n))) same = false;
       next = same ? "ok" : "mismatch";
     } catch {
       next = state === "mismatch" ? "mismatch" : "pending"; // 连不上：不改判断
@@ -48,8 +49,11 @@ export function startIdCheck(o: IdCheckOptions): IdCheck {
     if (stopped) return;
     if (next === "mismatch") {
       if (state !== "mismatch") {
-        o.log("ID 编码密钥和 Go 不一致：前端会拿到对不上的 ID。请让 AGENT_ID_KEY 和 Go 实际使用的密钥一致（Go 用的是 APP_SERVER_ID_KEY；没设时用配置文件里的 server.id_key，" +
-          "镜像里的默认值是 id_key）", { level: "error" });
+        o.log(
+          "ID 编码密钥和 Go 不一致：前端会拿到对不上的 ID。请让 AGENT_ID_KEY 和 Go 实际使用的密钥一致（Go 用的是 APP_SERVER_ID_KEY；没设时用配置文件里的 server.id_key，" +
+            "镜像里的默认值是 id_key）",
+          { level: "error" },
+        );
       }
       delay = interval * 10;
     }

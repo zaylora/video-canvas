@@ -41,18 +41,24 @@ function fail(msg: string): never {
 
 /** 从环境变量读配置；不对就抛错，说清楚是哪一项（调用方打印后退出，不要等到第一次请求才发现） */
 export function configFromEnv(env: Record<string, string | undefined>): DurableConfig {
-  const need = (name: string, hint = ""): string => env[name] || fail(`缺少环境变量 ${name}${hint}`);
+  const need = (name: string, hint = ""): string =>
+    env[name] || fail(`缺少环境变量 ${name}${hint}`);
   const int = (name: string, def: number, min: number, max: number): number => {
     const raw = env[name];
     if (raw === undefined || raw === "") return def;
     const n = Number(raw);
-    if (!Number.isInteger(n) || n < min || n > max) fail(`${name} 必须是 ${min} 到 ${max} 的整数，当前是 ${JSON.stringify(raw)}`);
+    if (!Number.isInteger(n) || n < min || n > max)
+      fail(`${name} 必须是 ${min} 到 ${max} 的整数，当前是 ${JSON.stringify(raw)}`);
     return n;
   };
   const serviceToken = need("AGENT_SERVICE_TOKEN", "（至少 32 个字符，建议 openssl rand -hex 32）");
   if (serviceToken.length < MIN_TOKEN_LEN) fail(`AGENT_SERVICE_TOKEN 至少 ${MIN_TOKEN_LEN} 个字符`);
-  const bridgeUrl = need("AGENT_BRIDGE_URL", "（Go 的桥地址，如 http://backend:47001）").replace(/\/+$/, "");
-  if (!/^https?:\/\/[^/\s]+/.test(bridgeUrl)) fail(`AGENT_BRIDGE_URL 必须以 http:// 或 https:// 开头，当前是 ${JSON.stringify(bridgeUrl)}`);
+  const bridgeUrl = need("AGENT_BRIDGE_URL", "（Go 的桥地址，如 http://backend:47001）").replace(
+    /\/+$/,
+    "",
+  );
+  if (!/^https?:\/\/[^/\s]+/.test(bridgeUrl))
+    fail(`AGENT_BRIDGE_URL 必须以 http:// 或 https:// 开头，当前是 ${JSON.stringify(bridgeUrl)}`);
   const listenRaw = env.AGENT_LISTEN || "0.0.0.0:8090";
   const m = /^(\[[^\]]+\]|[^:\s]+):(\d{1,5})$/.exec(listenRaw);
   if (!m) fail(`AGENT_LISTEN 必须是 host:port 形式，当前是 ${JSON.stringify(listenRaw)}`);
@@ -62,7 +68,8 @@ export function configFromEnv(env: Record<string, string | undefined>): DurableC
     serviceToken,
     idKey: need("AGENT_ID_KEY", "（必须和 Go 的 APP_SERVER_ID_KEY 一样）"),
     workerId: int("AGENT_WORKER_ID", 1, 0, 1023),
-    resumeWindowMs: int("AGENT_RESUME_WINDOW_SECONDS", DEFAULT_RESUME_WINDOW_SECONDS, 0, 7 * 24 * 3600) * 1000,
+    resumeWindowMs:
+      int("AGENT_RESUME_WINDOW_SECONDS", DEFAULT_RESUME_WINDOW_SECONDS, 0, 7 * 24 * 3600) * 1000,
     listen: { host: m[1].replace(/^\[|\]$/g, ""), port: Number(m[2]) },
     webAllowFakeIP: env.AGENT_WEB_ALLOW_FAKE_IP === "true",
   };
@@ -81,14 +88,21 @@ export interface DurableOptions {
   idCheckIntervalMs?: number;
 }
 
-export async function startDurable(cfg: DurableConfig, log: (msg: string, extra?: Record<string, unknown>) => void, opts: DurableOptions = {}): Promise<DurableService> {
+export async function startDurable(
+  cfg: DurableConfig,
+  log: (msg: string, extra?: Record<string, unknown>) => void,
+  opts: DurableOptions = {},
+): Promise<DurableService> {
   mkdirSync(dirname(cfg.dbPath), { recursive: true });
   const codec = createIdCodec(cfg.idKey);
   const store = openStore(cfg.dbPath, { workerId: cfg.workerId });
   let engine: AgentEngine | undefined;
   let pusher: EventPusher | undefined;
   let idCheck: IdCheck | undefined;
-  const web = new WebAccess({ dataDir: join(dirname(cfg.dbPath), "web-access"), allowFakeIP: cfg.webAllowFakeIP });
+  const web = new WebAccess({
+    dataDir: join(dirname(cfg.dbPath), "web-access"),
+    allowFakeIP: cfg.webAllowFakeIP,
+  });
   try {
     const platform = createPlatform({ baseUrl: cfg.bridgeUrl, serviceToken: cfg.serviceToken });
     // 事件推给 Go，由它经 WebSocket 发给前端；丢了前端会按 seq 回放补回，所以这里失败只记日志（成串的失败合并成一条）
@@ -98,31 +112,58 @@ export async function startDurable(cfg: DurableConfig, log: (msg: string, extra?
       onError: (e, dropped) => {
         if (Date.now() - lastWarn < 10_000) return;
         lastWarn = Date.now();
-        log("推送事件给平台失败，前端会通过回放补上", { dropped, error: String((e as Error)?.message ?? e) });
+        log("推送事件给平台失败，前端会通过回放补上", {
+          dropped,
+          error: String((e as Error)?.message ?? e),
+        });
       },
     }));
     engine = await AgentEngine.open({
-      store, platform, baseUrl: cfg.bridgeUrl, serviceToken: cfg.serviceToken, codec, web,
-      storage: await openNodeSqliteStorage(cfg.dbPath, { prefix: "pi_" }), resumeWindowMs: cfg.resumeWindowMs,
+      store,
+      platform,
+      baseUrl: cfg.bridgeUrl,
+      serviceToken: cfg.serviceToken,
+      codec,
+      web,
+      storage: await openNodeSqliteStorage(cfg.dbPath, { prefix: "pi_" }),
+      resumeWindowMs: cfg.resumeWindowMs,
       onEvent: (ev) => p.publish(ev),
     });
-    const app = createApiApp({ service: new AgentApiService({ store, engine, platform, codec }), codec, serviceToken: cfg.serviceToken, log });
+    const app = createApiApp({
+      service: new AgentApiService({ store, engine, platform, codec }),
+      codec,
+      serviceToken: cfg.serviceToken,
+      log,
+    });
     // 密钥和 Go 不一致时报不健康：一键升级的就绪检查会失败并自动回退，而不是升级成功后用户发现什么都打不开
-    const check = (idCheck = startIdCheck({ platform, codec, log, intervalMs: opts.idCheckIntervalMs }));
+    const check = (idCheck = startIdCheck({
+      platform,
+      codec,
+      log,
+      intervalMs: opts.idCheckIntervalMs,
+    }));
     app.get("/health", async (_req, reply) =>
-      check.state() === "mismatch" ? reply.code(503).send({ ok: false, error: "ID 编码密钥和 Go 不一致，请检查 AGENT_ID_KEY 和 APP_SERVER_ID_KEY" }) : { ok: true });
+      check.state() === "mismatch"
+        ? reply.code(503).send({
+            ok: false,
+            error: "ID 编码密钥和 Go 不一致，请检查 AGENT_ID_KEY 和 APP_SERVER_ID_KEY",
+          })
+        : { ok: true },
+    );
     const url = await app.listen({ host: cfg.listen.host, port: cfg.listen.port });
     let closing: Promise<void> | undefined;
     const eng = engine;
     return {
-      url, engine: eng,
-      close: () => (closing ??= (async () => {
-        await app.close();
-        await check.stop();
-        await eng.close();
-        await p.close(); // 引擎收尾时发的最后几条事件也要推出去
-        store.close();
-      })()),
+      url,
+      engine: eng,
+      close: () =>
+        (closing ??= (async () => {
+          await app.close();
+          await check.stop();
+          await eng.close();
+          await p.close(); // 引擎收尾时发的最后几条事件也要推出去
+          store.close();
+        })()),
     };
   } catch (e) {
     await idCheck?.stop();

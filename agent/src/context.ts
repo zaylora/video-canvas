@@ -32,7 +32,8 @@ export function charsOf(m: Msg): number {
   for (const p of c) {
     if (p.type === "text") n += p.text?.length ?? 0;
     else if (p.type === "image") n += IMAGE_CHARS;
-    else if (p.type === "toolCall") n += JSON.stringify(p.arguments ?? {}).length + (p.name?.length ?? 0);
+    else if (p.type === "toolCall")
+      n += JSON.stringify(p.arguments ?? {}).length + (p.name?.length ?? 0);
     else if (p.type === "thinking") n += p.thinking?.length ?? 0;
   }
   return n;
@@ -51,7 +52,8 @@ interface ChatPayload {
 }
 
 /** 更早的图片被省略后，模型看到的说明：告诉它怎么重新看（附件图片的素材 id 在那条消息的「附件图片」一行里） */
-export const IMAGE_OMITTED = "[图片已省略；需要时调用 canvas_inspect_image，传 assetIds（附件图片）或 nodeIds（画布上的图片）重新查看]";
+export const IMAGE_OMITTED =
+  "[图片已省略；需要时调用 canvas_inspect_image，传 assetIds（附件图片）或 nodeIds（画布上的图片）重新查看]";
 
 /**
  * 发给模型前，只保留最近 keep 条带图片的消息里的图片，更早的每张换成一段文字说明。
@@ -60,10 +62,14 @@ export const IMAGE_OMITTED = "[图片已省略；需要时调用 canvas_inspect_
  */
 export function pruneOldImages<P>(payload: P, keep: number): P {
   const messages = (payload as ChatPayload | undefined)?.messages ?? [];
-  const hasImage = (m: { content?: unknown }) => Array.isArray(m.content) && (m.content as { type?: string }[]).some((p) => p?.type === "image_url");
+  const hasImage = (m: { content?: unknown }) =>
+    Array.isArray(m.content) &&
+    (m.content as { type?: string }[]).some((p) => p?.type === "image_url");
   const withImages = messages.filter(hasImage);
   for (const m of withImages.slice(0, Math.max(0, withImages.length - keep))) {
-    m.content = (m.content as { type?: string }[]).map((p) => (p?.type === "image_url" ? { type: "text", text: IMAGE_OMITTED } : p));
+    m.content = (m.content as { type?: string }[]).map((p) =>
+      p?.type === "image_url" ? { type: "text", text: IMAGE_OMITTED } : p,
+    );
   }
   return payload;
 }
@@ -73,7 +79,8 @@ export function restoreImageUrls<P>(payload: P): P {
     if (!Array.isArray(m.content)) continue;
     for (const part of m.content as { type?: string; image_url?: { url?: unknown } }[]) {
       const url = part?.image_url?.url;
-      const hit = part?.type === "image_url" && typeof url === "string" ? URL_AS_DATA.exec(url) : null;
+      const hit =
+        part?.type === "image_url" && typeof url === "string" ? URL_AS_DATA.exec(url) : null;
       if (hit && part.image_url) part.image_url.url = hit[1];
     }
   }

@@ -17,7 +17,9 @@ export interface Migration {
 }
 
 // 状态值和 Go 的 model 常量保持一致：活跃运行占用画布，由部分唯一索引保证同一画布同时只有一个
-const ACTIVE_RUN_STATUSES = ["queued", "running", "waiting_approval", "waiting_input"].map((s) => `'${s}'`).join(",");
+const ACTIVE_RUN_STATUSES = ["queued", "running", "waiting_approval", "waiting_input"]
+  .map((s) => `'${s}'`)
+  .join(",");
 
 export const MIGRATIONS: Migration[] = [
   {
@@ -143,9 +145,14 @@ CREATE UNIQUE INDEX uk_agent_runs_active_admin ON agent_runs (user_id) WHERE can
 const checksum = (sql: string): string => createHash("sha256").update(sql).digest("hex");
 
 /** 把迁移按顺序应用到 db；已经应用过的跳过。now 用来记应用时间（毫秒）。 */
-export function migrate(db: DatabaseSync, migrations: readonly Migration[], now: () => number): void {
+export function migrate(
+  db: DatabaseSync,
+  migrations: readonly Migration[],
+  now: () => number,
+): void {
   migrations.forEach((m, i) => {
-    if (m.version !== i + 1) throw new Error(`迁移的版本号必须从 1 开始连续，第 ${i + 1} 条是 ${m.version}`);
+    if (m.version !== i + 1)
+      throw new Error(`迁移的版本号必须从 1 开始连续，第 ${i + 1} 条是 ${m.version}`);
   });
   db.exec(`CREATE TABLE IF NOT EXISTS agent_schema_migrations (
     version    INTEGER PRIMARY KEY,
@@ -153,21 +160,30 @@ export function migrate(db: DatabaseSync, migrations: readonly Migration[], now:
     checksum   TEXT    NOT NULL,
     applied_at INTEGER NOT NULL
   )`);
-  const applied = db.prepare("SELECT version, name, checksum FROM agent_schema_migrations ORDER BY version").all() as Array<{ version: number; name: string; checksum: string }>;
+  const applied = db
+    .prepare("SELECT version, name, checksum FROM agent_schema_migrations ORDER BY version")
+    .all() as Array<{ version: number; name: string; checksum: string }>;
   const newest = applied.at(-1)?.version ?? 0;
   if (newest > migrations.length) {
-    throw new Error(`数据库的版本 ${newest} 比当前代码（最新是 ${migrations.length}）新：可能回退了镜像。` +
-      "请换回新版镜像，或从升级前的备份恢复 agent_data 卷");
+    throw new Error(
+      `数据库的版本 ${newest} 比当前代码（最新是 ${migrations.length}）新：可能回退了镜像。` +
+        "请换回新版镜像，或从升级前的备份恢复 agent_data 卷",
+    );
   }
   for (const a of applied) {
     const m = migrations[a.version - 1];
-    if (a.checksum !== checksum(m.sql)) throw new Error(`迁移 ${a.version}（${m.name}）已经应用过，但内容被修改过。已发布的迁移不能改，请新增一条`);
+    if (a.checksum !== checksum(m.sql))
+      throw new Error(
+        `迁移 ${a.version}（${m.name}）已经应用过，但内容被修改过。已发布的迁移不能改，请新增一条`,
+      );
   }
   for (const m of migrations.slice(applied.length)) {
     db.exec("BEGIN IMMEDIATE");
     try {
       db.exec(m.sql);
-      db.prepare("INSERT INTO agent_schema_migrations (version, name, checksum, applied_at) VALUES (?, ?, ?, ?)").run(m.version, m.name, checksum(m.sql), now());
+      db.prepare(
+        "INSERT INTO agent_schema_migrations (version, name, checksum, applied_at) VALUES (?, ?, ?, ?)",
+      ).run(m.version, m.name, checksum(m.sql), now());
       db.exec("COMMIT");
     } catch (e) {
       db.exec("ROLLBACK");
