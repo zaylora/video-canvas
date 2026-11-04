@@ -108,7 +108,7 @@ func TestOutputValidationBoundaries(t *testing.T) {
 		{"空描述", func(a *Asset) { a.Description = " " }},
 		{"空别名", func(a *Asset) { a.Aliases = []string{" "} }},
 		{"重复别名", func(a *Asset) { a.Aliases = []string{"小川", " 小川 "} }},
-		{"越界集号", func(a *Asset) { a.Episodes = []int{101} }},
+		{"越界集号", func(a *Asset) { a.Episodes = []int{100001} }},
 		{"非角色音色", func(a *Asset) { a.Type = "scene" }},
 	}
 	for _, tt := range tests {

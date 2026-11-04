@@ -14,6 +14,18 @@ import (
 
 // DramaTx 短剧业务事务使用的数据库原语。
 type DramaTx interface {
+	// RecentDramaBatches 读取最近三次成功规划或拆解的范围，不加载原文及快照。
+	RecentDramaBatches(context.Context, uint64, uint64) ([]model.DramaJob, error)
+	// Canvas 在当前事务按用户读取实时资产画布。
+	Canvas(context.Context, uint64, uint64) (*model.CanvasProject, error)
+	// Draft 仅查询当前用户未过期的草稿，可加锁供一次性消费。
+	Draft(context.Context, uint64, string, bool) (*model.DramaSourceDraft, error)
+	// DeleteDraft 删除本人已使用的草稿。
+	DeleteDraft(context.Context, uint64, string) error
+	// InsertUnits 在项目创建事务中写入完整原文。
+	InsertUnits(context.Context, []model.DramaUnit) error
+	// Units 返回本人项目的有序原文。
+	Units(context.Context, uint64, uint64, int, int) ([]model.DramaUnit, error)
 	// Project 按用户和ID读取项目；lock用于串行化写请求。
 	Project(context.Context, uint64, uint64, bool) (*model.DramaProject, error)
 	// InsertProject 插入项目并建立专属画布。
@@ -88,7 +100,7 @@ func (r *DramaRepository) WithTx(ctx context.Context, fn func(DramaTx) error) er
 
 // List 按用户、标题分页读取，更新时间倒序。
 func (r *DramaRepository) List(ctx context.Context, userID uint64, keyword string, page, size int) ([]model.DramaProject, int64, error) {
-	q := r.db.WithContext(ctx).Model(&model.DramaProject{}).Where("user_id = ?", userID)
+	q := r.db.WithContext(ctx).Model(&model.DramaProject{}).Omit("source_text").Where("user_id = ?", userID)
 	if keyword != "" {
 		q = q.Where("title ILIKE ?", "%"+escapeLike(keyword)+"%")
 	}
@@ -127,7 +139,7 @@ func (r *DramaRepository) CoverKeys(ctx context.Context, userID uint64, canvasID
 
 // Project 按用户和ID读取，其他用户的数据返回ErrNotFound。
 func (r *DramaRepository) Project(ctx context.Context, userID, id uint64, lock bool) (*model.DramaProject, error) {
-	q := r.db.WithContext(ctx)
+	q := r.db.WithContext(ctx).Omit("source_text")
 	if lock {
 		q = q.Clauses(clause.Locking{Strength: "UPDATE"})
 	}
@@ -186,7 +198,7 @@ func (r *DramaRepository) SaveEpisode(ctx context.Context, e *model.DramaEpisode
 	if e.ID == 0 {
 		return r.db.WithContext(ctx).Create(e).Error
 	}
-	res := r.db.WithContext(ctx).Model(&model.DramaEpisode{}).Where("user_id = ? AND drama_id = ? AND id = ? AND revision = ?", e.UserID, e.DramaID, e.ID, revision).Updates(map[string]any{"title": e.Title, "synopsis": e.Synopsis, "script_md": e.ScriptMD, "script_status": e.ScriptStatus, "storyboard_status": e.StoryboardStatus, "locked_at": e.LockedAt, "final_asset_id": e.FinalAssetID, "final_segment_version": e.FinalSegmentVersion, "revision": gorm.Expr("revision + 1"), "updated_at": time.Now()})
+	res := r.db.WithContext(ctx).Model(&model.DramaEpisode{}).Where("user_id = ? AND drama_id = ? AND id = ? AND revision = ?", e.UserID, e.DramaID, e.ID, revision).Updates(map[string]any{"title": e.Title, "synopsis": e.Synopsis, "hook": e.Hook, "cliffhanger": e.Cliffhanger, "unit_from": e.UnitFrom, "unit_to": e.UnitTo, "script_md": e.ScriptMD, "script_status": e.ScriptStatus, "storyboard_status": e.StoryboardStatus, "locked_at": e.LockedAt, "final_asset_id": e.FinalAssetID, "final_segment_version": e.FinalSegmentVersion, "revision": gorm.Expr("revision + 1"), "updated_at": time.Now()})
 	if res.Error != nil {
 		return res.Error
 	}

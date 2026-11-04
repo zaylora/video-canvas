@@ -37,6 +37,8 @@ type SkillRepo interface {
 	SetEnabled(ctx context.Context, skillID uint64, enabled bool) error
 	// SetActiveVersion 改生效版本号，技能不存在返回 repository.ErrNotFound。
 	SetActiveVersion(ctx context.Context, skillID uint64, version int) error
+	// SetDramaSteps 更新短剧适用环节，不存在返回 ErrNotFound。
+	SetDramaSteps(ctx context.Context, skillID uint64, steps []string) error
 	// SetTitle 改显示名，技能不存在返回 repository.ErrNotFound。
 	SetTitle(ctx context.Context, skillID uint64, title string) error
 	// MarkVersionDeleting 把 ready 版本标为 deleting；不存在返回 ErrNotFound，是生效版本返回 ErrInUse。
@@ -119,6 +121,7 @@ type SkillImportView struct {
 
 // SkillItem 是管理页列表里的一行。
 type SkillItem struct {
+	DramaSteps        []string  `json:"drama_steps"`
 	Name              string    `json:"name"`
 	Title             string    `json:"title"`
 	Description       string    `json:"description"`

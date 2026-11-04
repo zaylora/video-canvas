@@ -21,6 +21,9 @@ import (
 
 type dramaMemory struct {
 	repository.DramaTx
+	drafts     map[string]model.DramaSourceDraft
+	units      []model.DramaUnit
+	prompts    map[uint64]model.DramaPrompt
 	project    model.DramaProject
 	episodes   []model.DramaEpisode
 	jobs       []model.DramaJob
@@ -79,6 +82,18 @@ func (r *dramaMemory) UpdateProject(_ context.Context, userID, id uint64, revisi
 	}
 	for k, v := range fields {
 		switch k {
+		case "phase":
+			r.project.Phase = v.(string)
+		case "plan_cursor":
+			r.project.PlanCursor = v.(int)
+		case "range_end":
+			r.project.RangeEnd = v.(int)
+		case "pause_reason":
+			r.project.PauseReason = v.(string)
+		case "pause_code":
+			r.project.PauseCode = v.(string)
+		case "prompt_settings":
+			r.project.PromptSettings = v.([]byte)
 		case "source_kind":
 			r.project.SourceKind = v.(string)
 		case "source_summary":
@@ -197,11 +212,6 @@ func (r *dramaMemory) Job(_ context.Context, userID, id, jobID uint64, _ bool) (
 	return nil, repository.ErrNotFound
 }
 func (r *dramaMemory) InsertJob(_ context.Context, j *model.DramaJob) error {
-	for _, old := range r.jobs {
-		if old.Status == "queued" || old.Status == "running" {
-			return repository.ErrDuplicate
-		}
-	}
 	r.nextID++
 	j.ID = r.nextID
 	j.CreatedAt = time.Now()
@@ -346,10 +356,10 @@ func (c *dramaPipelineCanvas) ApplyPrompts(context.Context, uint64, uint64, uint
 	return nil
 }
 func dramaTestService(r *dramaMemory, e *dramaTextStreamer, c *dramaPipelineCanvas) (*service.DramaService, *dramaRegistry) {
-	snap := &provider.Snapshot{ModelRevisionID: 9, Channel: provider.ChannelSnapshot{Key: "chan", BaseURL: "https://llm.example"}, Model: provider.ModelSnapshot{Key: "text", Kind: "agent", UpstreamModel: "upstream-chat", APIFormat: "openai", Pricing: modelcfg.Pricing{Billing: modelcfg.BillingPerCall, Unit: 5}, Capabilities: modelcfg.Capabilities{Context: &modelcfg.ContextSpec{Window: 100000, Output: 5000}}}}
+	snap := &provider.Snapshot{ModelRevisionID: 9, Channel: provider.ChannelSnapshot{Key: "chan", BaseURL: "https://llm.example"}, Model: provider.ModelSnapshot{Key: "text", Kind: "agent", UpstreamModel: "upstream-chat", APIFormat: "openai", Pricing: modelcfg.Pricing{Billing: modelcfg.BillingPerCall, Unit: 5}, Capabilities: modelcfg.Capabilities{Context: &modelcfg.ContextSpec{Window: 128000, Output: 5000}}}}
 	registry := &dramaRegistry{snap: snap, models: []provider.ModelInfo{{Key: "text", Kind: "agent"}}}
 	secrets := dramaSecrets{model.ChannelSecretName("chan"): "sk-test"}
-	return service.NewDramaService(service.DramaDeps{Repo: r, Registry: registry, Streamer: e, Secrets: secrets, Canvas: c, CanvasAssets: r, Segments: r}), registry
+	return service.NewDramaService(service.DramaDeps{Repo: r, Settings: r, Registry: registry, Streamer: e, Secrets: secrets, Canvas: c, CanvasAssets: r, Segments: r}), registry
 }
 func dramaCheckCode(t *testing.T, err error, code int) {
 	t.Helper()
@@ -476,30 +486,12 @@ func TestDramaScriptsSerialContinuationAndPartialSuccess(t *testing.T) {
 		t.Fatalf("failed job charged %+v", r.credit)
 	}
 }
-func TestDramaAnalyzeAutomaticallyOutlinesMarkedSource(t *testing.T) {
+func TestDramaRejectsUserAnalyzeAndOutline(t *testing.T) {
 	r := newDramaMemory()
-	r.project.SourceText = "第一集 开端\n原文甲\n第2集 继续\n原文乙"
-	r.project.SourceSummary = ""
-	e := &dramaTextStreamer{outputs: []string{`{"source_kind":"script","summary":"故事摘要","characters_md":"人物设定"}`}}
-	s, _ := dramaTestService(r, e, nil)
-	j, err := s.CreateJob(context.Background(), 7, 1, &model.DramaJobReq{Step: "analyze"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = s.HandleDrama(context.Background(), 7, 1, uint64(j.ID)); err != nil {
-		t.Fatal(err)
-	}
-	if len(r.jobs) != 2 || r.jobs[1].Step != "outline" {
-		t.Fatalf("jobs=%+v", r.jobs)
-	}
-	if err = s.HandleDrama(context.Background(), 7, 1, r.jobs[1].ID); err != nil {
-		t.Fatal(err)
-	}
-	if e.calls != 1 || len(r.episodes) != 2 || r.episodes[1].ScriptStatus != "ready" || !strings.Contains(r.episodes[1].ScriptMD, "原文乙") {
-		t.Fatalf("calls=%d eps=%+v", e.calls, r.episodes)
-	}
-	if r.jobs[1].Credits != 0 {
-		t.Fatal("原文捷径不应扣文本模型费用")
+	s, _ := dramaTestService(r, &dramaTextStreamer{}, nil)
+	for _, step := range []string{"analyze", "outline", "plan"} {
+		_, err := s.CreateJob(context.Background(), 7, 1, &model.DramaJobReq{Step: step})
+		dramaCheckCode(t, err, 10001)
 	}
 }
 func TestDramaModelFallbackAndEstimate(t *testing.T) {

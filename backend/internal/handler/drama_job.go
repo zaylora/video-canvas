@@ -24,7 +24,12 @@ func (h *DramaHandler) Estimate(c *gin.Context) {
 		response.Fail(c, err)
 		return
 	}
-	response.OK(c, gin.H{"credits": credits})
+	gaps, err := h.svc.ScriptGaps(c.Request.Context(), currentUserID(c), id, &req)
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, gin.H{"credits": credits, "gap_episodes": gaps})
 }
 
 // CreateJob 提交一个流水线步骤，返回 202 和持久任务状态。

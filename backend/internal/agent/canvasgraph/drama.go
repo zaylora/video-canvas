@@ -53,9 +53,10 @@ func MergeDrama(g *Graph, assets []DramaAsset, opt Options) (*DramaResult, error
 		if found := findDramaNode(index, asset); found != nil {
 			meta, _ := dramaMeta(found)
 			meta.Episodes = unionEpisodes(meta.Episodes, asset.Episodes)
-			// 只改集号，保留前端、用户或上一轮生成的其他 metadata 字段和提示词。
+			// 合并集号与新别名，保留用户确认的正式名、描述和提示词。
 			d := found.Data()["drama"].(map[string]any)
 			d["episodes"] = episodeValues(meta.Episodes)
+			d["aliases"] = dramaAliasValues(mergedDramaAliases(meta, asset))
 			indexDramaNames(index, asset, found)
 			continue
 		}
@@ -110,7 +111,7 @@ func dramaMeta(n Node) (DramaAsset, bool) {
 		a.Episodes = make([]int, len(episodes))
 		for i, value := range episodes {
 			no, ok := value.(float64)
-			if !ok || no < 1 || no > 100 || math.Trunc(no) != no {
+			if !ok || no < 1 || no > 100000 || math.Trunc(no) != no {
 				return DramaAsset{}, false
 			}
 			a.Episodes[i] = int(no)
@@ -300,12 +301,40 @@ func newDramaNode(opt Options, asset DramaAsset) Node {
 	n := Node{"id": opt.newID("n_"), "type": "canvas", "data": map[string]any{
 		"kind": kind, "label": label, "drama": map[string]any{
 			"type": asset.Type, "name": asset.Name, "look": asset.Look, "episodes": episodeValues(unionEpisodes(asset.Episodes, asset.Episodes)),
+			"aliases": dramaAliasValues(asset.Aliases), "description": strings.TrimSpace(asset.Description),
 		},
 	}}
 	if kind == KindCharacter {
 		n.Data()["character"] = newCharacterMeta(asset)
 	}
 	return n
+}
+
+// dramaAliasValues 使用 JSON 原生数组持久化别名，保证下一批重新解析画布后仍能按别名合并。
+func dramaAliasValues(aliases []string) []any {
+	values := make([]any, 0, len(aliases))
+	for _, alias := range aliases {
+		values = append(values, alias)
+	}
+	return values
+}
+
+// mergedDramaAliases 保留跨批新称呼，正式名称仍以已有节点为准。
+func mergedDramaAliases(existing, incoming DramaAsset) []string {
+	names := append(append([]string{}, existing.Aliases...), incoming.Aliases...)
+	if dramaKey(incoming.Name) != dramaKey(existing.Name) {
+		names = append(names, incoming.Name)
+	}
+	out := []string{}
+	seen := map[string]bool{}
+	for _, name := range names {
+		key := dramaKey(name)
+		if key != "" && !seen[key] {
+			out = append(out, strings.TrimSpace(name))
+			seen[key] = true
+		}
+	}
+	return out
 }
 
 // newCharacterMeta 构造角色节点内嵌的 character 元数据：角色数据只属于当前画布，

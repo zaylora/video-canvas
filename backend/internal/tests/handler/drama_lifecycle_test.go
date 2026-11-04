@@ -3,7 +3,6 @@ package handler_test
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"mime/multipart"
 	"net/http/httptest"
 	"testing"
@@ -22,7 +21,7 @@ func (httpDramaRegistry) ListModels(context.Context, string) ([]provider.ModelIn
 	return []provider.ModelInfo{{Key: "http-text", Kind: "agent"}}, nil
 }
 func (httpDramaRegistry) Snapshot(context.Context, string) (*provider.Snapshot, error) {
-	return &provider.Snapshot{ModelRevisionID: 1, Model: provider.ModelSnapshot{Key: "http-text", Kind: "agent", Pricing: modelcfg.Pricing{Billing: modelcfg.BillingPerCall, Unit: 2}}}, nil
+	return &provider.Snapshot{ModelRevisionID: 1, Model: provider.ModelSnapshot{Key: "http-text", Kind: "agent", Capabilities: modelcfg.Capabilities{Context: &modelcfg.ContextSpec{Window: 128000}}, Pricing: modelcfg.Pricing{Billing: modelcfg.BillingPerCall, Unit: 2}}}, nil
 }
 func (r *httpDramaRepo) InsertProject(_ context.Context, p *model.DramaProject) error {
 	p.ID = 7
@@ -39,6 +38,14 @@ func (r *httpDramaRepo) UpdateProject(_ context.Context, userID, id uint64, revi
 	}
 	for k, v := range fields {
 		switch k {
+		case "phase":
+			r.project.Phase = v.(string)
+		case "pause_code":
+			r.project.PauseCode = v.(string)
+		case "pause_reason":
+			r.project.PauseReason = v.(string)
+		case "range_end":
+			r.project.RangeEnd = v.(int)
 		case "title":
 			r.project.Title = v.(string)
 		case "outline_md":
@@ -147,35 +154,18 @@ func TestDramaHandler_EditJobsAndDelete(t *testing.T) {
 	}
 }
 
-func TestDramaHandler_CreateMultipart(t *testing.T) {
+// 旧 multipart 建剧已移除，来源上传仅通过预检入口。
+func TestDramaHandler_CreateMultipartRejected(t *testing.T) {
 	r := httpDramaRouter()
 	var body bytes.Buffer
 	form := multipart.NewWriter(&body)
-	for key, value := range map[string]string{"text": "第1集\n母亲回家。", "title": "上传短剧", "style_key": "real_city_film"} {
-		if err := form.WriteField(key, value); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := form.Close(); err != nil {
-		t.Fatal(err)
-	}
+	_ = form.WriteField("text", "原文")
+	_ = form.Close()
 	req := httptest.NewRequest("POST", "/dramas", &body)
 	req.Header.Set("Content-Type", form.FormDataContentType())
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
-	var got map[string]any
-	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
-		t.Fatal(err)
-	}
-	if w.Code != 201 {
+	if w.Code != 400 {
 		t.Fatalf("%d %s", w.Code, w.Body.String())
-	}
-	view := responseData(t, got)
-	if view["id"] != idcodec.Encode(7) || view["canvas_id"] != idcodec.Encode(9) || view["status"] != "analyzing" {
-		t.Fatalf("创建契约：%+v", view)
-	}
-	jobs := view["active_jobs"].([]any)
-	if len(jobs) != 1 || jobs[0].(map[string]any)["step"] != "analyze" {
-		t.Fatalf("缺少自动研读：%+v", jobs)
 	}
 }

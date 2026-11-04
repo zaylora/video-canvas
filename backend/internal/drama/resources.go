@@ -35,7 +35,8 @@ var builtinStyles = loadStyles()
 // promptTemplates 只在包初始化读取一次，避免每次任务复制整个嵌入模板。
 var promptTemplates = map[string]string{
 	"analyze":       loadPrompt("analyze"),
-	"outline":       loadPrompt("outline"),
+	"outline":       loadPrompt("plan"),
+	"plan":          loadPrompt("plan"),
 	"scripts":       loadPrompt("scripts"),
 	"breakdown":     loadPrompt("breakdown"),
 	"asset_prompts": loadPrompt("asset_prompts"),
@@ -74,9 +75,21 @@ func Styles() StylesView {
 
 // Prompt 将输入变量编码为 JSON，再拼接所选步骤的内置提示词；变量只作为待处理数据。
 func Prompt(step string, variables any) (string, error) {
+	return PromptWithBody(step, variables, "")
+}
+
+// PromptWithBody 只替换正文，输入职责、输出 Schema 和校验始终由系统固定拼接。
+func PromptWithBody(step string, variables any, body string) (string, error) {
 	template, ok := promptTemplates[step]
 	if !ok {
 		return "", fmt.Errorf("不支持的短剧提示词步骤：%s", step)
+	}
+	if body != "" {
+		start := strings.Index(template, "## 提示词正文\n")
+		end := strings.Index(template, "## 输出 JSON Schema")
+		if start >= 0 && end > start {
+			template = template[:start] + "## 提示词正文\n\n" + body + "\n\n" + template[end:]
+		}
 	}
 	data, err := json.Marshal(variables)
 	if err != nil {
@@ -91,4 +104,20 @@ func Prompt(step string, variables any) (string, error) {
 	prompt.WriteString(suffix)
 	prompt.WriteString(template)
 	return prompt.String(), nil
+}
+
+// PromptBody 返回可编辑的内置正文，不暴露协议。
+func PromptBody(step string) string {
+	template := promptTemplates[step]
+	start := strings.Index(template, "## 提示词正文\n")
+	end := strings.Index(template, "## 输出 JSON Schema")
+	if start < 0 || end <= start {
+		return ""
+	}
+	return strings.TrimSpace(template[start+len("## 提示词正文\n") : end])
+}
+
+// SkillBlock 只注入写作方法，技能脚本不执行，正文最多一万六千字。
+func SkillBlock(title, body string) string {
+	return "【写作方法：" + title + "】\n以下是本步骤必须遵循的方法与标准，按它决定取舍、粒度与写法。输出仍只能是下方 JSON 结构，方法与结构冲突时以结构为准，方法里要求的其他输出格式一律不输出。\n<skill>\n" + Clip(body, 16000) + "\n</skill>"
 }

@@ -124,9 +124,12 @@ func (s *DramaService) executeDrama(ctx context.Context, run *dramaRun) (*dramaR
 	switch run.job.Step {
 	case "analyze":
 		result.output, result.cost, err = s.runAnalyze(ctx, run.project, run.job, &run.snapshot)
-		result.next = "outline"
-	case "outline":
-		result.output, result.cost, err = s.runOutline(ctx, run, vars)
+
+	case "plan", "outline":
+		if err = json.Unmarshal(run.job.InputJSON, &vars); err != nil {
+			return nil, err
+		}
+		result.output, result.cost, err = s.callDrama(ctx, run.job, &run.snapshot, "plan", vars, func(v any) error { return v.(drama.PlanOutput).ValidateCoverage(run.job.BatchFrom, run.job.BatchTo) })
 	case "scripts":
 		result.output, result.cost, err = s.runScripts(ctx, run.project, run.job, &run.snapshot, run.episodes, selected)
 	case "breakdown":
@@ -141,19 +144,9 @@ func (s *DramaService) executeDrama(ctx context.Context, run *dramaRun) (*dramaR
 	return result, err
 }
 
-// runOutline 有分集标记则直接整理原文，小说只把研读摘要交给大纲模型。
-func (s *DramaService) runOutline(ctx context.Context, run *dramaRun, vars map[string]any) (any, int, error) {
-	marked := dramaMarkedEpisodes(run.project.SourceText)
-	if len(marked) > 0 {
-		return drama.OutlineOutput{OutlineMD: run.project.SourceSummary, CharactersMD: run.project.CharactersMD, Episodes: marked}, 0, nil
-	}
-	return s.callDrama(ctx, run.job, &run.snapshot, "outline", vars, nil)
-}
-
 // runBreakdown 校验拆解范围，先持久化有效结果，再由画布事务锁集和创建资产。
 func (s *DramaService) runBreakdown(ctx context.Context, run *dramaRun, vars map[string]any, selected []model.DramaEpisode) (*dramaResult, error) {
-	vars["episodes"] = dramaScriptInputs(selected)
-	out, cost, err := s.callDrama(ctx, run.job, &run.snapshot, "breakdown", vars, func(v any) error { return validateBreakdownScope(v.(drama.BreakdownOutput), run.job.Episodes) })
+	out, cost, err := s.breakdownBatches(ctx, run, vars, selected)
 	if err != nil {
 		return nil, err
 	}
@@ -164,7 +157,7 @@ func (s *DramaService) runBreakdown(ctx context.Context, run *dramaRun, vars map
 	if s.canvas == nil {
 		return nil, errcode.ErrInternal
 	}
-	result.newAssets, err = s.canvas.ApplyBreakdown(ctx, run.job.UserID, run.job.DramaID, run.project.CanvasID, run.job.ID, run.job.Episodes, out.(drama.BreakdownOutput).Assets)
+	result.newAssets, err = s.canvas.ApplyBreakdown(ctx, run.job.UserID, run.job.DramaID, run.project.CanvasID, run.job.ID, run.job.Episodes, out.Assets)
 	if err != nil {
 		return nil, err
 	}
@@ -249,6 +242,20 @@ func dramaCanvasCommitted(j *model.DramaJob) bool {
 // commitDrama 输出、结算和自动后继任务在同一事务提交。
 func (s *DramaService) commitDrama(ctx context.Context, run *dramaRun, result *dramaResult) error {
 	var completed, following *model.DramaJob
+	nextSnap := &run.snapshot
+	var nextModelError error
+	if pipelineJob(*run.job) {
+		p, e := s.repo.Project(ctx, run.job.UserID, run.job.DramaID, false)
+		if e != nil {
+			return e
+		}
+		resolved, e := s.resolvePlanningModel(ctx, p.TextModel)
+		if e == nil {
+			nextSnap = resolved
+		} else {
+			nextModelError = e
+		}
+	}
 	err := s.repo.WithTx(ctx, func(tx repository.DramaTx) error {
 		p, e := tx.Project(ctx, run.job.UserID, run.job.DramaID, true)
 		if e != nil {
@@ -276,7 +283,11 @@ func (s *DramaService) commitDrama(ctx context.Context, run *dramaRun, result *d
 		if e = s.finishTx(ctx, tx, current, "succeeded", 0, "", result.cost, audit); e != nil {
 			return e
 		}
-		following, e = s.continueDrama(ctx, tx, p, current, result, &run.snapshot)
+		if nextModelError != nil && p.Phase == "running" && p.SourceKind != "script" && p.PlanCursor < p.RangeEnd {
+			code, msg := dramaFailure(nextModelError)
+			return setPlanningState(ctx, tx, p, "paused", planningPauseCode(code), msg)
+		}
+		following, e = s.continueDrama(ctx, tx, p, current, result, nextSnap)
 		return e
 	})
 	if err != nil {
@@ -284,11 +295,26 @@ func (s *DramaService) commitDrama(ctx context.Context, run *dramaRun, result *d
 	}
 	s.publish(ctx, completed)
 	s.publish(ctx, following)
+	s.publishDrama(ctx, run.job.UserID, run.job.DramaID)
+	if pipelineJob(*run.job) {
+		eps, e := s.repo.Episodes(ctx, run.job.UserID, run.job.DramaID)
+		if e != nil {
+			return e
+		}
+		for _, ep := range eps {
+			if ep.UnitTo >= run.job.BatchFrom {
+				s.publishEpisode(ctx, run.job, ep.No)
+			}
+		}
+	}
 	return nil
 }
 
 // continueDrama 自动接续大纲或新资产提示词，复用本步骤模型快照。
 func (s *DramaService) continueDrama(ctx context.Context, tx repository.DramaTx, p *model.DramaProject, current *model.DramaJob, result *dramaResult, snap *provider.Snapshot) (*model.DramaJob, error) {
+	if pipelineJob(*current) {
+		return s.advancePlanningTx(ctx, tx, p, snap)
+	}
 	if result.next == "" {
 		return nil, nil
 	}

@@ -278,6 +278,13 @@ func deleteEpisodeTx(ctx context.Context, tx repository.DramaCanvasTx, g *canvas
 	if err := tx.LockProject(ctx, userID, dramaID); err != nil {
 		return dramaError(err)
 	}
+	phase, err := tx.ProjectPhase(ctx, userID, dramaID)
+	if err != nil {
+		return dramaError(err)
+	}
+	if phase == "running" {
+		return errcode.ErrDramaPhase
+	}
 	busy, err := tx.HasActiveJob(ctx, userID, dramaID)
 	if err != nil {
 		return err

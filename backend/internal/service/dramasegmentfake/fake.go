@@ -61,7 +61,7 @@ func (r *Repo) Episodes(ctx context.Context, userID, id uint64) ([]model.DramaEp
 	if _, err := r.Project(ctx, userID, id, false); err != nil {
 		return nil, err
 	}
-	return []model.DramaEpisode{{BaseModel: model.BaseModel{ID: 10}, UserID: 1, DramaID: 7, No: 1, Revision: 1, SegmentVersion: r.SegmentVersion}}, nil
+	return []model.DramaEpisode{{BaseModel: model.BaseModel{ID: 10}, UserID: 1, DramaID: 7, No: 1, LockedAt: func() *time.Time { v := time.Now(); return &v }(), Revision: 1, SegmentVersion: r.SegmentVersion}}, nil
 }
 
 // SegmentEpisode 校验分集ID与父项目归属。
@@ -226,4 +226,9 @@ func sameChosen(a, b *uint64) bool {
 		return a == nil && b == nil
 	}
 	return *a == *b
+}
+
+// Jobs 片段测试默认没有短剧媒体任务。
+func (r *Repo) Jobs(context.Context, uint64, uint64, bool) ([]model.DramaJob, error) {
+	return []model.DramaJob{}, nil
 }

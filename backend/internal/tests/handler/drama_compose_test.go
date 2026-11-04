@@ -3,6 +3,7 @@ package handler_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -45,7 +46,7 @@ func TestDramaHandler_Compose(t *testing.T) {
 		{"不接受多集", `{"step":"compose","episodes":[1,2]}`, false, false, 400, 10001},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			repo := &composeHTTPRepo{httpDramaRepo: &httpDramaRepo{project: &model.DramaProject{BaseModel: model.BaseModel{ID: 7}, UserID: 1, CanvasID: 9, Revision: 1}, episode: &model.DramaEpisode{BaseModel: model.BaseModel{ID: 10}, UserID: 1, DramaID: 7, No: 1, Revision: 1}}, empty: tc.empty}
+			repo := &composeHTTPRepo{httpDramaRepo: &httpDramaRepo{project: &model.DramaProject{BaseModel: model.BaseModel{ID: 7}, UserID: 1, CanvasID: 9, Revision: 1}, episode: &model.DramaEpisode{BaseModel: model.BaseModel{ID: 10}, UserID: 1, DramaID: 7, No: 1, LockedAt: func() *time.Time { v := time.Now(); return &v }(), Revision: 1}}, empty: tc.empty}
 			if tc.busy {
 				repo.jobs = []model.DramaJob{{UserID: 1, DramaID: 7, Status: "running"}}
 			}

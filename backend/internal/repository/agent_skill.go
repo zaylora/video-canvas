@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"gorm.io/datatypes"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
@@ -318,4 +319,16 @@ func (r *AgentSkillRepository) ListVersionNumbers(ctx context.Context) (map[uint
 		out[row.SkillID] = append(out[row.SkillID], row.Version)
 	}
 	return out, nil
+}
+
+// SetDramaSteps 按技能 ID 更新适用环节，缺失返回 ErrNotFound。
+func (r *AgentSkillRepository) SetDramaSteps(ctx context.Context, id uint64, steps []string) error {
+	res := r.db.WithContext(ctx).Model(&model.AgentSkill{}).Where("id = ?", id).Update("drama_steps", datatypes.NewJSONSlice(append([]string{}, steps...)))
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
 }

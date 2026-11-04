@@ -76,6 +76,8 @@ type DramaModelStreamer interface {
 
 // DramaDeps 短剧服务依赖，文本步骤用后台的 Agent 模型：Registry 选模型，Streamer 经 LLM 网关请求渠道，Secrets 取渠道 Key。
 type DramaDeps struct {
+	Settings     DramaSettingsRepo
+	Skills       DramaSkills
 	Repo         DramaRepo
 	Registry     provider.Registry
 	Streamer     DramaModelStreamer
@@ -94,6 +96,8 @@ type DramaDeps struct {
 
 // DramaService 短剧项目和固定流水线的业务入口。
 type DramaService struct {
+	settings     DramaSettingsRepo
+	skills       DramaSkills
 	repo         DramaRepo
 	registry     provider.Registry
 	streamer     DramaModelStreamer
@@ -111,42 +115,52 @@ type DramaService struct {
 
 // NewDramaService 创建短剧服务，不启动后台任务。
 func NewDramaService(d DramaDeps) *DramaService {
-	return &DramaService{repo: d.Repo, registry: d.Registry, streamer: d.Streamer, secrets: d.Secrets, canvas: d.Canvas, bc: d.Broadcaster, credits: d.Credits, canvasAssets: d.CanvasAssets, segments: d.Segments, compose: d.Compose, assets: d.Assets, covers: d.Covers, coverURL: d.CoverURL}
+	return &DramaService{settings: d.Settings, skills: d.Skills, repo: d.Repo, registry: d.Registry, streamer: d.Streamer, secrets: d.Secrets, canvas: d.Canvas, bc: d.Broadcaster, credits: d.Credits, canvasAssets: d.CanvasAssets, segments: d.Segments, compose: d.Compose, assets: d.Assets, covers: d.Covers, coverURL: d.CoverURL}
 }
 
 // Create 校验原文和风格，在同一事务建立项目、画布与首个研读任务。
 func (s *DramaService) Create(ctx context.Context, userID uint64, req *model.CreateDramaReq) (*model.DramaView, error) {
-	// 1. 文件和粘贴文本只能选一个，提取失败转换为契约错误。
-	if req.Filename != "" && strings.TrimSpace(req.Text) != "" {
-		return nil, errcode.ErrDramaSourceInvalid.WithMsg("文件和文本只能选一个")
+	// 1. 草稿只在创建事务中消费；类型由用户确认，模型不得改写。
+	if s.settings == nil {
+		return nil, errcode.ErrDramaSourceExpired
 	}
-	filename, data := req.Filename, req.Data
-	if filename == "" {
-		filename = "source.txt"
-		data = []byte(req.Text)
+	draft, err := s.settings.Draft(ctx, userID, req.SourceToken, false)
+	if errors.Is(err, repository.ErrNotFound) {
+		return nil, errcode.ErrDramaSourceExpired
 	}
-	source, err := drama.ParseSource(filename, data)
 	if err != nil {
-		if errors.Is(err, drama.ErrSourceTooLong) {
-			return nil, errcode.ErrDramaSourceTooLong
-		}
-		return nil, errcode.ErrDramaSourceInvalid.WithMsg(err.Error())
+		return nil, err
+	}
+	parsed := drama.Preflight(draft.Text, req.SourceKind)
+	if len(parsed.Units) == 0 {
+		return nil, errcode.ErrDramaSourceInvalid
+	}
+	end := req.RangeEnd
+	if end == 0 {
+		end = len(parsed.Units)
+	}
+	if end < 1 || end > len(parsed.Units) {
+		return nil, errcode.ErrInvalidParams.WithMsg("规划范围超出原文单元")
 	}
 	if err := checkDramaStyle(req.StyleKey, req.StyleCustom); err != nil {
 		return nil, err
 	}
-	// 2. 冻结首页选的 Agent 模型（没选或已停用时取后台第一个）；项目创建时即可发现没有可用模型。
-	snap, err := s.resolveModel(ctx, req.TextModel)
+	snap, err := s.resolvePlanningModel(ctx, req.TextModel)
 	if err != nil {
 		return nil, err
 	}
+	settings, err := s.snapshotPrompts(ctx, userID, req.SourceKind, req.Prompts)
+	if err != nil {
+		return nil, err
+	}
+	raw, _ := json.Marshal(settings)
 	initial, err := s.dramaInitialCredits(ctx)
 	if err != nil {
 		return nil, err
 	}
 	title := strings.TrimSpace(req.Title)
-	if title == "" && req.Filename != "" {
-		base := filepath.Base(req.Filename)
+	if title == "" && draft.Filename != "" {
+		base := filepath.Base(draft.Filename)
 		title = strings.TrimSuffix(base, filepath.Ext(base))
 	}
 	if title == "" {
@@ -156,15 +170,34 @@ func (s *DramaService) Create(ctx context.Context, userID uint64, req *model.Cre
 	if seconds == 0 {
 		seconds = 60
 	}
-	p := &model.DramaProject{UserID: userID, Title: title, SourceText: source, Genre: req.Genre, StyleKey: req.StyleKey, StyleCustom: req.StyleCustom, Ratio: req.Ratio, TargetEpisodes: req.TargetEpisodes, EpisodeSeconds: seconds, TextModel: req.TextModel, Status: "analyzing", Revision: 1, TextModelID: &snap.ModelRevisionID}
+	p := &model.DramaProject{UserID: userID, Title: title, SourceText: parsed.Text, SourceKind: req.SourceKind, SourceChars: draft.Chars, SourceSHA256: draft.SHA256, SourceFilename: draft.Filename, UnitsTotal: len(parsed.Units), UnitKind: parsed.UnitKind, Phase: "running", RangeEnd: end, PromptSettings: raw, Genre: req.Genre, StyleKey: req.StyleKey, StyleCustom: req.StyleCustom, Ratio: req.Ratio, EpisodeSeconds: seconds, TextModel: req.TextModel, Status: "analyzing", Revision: 1, TextModelID: &snap.ModelRevisionID}
+	if p.SourceChars == 0 {
+		p.SourceChars = utf8.RuneCountInString(parsed.Text)
+	}
 	var j *model.DramaJob
-	// 3. 项目、画布、积分冻结与River入队一起提交。
+	// 2. 项目、原文单元、草稿消费、首次冻结及队列在同一事务提交。
 	err = s.repo.WithTx(ctx, func(tx repository.DramaTx) error {
-		if err := tx.InsertProject(ctx, p); err != nil {
-			return err
+		if _, e := tx.Draft(ctx, userID, req.SourceToken, true); e != nil {
+			if errors.Is(e, repository.ErrNotFound) {
+				return errcode.ErrDramaSourceExpired
+			}
+			return e
+		}
+		if e := tx.InsertProject(ctx, p); e != nil {
+			return e
+		}
+		if e := tx.InsertUnits(ctx, unitModels(parsed.Units, userID, p.ID, true)); e != nil {
+			return e
+		}
+		if e := tx.DeleteDraft(ctx, userID, req.SourceToken); e != nil {
+			return e
 		}
 		var e error
 		j, e = s.enqueue(ctx, tx, p, &model.DramaJobReq{Step: "analyze"}, snap, nil, initial, nil)
+		var business *errcode.Error
+		if errors.As(e, &business) && business.Code == errcode.ErrInsufficientCredits.Code {
+			return setPlanningState(ctx, tx, p, "paused", "credits", business.Msg)
+		}
 		return e
 	})
 	if err != nil {
@@ -189,7 +222,11 @@ func (s *DramaService) Get(ctx context.Context, userID, id uint64) (*model.Drama
 	if err != nil {
 		return nil, err
 	}
-	v := &model.DramaView{ID: idcodec.ID(p.ID), Title: p.Title, CanvasID: idcodec.ID(p.CanvasID), Status: p.Status, SourceKind: p.SourceKind, Genre: p.Genre, StyleKey: p.StyleKey, StyleCustom: p.StyleCustom, Ratio: p.Ratio, TargetEpisodes: p.TargetEpisodes, EpisodeSeconds: p.EpisodeSeconds, TextModel: p.TextModel, OutlineMD: p.OutlineMD, CharactersMD: p.CharactersMD, Revision: p.Revision, CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt, Episodes: []model.DramaEpisodeSummary{}, ActiveJobs: []model.DramaJobView{}}
+	settings, err := s.promptViews(ctx, p)
+	if err != nil {
+		return nil, err
+	}
+	v := &model.DramaView{SourceChars: p.SourceChars, UnitsTotal: p.UnitsTotal, UnitKind: p.UnitKind, Phase: p.Phase, PlanCursor: p.PlanCursor, RangeEnd: p.RangeEnd, PauseReason: p.PauseReason, PauseCode: p.PauseCode, PromptSettings: settings, ID: idcodec.ID(p.ID), Title: p.Title, CanvasID: idcodec.ID(p.CanvasID), Status: p.Status, SourceKind: p.SourceKind, Genre: p.Genre, StyleKey: p.StyleKey, StyleCustom: p.StyleCustom, Ratio: p.Ratio, TargetEpisodes: p.TargetEpisodes, EpisodeSeconds: p.EpisodeSeconds, TextModel: p.TextModel, OutlineMD: p.OutlineMD, CharactersMD: p.CharactersMD, Revision: p.Revision, CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt, Episodes: []model.DramaEpisodeSummary{}, ActiveJobs: []model.DramaJobView{}}
 	for _, e := range eps {
 		summary, err := s.dramaEpisodeView(ctx, e)
 		if err != nil {
@@ -221,7 +258,10 @@ func (s *DramaService) List(ctx context.Context, userID uint64, keyword string, 
 		if e != nil {
 			return nil, 0, e
 		}
-		v := model.DramaSummary{ID: idcodec.ID(p.ID), Title: p.Title, Status: p.Status, EpisodeCount: len(eps), UpdatedAt: p.UpdatedAt}
+		v := model.DramaSummary{ID: idcodec.ID(p.ID), Title: p.Title, Status: p.Status, Phase: p.Phase, EpisodeCount: len(eps), UpdatedAt: p.UpdatedAt}
+		if v.Phase == "" {
+			v.Phase = "done" // 早于自动规划的老项目
+		}
 		for _, ep := range eps {
 			if ep.LockedAt != nil {
 				v.LockedCount++
@@ -259,6 +299,28 @@ func (s *DramaService) fillCovers(ctx context.Context, userID uint64, rows []mod
 
 // Update 带版本更新项目，不改变已锁定集正文。
 func (s *DramaService) Update(ctx context.Context, userID, id uint64, req *model.UpdateDramaReq) (*model.DramaView, error) {
+	// 1. 模型及来源解析放事务外，入队任务已有正文快照不受影响。
+	if req.TextModel != nil {
+		if _, err := s.resolvePlanningModel(ctx, *req.TextModel); err != nil {
+			return nil, err
+		}
+	}
+	var changed map[string]model.DramaPromptSetting
+	if req.Prompts != nil {
+		p, err := s.repo.Project(ctx, userID, id, false)
+		if err != nil {
+			return nil, dramaError(err)
+		}
+		all, err := s.snapshotPrompts(ctx, userID, p.SourceKind, req.Prompts)
+		if err != nil {
+			return nil, err
+		}
+		changed = map[string]model.DramaPromptSetting{}
+		for key := range req.Prompts {
+			changed[key] = all[key]
+		}
+	}
+
 	// 1. 事务中锁项目并执行revision比较；PATCH遗漏字段保持原值。
 	err := s.repo.WithTx(ctx, func(tx repository.DramaTx) error {
 		p, err := tx.Project(ctx, userID, id, true)
@@ -271,6 +333,14 @@ func (s *DramaService) Update(ctx context.Context, userID, id uint64, req *model
 		fields, err := dramaProjectPatch(p, req)
 		if err != nil {
 			return err
+		}
+		if changed != nil {
+			settings := promptSettings(p)
+			for key, value := range changed {
+				settings[key] = value
+			}
+			raw, _ := json.Marshal(settings)
+			fields["prompt_settings"] = raw
 		}
 		return tx.UpdateProject(ctx, userID, id, req.Revision, fields)
 	})
@@ -349,7 +419,7 @@ func episodeView(e model.DramaEpisode) model.DramaEpisodeView {
 	if status == "" {
 		status = "empty"
 	}
-	return model.DramaEpisodeView{DramaEpisodeSummary: model.DramaEpisodeSummary{No: e.No, Title: e.Title, Synopsis: e.Synopsis, ScriptStatus: e.ScriptStatus, StoryboardStatus: status, Locked: e.LockedAt != nil, Revision: e.Revision, UpdatedAt: e.UpdatedAt}, ScriptMD: e.ScriptMD}
+	return model.DramaEpisodeView{DramaEpisodeSummary: model.DramaEpisodeSummary{No: e.No, Hook: e.Hook, Cliffhanger: e.Cliffhanger, UnitFrom: e.UnitFrom, UnitTo: e.UnitTo, Title: e.Title, Synopsis: e.Synopsis, ScriptStatus: e.ScriptStatus, StoryboardStatus: status, Locked: e.LockedAt != nil, Revision: e.Revision, UpdatedAt: e.UpdatedAt}, ScriptMD: e.ScriptMD}
 }
 
 // dramaEpisodeView 在基础状态上映射实时片段聚合，避免持久化重复计数。
@@ -375,7 +445,7 @@ func (s *DramaService) dramaEpisodeView(ctx context.Context, ep model.DramaEpiso
 
 // jobView 映射任务状态并保证空范围为[]。
 func jobView(j model.DramaJob) model.DramaJobView {
-	v := model.DramaJobView{ID: idcodec.ID(j.ID), Step: j.Step, Episodes: append([]int{}, j.Episodes...), Status: j.Status, Progress: j.Progress, Credits: j.Credits, ErrorCode: j.ErrorCode, ErrorMessage: j.ErrorMessage, CreatedAt: j.CreatedAt, FinishedAt: j.FinishedAt}
+	v := model.DramaJobView{ID: idcodec.ID(j.ID), Lane: j.Lane, BatchFrom: j.BatchFrom, BatchTo: j.BatchTo, Step: j.Step, Episodes: append([]int{}, j.Episodes...), Status: j.Status, Progress: j.Progress, Credits: j.Credits, ErrorCode: j.ErrorCode, ErrorMessage: j.ErrorMessage, CreatedAt: j.CreatedAt, FinishedAt: j.FinishedAt}
 	if j.Step == "compose" && j.Status == "succeeded" {
 		var result model.DramaComposeResult
 		if json.Unmarshal(j.Output, &result) == nil && result.Asset.ID != 0 {

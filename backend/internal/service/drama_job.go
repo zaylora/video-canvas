@@ -7,6 +7,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"video-canvas/internal/drama"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/provider"
@@ -62,6 +63,9 @@ func (s *DramaService) CreateJob(ctx context.Context, userID, id uint64, req *mo
 
 // createDramaJob 统一普通提交和审批提交，审批ID与任务在同一事务登记。
 func (s *DramaService) createDramaJob(ctx context.Context, userID, id uint64, approvalID *uint64, req *model.DramaJobReq) (*model.DramaJobView, error) {
+	if req.Step == "analyze" || req.Step == "outline" || req.Step == "plan" {
+		return nil, errcode.ErrInvalidParams.WithMsg("研读与规划由系统自动发起")
+	}
 	if err := checkStoryboardRequest(req); err != nil {
 		return nil, err
 	}
@@ -141,7 +145,7 @@ func (s *DramaService) prepareDramaJob(ctx context.Context, tx repository.DramaT
 	if e != nil {
 		return nil, e
 	}
-	if len(jobs) > 0 {
+	if dramaJobsConflict(jobs, req) {
 		return nil, errcode.ErrDramaJobBusy
 	}
 	eps, e := tx.Episodes(ctx, p.UserID, p.ID)
@@ -157,17 +161,14 @@ func (s *DramaService) prepareDramaJob(ctx context.Context, tx repository.DramaT
 			return nil, e
 		}
 	}
-	if req.Step != "breakdown" || p.Ratio != "" {
-		return selected, nil
+	if req.Step == "storyboard" || req.Step == "compose" {
+		if e := checkDramaMediaTasks(ctx, tx, p, selected, ""); e != nil {
+			return nil, e
+		}
 	}
-	if req.Ratio == "" {
-		return nil, errcode.ErrDramaStepNotReady.WithMsg("拆解前请选择画面比例")
+	if req.Step == "breakdown" && p.Ratio == "" {
+		return nil, errcode.ErrDramaStepNotReady.WithMsg("项目缺少画面比例")
 	}
-	if e := tx.UpdateProject(ctx, p.UserID, p.ID, p.Revision, map[string]any{"ratio": req.Ratio}); e != nil {
-		return nil, e
-	}
-	p.Ratio = req.Ratio
-	p.Revision++
 	return selected, nil
 }
 
@@ -203,6 +204,9 @@ func (s *DramaService) CancelJob(ctx context.Context, userID, dramaID, jobID uin
 		}
 		if !dramaActive(job.Status) {
 			return nil
+		}
+		if pipelineJob(*job) {
+			return errcode.ErrDramaPhase.WithMsg("自动规划请使用暂停接口")
 		}
 		if dramaCanvasCommitted(job) {
 			return errcode.ErrTaskNotCancelable.WithMsg("画布已写入，任务正在完成结算")
@@ -254,16 +258,18 @@ func (s *DramaService) resolveModel(ctx context.Context, key string) (*provider.
 
 // enqueue 冻结费用并同事务创建业务任务与River job。
 func (s *DramaService) enqueue(ctx context.Context, tx repository.DramaTx, p *model.DramaProject, req *model.DramaJobReq, snap *provider.Snapshot, eps []model.DramaEpisode, initial int, approvalID *uint64) (*model.DramaJob, error) {
-	raw, e := json.Marshal(snap)
-	if e != nil {
-		return nil, e
-	}
 	scope := []int{}
 	for _, ep := range eps {
 		scope = append(scope, ep.No)
 	}
-	j := &model.DramaJob{UserID: p.UserID, DramaID: p.ID, Step: req.Step, Episodes: scope, Status: "queued", FrozenCredits: dramaQuote(p, req.Step, eps, snap), ConfigSnapshot: raw, InputJSON: []byte(`{}`), Output: []byte(`{}`), ModelID: snap.ModelRevisionID}
+	j := &model.DramaJob{UserID: p.UserID, DramaID: p.ID, Step: req.Step, Episodes: scope, Status: "queued", FrozenCredits: dramaQuote(p, req.Step, eps, snap), Lane: "user", InputJSON: []byte(`{}`), Output: []byte(`{}`), ModelID: snap.ModelRevisionID}
 	j.ApprovalID = approvalID
+	if req.Step == "analyze" || req.Step == "plan" || req.Step == "outline" {
+		j.Lane = "pipeline"
+	}
+	if e := s.snapshotDramaJob(ctx, tx, p, j, snap); e != nil {
+		return nil, e
+	}
 	if req.Step == "storyboard" {
 		if e := enqueueStoryboard(ctx, tx, j, req, eps); e != nil {
 			return nil, e
@@ -359,6 +365,12 @@ func selectDramaEpisodes(p *model.DramaProject, eps []model.DramaEpisode, req *m
 	default:
 		return nil, errcode.ErrInvalidParams.WithMsg("不支持的流水线步骤")
 	}
+	if req.Step == "scripts" && p.SourceKind == "script" {
+		return nil, errcode.ErrDramaStepNotReady.WithMsg("剧本型输入不能生成分集剧本")
+	}
+	if len(req.Episodes) > 200 {
+		return nil, errcode.ErrInvalidParams.WithMsg("单次最多选择200集")
+	}
 	if len(eps) == 0 {
 		return nil, errcode.ErrDramaStepNotReady.WithMsg("请先生成分集大纲")
 	}
@@ -370,8 +382,8 @@ func filterDramaEpisodes(eps []model.DramaEpisode, req *model.DramaJobReq) ([]mo
 	seen := map[int]bool{}
 	selected := []model.DramaEpisode{}
 	for _, no := range req.Episodes {
-		if no < 1 || no > 100 || seen[no] {
-			return nil, errcode.ErrInvalidParams.WithMsg("集号须为1至100且不能重复")
+		if no < 1 || no > 100000 || seen[no] {
+			return nil, errcode.ErrInvalidParams.WithMsg("集号须为1至100000且不能重复")
 		}
 		seen[no] = true
 	}
@@ -384,6 +396,9 @@ func filterDramaEpisodes(eps []model.DramaEpisode, req *model.DramaJobReq) ([]mo
 		}
 		selected = append(selected, ep)
 	}
+	if len(selected) > 200 {
+		return nil, errcode.ErrInvalidParams.WithMsg("单次最多选择200集")
+	}
 	if len(selected) == 0 || len(seen) > 0 && len(selected) != len(seen) {
 		return nil, errcode.ErrDramaStepNotReady.WithMsg("所选集不存在")
 	}
@@ -392,6 +407,12 @@ func filterDramaEpisodes(eps []model.DramaEpisode, req *model.DramaJobReq) ([]mo
 
 // checkDramaEpisodeStep 锁定集不能重新生成正文或重新拆解。
 func checkDramaEpisodeStep(ep model.DramaEpisode, step string) error {
+	if step == "scripts" && strings.TrimSpace(ep.Title) == "" {
+		return errcode.ErrDramaStepNotReady.WithMsg("只能选择已规划的集")
+	}
+	if step == "compose" && ep.LockedAt == nil {
+		return errcode.ErrDramaStepNotReady.WithMsg("所选集须已拆解锁定")
+	}
 	if step == "scripts" && ep.LockedAt != nil {
 		return errcode.ErrDramaEpisodeLocked
 	}
@@ -406,35 +427,33 @@ func checkDramaEpisodeStep(ep model.DramaEpisode, step string) error {
 
 // dramaQuote 复用现有定价，脚本逐集计费、研读按上下文分块计费。
 func dramaQuote(p *model.DramaProject, step string, eps []model.DramaEpisode, snap *provider.Snapshot) int {
-	if step == "outline" && len(dramaMarkedEpisodes(p.SourceText)) > 0 {
-		return 0
-	}
 	requests := 1
 	chars := utf8.RuneCountInString(p.SourceSummary) + utf8.RuneCountInString(p.OutlineMD) + 4096
 	switch step {
 	case "scripts":
 		requests = max(1, len(eps))
 	case "analyze":
-		requests = len(dramaSourceChunks(p.SourceText, snap))
-		if requests > 1 {
-			requests++
+		chars = min(40000, min(max(p.SourceChars, utf8.RuneCountInString(p.SourceText)), dramaContextLimit(snap))) + 2048
+	case "plan":
+		chars += min(30000, p.SourceChars)
+	case "breakdown":
+		units := make([]drama.Unit, 0, len(eps))
+		for _, ep := range eps {
+			units = append(units, drama.Unit{Chars: utf8.RuneCountInString(ep.ScriptMD)})
 		}
-		chars = min(utf8.RuneCountInString(p.SourceText)+2048, dramaContextLimit(snap))
-	case "breakdown", "storyboard":
+		total := 0
+		for _, batch := range drama.ScriptBatches(units) {
+			size := chars
+			for _, u := range batch {
+				size += u.Chars
+			}
+			total += modelcfg.Quote(snap.Model.Pricing, snap.Model.Capabilities, modelcfg.Spec{PromptChars: size, Params: map[string]any{}})
+		}
+		return total
+	case "storyboard":
 		for _, ep := range eps {
 			chars += utf8.RuneCountInString(ep.ScriptMD)
 		}
 	}
 	return requests * modelcfg.Quote(snap.Model.Pricing, snap.Model.Capabilities, modelcfg.Spec{PromptChars: chars, Params: map[string]any{}})
-}
-
-// dramaRequestInputs 取脚本目录，不把其他集的全文重复送入模型。
-func dramaRequestInputs(eps []model.DramaEpisode) []model.DramaEpisodeSummary {
-	out := make([]model.DramaEpisodeSummary, 0, len(eps))
-	for _, ep := range eps {
-		v := episodeView(ep).DramaEpisodeSummary
-		v.Synopsis = strings.TrimSpace(v.Synopsis)
-		out = append(out, v)
-	}
-	return out
 }

@@ -20,14 +20,27 @@ func (s *DramaService) runScripts(ctx context.Context, p *model.DramaProject, j 
 	for i, ep := range selected {
 		vars := s.dramaVariables(p)
 		vars["episode"] = episodeView(ep).DramaEpisodeSummary
-		vars["episodes"] = dramaRequestInputs(all)
 		previous := ""
 		for _, candidate := range all {
 			if candidate.No == ep.No-1 {
 				previous = candidate.ScriptMD
+				if strings.TrimSpace(previous) == "" {
+					previous = "上一集剧本尚未写，以下为其梗概与结尾悬念：\n" + candidate.Synopsis + "\n" + candidate.Cliffhanger
+				}
 			}
 		}
 		vars["previous_ending"] = dramaEnding(previous, 800)
+		vars["hook"], vars["cliffhanger"] = ep.Hook, ep.Cliffhanger
+		if ep.UnitFrom > 0 {
+			rows, e := s.settings.Units(ctx, p.UserID, p.ID, ep.UnitFrom, ep.UnitTo)
+			if e != nil {
+				return nil, 0, e
+			}
+			vars["source"] = drama.UnitSource(sourceUnits(rows))
+			if len([]rune(vars["source"].(string))) > dramaContextLimit(snap) {
+				return nil, 0, errcode.ErrDramaEpisodeSourceTooLong
+			}
+		}
 		v, c, e := s.callDrama(ctx, j, snap, "scripts", vars, nil)
 		if e != nil {
 			if markErr := s.markScriptFailed(ctx, j, ep.No); markErr != nil {
@@ -122,7 +135,7 @@ func (s *DramaService) dramaVariables(p *model.DramaProject) map[string]any {
 			style = v.Prompt
 		}
 	}
-	return map[string]any{"source": p.SourceSummary, "source_kind": p.SourceKind, "summary": p.SourceSummary, "characters_md": p.CharactersMD, "outline_md": p.OutlineMD, "genre": p.Genre, "style": style, "ratio": p.Ratio, "target_episodes": p.TargetEpisodes, "episode_seconds": p.EpisodeSeconds}
+	return map[string]any{"source": p.SourceSummary, "source_kind": p.SourceKind, "summary": p.SourceSummary, "characters_md": p.CharactersMD, "outline_md": p.OutlineMD, "genre": p.Genre, "style": style, "ratio": p.Ratio, "episode_seconds": p.EpisodeSeconds}
 }
 
 // dramaScriptInputs 用公开snake_case结构提供拆解剧本，隐藏数据库字段。

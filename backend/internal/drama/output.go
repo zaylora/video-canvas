@@ -19,6 +19,7 @@ type AnalyzeOutput struct {
 	SourceKind   string `json:"source_kind"`
 	Summary      string `json:"summary"`
 	CharactersMD string `json:"characters_md"`
+	OutlineMD    string `json:"outline_md"`
 }
 
 // OutlineEpisode 是大纲中的分集；已分集剧本的 ScriptMD 直接保存原文整理结果。
@@ -73,19 +74,19 @@ func (o AnalyzeOutput) Validate() error {
 	if o.SourceKind != "script" && o.SourceKind != "novel" {
 		return invalidOutput("source_kind 必须为 script 或 novel")
 	}
-	if !nonemptyText(o.Summary) || !nonemptyText(o.CharactersMD) {
-		return invalidOutput("summary 与 characters_md 必须为非空文本")
+	if !nonemptyText(o.Summary) || !nonemptyText(o.CharactersMD) || !nonemptyText(o.OutlineMD) {
+		return invalidOutput("summary、characters_md 与 outline_md 必须为非空文本")
 	}
 	return nil
 }
 
-// Validate 检查大纲、人物和 1–100 集连续编号；ScriptMD 可为空等待分集生成。
+// Validate 检查大纲、人物和 1–100000 集连续编号；ScriptMD 可为空等待分集生成。
 func (o OutlineOutput) Validate() error {
 	if !nonemptyText(o.OutlineMD) || !nonemptyText(o.CharactersMD) {
 		return invalidOutput("outline_md 与 characters_md 必须为非空文本")
 	}
-	if len(o.Episodes) < 1 || len(o.Episodes) > 100 {
-		return invalidOutput("episodes 必须包含 1–100 集")
+	if len(o.Episodes) < 1 || len(o.Episodes) > 100000 {
+		return invalidOutput("episodes 必须包含 1–100000 集")
 	}
 	for i, episode := range o.Episodes {
 		if episode.No != i+1 {
@@ -159,8 +160,8 @@ func validateAssetLists(names []string, numbers []int) error {
 	}
 	episodes := make(map[int]bool, len(numbers))
 	for _, no := range numbers {
-		if no < 1 || no > 100 || episodes[no] {
-			return invalidOutput("资产 episodes 必须是互不重复的 1–100 集号")
+		if no < 1 || no > 100000 || episodes[no] {
+			return invalidOutput("资产 episodes 必须是互不重复的 1–100000 集号")
 		}
 		episodes[no] = true
 	}
@@ -249,7 +250,9 @@ type outputDefinition struct {
 func definitionForStep(step string) (outputDefinition, error) {
 	switch step {
 	case "analyze":
-		return outputDefinition{value: &AnalyzeOutput{}, fields: []string{"source_kind", "summary", "characters_md"}}, nil
+		return outputDefinition{value: &AnalyzeOutput{}, fields: []string{"source_kind", "summary", "characters_md", "outline_md"}}, nil
+	case "plan":
+		return outputDefinition{value: &PlanOutput{}, fields: []string{"episodes"}, listKey: "episodes", itemFields: []string{"title", "synopsis", "hook", "cliffhanger", "unit_from", "unit_to"}}, nil
 	case "outline":
 		return outputDefinition{value: &OutlineOutput{}, fields: []string{"outline_md", "characters_md", "episodes"},
 			listKey: "episodes", itemFields: []string{"no", "title", "synopsis", "script_md"}}, nil
@@ -290,6 +293,8 @@ func (d outputDefinition) checkFields(data []byte) error {
 // outputValue 将已经校验的目标指针转回契约约定的值类型。
 func outputValue(output any) (any, error) {
 	switch value := output.(type) {
+	case *PlanOutput:
+		return *value, nil
 	case *AnalyzeOutput:
 		return *value, nil
 	case *OutlineOutput:

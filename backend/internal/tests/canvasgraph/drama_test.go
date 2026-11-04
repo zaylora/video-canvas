@@ -8,6 +8,41 @@ import (
 	"video-canvas/internal/agent/canvasgraph"
 )
 
+func TestMergeDramaPersistsAliasesForLaterBatches(t *testing.T) {
+	g, err := canvasgraph.Parse([]byte(`{"nodes":[],"edges":[]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := canvasgraph.MergeDrama(g, []canvasgraph.DramaAsset{{Type: "scene", Name: "旧街", Aliases: []string{"老街"}, Description: "石板窄巷", Episodes: []int{1}}}, canvasgraph.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := first.Graph.Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := canvasgraph.Parse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := canvasgraph.MergeDrama(reloaded, []canvasgraph.DramaAsset{{Type: "scene", Name: "老街", Episodes: []int{12}}}, canvasgraph.Options{})
+	if err != nil || len(second.Created) != 0 || len(second.Graph.Nodes) != 1 {
+		t.Fatalf("后批别名应合并: created=%d err=%v", len(second.Created), err)
+	}
+	d, _ := second.Graph.Nodes[0].Data()["drama"].(map[string]any)
+	if d["description"] != "石板窄巷" {
+		t.Fatal("名单需要持久化资产描述")
+	}
+	third, err := canvasgraph.MergeDrama(second.Graph, []canvasgraph.DramaAsset{{Type: "scene", Name: "旧街", Aliases: []string{"破街"}, Episodes: []int{13}}}, canvasgraph.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fourth, err := canvasgraph.MergeDrama(third.Graph, []canvasgraph.DramaAsset{{Type: "scene", Name: "破街", Episodes: []int{14}}}, canvasgraph.Options{})
+	if err != nil || len(fourth.Created) != 0 {
+		t.Fatal("合并时新发现的别名也须保留")
+	}
+}
+
 func TestMergeDramaMergesAliasesAndPreservesUnclassified(t *testing.T) {
 	g, err := canvasgraph.Parse([]byte(`{"nodes":[{"id":"old","type":"canvas","position":{"x":0,"y":0},"data":{"kind":"character","label":"保留标题","character":{"name":"Alice","look":"Young","description":"原设定","extras":[],"voice":null},"params":{"prompt":"保留提示"},"drama":{"type":"character","name":"Alice","look":"Young","episodes":[1]}}},{"id":"manual","type":"canvas","position":{"x":700,"y":0},"data":{"kind":"image","label":"手动"}}],"edges":[],"viewport":{"zoom":1}}`))
 	if err != nil {

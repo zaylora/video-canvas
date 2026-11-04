@@ -171,12 +171,13 @@ func NewApp(cfg *config.Config) (*App, error) {
 	})
 
 	// 短剧流水线的文本步骤用后台的 Agent 模型（经 LLM 网关直接请求渠道）与账户计价；拆解写画布与角色卡由同一事务提交。
+	skillSvc := agentsvc.NewSkillService(repository.NewAgentSkillRepository(db), storeRegistry, auditRepo, agentsvc.SkillOptions{})
 	dramaRepo := repository.NewDramaRepository(db)
 	dramaCanvasSvc := service.NewDramaCanvasService(repository.NewDramaCanvasRepository(db), hub)
 	dramaSegments := service.NewDramaSegmentService(service.DramaSegmentDeps{Repo: dramaRepo, Tasks: taskSvc, Assets: assetSvc, Broadcaster: hub})
 	taskSvc.SetTaskObserver(dramaSegments)
 	dramaSvc := service.NewDramaService(service.DramaDeps{
-		Repo: dramaRepo, Registry: aiCfgSvc, Streamer: llmgateway.New(llmgateway.Options{IPAllowed: outboundIPPolicy(cfg)}), Secrets: aiCfgSvc, Canvas: dramaCanvasSvc, Broadcaster: hub, Credits: settingsSvc,
+		Repo: dramaRepo, Settings: dramaRepo, Skills: skillSvc, Registry: aiCfgSvc, Streamer: llmgateway.New(llmgateway.Options{IPAllowed: outboundIPPolicy(cfg)}), Secrets: aiCfgSvc, Canvas: dramaCanvasSvc, Broadcaster: hub, Credits: settingsSvc,
 		Segments: dramaSegments, CanvasAssets: canvasProjectRepo,
 		Compose: videoframe.New(videoframe.Options{Timeout: 10 * time.Minute}), Assets: assetSvc,
 		// 列表封面：资产画布里第一张生成成功的图，和画布列表一样取缩略图
@@ -190,7 +191,6 @@ func NewApp(cfg *config.Config) (*App, error) {
 	// 画布 Agent：模型清单来自后台已发布的 agent 类型模型；会话、运行、审批在独立的 Agent 服务里，按 agent.enabled 装配平台 API 和反向代理
 	agentRepo := repository.NewAgentRepository(db)
 	// Agent 技能库：整包存在素材所用的对象存储里（key 前缀 agent-skills/，不会被 /files 公开路由读到：那里只认有素材记录的 key）
-	skillSvc := agentsvc.NewSkillService(repository.NewAgentSkillRepository(db), storeRegistry, auditRepo, agentsvc.SkillOptions{})
 	agentCanvasSvc := agentsvc.NewAgentCanvasService(agentRepo, hub)
 	// Agent 运行观测：工具调用逐条留存、运行摘要、用户反馈、后台只读导出。Harness 版本在创建运行时记下，改了提示词或工具后才能对比效果
 	observeRepo := repository.NewAgentObserveRepository(db)

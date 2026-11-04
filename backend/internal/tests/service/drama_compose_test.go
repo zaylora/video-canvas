@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/idcodec"
@@ -27,7 +28,7 @@ type composeMemory struct {
 
 func newComposeMemory() *composeMemory {
 	r := &composeMemory{dramaMemory: newDramaMemory()}
-	r.episodes = []model.DramaEpisode{{BaseModel: model.BaseModel{ID: 3}, UserID: 7, DramaID: 1, No: 1, Revision: 1}}
+	r.episodes = []model.DramaEpisode{{BaseModel: model.BaseModel{ID: 3}, UserID: 7, DramaID: 1, No: 1, LockedAt: func() *time.Time { v := time.Now(); return &v }(), Revision: 1}}
 	canvas, chosen := uint64(2), uint64(20)
 	r.segments = []model.DramaSegment{{BaseModel: model.BaseModel{ID: 5}, UserID: 7, EpisodeID: 3, Seq: 0, ChosenTaskID: &chosen}, {BaseModel: model.BaseModel{ID: 6}, UserID: 7, EpisodeID: 3, Seq: 1}}
 	r.tasks = []model.GenerationTask{{ID: chosen, UserID: 7, CanvasProjectID: &canvas, NodeID: "seg:" + idcodec.Encode(5), Kind: model.KindVideo, Status: model.TaskSucceeded, OutputJSON: []byte(`[{"asset_id":30,"media_type":"video"}]`)}}

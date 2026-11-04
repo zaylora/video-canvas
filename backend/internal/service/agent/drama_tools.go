@@ -161,7 +161,7 @@ func (b *AgentBridge) toolDramaEpisode(ctx context.Context, tc *toolCall) (*tool
 	if err := parseDramaArgs(tc.args, &a); err != nil {
 		return nil, err
 	}
-	if a.EpisodeNo < 1 || a.EpisodeNo > 100 || (a.Title == nil && a.Synopsis == nil && a.ScriptMD == nil) {
+	if a.EpisodeNo < 1 || a.EpisodeNo > 100000 || (a.Title == nil && a.Synopsis == nil && a.ScriptMD == nil) {
 		return nil, fail("需要有效集号和至少一个修改字段")
 	}
 	if a.Title != nil && utf8.RuneCountInString(*a.Title) > 255 {
@@ -263,15 +263,15 @@ func (b *AgentBridge) toolDramaJob(ctx context.Context, tc *toolCall) (*toolOut,
 
 // validateDramaJob 校验非HTTP调用同样要遵守的参数边界。
 func validateDramaJob(req model.DramaJobReq) error {
-	if !slices.Contains([]string{"analyze", "outline", "scripts", "breakdown", "asset_prompts", "storyboard", "compose"}, req.Step) {
+	if !slices.Contains([]string{"scripts", "breakdown", "asset_prompts", "storyboard", "compose"}, req.Step) {
 		return fail("不支持的短剧任务步骤")
 	}
-	if len(req.Episodes) > 100 {
-		return fail("最多100集")
+	if len(req.Episodes) > 200 {
+		return fail("单次最多200集")
 	}
 	for _, no := range req.Episodes {
-		if no < 1 || no > 100 {
-			return fail("集号必须是1到100")
+		if no < 1 || no > 100000 {
+			return fail("集号必须是1到100000")
 		}
 	}
 	if req.Ratio != "" && !slices.Contains([]string{"9:16", "16:9", "21:9", "3:4", "4:3", "1:1"}, req.Ratio) {

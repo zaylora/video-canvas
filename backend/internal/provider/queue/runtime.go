@@ -164,6 +164,7 @@ func New(cfg Config) (*Runtime, error) {
 		if cfg.Drama != nil {
 			river.AddWorker(workers, &dramaWorker{rt: rt})
 			rc.Queues["drama"] = river.QueueConfig{MaxWorkers: hardCap}
+			registerDramaCleanup(rc, workers, cfg.Drama)
 		}
 		if cfg.Notifier != nil {
 			river.AddWorker(workers, &notifyWorker{rt: rt})

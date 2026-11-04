@@ -180,7 +180,7 @@ func TestDramaHandler_CreateSourceExclusive(t *testing.T) {
 		if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
 			t.Fatal(err)
 		}
-		if w.Code != 400 || got.Code != 67002 {
+		if w.Code != 400 || got.Code != 10001 {
 			t.Fatalf("二选一原文：status=%d body=%s", w.Code, w.Body.String())
 		}
 	}

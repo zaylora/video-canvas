@@ -30,13 +30,20 @@ func (s *DramaService) callDrama(ctx context.Context, j *model.DramaJob, snap *p
 		if invalid != nil {
 			vars["validation_error"] = invalid.Error()
 		}
-		prompt, e := drama.Prompt(step, vars)
+		cfg := jobConfig(j)
+		if step == "breakdown" {
+			vars["assets"] = cfg.KnownCast
+			delete(vars, "known_cast")
+		} else {
+			vars["known_cast"] = cfg.KnownCast
+		}
+		prompt, e := drama.PromptWithBody(step, vars, cfg.Prompt.Bodies[step])
 		if e != nil {
 			return nil, 0, e
 		}
 		chars := utf8.RuneCountInString(prompt)
-		if c := snap.Model.Capabilities.Context; c != nil && c.Window > 0 && chars > c.Window {
-			return nil, 0, errcode.ErrDramaStepNotReady.WithMsg("模型上下文不足以执行当前步骤")
+		if chars > dramaContextLimit(snap) {
+			return nil, 0, errcode.ErrDramaContext
 		}
 		result, e := s.streamDramaText(ctx, j, snap, prompt)
 		if e != nil {
@@ -56,6 +63,9 @@ func (s *DramaService) callDrama(ctx context.Context, j *model.DramaJob, snap *p
 		}
 		quoted := modelcfg.Quote(snap.Model.Pricing, snap.Model.Capabilities, modelcfg.Spec{PromptChars: chars, Params: map[string]any{}})
 		return decoded, modelcfg.Settle(snap.Model.Pricing, quoted, usage), nil
+	}
+	if cfg := jobConfig(j); cfg.Prompt.Source != "" && cfg.Prompt.Source != "builtin" {
+		return nil, 0, errcode.ErrDramaCustomPrompt.WithMsg("自定义提示词或技能导致输出不合格（" + dramaStepGroup(step) + "）")
 	}
 	return nil, 0, errcode.ErrDramaOutputInvalid
 }

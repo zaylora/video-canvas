@@ -1,22 +1,17 @@
 package handler
 
 import (
-	"io"
-	"net/http"
-
 	"github.com/gin-gonic/gin"
-	"github.com/gin-gonic/gin/binding"
 
 	"video-canvas/internal/drama"
 	"video-canvas/internal/model"
-	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/pkg/response"
 	"video-canvas/internal/service"
 	"video-canvas/pkg/pagination"
 )
 
 // maxDramaMultipartBytes 限制包含 docx 图片等附件的上传体；正文字符上限仍由服务解析后校验。
-const maxDramaMultipartBytes = 32 << 20
+const maxDramaMultipartBytes = 64 << 20
 
 // DramaHandler 提供短剧项目、分集剧本与持久流水线接口。
 type DramaHandler struct{ svc *service.DramaService }
@@ -47,16 +42,8 @@ func (h *DramaHandler) List(c *gin.Context) {
 
 // Create 接收原文文件或粘贴文本，建好项目、专属画布和研读任务后返回 201。
 func (h *DramaHandler) Create(c *gin.Context) {
-	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxDramaMultipartBytes)
 	var req model.CreateDramaReq
-	if !bindWith(c, c.ShouldBindWith(&req, binding.FormMultipart)) {
-		return
-	}
-	if c.Request.MultipartForm != nil {
-		// multipart 解析可能使用临时文件；请求结束后清理，不影响已经读取进内存的正文。
-		defer func() { _ = c.Request.MultipartForm.RemoveAll() }()
-	}
-	if !readDramaFile(c, &req) {
+	if !BindJSON(c, &req) {
 		return
 	}
 	v, err := h.svc.Create(c.Request.Context(), currentUserID(c), &req)
@@ -65,32 +52,6 @@ func (h *DramaHandler) Create(c *gin.Context) {
 		return
 	}
 	response.Created(c, v)
-}
-
-// readDramaFile 读取可选的单个原文文件，来源二选一与正文规则交给服务校验。
-func readDramaFile(c *gin.Context, req *model.CreateDramaReq) bool {
-	form := c.Request.MultipartForm
-	if form == nil || len(form.File["file"]) == 0 {
-		return true
-	}
-	files := form.File["file"]
-	if len(files) != 1 {
-		response.Fail(c, errcode.ErrInvalidParams.WithMsg("每次只可上传一个原文文件"))
-		return false
-	}
-	file, err := files[0].Open()
-	if err != nil {
-		response.Fail(c, errcode.ErrInvalidParams.WithMsg("无法读取原文文件"))
-		return false
-	}
-	defer file.Close()
-	req.Filename = files[0].Filename
-	req.Data, err = io.ReadAll(file)
-	if err != nil {
-		response.Fail(c, errcode.ErrInvalidParams.WithMsg("无法读取原文文件"))
-		return false
-	}
-	return true
 }
 
 // Get 返回项目设置、大纲、集摘要和进行中的任务。

@@ -66,13 +66,13 @@ func (s *SkillService) List(ctx context.Context, req *model.ListSkillReq) (*Skil
 }
 
 func builtinItem(b skills.Brief) SkillItem {
-	return SkillItem{Name: b.Name, Title: b.Title, Description: b.Description, Source: SkillSourceBuiltin, Readonly: true, Enabled: true, UnsupportedFields: []string{}}
+	return SkillItem{DramaSteps: []string{}, Name: b.Name, Title: b.Title, Description: b.Description, Source: SkillSourceBuiltin, Readonly: true, Enabled: true, UnsupportedFields: []string{}}
 }
 
 // importedItem 由技能行、生效版本头和全部 ready 版本号组装列表项；生效版本缺失（不应出现）时字段留零值。
 func importedItem(sk *model.AgentSkill, active *model.AgentSkillVersion, versions []int) SkillItem {
 	it := SkillItem{
-		Name: sk.Name, Title: sk.Title, Source: SkillSourceImported, Enabled: sk.Enabled,
+		DramaSteps: append([]string{}, sk.DramaSteps...), Name: sk.Name, Title: sk.Title, Source: SkillSourceImported, Enabled: sk.Enabled,
 		ActiveVersion: sk.ActiveVersion, LatestVersion: sk.LatestVersion, VersionCount: len(versions),
 		UnsupportedFields: []string{}, UpdatedAt: sk.UpdatedAt,
 	}

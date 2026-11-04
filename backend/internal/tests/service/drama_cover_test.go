@@ -51,3 +51,19 @@ func TestDramaListWithoutCoverDepsStaysEmpty(t *testing.T) {
 		t.Fatalf("没配封面依赖时不报错、封面为空：%+v %v", items, err)
 	}
 }
+
+// 首页列表按 phase 显示「规划中」：列表项要带上自动规划阶段，老项目没有阶段时按 done。
+func TestDramaListCarriesPlanningPhase(t *testing.T) {
+	mem := newDramaMemory()
+	s := service.NewDramaService(service.DramaDeps{Repo: mem})
+	mem.project.Phase = "running"
+	items, _, err := s.List(context.Background(), mem.project.UserID, "", 1, 20)
+	if err != nil || len(items) != 1 || items[0].Phase != "running" {
+		t.Fatalf("规划中的项目列表项 phase 应为 running：%+v %v", items, err)
+	}
+	mem.project.Phase = ""
+	items, _, err = s.List(context.Background(), mem.project.UserID, "", 1, 20)
+	if err != nil || len(items) != 1 || items[0].Phase != "done" {
+		t.Fatalf("老项目没有 phase 时按 done：%+v %v", items, err)
+	}
+}

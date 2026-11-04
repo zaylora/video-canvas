@@ -19,9 +19,22 @@ func (s *DramaSegmentService) Generate(ctx context.Context, userID, sid uint64, 
 	}
 	var project *model.DramaProject
 	err := s.repo.WithTx(ctx, func(tx repository.DramaTx) error {
-		p, _, _, err := lockSegment(ctx, tx, userID, sid)
+		p, ep, _, err := lockSegment(ctx, tx, userID, sid)
+		if err != nil {
+			return err
+		}
+		if ep.LockedAt == nil {
+			return errcode.ErrDramaStepNotReady.WithMsg("媒体任务只允许已锁定的集")
+		}
+		jobs, err := tx.Jobs(ctx, p.UserID, p.ID, true)
+		if err != nil {
+			return err
+		}
+		if dramaJobsConflict(jobs, &model.DramaJobReq{Step: "segment", Episodes: []int{ep.No}}) {
+			return errcode.ErrDramaJobBusy
+		}
 		project = p
-		return err
+		return nil
 	})
 	if err != nil {
 		return nil, segmentError(err)

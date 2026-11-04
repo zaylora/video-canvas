@@ -21,6 +21,8 @@ import (
 )
 
 type dramaCanvasFake struct {
+	phase string
+
 	canvas                                                              model.CanvasProject
 	episodes                                                            map[int]model.DramaEpisode
 	jobs                                                                map[uint64]model.DramaJob
@@ -482,4 +484,8 @@ func TestDramaCanvasPromptsRollbackAndReplay(t *testing.T) {
 			}
 		})
 	}
+}
+
+func (t *dramaCanvasFakeTx) ProjectPhase(_ context.Context, _, _ uint64) (string, error) {
+	return t.parent.phase, nil
 }
