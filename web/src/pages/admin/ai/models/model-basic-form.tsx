@@ -7,7 +7,6 @@ import { ConfirmDialog } from "@/components/admin-ui/confirm-dialog";
 import { FormField } from "@/components/admin-ui/form-field";
 import {
   FormSection,
-  FormSectionDescription,
   FormSectionHeader,
   FormSectionTitle,
 } from "@/components/admin-ui/form-section";
@@ -173,11 +172,6 @@ export function ModelBasicForm({
               label="接口格式"
               htmlFor="model-api-format"
               error={issueFor(issues, "channels[0].api_format")}
-              hint={
-                apiFormat === "gemini"
-                  ? "请求 {base}/antigravity/v1beta/models/{上游模型}:streamGenerateContent?alt=sse；渠道地址已有 /antigravity 路径段时不重复添加。鉴权 x-goog-api-key 与 Authorization: Bearer。"
-                  : "请求 {base}/v1/chat/completions，鉴权 Authorization: Bearer。"
-              }
             >
               <Select
                 value={apiFormat}
@@ -214,9 +208,6 @@ export function ModelBasicForm({
       <FormSection>
         <FormSectionHeader>
           <FormSectionTitle>能力与协议</FormSectionTitle>
-          <FormSectionDescription>
-            先选任务类型，再选对应的调用协议；更换后请核对参数与价格。
-          </FormSectionDescription>
         </FormSectionHeader>
         <div className="space-y-4">
           <ProtocolPicker
@@ -270,7 +261,7 @@ export function ModelBasicForm({
             label="排序"
             htmlFor="model-sort"
             error={issueFor(issues, "sort")}
-            tip={isNew ? undefined : "创建后的顺序在渠道的“自定义排序”里调整。"}
+            tip={isNew ? undefined : "在渠道的“自定义排序”里调整"}
           >
             <Input
               id="model-sort"
@@ -308,13 +299,7 @@ export function ModelBasicForm({
       <ConfirmDialog
         open={!!pendingKind}
         title={`改成${MODEL_KIND_LABEL[shownKind ?? ""] ?? shownKind ?? ""}模型？`}
-        description={
-          <>
-            「能力与参数」和「积分定价」会重置成
-            {MODEL_KIND_LABEL[shownKind ?? ""] ?? shownKind}
-            模型的默认值，当前的配置会被替换；已选的协议不支持新能力时也会被清空。保存后，已上线的模型立即生效。
-          </>
-        }
+        description={"能力、参数和定价将重置为默认值，不兼容的协议会被清空。"}
         confirmLabel="确认修改"
         onConfirm={() => {
           if (pendingKind) applyKind(pendingKind);

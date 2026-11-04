@@ -14,6 +14,15 @@ export const GLASS_PANEL =
   "bg-chrome ring-chrome-border rounded-3xl shadow-lg ring-1 backdrop-blur-xl backdrop-saturate-150";
 
 /**
+ * 后台弹层（弹窗、确认框、抽屉）的清透外观：比面板更模糊、投影更深，压在遮罩上仍读得清。
+ */
+export const GLASS_POPUP =
+  "bg-chrome ring-chrome-border shadow-2xl ring-1 backdrop-blur-2xl backdrop-saturate-150";
+
+/** 弹层遮罩：压暗一点并轻微模糊，让清透弹层和底下的页面拉开层次 */
+export const GLASS_OVERLAY = "bg-black/25 supports-backdrop-filter:backdrop-blur-sm";
+
+/**
  * 后台外壳顶部的彩色光晕：清透面板要有东西可透，才不会变回一块灰底。
  * 铺在内容区（SidebarInset）里、所有内容之下，只是装饰，不响应指针，也不参与读屏。
  */

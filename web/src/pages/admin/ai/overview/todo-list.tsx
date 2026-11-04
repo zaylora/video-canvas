@@ -126,7 +126,7 @@ export function TodoList({
       {ready && todos.length === 0 && (
         <div className="text-muted-foreground flex flex-1 flex-col items-center justify-center gap-2 p-10 text-sm">
           <PartyPopper className="size-5" />
-          一切正常，没有要处理的事
+          一切正常
         </div>
       )}
       {ready && todos.length > 0 && (

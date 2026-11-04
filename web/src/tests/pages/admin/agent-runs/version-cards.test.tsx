@@ -36,7 +36,7 @@ describe("版本对比卡片：各状态", () => {
   });
 
   test("没有数据：空状态", () => {
-    expect(cards("ready", [])).toContain("最近 30 天还没有运行记录");
+    expect(cards("ready", [])).toContain("暂无运行记录");
   });
 });
 

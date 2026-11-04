@@ -129,7 +129,7 @@ function TestCard({
           </Button>
         </div>
         {canWrite && configured && dirty && (
-          <p className="text-muted-foreground text-xs">有未保存的修改，先保存再测试。</p>
+          <p className="text-muted-foreground text-xs">先保存再测试</p>
         )}
         {result && <Notice tone={result.ok ? "success" : "danger"}>{result.message}</Notice>}
       </CardContent>

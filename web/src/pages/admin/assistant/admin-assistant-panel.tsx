@@ -68,7 +68,7 @@ export function AdminAssistantPanel() {
           <Bot className="size-5" />
         </span>
         <div className="text-sm font-medium">暂时没有可用的 Agent 模型</div>
-        <p className="text-muted-foreground text-xs">请先在模型渠道里发布 Agent 模型。</p>
+        <p className="text-muted-foreground text-xs">请先在模型渠道发布 Agent 模型</p>
       </div>
     );
   }

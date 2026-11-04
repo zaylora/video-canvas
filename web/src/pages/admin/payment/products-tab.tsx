@@ -77,7 +77,7 @@ export function ProductsTab() {
       title: `删除「${product.name}」？`,
       destructive: true,
       confirmLabel: "删除",
-      description: "删除后用户在积分商城里不再看到这档商品。已有订单的商品不能删除，只能下架。",
+      description: "删除后不可恢复；有订单的商品只能下架。",
       onConfirm: async () => {
         await deletePaymentProduct(product.id);
         toast.success(`已删除「${product.name}」`);
@@ -90,12 +90,7 @@ export function ProductsTab() {
   return (
     <section className="bg-chrome ring-chrome-border ring-1 shadow-lg backdrop-blur-xl backdrop-saturate-150 overflow-hidden rounded-3xl">
       <div className="flex items-center justify-between gap-3 p-4">
-        <div>
-          <h2 className="text-sm font-semibold">充值商品</h2>
-          <p className="text-muted-foreground mt-0.5 text-xs">
-            用户在积分商城里看到的商品，按这里的顺序排列；下架的商品用户看不到，但历史订单不受影响。
-          </p>
-        </div>
+        <h2 className="text-sm font-semibold">充值商品</h2>
         <Button
           disabled={status !== "ready"}
           onClick={() => {

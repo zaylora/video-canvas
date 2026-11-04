@@ -115,10 +115,10 @@ describe("结果面板：试跑失败时的“复制修复信息”", () => {
     expect(render({ run: run({ status: "queued" }), trace: null })).not.toContain(BUTTON);
   });
 
-  test("没有试跑记录：只有引导文字", () => {
+  test("没有试跑记录：只有空状态", () => {
     const out = render({ run: null, trace: null });
     expect(out).not.toContain(BUTTON);
-    expect(out).toContain("开始测试");
+    expect(out).toContain("还没有试跑");
   });
 });
 

@@ -4,16 +4,14 @@ import { toast } from "sonner";
 
 import { replaceSmtpPassword } from "@/api/admin/settings";
 import { FormField } from "@/components/admin-ui/form-field";
-import { Notice } from "@/components/admin-ui/notice";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@/components/admin-ui/dialog";
 import { Input } from "@/components/ui/input";
 
 import { useAliveRef } from "../use-admin";
@@ -78,7 +76,6 @@ function PasswordBody({ onClose, onReplaced }: { onClose: () => void; onReplaced
     >
       <DialogHeader>
         <DialogTitle>替换密码</DialogTitle>
-        <DialogDescription>新密码保存后无法再查看，只能再次替换。</DialogDescription>
       </DialogHeader>
       <FormField label="SMTP 密码" htmlFor="smtp-new-password" required>
         <Input
@@ -93,7 +90,6 @@ function PasswordBody({ onClose, onReplaced }: { onClose: () => void; onReplaced
           onChange={(event) => setPassword(event.target.value)}
         />
       </FormField>
-      <Notice tone="info">密码加密存储，需要服务端配置 APP_AI_SECRET_KEY。</Notice>
       <DialogFooter>
         <Button type="button" variant="outline" disabled={busy} onClick={onClose}>
           取消

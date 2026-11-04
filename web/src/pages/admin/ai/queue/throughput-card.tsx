@@ -75,7 +75,7 @@ export function ThroughputCard({
         ) : !points ? (
           <Skeleton style={{ height: CHART_HEIGHT }} />
         ) : summary.empty ? (
-          <p className="text-muted-foreground py-6 text-center text-sm">最近 1 小时没有任务。</p>
+          <p className="text-muted-foreground py-6 text-center text-sm">最近 1 小时没有任务</p>
         ) : (
           <>
             <div

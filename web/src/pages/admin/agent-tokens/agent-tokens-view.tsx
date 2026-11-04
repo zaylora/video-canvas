@@ -4,11 +4,7 @@ import { useState, type FormEvent } from "react";
 import type { AgentTokenItem } from "@/api/admin/agent-token/type.d";
 import { CopyButton } from "@/components/admin-ui/copy-button";
 import { DataPage, DataPanel, DataPanelBody } from "@/components/admin-ui/data-panel";
-import {
-  EmptyState,
-  EmptyStateDescription,
-  EmptyStateIcon,
-} from "@/components/admin-ui/empty-state";
+import { EmptyState, EmptyStateIcon, EmptyStateTitle } from "@/components/admin-ui/empty-state";
 import { FormField } from "@/components/admin-ui/form-field";
 import { Notice } from "@/components/admin-ui/notice";
 import { PageHeader, PageHeaderHeading, PageHeaderTitle } from "@/components/admin-ui/page-header";
@@ -27,7 +23,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+} from "@/components/admin-ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -86,8 +82,7 @@ export function IssuedTokenContent({ token }: { token: string }) {
         <CopyButton text={token} variant="outline" />
       </SecretRevealValue>
       <SecretRevealHint>
-        写到本机的 <code>.traces/.env</code>：<code>VC_TRACE_TOKEN=…</code>（该文件已加入
-        gitignore）
+        写入 <code>.traces/.env</code> 的 <code>VC_TRACE_TOKEN</code>
       </SecretRevealHint>
     </div>
   );
@@ -119,7 +114,7 @@ export function IssuedTokenDialog({
             <KeyRound className="text-status-success size-4" aria-hidden="true" />
             令牌已签发
           </AlertDialogTitle>
-          <AlertDialogDescription>明文只显示这一次，关闭后无法再查看。</AlertDialogDescription>
+          <AlertDialogDescription>明文只显示这一次</AlertDialogDescription>
         </AlertDialogHeader>
         {shown && <IssuedTokenContent token={shown} />}
         <AlertDialogFooter>
@@ -203,9 +198,7 @@ function TokenTable({
         <EmptyStateIcon>
           <KeyRound />
         </EmptyStateIcon>
-        <EmptyStateDescription>
-          还没有令牌。签发一个，供本地 agent-trace 使用。
-        </EmptyStateDescription>
+        <EmptyStateTitle>还没有令牌</EmptyStateTitle>
       </EmptyState>
     );
   }

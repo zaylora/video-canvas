@@ -14,12 +14,7 @@ export function ForbiddenView({ onRetry }: { onRetry?: () => void }) {
       <div className="flex max-w-sm flex-col items-center gap-3 text-center">
         <ShieldAlert className="text-destructive size-10" />
         <h1 className="text-xl font-semibold">403 没有管理权限</h1>
-        <p className="text-muted-foreground text-sm">
-          AI 配置管理只对管理员开放。如果你需要访问，请联系运维为你的账号开通权限。
-        </p>
-        <p className="text-muted-foreground text-xs">
-          角色刚变更的话，权限最多要过一小段时间才生效，可以稍后重试。
-        </p>
+        <p className="text-muted-foreground text-sm">请联系运维开通权限</p>
         <div className="flex items-center gap-3">
           {onRetry && (
             <Button variant="outline" size="sm" onClick={onRetry}>
@@ -39,7 +34,7 @@ export function ForbiddenView({ onRetry }: { onRetry?: () => void }) {
 export function ReadOnlyNotice({ what, className }: { what: string; className?: string }) {
   return (
     <Notice tone="info" title="只读" className={className}>
-      {what}需要运维权限（super_admin）。你可以查看，不能修改。
+      {what}需要 super_admin 权限
     </Notice>
   );
 }

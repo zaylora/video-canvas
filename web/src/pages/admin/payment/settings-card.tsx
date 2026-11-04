@@ -9,14 +9,7 @@ import { OptionSelect } from "@/components/admin-ui/option-select";
 import { ReasonTooltip } from "@/components/admin-ui/reason-tooltip";
 import { Tag } from "@/components/admin-ui/tag";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
@@ -87,14 +80,9 @@ function SettingsForm({
     >
       <CardContent className="flex flex-col gap-5">
         <div className="flex items-center justify-between gap-4">
-          <div className="min-w-0">
-            <label htmlFor="payment-enabled" className="text-sm font-medium">
-              支付总开关
-            </label>
-            <p className="text-muted-foreground mt-0.5 text-xs">
-              关闭后前台恢复成余额小卡片，下单返回「支付功能未开启」；渠道回调和补单照常运行。
-            </p>
-          </div>
+          <label htmlFor="payment-enabled" className="min-w-0 text-sm font-medium">
+            支付总开关
+          </label>
           <Switch
             id="payment-enabled"
             checked={values.enabled}
@@ -107,7 +95,7 @@ function SettingsForm({
           label="站点公网地址"
           htmlFor="payment-base-url"
           error={errors.publicBaseUrl}
-          hint="用来拼渠道回调地址和支付后跳回的地址，如 https://example.com，不带路径。"
+          hint="不带路径"
         >
           <Input
             id="payment-base-url"
@@ -123,11 +111,7 @@ function SettingsForm({
         </FormField>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <FormField
-            label="微信由谁承接"
-            htmlFor="payment-method-wechat"
-            hint="只能选已启用的渠道；选「不开放」则前台微信支付不可用。"
-          >
+          <FormField label="微信由谁承接" htmlFor="payment-method-wechat">
             <OptionSelect
               id="payment-method-wechat"
               value={values.methodWechat}
@@ -136,11 +120,7 @@ function SettingsForm({
               onValueChange={(value) => setValues((prev) => ({ ...prev, methodWechat: value }))}
             />
           </FormField>
-          <FormField
-            label="支付宝由谁承接"
-            htmlFor="payment-method-alipay"
-            hint="只能选已启用的渠道；选「不开放」则前台支付宝不可用。"
-          >
+          <FormField label="支付宝由谁承接" htmlFor="payment-method-alipay">
             <OptionSelect
               id="payment-method-alipay"
               value={values.methodAlipay}
@@ -155,7 +135,7 @@ function SettingsForm({
           label="每人最多未支付订单"
           htmlFor="payment-max-pending"
           error={errors.maxPending}
-          hint={`${MAX_PENDING_RANGE.min}–${MAX_PENDING_RANGE.max} 笔，超过后用户需要先完成或取消旧订单。`}
+          hint={`${MAX_PENDING_RANGE.min}–${MAX_PENDING_RANGE.max} 笔`}
           className="sm:max-w-48"
         >
           <Input
@@ -239,9 +219,6 @@ export function SettingsCard({
           全局设置
           {!canWrite && <Tag>只读 · 仅运维可修改</Tag>}
         </CardTitle>
-        <CardDescription>
-          支付总开关、回调用的公网地址，以及微信 / 支付宝各由哪个渠道承接。
-        </CardDescription>
       </CardHeader>
       {status === "loading" && (
         <CardContent>

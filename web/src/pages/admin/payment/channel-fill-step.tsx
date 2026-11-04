@@ -10,7 +10,7 @@ import { Notice } from "@/components/admin-ui/notice";
 import { ReasonTooltip } from "@/components/admin-ui/reason-tooltip";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { SheetFooter } from "@/components/ui/sheet";
+import { SheetFooter } from "@/components/admin-ui/sheet";
 import { OPS_ONLY_REASON } from "@/utils/admin/payment/channel";
 import {
   TIMEOUT_RANGE,
@@ -172,18 +172,16 @@ export function ChannelFillStep({
         {!canWrite && <ReadOnlyNotice what="修改渠道配置" />}
         {locked && (
           <Notice tone="warning">
-            该渠道有 {channel.open_orders} 笔未完成订单，暂不能修改商户身份和密钥。
+            有 {channel.open_orders} 笔未完成订单，暂不能改商户身份和密钥
           </Notice>
         )}
-        {conflict && (
-          <Notice tone="warning">配置已被他人修改，表单已刷新为最新内容，请核对后再保存。</Notice>
-        )}
+        {conflict && <Notice tone="warning">配置已被他人修改，已刷新为最新内容</Notice>}
         {channel.fields.map(renderField)}
         <FormField
           label="未支付自动关闭（分钟）"
           htmlFor={`payment-timeout-${channel.provider}`}
           error={timeoutError ?? undefined}
-          hint={`${TIMEOUT_RANGE.min}–${TIMEOUT_RANGE.max} 分钟；只改这一项不会让渠道停用，也不用重新校验。`}
+          hint={`${TIMEOUT_RANGE.min}–${TIMEOUT_RANGE.max}`}
           className="sm:max-w-48"
         >
           <Input
@@ -199,9 +197,7 @@ export function ChannelFillStep({
         </FormField>
         {canWrite && willInvalidate && (
           <Notice tone="warning">
-            {channel.enabled
-              ? "保存后该渠道会自动停用，并需要重新校验后才能再启用。"
-              : "保存后需要重新校验。"}
+            {channel.enabled ? "保存后渠道将停用，需重新校验" : "保存后需重新校验"}
           </Notice>
         )}
       </div>

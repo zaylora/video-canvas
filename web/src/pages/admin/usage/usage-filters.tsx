@@ -77,7 +77,7 @@ function UsageFilterBar({
         <ListSearch
           value={filters.q}
           onCommit={(q) => onChange({ q })}
-          placeholder="找人：输入用户名或邮箱，也可以粘贴任务编号"
+          placeholder="搜索用户名、邮箱或任务编号"
           className="sm:w-96"
         />
         <Segmented aria-label="状态筛选" className="self-start">
@@ -134,7 +134,7 @@ function UsageFilterBar({
                   checked={filters.includeTest}
                   onCheckedChange={(includeTest) => onChange({ includeTest })}
                 />
-                同时显示运营试跑的任务
+                显示试跑任务
               </label>
             </FilterPopoverContent>
           </FilterPopover>

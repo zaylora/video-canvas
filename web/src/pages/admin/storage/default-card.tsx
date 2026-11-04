@@ -73,8 +73,7 @@ export function DefaultStorageCard({
 export function LocalDefaultNotice() {
   return (
     <Notice tone="warning" title="当前默认是本地磁盘。">
-      本地存储的地址上游 AI 平台访问不到（参考图以 URL
-      传给模型会失败），也不便于多实例部署。生产环境建议新建对象存储并设为默认。
+      上游 AI 平台无法访问本地地址，生产环境建议改用对象存储。
     </Notice>
   );
 }

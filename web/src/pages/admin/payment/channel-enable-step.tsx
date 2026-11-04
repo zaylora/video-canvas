@@ -14,7 +14,7 @@ import { CopyButton } from "@/components/admin-ui/copy-button";
 import { Notice } from "@/components/admin-ui/notice";
 import { ReasonTooltip } from "@/components/admin-ui/reason-tooltip";
 import { Button } from "@/components/ui/button";
-import { SheetFooter } from "@/components/ui/sheet";
+import { SheetFooter } from "@/components/admin-ui/sheet";
 import {
   OPS_ONLY_REASON,
   enableBlockReason,
@@ -75,7 +75,7 @@ export function ChannelEnableStep({
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 pb-4">
         <CopyBlock>
           <CopyBlockHeader>
-            <CopyBlockTitle>回调地址：请在渠道商户后台登记这个地址</CopyBlockTitle>
+            <CopyBlockTitle>回调地址</CopyBlockTitle>
             {channel.notify_url && <CopyButton text={channel.notify_url} />}
           </CopyBlockHeader>
           <CopyBlockCode className="break-all whitespace-pre-wrap">
@@ -83,17 +83,7 @@ export function ChannelEnableStep({
           </CopyBlockCode>
         </CopyBlock>
         {problem && <Notice tone="danger">{problem}</Notice>}
-        {channel.enabled ? (
-          <Notice tone="success">
-            渠道已启用。前台要用它收款，还需要在全局设置里把微信 / 支付宝指给它。
-          </Notice>
-        ) : (
-          !problem && (
-            <Notice tone="info">
-              启用后，还要在页面上方「全局设置」里把微信 / 支付宝指给它，前台才会使用这个渠道。
-            </Notice>
-          )
-        )}
+        {channel.enabled && <Notice tone="success">已启用，需在全局设置中指定为收款渠道</Notice>}
       </div>
       <SheetFooter className="flex-row justify-end border-t">
         <Button variant="outline" className="mr-auto" onClick={onBack}>

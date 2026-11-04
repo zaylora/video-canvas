@@ -13,7 +13,6 @@ import {
 import {
   EmptyState,
   EmptyStateActions,
-  EmptyStateDescription,
   EmptyStateIcon,
   EmptyStateTitle,
 } from "@/components/admin-ui/empty-state";
@@ -145,9 +144,6 @@ export default function UsagePage() {
       <PageHeader>
         <PageHeaderHeading>
           <PageHeaderTitle>使用记录</PageHeaderTitle>
-          <p className="text-muted-foreground mt-1 text-sm">
-            查看谁生成了什么、结果怎么样；点一条看详情。
-          </p>
         </PageHeaderHeading>
       </PageHeader>
 
@@ -178,11 +174,8 @@ export default function UsagePage() {
                   ? "找不到这个任务编号"
                   : filtered
                     ? "没有符合条件的记录"
-                    : "这个时间范围内还没有人生成过内容"}
+                    : "暂无使用记录"}
               </EmptyStateTitle>
-              <EmptyStateDescription>
-                {filtered ? "换个条件试试，或清除筛选。" : "可以放宽到近 30 天再看看。"}
-              </EmptyStateDescription>
               <EmptyStateActions>
                 {filtered ? (
                   <Button variant="outline" size="sm" onClick={clearFilters}>

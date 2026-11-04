@@ -1,7 +1,7 @@
 import type { QueueInstance } from "@/api/admin/queue/type";
 import { Notice } from "@/components/admin-ui/notice";
 import { Tag } from "@/components/admin-ui/tag";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { GLASS_PANEL } from "@/components/admin-ui/glass";
 import {
   Table,
@@ -32,12 +32,11 @@ export function InstanceTable({ instances, now }: { instances: QueueInstance[]; 
     <Card className={GLASS_PANEL} data-slot="instance-table" size="sm">
       <CardHeader>
         <CardTitle>实例</CardTitle>
-        <CardDescription className="text-xs">并发按实例计；心跳超过 30 秒判定失联</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         {lost.length > 0 && (
           <Notice tone="danger" title={`${lost.map((x) => x.hostname).join("、")} 已失联。`}>
-            它正在运行的任务会被其他实例救回并重新执行，可能需要等待一段时间。
+            其任务将由其他实例接管重跑
           </Notice>
         )}
         <Table>

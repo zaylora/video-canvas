@@ -186,7 +186,7 @@ function SourceView({
       </ol>
       {lines.length > shown.length && (
         <p className="text-muted-foreground border-t px-4 py-2 text-xs">
-          源码较长，只显示前 <span className="tabular-nums">{shown.length}</span> 行，共{" "}
+          仅显示前 <span className="tabular-nums">{shown.length}</span> 行，共{" "}
           <span className="tabular-nums">{lines.length}</span> 行
         </p>
       )}
@@ -194,7 +194,7 @@ function SourceView({
   );
 }
 
-/** 二进制或过大文件：不预览，说明 Agent 读到它会得到什么 */
+/** 二进制或过大文件：不预览，只给类型原因和大小 */
 function BinaryPanel({ size }: { size: number }) {
   return (
     <div className="text-muted-foreground flex h-full min-h-56 flex-col items-center justify-center gap-2 p-6 text-center">
@@ -202,10 +202,7 @@ function BinaryPanel({ size }: { size: number }) {
         <FileIcon className="size-5" />
       </span>
       <p className="text-foreground text-sm font-medium">不能预览这个文件</p>
-      <p className="max-w-sm text-xs leading-relaxed">
-        它是二进制文件，或超过 1 MB。Agent 读到它只会得到“二进制文件，大小{" "}
-        <span className="tabular-nums">{formatSize(size)}</span>，无法读取”。
-      </p>
+      <p className="text-xs tabular-nums">二进制或超过 1 MB · {formatSize(size)}</p>
     </div>
   );
 }
@@ -271,7 +268,7 @@ export function FilePreview({
   if (!file) {
     return (
       <div className="text-muted-foreground grid h-full min-h-56 place-items-center p-6 text-sm">
-        选择左侧的一个文件查看内容
+        未选择文件
       </div>
     );
   }
@@ -361,9 +358,7 @@ export function FilePreview({
               flashKey={highlight?.nonce ?? 0}
             />
             {value.truncated && (
-              <p className="text-muted-foreground border-t px-4 py-2 text-xs">
-                文件较长，后端只返回了开头的一部分。
-              </p>
+              <p className="text-muted-foreground border-t px-4 py-2 text-xs">仅显示开头部分</p>
             )}
           </>
         ) : (

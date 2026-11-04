@@ -62,12 +62,7 @@ function AuditDialog({
 
   return (
     <DetailDialog open={open} onClose={onClose} className="h-auto max-h-[min(88svh,760px)]">
-      <DetailDialogHeader
-        fallbackTitle="操作详情"
-        title="操作详情"
-        description="这条后台操作的时间、操作者、对象和变化"
-        onClose={onClose}
-      />
+      <DetailDialogHeader fallbackTitle="操作详情" title="操作详情" onClose={onClose} />
 
       <DetailDialogBody loading={false} className="flex flex-col gap-6">
         {item && action && actor && target && (

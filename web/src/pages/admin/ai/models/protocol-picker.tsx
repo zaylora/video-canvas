@@ -183,8 +183,8 @@ function ProtocolList({
           {shown.length === 0 && (
             <p className="text-muted-foreground rounded-lg border border-dashed p-4 text-sm">
               {options.length === 0
-                ? `没有支持“${MODEL_KIND_LABEL[kind] ?? kind}”的协议，请先让 super_admin 上传相应的协议插件。`
-                : "没有匹配的协议，换个关键词试试。"}
+                ? `没有支持“${MODEL_KIND_LABEL[kind] ?? kind}”的协议插件`
+                : "没有匹配的协议"}
             </p>
           )}
           {shown.map((option) => (
@@ -206,7 +206,7 @@ function ProtocolList({
               onProtocolChange={onProtocolChange}
             />
           ) : (
-            <p className="text-muted-foreground text-sm">当前选择：从左侧选一个协议查看详情。</p>
+            <p className="text-muted-foreground text-sm">未选择协议</p>
           )}
         </div>
       </div>
@@ -307,20 +307,12 @@ function ProtocolDetail({
         <b className="text-sm">{plugin?.name ?? protocol.plugin}</b>
         <Tag mono>{protocol.plugin}</Tag>
       </div>
-      {!plugin && (
-        <Notice tone="danger">协议插件 {protocol.plugin} 不存在，请从左侧重新选择协议。</Notice>
-      )}
-      {plugin && !plugin.enabled && (
-        <Notice tone="warning">插件已停用，这个模型无法启用，请换一个协议。</Notice>
-      )}
-      {plugin && !found && (
-        <Notice tone="danger">固定的版本 {protocol.version} 已不存在，请换一个版本。</Notice>
-      )}
-      {found && !meta && <Notice tone="danger">这个版本的 meta 无法解析。</Notice>}
+      {!plugin && <Notice tone="danger">协议插件 {protocol.plugin} 不存在</Notice>}
+      {plugin && !plugin.enabled && <Notice tone="warning">插件已停用，模型无法启用</Notice>}
+      {plugin && !found && <Notice tone="danger">版本 {protocol.version} 已不存在</Notice>}
+      {found && !meta && <Notice tone="danger">该版本的 meta 无法解析</Notice>}
       {meta && !supports && (
-        <Notice tone="danger">
-          这个版本不支持{MODEL_KIND_LABEL[kind] ?? kind}，请换一个版本或协议。
-        </Notice>
+        <Notice tone="danger">该版本不支持{MODEL_KIND_LABEL[kind] ?? kind}</Notice>
       )}
       {meta?.description && <p className="text-muted-foreground text-sm">{meta.description}</p>}
       {meta && (
@@ -336,17 +328,8 @@ function ProtocolDetail({
           )}
         </div>
       )}
-      {meta?.auth?.type === "custom" && (
-        <Notice tone="warning">
-          该协议会读取<b>渠道的 API Key（和 Secret Key）</b>自行签名；渠道里不需要再开任何开关。
-        </Notice>
-      )}
       {plugin && (
-        <FormField
-          label="版本"
-          htmlFor={`${idPrefix}-protocol-version`}
-          hint="默认最新版本，保存后固定；批量升级在“插件”页进行。"
-        >
+        <FormField label="版本" htmlFor={`${idPrefix}-protocol-version`} hint="保存后固定">
           <OptionSelect
             id={`${idPrefix}-protocol-version`}
             size="sm"
@@ -407,9 +390,7 @@ function ProtocolSettings({
 
   return (
     <div className="space-y-2">
-      <p className="text-xs font-medium">
-        协议设置 <span className="text-muted-foreground font-normal">（跟着模型走）</span>
-      </p>
+      <p className="text-xs font-medium">协议设置</p>
       <SettingFields
         idPrefix={idPrefix}
         fields={fields}

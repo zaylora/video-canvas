@@ -136,7 +136,7 @@ function RegisterForm({
             <FormField
               label="排队倍数"
               htmlFor="register-queue-multiplier"
-              hint="排队上限 = 用户并发 × 倍数，超过后新任务才会被拒绝（1 到 20）"
+              hint="1–20"
               error={errors.queue_multiplier}
             >
               <Input
@@ -153,7 +153,7 @@ function RegisterForm({
             <FormField
               label="排队超时（分钟）"
               htmlFor="register-queue-max-wait"
-              hint="排队超过这个时间的任务会过期并退回积分（5 到 1440）"
+              hint="5–1440"
               error={errors.queue_max_wait_minutes}
             >
               <Input

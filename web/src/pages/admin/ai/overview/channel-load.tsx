@@ -11,14 +11,7 @@ import {
 import { LoadBar } from "@/components/admin-ui/load-bar";
 import { Tag, type TagTone } from "@/components/admin-ui/tag";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { HEALTH_UI_TONE } from "@/utils/admin/health";
@@ -91,9 +84,6 @@ export function ChannelLoad({
     <Card data-slot="channel-load" className={cn(GLASS_PANEL, "h-full gap-5 py-5")}>
       <CardHeader className="px-5">
         <CardTitle>渠道负载</CardTitle>
-        <CardDescription className="text-xs">
-          生成中 / 同时生成上限，排队的任务叠在后面
-        </CardDescription>
         <CardAction>
           <span
             className={cn(

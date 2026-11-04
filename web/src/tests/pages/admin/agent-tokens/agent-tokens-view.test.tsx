@@ -43,10 +43,9 @@ const view = (state: Partial<TokenPageState> = {}, props: Partial<AgentTokensVie
   );
 
 describe("分析令牌页：基本内容", () => {
-  test("标题、说明一句、签发表单（用途 + 有效期默认 30）", () => {
+  test("标题、签发表单（用途 + 有效期默认 30）", () => {
     const out = view();
     expect(out).toContain("分析令牌");
-    expect(out).toContain("agent-trace");
     expect(out).toContain("用途");
     expect(out).toContain("有效期");
     expect(out).toMatch(/<input[^>]*value="30"/);
@@ -54,7 +53,7 @@ describe("分析令牌页：基本内容", () => {
   });
 
   test("空状态文案", () => {
-    expect(view({ items: [] })).toContain("还没有令牌。签发一个，供本地 agent-trace 使用。");
+    expect(view({ items: [] })).toContain("还没有令牌");
   });
 
   test("加载失败：提示并给重试", () => {

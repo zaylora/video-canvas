@@ -32,7 +32,6 @@ import { ReasonTooltip } from "@/components/admin-ui/reason-tooltip";
 import { RowAction } from "@/components/admin-ui/row-action";
 import {
   FormSection,
-  FormSectionDescription,
   FormSectionHeader,
   FormSectionTitle,
 } from "@/components/admin-ui/form-section";
@@ -316,7 +315,7 @@ function PluginDetailContent({
       value: hasAsync ? (
         `提交 ${poll.firstDelay ?? 10} 秒后开始，每 ${poll.interval ?? 5} 秒一次，最长间隔 ${poll.maxInterval ?? 15} 秒`
       ) : (
-        <span className="text-muted-foreground">全部同步返回，无需查询</span>
+        <span className="text-muted-foreground">无需查询</span>
       ),
     },
   ];
@@ -331,9 +330,6 @@ function PluginDetailContent({
           <FormSection>
             <FormSectionHeader>
               <FormSectionTitle>能力与请求</FormSectionTitle>
-              <FormSectionDescription>
-                插件声明的能力、调用方式与请求路径（路径只用于展示）
-              </FormSectionDescription>
             </FormSectionHeader>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               {PLUGIN_KIND_ORDER.map((kind) => {
@@ -384,7 +380,6 @@ function PluginDetailContent({
           <FormSection>
             <FormSectionHeader>
               <FormSectionTitle>插件信息</FormSectionTitle>
-              <FormSectionDescription>厂商、标识与鉴权</FormSectionDescription>
             </FormSectionHeader>
             <DescriptionList className="grid-cols-1 sm:grid-cols-2 md:grid-cols-2 2xl:grid-cols-2">
               {info.map(({ term, value }) => (
@@ -399,9 +394,6 @@ function PluginDetailContent({
           <FormSection>
             <FormSectionHeader>
               <FormSectionTitle>协议设置项</FormSectionTitle>
-              <FormSectionDescription>
-                在模型的“协议设置”里填，值存在模型配置里
-              </FormSectionDescription>
             </FormSectionHeader>
             {settings.length === 0 ? (
               <p className="text-muted-foreground text-sm">这个协议没有声明设置项</p>

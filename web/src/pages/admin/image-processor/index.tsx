@@ -4,12 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 
 import type { ProcessorView } from "@/api/admin/image-processor/type.d";
-import {
-  EmptyState,
-  EmptyStateActions,
-  EmptyStateDescription,
-  EmptyStateTitle,
-} from "@/components/admin-ui/empty-state";
+import { EmptyState, EmptyStateActions, EmptyStateTitle } from "@/components/admin-ui/empty-state";
 import {
   PageHeader,
   PageHeaderActions,
@@ -148,9 +143,6 @@ export default function ImageProcessorPage() {
                     <EmptyStateTitle>
                       {list.filtering ? "没有符合条件的处理服务" : "还没有处理服务"}
                     </EmptyStateTitle>
-                    <EmptyStateDescription>
-                      {list.filtering ? "换个关键字或状态试试。" : "所有存储都回退原图 / 占位。"}
-                    </EmptyStateDescription>
                     {list.filtering && (
                       <EmptyStateActions>
                         <Button variant="outline" size="sm" onClick={list.clear}>

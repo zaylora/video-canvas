@@ -7,7 +7,6 @@ import { ShareRanking } from "@/pages/admin/ai/overview/share-ranking";
 
 const step = (title: string, ok: boolean): OnboardingStep => ({
   title,
-  hint: "",
   ok,
   stat: `${title} 统计`,
   short: title,

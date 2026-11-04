@@ -71,7 +71,6 @@ export default function OverviewPage() {
   const steps: OnboardingStep[] = [
     {
       title: "接入平台",
-      hint: "插件",
       ok: usablePlugins > 0,
       stat: `${usablePlugins} 个可用`,
       short: `${usablePlugins} 个插件`,
@@ -79,7 +78,6 @@ export default function OverviewPage() {
     },
     {
       title: "配置渠道",
-      hint: "地址 + Key",
       ok: usableChannels > 0,
       stat: `${usableChannels} / ${channelTotal} 个可用`,
       short: `${usableChannels} / ${channelTotal} 可用`,
@@ -87,7 +85,6 @@ export default function OverviewPage() {
     },
     {
       title: "上线模型",
-      hint: "用户能在画布里选到",
       ok: online > 0,
       stat: `${online} 个在线`,
       short: `${online} 个在线`,

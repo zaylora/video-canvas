@@ -3,7 +3,7 @@ import { useState } from "react";
 import type { ProcessorPreset, ProcessorView } from "@/api/admin/image-processor/type.d";
 import type { StorageOption } from "@/api/admin/storage/type.d";
 import { ConfirmDialog } from "@/components/admin-ui/confirm-dialog";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent } from "@/components/admin-ui/dialog";
 import { useRetained } from "@/hooks/use-retained";
 import type { BindingProcessor } from "@/utils/admin/image-processor";
 
@@ -80,7 +80,7 @@ export function ProcessorDialog({
       <ConfirmDialog
         open={confirmClose}
         title="放弃未保存的修改？"
-        description="关闭后，这次对处理服务的修改不会保存。已经保存的草稿不受影响。"
+        description="已保存的草稿不受影响"
         confirmLabel="放弃修改"
         destructive
         onConfirm={() => {

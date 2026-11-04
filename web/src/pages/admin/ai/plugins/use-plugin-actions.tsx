@@ -41,7 +41,7 @@ export function usePluginActions({ onChanged }: { onChanged: () => Promise<void>
           <b>
             {pinned} 个模型{online > 0 && `（其中 ${online} 个在线）`}
           </b>{" "}
-          的协议用了这个插件，停用后它们会不可用，进行中的任务不受影响。
+          在用此插件，停用后不可用，进行中的任务不受影响。
         </>
       ),
       onConfirm: () => setEnabled(plugin, false),

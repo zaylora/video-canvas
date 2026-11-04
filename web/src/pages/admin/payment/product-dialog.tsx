@@ -10,11 +10,10 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@/components/admin-ui/dialog";
 import { Input } from "@/components/ui/input";
 import { isPaymentVersionConflict } from "@/utils/admin/payment/errors";
 import { parseYuanToFen } from "@/utils/admin/payment/money";
@@ -112,12 +111,8 @@ function ProductForm({
         void submit();
       }}
     >
-      {product && product.sold_count > 0 && (
-        <Notice tone="info">已有订单：改价只影响之后的新订单，已下的订单金额不变。</Notice>
-      )}
-      {conflict && (
-        <Notice tone="warning">商品已被他人修改，表单已刷新为最新内容，请核对后再保存。</Notice>
-      )}
+      {product && product.sold_count > 0 && <Notice tone="info">改价只影响新订单</Notice>}
+      {conflict && <Notice tone="warning">商品已被他人修改，已刷新为最新内容</Notice>}
       <FormField label="名称" htmlFor="payment-product-name" required error={shown.name}>
         <Input
           id="payment-product-name"
@@ -161,12 +156,7 @@ function ProductForm({
             onChange={(event) => set("base", event.target.value)}
           />
         </FormField>
-        <FormField
-          label="赠送积分"
-          htmlFor="payment-product-bonus"
-          error={shown.bonus}
-          hint="可不填，不填为 0"
-        >
+        <FormField label="赠送积分" htmlFor="payment-product-bonus" error={shown.bonus}>
           <Input
             id="payment-product-bonus"
             inputMode="numeric"
@@ -182,7 +172,7 @@ function ProductForm({
           label="角标"
           htmlFor="payment-product-badge"
           error={shown.badge}
-          hint={`可不填，最多 ${PRODUCT_BADGE_MAX} 个字，如「热门」`}
+          hint={`最多 ${PRODUCT_BADGE_MAX} 字`}
         >
           <Input
             id="payment-product-badge"
@@ -237,9 +227,6 @@ export function ProductDialog({
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{product ? `编辑「${product.name}」` : "新建商品"}</DialogTitle>
-          <DialogDescription>
-            用户在积分商城里看到的一档充值商品，到账积分 = 基础 + 赠送。
-          </DialogDescription>
         </DialogHeader>
         <ProductForm
           key={product?.id ?? "new"}

@@ -97,7 +97,7 @@ function AdminBody() {
       <main className="grid min-h-svh place-items-center p-6">
         <div className="flex max-w-sm flex-col items-center gap-3 text-center">
           <h1 className="text-lg font-semibold">没能确认你的管理权限</h1>
-          <p className="text-muted-foreground text-sm">网络或服务暂时有问题，不代表你没有权限。</p>
+          <p className="text-muted-foreground text-sm">网络或服务异常</p>
           <Button variant="outline" onClick={() => void load(true)}>
             重试
           </Button>

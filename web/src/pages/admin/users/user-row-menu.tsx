@@ -15,7 +15,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@/components/admin-ui/dialog";
 import {
   DropdownMenuGroup,
   DropdownMenuItem,
@@ -50,9 +50,7 @@ function TempPasswordDialog({
       <DialogContent showCloseButton={false}>
         <DialogHeader>
           <DialogTitle>{username} 的临时密码</DialogTitle>
-          <DialogDescription>
-            只显示这一次，关闭后无法再查看。请通过安全渠道发给用户，并提醒对方登录后修改。
-          </DialogDescription>
+          <DialogDescription>只显示这一次，关闭后无法再查看</DialogDescription>
         </DialogHeader>
         <div className="bg-muted flex items-center gap-2 rounded-lg border px-3 py-2.5">
           <code className="flex-1 font-mono text-base tabular-nums select-all">{password}</code>
@@ -71,7 +69,7 @@ async function requestResetPassword(user: ActionUser) {
   let password = "";
   const ok = await confirm({
     title: `重置 ${user.username} 的密码？`,
-    description: "将生成一个临时密码，该用户所有已登录的设备会立即退出。",
+    description: "该用户所有设备将立即退出登录。",
     confirmLabel: "生成临时密码",
     onConfirm: async () => {
       password = (await resetUserPassword(user.id)).temp_password;

@@ -157,7 +157,7 @@ export function VersionCards({
     <section data-slot="version-cards" aria-label="版本对比" className="mb-4">
       <div className="mb-2 flex items-baseline gap-2">
         <h2 className="text-sm font-semibold">版本对比</h2>
-        <span className="text-muted-foreground text-xs">最近 30 天 · 点卡片按版本筛选列表</span>
+        <span className="text-muted-foreground text-xs">最近 30 天</span>
       </div>
       {status === "loading" && (
         <div className="grid gap-3 md:grid-cols-3" aria-busy="true">
@@ -182,7 +182,7 @@ export function VersionCards({
           data-slot="version-cards-empty"
           className="text-muted-foreground rounded-xl border border-dashed p-6 text-center text-sm"
         >
-          最近 30 天还没有运行记录，没有可对比的版本。
+          暂无运行记录
         </div>
       )}
       {status === "ready" && cards.length > 0 && (

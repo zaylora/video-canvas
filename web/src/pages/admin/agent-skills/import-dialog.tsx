@@ -7,11 +7,10 @@ import {
   Dialog,
   DialogClose,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@/components/admin-ui/dialog";
 import { Stepper, StepperItem } from "@/components/admin-ui/stepper";
 import { Button } from "@/components/ui/button";
 import { DURATION, EASE_OUT, TAP } from "@/lib/motion";
@@ -81,9 +80,6 @@ export function ImportDialog({
         <MotionConfig reducedMotion="user">
           <DialogHeader className="h-14 shrink-0 flex-row items-center gap-4 border-b px-5">
             <DialogTitle>导入技能</DialogTitle>
-            <DialogDescription className="sr-only">
-              选择压缩包、文件夹或 SKILL.md，检查通过后确认导入。
-            </DialogDescription>
             <Stepper className="mr-1 ml-auto max-w-sm">
               <StepperItem index={1} state={step === 1 ? "current" : "done"}>
                 选择文件
@@ -154,7 +150,6 @@ export function ImportDialog({
               </>
             ) : (
               <>
-                <p className="text-muted-foreground text-xs">导入后默认停用，不会影响线上 Agent</p>
                 <Button variant="ghost" className="ml-auto" onClick={onClose}>
                   取消
                 </Button>

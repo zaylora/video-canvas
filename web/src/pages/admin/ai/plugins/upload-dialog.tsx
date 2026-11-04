@@ -8,11 +8,10 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@/components/admin-ui/dialog";
 import { cn } from "@/lib/utils";
 import { isRunnerDown, isTooLarge } from "@/utils/admin/errors";
 import {
@@ -135,10 +134,6 @@ function UploadBody({
     <>
       <DialogHeader>
         <DialogTitle>上传插件</DialogTitle>
-        <DialogDescription>
-          选择一个 .js
-          插件文件（≤512KB）。上传后会先做预检，通过才登记为新版本；版本一经登记不可修改。
-        </DialogDescription>
       </DialogHeader>
 
       {!accepted && (
@@ -162,7 +157,9 @@ function UploadBody({
               KB
             </span>
           ) : (
-            <span className="text-muted-foreground">拖拽或点击选择 .js 文件</span>
+            <span className="text-muted-foreground">
+              选择 .js 文件 · ≤{PLUGIN_MAX_BYTES / 1024}KB
+            </span>
           )}
           <input
             ref={inputRef}
@@ -182,18 +179,18 @@ function UploadBody({
 
       {!accepted && <AiPromptHint />}
 
-      {localError && <Notice tone="danger">{localError}（本地已拦截，未发请求）</Notice>}
+      {localError && <Notice tone="danger">{localError}</Notice>}
 
       {busy && (
         <p className="text-muted-foreground flex items-center gap-1.5 text-xs" role="status">
           <Loader2 className="size-3 animate-spin" />
-          预检中…（在沙箱里编译并检查钩子）
+          预检中…
         </p>
       )}
 
       {runnerDown && (
         <Notice tone="danger" title="插件运行器暂时不可用">
-          已选文件保留，稍后点“上传”重试。
+          稍后重试
         </Notice>
       )}
 
@@ -229,11 +226,6 @@ function UploadBody({
               </li>
             ))}
           </ul>
-          <p className="text-muted-foreground text-xs">
-            {repairText
-              ? "把“复制修复信息”发给 AI 修好后，重新选择文件即可再次上传，版本号不用改。"
-              : "修改文件后重新选择即可再次上传。"}
-          </p>
         </section>
       )}
 
@@ -284,13 +276,9 @@ function AiPromptHint() {
       className="bg-muted/40 flex flex-col gap-1.5 rounded-lg border p-3 text-xs"
     >
       <div className="flex items-center gap-2">
-        <span className="font-medium">没有现成的插件？让 AI 帮你写</span>
+        <span className="font-medium">用 AI 生成插件</span>
         <CopyButton className="ml-auto" text={PLUGIN_AUTHORING_PROMPT} label="复制提示词" />
       </div>
-      <p className="text-muted-foreground">
-        复制提示词，连同目标平台的 API 文档一起发给 AI（提示词末尾有粘贴文档的位置），把生成的 .js
-        文件保存后在下方上传即可。
-      </p>
       <details className="group">
         <summary className="text-muted-foreground hover:text-foreground cursor-pointer select-none">
           预览提示词

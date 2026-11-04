@@ -88,8 +88,7 @@ function LimitForm({
     <div className="flex flex-col gap-2">
       <div className="text-sm font-medium">并发上限 · {user.username}</div>
       <p className="text-muted-foreground text-xs">
-        调低不会中断已在跑的任务，只影响新提交。当前进行中{" "}
-        <span className="tabular-nums">{user.active_tasks}</span> 个。
+        进行中 <span className="tabular-nums">{user.active_tasks}</span> 个，调低只影响新任务
       </p>
       <label className="flex cursor-pointer items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm">
         <span>

@@ -105,13 +105,7 @@ export default function VersionSettingsPage() {
     await confirm({
       title: `升级到 v${target}`,
       confirmLabel: "开始升级",
-      description: (
-        <ul className="list-disc space-y-1 pl-5">
-          <li>先备份数据库，再拉取镜像并重建服务</li>
-          <li>服务会中断约 1 分钟，期间后台和画布都无法访问</li>
-          <li>失败会自动退回 v{current}</li>
-        </ul>
-      ),
+      description: <>服务将中断约 1 分钟，失败自动退回 v{current}。</>,
       children: <ActiveTasksNotice count={fresh?.active_tasks ?? 0} />,
       blockReason: upgradeBlockReason(fresh, isSuper),
       onConfirm: async () => {
@@ -128,18 +122,12 @@ export default function VersionSettingsPage() {
       title: `回退到 v${target}`,
       confirmLabel: "开始回退",
       destructive: true,
-      description: (
-        <ul className="list-disc space-y-1 pl-5">
-          <li>先备份数据库，再换回 v{target} 的镜像并重建服务</li>
-          <li>服务会中断约 1 分钟</li>
-        </ul>
-      ),
+      description: "服务将中断约 1 分钟。",
       children:
         info.current_migrations.length > 0 ? (
           <Notice tone="warning" title="数据库变更不会撤销">
-            v{current} 执行过 {info.current_migrations.length} 个迁移：
             <span className="font-mono">{info.current_migrations.join("、")}</span>
-            。如果其中有删除或改名，v{target} 可能无法启动，届时需要用备份恢复。
+            。若含删除或改名，v{target} 可能无法启动，需用备份恢复。
           </Notice>
         ) : (
           <ActiveTasksNotice count={info.active_tasks} />
@@ -233,7 +221,7 @@ function ActiveTasksNotice({ count }: { count: number }) {
   if (count <= 0) return null;
   return (
     <Notice tone="warning" title={`${count} 个生成任务进行中`}>
-      会被中断，服务恢复后自动对账，不会重复扣积分。
+      将被中断，恢复后自动对账
     </Notice>
   );
 }
@@ -299,17 +287,14 @@ function VersionCard({
               </>
             )}
             {info?.uses_latest && check?.has_update && (
-              <span className="text-muted-foreground">
-                部署使用 latest，不能一键升级，见下方说明
-              </span>
+              <span className="text-muted-foreground">部署使用 latest，不能一键升级</span>
             )}
           </div>
         </div>
         {check?.warning && (
           <Notice tone="warning" title="检查更新失败">
             {check.warning}
-            {check.latest ? "。下面显示的是上次的结果" : ""}。5 分钟后可再试，或检查服务器能否访问
-            api.github.com。
+            {check.latest ? "（显示上次结果）" : ""}
           </Notice>
         )}
       </CardContent>
@@ -397,7 +382,7 @@ function ChangelogCard({ check }: { check: UpdateCheck }) {
               {check.release_notes}
             </ReactMarkdown>
           ) : (
-            <p className="text-muted-foreground">这个版本没有填写更新日志。</p>
+            <p className="text-muted-foreground">暂无更新日志</p>
           )}
         </motion.div>
         <Button
@@ -435,7 +420,7 @@ function ManualStepsCard({
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <Notice tone="warning" title="先备份">
-          数据库迁移只向前，没有自动回滚。新版本启动时会自动迁移；出了问题需要用备份恢复。
+          迁移不可回滚，出问题需用备份恢复
         </Notice>
         <ol className="flex flex-col gap-3">
           {manualUpgradeCommands(current, target).map((step, i) => (
@@ -455,20 +440,18 @@ function ManualStepsCard({
         </ol>
         {usesLatest ? (
           <Notice tone="warning" title="无法一键升级">
-            部署目录 .env 里是 <span className="font-mono">IMAGE_TAG=latest</span>
-            ：无法确认版本，失败也无法回退。按上面第 2 步改成具体版本号后即可使用一键升级。
+            <span className="font-mono">IMAGE_TAG=latest</span> 无法回退，改成具体版本号后可用。
           </Notice>
         ) : (
-          <Notice tone="gold" title="想在这里一键升级？">
-            在部署目录的 .env 加一行 <span className="font-mono">UPDATER_TOKEN=随机字符串</span>
-            ，执行 <span className="font-mono">docker compose up -d</span> 后再执行{" "}
+          <Notice tone="gold" title="启用一键升级">
+            .env 加 <span className="font-mono">UPDATER_TOKEN=随机字符串</span>，依次执行{" "}
+            <span className="font-mono">docker compose up -d</span> 和{" "}
             <span className="font-mono">docker compose --profile updater up -d</span>
-            。updater 会挂载 Docker，等同服务器 root 权限，按需启用。
+            。updater 等同 root 权限。
           </Notice>
         )}
         <p className="text-muted-foreground text-xs">
-          也可以在部署目录执行 <span className="font-mono">./update.sh --tag {target}</span>
-          ，它会自动完成以上三步并在失败时回退。
+          或执行 <span className="font-mono">./update.sh --tag {target}</span>
         </p>
       </CardContent>
     </Card>
@@ -525,7 +508,7 @@ function MigrationsCard({ files }: { files: MigrationFile[] | null }) {
                 ·{" "}
               </>
             ) : null}
-            共 {files.length} 个{pending > 0 ? `，${pending} 个待执行（升级后启动时自动执行）` : ""}
+            共 {files.length} 个{pending > 0 ? `，${pending} 个待执行` : ""}
           </p>
         )}
         {files && shown && (

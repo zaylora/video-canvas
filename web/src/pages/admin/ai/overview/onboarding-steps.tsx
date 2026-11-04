@@ -11,8 +11,6 @@ import { GLASS_PANEL } from "@/components/admin-ui/glass";
 export type OnboardingStep = {
   /** 步骤名 */
   title: string;
-  /** 步骤说明，如“插件” */
-  hint: string;
   /** 这一步是否已完成 */
   ok: boolean;
   /** 大卡里的主数字，如“3 个可用” */
@@ -70,7 +68,6 @@ export function OnboardingSteps({
               {step.ok ? <Check className="size-3.5" strokeWidth={3} /> : index + 1}
             </span>
             <CardTitle className="text-sm">{step.title}</CardTitle>
-            <span className="text-muted-foreground text-xs">{step.hint}</span>
           </CardHeader>
           <CardContent className="flex flex-col items-start gap-3">
             <span className="text-2xl font-semibold tabular-nums">{step.stat}</span>

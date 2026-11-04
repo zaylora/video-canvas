@@ -3,7 +3,6 @@ import type { Capabilities, GenerationOp, ParamField, RefKind, RefSpec } from "@
 import { FormField } from "@/components/admin-ui/form-field";
 import {
   FormSection,
-  FormSectionDescription,
   FormSectionHeader,
   FormSectionTitle,
 } from "@/components/admin-ui/form-section";
@@ -158,7 +157,7 @@ export function ModelParamsForm({
             label="上游响应超时"
             htmlFor="model-idle-timeout"
             error={idleTimeoutError ?? issueFor(issues, "idle_timeout")}
-            hint="上游多久没发任何数据就判定超时（包含等第一个字的时间）。首次超时会自动重试一次；推理模型首字慢可以调长，响应快的模型调短能更早失败重试。范围 10 秒 – 10 分钟。"
+            hint="10 秒 – 10 分钟，超时自动重试一次"
           >
             <div className="flex flex-wrap items-center gap-2" id="model-idle-timeout">
               {IDLE_TIMEOUTS.map(([value, label]) => (
@@ -186,9 +185,6 @@ export function ModelParamsForm({
         <FormSection>
           <FormSectionHeader>
             <FormSectionTitle>生成方式</FormSectionTitle>
-            <FormSectionDescription>
-              用户在画布节点上可以切换的方式，至少保留一种。
-            </FormSectionDescription>
           </FormSectionHeader>
           <OpsEditor
             kind={kind}
@@ -205,11 +201,6 @@ export function ModelParamsForm({
         <FormSection>
           <FormSectionHeader>
             <FormSectionTitle>上下文能力</FormSectionTitle>
-            {isAgent && (
-              <FormSectionDescription>
-                Agent 会把对话历史带进每次请求，窗口太小会频繁省略较早的工具结果。
-              </FormSectionDescription>
-            )}
           </FormSectionHeader>
           <ContextEditor value={caps.context} onChange={(context) => patch({ context })} />
           <ContextLimitsAssist
@@ -231,7 +222,6 @@ export function ModelParamsForm({
               className="mt-4"
               label="看图"
               error={issueFor(issues, "capabilities.vision")}
-              hint="上游模型支持图片输入时打开：Agent 才能查看画布上的图片，判断画面是否符合要求。不能看图的模型拿不到看图工具。"
             >
               <div className="flex">
                 <ToggleChip pressed={!!caps.vision} onClick={() => patch({ vision: !caps.vision })}>
@@ -247,11 +237,7 @@ export function ModelParamsForm({
               label="看视频"
               htmlFor="model-video"
               error={issueFor(issues, "capabilities.video")}
-              hint={
-                gemini
-                  ? "上游模型支持视频输入时打开：Agent 才能理解画布视频里的画面和声音（对白、旁白、音乐、环境音、画面文字）。不能看视频的模型只能抽帧看画面。"
-                  : "只有 Gemini 接口格式的模型能看视频。要开，先在「基本信息」把接口格式改成 Gemini 原生。"
-              }
+              hint={gemini ? undefined : "仅 Gemini 原生接口格式支持"}
             >
               <div className="flex">
                 <ToggleChip
@@ -277,9 +263,6 @@ export function ModelParamsForm({
         <FormSection>
           <FormSectionHeader>
             <FormSectionTitle>参考素材</FormSectionTitle>
-            <FormSectionDescription>
-              用户可以连到这个节点上的素材；关闭的类型即使生成方式允许也不接收。
-            </FormSectionDescription>
           </FormSectionHeader>
           <div className="grid gap-3 sm:grid-cols-2">
             {refKinds.map((refKind) => (
@@ -311,11 +294,7 @@ export function ModelParamsForm({
           label={isAgent ? "单条消息字数上限" : "字数上限"}
           htmlFor="model-prompt-length"
           error={promptIssue}
-          hint={
-            isAgent
-              ? `用户发给 Agent 的单条消息最多多少字；允许范围 ${LIMITS.promptLength[0]} – ${LIMITS.promptLength[1]}。`
-              : undefined
-          }
+          hint={isAgent ? `${LIMITS.promptLength[0]} – ${LIMITS.promptLength[1]}` : undefined}
         >
           <Input
             id="model-prompt-length"
@@ -338,7 +317,7 @@ export function ModelParamsForm({
           <div id="model-capabilities-params" className="space-y-3">
             {Object.keys(params).length === 0 && (
               <p className="text-muted-foreground rounded-md border border-dashed p-3 text-center text-xs">
-                {kind === "text" ? "文本模型默认没有生成参数。" : "还没有生成参数。"}
+                暂无生成参数
               </p>
             )}
             {Object.entries(params).map(([name, field], index, all) => (

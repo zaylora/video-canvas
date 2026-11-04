@@ -1,11 +1,6 @@
 import { Download, SearchX } from "lucide-react";
 
-import {
-  EmptyState,
-  EmptyStateDescription,
-  EmptyStateIcon,
-  EmptyStateTitle,
-} from "@/components/admin-ui/empty-state";
+import { EmptyState, EmptyStateIcon, EmptyStateTitle } from "@/components/admin-ui/empty-state";
 import { Notice } from "@/components/admin-ui/notice";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -76,7 +71,6 @@ export function RunDrawerView({
           <SearchX />
         </EmptyStateIcon>
         <EmptyStateTitle>运行不存在</EmptyStateTitle>
-        <EmptyStateDescription>编号错误，或这次运行已经被清理。</EmptyStateDescription>
       </EmptyState>
     );
   if (state.phase === "error" || !state.detail)
@@ -112,7 +106,7 @@ export function RunDrawerView({
       </div>
       <HarnessSection digest={detail.digest} />
       <SignalsSection detail={detail} />
-      <DrawerSection title="时间线" hint="编号 #n 可在分析里引用">
+      <DrawerSection title="时间线">
         <RunTimeline
           steps={detail.timeline}
           startMs={Number.isNaN(startMs) ? null : startMs}
