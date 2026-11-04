@@ -21,11 +21,11 @@ describe("新建短剧的本地预检", () => {
     expect(extOf("a.b.c.TXT")).toBe("txt");
   });
 
-  test("粘贴为空 / 全是空白算内容为空（对应 67002），超过 30 万字对应 67003", () => {
+  test("粘贴为空 / 全是空白算内容为空（对应 67002），超过 500 万字对应 67003", () => {
     expect(checkSourceText("   \n ")).toContain("为空");
     expect(checkSourceText("正文")).toBeNull();
     expect(checkSourceText("字".repeat(SOURCE_MAX_CHARS))).toBeNull();
-    expect(checkSourceText("字".repeat(SOURCE_MAX_CHARS + 1))).toContain("30 万字");
+    expect(checkSourceText("字".repeat(SOURCE_MAX_CHARS + 1))).toContain("500 万字");
   });
 });
 
@@ -33,6 +33,13 @@ describe("列表卡状态", () => {
   test("状态文案与进行中标记", () => {
     expect(dramaStatusLabel("analyzing")).toEqual({ text: "研读中", busy: true });
     expect(dramaStatusLabel("ready").busy).toBe(false);
+  });
+
+  test("规划中 / 规划暂停优先于 status（第一批规划完 status 已是 outlined）", () => {
+    expect(dramaStatusLabel("outlined", "running")).toEqual({ text: "规划中", busy: true });
+    expect(dramaStatusLabel("analyzing", "running")).toEqual({ text: "规划中", busy: true });
+    expect(dramaStatusLabel("outlined", "paused")).toEqual({ text: "规划已暂停", busy: false });
+    expect(dramaStatusLabel("ready", "done")).toEqual({ text: "剧本已就绪", busy: false });
   });
 
   test("三步进度点：剧本 / 资产 / 视频（一期视频恒为未开始）", () => {

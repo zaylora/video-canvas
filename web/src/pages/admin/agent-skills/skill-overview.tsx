@@ -2,7 +2,7 @@ import { Check, Pencil, Trash2, X } from "lucide-react";
 import { useState } from "react";
 
 import { renameSkill } from "@/api/admin/agent-skill";
-import type { SkillItem, SkillVersionView } from "@/api/admin/agent-skill/type.d";
+import type { DramaStepKey, SkillItem, SkillVersionView } from "@/api/admin/agent-skill/type.d";
 import { ReasonTooltip } from "@/components/admin-ui/reason-tooltip";
 import { Tag } from "@/components/admin-ui/tag";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ import {
   versionBadge,
 } from "@/utils/admin/agent-skill";
 
+import { DramaStepsField } from "./drama-steps-field";
 import { FrontmatterCard } from "./file-preview";
 
 /** 一个带标题的区块 */
@@ -125,6 +126,7 @@ function TitleField({
  * @param onToggle 启停
  * @param onGoVersions 跳到版本页签（“去切换”）
  * @param onRenamed 显示名改好后
+ * @param onDramaSteps 保存“短剧适用环节”
  * @param onDelete 点“删除技能”
  */
 export function SkillOverview({
@@ -134,6 +136,7 @@ export function SkillOverview({
   onToggle,
   onGoVersions,
   onRenamed,
+  onDramaSteps,
   onDelete,
 }: {
   item: SkillItem;
@@ -142,6 +145,8 @@ export function SkillOverview({
   onToggle: (enabled: boolean) => void;
   onGoVersions: () => void;
   onRenamed: (item: SkillItem) => void;
+  /** 保存短剧适用环节；失败返回 null */
+  onDramaSteps: (steps: DramaStepKey[]) => Promise<SkillItem | null>;
   onDelete: () => void;
 }) {
   const badge = versionBadge(item);
@@ -228,6 +233,10 @@ export function SkillOverview({
           <dt className="text-muted-foreground">更新时间</dt>
           <dd className="tabular-nums">{formatDateTime(item.updated_at)}</dd>
         </dl>
+      </Section>
+
+      <Section title="短剧适用环节">
+        <DramaStepsField item={item} onSave={onDramaSteps} />
       </Section>
 
       <Section title="头部字段">

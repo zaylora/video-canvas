@@ -9,6 +9,10 @@ import {
   jobRunningText,
   jobStage,
   isActiveJob,
+  isPipelineJob,
+  userJobs,
+  planningRow,
+  planningEtaMinutes,
   jobTitle,
   mergeJob,
   pruneFinished,
@@ -26,6 +30,9 @@ const job = (patch: Partial<DramaJob> = {}): DramaJob => ({
   errorMessage: "",
   createdAt: "2026-10-28T10:00:00Z",
   finishedAt: null,
+  lane: "user",
+  batchFrom: null,
+  batchTo: null,
   ...patch,
 });
 
@@ -206,5 +213,153 @@ describe("任务文案与落点", () => {
     expect(jobStage("asset_prompts")).toBe("assets");
     expect(jobStage("storyboard")).toBe("studio");
     expect(jobStage("compose")).toBe("final");
+  });
+});
+
+describe("两条线：pipeline 自动规划与 user 用户任务", () => {
+  test("pipeline 线：研读 / 规划；没带 lane 的老任务按步骤判断", () => {
+    expect(isPipelineJob(job({ lane: "pipeline", step: "plan" }))).toBe(true);
+    expect(isPipelineJob(job({ lane: "user", step: "scripts" }))).toBe(false);
+    expect(isPipelineJob(job({ lane: "user", step: "analyze" }))).toBe(true);
+  });
+
+  test("用户任务不含 pipeline；busyReason 不被规划拦住（互不阻塞）", () => {
+    const plan = job({ id: "p", lane: "pipeline", step: "plan", episodes: [] });
+    const scripts = job({ id: "s", step: "scripts", episodes: [1] });
+    expect(userJobs([plan, scripts]).map((j) => j.id)).toEqual(["s"]);
+    expect(busyReason([plan])).toBeNull();
+    expect(busyReason([plan, scripts])).toContain("分集剧本");
+  });
+
+  test("规划任务标题", () => {
+    expect(jobTitle(job({ step: "plan", episodes: [] }))).toBe("分集规划");
+    expect(jobRunningText("plan")).toContain("规划");
+  });
+});
+
+describe("JobBar 规划行 planningRow", () => {
+  const drama = (patch: Record<string, unknown> = {}) => ({
+    phase: "running" as const,
+    planCursor: 0,
+    rangeEnd: 1215,
+    pauseReason: "",
+    pauseCode: "" as const,
+    unitKind: "chapter" as const,
+    episodes: [] as { no: number }[],
+    ...patch,
+  });
+
+  test("完成（done）没有规划行", () => {
+    expect(planningRow(drama({ phase: "done" }), [])).toBeNull();
+  });
+
+  test("研读中：正在粗读全书", () => {
+    const row = planningRow(drama(), [
+      job({ lane: "pipeline", step: "analyze", episodes: [], progress: 30 }),
+    ]);
+    expect(row).toMatchObject({ kind: "running", title: "正在粗读全书", progress: 30 });
+    expect(row?.kind === "running" && row.detail).toContain("研读");
+  });
+
+  test("规划中：正在规划第 a–b 章 · 已出 N 集目录，进度按规划游标 / 范围终点", () => {
+    const row = planningRow(
+      drama({
+        planCursor: 300,
+        rangeEnd: 1200,
+        episodes: Array.from({ length: 52 }, (_, i) => ({ no: i + 1 })),
+      }),
+      [job({ lane: "pipeline", step: "plan", episodes: [], batchFrom: 301, batchTo: 312 })],
+    );
+    expect(row).toMatchObject({
+      kind: "running",
+      title: "正在规划第 301–312 章",
+      progress: 25,
+    });
+    expect(row?.kind === "running" && row.detail).toContain("已出 52 集目录");
+  });
+
+  test("规划行的单位跟着单元种类：场 / 段 / 集", () => {
+    const row = planningRow(drama({ unitKind: "scene" }), [
+      job({ lane: "pipeline", step: "plan", episodes: [], batchFrom: 8, batchTo: 8 }),
+    ]);
+    expect(row?.kind === "running" && row.title).toBe("正在规划第 8 场");
+  });
+
+  test("两批之间还没有进行中任务：不报错，写「正在规划」", () => {
+    const row = planningRow(drama({ planCursor: 12 }), []);
+    expect(row).toMatchObject({ kind: "running", title: "正在规划" });
+  });
+
+  test("用户暂停：已规划到第 N 章，操作只有「继续」", () => {
+    const row = planningRow(drama({ phase: "paused", pauseCode: "user", planCursor: 44 }), []);
+    expect(row).toMatchObject({
+      kind: "paused",
+      tone: "muted",
+      title: "分集规划已暂停",
+      actions: ["resume"],
+    });
+    expect(row?.kind === "paused" && row.reason).toContain("已规划到第 44 章");
+  });
+
+  test("积分不足：充值后继续；失败 / 上下文不足：重试", () => {
+    expect(planningRow(drama({ phase: "paused", pauseCode: "credits" }), [])).toMatchObject({
+      tone: "error",
+      reason: "积分不足，充值后继续",
+      actions: ["resume"],
+    });
+    expect(
+      planningRow(drama({ phase: "paused", pauseCode: "failed", pauseReason: "模型超时" }), []),
+    ).toMatchObject({ title: "分集规划暂停", actions: ["retry"] });
+    const failed = planningRow(
+      drama({ phase: "paused", pauseCode: "failed", pauseReason: "模型超时" }),
+      [],
+    );
+    expect(failed?.kind === "paused" && failed.reason).toContain("模型超时");
+    expect(planningRow(drama({ phase: "paused", pauseCode: "context" }), [])).toMatchObject({
+      actions: ["retry"],
+    });
+  });
+
+  test("自定义提示词导致失败：多一个「改用内置重试」", () => {
+    expect(planningRow(drama({ phase: "paused", pauseCode: "custom_prompt" }), [])).toMatchObject({
+      tone: "error",
+      actions: ["retry", "builtin"],
+    });
+  });
+
+  test("没有暂停原因分类（老数据）按用户暂停处理", () => {
+    expect(planningRow(drama({ phase: "paused" }), [])).toMatchObject({ actions: ["resume"] });
+  });
+});
+
+describe("规划还要多久 planningEtaMinutes", () => {
+  const hour = 3_600_000;
+  const created = (now: number, agoMs: number) => new Date(now - agoMs).toISOString();
+
+  test("按已规划的速度推算：1 小时规划了 300 个，还剩 900 个，约 180 分钟", () => {
+    const now = Date.parse("2026-11-04T12:00:00Z");
+    expect(
+      planningEtaMinutes({ createdAt: created(now, hour), planCursor: 300, rangeEnd: 1200 }, now),
+    ).toBe(180);
+  });
+
+  test("还没规划出任何单元、或已规划完、或时间不对：没有预估", () => {
+    const now = Date.parse("2026-11-04T12:00:00Z");
+    expect(
+      planningEtaMinutes({ createdAt: created(now, hour), planCursor: 0, rangeEnd: 100 }, now),
+    ).toBeNull();
+    expect(
+      planningEtaMinutes({ createdAt: created(now, hour), planCursor: 100, rangeEnd: 100 }, now),
+    ).toBeNull();
+    expect(
+      planningEtaMinutes({ createdAt: created(now, -hour), planCursor: 10, rangeEnd: 100 }, now),
+    ).toBeNull();
+  });
+
+  test("最少 1 分钟", () => {
+    const now = Date.parse("2026-11-04T12:00:00Z");
+    expect(
+      planningEtaMinutes({ createdAt: created(now, 1000), planCursor: 99, rangeEnd: 100 }, now),
+    ).toBe(1);
   });
 });

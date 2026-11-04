@@ -22,6 +22,7 @@
     "@react-three/drei": "10.7.9",
     "@react-three/fiber": "9.8.2",
     "@tailwindcss/vite": "^4.3.3",
+    "@tanstack/react-virtual": "^3.14.26",
     "@tiptap/core": "^3.31.4",
     "@tiptap/extension-document": "^3.31.4",
     "@tiptap/extension-hard-break": "^3.31.4",

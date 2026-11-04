@@ -14,7 +14,12 @@ import {
   episodePage,
   nextStep,
   pageOfEpisode,
-  ratioFixed,
+  gapBefore,
+  MAX_JOB_EPISODES,
+  sourceRangeLabel,
+  plannedEpisodes,
+  selectByRange,
+  editBlockReason,
   tocState,
 } from "@/utils/drama/episodes";
 
@@ -152,15 +157,9 @@ describe("资产拆解对话框", () => {
     expect(defaultBreakdownSelection([ep(1, { locked: true })])).toEqual([]);
   });
 
-  test("已有锁定集时比例固定不可改", () => {
-    expect(ratioFixed(episodes)).toBe(true);
-    expect(ratioFixed([ep(1), ep(2)])).toBe(false);
-  });
-
-  test("提交条件：比例必选、至少一集", () => {
-    expect(breakdownSubmit("", [2])).toEqual({ ok: false, label: "先选比例" });
-    expect(breakdownSubmit("9:16", [])).toEqual({ ok: false, label: "至少选一集" });
-    expect(breakdownSubmit("9:16", [2, 4])).toEqual({ ok: true, label: "开始拆解" });
+  test("提交条件：至少选一集；比例以项目为准，不再要求选比例", () => {
+    expect(breakdownSubmit([])).toEqual({ ok: false, label: "至少选一集" });
+    expect(breakdownSubmit([2, 4])).toEqual({ ok: true, label: "开始拆解" });
   });
 });
 
@@ -246,5 +245,94 @@ describe("总览进度表分页", () => {
     expect(pageOfEpisode(eps, 10)).toBe(1);
     expect(pageOfEpisode(eps, 11)).toBe(2);
     expect(pageOfEpisode(eps, 99)).toBe(1);
+  });
+});
+
+describe("只列已规划的集", () => {
+  test("标题为空的集还没规划，不进选集列表", () => {
+    const episodes = [ep(1), ep(2, { title: "" }), ep(3)];
+    expect(plannedEpisodes(episodes).map((e) => e.no)).toEqual([1, 3]);
+    expect(scriptOptions(episodes).map((o) => o.no)).toEqual([1, 3]);
+    expect(breakdownOptions(episodes).map((o) => o.no)).toEqual([1, 3]);
+  });
+});
+
+describe("按范围选：第 a–b 集", () => {
+  const episodes = [
+    ep(1),
+    ep(2, { locked: true }),
+    ep(3, { scriptStatus: "generating" }),
+    ep(4, { scriptStatus: "empty" }),
+    ep(5),
+  ];
+
+  test("写剧本：范围内除已拆解、生成中的集都选上", () => {
+    expect(selectByRange(scriptOptions(episodes), 1, 5)).toEqual([1, 4, 5]);
+    expect(selectByRange(scriptOptions(episodes), 4, 5)).toEqual([4, 5]);
+  });
+
+  test("拆解：只选有剧本、未锁定的；a > b 时自动对调；越界被截断", () => {
+    expect(selectByRange(breakdownOptions(episodes), 5, 1)).toEqual([1, 5]);
+    expect(selectByRange(breakdownOptions(episodes), 0, 999)).toEqual([1, 5]);
+    expect(selectByRange(breakdownOptions(episodes), 7, 9)).toEqual([]);
+  });
+});
+
+describe("写剧本的衔接提示", () => {
+  const episodes = [
+    ep(1),
+    ep(2, { scriptStatus: "empty" }),
+    ep(3, { scriptStatus: "empty" }),
+    ep(4, { scriptStatus: "empty" }),
+  ];
+
+  test("选中集的上一集没剧本、也不在选择里，就提示（返回选中的集号）", () => {
+    expect(gapBefore([3], episodes)).toEqual([3]);
+    expect(gapBefore([4], episodes)).toEqual([4]);
+  });
+
+  test("上一集有剧本、或本次一起写、或是第 1 集，不提示", () => {
+    expect(gapBefore([2], episodes)).toEqual([]);
+    expect(gapBefore([2, 3, 4], episodes)).toEqual([]);
+    expect(gapBefore([1], episodes)).toEqual([]);
+  });
+
+  test("上一集已拆解（锁定）也算有剧本", () => {
+    expect(gapBefore([2], [ep(1, { locked: true, scriptStatus: "ready" }), ep(2)])).toEqual([]);
+  });
+});
+
+describe("规划中禁止增删集", () => {
+  test("规划中写明原因；暂停 / 完成后恢复", () => {
+    expect(editBlockReason("running", [])).toBe("正在规划，完成或暂停后再操作");
+    expect(editBlockReason("paused", [])).toBeNull();
+    expect(editBlockReason("done", [])).toBeNull();
+  });
+});
+
+describe("对应原文", () => {
+  test("单个单元「第 3 章」，跨单元「第 3–5 章」，单位跟着单元种类，没关联为 null", () => {
+    expect(sourceRangeLabel(3, 3, "chapter")).toBe("第 3 章");
+    expect(sourceRangeLabel(3, 5, "chapter")).toBe("第 3–5 章");
+    expect(sourceRangeLabel(8, null, "scene")).toBe("第 8 场");
+    expect(sourceRangeLabel(2, 2, "episode")).toBe("第 2 集");
+    expect(sourceRangeLabel(null, null, "chapter")).toBeNull();
+  });
+});
+
+describe("一次最多 200 集", () => {
+  const many = Array.from({ length: 450 }, (_, i) => ep(i + 1, { scriptStatus: "empty" }));
+
+  test("默认选择最多取前 200 个没有剧本的集", () => {
+    expect(MAX_JOB_EPISODES).toBe(200);
+    expect(defaultScriptSelection(many)).toHaveLength(200);
+    expect(defaultScriptSelection(many)[199]).toBe(200);
+  });
+
+  test("超过 200 集不能提交，按钮写明上限", () => {
+    const over = many.slice(0, 201).map((e) => e.no);
+    expect(scriptSubmit(over, many)).toMatchObject({ ok: false, label: "一次最多 200 集" });
+    expect(scriptSubmit(over.slice(0, 200), many).ok).toBe(true);
+    expect(breakdownSubmit(over)).toEqual({ ok: false, label: "一次最多 200 集" });
   });
 });

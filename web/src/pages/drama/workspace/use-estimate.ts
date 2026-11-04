@@ -1,13 +1,18 @@
 import { useEffect, useState } from "react";
 
-import { estimateJob } from "@/api/drama";
+import { estimateJobDetail } from "@/api/drama";
 import { dramaErrorMessage } from "@/api/drama/errors";
 import type { DramaJobInput } from "@/api/drama/type";
 
 export type Estimate =
   | { status: "idle" }
   | { status: "loading" }
-  | { status: "ready"; credits: number }
+  | {
+      status: "ready";
+      credits: number;
+      /** scripts：选中的集里上一集没有剧本、也不在本次选择里的集号（衔接缺口） */
+      gapEpisodes: number[];
+    }
   | { status: "error"; message: string };
 
 /**
@@ -25,8 +30,15 @@ export function useEstimate(dramaId: string, input: DramaJobInput | null): Estim
     if (!input) return;
     let active = true;
     const timer = setTimeout(() => {
-      estimateJob(dramaId, input)
-        .then((credits) => active && setResult({ key, value: { status: "ready", credits } }))
+      estimateJobDetail(dramaId, input)
+        .then(
+          (res) =>
+            active &&
+            setResult({
+              key,
+              value: { status: "ready", credits: res.credits, gapEpisodes: res.gapEpisodes },
+            }),
+        )
         .catch(
           (error: unknown) =>
             active &&

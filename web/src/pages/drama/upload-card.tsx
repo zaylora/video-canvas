@@ -1,35 +1,20 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDropzone } from "react-dropzone";
 import { useNavigate } from "react-router";
 import { motion } from "motion/react";
 import { ArrowUp, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { createDrama } from "@/api/drama";
+import { createDrama, preflightSource } from "@/api/drama";
 import { DRAMA_ERR, dramaErrorMessage, isDramaError } from "@/api/drama/errors";
-import type { DramaRatio } from "@/api/drama/type";
-import { AgentModelPicker } from "@/components/drama/agent-model-picker";
-import {
-  ChipPopover,
-  EpisodesPicker,
-  GenreList,
-  RatioList,
-  StyleGrid,
-} from "@/components/drama/pickers";
+import type { CreateDramaInput, SourcePreflight } from "@/api/drama/type";
 import { Segmented } from "@/components/home/segmented";
 import { Textarea } from "@/components/ui/textarea";
-import { useDramaStyles } from "@/hooks/use-drama-styles";
 import { TAP } from "@/lib/motion";
 import { cn } from "@/lib/utils";
-import {
-  checkSourceFile,
-  checkSourceText,
-  CUSTOM_STYLE_KEY,
-  DEFAULT_EPISODE_SECONDS,
-  DEFAULT_STYLE_KEY,
-  SOURCE_MAX_CHARS,
-  targetEpisodesLabel,
-} from "@/utils/drama/options";
+import { checkSourceFile, checkSourceText, SOURCE_MAX_CHARS } from "@/utils/drama/options";
+
+import { StartDialog } from "./start-dialog";
 
 type Tab = "file" | "paste";
 
@@ -48,37 +33,65 @@ const paneState = (active: boolean) => ({
   ),
 });
 
+/** 超过这么久还没返回，发送键上显示上传进度环（毫秒） */
+const PROGRESS_AFTER_MS = 1000;
+
+/** 发送键外圈的环形进度：ratio 为 0–1 */
+function ProgressRing({ ratio }: { ratio: number }) {
+  const radius = 20;
+  const length = 2 * Math.PI * radius;
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 44 44"
+      className="pointer-events-none absolute -inset-px size-[calc(100%+2px)] -rotate-90"
+    >
+      <circle
+        cx="22"
+        cy="22"
+        r={radius}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeDasharray={length}
+        strokeDashoffset={length * (1 - Math.min(1, Math.max(0, ratio)))}
+        className="text-status-running transition-[stroke-dashoffset] duration-200"
+      />
+    </svg>
+  );
+}
+
 /**
- * 新建短剧的创作卡（设计稿 §6.3、原型首页）：半透明胶囊面板，「上传剧本 / 小说 | 粘贴正文」二选一，
- * 两块面板叠放、同高，切换只淡入淡出；提交时只用当前那一种。上传区可拖入文件；
- * 底部的题材、画风、比例、集数与时长都是浮层选择；提交后建好短剧并进入工作台等研读。
+ * 新建短剧的创作卡（设计稿 §6.2、原型首页）：半透明胶囊面板，「上传剧本 / 小说 | 粘贴正文」二选一，
+ * 两块面板叠放、同高，切换只淡入淡出；底栏只剩格式提示和发送键。
+ * 点发送键先预检（解析、去噪、切单元、识别类型并估价，上传超过 1 秒时发送键显示进度环），
+ * 成功后弹「开拍设置」，取消弹窗保留卡片里的文件 / 文本；在弹窗里点「开始」才建剧并进入工作台。
  * 内容为空、格式不对、超长（67002 / 67003）都就地提示在卡片里，不弹全局错误。
  */
 export function UploadCard() {
   const navigate = useNavigate();
-  const { genres, styles } = useDramaStyles();
   const [tab, setTab] = useState<Tab>("file");
   const [file, setFile] = useState<File | null>(null);
   const [text, setText] = useState("");
-  const [genre, setGenre] = useState("");
-  const [styleKey, setStyleKey] = useState<string | null>(null);
-  const [styleCustom, setStyleCustom] = useState("");
-  // 画风、比例、模型进了工作台就不能再改：比例默认竖屏短剧常用的 9:16
-  const [ratio, setRatio] = useState<DramaRatio>("9:16");
-  const [textModel, setTextModel] = useState("");
-  const [target, setTarget] = useState(0);
-  const [seconds, setSeconds] = useState(DEFAULT_EPISODE_SECONDS);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  /** 预检结果：内容没变时再点发送键直接重新打开弹窗，不重复上传 */
+  const [pre, setPre] = useState<SourcePreflight | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  /** 上传进度 0–1；null = 还没有进度或上传不足 1 秒 */
+  const [progress, setProgress] = useState<number | null>(null);
+  const [slow, setSlow] = useState(false);
 
-  /** 画风：用户没选时取默认（清单里有就用默认 key，没有取第一个） */
-  const effectiveStyle =
-    styleKey ?? (styles.find((s) => s.key === DEFAULT_STYLE_KEY) ?? styles[0])?.key ?? "";
-  const styleName =
-    effectiveStyle === CUSTOM_STYLE_KEY
-      ? "自定义画风"
-      : (styles.find((s) => s.key === effectiveStyle)?.name ?? "画风");
-  const genreName = genres.find((g) => g.key === genre)?.name ?? genre;
+  useEffect(() => {
+    if (!submitting) return;
+    const timer = setTimeout(() => setSlow(true), PROGRESS_AFTER_MS);
+    return () => {
+      clearTimeout(timer);
+      setSlow(false);
+      setProgress(null);
+    };
+  }, [submitting]);
 
   const onDrop = useCallback((accepted: File[]) => {
     const picked = accepted[0];
@@ -86,6 +99,7 @@ export function UploadCard() {
     const problem = checkSourceFile(picked);
     setError(problem);
     setFile(problem ? null : picked);
+    setPre(null);
   }, []);
   const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
     onDrop,
@@ -100,36 +114,52 @@ export function UploadCard() {
     [tab, text],
   );
   const canSend =
-    !submitting &&
-    !!effectiveStyle &&
-    (tab === "file" ? !!file : text.trim().length > 0 && !localProblem);
+    !submitting && (tab === "file" ? !!file : text.trim().length > 0 && !localProblem);
   const shownError = error ?? localProblem;
 
-  const submit = async () => {
+  const preflight = async () => {
     if (!canSend) return;
+    if (pre) {
+      setDialogOpen(true);
+      return;
+    }
     setError(null);
     setSubmitting(true);
     try {
-      const drama = await createDrama({
-        ...(tab === "file" && file ? { file } : { text }),
-        styleKey: effectiveStyle,
-        styleCustom: effectiveStyle === CUSTOM_STYLE_KEY ? styleCustom.trim() : undefined,
-        genre: genre || undefined,
-        ratio,
-        targetEpisodes: target,
-        episodeSeconds: seconds,
-        textModel: textModel || undefined,
-      });
-      navigate(`/drama/${drama.id}`);
+      const result = await preflightSource(tab === "file" && file ? { file } : { text }, (ratio) =>
+        setProgress(ratio),
+      );
+      setPre(result);
+      setDialogOpen(true);
     } catch (e) {
       if (isDramaError(e, DRAMA_ERR.sourceInvalid) || isDramaError(e, DRAMA_ERR.sourceTooLong)) {
         setError(dramaErrorMessage(e));
       } else {
-        toast.error(dramaErrorMessage(e, "创建失败，请稍后重试"));
+        toast.error(dramaErrorMessage(e, "预检失败，请稍后重试"));
       }
+    } finally {
       setSubmitting(false);
     }
   };
+
+  /** 弹窗里点「开始」：建剧并进工作台；草稿过期（67014）回到卡片提示重新上传，其他错误抛回弹窗就地显示 */
+  const create = useCallback(
+    async (input: CreateDramaInput) => {
+      try {
+        const drama = await createDrama(input);
+        navigate(`/drama/${drama.id}`);
+      } catch (e) {
+        if (isDramaError(e, DRAMA_ERR.sourceExpired)) {
+          setDialogOpen(false);
+          setPre(null);
+          setError(dramaErrorMessage(e));
+          return;
+        }
+        throw e;
+      }
+    },
+    [navigate],
+  );
 
   const upload = paneState(tab === "file");
   const paste = paneState(tab === "paste");
@@ -199,6 +229,7 @@ export function UploadCard() {
                   onClick={(event) => {
                     event.stopPropagation();
                     setFile(null);
+                    setPre(null);
                     setError(null);
                   }}
                   className="hover:bg-chrome-hover hover:text-foreground focus-visible:ring-ring/50 rounded-full px-2 py-0.5 transition-colors outline-none focus-visible:ring-2"
@@ -215,9 +246,6 @@ export function UploadCard() {
                   选择文件
                 </span>
               </div>
-              <div className="text-muted-foreground text-[13px] tracking-wide">
-                txt · md · docx　30 万字以内
-              </div>
             </>
           )}
         </div>
@@ -233,6 +261,7 @@ export function UploadCard() {
             disabled={submitting}
             onChange={(event) => {
               setText(event.target.value);
+              setPre(null);
               setError(null);
             }}
             placeholder="粘贴剧本或小说正文"
@@ -258,83 +287,29 @@ export function UploadCard() {
         </p>
       )}
 
-      <div className="flex flex-wrap items-center gap-1 px-0.5 pt-2.5">
-        <ChipPopover
-          variant="chrome"
-          size="lg"
-          label={genreName || "题材"}
-          set={!!genre}
-          width="w-80"
-        >
-          {(close) => (
-            <GenreList
-              genres={genres}
-              value={genre}
-              onPick={(key) => {
-                setGenre(key);
-                close();
-              }}
-            />
-          )}
-        </ChipPopover>
-        <ChipPopover
-          variant="chrome"
-          size="lg"
-          label={styleName}
-          width="w-[46rem] max-w-[92vw] max-h-[min(70vh,560px)] overflow-y-auto"
-        >
-          {() => (
-            <StyleGrid
-              styles={styles}
-              value={effectiveStyle}
-              custom={styleCustom}
-              onPick={setStyleKey}
-              onCustomChange={setStyleCustom}
-            />
-          )}
-        </ChipPopover>
-        <ChipPopover variant="chrome" size="lg" label={ratio || "比例"} set={!!ratio}>
-          {(close) => (
-            <RatioList
-              value={ratio}
-              onPick={(next) => {
-                setRatio(next);
-                close();
-              }}
-            />
-          )}
-        </ChipPopover>
-        <ChipPopover
-          variant="chrome"
-          size="lg"
-          label={`${targetEpisodesLabel(target)} · ${seconds}s/集`}
-        >
-          {() => (
-            <EpisodesPicker
-              target={target}
-              seconds={seconds}
-              onTarget={setTarget}
-              onSeconds={setSeconds}
-            />
-          )}
-        </ChipPopover>
-        <AgentModelPicker variant="chrome" value={textModel} onChange={setTextModel} />
+      <div className="flex items-center gap-2 px-0.5 pt-2.5">
+        <span className="text-muted-foreground pl-2.5 text-[13px] tracking-wide">
+          txt · md · docx　500 万字以内
+        </span>
         <motion.button
           type="button"
           whileTap={TAP}
           disabled={!canSend}
-          onClick={() => void submit()}
+          onClick={() => void preflight()}
           aria-label="开始"
-          title={canSend ? "开始研读" : "先上传文件或粘贴文本"}
-          className="bg-foreground text-background focus-visible:ring-ring/50 disabled:bg-chrome-hover disabled:text-muted-foreground ml-auto grid size-11 place-items-center rounded-full transition-colors duration-200 outline-none focus-visible:ring-3"
+          title={canSend ? "预检原文并设置开拍" : "先上传文件或粘贴文本"}
+          className="bg-foreground text-background focus-visible:ring-ring/50 disabled:bg-chrome-hover disabled:text-muted-foreground relative ml-auto grid size-11 place-items-center rounded-full transition-colors duration-200 outline-none focus-visible:ring-3"
         >
           {submitting ? (
             <Loader2 className="size-4.5 animate-spin" />
           ) : (
             <ArrowUp className="size-4.5" />
           )}
+          {submitting && slow && progress !== null && <ProgressRing ratio={progress} />}
         </motion.button>
       </div>
+
+      <StartDialog open={dialogOpen} onOpenChange={setDialogOpen} pre={pre} onSubmit={create} />
     </div>
   );
 }

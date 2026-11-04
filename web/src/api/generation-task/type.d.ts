@@ -129,6 +129,8 @@ export type ServerMessage =
   | { type: "agent.event"; channel?: string; data: AgentEventDto }
   /** 支付订单状态变化（入账、关单……）：前端据此刷新商城面板和余额 */
   | { type: "payment.updated"; channel?: string; data: PaymentWsUpdate }
+  /** 短剧项目的规划阶段 / 游标变化：前端重新拉详情（含 phase、plan_cursor） */
+  | { type: "drama"; channel?: string; data: { drama_id: string } }
   /** 短剧逐集写入完成。 */
   | { type: "drama.episode"; channel?: string; data: DramaEpisodeEvent }
   /** 短剧流水线任务状态 / 进度变化：前端并进该短剧的进度卡，收尾后重新拉详情 */

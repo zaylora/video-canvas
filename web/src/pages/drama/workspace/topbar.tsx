@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, CloudAlert, CloudCheck, Loader2, Search } from "lucide-react";
+import {
+  ArrowLeft,
+  CloudAlert,
+  CloudCheck,
+  Loader2,
+  Search,
+  SlidersHorizontal,
+} from "lucide-react";
 import { Link } from "react-router";
 
 import { ChromePill, ChromeSeparator } from "@/components/canvas/chrome/chrome";
@@ -82,9 +89,9 @@ function TitleInput() {
 
 /**
  * 这部短剧的画风 / 比例 / Agent 模型：在首页新建时选定，进了工作台只显示、不能改
- * （改画风、比例会让前后生成的资产不一致）。
+ * （改画风、比例会让前后生成的资产不一致）；点画风那一格打开「提示词设置」。
  */
-function ProjectSettings() {
+function ProjectSettings({ onPrompts }: { onPrompts: () => void }) {
   const { drama } = useWorkspace();
   const { styles } = useDramaStyles();
   const agent = useAgentModel(drama.textModel);
@@ -95,12 +102,23 @@ function ProjectSettings() {
   const item = "flex h-8 items-center gap-1.5 px-3 text-[13px] whitespace-nowrap";
   return (
     <ChromePill className="mr-1 max-xl:hidden" aria-label="创作设置">
-      <span
-        className={item}
-        title={drama.styleKey === CUSTOM_STYLE_KEY ? drama.styleCustom : undefined}
+      <button
+        type="button"
+        aria-label="提示词设置"
+        title={
+          drama.styleKey === CUSTOM_STYLE_KEY
+            ? `${drama.styleCustom}（点开提示词设置）`
+            : "提示词设置"
+        }
+        onClick={onPrompts}
+        className={cn(
+          item,
+          "hover:bg-chrome-hover focus-visible:ring-ring/50 rounded-full transition-colors outline-none focus-visible:ring-2",
+        )}
       >
+        <SlidersHorizontal className="size-3.5" />
         {style}
-      </span>
+      </button>
       <ChromeSeparator />
       <span className={cn(item, "tabular-nums")}>{drama.ratio || "比例未定"}</span>
       <ChromeSeparator />
@@ -129,11 +147,14 @@ export function Topbar({
   hints,
   onStage,
   onPalette,
+  onPrompts,
 }: {
   stage: WorkspaceStage;
   hints: StageHints;
   onStage: (stage: WorkspaceStage) => void;
   onPalette: () => void;
+  /** 打开「提示词设置」 */
+  onPrompts: () => void;
 }) {
   const { save } = useWorkspace();
   const status = SAVE_LABEL[save];
@@ -162,8 +183,8 @@ export function Topbar({
       </div>
       <StageTabs stage={stage} hints={hints} onChange={onStage} />
       <div className="flex items-center justify-end gap-0.5">
-        {/* 画风 / 比例 / 模型：首页新建时选定，这里只显示 */}
-        <ProjectSettings />
+        {/* 画风 / 比例 / 模型：首页新建时选定，这里只显示；画风那一格进提示词设置 */}
+        <ProjectSettings onPrompts={onPrompts} />
         <Button
           variant="ghost"
           size="sm"

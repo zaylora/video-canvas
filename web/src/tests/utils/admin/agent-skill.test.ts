@@ -58,6 +58,7 @@ const item = (extra: Partial<SkillItem>): SkillItem => ({
   total_bytes: 1,
   has_scripts: false,
   unsupported_fields: [],
+  drama_steps: [],
   updated_at: "2026-01-01T00:00:00Z",
   ...extra,
 });

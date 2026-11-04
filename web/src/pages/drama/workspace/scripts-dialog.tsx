@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, Lock } from "lucide-react";
+import { Link2Off } from "lucide-react";
 
 import { submitJob } from "@/api/drama";
 import { dramaErrorMessage } from "@/api/drama/errors";
@@ -13,16 +13,45 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { useDramaJobsStore } from "@/store/drama";
-import { defaultScriptSelection, scriptOptions, scriptSubmit } from "@/utils/drama/episodes";
+import {
+  defaultScriptSelection,
+  gapBefore,
+  MAX_JOB_EPISODES,
+  scriptOptions,
+  scriptSubmit,
+  selectByRange,
+} from "@/utils/drama/episodes";
 
 import { useWorkspace } from "./context";
+import { EpisodeGrid, RangeSelect } from "./episode-pick";
 import { useEstimate } from "./use-estimate";
 
-/** 对话框主体：每次打开重新挂载，选择回到默认（还没有剧本的集） */
-function ScriptsBody({ onClose }: { onClose: () => void }) {
+/** 衔接提示：选中的集里有上一集既没剧本、也不在本次选择里的 */
+function gapText(gaps: readonly number[]): string {
+  if (gaps.length === 1) {
+    return `第 ${gaps[0] - 1} 集还没有剧本，第 ${gaps[0]} 集会按它的梗概和结尾悬念衔接`;
+  }
+  const shown = gaps.slice(0, 6).join("、");
+  return `第 ${shown}${gaps.length > 6 ? " 等" : ""} 集的上一集还没有剧本，会按上一集的梗概和结尾悬念衔接`;
+}
+
+/**
+ * 对话框主体：每次打开重新挂载，选择回到默认（initial 指定的集；没有就是还没有剧本的集）。
+ * 只列已规划的集；集多时网格是虚拟列表，可以「按范围选：第 a–b 集」。
+ */
+export function ScriptsBody({
+  onClose,
+  initial,
+}: {
+  onClose: () => void;
+  /** 预先选中的集（从某一集的空状态点「生成剧本」进来） */
+  initial?: number[];
+}) {
   const { drama, refresh } = useWorkspace();
   const options = scriptOptions(drama.episodes);
-  const [selected, setSelected] = useState<number[]>(() => defaultScriptSelection(drama.episodes));
+  const [selected, setSelected] = useState<number[]>(() =>
+    initial && initial.length > 0 ? initial : defaultScriptSelection(drama.episodes),
+  );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,6 +60,9 @@ function ScriptsBody({ onClose }: { onClose: () => void }) {
     drama.id,
     submit.ok ? { step: "scripts", episodes: selected } : null,
   );
+  /** 衔接缺口：估价接口返回了就用它，还没回来先用本地算的（同一口径） */
+  const gaps =
+    estimate.status === "ready" ? estimate.gapEpisodes : gapBefore(selected, drama.episodes);
 
   const toggle = (no: number) =>
     setSelected((prev) =>
@@ -71,7 +103,7 @@ function ScriptsBody({ onClose }: { onClose: () => void }) {
             variant="ghost"
             size="sm"
             disabled={unscripted.length === 0}
-            onClick={() => setSelected(unscripted)}
+            onClick={() => setSelected(unscripted.slice(0, MAX_JOB_EPISODES))}
           >
             没有剧本的
           </Button>
@@ -79,7 +111,7 @@ function ScriptsBody({ onClose }: { onClose: () => void }) {
             variant="ghost"
             size="sm"
             disabled={available.length === 0}
-            onClick={() => setSelected(available)}
+            onClick={() => setSelected(available.slice(0, MAX_JOB_EPISODES))}
           >
             全选
           </Button>
@@ -92,41 +124,22 @@ function ScriptsBody({ onClose }: { onClose: () => void }) {
             清空
           </Button>
         </div>
-        <div className="grid max-h-72 grid-cols-2 gap-1.5 overflow-y-auto sm:grid-cols-3">
-          {options.map((option) => {
-            const on = selected.includes(option.no);
-            return (
-              <button
-                key={option.no}
-                type="button"
-                aria-pressed={on}
-                disabled={option.disabled}
-                title={option.reason ?? undefined}
-                onClick={() => toggle(option.no)}
-                className={cn(
-                  "focus-visible:ring-ring/50 flex min-h-9 items-center gap-2 rounded-lg border px-2 text-left text-sm outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-45",
-                  on ? "border-foreground bg-muted" : "hover:bg-muted/60",
-                )}
-              >
-                <span className="bg-background grid size-4 shrink-0 place-items-center rounded border">
-                  {on ? (
-                    <Check className="size-3" />
-                  ) : option.reason === "已拆解" ? (
-                    <Lock className="size-2.5" />
-                  ) : null}
-                </span>
-                <span className="text-muted-foreground tabular-nums">{option.no}.</span>
-                <span className="min-w-0 flex-1 truncate">{option.title}</span>
-                {option.hasScript && !option.disabled && (
-                  <span className="bg-muted text-muted-foreground shrink-0 rounded-full px-1.5 text-[10px] leading-4">
-                    已有剧本
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
+        <RangeSelect
+          max={options.at(-1)?.no ?? 1}
+          onSelect={(from, to) => setSelected(selectByRange(options, from, to))}
+        />
+        <EpisodeGrid options={options} selected={selected} onToggle={toggle} />
       </section>
+
+      {gaps.length > 0 && (
+        <div
+          role="note"
+          className="bg-status-warning/10 flex items-center gap-2 rounded-lg px-3 py-2 text-sm"
+        >
+          <Link2Off className="text-status-warning size-4 shrink-0" />
+          <span className="min-w-0 flex-1">{gapText(gaps)}</span>
+        </div>
+      )}
 
       <div
         className={cn(
@@ -178,19 +191,22 @@ function ScriptsBody({ onClose }: { onClose: () => void }) {
 
 /**
  * 生成分集剧本对话框：多选集数，默认勾选还没有剧本的集；已拆解、生成中的集不能选；
- * 已有剧本的可以选来重新生成，选中时提醒会覆盖。
+ * 已有剧本的可以选来重新生成，选中时提醒会覆盖；选中集的上一集没有剧本且不在选择里时提示衔接方式。
  */
 export function ScriptsDialog({
   open,
   onOpenChange,
+  initial,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** 预先选中的集 */
+  initial?: number[];
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-xl">
-        {open && <ScriptsBody onClose={() => onOpenChange(false)} />}
+        {open && <ScriptsBody initial={initial} onClose={() => onOpenChange(false)} />}
       </DialogContent>
     </Dialog>
   );

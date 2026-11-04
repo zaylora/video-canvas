@@ -19,6 +19,11 @@ export function notifyDramaChanged(dramaId: string): void {
   for (const listener of listeners.get(dramaId) ?? []) listener();
 }
 
+/** 项目的规划阶段 / 游标变化（WebSocket drama 消息）：重新读取详情，拿到 phase 与 plan_cursor。 */
+export function handleDramaEvent(event: { drama_id: string }): void {
+  notifyDramaChanged(event.drama_id);
+}
+
 /** 分集保存事务已提交，立即刷新该短剧，独立于整批任务百分比。 */
 export function handleDramaEpisodeEvent(event: DramaEpisodeEvent): void {
   notifyDramaChanged(event.drama_id);

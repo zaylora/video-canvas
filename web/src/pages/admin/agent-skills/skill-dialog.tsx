@@ -342,6 +342,7 @@ function DialogBody({
             onToggle={(enabled) => void api.toggleEnabled(item, enabled)}
             onGoVersions={() => setTab("versions")}
             onRenamed={api.replaceOne}
+            onDramaSteps={(steps) => api.saveDramaSteps(item, steps)}
             onDelete={() => void removeSkill()}
           />
         )}

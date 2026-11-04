@@ -1,4 +1,4 @@
-import type { DramaRatio, DramaStatus } from "@/api/drama/type";
+import type { DramaPhase, DramaRatio, DramaStatus } from "@/api/drama/type";
 
 /** 成片比例（宽、高用来画小方块示意） */
 export const RATIOS: { key: Exclude<DramaRatio, "">; w: number; h: number }[] = [
@@ -9,9 +9,6 @@ export const RATIOS: { key: Exclude<DramaRatio, "">; w: number; h: number }[] = 
   { key: "4:3", w: 4, h: 3 },
   { key: "1:1", w: 1, h: 1 },
 ];
-
-/** 目标集数档位；0 = 自动（按剧本已有分集） */
-export const TARGET_EPISODE_OPTIONS = [0, 10, 16, 30, 60] as const;
 
 /** 单集时长档位（秒） */
 export const EPISODE_SECOND_OPTIONS = [60, 90, 120, 180] as const;
@@ -24,8 +21,8 @@ export const CUSTOM_STYLE_KEY = "custom";
 /** 新建时默认选中的画风；清单里没有就取第一个 */
 export const DEFAULT_STYLE_KEY = "real_city_film";
 
-/** 原文字数上限（契约 §3.1） */
-export const SOURCE_MAX_CHARS = 300_000;
+/** 原文字数上限：500 万字（接口契约 §1，与后端同口径） */
+export const SOURCE_MAX_CHARS = 5_000_000;
 
 /** 上传支持的扩展名 */
 export const SOURCE_EXTENSIONS = ["txt", "md", "docx"] as const;
@@ -52,15 +49,18 @@ export function checkSourceFile(file: Pick<File, "name">): string | null {
 /** 粘贴文本的本地预检：空白 / 超长 */
 export function checkSourceText(text: string): string | null {
   if (text.trim().length === 0) return "内容为空，先粘贴剧本或小说正文";
-  if (text.length > SOURCE_MAX_CHARS) return "内容超过 30 万字，请删减后再试";
+  if (text.length > SOURCE_MAX_CHARS) return "内容超过 500 万字，请删减后再试";
   return null;
 }
 
-/** 目标集数的展示 */
-export const targetEpisodesLabel = (n: number): string => (n > 0 ? `${n} 集` : "自动集数");
-
 /** 短剧状态的展示文案与是否进行中 */
-export function dramaStatusLabel(status: DramaStatus): { text: string; busy: boolean } {
+export function dramaStatusLabel(
+  status: DramaStatus,
+  phase: DramaPhase = "done",
+): { text: string; busy: boolean } {
+  // 自动规划优先：第一批规划完 status 已是 outlined，但规划还没结束
+  if (phase === "running") return { text: "规划中", busy: true };
+  if (phase === "paused") return { text: "规划已暂停", busy: false };
   switch (status) {
     case "analyzing":
       return { text: "研读中", busy: true };

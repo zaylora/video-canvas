@@ -6,7 +6,7 @@ export const DRAMA_ERR = {
   notFound: 67001,
   /** 原文格式不支持或内容为空（Msg 写具体原因） */
   sourceInvalid: 67002,
-  /** 原文超过 30 万字 */
+  /** 原文超过 500 万字 */
   sourceTooLong: 67003,
   /** 已有进行中的任务 */
   jobBusy: 67004,
@@ -28,13 +28,29 @@ export const DRAMA_ERR = {
   segmentOrderInvalid: 67012,
   /** 这一集已有生成结果，重新生成分镜会清空片段 */
   storyboardHasTakes: 67013,
+  /** 上传的文件草稿已过期（24 小时），需要重新上传 */
+  sourceExpired: 67014,
+  /** 自定义提示词或技能导致输出不合格 */
+  customPromptInvalid: 67015,
+  /** 我的提示词不存在 */
+  promptNotFound: 67016,
+  /** 提示词正文为空、超长或名称重复（Msg 写具体原因） */
+  promptInvalid: 67017,
+  /** 技能不可用（未启用或没标这个环节） */
+  skillUnavailable: 67018,
+  /** 当前阶段不允许这个操作（规划中增删集、暂停 / 继续状态不对等） */
+  phaseNotAllowed: 67019,
+  /** 单集对应原文过长（兜底） */
+  unitTooLong: 67020,
+  /** 模型上下文不足（低于 128k 或装不下一个单元） */
+  contextTooSmall: 67022,
 } as const;
 
 /** 各错误码的兜底文案：后端 Msg 为空时用 */
 const FALLBACK: Record<number, string> = {
   [DRAMA_ERR.notFound]: "短剧不存在",
   [DRAMA_ERR.sourceInvalid]: "原文格式不支持或内容为空",
-  [DRAMA_ERR.sourceTooLong]: "原文超过 30 万字，请删减后再试",
+  [DRAMA_ERR.sourceTooLong]: "原文超过 500 万字，请删减后再试",
   [DRAMA_ERR.jobBusy]: "已有进行中的任务，完成后再试",
   [DRAMA_ERR.episodeLocked]: "这一集已拆解资产，剧本已锁定",
   [DRAMA_ERR.stepNotReady]: "前置步骤未完成",
@@ -45,6 +61,14 @@ const FALLBACK: Record<number, string> = {
   [DRAMA_ERR.takeInvalid]: "只能采用本片段已成功的结果",
   [DRAMA_ERR.segmentOrderInvalid]: "排序必须包含这一集的全部片段，请刷新后重试",
   [DRAMA_ERR.storyboardHasTakes]: "这一集已有生成结果，重新生成分镜会清空片段",
+  [DRAMA_ERR.sourceExpired]: "文件已过期，请重新上传",
+  [DRAMA_ERR.customPromptInvalid]: "自定义提示词导致输出不合格，可以改用内置提示词重试",
+  [DRAMA_ERR.promptNotFound]: "这条提示词不存在，可能已被删除",
+  [DRAMA_ERR.promptInvalid]: "提示词正文为空、超长或名称重复",
+  [DRAMA_ERR.skillUnavailable]: "这个技能当前不可用，请换一个",
+  [DRAMA_ERR.phaseNotAllowed]: "当前阶段不能进行这个操作",
+  [DRAMA_ERR.unitTooLong]: "这一集对应的原文过长",
+  [DRAMA_ERR.contextTooSmall]: "模型上下文不足（低于 128k），请换一个模型",
 };
 
 /** 错误是不是这个业务码 */
@@ -59,17 +83,22 @@ export const isRevisionConflict = (error: unknown): boolean =>
   error.code !== DRAMA_ERR.episodeLocked &&
   error.code !== DRAMA_ERR.storyboardHasTakes;
 
+/** 后端 Msg 写了具体原因、优先展示 Msg 的错误码 */
+const MSG_FIRST = new Set<number>([
+  DRAMA_ERR.sourceInvalid,
+  DRAMA_ERR.stepNotReady,
+  DRAMA_ERR.promptInvalid,
+]);
+
 /**
  * 把错误转成给用户看的一句话：
- * 67002 / 67006 后端 Msg 写了具体原因，优先用 Msg；其余优先用本地文案，Msg 兜底。
+ * 67002 / 67006 / 67017 后端 Msg 写了具体原因，优先用 Msg；其余优先用本地文案，Msg 兜底。
  */
 export function dramaErrorMessage(error: unknown, fallback = "操作失败，请稍后重试"): string {
   if (!(error instanceof ApiError)) return fallback;
   const code = typeof error.code === "number" ? error.code : 0;
   const local = FALLBACK[code];
-  if (code === DRAMA_ERR.sourceInvalid || code === DRAMA_ERR.stepNotReady) {
-    return error.message || local;
-  }
+  if (MSG_FIRST.has(code)) return error.message || local;
   return local ?? (error.message || fallback);
 }
 

@@ -10,13 +10,19 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DURATION, EASE_OUT } from "@/lib/motion";
 import { cn } from "@/lib/utils";
-import { episodeEditState, nextStep } from "@/utils/drama/episodes";
+import {
+  episodeEditState,
+  MAX_JOB_EPISODES,
+  nextStep,
+  showEmptyScript,
+} from "@/utils/drama/episodes";
 import { extractScenes, normalizeSceneTitle } from "@/utils/drama/scenes";
 import type { ScriptDoc } from "@/utils/drama/stages";
 
 import { useWorkspace } from "./context";
 import { ScriptsDialog } from "./scripts-dialog";
 import { DocEditor } from "./doc-editor";
+import { EmptyScript, EpisodeMeta, type MetaField } from "./episode-meta";
 import { useAnalyzing } from "./analyzing-view";
 import { PAPER_PROSE, ProjectDoc } from "./project-doc";
 import { useEstimate } from "./use-estimate";
@@ -48,8 +54,11 @@ function TocItem({
   );
 }
 
-/** 一集的剧本：读单集（含正文）、锁定只读、自动保存 */
-function EpisodeDoc({ no }: { no: number }) {
+/**
+ * 一集的剧本：读单集（含正文）、锁定只读、自动保存。
+ * 还没有剧本（规划只出目录）时显示空状态：「这一集还没有剧本」+「生成剧本」，以及梗概、钩子、悬念。
+ */
+function EpisodeDoc({ no, onGenerate }: { no: number; onGenerate: (no: number) => void }) {
   const { drama, applyEpisode, reportSave } = useWorkspace();
   const summary = drama.episodes.find((ep) => ep.no === no);
   const [episode, setEpisode] = useState<Episode | null>(null);
@@ -97,6 +106,41 @@ function EpisodeDoc({ no }: { no: number }) {
 
   if (!summary) return null;
   const edit = episodeEditState(summary);
+  const empty = showEmptyScript(summary, episode?.scriptMd ?? "");
+  /** 改开场钩子 / 结尾悬念：带 revision 乐观锁；冲突时载入最新内容并提示，失败让输入框留在编辑态 */
+  const saveMeta = async (field: MetaField, value: string) => {
+    if (!episode) return;
+    try {
+      const saved = await updateEpisode(drama.id, no, {
+        revision: episode.revision,
+        [field]: value,
+      });
+      known.current = `${saved.revision}:${saved.scriptStatus}`;
+      setEpisode(saved);
+      applyEpisode(no, {
+        revision: saved.revision,
+        hook: saved.hook,
+        cliffhanger: saved.cliffhanger,
+        updatedAt: saved.updatedAt,
+      });
+    } catch (e) {
+      if (isRevisionConflict(e)) {
+        toast.warning(`第 ${no} 集在别处被修改过，已加载最新内容，你的改动没有保存`);
+        const latest = await getEpisode(drama.id, no).catch(() => null);
+        if (latest) {
+          setEpisode(latest);
+          applyEpisode(no, {
+            revision: latest.revision,
+            hook: latest.hook,
+            cliffhanger: latest.cliffhanger,
+          });
+        }
+      } else {
+        toast.error(dramaErrorMessage(e, "保存失败，请稍后重试"));
+      }
+      throw e;
+    }
+  };
   if (failed && !episode) {
     return (
       <div className="text-muted-foreground p-10 text-center text-sm">
@@ -131,6 +175,11 @@ function EpisodeDoc({ no }: { no: number }) {
               已锁定
             </span>
           )}
+          {empty && (
+            <span className="bg-muted text-muted-foreground inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-xs">
+              待写剧本
+            </span>
+          )}
         </div>
         {summary.locked && (
           <div className="bg-status-warning/10 mt-3 flex items-center gap-2 rounded-lg px-3 py-2 text-sm">
@@ -143,6 +192,8 @@ function EpisodeDoc({ no }: { no: number }) {
             <Loader2 className="size-6 animate-spin" />
             正在生成这一集的剧本…
           </div>
+        ) : empty ? (
+          <EmptyScript episode={summary} onGenerate={() => onGenerate(no)} onSaveMeta={saveMeta} />
         ) : (
           <div
             ref={paper}
@@ -192,36 +243,40 @@ function EpisodeDoc({ no }: { no: number }) {
           </div>
         )}
       </div>
-      {/* 页边：场次目录和梗概，宽屏才有 */}
+      {/* 页边：场次目录、梗概 / 钩子 / 悬念和对应原文，宽屏才有 */}
       <aside className="sticky top-6 hidden w-52 shrink-0 self-start pt-12 xl:block">
-        <div className="text-muted-foreground mb-2 font-mono text-[10.5px] tracking-[0.14em]">
-          本集场次
-        </div>
-        {scenes.length > 0 ? (
-          <ol className="grid gap-0.5">
-            {scenes.map((title, index) => (
-              <li key={`${index}:${title}`}>
-                <button
-                  type="button"
-                  onClick={() => jumpTo(title)}
-                  className="text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-ring/50 w-full truncate rounded-lg px-2 py-1.5 text-left text-[13px] outline-none focus-visible:ring-2"
-                >
-                  {title}
-                </button>
-              </li>
-            ))}
-          </ol>
-        ) : (
-          <p className="text-muted-foreground text-xs">
-            剧本里没有识别到场次标题（二到四级标题，或加粗的「1-1 地点」）
-          </p>
+        {!empty && (
+          <>
+            <div className="text-muted-foreground mb-2 font-mono text-[10.5px] tracking-[0.14em]">
+              本集场次
+            </div>
+            {scenes.length > 0 ? (
+              <ol className="mb-5 grid gap-0.5">
+                {scenes.map((title, index) => (
+                  <li key={`${index}:${title}`}>
+                    <button
+                      type="button"
+                      onClick={() => jumpTo(title)}
+                      className="text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-ring/50 w-full truncate rounded-lg px-2 py-1.5 text-left text-[13px] outline-none focus-visible:ring-2"
+                    >
+                      {title}
+                    </button>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p className="text-muted-foreground mb-5 text-xs">
+                剧本里没有识别到场次标题（二到四级标题，或加粗的「1-1 地点」）
+              </p>
+            )}
+          </>
         )}
-        {summary.synopsis && (
-          <div className="border-border mt-5 border-l-2 pl-3">
-            <b className="text-muted-foreground block text-[12.5px] font-medium">梗概</b>
-            <p className="text-muted-foreground mt-0.5 text-xs leading-5">{summary.synopsis}</p>
-          </div>
-        )}
+        <EpisodeMeta
+          episode={summary}
+          unitKind={drama.unitKind}
+          inEmptyState={empty}
+          onSaveMeta={saveMeta}
+        />
       </aside>
     </div>
   );
@@ -231,18 +286,24 @@ function EpisodeDoc({ no }: { no: number }) {
  * 底部「下一步」浮条：生成分集剧本 / 资产拆解，点了都先弹框选集数；
  * 有进行中任务时禁用并写明原因
  */
-function NextStepPill({ onBreakdown }: { onBreakdown: () => void }) {
+function NextStepPill({
+  onBreakdown,
+  onScripts,
+}: {
+  onBreakdown: () => void;
+  onScripts: () => void;
+}) {
   const { drama, jobs } = useWorkspace();
   const step = nextStep(drama, jobs);
   const estimate = useEstimate(
     drama.id,
-    step.kind === "scripts" ? { step: "scripts", episodes: step.episodes } : null,
+    step.kind === "scripts"
+      ? { step: "scripts", episodes: step.episodes.slice(0, MAX_JOB_EPISODES) }
+      : null,
   );
-  const [scriptsOpen, setScriptsOpen] = useState(false);
 
   return (
     <>
-      <ScriptsDialog open={scriptsOpen} onOpenChange={setScriptsOpen} />
       <AnimatePresence>
         {step.kind !== "none" && (
           <motion.div
@@ -258,7 +319,8 @@ function NextStepPill({ onBreakdown }: { onBreakdown: () => void }) {
                 <span className="tabular-nums">{step.episodes.length} 集还没有剧本</span>
                 {estimate.status === "ready" && (
                   <span className="text-muted-foreground text-xs tabular-nums">
-                    约 <span className="text-credit">{estimate.credits}</span> 积分
+                    {step.episodes.length > MAX_JOB_EPISODES && `前 ${MAX_JOB_EPISODES} 集 `}约{" "}
+                    <span className="text-credit">{estimate.credits}</span> 积分
                   </span>
                 )}
               </>
@@ -270,7 +332,7 @@ function NextStepPill({ onBreakdown }: { onBreakdown: () => void }) {
               className="rounded-full"
               disabled={!!step.disabledReason}
               title={step.disabledReason ?? undefined}
-              onClick={step.kind === "scripts" ? () => setScriptsOpen(true) : onBreakdown}
+              onClick={step.kind === "scripts" ? onScripts : onBreakdown}
             >
               {step.kind === "scripts" ? "生成分集剧本" : "资产拆解"}
             </Button>
@@ -307,9 +369,16 @@ export function ScriptArea({
 }) {
   const { drama } = useWorkspace();
   const { analyzing, showAnalyzing } = useAnalyzing();
+  /** 写剧本弹窗：从浮条打开用默认选择，从某一集的空状态打开预选这一集 */
+  const [scripts, setScripts] = useState<{ open: boolean; initial?: number[] }>({ open: false });
 
   return (
     <div className="flex h-full min-h-0">
+      <ScriptsDialog
+        open={scripts.open}
+        initial={scripts.initial}
+        onOpenChange={(open) => setScripts((prev) => ({ ...prev, open }))}
+      />
       <div className="relative min-w-0 flex-1">
         <div className="h-full overflow-y-auto">
           {drama.status === "failed" && !analyzing && (
@@ -334,9 +403,22 @@ export function ScriptArea({
               </TocItem>
             ))}
           </div>
-          {doc ? <ProjectDoc key={doc} doc={doc} /> : <EpisodeDoc key={ep} no={ep} />}
+          {doc ? (
+            <ProjectDoc key={doc} doc={doc} />
+          ) : (
+            <EpisodeDoc
+              key={ep}
+              no={ep}
+              onGenerate={(no) => setScripts({ open: true, initial: [no] })}
+            />
+          )}
         </div>
-        {!showAnalyzing && <NextStepPill onBreakdown={onBreakdownOpen} />}
+        {!showAnalyzing && (
+          <NextStepPill
+            onBreakdown={onBreakdownOpen}
+            onScripts={() => setScripts({ open: true })}
+          />
+        )}
       </div>
     </div>
   );

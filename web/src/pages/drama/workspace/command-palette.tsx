@@ -5,6 +5,7 @@ import {
   Moon,
   ScanSearch,
   ScrollText,
+  SlidersHorizontal,
   Sun,
   Users,
   type LucideIcon,
@@ -42,11 +43,14 @@ export function CommandPalette({
   onOpenChange,
   onGo,
   onBreakdownOpen,
+  onPromptsOpen,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onGo: (stage: WorkspaceStage, ep?: number) => void;
   onBreakdownOpen: () => void;
+  /** 打开「提示词设置」 */
+  onPromptsOpen: () => void;
 }) {
   const { drama } = useWorkspace();
   const theme = useSettingsStore((state) => state.theme);
@@ -87,6 +91,10 @@ export function CommandPalette({
             <CommandItem value="操作 资产拆解" onSelect={run(onBreakdownOpen)}>
               <ScanSearch />
               资产拆解
+            </CommandItem>
+            <CommandItem value="操作 提示词设置 提示词 技能" onSelect={run(onPromptsOpen)}>
+              <SlidersHorizontal />
+              提示词设置
             </CommandItem>
             <CommandItem
               value="操作 切换 明暗 主题"

@@ -59,7 +59,7 @@ export function DramaCard({
   onDelete: () => void;
 }) {
   const [confirm, setConfirm] = useState(false);
-  const status = dramaStatusLabel(drama.status);
+  const status = dramaStatusLabel(drama.status, drama.phase);
   return (
     <motion.div
       data-slot="drama-card"

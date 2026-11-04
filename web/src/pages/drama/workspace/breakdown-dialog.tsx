@@ -1,9 +1,8 @@
 import { useState } from "react";
-import { Check, Lock } from "lucide-react";
+import { Lock } from "lucide-react";
 
 import { submitJob } from "@/api/drama";
 import { dramaErrorMessage } from "@/api/drama/errors";
-import type { DramaRatio } from "@/api/drama/type";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -12,35 +11,42 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { cn } from "@/lib/utils";
 import { useDramaJobsStore } from "@/store/drama";
 import {
   breakdownOptions,
   breakdownSubmit,
   defaultBreakdownSelection,
-  ratioFixed,
+  MAX_JOB_EPISODES,
+  selectByRange,
 } from "@/utils/drama/episodes";
-import { RATIOS } from "@/utils/drama/options";
 
 import { useWorkspace } from "./context";
+import { EpisodeGrid, RangeSelect } from "./episode-pick";
 import { useEstimate } from "./use-estimate";
 
-/** 对话框主体：每次打开重新挂载，选择状态回到默认 */
-function BreakdownBody({ onClose, onStarted }: { onClose: () => void; onStarted: () => void }) {
+/**
+ * 对话框主体：每次打开重新挂载，选择状态回到默认。
+ * 只列已规划的集；集多时网格是虚拟列表，可以「按范围选：第 a–b 集」。比例建剧时已定，这里不再选。
+ */
+export function BreakdownBody({
+  onClose,
+  onStarted,
+}: {
+  onClose: () => void;
+  onStarted: () => void;
+}) {
   const { drama, refresh } = useWorkspace();
-  const fixed = ratioFixed(drama.episodes);
   const options = breakdownOptions(drama.episodes);
-  const [ratio, setRatio] = useState<DramaRatio>(drama.ratio);
   const [selected, setSelected] = useState<number[]>(() =>
     defaultBreakdownSelection(drama.episodes),
   );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const submit = breakdownSubmit(ratio, selected);
+  const submit = breakdownSubmit(selected);
   const estimate = useEstimate(
     drama.id,
-    submit.ok ? { step: "breakdown", episodes: selected, ratio } : null,
+    submit.ok ? { step: "breakdown", episodes: selected } : null,
   );
 
   const toggle = (no: number) =>
@@ -54,7 +60,7 @@ function BreakdownBody({ onClose, onStarted }: { onClose: () => void; onStarted:
     setSubmitting(true);
     setError(null);
     try {
-      const job = await submitJob(drama.id, { step: "breakdown", episodes: selected, ratio });
+      const job = await submitJob(drama.id, { step: "breakdown", episodes: selected });
       useDramaJobsStore.getState().applyJob(drama.id, job);
       void refresh();
       onClose();
@@ -71,50 +77,6 @@ function BreakdownBody({ onClose, onStarted }: { onClose: () => void; onStarted:
         <DialogTitle>资产拆解</DialogTitle>
       </DialogHeader>
 
-      {/* 比例在首页新建时就定了；只有以前建的、没定比例的老短剧才在这里选 */}
-      {!drama.ratio && (
-        <section className="grid gap-2">
-          <div className="flex items-center gap-2 text-sm">
-            <b>成片比例</b>
-            <span className="bg-status-warning/15 text-status-warning rounded-full px-2 py-px text-xs">
-              必选
-            </span>
-            {fixed && (
-              <span className="text-muted-foreground ml-auto text-xs">
-                已有资产按这个比例生成，不能再改
-              </span>
-            )}
-          </div>
-          <div className="grid grid-cols-6 gap-1.5 max-sm:grid-cols-3">
-            {RATIOS.map((item) => {
-              const max = Math.max(item.w, item.h);
-              return (
-                <button
-                  key={item.key}
-                  type="button"
-                  aria-pressed={ratio === item.key}
-                  disabled={fixed && drama.ratio !== item.key}
-                  onClick={() => setRatio(item.key)}
-                  className={cn(
-                    "focus-visible:ring-ring/50 flex h-14 flex-col items-center justify-center gap-1 rounded-lg border text-xs tabular-nums outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-40",
-                    ratio === item.key
-                      ? "border-foreground bg-muted font-medium"
-                      : "hover:bg-muted/60",
-                  )}
-                >
-                  <span
-                    aria-hidden
-                    className="rounded-[3px] border-[1.5px] border-current"
-                    style={{ width: (item.w / max) * 22, height: (item.h / max) * 22 }}
-                  />
-                  {item.key}
-                </button>
-              );
-            })}
-          </div>
-        </section>
-      )}
-
       <section className="grid gap-2">
         <div className="flex items-center gap-2 text-sm">
           <b>解析范围</b>
@@ -126,40 +88,29 @@ function BreakdownBody({ onClose, onStarted }: { onClose: () => void; onStarted:
             size="sm"
             className="ml-auto"
             disabled={available.length === 0}
-            onClick={() => setSelected(available)}
+            onClick={() => setSelected(available.slice(0, MAX_JOB_EPISODES))}
           >
             全选可用
           </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={selected.length === 0}
+            onClick={() => setSelected([])}
+          >
+            清空
+          </Button>
         </div>
-        <div className="grid max-h-56 grid-cols-2 gap-1.5 overflow-y-auto sm:grid-cols-3">
-          {options.map((option) => {
-            const on = selected.includes(option.no);
-            return (
-              <button
-                key={option.no}
-                type="button"
-                aria-pressed={on}
-                disabled={option.disabled}
-                title={option.reason ?? undefined}
-                onClick={() => toggle(option.no)}
-                className={cn(
-                  "focus-visible:ring-ring/50 flex min-h-9 items-center gap-2 rounded-lg border px-2 text-left text-sm outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-45",
-                  on ? "border-foreground bg-muted" : "hover:bg-muted/60",
-                )}
-              >
-                <span className="bg-background grid size-4 shrink-0 place-items-center rounded border">
-                  {on ? (
-                    <Check className="size-3" />
-                  ) : option.reason === "已拆解" ? (
-                    <Lock className="size-2.5" />
-                  ) : null}
-                </span>
-                <span className="text-muted-foreground tabular-nums">{option.no}.</span>
-                <span className="truncate">{option.title}</span>
-              </button>
-            );
-          })}
-        </div>
+        <RangeSelect
+          max={options.at(-1)?.no ?? 1}
+          onSelect={(from, to) => setSelected(selectByRange(options, from, to))}
+        />
+        <EpisodeGrid
+          options={options}
+          selected={selected}
+          onToggle={toggle}
+          maxHeightClass="max-h-56"
+        />
       </section>
 
       <div className="bg-status-warning/10 flex items-center gap-2 rounded-lg px-3 py-2 text-sm">
@@ -201,7 +152,7 @@ function BreakdownBody({ onClose, onStarted }: { onClose: () => void; onStarted:
 
 /**
  * 资产拆解对话框（剧本区底栏、资产区顶栏共用）：集数多选，锁定的、没有剧本的禁用。
- * 比例在首页新建时就定了，这里不再显示；只有没定比例的老短剧才在这里必选。
+ * 比例在建剧（开拍设置）时就定了，这里没有比例选择。
  */
 export function BreakdownDialog({
   open,
