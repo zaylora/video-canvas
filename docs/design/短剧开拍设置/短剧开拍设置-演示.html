@@ -1,0 +1,903 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>短剧开拍设置</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+    <style>
+      :root {
+        --radius: 0.625rem;
+        --background: 0 0% 100%; --foreground: 240 10% 3.9%; --card: 0 0% 100%;
+        --muted: 240 4.8% 95.9%; --muted-foreground: 240 3.8% 46.1%;
+        --primary: 240 5.9% 10%; --primary-foreground: 0 0% 98%;
+        --accent: 240 4.8% 95.9%; --border: 240 5.9% 90%;
+        --ok: 5 150 105; --bad: 220 38 38; --warn: 180 83 9; --info: 2 132 199; --violet: 124 58 237; --beam: 234 140 30;
+        --chrome: oklch(1 0 0 / 0.82); --chrome-border: oklch(0 0 0 / 0.08); --chrome-hover: oklch(0 0 0 / 0.05);
+        --stage: 240 5% 96%;
+        color-scheme: light;
+      }
+      .dark {
+        --background: 240 10% 3.9%; --foreground: 0 0% 98%; --card: 240 10% 5.5%;
+        --muted: 240 3.7% 15.9%; --muted-foreground: 240 5% 64.9%;
+        --primary: 0 0% 98%; --primary-foreground: 240 5.9% 10%;
+        --accent: 240 3.7% 15.9%; --border: 240 3.7% 17%;
+        --ok: 52 211 153; --bad: 248 113 113; --warn: 251 191 36; --info: 56 189 248; --violet: 167 139 250;
+        --chrome: oklch(0.2 0 0 / 0.78); --chrome-border: oklch(1 0 0 / 0.08); --chrome-hover: oklch(1 0 0 / 0.07);
+        --stage: 240 8% 6%;
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body { margin: 0; font-family: Geist, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; background: hsl(var(--background)); color: hsl(var(--foreground)); -webkit-font-smoothing: antialiased; line-height: 1.55; }
+      code, .mono { font-family: "Geist Mono", "SF Mono", Consolas, monospace; }
+      code { font-size: 0.92em; background: hsl(var(--muted)); padding: 1px 5px; border-radius: 5px; }
+      [data-lucide] { width: 1em; height: 1em; flex: none; }
+      h1, h2, h3, h4, p { margin: 0; }
+      button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+      input, textarea, select { font: inherit; color: inherit; }
+      table { border-collapse: collapse; width: 100%; }
+      th { font-weight: 500; text-align: left; }
+      [hidden] { display: none !important; }
+      .muted { color: hsl(var(--muted-foreground)); }
+      .row { display: flex; align-items: center; gap: 8px; }
+      .wrapflex { flex-wrap: wrap; }
+      .spacer { margin-left: auto; }
+      .top { position: sticky; top: 0; z-index: 30; background: hsl(var(--background) / 0.92); backdrop-filter: blur(8px); border-bottom: 1px solid hsl(var(--border)); }
+      .top-in { max-width: 1160px; margin: 0 auto; padding: 0 20px; display: flex; align-items: center; gap: 16px; height: 56px; }
+      .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; white-space: nowrap; }
+      .logo { width: 28px; height: 28px; border-radius: 8px; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; }
+      .tabs { display: flex; gap: 2px; margin-left: 8px; overflow-x: auto; }
+      .tab { height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13px; font-weight: 500; color: hsl(var(--muted-foreground)); white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; transition: background 0.15s, color 0.15s; }
+      .tab:hover { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+      .tab[aria-selected="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn { height: 32px; padding: 0 10px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; white-space: nowrap; }
+      .btn:hover { background: hsl(var(--accent)); }
+      .btn-outline { border: 1px solid hsl(var(--border)); }
+      .switch { width: 34px; height: 20px; border-radius: 999px; background: hsl(var(--border)); position: relative; transition: background 0.15s; }
+      .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+      .switch[aria-checked="true"] { background: rgb(var(--violet)); }
+      .switch[aria-checked="true"]::after { transform: translateX(14px); }
+      .wrap { max-width: 1160px; margin: 0 auto; padding: 32px 20px 80px; }
+      .h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+      .lead { margin-top: 10px; max-width: 860px; font-size: 15px; color: hsl(var(--muted-foreground)); }
+      .lead b { color: hsl(var(--foreground)); }
+      .sec { margin-top: 36px; }
+      .sec > h2 { font-size: 18px; font-weight: 600; }
+      .sec > .sub { margin: 4px 0 14px; max-width: 860px; font-size: 13.5px; color: hsl(var(--muted-foreground)); }
+      .card { border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: var(--radius); padding: 16px; }
+      .grid { display: grid; gap: 12px; }
+      .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      @media (max-width: 820px) { .g2, .g3 { grid-template-columns: 1fr; } .top-in { padding: 0 12px; } .wrap { padding: 24px 16px 64px; } .demo-grid { grid-template-columns: 1fr !important; } }
+      ul.list { margin: 0; padding-left: 18px; font-size: 13.5px; }
+      .tag { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 999px; font-size: 11.5px; font-weight: 500; white-space: nowrap; }
+      .t-ok { background: rgb(var(--ok) / 0.12); color: rgb(var(--ok)); }
+      .t-bad { background: rgb(var(--bad) / 0.12); color: rgb(var(--bad)); }
+      .t-warn { background: rgb(var(--warn) / 0.12); color: rgb(var(--warn)); }
+      .t-info { background: rgb(var(--info) / 0.12); color: rgb(var(--info)); }
+      .t-violet { background: rgb(var(--violet) / 0.12); color: rgb(var(--violet)); }
+      .t-mute { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
+      .callout { display: flex; gap: 10px; padding: 12px 14px; border-radius: var(--radius); font-size: 13.5px; border: 1px solid; }
+      .callout > i { margin-top: 3px; }
+      .c-info { background: rgb(var(--info) / 0.07); border-color: rgb(var(--info) / 0.3); } .c-info > i { color: rgb(var(--info)); }
+      .c-warn { background: rgb(var(--warn) / 0.07); border-color: rgb(var(--warn) / 0.3); } .c-warn > i { color: rgb(var(--warn)); }
+      .c-bad { background: rgb(var(--bad) / 0.07); border-color: rgb(var(--bad) / 0.3); } .c-bad > i { color: rgb(var(--bad)); }
+      .flow { display: flex; align-items: stretch; gap: 6px; flex-wrap: wrap; padding: 14px; border-radius: var(--radius); }
+      .flow .node { flex: 1 1 130px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 12px; font-size: 12.5px; }
+      .flow .node b { display: block; font-size: 13px; margin-bottom: 2px; }
+      .flow .node.hl { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+      .flow .arrow { display: grid; place-items: center; color: hsl(var(--muted-foreground)); }
+      .cmp-wrap { overflow-x: auto; border: 1px solid hsl(var(--border)); border-radius: var(--radius); }
+      .cmp th, .cmp td { padding: 9px 12px; font-size: 13px; vertical-align: top; border-bottom: 1px solid hsl(var(--border)); }
+      .cmp tr:last-child th, .cmp tr:last-child td { border-bottom: 0; }
+      .cmp thead th { background: hsl(var(--muted)); font-size: 12.5px; white-space: nowrap; }
+      .cmp tbody th { width: 150px; color: hsl(var(--muted-foreground)); font-weight: 500; }
+      .cmp .y { color: rgb(var(--ok)); }
+      .cmp .m { color: rgb(var(--warn)); font-weight: 500; }
+      .steps { list-style: none; counter-reset: s; display: grid; gap: 12px; }
+      .steps li { counter-increment: s; position: relative; padding-left: 32px; font-size: 13.5px; }
+      .steps li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 22px; height: 22px; border-radius: 50%; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; font-size: 12px; font-weight: 600; }
+      .steps li small { display: block; color: hsl(var(--muted-foreground)); font-size: 12.5px; }
+      .codeblock { background: hsl(var(--muted)); border-radius: var(--radius); padding: 14px; font-family: "Geist Mono", "SF Mono", Consolas, monospace; font-size: 12.5px; overflow-x: auto; }
+      .frame { border: 1px solid hsl(var(--border)); border-radius: 12px; overflow: hidden; background: hsl(var(--stage)); }
+      .frame-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: hsl(var(--muted)); font-size: 12px; color: hsl(var(--muted-foreground)); }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: hsl(var(--border)); }
+      .proto { min-height: 640px; position: relative; overflow: hidden; }
+      .note { outline: 1.5px dashed rgb(var(--violet)); outline-offset: 3px; position: relative; }
+      .note-txt { display: none; margin-top: 6px; font-size: 11.5px; line-height: 1.5; color: rgb(var(--violet)); }
+      .show-notes .note-txt { display: block; }
+      body:not(.show-notes) .note { outline: none; }
+      .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 90; pointer-events: none; }
+      .toast > div { display: flex; align-items: center; gap: 8px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 14px; font-size: 13px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); }
+
+      /* 原型：清透胶囊 */
+      .chrome { background: var(--chrome); border: 1px solid var(--chrome-border); backdrop-filter: blur(18px) saturate(1.5); }
+      .pill { height: 34px; padding: 0 14px; border-radius: 999px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; transition: background 0.15s; white-space: nowrap; }
+      .pill:hover:not(:disabled) { background: var(--chrome-hover); }
+      .pill.on { background: hsl(var(--foreground)); color: hsl(var(--background)); }
+      .pill:disabled { opacity: 0.45; cursor: not-allowed; }
+      .pill.warn-ring { box-shadow: 0 0 0 1.5px rgb(var(--warn)); }
+      .pill.sm { height: 28px; padding: 0 10px; font-size: 12.5px; }
+      .seg { display: inline-flex; padding: 3px; border-radius: 999px; background: var(--chrome-hover); }
+      .seg .pill { height: 30px; }
+      .home { padding: 48px 24px; display: grid; place-items: start center; }
+      .home h3 { font-size: 30px; font-weight: 600; text-align: center; letter-spacing: 0.02em; }
+      .home h3 span { color: rgb(var(--beam)); }
+      .upcard { width: min(760px, 100%); margin-top: 24px; border-radius: 28px; padding: 10px; }
+      .drop { margin-top: 10px; height: 170px; border-radius: 20px; border: 1px dashed color-mix(in oklch, hsl(var(--foreground)) 18%, transparent); display: grid; place-items: center; text-align: center; font-size: 15px; }
+      .drop.err { border-color: rgb(var(--bad) / 0.6); }
+      .send { width: 42px; height: 42px; border-radius: 50%; background: hsl(var(--foreground)); color: hsl(var(--background)); display: grid; place-items: center; }
+      .send:disabled { background: var(--chrome-hover); color: hsl(var(--muted-foreground)); }
+      .spin { animation: spin 0.9s linear infinite; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      .scrim { position: absolute; inset: 0; background: rgb(0 0 0 / 0.35); display: grid; place-items: center; padding: 16px; z-index: 5; }
+      .dlg { width: min(640px, 100%); max-height: 608px; border-radius: 24px; overflow: hidden; position: relative; box-shadow: 0 30px 80px rgb(0 0 0 / 0.3); }
+      .slides { display: flex; width: 200%; transition: transform 0.24s cubic-bezier(0.2, 0.8, 0.2, 1); }
+      .slides > div { width: 50%; max-height: 608px; overflow-y: auto; padding: 18px 20px; }
+      .dlg h4 { font-size: 17px; font-weight: 600; }
+      .lbl { font-size: 12.5px; color: hsl(var(--muted-foreground)); width: 76px; flex: none; }
+      .fld { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--chrome-border); flex-wrap: wrap; }
+      .ratio { width: 92px; height: 66px; border-radius: 14px; display: grid; place-items: center; gap: 2px; font-size: 12.5px; border: 1px solid var(--chrome-border); }
+      .ratio.on { border-color: hsl(var(--foreground)); box-shadow: 0 0 0 1px hsl(var(--foreground)); }
+      .ratio i.box { display: block; border: 1.5px solid currentColor; border-radius: 3px; }
+      .menu { position: absolute; z-index: 9; min-width: 270px; max-height: 300px; overflow-y: auto; border-radius: 16px; padding: 6px; box-shadow: 0 16px 40px rgb(0 0 0 / 0.22); }
+      .menu .mi { width: 100%; display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 10px; font-size: 13px; text-align: left; }
+      .menu .mi:hover:not(:disabled) { background: var(--chrome-hover); }
+      .menu .mi:disabled { opacity: 0.5; cursor: not-allowed; }
+      .menu .grp { font-size: 11.5px; color: hsl(var(--muted-foreground)); padding: 8px 10px 4px; }
+      .ta { width: 100%; min-height: 180px; resize: vertical; border-radius: 14px; border: 1px solid var(--chrome-border); background: transparent; padding: 10px 12px; font-size: 13px; line-height: 1.6; }
+      .inp { height: 34px; border-radius: 999px; border: 1px solid var(--chrome-border); background: transparent; padding: 0 14px; font-size: 13px; }
+      details.ro { border: 1px solid var(--chrome-border); border-radius: 12px; padding: 8px 12px; margin-top: 8px; font-size: 12.5px; }
+      details.ro summary { cursor: pointer; color: hsl(var(--muted-foreground)); }
+      details.ro pre { margin: 8px 0 0; white-space: pre-wrap; font-family: "Geist Mono", Consolas, monospace; font-size: 11.5px; color: hsl(var(--muted-foreground)); }
+      .errtxt { color: rgb(var(--bad)); font-size: 12.5px; }
+      .ws { display: grid; grid-template-columns: 230px minmax(0, 1fr); height: 640px; }
+      .rail { border-right: 1px solid var(--chrome-border); overflow-y: auto; padding: 10px 8px; font-size: 12.5px; }
+      .ep { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 10px; cursor: pointer; }
+      .ep:hover, .ep.sel { background: var(--chrome-hover); }
+      .ep .st { margin-left: auto; }
+      .wsmain { padding: 16px 20px; overflow-y: auto; }
+      .bar { border-radius: 999px; padding: 6px 6px 6px 16px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+      .prog { height: 6px; border-radius: 999px; background: var(--chrome-hover); overflow: hidden; flex: 1 1 120px; min-width: 100px; }
+      .prog > i { display: block; height: 100%; background: rgb(var(--beam)); transition: width 0.3s; }
+      .sheet { position: absolute; top: 0; right: 0; bottom: 0; width: min(420px, 100%); z-index: 7; padding: 18px; overflow-y: auto; box-shadow: -20px 0 50px rgb(0 0 0 / 0.2); }
+      .ctrls { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12.5px; }
+      .ctrls label { display: inline-flex; align-items: center; gap: 6px; }
+      .unitbar { display: flex; height: 26px; border-radius: 8px; overflow: hidden; border: 1px solid hsl(var(--border)); }
+      .unitbar > span { display: block; height: 100%; }
+      .legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; margin-top: 8px; }
+      .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 4px; vertical-align: -1px; }
+      .optbtn { width: 100%; text-align: left; border: 1px solid hsl(var(--border)); border-radius: 10px; padding: 10px 12px; font-size: 13px; background: hsl(var(--card)); }
+      .optbtn[aria-pressed="true"] { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+      .kv { display: grid; grid-template-columns: 140px 1fr; gap: 6px 12px; font-size: 13px; }
+      .kv > :nth-child(odd) { color: hsl(var(--muted-foreground)); }
+
+      /* 完整流程 */
+      .lane { display: grid; grid-template-columns: 96px minmax(0, 1fr); border: 1px solid hsl(var(--border)); border-radius: var(--radius); overflow: hidden; }
+      .lane > .who { padding: 12px; font-size: 12.5px; font-weight: 600; background: hsl(var(--muted)); border-bottom: 1px solid hsl(var(--border)); display: flex; align-items: center; }
+      .lane > .what { padding: 10px 12px; border-bottom: 1px solid hsl(var(--border)); display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12.5px; }
+      .lane > :nth-last-child(-n + 2) { border-bottom: 0; }
+      .chip { border: 1px solid hsl(var(--border)); border-radius: 8px; padding: 4px 8px; background: hsl(var(--card)); white-space: nowrap; }
+      .chip.u { border-color: rgb(var(--beam) / 0.6); background: rgb(var(--beam) / 0.08); }
+      .chip.ai { border-color: rgb(var(--info) / 0.5); background: rgb(var(--info) / 0.07); }
+      .chip.loop { border-style: dashed; border-color: rgb(var(--violet) / 0.6); }
+      .tl { position: relative; display: grid; gap: 14px; margin-top: 6px; }
+      .tl::before { content: ""; position: absolute; left: 15px; top: 10px; bottom: 10px; width: 2px; background: hsl(var(--border)); }
+      .st-card { position: relative; padding-left: 44px; }
+      .st-num { position: absolute; left: 0; top: 10px; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; font-weight: 700; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .st-num.u { background: rgb(var(--beam)); color: #fff; }
+      .st-card .card { padding: 14px 16px; }
+      .st-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+      .st-head h3 { font-size: 15.5px; font-weight: 600; }
+      .st-grid { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 6px 12px; margin-top: 10px; font-size: 13px; }
+      .st-grid > b { color: hsl(var(--muted-foreground)); font-weight: 500; }
+      .st-grid ul { margin: 0; padding-left: 16px; }
+      .phase-h { margin: 22px 0 4px; display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: hsl(var(--muted-foreground)); }
+      .phase-h::after { content: ""; flex: 1; height: 1px; background: hsl(var(--border)); }
+      .ex th, .ex td { white-space: nowrap; }
+      @media (max-width: 820px) { .lane { grid-template-columns: 1fr; } .st-grid { grid-template-columns: 1fr; } .ws { grid-template-columns: 1fr; height: auto; } .rail { max-height: 200px; } }
+    </style>
+  </head>
+
+  <body class="show-notes">
+    <header class="top">
+      <div class="top-in">
+        <div class="brand"><span class="logo"><i data-lucide="clapperboard"></i></span>短剧开拍设置</div>
+        <div class="tabs" role="tablist">
+          <button class="tab" role="tab" data-tab="overview" aria-selected="true"><i data-lucide="map"></i>总览</button>
+          <button class="tab" role="tab" data-tab="flow" aria-selected="false"><i data-lucide="list-ordered"></i>完整流程</button>
+          <button class="tab" role="tab" data-tab="demo" aria-selected="false"><i data-lucide="split"></i>长篇怎么切</button>
+          <button class="tab" role="tab" data-tab="proto" aria-selected="false"><i data-lucide="mouse-pointer-click"></i>可点击原型</button>
+          <button class="tab" role="tab" data-tab="impl" aria-selected="false"><i data-lucide="database"></i>数据与接口</button>
+        </div>
+        <div class="spacer row">
+          <label class="row muted" style="font-size: 12px">设计标注
+            <button class="switch" id="notesSw" role="switch" aria-checked="true" onclick="toggleNotes()"></button>
+          </label>
+          <button class="btn" onclick="document.documentElement.classList.toggle('dark')" aria-label="切换明暗主题"><i data-lucide="sun-moon"></i></button>
+        </div>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <!-- ============ 总览 ============ -->
+      <section id="tab-overview">
+        <h1 class="h1">点发送后先「预检」，在一个弹窗里定好怎么拍；系统自动研读和分集，剧本由你选集来写</h1>
+        <p class="lead">
+          上传卡片只留上传区和发送键。点发送，后端先解析文件、切章、判断剧本还是小说，再弹出<b>开拍设置</b>：识别结果、<b>规划范围</b>（全部 / 做到第 N 章）、画幅三选一、题材画风单集时长模型、四个环节的提示词（内置 / 我的 / 技能）。
+          点开始后<b>只自动做「粗读全书」和「分集规划」</b>；<b>写剧本、资产拆解和现在一样，由你在分集目录里选集发起</b>，规划还在跑时，已规划好的集就能先写、先拆、先出视频。
+          为了撑住 <b>500 万字</b>：研读只读抽样，<b>分集规划按批读完整原文</b>，<b>每集剧本读这一集的完整原文</b>。<b>剧本型输入不走小说转剧本</b>。
+        </p>
+
+        <div class="callout c-info" style="margin-top: 16px">
+          <i data-lucide="info"></i>
+          <div>
+            <b>阅读说明。</b>项目现状来自读代码（2026-11-04）；长篇做法参考开源项目 open-ai-canvas 的源码（MIT）。本页的弹窗、阶段、接口都是<b>提案，尚未实现</b>；原型里的数字、耗时、积分都是示意。主文档：<code>短剧开拍设置.md</code>。<br />
+            <span class="muted">核实度图例：</span>
+            <span class="tag t-ok">已核对代码 / 源码</span>
+            <span class="tag t-info">调研检索，未逐条复核</span>
+            <span class="tag t-warn">未验证 · 需实测</span>
+            <span class="tag t-violet">提案</span>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>主线：从拖入文件到每集出片</h2>
+          <p class="sub">上一行是系统自动做的，下一行是用户选集做的（和现在一样），两行可以同时进行。</p>
+          <div class="flow note">
+            <div class="node"><b>预检</b>解析、去噪、切章、规则识别。不调模型、不扣积分</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>开拍设置</b>确认类型、规划范围、画幅、提示词 → 开始</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>粗读全书（自动）</b>抽样 → 人物表、梗概、主线</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>分集规划（自动）</b>按批读完整原文 → 分集目录，规划到范围终点就停</div>
+          </div>
+          <div class="flow note" style="margin-top: 8px">
+            <div class="node hl"><b>选集 → 写剧本</b>每集读这一集的完整原文</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>选集 → 资产拆解</b>拆角色场景道具，锁定这些集</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>资产图提示词（自动接上）</b>给新资产写图片提示词</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>逐集出片</b>生成脚本 → 片段视频 → 合成</div>
+          </div>
+          <div class="note-txt">设计：自动只做研读和分集规划，成本低，也不会锁定任何东西；写剧本和拆解花钱更多、拆解还会锁定剧本，所以保持现状由用户选集发起。没有哪一步把整本书交给模型。</div>
+          <div class="callout c-warn" style="margin-top: 10px">
+            <i data-lucide="corner-down-right"></i>
+            <div><b>兜底：</b>识别不出类型 → 让用户选，选之前不能开始；上下文低于 128k 的模型 → 不能选；规划失败或积分不足 → 规划暂停，已规划的集照常可写可拆；自定义提示词或技能导致输出不合格 → 任务失败并提供「改用内置重试」；服务重启 → 规划从数据库里的进度接着跑。</div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>提示词的三种来源</h2>
+          <p class="sub">四个环节（剧本改编、资产拆解、资产图提示词、视频提示词）各自选一种。不管选哪种，<b>输出结构都由系统固定</b>。剧本型输入没有「剧本改编」。</p>
+          <div class="grid g3">
+            <div class="card">
+              <div class="row"><i data-lucide="package"></i><b>内置</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-mute">默认</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>就是今天的提示词。</b>只是拆成「固定协议 + 正文」两部分。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="pencil-line"></i><b>我的提示词</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-violet">替换正文</span><span class="tag t-mute">≤ 2 万字</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>从内置正文复制起步</b>，改完整段替换；存进按环节分类的「我的提示词」，下次直接选。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="sparkles"></i><b>技能</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-info">后台导入</span><span class="tag t-mute">注入 ≤ 1.6 万字</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>管理员给技能标「短剧适用环节」</b>后才会出现；SKILL.md 正文作为「写作方法」放进正文位置，脚本不执行。</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>和现状、和参考项目对比</h2>
+          <p class="sub">我们现在有什么问题，open-ai-canvas 怎么做，本方案取了哪些。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th></th><th>现状</th><th>open-ai-canvas</th><th>本方案</th></tr></thead>
+              <tbody>
+                <tr><th>原文上限</th><td class="m">30 万字</td><td>600 万字，单章 ≤ 6 万字</td><td class="y">500 万字，超长章自动拆</td></tr>
+                <tr><th>研读</th><td class="m">全书分块读 + 多轮合并摘要，越往后越粗</td><td>抽样 4 万字</td><td class="y">抽样，预算随模型上下文</td></tr>
+                <tr><th>分集规划</th><td class="m">看全书梗概一次排完，研读后自动</td><td>按批，每章只读前 6000 字</td><td class="y">按批自动，读完整原文</td></tr>
+                <tr><th>写剧本</th><td>用户选集；<span class="m">只看全书梗概，原著对白基本丢失</span></td><td>自动，读本集章节原文</td><td class="y">用户选集（同现状），读本集完整原文</td></tr>
+                <tr><th>资产拆解</th><td>用户选集</td><td>自动</td><td class="y">用户选集（同现状），带上已登记角色名单</td></tr>
+                <tr><th>集数</th><td class="m">目标集数，上限 100</td><td>无上限</td><td class="y">无上限，按原文密度，显示预估</td></tr>
+                <tr><th>规划时能不能干别的</th><td class="m">任何任务在跑，整部剧都不能提交新任务</td><td>未验证</td><td class="y">规划和用户的写剧本 / 拆解 / 出片并行</td></tr>
+                <tr><th>提示词定制</th><td class="m">无</td><td>三处可挂技能</td><td class="y">四处：内置 / 我的 / 技能</td></tr>
+                <tr><th>核实度</th><td><span class="tag t-ok">已核对代码</span></td><td><span class="tag t-ok">已核对源码 4d25e4a</span></td><td><span class="tag t-violet">提案</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>用户上传一本 486 万字的网文时，会发生什么</h2>
+          <p class="sub">按时间顺序走一遍，以及需要提前说清楚的边界。</p>
+          <div class="grid g2">
+            <div class="card">
+              <ol class="steps" style="margin: 0; padding: 0">
+                <li><b>拖入 docx，点 ↑</b><small>预检切出 1,215 章，识别为小说，清掉 312 行网文站插入语</small></li>
+                <li><b>开拍设置：规划到第 120 章</b><small>弹窗显示「预计约 160–260 集 · 研读与规划约 1,700 积分 · 约 20 分钟」（示意）</small></li>
+                <li><b>自动研读 + 分集规划</b><small>每批读约 3 万字原文，分集目录一批批出现在分集栏里</small></li>
+                <li><b>边规划边写</b><small>第 1 批规划好，就可以勾选第 1–10 集点「写剧本」</small></li>
+                <li><b>选集资产拆解</b><small>写好的第 1–10 集勾选「资产拆解」，拆完锁定、自动写图片提示词，然后出视频</small></li>
+                <li><b>第 120 章规划完，停下</b><small>需要时点「继续规划后面的章节」</small></li>
+              </ol>
+            </div>
+            <div class="card">
+              <div class="callout c-warn">
+                <i data-lucide="triangle-alert"></i>
+                <div>
+                  <b>边界</b>
+                  <ul class="list" style="margin-top: 6px">
+                    <li>研读是抽样，后期才出场的人物靠<b>每次拆解登记进角色名单</b>，之后的规划、剧本、拆解再带上。</li>
+                    <li>跳着选集写剧本时（比如只写第 5 集），上一集没有剧本，就用<b>上一集的梗概和结尾悬念</b>衔接。</li>
+                    <li>开拍设置里的预估只算研读和规划；写剧本、拆解的积分在选集时再显示（现有估价）。</li>
+                    <li>拆解后这些集的剧本锁定（现状）。</li>
+                  </ul>
+                </div>
+              </div>
+              <p class="muted" style="font-size: 12.5px; margin-top: 10px">交付时要提前告诉用户：预计集数的系数是初值，需要用样书校准；识别规则的阈值同理。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 完整流程 ============ -->
+      <section id="tab-flow" hidden>
+        <h1 class="h1">完整流程：从拖入文件到每集成片</h1>
+        <p class="lead">
+          一共 12 步：<b>开拍前</b>（1–3）、<b>自动</b>（4 粗读全书、5 分集规划，规划到范围终点就停）、<b>用户选集</b>（6 写剧本、7 资产拆解、8 资产图提示词自动接上）、<b>继续规划</b>（9）、<b>逐集出视频</b>（10–12）。
+          自动和用户选集两条线<b>可以同时进行</b>。每一步的产出都存进数据库或画布，后面的步骤去读，<b>不靠 AI 记住前文</b>。AI 读原文的地方：粗读全书读抽样；<b>分集规划读本批完整原文</b>；<b>写剧本读本集完整原文</b>。剧本型输入跳过第 5、6 步。
+          全部为提案，对应主文档 §6.2–§6.9。
+        </p>
+
+        <div class="sec">
+          <h2>一张图看全程</h2>
+          <p class="sub">橙色是用户操作，蓝色是 AI 调用，白色是代码处理（不花积分），紫色虚线是会重复执行的循环。</p>
+          <div class="lane note">
+            <div class="who">开拍前</div>
+            <div class="what"><span class="chip u">① 上传 / 粘贴，点 ↑</span>→<span class="chip">② 预检：切章 · 去噪 · 识别 · 估价</span>→<span class="chip u">③ 开拍设置：选规划范围 → 开始</span></div>
+            <div class="who">自动</div>
+            <div class="what"><span class="chip ai">④ 粗读全书（抽样，一次）</span>→<span class="chip ai loop">⑤ 分集规划：一批一批</span>→<span class="chip">到规划范围终点停下</span>→<span class="chip u">⑨ 需要时「继续规划后面的章节」</span></div>
+            <div class="who">用户选集</div>
+            <div class="what"><span class="chip u">勾选已规划的集</span>→<span class="chip ai">⑥ 写剧本（逐集）</span>→<span class="chip u">勾选有剧本的集</span>→<span class="chip ai">⑦ 资产拆解（锁定）</span>→<span class="chip ai">⑧ 资产图提示词</span><span class="tag t-info">与自动规划并行</span></div>
+            <div class="who">逐集出片</div>
+            <div class="what"><span class="chip u">⑩ 已锁定的集点「生成脚本」</span>→<span class="chip ai">分镜 / 片段提示词</span>→<span class="chip u">⑪ 片段视频</span>→<span class="chip u">⑫ 合成整集</span></div>
+          </div>
+          <div class="note-txt">⑥⑦ 的入口和现在完全一样（分集目录里选集 → 写剧本 / 资产拆解），只是剧本改为读原文、拆解改为带上角色名单。剧本型输入（有没有「第N集」都一样）没有 ⑤⑥：原文就是剧本，代码一次切好全部集。</div>
+        </div>
+
+        <div class="sec">
+          <h2>每一步做什么</h2>
+          <p class="sub">固定看五项：谁触发、读什么、产出什么（存在哪）、提示词能不能换、失败了怎么办。</p>
+          <div class="tl">
+            <div class="phase-h">开拍前</div>
+
+            <div class="st-card"><div class="st-num u">1</div><div class="card">
+              <div class="st-head"><h3>上传或粘贴</h3><span class="tag t-mute">用户</span></div>
+              <div class="st-grid">
+                <b>做什么</b><span>拖入 txt / md / docx，或粘贴正文，点 ↑。卡片上只有这一个动作，所有设置都在第 3 步的弹窗里。</span>
+                <b>限制</b><span>500 万字以内；上传请求最大 64MB。</span>
+                <b>失败</b><span>格式不对、为空（67002），超过 500 万字（67003）：红字提示在卡片里，不弹窗。</span>
+              </div></div></div>
+
+            <div class="st-card"><div class="st-num">2</div><div class="card">
+              <div class="st-head"><h3>预检</h3><span class="tag t-mute">代码 · 不花积分</span><span class="mono muted" style="font-size:12px">POST /drama-sources/preflight</span></div>
+              <div class="st-grid">
+                <b>做什么</b><span><ul>
+                  <li><b>去噪</b>：删掉网址、求票、「作者有话说」这类短行（80 字以内）。</li>
+                  <li><b>识别</b>：按「第N集」「第N章」、场次头、「人名：台词」行的比例，判断剧本 / 小说 / 识别不出。</li>
+                  <li><b>切单元</b>：有「第N集」按集切；剧本有场次头按场次切；小说按「第N章」切；都没有每约 9000 字一段。超过 1.2 万字的章按段落拆开。</li>
+                  <li><b>估价</b>：按规划范围、单集时长、模型，估算集数，以及研读与规划的积分、耗时。</li>
+                </ul></span>
+                <b>产出</b><span>一份<b>草稿</b>，24 小时过期，每人最多 3 份。返回 <code>source_token</code>，文件只上传这一次。</span>
+                <b>失败</b><span>网络失败：提示重试，卡片里的文件保留。</span>
+              </div></div></div>
+
+            <div class="st-card"><div class="st-num u">3</div><div class="card">
+              <div class="st-head"><h3>开拍设置 → 开始</h3><span class="tag t-mute">用户</span><span class="mono muted" style="font-size:12px">POST /dramas</span></div>
+              <div class="st-grid">
+                <b>确认什么</b><span><ul>
+                  <li>识别结果（剧本 / 小说，可改；识别不出时必须先选）。</li>
+                  <li><b>规划范围</b>：全部，或做到第 N 章。旁边显示预计集数、研读与规划的积分和耗时。剧本型输入不需要选（一次切完）。</li>
+                  <li>画幅 9:16 / 16:9 / 4:3；题材、画风、<b>单集时长</b>（没有目标集数）、文本模型（<b>上下文低于 128k 的禁用</b>）。</li>
+                  <li>四个环节的提示词，各选内置 / 我的 / 技能。剧本型输入的「剧本改编」置灰。</li>
+                </ul></span>
+                <b>产出</b><span>建好短剧：单元存进<b>单元表</b>；四个环节的提示词<b>正文文本</b>快照进项目；草稿删除；开始自动研读和规划。</span>
+                <b>失败</b><span>草稿过期（67014）：回到卡片重新预检。提示词被删 / 技能停用（67016 / 67018）：该行回落为「内置」并标红。</span>
+              </div></div></div>
+
+            <div class="phase-h">自动（研读 + 分集规划，规划到范围终点就停）</div>
+
+            <div class="st-card"><div class="st-num">4</div><div class="card">
+              <div class="st-head"><h3>粗读全书（研读）</h3><span class="tag t-info">AI · 1 次 · 自动</span><span class="tag t-mute">提示词固定</span></div>
+              <div class="st-grid">
+                <b>读</b><span><b>抽样原文</b>，约 4 万字（不超过模型上下文的 60%）：开头 3/4 按顺序完整读，剩下 1/4 从后面均匀抽 12 章、各取开头。全书不到 4 万字就读全文。<b>覆盖全书，不受规划范围限制</b>，之后继续规划也不重做。</span>
+                <b>产出</b><span>存进短剧项目的三样：<b>人物表</b>、<b>全书梗概</b>、<b>全书主线</b>。之后每一步都会带上。</span>
+              </div></div></div>
+
+            <div class="st-card"><div class="st-num">5</div><div class="card">
+              <div class="st-head"><h3>分集规划（每批）</h3><span class="tag t-info">AI · 每批 1 次 · 自动</span><span class="tag t-violet">剧本改编</span><span class="tag t-mute">仅小说</span></div>
+              <div class="st-grid">
+                <b>批多大</b><span>最多 12 章，原文最多 3 万字；模型上下文扣掉人物表、角色名单、提示词等固定内容后放不下时，批自动变小。</span>
+                <b>读</b><span><ul>
+                  <li><b>本批章节的完整原文</b>。</li>
+                  <li>人物表、全书梗概、全书主线。</li>
+                  <li><b>已登记角色名单</b>（从画布实时读取；用户还没拆解时为空）。</li>
+                  <li>上一集的结尾悬念、下一集编号、单集时长。<b>不传目标集数</b>。</li>
+                </ul></span>
+                <b>产出</b><span>本批的<b>分集目录</b>，存在每一集上：标题、梗概、开场钩子、结尾悬念、<b>对应第几章到第几章</b>。一章可以拆成两集，几章也可以合成一集。规划好的集立即出现在分集栏里，可以被勾选去写剧本。</span>
+                <b>剧本</b><span><b>不调 AI</b>：有「第N集」一个单元一集；没有标记时，代码把连续场次累计到约单集时长对应的长度合成一集，不拆开场次。一次切完全部集。</span>
+                <b>失败</b><span>输出不合格自动重试；还不行规划暂停（自定义提示词或技能时报 67015，可「改用内置重试」）。已规划的集照常可写可拆。</span>
+              </div></div></div>
+
+            <div class="phase-h">用户选集（入口和现在一样，可与自动规划同时进行）</div>
+
+            <div class="st-card"><div class="st-num u">6</div><div class="card">
+              <div class="st-head"><h3>选集 → 写剧本</h3><span class="tag t-mute">用户发起</span><span class="tag t-info">AI · 每集 1 次</span><span class="tag t-violet">剧本改编</span><span class="tag t-mute">仅小说</span></div>
+              <div class="st-grid">
+                <b>怎么发起</b><span>在分集栏里勾选<b>已规划</b>的集（可 Shift 连选），点「写剧本」，确认框显示积分（现有估价）。</span>
+                <b>顺序</b><span>这次选中的集<b>按集号一集一集写</b>，先写的集结尾传给后写的集。</span>
+                <b>读</b><span><ul>
+                  <li><b>本集对应章节的完整原文</b>。</li>
+                  <li>本集的标题、梗概、钩子、悬念。</li>
+                  <li><b>上一集剧本的结尾约 800 字</b>；上一集还没剧本（跳着选）时，改用<b>上一集的梗概和结尾悬念</b>。</li>
+                  <li>人物表、全书主线、已登记角色名单。</li>
+                </ul></span>
+                <b>产出</b><span>本集剧本（场次、动作、台词），原著引号里的对白逐字保留。写好后可以手动修改，直到拆解前。</span>
+                <b>失败</b><span>现状行为：之前写好的集保留，该集标失败，重新勾选再写。</span>
+              </div></div></div>
+
+            <div class="st-card"><div class="st-num u">7</div><div class="card">
+              <div class="st-head"><h3>选集 → 资产拆解</h3><span class="tag t-mute">用户发起</span><span class="tag t-info">AI · 每次 1 次</span><span class="tag t-violet">资产拆解</span></div>
+              <div class="st-grid">
+                <b>怎么发起</b><span>勾选<b>已有剧本</b>的集（剧本型输入任意集），点「资产拆解」，确认弹窗显示积分并提示「拆解后这些集的剧本将锁定」。弹窗<b>不再选比例</b>（建剧时已定）。</span>
+                <b>读</b><span>所选各集的剧本、人物表、<b>已登记角色名单</b>（现在的代码没传这一项，这次补上）。</span>
+                <b>产出</b><span>角色（含造型和音色描述）、场景、道具，写进<b>短剧画布</b>的节点。名字或别名对得上的只补「出现在哪几集」，对不上的才新建，新称呼记进别名。<b>名单因此变长，之后的规划、剧本、拆解都能看到。</b>所选各集剧本<b>锁定</b>。</span>
+              </div></div></div>
+
+            <div class="st-card"><div class="st-num">8</div><div class="card">
+              <div class="st-head"><h3>资产图提示词</h3><span class="tag t-info">AI · 自动接在第 7 步后</span><span class="tag t-violet">资产图提示词</span></div>
+              <div class="st-grid">
+                <b>读</b><span>第 7 步<b>新建</b>的节点、画风、题材。</span>
+                <b>产出</b><span>给每个新节点写一段图片提示词，存在节点上（现状）。<b>不自动出图</b>，图片在资产库里一键批量生成。</span>
+              </div></div></div>
+
+            <div class="phase-h">继续规划</div>
+
+            <div class="st-card"><div class="st-num u">9</div><div class="card">
+              <div class="st-head"><h3>规划完成 / 继续规划后面的章节</h3><span class="tag t-mute">用户</span></div>
+              <div class="st-grid">
+                <b>看到</b><span>规划进度条显示「已规划第 1–120 章 · 共 168 集」；还有剩余章节时出现「继续规划后面的章节」。</span>
+                <b>继续</b><span>选「全部剩余」或「做到第 N 章」，确认框显示剩余字数、预计集数、规划积分和耗时；确认后回到第 5 步接着规划。</span>
+                <b>规划中</b><span>可以暂停 / 继续、修改提示词设置（只影响之后的任务）；<b>不能增删集</b>（避免和集号冲突），暂停或完成后可以。</span>
+              </div></div></div>
+
+            <div class="phase-h">逐集出视频（已拆解的集随时可做）</div>
+
+            <div class="st-card"><div class="st-num">10</div><div class="card">
+              <div class="st-head"><h3>生成脚本（分镜）</h3><span class="tag t-info">AI · 每集 1 次</span><span class="tag t-violet">视频提示词</span></div>
+              <div class="st-grid">
+                <b>条件</b><span>这一集已拆解（剧本已锁定）。</span>
+                <b>读</b><span>这一集的剧本，加上画布上的资产节点（带节点 id）、画幅、画风、视频模型单段时长上限。</span>
+                <b>产出</b><span>这一集切成若干片段，每段一条视频提示词，用 <code>@[沈砚](节点id)</code> 引用角色、场景、道具。</span>
+              </div></div></div>
+
+            <div class="st-card"><div class="st-num u">11</div><div class="card">
+              <div class="st-head"><h3>片段视频</h3><span class="tag t-mute">用户触发 · 视频模型</span></div>
+              <div class="st-grid">
+                <b>读</b><span>片段提示词，用「参考生视频（omni）」方式提交。按 @ 引用解析参考素材：角色取主图和补充图，场景、道具取图片，角色有声音的带上参考音频；首帧可选。没出图的资产只按文字描述。</span>
+                <b>产出</b><span>每段可以生成多次，结果都保留，选一个「采用」。</span>
+                <b>失败</b><span>原因显示在片段上，可重新生成；积分先冻结，失败退回。</span>
+              </div></div></div>
+
+            <div class="st-card"><div class="st-num u">12</div><div class="card">
+              <div class="st-head"><h3>合成整集</h3><span class="tag t-mute">用户触发 · 代码</span></div>
+              <div class="st-grid">
+                <b>做什么</b><span>工作台按顺序连续播放采用的片段做预览；点「合成整集」后服务端用 ffmpeg 拼成一个视频文件。</span>
+                <b>失败</b><span>有片段还没有采用结果时报 67010。片段改动后成片标为「已过期」，需要重新合成。</span>
+              </div></div></div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>例子：一本 30 章、约 12 万字的小说，规划到第 20 章</h2>
+          <p class="sub">按时间顺序看每次 AI 调用读了什么、写了什么。蓝色行是系统自动，橙色行是用户选集。集数和批次是示意。</p>
+          <div class="cmp-wrap"><table class="cmp ex">
+            <thead><tr><th>#</th><th>谁发起</th><th>步骤</th><th>读原文</th><th>其他输入</th><th>产出</th></tr></thead>
+            <tbody>
+              <tr><th>1</th><td><span class="tag t-info">自动</span></td><td>粗读全书</td><td>第 1–8 章完整 + 第 9–30 章中 12 章的开头</td><td>—</td><td>人物表（5 人）、梗概、主线</td></tr>
+              <tr><th>2</th><td><span class="tag t-info">自动</span></td><td>规划·第 1 批</td><td>第 1–7 章完整（约 2.8 万字）</td><td>人物表 · 梗概 · 主线</td><td>第 1–10 集目录（第 4 章拆成第 5、6 集）</td></tr>
+              <tr><th>3</th><td><span class="tag t-info">自动</span></td><td>规划·第 2 批</td><td>第 8–14 章完整</td><td>上一集悬念</td><td>第 11–19 集目录</td></tr>
+              <tr><th>4–8</th><td><span class="tag t-warn">用户</span></td><td>勾选第 1–5 集 → 写剧本</td><td>各集对应章节完整原文</td><td>本集目录 · 上一集结尾</td><td>第 1–5 集剧本（与第 3 行同时进行）</td></tr>
+              <tr><th>9</th><td><span class="tag t-info">自动</span></td><td>规划·第 3 批</td><td>第 15–20 章完整</td><td>上一集悬念</td><td>第 20–27 集目录 → 到第 20 章，规划停下</td></tr>
+              <tr><th>10–11</th><td><span class="tag t-warn">用户</span></td><td>勾选第 1–5 集 → 资产拆解</td><td>—</td><td>第 1–5 集剧本 · 角色名单（空）</td><td>画布新建 沈砚、师兄、山门、断剑……；第 1–5 集锁定；自动写图片提示词</td></tr>
+              <tr><th>12</th><td><span class="tag t-warn">用户</span></td><td>只勾选第 8 集 → 写剧本</td><td>第 6 章完整</td><td><b>第 7 集还没剧本 → 用第 7 集的梗概和悬念衔接</b> · 角色名单</td><td>第 8 集剧本</td></tr>
+              <tr><th>…</th><td><span class="tag t-warn">用户</span></td><td>第 1–5 集出视频</td><td>—</td><td>剧本 + 资产节点</td><td>分镜、片段、成片</td></tr>
+              <tr><th>…</th><td><span class="tag t-warn">用户</span></td><td>「继续规划后面的章节」→ 全部剩余</td><td>第 21–30 章</td><td>角色名单（已有拆解结果）</td><td>第 28–40 集目录</td></tr>
+            </tbody>
+          </table></div>
+          <div class="callout c-info" style="margin-top:12px"><i data-lucide="info"></i><div>原文被完整读过两遍：规划时按批读一遍，写剧本时按集再读一遍。研读的抽样只用来建人物表和全书背景。</div></div>
+        </div>
+
+        <div class="sec">
+          <h2>四种输入各走哪些步骤</h2>
+          <p class="sub">剧本型输入一律不走小说转剧本。</p>
+          <div class="cmp-wrap"><table class="cmp">
+            <thead><tr><th>步骤</th><th>小说（长篇）</th><th>剧本，带「第N集」</th><th>剧本，没有分集标记</th><th>短篇小说</th></tr></thead>
+            <tbody>
+              <tr><th>2 切单元</th><td>按章；超 1.2 万字的章拆开</td><td>按集（超 4 万字给警告）</td><td>按场次</td><td>按章</td></tr>
+              <tr><th>3 剧本改编</th><td>可选</td><td class="m">置灰：剧本直接导入</td><td class="m">置灰：剧本直接导入</td><td>可选</td></tr>
+              <tr><th>3 单集时长</th><td>决定分集密度</td><td class="m">置灰：按原分集</td><td>只作切集参考长度</td><td>决定分集密度</td></tr>
+              <tr><th>3 规划范围</th><td>可选</td><td class="m">不需要：一次切完</td><td class="m">不需要：一次切完</td><td>通常全部</td></tr>
+              <tr><th>4 粗读全书</th><td>抽样</td><td>抽样</td><td>抽样</td><td>全文</td></tr>
+              <tr><th>5 分集规划</th><td>AI 按批，自动</td><td class="y">代码：一个单元一集</td><td class="y">代码：连续场次按长度合成一集</td><td>AI，通常一批</td></tr>
+              <tr><th>6 写剧本</th><td>用户选集，AI 改编</td><td class="y">无此步：原文即剧本</td><td class="y">无此步：原文即剧本，台词全保留</td><td>用户选集，AI 改编</td></tr>
+              <tr><th>7–8 拆解与提示词</th><td>用户选有剧本的集</td><td>用户选任意集</td><td>用户选任意集</td><td>用户选有剧本的集</td></tr>
+              <tr><th>10–12 出片</th><td colspan="4">相同，已锁定的集逐集手动</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+
+        <div class="sec">
+          <h2>每一步的输入、输出和存放位置（给开发）</h2>
+          <p class="sub">字段名与「数据与接口」页一致。「快照」表示任务入队时冻结，之后改设置不影响这个任务。<code>lane</code> 决定并发：pipeline 是自动的，user 是用户发起的。</p>
+          <div class="cmp-wrap"><table class="cmp">
+            <thead><tr><th>步骤</th><th>lane</th><th>输入变量</th><th>输出字段</th><th>写入</th><th>提示词快照</th></tr></thead>
+            <tbody>
+              <tr><th>预检</th><td>—</td><td><code>file</code> / <code>text</code></td><td><code>source_token, kind_guess, signals, units, issues</code></td><td><code>drama_source_drafts</code></td><td>—</td></tr>
+              <tr><th>建剧</th><td>—</td><td><code>source_token, source_kind, range_end, ratio, genre, style_key, episode_seconds, text_model, prompts</code></td><td>短剧</td><td><code>drama_projects</code>、<code>drama_units</code></td><td>四个环节正文文本</td></tr>
+              <tr><th>analyze</th><td>pipeline</td><td><code>source</code>（抽样）、<code>genre</code></td><td><code>source_kind</code>（参考）、<code>summary, characters_md, outline_md</code></td><td><code>drama_projects</code></td><td>内置（固定）</td></tr>
+              <tr><th>plan</th><td>pipeline</td><td>本批单元全文、<code>summary, characters_md, outline_md, known_cast, next_episode_no, previous_cliffhanger, episode_seconds, source_kind</code></td><td><code>episodes[{title, synopsis, hook, cliffhanger, unit_from, unit_to}]</code></td><td><code>drama_episodes</code>（只追加）；推进 <code>plan_cursor</code></td><td>剧本改编·分集规划</td></tr>
+              <tr><th>scripts</th><td>user</td><td>所选集；每集：单元全文、<code>episode{title, synopsis, hook, cliffhanger}</code>、<code>previous_ending</code>（或上一集梗概 + 悬念）、<code>characters_md, outline_md, known_cast, episode_seconds</code></td><td><code>script_md</code></td><td><code>drama_episodes.script_md</code></td><td>剧本改编·分集剧本</td></tr>
+              <tr><th>breakdown</th><td>user</td><td><code>episodes</code>（所选集剧本）、<code>characters_md</code>、<code>assets = known_cast</code>、<code>genre, style, ratio</code></td><td><code>assets[{type, name, look, aliases, episodes, description, voice_prompt}]</code></td><td>短剧画布节点；锁定所选集</td><td>资产拆解</td></tr>
+              <tr><th>asset_prompts</th><td>user</td><td>本次新节点 <code>assets[{node_id, …}]</code>、<code>style, genre, characters_md</code></td><td><code>prompts[{node_id, prompt}]</code></td><td>节点 <code>data.params</code></td><td>资产图提示词</td></tr>
+              <tr><th>storyboard</th><td>user</td><td><code>script_md, episode_no, assets[{node_id, type, name, look, prompt_summary}], max_seconds, ratio, style</code></td><td><code>segments[{seconds, prompt}]</code></td><td><code>drama_segments</code></td><td>视频提示词</td></tr>
+              <tr><th>片段视频</th><td>user</td><td>片段提示词 + 解析出的参考图 / 音频</td><td>生成结果</td><td><code>seg:{id}</code> 节点</td><td>—</td></tr>
+              <tr><th>compose</th><td>user</td><td>本集各片段的采用结果</td><td>成片文件</td><td><code>drama_episodes.final_asset_id</code></td><td>—</td></tr>
+            </tbody>
+          </table></div>
+          <p class="muted" style="font-size:12.5px;margin-top:8px">所有 AI 步骤共用一套拼接：输入变量 JSON → 输入变量说明 → 本步职责 → <b>正文（内置 / 我的 / 技能）</b> → 输出 Schema → 校验规则。不合格时带 <code>validation_error</code> 重试。</p>
+        </div>
+
+        <div class="sec">
+          <h2>出错和回退汇总</h2>
+          <p class="sub">任何一步出错，都不会丢掉已经完成的结果。</p>
+          <div class="cmp-wrap"><table class="cmp">
+            <thead><tr><th>情况</th><th>在哪一步</th><th>用户看到</th><th>怎么继续</th></tr></thead>
+            <tbody>
+              <tr><th>文件格式不对 / 超 500 万字</th><td>1–2</td><td>卡片红字（67002 / 67003）</td><td>换文件</td></tr>
+              <tr><th>识别不出剧本还是小说</th><td>3</td><td>「请选择」，开始键置灰</td><td>选一个</td></tr>
+              <tr><th>模型上下文低于 128k</th><td>3</td><td>下拉里禁用并写原因</td><td>换模型</td></tr>
+              <tr><th>草稿过期</th><td>3</td><td>「文件已过期」（67014）</td><td>重新点 ↑ 预检</td></tr>
+              <tr><th>选的提示词被删 / 技能停用</th><td>3、提示词设置</td><td>该行回落「内置」并标红（67016 / 67018）</td><td>重选或用内置</td></tr>
+              <tr><th>分集规划失败 / 积分不足 / 上下文不够</th><td>5</td><td>规划暂停，进度条写原因（67015 / 67022）</td><td>处理后「继续」；已规划的集照常可写可拆</td></tr>
+              <tr><th>写剧本失败</th><td>6</td><td>该集标失败，之前写好的保留</td><td>重新勾选再写</td></tr>
+              <tr><th>跳着选集写剧本</th><td>6</td><td>确认框提示「第 N−1 集还没剧本，将按其梗概衔接」</td><td>照常写</td></tr>
+              <tr><th>AI 输出不合格（自定义提示词 / 技能）</th><td>5–8、10</td><td>67015</td><td>「改用内置重试」或换提示词</td></tr>
+              <tr><th>规划中想增删集</th><td>9</td><td>按钮置灰（服务端 67019）</td><td>暂停或等规划完成</td></tr>
+              <tr><th>服务重启 / 断线</th><td>任意</td><td>进度从数据库恢复</td><td>规划自动续跑</td></tr>
+              <tr><th>有片段没有采用结果</th><td>12</td><td>不能合成（67010）</td><td>先采用</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </section>
+
+      <!-- ============ 长篇怎么切 ============ -->
+      <section id="tab-demo" hidden>
+        <h1 class="h1">长篇怎么切、怎么识别、一批多大、会有多少集</h1>
+        <p class="lead">选一种示例原文，改规划范围、单集时长和模型上下文，看预检得出的单元、识别依据、研读抽样、每批大小和预估。<b>规则与主文档 §6.3、§6.5 一致；字数、集数、积分、耗时都是示意。</b>积分和耗时只算自动部分（研读 + 规划）。</p>
+        <div class="grid demo-grid" style="margin-top: 20px; grid-template-columns: 250px minmax(0, 1fr)">
+          <div id="optList" class="grid" style="align-content: start"></div>
+          <div id="optPanel" class="card"></div>
+        </div>
+      </section>
+
+      <!-- ============ 可点击原型 ============ -->
+      <section id="tab-proto" hidden>
+        <h1 class="h1">可点击原型</h1>
+        <p class="lead">
+          照现有产品复刻：首页外壳（侧栏、清透胶囊、上传卡片）、工作台（顶栏阶段标签、任务条 JobBar、78px 分集栏、稿纸剧本、底部「下一步」浮条）、现有的「生成分集剧本 / 资产拆解」弹窗，颜色令牌取自 <code>web/src/index.css</code>（工作台用 <code>.drama-theme</code>）。
+          <b>新增的只有</b>：点 ↑ 后的「开拍设置」弹窗、任务条里的规划行、分集栏末尾的「继续规划」、弹窗里的「按范围选」和跳集衔接提示。左下角紫色「演示控制」可以换示例文件、模拟失败，产品里没有它。
+        </p>
+        <div class="row" style="margin-top: 12px; gap: 8px">
+          <a class="btn btn-outline" href="短剧开拍设置-原型.html" target="_blank" rel="noopener"><i data-lucide="external-link"></i>新窗口全屏打开（推荐）</a>
+          <span class="muted" style="font-size: 12.5px">按 1440 宽设计；数据在内存里，刷新复原；所有异步都是模拟。</span>
+        </div>
+        <div class="frame" style="margin-top: 12px">
+          <div class="frame-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span style="margin-left: 8px">lianjing.app / 短剧工作室</span></div>
+          <iframe src="短剧开拍设置-原型.html" title="短剧开拍设置原型" style="display: block; width: 100%; height: 820px; border: 0; background: hsl(var(--stage))"></iframe>
+        </div>
+        <div class="note-txt" style="margin-top: 8px">可以这样走一遍：点 ↑ → 开拍设置里改规划范围、把某个环节换成技能或新建「我的提示词」→ 开始 → 看任务条里的研读和规划 → 点底部「生成分集剧本」，只勾第 8 集看衔接提示 → 写完后「资产拆解」→ 规划完成后在分集栏末尾「继续规划」。</div>
+      </section>
+
+      <!-- ============ 数据与接口 ============ -->
+      <section id="tab-impl" hidden>
+        <h1 class="h1">数据与接口（提案）</h1>
+        <p class="lead">以下都是设计提案，尚未实现，对应主文档 §6.5–§8。<b>沿用现有机制</b>：写剧本、拆解仍走现有 <code>POST /dramas/:id/jobs</code>；两步导入参照 <code>agent_skill_imports</code>；任务快照放进已有的 <code>drama_jobs.config_snapshot</code>；乐观锁用项目 <code>revision</code>；错误码接 67013 之后。</p>
+
+        <div class="sec">
+          <h2>关系</h2>
+          <p class="sub">谁属于谁、谁快照谁。</p>
+          <div class="cmp-wrap"><table class="cmp">
+            <thead><tr><th>对象</th><th>关系</th><th>为什么</th></tr></thead>
+            <tbody>
+              <tr><th>预检草稿</th><td>1 用户 : ≤ 3 份有效草稿，24h 过期，建剧成功即删</td><td>500 万字只上传一次；弹窗里改设置不用重传</td></tr>
+              <tr><th>单元</th><td>1 短剧 : N 单元（集 / 场次 / 章 / 段），<code>no</code> 连续</td><td>原文不再和项目同行；每步按范围读</td></tr>
+              <tr><th>集 ↔ 单元</th><td>每集 <code>unit_from..unit_to</code> 连续范围；一章可拆两集</td><td>剧本只读本集原文</td></tr>
+              <tr><th>角色名单 ↔ 画布</th><td><code>known_cast</code> 每次任务入队时从画布资产节点现取</td><td>后期新人物回流，名字前后一致；修复拆解没传已有资产（<code>drama_pipeline.go:155</code>）</td></tr>
+              <tr><th>短剧 ↔ 提示词</th><td>建剧 / 修改时把<b>文本</b>快照进 <code>prompt_settings</code></td><td>我的提示词被改 / 删、技能升版本都不影响已建的剧</td></tr>
+              <tr><th>任务 ↔ 提示词</th><td>入队时把该步正文拷进 <code>config_snapshot.prompt</code></td><td>改了只影响之后的任务</td></tr>
+              <tr><th>任务 ↔ 并发</th><td><code>lane = pipeline</code>（analyze / plan）与 <code>lane = user</code> 互不阻塞；user 文本任务彼此互斥，媒体任务按集互斥</td><td>规划在跑时用户照样能写、能拆、能出片（现状任何任务都会挡，<code>drama_job.go:144</code>）</td></tr>
+              <tr><th>技能 ↔ 环节</th><td><code>agent_skills.drama_steps</code>，不进版本</td><td>与标题、启用开关同级，由管理员控制</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+
+        <div class="sec">
+          <h2>数据模型</h2>
+          <p class="sub">新表三张，改表四张。迁移沿用 <code>backend/internal/migration/</code>。</p>
+          <div class="grid g2">
+            <div class="cmp-wrap"><table class="cmp">
+              <thead><tr><th colspan="2"><code>drama_source_drafts</code>（新）</th></tr></thead>
+              <tbody>
+                <tr><th>id</th><td>uuid PK = <code>source_token</code></td></tr>
+                <tr><th>user_id</th><td>bigint，索引；每人最多 3 份，新建挤掉最旧</td></tr>
+                <tr><th>filename / text</th><td>varchar(255) / 去噪后全文</td></tr>
+                <tr><th>units_json</th><td>jsonb <code>[{no,kind,title,offset,length,chars}]</code></td></tr>
+                <tr><th>kind_guess / signals_json</th><td><code>script / novel / unknown</code> / 信号与 issues</td></tr>
+                <tr><th>chars / sha256</th><td>int / varchar(64)</td></tr>
+                <tr><th>expires_at</th><td>索引；River 周期任务清理</td></tr>
+              </tbody></table></div>
+            <div class="cmp-wrap"><table class="cmp">
+              <thead><tr><th colspan="2"><code>drama_units</code>（新）</th></tr></thead>
+              <tbody>
+                <tr><th>drama_id, no</th><td>唯一索引；no 从 1 连续</td></tr>
+                <tr><th>user_id</th><td>索引，资源隔离</td></tr>
+                <tr><th>kind</th><td><code>episode / scene / chapter / chunk / prologue</code></td></tr>
+                <tr><th>title / text / chars</th><td>varchar(255) / text / int</td></tr>
+              </tbody></table></div>
+            <div class="cmp-wrap"><table class="cmp">
+              <thead><tr><th colspan="2"><code>drama_prompts</code>（新，我的提示词）</th></tr></thead>
+              <tbody>
+                <tr><th>user_id, step, name</th><td>唯一索引；step ∈ <code>adapt / breakdown / asset_prompts / video</code>；name ≤ 40</td></tr>
+                <tr><th>bodies</th><td>jsonb；adapt 为 <code>{plan, scripts}</code>，其余 <code>{body}</code>；每份 ≤ 2 万字</td></tr>
+                <tr><th>revision</th><td>乐观锁</td></tr>
+                <tr><th>数量</th><td>每用户每环节 ≤ 50（67021）</td></tr>
+              </tbody></table></div>
+            <div class="cmp-wrap"><table class="cmp">
+              <thead><tr><th colspan="2">改表</th></tr></thead>
+              <tbody>
+                <tr><th>drama_projects</th><td>删 <code>source_text</code>（分两步迁到 units）；加 <code>source_chars, source_sha256, source_filename, units_total, phase, plan_cursor, range_end, pause_reason, prompt_settings jsonb</code>；<code>target_episodes</code> 只留给老数据</td></tr>
+                <tr><th>drama_episodes</th><td>加 <code>unit_from, unit_to</code>（老数据 0）；加 <code>hook, cliffhanger</code></td></tr>
+                <tr><th>agent_skills</th><td>加 <code>drama_steps jsonb</code>，审计 <code>agent_skill.set_drama_steps</code></td></tr>
+                <tr><th>drama_jobs</th><td><code>config_snapshot</code> 加 <code>prompt {source, ref, version, text}</code>；plan 加 <code>unit_from / unit_to</code>；加 <code>lane</code>：<code>pipeline / user</code></td></tr>
+              </tbody></table></div>
+          </div>
+          <div class="cmp-wrap" style="margin-top: 12px"><table class="cmp">
+            <thead><tr><th>phase（只描述自动规划）</th><th>含义</th><th>进入条件</th><th>可做的操作</th></tr></thead>
+            <tbody>
+              <tr><th><code>running</code></th><td>研读 / 规划中</td><td>建剧；扩大范围；继续</td><td>暂停、改提示词；对已规划的集写剧本、拆解、出片</td></tr>
+              <tr><th><code>paused</code></th><td>规划暂停</td><td>用户暂停 / 积分不足 / 规划失败 / 上下文不足（写 <code>pause_reason</code>）</td><td>继续；其余同上，另可增删集</td></tr>
+              <tr><th><code>done</code></th><td>规划到范围终点</td><td><code>plan_cursor ≥ range_end</code> 且无在途；剧本型输入切集后；老项目迁移默认</td><td>继续规划后面的章节；其余同上</td></tr>
+            </tbody></table></div>
+        </div>
+
+        <div class="sec">
+          <h2>接口</h2>
+          <div class="cmp-wrap"><table class="cmp">
+            <thead><tr><th>方法与路径</th><th>说明</th><th>业务错误</th></tr></thead>
+            <tbody>
+              <tr><th><code>POST /drama-sources/preflight</code></th><td>multipart <code>file</code> 或 <code>text</code> → <code>{source_token, filename, chars, kind_guess, signals, units:{total, kind, head[≤200]}, issues[], expires_at}</code></td><td>67002；67003</td></tr>
+              <tr><th><code>POST /drama-sources/:token/estimate</code></th><td><code>{text_model, range_end, episode_seconds, source_kind, prompts}</code> → <code>{episodes:{min,max}, credits:{analyze, plan, total}, seconds, model_ok, model_reason}</code>；改类型时按新类型重新切分</td><td>67014；67007</td></tr>
+              <tr><th><code>POST /dramas</code></th><td>JSON：<code>source_token, source_kind, range_end(0=全部), ratio(三档), genre, style_key, style_custom, episode_seconds, text_model, prompts{adapt,breakdown,asset_prompts,video}</code>；成功删草稿、开始研读与规划</td><td>67014；67016；67018；67022</td></tr>
+              <tr><th><code>POST /dramas/:id/jobs</code>（现有）</th><td>写剧本 <code>{step:"scripts", episodes}</code>、资产拆解 <code>{step:"breakdown", episodes}</code>（不再带 ratio）、分镜、合成；<code>lane = user</code>；scripts 只能选已规划的集，breakdown 只能选已有剧本的集</td><td>67004（同线冲突）；67005；67006</td></tr>
+              <tr><th><code>POST /dramas/:id/estimate-range</code></th><td><code>{range_end}</code>，继续规划确认框用</td><td>67019</td></tr>
+              <tr><th><code>POST /dramas/:id/range</code></th><td><code>{range_end}</code>，必须大于当前值；<code>done / paused → running</code></td><td>67019</td></tr>
+              <tr><th><code>POST /dramas/:id/pause</code> · <code>/resume</code></th><td>规划 <code>running ⇄ paused</code></td><td>67019</td></tr>
+              <tr><th><code>PATCH /dramas/:id/prompts</code></th><td><code>{revision, prompts}</code>，只影响之后入队的任务</td><td>409；67016；67018</td></tr>
+              <tr><th><code>GET /dramas/:id/units</code></th><td><code>?from&amp;to</code>，不含全文，每页 200</td><td>—</td></tr>
+              <tr><th><code>GET/POST/PUT/DELETE /drama-prompts</code></th><td>我的提示词 CRUD；列表不含正文；PUT 带 revision</td><td>67016；67017；67021；409</td></tr>
+              <tr><th><code>GET /drama-prompt-templates</code></th><td>四环节内置正文（只返回正文）</td><td>—</td></tr>
+              <tr><th><code>GET /drama-skills?step=</code></th><td>已启用且适用该环节的技能</td><td>—</td></tr>
+              <tr><th><code>PUT /admin/agent/skills/:name/drama-steps</code></th><td>管理员设置适用环节</td><td>技能不存在</td></tr>
+            </tbody></table></div>
+          <p class="muted" style="font-size: 12.5px; margin-top: 8px">新错误码：67014 草稿不存在或已过期 · 67015 当前提示词的输出不符合结构 · 67016 提示词不存在 · 67017 名称重复 · 67018 技能不可用 · 67019 当前阶段不能执行 · 67020 单集原文过长（兜底） · 67021 提示词数量已达上限 · 67022 当前模型上下文不足。67003 文案改为「内容超过 500 万字」。</p>
+        </div>
+
+        <div class="sec">
+          <h2>核心流程伪代码</h2>
+          <div class="grid g2">
+            <div class="codeblock"><pre style="margin: 0; font: inherit; white-space: pre-wrap">// 预检（提案）
+text  = parse(file)              // 复用 drama.ParseSource
+text, noise = stripNoise(text)   // 整行 &lt; 80 字才删
+kind  = guess(signals(text))
+units = splitUnits(text, kind)
+  // ≥2 个「第N集」→ episode
+  // 剧本且 ≥3 个场次头 → scene
+  // ≥2 个「第N章/节/回/卷」→ chapter
+  // 否则每 ~9000 字 → chunk；chapter/chunk &gt; 12000 字按段落拆
+draft = save(user, text, units, kind, ttl=24h)  // 每人 ≤ 3 份</pre></div>
+            <div class="codeblock"><pre style="margin: 0; font: inherit; white-space: pre-wrap">// 自动规划（analyze / plan 提交后、range / resume 时调用）
+advancePlanning(p):
+  if p.phase != running: return
+  if !analyzed: enqueue(analyze); return
+  if p.plan_cursor &lt; p.range_end:
+     if kind == novel:
+        n = min(30000, ctx*0.6 - fixed(cast, prompt, …))
+        enqueue(plan, nextBatch(≤12 单元, ≤n 字),
+                knownCast(canvas), lastEp.cliffhanger)
+     else: buildEpisodesByCode()   // 一次切完，不调 AI
+  elif 无在途 pipeline: p.phase = done
+  // 失败 / 积分不足 → paused + pause_reason
+// 写剧本、拆解仍由用户经 POST /dramas/:id/jobs 发起</pre></div>
+            <div class="codeblock" style="grid-column: 1 / -1"><pre style="margin: 0; font: inherit; white-space: pre-wrap">// 写剧本（用户选集，提案）：所选集按集号逐集
+for ep in sorted(selected):
+  prev = episode(ep.no - 1)
+  prevCtx = prev.script ? tail(prev.script, 800) : "上一集剧本尚未写：" + prev.synopsis + " / " + prev.cliffhanger
+  call(scripts, source=units[ep.from..ep.to], ep.hook, ep.cliffhanger, prevCtx, knownCast(canvas))
+// 并发（提案）：prepareDramaJob 从「有任何在途就 67004」改为按 lane 判定
+//   pipeline × pipeline 互斥；pipeline 与 user 互不阻塞
+//   user 文本任务（scripts / breakdown / asset_prompts）互斥；媒体任务只允许已锁定集，同集互斥
+// 拼提示词：varsJSON + 输入变量 + 本步职责 + body(内置/我的/技能) + 输出Schema + 校验规则
+// 模型可选：context ≥ 128k</pre></div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>已确认的决定</h2>
+          <div class="card">
+            <ol class="list" style="padding-left: 18px; display: grid; gap: 4px">
+              <li><b>点发送后弹窗，底栏设置全部挪进去</b>。</li>
+              <li><b>画幅只留 9:16 / 16:9 / 4:3</b>，老数据兼容 6 档。</li>
+              <li><b>后端规则预检剧本 / 小说，用户可改</b>。</li>
+              <li><b>开放剧本改编、资产拆解、资产图提示词、视频提示词四个环节</b>；研读固定。</li>
+              <li><b>自写 = 替换正文</b>；编辑器里<b>不展示输入变量和输出结构</b>（仍由系统固定拼接）。<b>存进「我的提示词」，建剧时快照</b>。</li>
+              <li><b>技能复用后台导入的，管理员标适用环节</b>。</li>
+              <li><b>建剧后可改提示词，只影响之后的任务</b>。</li>
+              <li><b>弹窗单页，提示词四行 + 侧滑编辑</b>。</li>
+              <li><b>原文上限 500 万字，集数不设上限</b>；<b>长篇按章节处理</b>；<b>长列表用 <code>@tanstack/react-virtual</code></b>。</li>
+              <li><b>分集规划读本批完整原文</b>，不按章截断。</li>
+              <li><b>已登记角色名单</b>：规划、剧本、拆解都带上，从画布实时取。</li>
+              <li><b>集表加 <code>hook</code>、<code>cliffhanger</code></b>。</li>
+              <li><b>去掉「样章定调 / 批量生成后续」</b>；<b>去掉目标集数</b>，显示预计集数。</li>
+              <li><b>开始后只自动做「粗读全书 + 分集规划」</b>，规划到范围终点就停，可继续规划。</li>
+              <li><b>写剧本、资产拆解按原来的方式由用户选集发起</b>；拆完自动写资产图提示词并锁定。</li>
+              <li><b>自动规划与用户的写剧本 / 拆解 / 出片并行</b>；一次写剧本任务内仍按集号逐集写。</li>
+              <li><b>上下文低于 128k 的模型禁用</b>；每批字数按模型上下文动态算。</li>
+              <li><b>剧本型输入忽略小说转剧本</b>：按集或按场次切集，台词全保留，单集时长只作参考。</li>
+              <li><b>草稿每人最多 3 份</b>；规划中禁用增删集；拆解弹窗去掉比例。</li>
+              <li><b>已搁置</b>：样章定调、自动写剧本与自动拆解、全文分块研读、只追加「额外要求」、用户上传个人技能、集数上限、目标集数、压缩改编。</li>
+              <li><b>仍待确认</b>：预计集数与场次合集的系数，需要用样书校准。</li>
+            </ol>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+      const $ = (s, r = document) => r.querySelector(s);
+      const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const icons = () => { if (window.lucide) lucide.createIcons(); };
+      const fmt = (n) => Number(Math.round(n)).toLocaleString("zh-CN");
+      const wan = (n) => (n >= 10000 ? (n / 10000).toFixed(1).replace(/\.0$/, "") + " 万" : fmt(n)) + "字";
+      const dur = (sec) => (sec < 3600 ? Math.max(1, Math.round(sec / 60)) + " 分钟" : (sec / 3600).toFixed(1).replace(/\.0$/, "") + " 小时");
+
+      function toggleNotes() {
+        const on = document.body.classList.toggle("show-notes");
+        $("#notesSw").setAttribute("aria-checked", String(on));
+      }
+      let toastTimer;
+      function toast(msg, kind = "ok") {
+        const icon = { ok: "circle-check", bad: "circle-x", warn: "triangle-alert", info: "info" }[kind] || "info";
+        $("#toast").innerHTML = `<div><i data-lucide="${icon}" style="color: rgb(var(--${kind}))"></i>${esc(msg)}</div>`;
+        icons();
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => ($("#toast").innerHTML = ""), 2400);
+      }
+      function showTab(id) {
+        document.querySelectorAll("main > section").forEach((s) => (s.hidden = s.id !== "tab-" + id));
+        document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === id)));
+        window.scrollTo(0, 0);
+      }
+      document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab)));
+
+      /* 预估（示意，与主文档 §6.3 公式一致；只算自动部分：研读 + 规划） */
+      function estimateFor({ kind, marks, chars, units, rangeUnits, seconds, perBatch }) {
+        const per = chars / units;
+        const rangeChars = per * rangeUnits;
+        let epMin, epMax, batches = 0;
+        if (kind === "novel") {
+          const f = seconds / 60;
+          epMin = rangeChars / (2500 * f); epMax = rangeChars / (1500 * f);
+          batches = Math.ceil(rangeUnits / (perBatch || Math.max(1, Math.min(12, Math.floor(30000 / per)))));
+        } else {
+          epMin = epMax = marks ? units : Math.max(1, chars / (1000 * seconds / 60));
+        }
+        const credits = 120 + batches * 9;
+        const secs = 60 + batches * 60;
+        return { epMin: Math.max(1, Math.round(epMin)), epMax: Math.max(1, Math.round(epMax)), batches, credits, secs };
+      }
+
+      /* ================= 长篇怎么切 ================= */
+      const BOOKS = {
+        novel: { label: "网文小说 · 486 万字", desc: "1,206 个「第N章」，有 9 章超长被拆开", chars: 4862000, m: { ep: 0, ch: 1206, scene: 0 }, dlg: 0.04, quote: 0.21, units: 1215, unitWord: "章", noise: 312 },
+        script: { label: "分集剧本 · 38 万字", desc: "180 个「第N集」，对白行占 46%", chars: 380000, m: { ep: 180, ch: 0, scene: 520 }, dlg: 0.46, quote: 0.02, units: 180, unitWord: "集", noise: 0 },
+        bare: { label: "无标记剧本 · 9 万字", desc: "没有分集标题，有 96 个场次头", chars: 90000, m: { ep: 0, ch: 0, scene: 96 }, dlg: 0.38, quote: 0.01, units: 96, unitWord: "场", noise: 0 },
+        short: { label: "短篇小说 · 2.4 万字", desc: "6 个「第N章」", chars: 24000, m: { ep: 0, ch: 6, scene: 0 }, dlg: 0.05, quote: 0.18, units: 6, unitWord: "章", noise: 0 },
+        odd: { label: "散文体 · 12 万字", desc: "没有任何标题，几乎没有对白", chars: 120000, m: { ep: 0, ch: 0, scene: 0 }, dlg: 0.02, quote: 0.03, units: 14, unitWord: "段", noise: 0 },
+      };
+      const demo = { book: "novel", rangePct: 100, seconds: 60, ctx: 128000 };
+      function guessKind(b) {
+        if (b.m.ep >= 2 || (b.m.scene >= 3 && b.dlg >= 0.3)) return "script";
+        if (b.m.ch >= 2 || (b.quote >= 0.1 && b.dlg < 0.1)) return "novel";
+        return "unknown";
+      }
+      function renderDemo() {
+        $("#optList").innerHTML = Object.entries(BOOKS).map(([k, b]) =>
+          `<button class="optbtn" aria-pressed="${demo.book === k}" onclick="demo.book='${k}';renderDemo()"><b>${esc(b.label)}</b><div class="muted" style="font-size:12px;margin-top:2px">${esc(b.desc)}</div></button>`).join("");
+        const b = BOOKS[demo.book];
+        const kind = guessKind(b);
+        const k2 = kind === "unknown" ? "novel" : kind;
+        const per = b.chars / b.units;
+        const rangeUnits = k2 === "novel" ? Math.max(1, Math.round((b.units * demo.rangePct) / 100)) : b.units;
+        const ctxOk = demo.ctx >= 128000;
+        const budget = Math.round(demo.ctx * 0.6);
+        const batchChars = Math.min(30000, budget - 28000);
+        const perBatch = Math.max(1, Math.min(12, Math.floor(batchChars / per)));
+        const sampleBudget = Math.min(40000, budget);
+        const sampled = b.chars <= sampleBudget ? "全文（≤ 预算）" : `开篇约 ${wan(sampleBudget * 0.75)} + 后文均匀 12 段开头（共约 ${wan(sampleBudget)}）`;
+        const est = estimateFor({ kind: k2, marks: b.m.ep >= 2, chars: b.chars, units: b.units, rangeUnits, seconds: demo.seconds, perBatch });
+        const oldChunks = Math.ceil(b.chars / budget);
+        const kindTag = { script: '<span class="tag t-info">剧本</span>', novel: '<span class="tag t-ok">小说</span>', unknown: '<span class="tag t-warn">识别不出 · 请用户选（下面按小说算）</span>' }[kind];
+        const why = kind === "script"
+          ? (b.m.ep >= 2 ? `找到 ${fmt(b.m.ep)} 个「第N集」` : `${b.m.scene} 个场次头，对白行占 ${Math.round(b.dlg * 100)}%`)
+          : kind === "novel" ? `找到 ${fmt(b.m.ch)} 个「第N章」` : "既无分集 / 章节标题，对白特征也不明显";
+        const batchW = Math.min(est.batches, 40);
+        $("#optPanel").innerHTML = `
+          <div class="row wrapflex" style="gap:14px">
+            <label class="row" style="font-size:13px">规划范围 <input type="range" min="5" max="100" step="5" value="${demo.rangePct}" ${k2 === "novel" ? "" : "disabled"} oninput="demo.rangePct=+this.value;renderDemo()" /> <b>${k2 !== "novel" ? "一次切完" : demo.rangePct === 100 ? "全部" : "前 " + fmt(rangeUnits) + " " + b.unitWord}</b></label>
+            <label class="row" style="font-size:13px">单集时长
+              <select class="inp" style="border-radius:8px;height:30px" onchange="demo.seconds=+this.value;renderDemo()" ${kind === "script" && b.m.ep >= 2 ? "disabled" : ""}>${[60, 90, 120, 180].map((v) => `<option value="${v}" ${v === demo.seconds ? "selected" : ""}>${v}s</option>`).join("")}</select></label>
+            <label class="row" style="font-size:13px">模型上下文
+              <select class="inp" style="border-radius:8px;height:30px" onchange="demo.ctx=+this.value;renderDemo()">${[64000, 128000, 200000, 1000000].map((v) => `<option value="${v}" ${v === demo.ctx ? "selected" : ""}>${v >= 1000000 ? "1M" : v / 1000 + "k"}</option>`).join("")}</select></label>
+          </div>
+          ${ctxOk ? "" : `<div class="callout c-bad" style="margin-top:12px"><i data-lucide="ban"></i><div><b>这个模型在开拍设置里不可选</b>：上下文低于 128k，装不下一批完整原文。</div></div>`}
+          <div class="sec" style="margin-top:18px"><h2 style="font-size:15px">① 预检</h2>
+            <div class="kv" style="margin-top:8px">
+              <span>识别</span><span>${kindTag} <span class="muted">依据：${esc(why)}</span></span>
+              <span>单元</span><span>${fmt(b.units)} 个${esc(b.unitWord)}${demo.book === "novel" ? '　<span class="tag t-mute">9 章超 1.2 万字已自动拆</span>' : ""}</span>
+              <span>去噪</span><span>${b.noise ? `清掉 ${b.noise} 行网文站插入语` : "无"}</span>
+              <span>剧本改编</span><span>${kind === "script" ? "置灰：剧本直接导入，跳过分集规划和写剧本" : "可选"}</span>
+            </div></div>
+          <div class="sec" style="margin-top:18px"><h2 style="font-size:15px">② 粗读全书（自动，抽样）</h2>
+            <p class="muted" style="font-size:13px;margin-top:6px">读 ${esc(sampled)}。</p>
+            <p class="muted" style="font-size:12.5px;margin-top:4px">对比现状：全文按上下文 60% 切块要读 <b style="color:rgb(var(--warn))">${fmt(oldChunks)}</b> 块再多轮合并。</p></div>
+          <div class="sec" style="margin-top:18px"><h2 style="font-size:15px">③ 分集规划（自动）与预估</h2>
+            ${k2 === "novel" ? `<div class="unitbar" style="margin-top:8px">
+              <span style="width:${demo.rangePct}%;display:flex">${Array.from({ length: batchW }).map((_, i) => `<span style="flex:1;background:rgb(var(--info) / ${i % 2 ? 0.35 : 0.6})"></span>`).join("")}</span>
+              <span style="width:${100 - demo.rangePct}%;background:hsl(var(--muted))"></span>
+            </div>
+            <div class="legend"><span><i style="background:rgb(var(--info)/.6)"></i>规划范围（交替色 = 一批${est.batches > 40 ? "，只画前 40 批" : ""}）</span><span><i style="background:hsl(var(--muted))"></i>范围外，之后可继续规划</span></div>` : ""}
+            <div class="kv" style="margin-top:10px">
+              <span>每批</span><span>${k2 === "novel" ? `原文 ≤ ${wan(Math.max(0, batchChars))}（= min(3 万, 上下文 60% − 固定内容约 2.8 万)）→ 本例每批 ${perBatch} 章，共 ${fmt(est.batches)} 批` : "不调 AI：代码一次切好全部集"}</span>
+              <span>预计集数</span><span>${est.epMin === est.epMax ? fmt(est.epMin) : `约 ${fmt(est.epMin)}–${fmt(est.epMax)}`} 集 ${k2 === "novel" ? `<span class="muted">（${demo.seconds}s 一集按每集 ${fmt(1500 * demo.seconds / 60)}–${fmt(2500 * demo.seconds / 60)} 字原文）</span>` : b.m.ep < 2 ? '<span class="muted">（连续场次按约 ' + fmt(1000 * demo.seconds / 60) + " 字合成一集）</span>" : '<span class="muted">（按原分集）</span>'}</span>
+              <span>研读 + 规划</span><span>约 ${fmt(est.credits)} 积分 · 约 ${dur(est.secs)} <span class="tag t-mute">示意</span></span>
+              <span>之后（用户选集）</span><span>${k2 === "novel" ? "写剧本：所选集逐集，每集读对应章节完整原文；资产拆解：所选有剧本的集" : "没有写剧本这一步；资产拆解：所选任意集"}</span>
+            </div></div>`;
+        icons();
+      }
+
+      renderDemo();
+      icons();
+    </script>
+  </body>
+</html>
