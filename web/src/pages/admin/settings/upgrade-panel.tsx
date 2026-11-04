@@ -8,6 +8,7 @@ import type { UpgradeInfo } from "@/api/admin/system/type.d";
 import { Notice } from "@/components/admin-ui/notice";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { GLASS_PANEL } from "@/components/admin-ui/glass";
 import { DURATION, EASE_OUT, SPRING } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { useSystemUpdateStore } from "@/store/system-update";
@@ -150,7 +151,7 @@ export function UpgradeProgressCard({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: DURATION.base, ease: EASE_OUT }}
     >
-      <Card aria-live="polite">
+      <Card className={GLASS_PANEL} aria-live="polite">
         <CardHeader>
           <CardTitle>
             {verb}到 <span className="font-mono tabular-nums">v{run.target}</span>
@@ -303,7 +304,7 @@ function ProgressNotice({
     case "failed_rolled_back":
       return (
         <Notice tone="warning" title={`${verb}失败，已退回 v${current}`}>
-          {message}。服务已恢复正常，可以展开下方的运行输出查看原因。
+          {message}
         </Notice>
       );
     case "failed_needs_attention":
@@ -315,7 +316,7 @@ function ProgressNotice({
     default:
       return reconnecting ? (
         <Notice tone="info" title="服务重启中">
-          后台会短暂无法访问，页面正在自动重连，不要关闭。
+          正在自动重连…
         </Notice>
       ) : null;
   }
@@ -341,7 +342,7 @@ export function UpgradeHistoryCard({
 }) {
   const last = info.last;
   return (
-    <Card>
+    <Card className={GLASS_PANEL}>
       <CardHeader>
         <CardTitle>升级记录与备份</CardTitle>
         {info.rollback_target && (
@@ -363,14 +364,14 @@ export function UpgradeHistoryCard({
         <p className="text-muted-foreground">
           {last
             ? `上次一键升级：v${last.previous} → v${last.target}，${formatDateTime(last.updated_at)}，${STATE_LABEL[last.state] ?? last.state}`
-            : `还没有通过后台升级过，当前 v${current}`}
+            : `暂无升级记录，当前 v${current}`}
         </p>
         {info.backups.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead className="text-muted-foreground">
                 <tr className="border-b">
-                  <th className="py-2 text-left font-medium">数据库备份（保留最近 3 份）</th>
+                  <th className="py-2 text-left font-medium">数据库备份</th>
                   <th className="py-2 text-right font-medium">大小</th>
                   <th className="py-2 text-right font-medium">时间</th>
                 </tr>
@@ -391,11 +392,8 @@ export function UpgradeHistoryCard({
             </table>
           </div>
         ) : (
-          <p className="text-muted-foreground">还没有备份，每次升级前会自动备份数据库。</p>
+          <p className="text-muted-foreground">暂无备份</p>
         )}
-        <p className="text-muted-foreground text-xs">
-          备份在服务器的部署目录里；恢复会丢掉备份之后写入的数据，请按部署文档在服务器上手动执行。
-        </p>
       </CardContent>
     </Card>
   );

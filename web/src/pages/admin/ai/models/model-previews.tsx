@@ -203,8 +203,8 @@ function Legend({ unit }: { unit: string }) {
         <Star className="size-3 text-sky-500" />
         默认参数
       </span>
-      <span className="text-sky-600 dark:text-sky-400">蓝色：命中规格价格</span>
-      <span>{unit}，均为生成 1 个的价格</span>
+      <span className="text-sky-600 dark:text-sky-400">规格价</span>
+      <span>{unit}</span>
     </div>
   );
 }
@@ -253,8 +253,8 @@ export function PricePreview({
             <span className="tabular-nums">{pricing.token?.out ?? 0} 积分 / 百万 Token</span>
           </div>
           <div className="text-muted-foreground border-t pt-2 text-xs leading-relaxed">
-            例：1000 字提示词、最大输出 {output} Token，提交时最多冻结{" "}
-            <b className="text-foreground">{sample}</b> 积分，完成后按实际用量结算。
+            1000 字提示词 + {output} Token 输出：最多冻结{" "}
+            <b className="text-foreground">{sample}</b> 积分
           </div>
         </div>
       </PreviewFrame>
@@ -312,7 +312,7 @@ export function PricePreview({
             </tbody>
           </table>
         </div>
-        <Legend unit="单位：积分（每秒一列是积分 / 秒）" />
+        <Legend unit="单位：积分" />
       </PreviewFrame>
     );
   }

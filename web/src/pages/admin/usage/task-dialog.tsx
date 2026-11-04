@@ -5,12 +5,7 @@ import {
   DetailDialogBody,
   DetailDialogHeader,
 } from "@/components/admin-ui/detail-dialog";
-import {
-  EmptyState,
-  EmptyStateDescription,
-  EmptyStateIcon,
-  EmptyStateTitle,
-} from "@/components/admin-ui/empty-state";
+import { EmptyState, EmptyStateIcon, EmptyStateTitle } from "@/components/admin-ui/empty-state";
 import { LoadFailed } from "@/components/admin-ui/load-failed";
 import { Tag } from "@/components/admin-ui/tag";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -106,7 +101,6 @@ function TaskDialog({
               <SearchX />
             </EmptyStateIcon>
             <EmptyStateTitle>找不到这个任务</EmptyStateTitle>
-            <EmptyStateDescription>编号错误，或任务已不存在。</EmptyStateDescription>
           </EmptyState>
         )}
         {phase === "ready" && detail && (

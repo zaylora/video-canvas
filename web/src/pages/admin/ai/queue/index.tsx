@@ -189,7 +189,7 @@ export default function QueuePage() {
                     overview.stale ? "bg-amber-500" : "bg-status-success",
                   )}
                 />
-                {overview.stale ? "刷新失败，显示的是旧数据" : "页面可见时每 5 秒自动刷新"}
+                {overview.stale ? "刷新失败，显示的是旧数据" : "每 5 秒刷新"}
               </p>
             </PageHeaderHeading>
             <PageHeaderActions>

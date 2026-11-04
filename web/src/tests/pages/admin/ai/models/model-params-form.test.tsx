@@ -30,7 +30,7 @@ describe("ModelParamsForm", () => {
         />,
       );
     expect(view("openai")).toContain("能看视频");
-    expect(view("openai")).toContain("只有 Gemini");
+    expect(view("openai")).toContain("仅 Gemini");
     expect(view("openai").match(/<button[^>]*id="model-video"[^>]*>/)?.[0]).toContain(
       'disabled=""',
     );

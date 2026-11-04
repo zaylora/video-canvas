@@ -70,7 +70,7 @@ export function CredentialFields({
         label={meta.secretLabel}
         htmlFor="storage-secret"
         error={errors.secretKey}
-        hint="只写不读：保存后不会再显示，也不会出现在任何请求地址或缓存里"
+        hint="保存后不再显示"
         required
       >
         <Input

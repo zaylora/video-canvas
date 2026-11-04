@@ -20,7 +20,7 @@ import { confirm } from "@/components/admin-ui/confirm-dialog";
 import { ReasonTooltip } from "@/components/admin-ui/reason-tooltip";
 import { Stepper, StepperItem } from "@/components/admin-ui/stepper";
 import { Button } from "@/components/ui/button";
-import { DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DialogFooter, DialogHeader, DialogTitle } from "@/components/admin-ui/dialog";
 import { isProcessorVersionConflict } from "@/utils/admin/errors";
 import {
   buildProcessorConfig,
@@ -274,7 +274,7 @@ export function ProcessorWizard({
       confirmLabel: "发布",
       description: (
         <>
-          发布后，「{target.storage_name}」存储里的素材开始使用处理 URL。
+          「{target.storage_name}」的素材将改用处理 URL
           {note && <b className="text-foreground block">{note}。</b>}
         </>
       ),

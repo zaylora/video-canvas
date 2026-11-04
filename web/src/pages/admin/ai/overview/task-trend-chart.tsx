@@ -1,6 +1,7 @@
+import { useReducedMotion } from "motion/react";
 import { useMemo } from "react";
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
-import type { BarShapeProps, TooltipContentProps } from "recharts";
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
+import type { TooltipContentProps } from "recharts";
 
 import type { AdminStats, AdminStatsDay } from "@/api/admin/ai/type";
 import {
@@ -13,6 +14,7 @@ import {
 } from "@/components/ui/card";
 import { ChartContainer, ChartTooltip, type ChartConfig } from "@/components/ui/chart";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 import {
   dayTotal,
   formatMonthDay,
@@ -24,63 +26,36 @@ import {
 import type { LoadStatus } from "../../use-admin";
 import { ChartError } from "./chart-states";
 
-/** 堆叠顺序：从下到上。失败放在最上面最显眼 */
-const SERIES = [
-  { key: "succeeded", label: "成功" },
-  { key: "other", label: "其他" },
-  { key: "failed", label: "失败" },
+/** 浮层里逐项列出的三个桶 */
+const BUCKETS = [
+  { key: "succeeded", label: "成功", color: "var(--status-success)" },
+  { key: "other", label: "其他", color: "var(--chart-other)" },
+  { key: "failed", label: "失败", color: "var(--destructive)" },
 ] as const;
-type SeriesKey = (typeof SERIES)[number]["key"];
 
-/** 颜色全走 token：成功 / 失败是状态色，“其他”（取消与进行中）用中性色 */
+/** 图上只画两层：全部任务（底）与其中失败的（叠在上面），颜色全走 token */
 const chartConfig = {
-  succeeded: { label: "成功", color: "var(--status-success)" },
-  other: { label: "其他", color: "var(--chart-other)" },
+  total: { label: "全部", color: "var(--chart-1)" },
   failed: { label: "失败", color: "var(--destructive)" },
 } satisfies ChartConfig;
-
-/**
- * 一段柱子的外形：只有这一天最上面那一段带圆角，段与段之间用 1px 卡片底色隔开。
- * recharts 的 radius 会给每一段都加圆角，叠起来中间就有缺口，所以自己画。
- * @param key 这一段属于哪个系列
- */
-function stackShape(key: SeriesKey) {
-  return function StackShape({ x, y, width, height, payload }: BarShapeProps) {
-    if (!(height > 0)) return <g />;
-    const day = payload as AdminStatsDay;
-    const above = key === "succeeded" ? day.other + day.failed : key === "other" ? day.failed : 0;
-    const r = above > 0 ? 0 : Math.min(width > 24 ? 4 : 2.5, height, width / 2);
-    const d = `M${x},${y + height}V${y + r}${r ? `Q${x},${y} ${x + r},${y}` : ""}H${x + width - r}${
-      r ? `Q${x + width},${y} ${x + width},${y + r}` : ""
-    }V${y + height}Z`;
-    return <path d={d} fill={`var(--color-${key})`} stroke="var(--card)" strokeWidth={1} />;
-  };
-}
-const SHAPES = {
-  succeeded: stackShape("succeeded"),
-  other: stackShape("other"),
-  failed: stackShape("failed"),
-};
+const LAYERS = ["total", "failed"] as const;
 
 /** 悬停浮层：日期 + 三个桶 + 合计 */
 function TrendTooltip({ active, payload }: TooltipContentProps) {
   const day = payload?.[0]?.payload as AdminStatsDay | undefined;
   if (!active || !day) return null;
   return (
-    <div className="bg-card ring-foreground/10 min-w-34 rounded-lg px-2.5 py-2 text-xs shadow-xl ring-1">
+    <div className="bg-chrome ring-chrome-border min-w-34 rounded-2xl px-3 py-2 text-xs shadow-xl ring-1 backdrop-blur-xl">
       <div className="mb-1 font-medium">{formatTooltipDate(day.date)}</div>
       <div className="grid gap-1">
-        {SERIES.map(({ key, label }) => (
+        {BUCKETS.map(({ key, label, color }) => (
           <div key={key} className="flex items-center gap-1.5">
-            <span
-              className="size-2 shrink-0 rounded-[2px]"
-              style={{ background: `var(--color-${key})` }}
-            />
+            <span className="size-2 shrink-0 rounded-full" style={{ background: color }} />
             <span className="text-muted-foreground">{label}</span>
             <span className="ml-auto pl-4 font-medium tabular-nums">{day[key]}</span>
           </div>
         ))}
-        <div className="border-border text-muted-foreground flex items-center border-t pt-1">
+        <div className="border-chrome-border text-muted-foreground flex items-center border-t pt-1">
           合计
           <span className="text-foreground ml-auto pl-4 font-medium tabular-nums">
             {dayTotal(day)}
@@ -92,10 +67,9 @@ function TrendTooltip({ active, payload }: TooltipContentProps) {
 }
 
 /**
- * 任务量（堆叠柱形图）：每天一根柱，成功 / 其他 / 失败三段，对应统计口径里的三个桶。
- * - 柱子入场的“长起来”由 index.css 的 chart-bars-rise 负责（recharts 自带动画关掉）；
- *   图表按范围加 key，切 7 / 30 天时重新挂载、重播入场，定时刷新同范围的数据不重播；
- * - X 轴高度固定 24，与 index.css 里动画原点的 24px 对应，改这里要一起改；
+ * 任务量（面积图）：每天的全部任务一层，其中失败的一层叠在上面；悬停看成功 / 其他 / 失败三个桶。
+ * - 曲线用 monotone，数据稀疏时也是一道平缓的坡，不会像柱形图那样留一大片空白；
+ * - 入场用 recharts 自带的从左往右展开，开了“减少动态效果”就关掉；
  * - 一个任务都没有时保留坐标轴与网格，中间写提示。
  * @param stats 当前范围的统计，加载中为 null
  * @param status 统计的加载状态
@@ -105,25 +79,26 @@ export function TaskTrendChart({
   stats,
   status,
   onRetry,
+  className,
 }: {
   stats: AdminStats | null;
   status: LoadStatus;
   onRetry: () => void;
+  className?: string;
 }) {
-  const total = useMemo(
-    () => stats?.daily.reduce((sum, day) => sum + dayTotal(day), 0) ?? 0,
+  const reduced = useReducedMotion();
+  const data = useMemo(
+    () => stats?.daily.map((day) => ({ ...day, total: dayTotal(day) })) ?? [],
     [stats],
   );
-  const axis = useMemo(
-    () => niceTicks(Math.max(0, ...(stats?.daily.map(dayTotal) ?? []))),
-    [stats],
-  );
-  const dates = useMemo(() => stats?.daily.map((day) => day.date) ?? [], [stats]);
+  const total = data.reduce((sum, day) => sum + day.total, 0);
+  const axis = useMemo(() => niceTicks(Math.max(0, ...data.map((day) => day.total))), [data]);
+  const dates = data.map((day) => day.date);
   const today = dates.at(-1);
 
   return (
-    <Card data-slot="task-trend-chart">
-      <CardHeader>
+    <Card data-slot="task-trend-chart" className={cn("gap-3", className)}>
+      <CardHeader className="px-5">
         <CardTitle>任务量</CardTitle>
         <CardDescription className="text-xs tabular-nums">
           {stats
@@ -133,35 +108,43 @@ export function TaskTrendChart({
             : " "}
         </CardDescription>
         <CardAction>
-          <ul className="text-muted-foreground flex flex-wrap gap-x-3 gap-y-1 text-xs" aria-hidden>
-            {SERIES.map(({ key, label }) => (
+          <ul className="text-muted-foreground flex gap-3 text-xs" aria-hidden>
+            {LAYERS.map((key) => (
               <li key={key} className="flex items-center gap-1.5">
                 <span
-                  className="size-2 rounded-[2px]"
-                  style={{ background: `var(--color-${key}, ${chartConfig[key].color})` }}
+                  className="size-2 rounded-full"
+                  style={{ background: chartConfig[key].color }}
                 />
-                {label}
+                {chartConfig[key].label}
               </li>
             ))}
           </ul>
         </CardAction>
       </CardHeader>
-      <CardContent className="flex min-h-60 flex-1 flex-col">
+      <CardContent className="flex min-h-56 flex-1 flex-col px-3">
         {status === "error" ? (
           <ChartError title="任务统计加载失败" onRetry={onRetry} />
         ) : !stats ? (
-          <Skeleton className="min-h-60 flex-1" />
+          <Skeleton className="mx-2 min-h-56 flex-1 rounded-2xl" />
         ) : (
-          <div className="relative flex min-h-60 flex-1">
+          <div className="relative flex min-h-56 flex-1">
             <ChartContainer
               key={stats.days}
               config={chartConfig}
               role="img"
-              aria-label={`近 ${stats.days} 天任务量柱形图，按成功、其他、失败堆叠`}
-              className="chart-bars-rise aspect-auto h-full min-h-60 w-full justify-start"
+              aria-label={`近 ${stats.days} 天任务量面积图，含其中失败的任务`}
+              className="aspect-auto h-full min-h-56 w-full justify-start"
             >
-              <BarChart data={stats.daily} margin={{ top: 8, right: 4, bottom: 0, left: 0 }}>
-                <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="3 3" />
+              <AreaChart data={data} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
+                <defs>
+                  {LAYERS.map((key) => (
+                    <linearGradient key={key} id={`trend-${key}`} x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={`var(--color-${key})`} stopOpacity={0.35} />
+                      <stop offset="100%" stopColor={`var(--color-${key})`} stopOpacity={0} />
+                    </linearGradient>
+                  ))}
+                </defs>
+                <CartesianGrid vertical={false} stroke="var(--chrome-border)" />
                 <XAxis
                   dataKey="date"
                   ticks={thinTicks(dates)}
@@ -169,11 +152,11 @@ export function TaskTrendChart({
                   tickFormatter={(date: string) => (date === today ? "今天" : formatMonthDay(date))}
                   tickLine={false}
                   axisLine={false}
-                  tickMargin={6}
-                  height={24}
+                  tickMargin={8}
+                  padding={{ left: 12, right: 0 }}
                 />
                 <YAxis
-                  width={34}
+                  width={36}
                   domain={[0, axis.max]}
                   ticks={axis.ticks}
                   allowDecimals={false}
@@ -182,27 +165,28 @@ export function TaskTrendChart({
                   tickMargin={4}
                 />
                 <ChartTooltip
-                  cursor={{ fill: "var(--muted)", opacity: 0.55, radius: 6 }}
+                  cursor={{ stroke: "var(--chrome-border)", strokeWidth: 1 }}
                   isAnimationActive={false}
                   content={TrendTooltip}
                 />
-                {SERIES.map(({ key }) => (
-                  <Bar
+                {LAYERS.map((key) => (
+                  <Area
                     key={key}
                     dataKey={key}
-                    stackId="tasks"
-                    fill={`var(--color-${key})`}
-                    shape={SHAPES[key]}
-                    maxBarSize={stats.days <= 7 ? 40 : 18}
-                    isAnimationActive={false}
+                    type="monotone"
+                    stroke={`var(--color-${key})`}
+                    strokeWidth={2}
+                    fill={`url(#trend-${key})`}
+                    activeDot={{ r: 4, strokeWidth: 2, stroke: "var(--background)" }}
+                    isAnimationActive={!reduced}
+                    animationDuration={600}
                   />
                 ))}
-              </BarChart>
+              </AreaChart>
             </ChartContainer>
             {total === 0 && (
-              <div className="text-muted-foreground pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-1 pb-6 text-sm">
+              <div className="text-muted-foreground pointer-events-none absolute inset-0 grid place-content-center pb-6 text-sm">
                 这段时间还没有任务
-                <span className="text-xs">有人在画布里生成后，这里就会出现柱子</span>
               </div>
             )}
           </div>

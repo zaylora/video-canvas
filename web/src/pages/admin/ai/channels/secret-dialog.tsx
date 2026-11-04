@@ -13,7 +13,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@/components/admin-ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { openDialog, type DialogControl } from "@/store/dialog";
@@ -144,7 +144,7 @@ function SecretBody({
       <FormField
         label="Secret Key（可选）"
         htmlFor="channel-secret-key"
-        hint="仅 AK/SK 签名类协议需要（如可灵）；其他渠道留空。"
+        hint="仅 AK/SK 签名协议需要"
       >
         <Input
           id="channel-secret-key"
@@ -173,14 +173,10 @@ function SecretBody({
 
       {secretSet && hasApi && (
         <Notice tone="warning">
-          将<b>覆盖现有 API Key</b>，正在使用它的任务会立即改用新 Key。
+          将<b>覆盖现有 API Key</b>，进行中的任务立即改用新 Key。
         </Notice>
       )}
       {partial && <Notice tone="danger">{partial}</Notice>}
-
-      <p className="text-muted-foreground text-xs">
-        Key 只写不读，保存后不会再显示明文；设置会写审计（不含值）。
-      </p>
 
       <DialogFooter>
         <Button type="button" variant="outline" disabled={busy} onClick={onClose}>

@@ -162,9 +162,6 @@ function RunView({ run, repairText }: { run: RunState; repairText: string | null
       </div>
       {!terminal && (
         <>
-          <p className="text-muted-foreground text-xs">
-            真实调用上游，不扣用户积分。每 3 秒刷新一次状态。
-          </p>
           {progress !== null && (
             <div
               className="bg-muted h-1.5 overflow-hidden rounded-full"
@@ -185,7 +182,7 @@ function RunView({ run, repairText }: { run: RunState; repairText: string | null
           title="测试失败"
           action={repairText ? <RepairCopyButton text={repairText} /> : undefined}
         >
-          {view.error_message || "上游没有返回原因，看“追踪”定位失败的那一步。"}
+          {view.error_message || "上游没有返回原因"}
         </Notice>
       )}
       {ok && view.outputs && view.outputs.length > 0
@@ -195,9 +192,7 @@ function RunView({ run, repairText }: { run: RunState; repairText: string | null
               没有产出文件。
             </Notice>
           )}
-      {run.timedOut && (
-        <Notice tone="info">试跑仍在进行，可稍后在任务里查看。这不代表失败。</Notice>
-      )}
+      {run.timedOut && <Notice tone="info">试跑仍在进行，可稍后在任务里查看</Notice>}
       {run.note && <Notice tone="warning">{run.note}</Notice>}
     </div>
   );
@@ -230,9 +225,7 @@ function LogView({ modelKey, taskId }: { modelKey: string; taskId?: number | str
         </Button>
       </div>
       {shown.length === 0 ? (
-        <p className="text-muted-foreground text-xs">
-          还没有请求。保存、校验、dry-run、试跑的每次请求与返回都会记在这里（Key 已隐藏）。
-        </p>
+        <p className="text-muted-foreground text-xs">还没有请求</p>
       ) : (
         <RequestLog>
           {shown.map((entry) => (
@@ -299,18 +292,14 @@ export function ResultPanel({
       >
         {tab === "run" &&
           (!run ? (
-            <p className="text-muted-foreground text-xs">
-              在左边的节点里选好参数，点“开始测试”真实调用一次上游，不扣用户积分，结果不进素材库。
-            </p>
+            <p className="text-muted-foreground text-xs">还没有试跑</p>
           ) : (
             <RunView run={run} repairText={repairText} />
           ))}
 
         {tab === "dry-run" &&
           (!dryRun ? (
-            <p className="text-muted-foreground text-xs">
-              点“只看请求”查看插件组装出的请求：已校验、鉴权头脱敏，不会真正发送。
-            </p>
+            <p className="text-muted-foreground text-xs">还没有请求描述</p>
           ) : dryRun.error ? (
             <Notice tone="danger" title="没有拿到请求描述">
               {dryRun.error}
@@ -318,7 +307,6 @@ export function ResultPanel({
           ) : (
             <div className="flex flex-col gap-2">
               <p className="text-muted-foreground text-xs">
-                插件返回的请求描述（已校验，Key 与鉴权头脱敏），未发送。
                 {new Date(dryRun.time).toLocaleTimeString()}
               </p>
               <FoldableCode defaultOpen text={JSON.stringify(dryRun.json, null, 2)} />
@@ -327,12 +315,9 @@ export function ResultPanel({
 
         {tab === "trace" &&
           (!trace ? (
-            <p className="text-muted-foreground text-xs">
-              测试完成后，这里会显示每次钩子与每次 HTTP 的时间线。
-            </p>
+            <p className="text-muted-foreground text-xs">还没有追踪</p>
           ) : trace.status === "error" ? (
             <Notice tone="warning" title="没能取到追踪">
-              稍后点“刷新”重试。
               <Button className="mt-2" size="xs" variant="outline" onClick={onRefreshTrace}>
                 刷新
               </Button>

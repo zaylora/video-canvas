@@ -63,11 +63,10 @@ export function ContextLimitsHintView({
   gemini?: boolean;
 }) {
   const muted = "text-muted-foreground mt-2 text-xs";
-  if (state.kind === "idle")
-    return <p className={muted}>选好渠道并填写上游模型名后，会自动识别上下文窗口和最大输出。</p>;
+  if (state.kind === "idle") return null;
   if (state.kind === "loading") return <p className={muted}>正在识别上下文规格…</p>;
   if (state.kind === "error" || !state.limits.found)
-    return <p className={muted}>没能识别出这个模型的规格，请手动填写。</p>;
+    return <p className={muted}>未识别出规格，请手动填写</p>;
 
   const { limits } = state;
   return (
@@ -92,7 +91,7 @@ export function ContextLimitsHintView({
         </Button>
       )}
       {media && limits.video && !gemini && (
-        <p className="basis-full">当前接口格式是 OpenAI 兼容，「看视频」不会被应用。</p>
+        <p className="basis-full">OpenAI 兼容格式下「看视频」不会被应用</p>
       )}
     </div>
   );

@@ -2,7 +2,7 @@ import { useRef } from "react";
 
 import type { ModelListItem } from "@/api/admin/ai/type.d";
 import { ConfirmDialog } from "@/components/admin-ui/confirm-dialog";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent } from "@/components/admin-ui/dialog";
 
 import { ModelDialog, type ModelDialogHandle } from "./model-dialog";
 import { ModelTestDialog } from "./model-test-dialog";
@@ -48,7 +48,7 @@ export function ModelEditorDialogs({
       <ConfirmDialog
         open={!!ws.pendingNav}
         title="放弃未保存的修改？"
-        description="当前模型有未保存的修改，离开后这些修改会丢失。"
+        description="未保存的修改会丢失。"
         confirmLabel="放弃修改"
         destructive
         onConfirm={ws.confirmNav}

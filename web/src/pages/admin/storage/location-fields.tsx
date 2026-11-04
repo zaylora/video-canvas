@@ -167,14 +167,13 @@ export function AdvancedFields(props: SectionProps) {
       <CollapsibleTrigger className="text-muted-foreground hover:text-foreground flex w-full items-center gap-1.5 py-1 text-sm font-medium">
         <ChevronRight className={cn("size-4 transition-transform", open && "rotate-90")} />
         高级
-        <span className="text-xs font-normal">（自定义 Endpoint、寻址方式）</span>
       </CollapsibleTrigger>
       <CollapsibleContent className="mt-2 flex flex-col gap-3">
         <FormField
           label={<>自定义 Endpoint{endpoint.lock}</>}
           htmlFor="storage-custom-endpoint"
           error={errors.endpoint}
-          hint="留空按地域推导。MinIO 等兼容服务填 host:port，不用写协议头"
+          hint="留空按地域推导 · host:port"
         >
           <Input
             id="storage-custom-endpoint"
@@ -202,7 +201,6 @@ export function AdvancedFields(props: SectionProps) {
             onCheckedChange={(checked) => patch({ useSSL: checked })}
           />
           <Label htmlFor="storage-ssl">使用 HTTPS</Label>
-          <span className="text-muted-foreground text-xs">内网 MinIO 没有证书时可以关闭</span>
         </div>
       </CollapsibleContent>
     </Collapsible>

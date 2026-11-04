@@ -6,7 +6,7 @@ import type { PaymentChannel } from "@/api/admin/payment/type.d";
 import { Notice } from "@/components/admin-ui/notice";
 import { ReasonTooltip } from "@/components/admin-ui/reason-tooltip";
 import { Button } from "@/components/ui/button";
-import { SheetFooter } from "@/components/ui/sheet";
+import { SheetFooter } from "@/components/admin-ui/sheet";
 import { errorMessage } from "@/utils/admin/errors";
 import { OPS_ONLY_REASON } from "@/utils/admin/payment/channel";
 import { formatAbsolute } from "@/utils/admin/user-rules";
@@ -67,13 +67,6 @@ export function ChannelValidateStep({
     <>
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 pb-4">
         {revalidateNotice && <Notice tone="warning">{revalidateNotice}</Notice>}
-        <div className="bg-muted/40 rounded-lg border p-3 text-sm">
-          <b>校验做两件事</b>
-          <ul className="text-muted-foreground mt-1.5 list-disc space-y-1 pl-5">
-            <li>本地格式校验：私钥能不能解析、网址是否合法、必填项是否齐全</li>
-            <li>在线探测：用一个不存在的订单号查单，渠道返回「订单不存在」就说明凭证可用</li>
-          </ul>
-        </div>
         {validating && (
           <div className="text-muted-foreground flex items-center gap-2 text-sm" role="status">
             <Loader2 className="size-4 animate-spin" />
@@ -82,9 +75,9 @@ export function ChannelValidateStep({
         )}
         {result?.kind === "ok" && (
           <>
-            <Notice tone="success">校验通过：配置格式正确，凭证可用。</Notice>
+            <Notice tone="success">校验通过</Notice>
             {result.probeSkipped && (
-              <Notice tone="warning">该渠道无法在线校验，启用后请先用小额真实订单测试。</Notice>
+              <Notice tone="warning">无法在线校验，启用后请先小额实单测试</Notice>
             )}
           </>
         )}
@@ -94,9 +87,7 @@ export function ChannelValidateStep({
           </Notice>
         )}
         {!result && !validating && channel.validated && (
-          <Notice tone="success">
-            当前配置已于 {formatAbsolute(channel.validated_at)} 通过校验，可直接进入下一步。
-          </Notice>
+          <Notice tone="success">已于 {formatAbsolute(channel.validated_at)} 通过校验</Notice>
         )}
       </div>
       <SheetFooter className="flex-row justify-end border-t">

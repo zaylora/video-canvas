@@ -10,7 +10,6 @@ import {
   FormSectionTitle,
 } from "@/components/admin-ui/form-section";
 import { MarginBadge } from "@/components/admin-ui/margin-badge";
-import { Notice } from "@/components/admin-ui/notice";
 import { Segmented, SegmentedItem } from "@/components/admin-ui/segmented";
 import { Tag } from "@/components/admin-ui/tag";
 import { Switch } from "@/components/ui/switch";
@@ -106,11 +105,6 @@ export function ModelPriceForm({
       </FormSectionHeader>
 
       <div className="flex flex-col gap-4" id="model-pricing">
-        {kind === "agent" && caps?.video && (
-          <Notice tone="info">
-            看视频的子请求按这里的 Token 价照常扣费、计入本轮已花积分，不算进上下文大小。
-          </Notice>
-        )}
         <div className="flex flex-wrap items-start gap-x-8 gap-y-3 rounded-xl border p-4">
           <FormField
             size="default"
@@ -152,13 +146,9 @@ export function ModelPriceForm({
               </Segmented>
             </FormField>
           )}
-          <p className="text-muted-foreground w-full text-xs">
-            {isToken
-              ? "按 Token 计费不支持规格价格。"
-              : specMode
-                ? "按生成方式、清晰度等规格分别定价，每个规格可以单独设置积分成本；没命中任何规格时按最低的规格价收取。"
-                : "所有请求使用同一个价格；需要区分生成方式、清晰度等规格时，切到「按规格定价」。"}
-          </p>
+          {specMode && (
+            <p className="text-muted-foreground w-full text-xs">未命中规格时按最低规格价收取</p>
+          )}
           {specMode && issueFor(issues, `pricing.${field}`) && (
             <p className="text-destructive w-full text-xs">
               {issueFor(issues, `pricing.${field}`)}
@@ -194,8 +184,7 @@ export function ModelPriceForm({
             </button>
             {tiers.length > 1 && (
               <p className="text-muted-foreground text-xs">
-                同时满足多条时取条件最多的一条，条件数相同取排在前面的；组合价格（如「4K +
-                开音频」）要单独写一条。
+                多条命中时取条件最多的一条，相同则取靠前的
               </p>
             )}
           </div>

@@ -54,7 +54,7 @@ export function ModelTable({
   onDelete: (item: ModelListItem) => void;
 }) {
   return (
-    <div className="bg-card flex min-h-64 flex-1 flex-col overflow-hidden rounded-xl border">
+    <div className="bg-chrome ring-chrome-border ring-1 shadow-lg backdrop-blur-xl backdrop-saturate-150 flex min-h-64 flex-1 flex-col overflow-hidden rounded-3xl">
       <div className="flex flex-wrap items-center gap-2 p-4">
         <ListSearch
           value={list.q}

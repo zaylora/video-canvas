@@ -72,9 +72,7 @@ export function ProbePanel({ state, withDirect }: { state: ProbeState; withDirec
         ))}
       </StepList>
       {withDirect && (
-        <p className="text-muted-foreground mt-2 text-xs">
-          浏览器直传（CORS）无法在这里验证，请确认已按上面的规则在桶上配置。
-        </p>
+        <p className="text-muted-foreground mt-2 text-xs">浏览器直传未验证，请确认桶已配置 CORS</p>
       )}
     </div>
   );

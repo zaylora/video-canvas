@@ -19,7 +19,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@/components/admin-ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -89,7 +89,6 @@ function ChannelDialogShell({
     if (!dirty) return onClose();
     void confirm({
       title: "放弃未保存的修改？",
-      description: "关闭后，这次对渠道的修改不会保存。",
       confirmLabel: "放弃修改",
       destructive: true,
     }).then((ok) => ok && onClose());
@@ -178,10 +177,10 @@ function ChannelForm({
         }
         if (failed.length > 0) {
           toast.warning(`渠道已创建，但 ${failed.join("、")} 没有设置成功`, {
-            description: "请在渠道详情里点击“设置 Key”重新设置。",
+            description: "请重新设置 Key",
           });
         } else {
-          toast.success("渠道已创建。下一步：拉取模型");
+          toast.success("渠道已创建");
         }
         onSaved(key, true);
         onClose();
@@ -234,7 +233,7 @@ function ChannelForm({
           htmlFor="channel-base-url"
           required
           error={errors.baseUrl}
-          hint="填写上游 Base URL，例如 https://api.example.com；不要带查询参数。"
+          hint="不带查询参数"
         >
           <Input
             id="channel-base-url"
@@ -248,7 +247,7 @@ function ChannelForm({
           />
         </FormField>
 
-        {isNew ? (
+        {isNew && (
           <>
             <FormField label="API Key" htmlFor="channel-new-api-key">
               <Input
@@ -265,7 +264,7 @@ function ChannelForm({
             <FormField
               label="Secret Key（可选）"
               htmlFor="channel-new-secret-key"
-              hint="仅 AK/SK 签名类协议需要（如可灵）；其他渠道留空。"
+              hint="仅 AK/SK 签名协议需要"
             >
               <Input
                 id="channel-new-secret-key"
@@ -279,10 +278,6 @@ function ChannelForm({
               />
             </FormField>
           </>
-        ) : (
-          <p className="text-muted-foreground text-xs">
-            API Key 与 Secret Key 只写不读，请用“设置 Key”修改。
-          </p>
         )}
 
         <HeaderEditor
@@ -293,7 +288,7 @@ function ChannelForm({
         />
 
         <div className="flex flex-col gap-1.5">
-          <Label className="text-muted-foreground text-xs">限流（可选，留空不限）</Label>
+          <Label className="text-muted-foreground text-xs">限流（留空不限）</Label>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <FormField label="每秒请求数 rps" htmlFor="channel-rps" error={errors.rps}>
               <Input

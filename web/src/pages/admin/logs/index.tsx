@@ -12,7 +12,6 @@ import {
 import {
   EmptyState,
   EmptyStateActions,
-  EmptyStateDescription,
   EmptyStateIcon,
   EmptyStateTitle,
 } from "@/components/admin-ui/empty-state";
@@ -70,7 +69,6 @@ export default function AuditsPage() {
       <PageHeader>
         <PageHeaderHeading>
           <PageHeaderTitle>操作审计</PageHeaderTitle>
-          <p className="text-muted-foreground mt-1 text-sm">看看最近后台有谁做了什么调整。</p>
         </PageHeaderHeading>
       </PageHeader>
 
@@ -79,7 +77,7 @@ export default function AuditsPage() {
           <ListSearch
             value={filters.actor}
             onCommit={setActor}
-            placeholder="输入操作人的用户名"
+            placeholder="搜索操作人"
             className="sm:w-64"
           />
           <FilterSelect
@@ -109,12 +107,7 @@ export default function AuditsPage() {
               <EmptyStateIcon>
                 <SearchX />
               </EmptyStateIcon>
-              <EmptyStateTitle>
-                {filtered ? "没有符合条件的记录" : "这个时间范围内没有操作记录"}
-              </EmptyStateTitle>
-              <EmptyStateDescription>
-                {filtered ? "换个条件试试，或清除筛选。" : "可以放宽时间范围再看看。"}
-              </EmptyStateDescription>
+              <EmptyStateTitle>{filtered ? "没有符合条件的记录" : "暂无操作记录"}</EmptyStateTitle>
               <EmptyStateActions>
                 {filtered ? (
                   <Button

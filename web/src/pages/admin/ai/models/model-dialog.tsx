@@ -17,7 +17,7 @@ import { ReasonTooltip } from "@/components/admin-ui/reason-tooltip";
 import { StatusDot } from "@/components/admin-ui/status-dot";
 import { Tag } from "@/components/admin-ui/tag";
 import { Button } from "@/components/ui/button";
-import { DialogTitle } from "@/components/ui/dialog";
+import { DialogTitle } from "@/components/admin-ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { UnderlineTab, UnderlineTabs } from "@/components/admin-ui/underline-tabs";
@@ -218,7 +218,6 @@ export function ModelDialog({
         <div className="flex items-center gap-2 border-b px-6 py-2.5 text-sm">
           <Braces className="size-4" />
           <span className="font-medium">JSON 编辑</span>
-          <span className="text-muted-foreground text-xs">正文是事实来源，表单只是它的读写。</span>
           <Button size="xs" variant="ghost" className="ml-auto" onClick={ws.format}>
             格式化
           </Button>
@@ -268,7 +267,7 @@ export function ModelDialog({
             role={ws.parsed.ok ? undefined : "alert"}
           >
             {ws.parsed.ok
-              ? "JSON 语法正确（结构与取值由“校验配置”检查）"
+              ? "JSON 语法正确"
               : `JSON 语法错误${ws.parsed.line ? `（第 ${ws.parsed.line} 行 第 ${ws.parsed.column} 列）` : ""}：${ws.parsed.message}`}
           </div>
         </div>
@@ -279,7 +278,7 @@ export function ModelDialog({
               <ModelFormSkeleton />
             ) : !body ? (
               <Notice tone="danger" title="正文不是合法的 JSON 对象">
-                从“更多 → 编辑 JSON”修复后再回来。
+                请在 JSON 编辑中修复
               </Notice>
             ) : tab === "basic" ? (
               <ModelBasicForm
@@ -329,12 +328,7 @@ export function ModelDialog({
               onCheckedChange={(checked) => void ws.toggleEnabled(checked)}
             />
           </ReasonTooltip>
-          <span>
-            <b className="font-medium">{online ? "已上线" : "未上线"}</b>
-            <span className="text-muted-foreground block text-xs">
-              开关立即生效；上线前要过启用检查
-            </span>
-          </span>
+          <b className="font-medium">{online ? "已上线" : "未上线"}</b>
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <ReasonTooltip reason={testDeny}>

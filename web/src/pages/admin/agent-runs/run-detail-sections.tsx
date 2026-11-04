@@ -153,7 +153,7 @@ export function HarnessSection({ digest }: { digest: AgentRunDigest | null }) {
   if (!digest)
     return (
       <DrawerSection title="Harness">
-        <p className="text-muted-foreground text-sm">摘要还没生成，暂无 Harness 信息。</p>
+        <p className="text-muted-foreground text-sm">暂无 Harness 信息</p>
       </DrawerSection>
     );
   const skills = Object.entries(digest.skills ?? {});
@@ -267,7 +267,7 @@ export function SignalsSection({ detail }: { detail: AgentRunDetail }) {
             )}
           </SignalRow>
           <SignalRow label="撤销" active={signals.undone}>
-            {signals.undone ? "是，用户撤销了这一轮的画布改动" : "否"}
+            {signals.undone ? "是" : "否"}
           </SignalRow>
           <SignalRow label="插话" active={signals.steerCount > 0}>
             {signals.steerCount} 次
@@ -420,7 +420,7 @@ export function ContextSection({
   return (
     <FoldSection title="上下文" hint="更早两轮" defaultOpen={defaultOpen}>
       {lines.length === 0 ? (
-        <p className="text-muted-foreground text-sm">没有可显示的上下文。</p>
+        <p className="text-muted-foreground text-sm">暂无上下文</p>
       ) : (
         <ul data-slot="run-context" className="flex flex-col gap-1.5">
           {lines.map((line, i) => (

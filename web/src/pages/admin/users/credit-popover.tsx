@@ -215,7 +215,6 @@ function CreditForm({
         autoComplete="off"
         maxLength={NOTE_MAX}
         placeholder="备注（必填，用户可见）"
-        aria-describedby="credit-note-hint"
         value={note}
         disabled={busy}
         onChange={(event) => {
@@ -224,9 +223,6 @@ function CreditForm({
         }}
         onKeyDown={onEnter}
       />
-      <p id="credit-note-hint" className="text-muted-foreground -mt-1 text-xs">
-        该备注会显示在用户的积分流水中
-      </p>
       <div className="mt-1 flex items-center justify-between gap-2">
         <span
           className={cn(

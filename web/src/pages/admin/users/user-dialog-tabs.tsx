@@ -480,7 +480,7 @@ function OverviewTab({
         </div>
       ) : (
         <div className="text-muted-foreground rounded-lg border border-dashed px-3 py-4 text-center text-xs">
-          还没有管理员操作过这个账号
+          暂无管理员操作
         </div>
       )}
     </div>

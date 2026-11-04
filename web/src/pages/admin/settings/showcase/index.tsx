@@ -5,7 +5,6 @@ import type { ShowcaseAdminItem, ShowcaseSettings } from "@/api/admin/showcase/t
 import {
   EmptyState,
   EmptyStateActions,
-  EmptyStateDescription,
   EmptyStateIcon,
   EmptyStateTitle,
 } from "@/components/admin-ui/empty-state";
@@ -22,6 +21,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { GLASS_PANEL } from "@/components/admin-ui/glass";
+import { cn } from "@/lib/utils";
 import { useShowcasePlayer } from "@/hooks/use-showcase-player";
 import { useAdminStore } from "@/store/admin";
 import { canManageInfra } from "@/utils/admin/role";
@@ -64,13 +65,14 @@ function ShowcasePreview({
   const player = useShowcasePlayer(items, settings.clip_seconds, settings.poster_only_on_save_data);
   const playing = settings.show_on_login && items.length > 0;
 
-  let note = `轮播 ${items.length} 条，每条 ${settings.clip_seconds} 秒，一轮约 ${items.length * settings.clip_seconds} 秒。`;
-  if (!settings.show_on_login) note = "登录页播放已关闭，显示默认渐变背景。";
-  else if (items.length === 0) note = "没有启用的作品，登录页显示默认渐变背景。";
+  let note: string | null =
+    `${items.length} 条 · 一轮约 ${items.length * settings.clip_seconds} 秒`;
+  if (!settings.show_on_login) note = "登录页播放已关闭";
+  else if (items.length === 0) note = null;
 
   return (
-    <Card className="gap-0 py-0">
-      <PanelHead title="实时预览" aside="改动保存后立即生效" />
+    <Card className={cn(GLASS_PANEL, "gap-0 py-0")}>
+      <PanelHead title="实时预览" />
       <CardContent className="py-4">
         <div className="bg-stage text-on-stage relative aspect-[16/10] overflow-hidden rounded-xl">
           {/* 没有作品时和登录页一样是两团柔光的渐变 */}
@@ -92,32 +94,27 @@ function ShowcasePreview({
         {playing && (
           <ShowcaseProgress player={player} tone="plain" className="mt-3 justify-between" />
         )}
-        <p className="text-muted-foreground mt-2.5 text-xs leading-relaxed">{note}</p>
+        {note && <p className="text-muted-foreground mt-2.5 text-xs leading-relaxed">{note}</p>}
       </CardContent>
     </Card>
   );
 }
 
-/** 一行设置：左边标题和说明，右边控件；行与行之间一条细线（设计稿 set-row） */
+/** 一行设置：左边标题，右边控件；行与行之间一条细线（设计稿 set-row） */
 function SettingRow({
   title,
-  hint,
   htmlFor,
   children,
 }: {
   title: string;
-  hint: string;
   htmlFor?: string;
   children: ReactNode;
 }) {
   return (
     <div className="flex items-center justify-between gap-3 py-2.5 not-first:border-t">
-      <div>
-        <label htmlFor={htmlFor} className="block text-sm font-medium">
-          {title}
-        </label>
-        <span className="text-muted-foreground text-xs">{hint}</span>
-      </div>
+      <label htmlFor={htmlFor} className="block text-sm font-medium">
+        {title}
+      </label>
       {children}
     </div>
   );
@@ -139,10 +136,10 @@ function SettingsPanel({
   };
 
   return (
-    <Card className="gap-0 py-0">
+    <Card className={cn(GLASS_PANEL, "gap-0 py-0")}>
       <PanelHead title="轮播设置" />
       <CardContent className="py-1.5">
-        <SettingRow title="每条播放时长" hint="到时间交叉溶解到下一条">
+        <SettingRow title="每条播放时长">
           <div className="border-border inline-flex items-center overflow-hidden rounded-lg border">
             <button
               type="button"
@@ -167,7 +164,7 @@ function SettingsPanel({
             </button>
           </div>
         </SettingRow>
-        <SettingRow title="登录页播放" hint="关闭后显示默认渐变背景" htmlFor="showcase-on-login">
+        <SettingRow title="登录页播放" htmlFor="showcase-on-login">
           <Switch
             id="showcase-on-login"
             checked={settings.show_on_login}
@@ -175,11 +172,7 @@ function SettingsPanel({
             onCheckedChange={(checked) => onChange({ ...settings, show_on_login: checked })}
           />
         </SettingRow>
-        <SettingRow
-          title="省流量时只显示封面"
-          hint="浏览器开启省流量模式时不加载视频"
-          htmlFor="showcase-save-data"
-        >
+        <SettingRow title="省流量时只显示封面" htmlFor="showcase-save-data">
           <Switch
             id="showcase-save-data"
             checked={settings.poster_only_on_save_data}
@@ -235,7 +228,7 @@ export default function ShowcaseSettingsPage() {
         {status === "error" && <SettingsError onRetry={() => void admin.reload()} />}
         {status === "ready" && view && (
           <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
-            <Card className="gap-0 py-0">
+            <Card className={cn(GLASS_PANEL, "gap-0 py-0")}>
               <PanelHead
                 title="展示作品"
                 aside={
@@ -246,12 +239,12 @@ export default function ShowcaseSettingsPage() {
               />
               {view.items.length > 0 && enabledCount === 0 && (
                 <Notice tone="warning" className="m-3 mb-0">
-                  没有启用的作品，登录页会显示默认渐变背景。
+                  没有启用的作品，登录页显示默认背景
                 </Notice>
               )}
               {enabledCount > RECOMMENDED_MAX && (
                 <Notice tone="warning" className="m-3 mb-0">
-                  已启用 {enabledCount} 条，超过 {RECOMMENDED_MAX} 条后访客很难看完一轮，建议精简。
+                  已启用 {enabledCount} 条，建议不超过 {RECOMMENDED_MAX} 条
                 </Notice>
               )}
               {view.items.length === 0 ? (
@@ -260,7 +253,6 @@ export default function ShowcaseSettingsPage() {
                     <Film />
                   </EmptyStateIcon>
                   <EmptyStateTitle>还没有展示作品</EmptyStateTitle>
-                  <EmptyStateDescription>登录页现在显示默认渐变背景。</EmptyStateDescription>
                   {canWrite && (
                     <EmptyStateActions>
                       <Button onClick={() => setLibraryOpen(true)}>
