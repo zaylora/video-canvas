@@ -88,7 +88,7 @@ export function ProductsTab() {
   const editing = products.find((product) => product.id === editingId) ?? null;
 
   return (
-    <section className="bg-card overflow-hidden rounded-xl border">
+    <section className="bg-chrome ring-chrome-border ring-1 shadow-lg backdrop-blur-xl backdrop-saturate-150 overflow-hidden rounded-3xl">
       <div className="flex items-center justify-between gap-3 p-4">
         <div>
           <h2 className="text-sm font-semibold">充值商品</h2>

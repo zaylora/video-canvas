@@ -26,6 +26,7 @@ import { loadRows, type LoadRow } from "@/utils/admin/overview-stats";
 
 import type { LoadStatus } from "../../use-admin";
 import { ChartError } from "./chart-states";
+import { GLASS_PANEL } from "@/components/admin-ui/glass";
 
 /** 最多列出几行，其余去渠道页看 */
 const MAX_ROWS = 6;
@@ -87,8 +88,8 @@ export function ChannelLoad({
   const loading = !catalogReady || status === "loading";
 
   return (
-    <Card data-slot="channel-load" className="h-full">
-      <CardHeader>
+    <Card data-slot="channel-load" className={cn(GLASS_PANEL, "h-full gap-5 py-5")}>
+      <CardHeader className="px-5">
         <CardTitle>渠道负载</CardTitle>
         <CardDescription className="text-xs">
           生成中 / 同时生成上限，排队的任务叠在后面
@@ -108,12 +109,12 @@ export function ChannelLoad({
           </span>
         </CardAction>
       </CardHeader>
-      <CardContent className="flex flex-1 flex-col gap-3.5">
+      <CardContent className="flex flex-1 flex-col gap-4 px-5">
         {loading ? (
           <>
-            <Skeleton className="h-5" />
-            <Skeleton className="h-5" />
-            <Skeleton className="h-5" />
+            <Skeleton className="h-5 rounded-full" />
+            <Skeleton className="h-5 rounded-full" />
+            <Skeleton className="h-5 rounded-full" />
           </>
         ) : status === "error" ? (
           <ChartError title="渠道负载加载失败" onRetry={onRetry} />
@@ -134,7 +135,7 @@ export function ChannelLoad({
           </EmptyState>
         ) : (
           <>
-            <ul className="flex flex-col gap-3.5">
+            <ul className="flex flex-col gap-4">
               {rows.slice(0, MAX_ROWS).map((row) => (
                 <li
                   key={row.key}
@@ -148,7 +149,7 @@ export function ChannelLoad({
                     running={row.runningRatio}
                     queued={row.queuedRatio}
                     full={row.full}
-                    className={cn(!row.usable && "opacity-50")}
+                    className={cn("bg-chrome-hover", !row.usable && "opacity-50")}
                     label={
                       row.usable
                         ? `${row.name}：生成中 ${row.running}，排队 ${row.waiting}，上限 ${row.max || "不限"}`
@@ -164,7 +165,7 @@ export function ChannelLoad({
             <Button
               size="sm"
               variant="ghost"
-              className="-ml-2 mt-auto self-start"
+              className="-ml-2 mt-auto self-start rounded-full"
               onClick={onOpenChannels}
             >
               全部 {rows.length} 个渠道

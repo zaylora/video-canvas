@@ -147,7 +147,7 @@ function IssueForm({
       data-slot="token-issue-form"
       onSubmit={submit}
       noValidate
-      className="bg-card mb-4 grid gap-3 rounded-xl border p-4"
+      className="bg-chrome ring-chrome-border ring-1 shadow-lg backdrop-blur-xl backdrop-saturate-150 mb-4 grid gap-3 rounded-3xl p-4"
     >
       <h2 className="text-sm font-semibold">签发新令牌</h2>
       <div className="flex flex-wrap items-start gap-3">

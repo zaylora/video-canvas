@@ -10,6 +10,7 @@ import { Tag } from "@/components/admin-ui/tag";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { GLASS_PANEL } from "@/components/admin-ui/glass";
 import { useAdminConfigChanged } from "@/hooks/use-admin-config-changed";
 import {
   canSavePricing,
@@ -91,7 +92,7 @@ function PricingForm({
         void save();
       }}
     >
-      <Card>
+      <Card className={GLASS_PANEL}>
         <CardContent className="flex flex-col gap-5">
           <UsdCnyLine usd={settings.usd_cny} />
           <div className="grid gap-4 sm:grid-cols-2">

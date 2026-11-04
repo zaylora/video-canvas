@@ -82,11 +82,11 @@ function DataTableBulkActions({
             animate={{ opacity: 1, y: 0, transition: { duration: DURATION.base, ease: EASE_OUT } }}
             exit={{ opacity: 0, y: 16, transition: { duration: DURATION.exit, ease: EASE_OUT } }}
             className={cn(
-              "fixed bottom-6 left-1/2 z-40 -translate-x-1/2 rounded-xl",
+              "fixed bottom-6 left-1/2 z-40 -translate-x-1/2 rounded-full",
               "focus-visible:ring-ring/50 focus-visible:ring-2 focus-visible:outline-none",
             )}
           >
-            <div className="bg-background/95 supports-backdrop-filter:bg-background/60 flex items-center gap-x-2 rounded-xl border p-2 shadow-xl backdrop-blur-lg">
+            <div className="bg-chrome ring-chrome-border flex items-center gap-x-2 rounded-full p-2 shadow-xl ring-1 backdrop-blur-xl backdrop-saturate-150">
               <Tooltip>
                 <TooltipTrigger
                   render={

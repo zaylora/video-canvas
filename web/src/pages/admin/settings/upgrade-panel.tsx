@@ -8,6 +8,7 @@ import type { UpgradeInfo } from "@/api/admin/system/type.d";
 import { Notice } from "@/components/admin-ui/notice";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { GLASS_PANEL } from "@/components/admin-ui/glass";
 import { DURATION, EASE_OUT, SPRING } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { useSystemUpdateStore } from "@/store/system-update";
@@ -150,7 +151,7 @@ export function UpgradeProgressCard({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: DURATION.base, ease: EASE_OUT }}
     >
-      <Card aria-live="polite">
+      <Card className={GLASS_PANEL} aria-live="polite">
         <CardHeader>
           <CardTitle>
             {verb}到 <span className="font-mono tabular-nums">v{run.target}</span>
@@ -341,7 +342,7 @@ export function UpgradeHistoryCard({
 }) {
   const last = info.last;
   return (
-    <Card>
+    <Card className={GLASS_PANEL}>
       <CardHeader>
         <CardTitle>升级记录与备份</CardTitle>
         {info.rollback_target && (

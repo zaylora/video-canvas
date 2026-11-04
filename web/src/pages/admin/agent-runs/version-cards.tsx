@@ -97,7 +97,7 @@ function VersionCard({
       title={selected ? "再点一次取消筛选" : "只看这个版本的运行"}
       onClick={() => onSelect(group.key)}
       className={cn(
-        "bg-card hover:bg-muted/40 focus-visible:ring-ring/50 flex min-w-0 flex-col gap-3 rounded-xl border p-4 text-left transition-colors outline-none focus-visible:ring-2",
+        "bg-chrome ring-chrome-border ring-1 shadow-lg backdrop-blur-xl backdrop-saturate-150 hover:bg-card focus-visible:ring-ring/50 flex min-w-0 flex-col gap-3 rounded-3xl p-4 text-left transition-colors outline-none focus-visible:ring-2",
         selected && "border-foreground/60 ring-foreground/20 ring-1",
       )}
     >

@@ -10,11 +10,10 @@ import {
   PageHeaderHeading,
   PageHeaderTitle,
 } from "@/components/admin-ui/page-header";
+import { GLASS_PANEL, GlassSegmented } from "@/components/admin-ui/glass";
 import { Reveal } from "@/components/admin-ui/reveal";
-import { Segmented, SegmentedItem } from "@/components/admin-ui/segmented";
 import { toneClasses } from "@/components/admin-ui/tag";
-import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { ChromeButton, ChromePill, ChromeTooltip } from "@/components/canvas/chrome/chrome";
 import { DURATION, EASE_OUT, TAP } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { useAdminStore } from "@/store/admin";
@@ -24,7 +23,7 @@ import { canManageInfra } from "@/utils/admin/role";
 import { ChannelLoad } from "./channel-load";
 import { KpiRow } from "./kpi-row";
 import { OnboardingSteps, type OnboardingStep } from "./onboarding-steps";
-import { ShareDonut } from "./share-donut";
+import { ShareRanking } from "./share-ranking";
 import { TaskTrendChart } from "./task-trend-chart";
 import { TodoList } from "./todo-list";
 import { useChannelLoads, useOverview, useOverviewStats } from "./use-overview-stats";
@@ -37,9 +36,10 @@ const RANGES: { days: AdminStatsDays; label: string }[] = [
 /**
  * 总览页（后台首页）：一眼看清“系统健康吗、最近用得怎么样、哪里要处理”。
  * 设计稿见 docs/design/总览页。
- * - 上线引导：三步全绿后收成一行细条，没走完时展开成大卡；
- * - 关键指标：今日任务、成功率（统计接口）与在线模型、可用渠道（配置清单）；
- * - 图表：近 7 / 30 天任务量（堆叠柱形图）、调用占比（环形图）、渠道实时负载；
+ * 视觉是后台统一的「清透」风格（admin-ui/glass.tsx）：面板半透明 + 背景模糊，透出外壳的光晕。
+ * - 上线引导：没走完时显示三步大卡，三步全绿后不再显示；
+ * - 主面板：关键指标（今日任务、成功率、在线模型、可用渠道）+ 近 7 / 30 天任务量面积图；
+ * - 下面一排：调用排行、渠道实时负载、待处理；
  * - 待处理：有事时页头出现“N 项待处理”，点击滚到清单并闪一下描边；
  * 配置类数据（含待处理清单的文案）由后端汇总好（GET /admin/ai/overview），前端只按待处理项的 action.kind 处理；
  * 运行类数据来自 GET /admin/ai/stats。点卡片、去渠道页都进渠道与模型主从页（channelsPagePath）。
@@ -140,7 +140,7 @@ export default function OverviewPage() {
                     onClick={focusTodos}
                     className={cn(
                       toneClasses.warning,
-                      "focus-visible:ring-ring inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-sm font-medium focus-visible:ring-2 focus-visible:outline-none",
+                      "focus-visible:ring-ring inline-flex h-10 items-center gap-1.5 rounded-full px-4 text-sm font-medium focus-visible:ring-2 focus-visible:outline-none",
                     )}
                   >
                     <TriangleAlert className="size-4" />
@@ -148,34 +148,24 @@ export default function OverviewPage() {
                   </motion.button>
                 )}
               </AnimatePresence>
-              <Segmented aria-label="统计范围">
-                {RANGES.map(({ days, label }) => (
-                  <SegmentedItem
-                    key={days}
-                    slideId="overview-range"
-                    active={stats.days === days}
-                    onClick={() => stats.changeDays(days)}
+              <GlassSegmented
+                id="overview-range"
+                label="统计范围"
+                value={stats.days}
+                onValueChange={stats.changeDays}
+                items={RANGES.map(({ days, label }) => ({ value: days, label }))}
+              />
+              <ChromePill>
+                <ChromeTooltip label="刷新" side="bottom">
+                  <ChromeButton
+                    aria-label="刷新"
+                    disabled={refreshing}
+                    onClick={() => void refresh()}
                   >
-                    {label}
-                  </SegmentedItem>
-                ))}
-              </Segmented>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      aria-label="刷新"
-                      disabled={refreshing}
-                      onClick={() => void refresh()}
-                    />
-                  }
-                >
-                  <RefreshCw className={cn(refreshing && "animate-spin")} />
-                </TooltipTrigger>
-                <TooltipContent>刷新</TooltipContent>
-              </Tooltip>
+                    <RefreshCw className={cn(refreshing && "animate-spin")} />
+                  </ChromeButton>
+                </ChromeTooltip>
+              </ChromePill>
             </PageHeaderActions>
           </PageHeader>
 
@@ -187,48 +177,43 @@ export default function OverviewPage() {
             />
           </Reveal>
 
-          <div className="grid gap-3">
-            <KpiRow
-              stats={stats.stats}
-              statsStatus={stats.status}
-              days={stats.days}
-              configReady={ready}
-              online={online}
-              modelTotal={modelTotal}
-              brokenModels={brokenModels}
-              pendingModels={pendingModels}
-              usableChannels={usableChannels}
-              channelTotal={channelTotal}
-              noKeyChannels={noKeyChannels}
-              onOpenModels={() => navigate(channelsPagePath())}
-              onOpenChannels={() => navigate(channelsPagePath())}
-            />
-
-            <section
-              aria-label="任务趋势"
-              className="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]"
-            >
-              <Reveal index={5} className="flex min-w-0 flex-col [&>*]:flex-1">
+          <div className="grid gap-4">
+            <Reveal index={1}>
+              <section aria-label="任务概况" className={cn(GLASS_PANEL, "overflow-hidden")}>
+                <KpiRow
+                  stats={stats.stats}
+                  statsStatus={stats.status}
+                  days={stats.days}
+                  configReady={ready}
+                  online={online}
+                  modelTotal={modelTotal}
+                  brokenModels={brokenModels}
+                  pendingModels={pendingModels}
+                  usableChannels={usableChannels}
+                  channelTotal={channelTotal}
+                  noKeyChannels={noKeyChannels}
+                  onOpenModels={() => navigate(channelsPagePath())}
+                  onOpenChannels={() => navigate(channelsPagePath())}
+                />
+                <div aria-hidden className="bg-chrome-border mx-5 h-px" />
                 <TaskTrendChart
                   stats={stats.stats}
                   status={stats.status}
                   onRetry={() => void stats.reload()}
+                  className="rounded-none bg-transparent py-5 ring-0"
                 />
-              </Reveal>
-              <Reveal index={6} className="flex min-w-0 flex-col [&>*]:flex-1">
-                <ShareDonut
+              </section>
+            </Reveal>
+
+            <section aria-label="调用与渠道" className="grid gap-4 lg:grid-cols-3">
+              <Reveal index={2} className="flex min-w-0 flex-col [&>*]:flex-1">
+                <ShareRanking
                   stats={stats.stats}
                   status={stats.status}
                   onRetry={() => void stats.reload()}
                 />
               </Reveal>
-            </section>
-
-            <section
-              aria-label="渠道与待处理"
-              className="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]"
-            >
-              <Reveal index={7} className="min-w-0">
+              <Reveal index={3} className="min-w-0">
                 <ChannelLoad
                   channels={overview?.channel_briefs ?? []}
                   catalogReady={ready}
@@ -240,7 +225,7 @@ export default function OverviewPage() {
                   onCreateChannel={canWrite ? () => navigate(channelsPagePath()) : null}
                 />
               </Reveal>
-              <Reveal index={8} className="min-w-0">
+              <Reveal index={4} className="min-w-0">
                 <div ref={todoCardRef} className="h-full">
                   <TodoList
                     todos={todos}

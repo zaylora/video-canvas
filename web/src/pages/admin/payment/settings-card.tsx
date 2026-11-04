@@ -20,6 +20,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { GLASS_PANEL } from "@/components/admin-ui/glass";
 import { OPS_ONLY_REASON } from "@/utils/admin/payment/channel";
 import {
   MAX_PENDING_RANGE,
@@ -232,7 +233,7 @@ export function SettingsCard({
   };
 
   return (
-    <Card data-slot="payment-settings-card">
+    <Card className={GLASS_PANEL} data-slot="payment-settings-card">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           全局设置

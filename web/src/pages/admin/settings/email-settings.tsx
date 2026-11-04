@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { GLASS_PANEL } from "@/components/admin-ui/glass";
 import { useAdminStore } from "@/store/admin";
 import { canManageInfra } from "@/utils/admin/role";
 import {
@@ -107,7 +108,7 @@ function TestCard({
   };
 
   return (
-    <Card>
+    <Card className={GLASS_PANEL}>
       <CardHeader>
         <CardTitle>发送测试邮件</CardTitle>
       </CardHeader>
@@ -191,7 +192,7 @@ function SmtpForm({
           void save();
         }}
       >
-        <Card>
+        <Card className={GLASS_PANEL}>
           <CardContent className="flex flex-col gap-5">
             <div className="flex items-center justify-between gap-4">
               <div>

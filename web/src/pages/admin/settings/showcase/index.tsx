@@ -22,6 +22,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { GLASS_PANEL } from "@/components/admin-ui/glass";
+import { cn } from "@/lib/utils";
 import { useShowcasePlayer } from "@/hooks/use-showcase-player";
 import { useAdminStore } from "@/store/admin";
 import { canManageInfra } from "@/utils/admin/role";
@@ -69,7 +71,7 @@ function ShowcasePreview({
   else if (items.length === 0) note = "没有启用的作品，登录页显示默认渐变背景。";
 
   return (
-    <Card className="gap-0 py-0">
+    <Card className={cn(GLASS_PANEL, "gap-0 py-0")}>
       <PanelHead title="实时预览" aside="改动保存后立即生效" />
       <CardContent className="py-4">
         <div className="bg-stage text-on-stage relative aspect-[16/10] overflow-hidden rounded-xl">
@@ -139,7 +141,7 @@ function SettingsPanel({
   };
 
   return (
-    <Card className="gap-0 py-0">
+    <Card className={cn(GLASS_PANEL, "gap-0 py-0")}>
       <PanelHead title="轮播设置" />
       <CardContent className="py-1.5">
         <SettingRow title="每条播放时长" hint="到时间交叉溶解到下一条">
@@ -235,7 +237,7 @@ export default function ShowcaseSettingsPage() {
         {status === "error" && <SettingsError onRetry={() => void admin.reload()} />}
         {status === "ready" && view && (
           <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
-            <Card className="gap-0 py-0">
+            <Card className={cn(GLASS_PANEL, "gap-0 py-0")}>
               <PanelHead
                 title="展示作品"
                 aside={

@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils";
 import { channelsPagePath } from "@/utils/admin/channel-route";
 import { dialogEntry } from "@/utils/admin/dialog-entry";
 
+import { GLASS_PANEL } from "@/components/admin-ui/glass";
 import { openSecretDialog } from "../channels/secret-dialog";
 import { confirmUpgradeModels } from "../plugins/upgrade-models";
 
@@ -110,16 +111,16 @@ export function TodoList({
             : "去插件页";
 
   return (
-    <Card data-slot="todo-list" className="relative h-full gap-0 py-0">
-      <CardHeader className="flex-row items-center gap-2 border-b py-3">
+    <Card data-slot="todo-list" className={cn(GLASS_PANEL, "relative h-full gap-0 py-0")}>
+      <CardHeader className="border-chrome-border flex-row items-center gap-2 border-b px-5 py-4">
         <CardTitle>待处理</CardTitle>
         {ready && <Tag className="tabular-nums">{todos.length}</Tag>}
       </CardHeader>
 
       {!ready && (
-        <div className="space-y-2 p-4">
-          <Skeleton className="h-10" />
-          <Skeleton className="h-10" />
+        <div className="space-y-2 p-5">
+          <Skeleton className="h-10 rounded-2xl" />
+          <Skeleton className="h-10 rounded-2xl" />
         </div>
       )}
       {ready && todos.length === 0 && (
@@ -143,11 +144,11 @@ export function TodoList({
                     x: 8,
                     transition: { duration: DURATION.exit, ease: EASE_OUT },
                   }}
-                  className="flex items-center gap-3 border-b px-4 py-3 last:border-b-0"
+                  className="border-chrome-border flex items-center gap-3 border-b px-5 py-3 last:border-b-0"
                 >
                   <span
                     className={cn(
-                      "grid size-8 shrink-0 place-items-center rounded-md border",
+                      "grid size-8 shrink-0 place-items-center rounded-full border",
                       toneClasses[TODO_TONE[todo.tone]],
                     )}
                   >
@@ -157,7 +158,7 @@ export function TodoList({
                   <Button
                     size="sm"
                     variant="outline"
-                    className="shrink-0"
+                    className="shrink-0 rounded-full"
                     onClick={() => void run(todo)}
                   >
                     {label(todo)}
@@ -176,7 +177,7 @@ export function TodoList({
           initial={{ opacity: 0 }}
           animate={{ opacity: [0, 1, 1, 0] }}
           transition={{ duration: 1.2, times: [0, 0.1, 0.6, 1], ease: EASE_OUT }}
-          className="pointer-events-none absolute inset-0 rounded-xl ring-2 ring-amber-500"
+          className="pointer-events-none absolute inset-0 rounded-3xl ring-2 ring-amber-500"
         />
       )}
     </Card>

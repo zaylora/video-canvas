@@ -195,7 +195,7 @@ function PanelBody({
       </div>
 
       {empty ? (
-        <EmptyState className="bg-card min-h-64">
+        <EmptyState className="bg-chrome ring-chrome-border ring-1 shadow-lg backdrop-blur-xl backdrop-saturate-150 min-h-64 border-0">
           <EmptyStateIcon>
             <Box />
           </EmptyStateIcon>

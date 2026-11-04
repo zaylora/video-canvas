@@ -36,6 +36,7 @@ import { Tag } from "@/components/admin-ui/tag";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { GLASS_PANEL } from "@/components/admin-ui/glass";
 import { SPRING } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { useAdminStore } from "@/store/admin";
@@ -262,7 +263,7 @@ function VersionCard({
   onUpgrade: () => void;
 }) {
   return (
-    <Card>
+    <Card className={GLASS_PANEL}>
       <CardContent className="flex flex-col gap-4">
         <div className="flex flex-col justify-between gap-4 sm:flex-row">
           <div className="min-w-0">
@@ -363,7 +364,7 @@ function CheckState({ check }: { check: UpdateCheck | null }) {
 function ChangelogCard({ check }: { check: UpdateCheck }) {
   const [open, setOpen] = useState(false);
   return (
-    <Card>
+    <Card className={GLASS_PANEL}>
       <CardHeader>
         <CardTitle>
           更新日志 <span className="font-mono">v{check.latest}</span>
@@ -428,7 +429,7 @@ function ManualStepsCard({
   usesLatest: boolean;
 }) {
   return (
-    <Card>
+    <Card className={GLASS_PANEL}>
       <CardHeader>
         <CardTitle>升级步骤</CardTitle>
       </CardHeader>
@@ -493,7 +494,7 @@ function MigrationsCard({ files }: { files: MigrationFile[] | null }) {
   const applied = files?.filter((f) => f.applied && !f.unknown) ?? [];
   const pending = files?.filter((f) => !f.applied).length ?? 0;
   return (
-    <Card>
+    <Card className={GLASS_PANEL}>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           数据库迁移

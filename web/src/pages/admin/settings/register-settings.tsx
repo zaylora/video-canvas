@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { GLASS_PANEL } from "@/components/admin-ui/glass";
 import { useAdminStore } from "@/store/admin";
 import { canManageInfra } from "@/utils/admin/role";
 import {
@@ -82,7 +83,7 @@ function RegisterForm({
         void save();
       }}
     >
-      <Card>
+      <Card className={GLASS_PANEL}>
         <CardContent className="flex flex-col gap-5">
           <div className="flex items-center justify-between gap-4">
             <div>

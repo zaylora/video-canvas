@@ -2,6 +2,7 @@ import type { QueueInstance } from "@/api/admin/queue/type";
 import { Notice } from "@/components/admin-ui/notice";
 import { Tag } from "@/components/admin-ui/tag";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { GLASS_PANEL } from "@/components/admin-ui/glass";
 import {
   Table,
   TableBody,
@@ -28,7 +29,7 @@ export function InstanceTable({ instances, now }: { instances: QueueInstance[]; 
   const lost = lostInstances(instances);
 
   return (
-    <Card data-slot="instance-table" size="sm">
+    <Card className={GLASS_PANEL} data-slot="instance-table" size="sm">
       <CardHeader>
         <CardTitle>实例</CardTitle>
         <CardDescription className="text-xs">并发按实例计；心跳超过 30 秒判定失联</CardDescription>
