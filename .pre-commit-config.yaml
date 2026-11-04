@@ -21,9 +21,11 @@ repos:
   - repo: local
     hooks:
       # 与 backend/Makefile 的 make lint 一致：只检查相对 master 的增量
+      # 先清掉 git 给钩子设的 GIT_DIR / GIT_WORK_TREE / GIT_PREFIX：在 linked worktree 里它们会让 cd backend 之后
+      # git 把 backend/ 当成工作树根，「增量」变成「全部文件」，误报上百条旧告警
       - id: golangci-lint
         name: golangci-lint (backend)
-        entry: bash -c 'cd backend && golangci-lint run --new-from-merge-base=master ./...'
+        entry: bash -c 'unset GIT_DIR GIT_WORK_TREE GIT_PREFIX; cd backend && golangci-lint run --new-from-merge-base=master ./...'
         language: system
         files: ^backend/.*\.(go|mod|sum)$|^backend/\.golangci\.yml$
         pass_filenames: false
@@ -34,23 +36,41 @@ repos:
         language: system
         types: [go]
 
+      # web 的钩子都先 unset BUN_OPTIONS：它带 --preload 时 `bun run <脚本>` 只打印帮助并返回 0，
+      # 钩子假通过，格式 / lint / 类型问题全漏到 CI。
+      # 格式只查本次暂存的文件，别人留下的存量问题不挡提交；修复：cd web && bun run format
       - id: web-format
         name: oxfmt (web)
-        entry: bash -c 'cd web && bun run format:check'
+        entry: bash -c 'unset BUN_OPTIONS; cd web || exit 1; files=(); for f in "$@"; do files+=("${f#web/}"); done; bun node_modules/oxfmt/bin/oxfmt --check "${files[@]}" || { echo "修复：cd web && bun run format"; exit 1; }' --
         language: system
         files: ^web/.*\.(ts|tsx|js|jsx|json|css|md)$
-        pass_filenames: false
+        exclude: ^web/(src/components/ui/|dist/)
 
       - id: web-lint
         name: oxlint (web)
-        entry: bash -c 'cd web && bun run lint'
+        entry: bash -c 'unset BUN_OPTIONS; cd web && bun run lint'
         language: system
         files: ^web/src/.*\.(ts|tsx|js|jsx)$
         pass_filenames: false
 
+      # agent/ 与 web 用同一套 oxfmt / oxlint 规则；格式只查暂存文件，修复：cd agent && npm run format
+      - id: agent-format
+        name: oxfmt (agent)
+        entry: bash -c 'cd agent || exit 1; files=(); for f in "$@"; do files+=("${f#agent/}"); done; npx --no-install oxfmt --check "${files[@]}" || { echo "修复：cd agent && npm run format"; exit 1; }' --
+        language: system
+        files: ^agent/.*\.(ts|js|mjs|cjs|json|md)$
+        exclude: ^agent/(dist/|package-lock\.json$)
+
+      - id: agent-lint
+        name: oxlint (agent)
+        entry: bash -c 'cd agent && npm run lint'
+        language: system
+        files: ^agent/(src|test)/.*\.(ts|js|mjs|cjs)$
+        pass_filenames: false
+
       - id: web-typecheck
         name: tsc typecheck (web)
-        entry: bash -c 'cd web && bun run typecheck'
+        entry: bash -c 'unset BUN_OPTIONS; cd web && bun run typecheck'
         language: system
         files: ^web/(src/.*\.(ts|tsx)|tsconfig.*\.json)$
         pass_filenames: false
