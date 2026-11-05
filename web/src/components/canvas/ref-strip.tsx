@@ -13,6 +13,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useLocateNode } from "@/components/canvas-editor/use-focus-node";
 import { DURATION, EASE_OUT, SPRING, TAP } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import type { ParamAsset } from "@/types";
@@ -91,7 +92,7 @@ function Badge({ className, children }: { className: string; children: ReactNode
 
 /**
  * 引用条（设计稿 6.7）：所有种类节点的面板顶部都有，列出接进来的全部上游，按连线先后排。
- * 点一格就在提示词光标处插入它的 chip；悬停时 chip 和画布上的源节点一起描边。
+ * 点一格就把视口飞到画布上的源节点（不改选中，面板保持打开）；悬停时 chip 和源节点一起描边。
  * 每格右上角的 × 删掉这份引用：连线来的断开连线（⌘Z 可恢复），手动上传的移除素材。
  * 末尾的「+」从画布里挑接得上的素材（自动连线），或者上传一份参考素材。
  */
@@ -125,6 +126,7 @@ export function RefStrip({
   disabled?: boolean;
 }) {
   const refs = usePromptRefs();
+  const locate = useLocateNode();
   const reduce = useReducedMotion();
   const scroller = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -206,9 +208,9 @@ export function RefStrip({
                     <motion.button
                       type="button"
                       whileTap={TAP}
-                      title={`${item.label}${note}\n点击插入到提示词`}
-                      aria-label={`引用：${item.label}，点击插入到提示词`}
-                      onClick={() => refs?.insertRef(item)}
+                      title={`${item.label}${note}\n点击定位到节点`}
+                      aria-label={`引用：${item.label}，点击定位到节点`}
+                      onClick={() => locate(item.id)}
                       className={cn("size-full outline-none", !item.used && "opacity-40")}
                     >
                       <RefThumb source={item} />
