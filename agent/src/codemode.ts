@@ -9,8 +9,17 @@
  * pi 自带的这个工具不经过工具扩展，所以这里用同一个 trackedCall 包一层，在时间线里留一步「运行脚本」。
  */
 import { CodemodeSandbox } from "@earendil-works/pi-codemode";
-import { defineExtension, type Extension, type ToolExecutionApi, type ToolRegistration } from "@earendil-works/pi-durable";
-import { CODEMODE_TOOL_NAME, createCodemodeExtension, type CodemodeToolDetails } from "@earendil-works/pi-durable/codemode";
+import {
+  defineExtension,
+  type Extension,
+  type ToolExecutionApi,
+  type ToolRegistration,
+} from "@earendil-works/pi-durable";
+import {
+  CODEMODE_TOOL_NAME,
+  createCodemodeExtension,
+  type CodemodeToolDetails,
+} from "@earendil-works/pi-durable/codemode";
 import type { Context } from "@earendil-works/chord";
 import { clip, endEvent, trackedCall, type ToolHost } from "./durable-tools.ts";
 
@@ -20,11 +29,20 @@ export const VERB = "脚本";
 /** 单次脚本的总时限（含工具调用）和虚拟机内存上限 */
 export const CODEMODE_LIMITS = { timeoutMs: 60_000, memoryLimitBytes: 128 << 20 };
 
-const oneLine = (s: unknown) => String(s ?? "").replace(/\s+/g, " ").trim();
+const oneLine = (s: unknown) =>
+  String(s ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
 
-export function createCodemode(host: ToolHost, limits: Partial<typeof CODEMODE_LIMITS> = {}): Extension {
+export function createCodemode(
+  host: ToolHost,
+  limits: Partial<typeof CODEMODE_LIMITS> = {},
+): Extension {
   const { timeoutMs, memoryLimitBytes } = { ...CODEMODE_LIMITS, ...limits };
-  const ext = createCodemodeExtension({ sandbox: new CodemodeSandbox({ timeoutMs, memoryLimitBytes }), models: false });
+  const ext = createCodemodeExtension({
+    sandbox: new CodemodeSandbox({ timeoutMs, memoryLimitBytes }),
+    models: false,
+  });
   const info = { name: CODEMODE_TOOL_NAME, label: LABEL, verb: VERB };
   return defineExtension({
     ...ext,
@@ -32,21 +50,43 @@ export function createCodemode(host: ToolHost, limits: Partial<typeof CODEMODE_L
       if (t.name !== CODEMODE_TOOL_NAME) return t;
       return {
         ...t,
-        description: t.description + "\n只有允许脚本调用的工具才会出现在 tools / ALL_TOOLS / searchTools 中。admin_propose_changes、admin_request_secret、admin_test_run、ask_user 等审批工具必须从主工具列表直接调用，不要在脚本中查找或调用。脚本结束不等于业务检查通过；验证结果 ok=false 时先修复，并保留用户的代表性输入。",
+        description:
+          t.description +
+          "\n只有允许脚本调用的工具才会出现在 tools / ALL_TOOLS / searchTools 中。admin_propose_changes、admin_request_secret、admin_test_run、ask_user 等审批工具必须从主工具列表直接调用，不要在脚本中查找或调用。脚本结束不等于业务检查通过；验证结果 ok=false 时先修复，并保留用户的代表性输入。",
         execute: (args: never, api: ToolExecutionApi, context: Context) =>
           trackedCall(host, info, args, api, context, async (_run, call) => {
-            const direct = new Set((await api.agent(context)).tools.filter(tool => !tool.callers?.includes("tools") && tool.name !== CODEMODE_TOOL_NAME).map(tool => tool.name));
+            const direct = new Set(
+              (await api.agent(context)).tools
+                .filter(
+                  (tool) => !tool.callers?.includes("tools") && tool.name !== CODEMODE_TOOL_NAME,
+                )
+                .map((tool) => tool.name),
+            );
             const code = (args as { code?: string }).code ?? "";
-            const blocked = [...code.matchAll(/(?:\b(?:searchTools|describeTool)\s*\(\s*["']|\btools\.)([A-Za-z_]\w*)/g)].map(match => match[1]).find(name => direct.has(name));
+            const blocked = [
+              ...code.matchAll(
+                /(?:\b(?:searchTools|describeTool)\s*\(\s*["']|\btools\.)([A-Za-z_]\w*)/g,
+              ),
+            ]
+              .map((match) => match[1])
+              .find((name) => direct.has(name));
             if (blocked) {
               const message = `${blocked} 必须从主工具列表直接调用，不能在 codemode 内查找或执行。请保留已有脚本结果，直接调用该工具。`;
-              return { result: { output: [{ type: "text", text: message }], isError: true }, end: endEvent(call, true, message) };
+              return {
+                result: { output: [{ type: "text", text: message }], isError: true },
+                end: endEvent(call, true, message),
+              };
             }
             const res = await t.execute(args, api, context);
             const output = (res.output ?? []) as Array<{ type: string; text?: string }>;
-            const message = output.filter((o) => o.type === "text").map((o) => o.text).join(" ");
+            const message = output
+              .filter((o) => o.type === "text")
+              .map((o) => o.text)
+              .join(" ");
             const calls = ((res.details as CodemodeToolDetails | undefined)?.calls ?? []).length;
-            const summary = res.isError ? `脚本失败：${clip(oneLine(message), 80)}` : `脚本调用了 ${calls} 次工具`;
+            const summary = res.isError
+              ? `脚本失败：${clip(oneLine(message), 80)}`
+              : `脚本调用了 ${calls} 次工具`;
             return { result: res as never, end: endEvent(call, !!res.isError, summary) };
           }),
       };

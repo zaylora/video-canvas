@@ -1,8 +1,6 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test, type Mock } from "bun:test";
 
 import {
-  buildCreateForm,
-  createDrama,
   estimateJob,
   listActiveJobs,
   listDramas,
@@ -91,41 +89,6 @@ describe("api/drama：mapper", () => {
 });
 
 describe("api/drama：请求体", () => {
-  test("新建（文件）：file 与 style_key 必带，空字段不发", () => {
-    const file = new File(["第1集"], "剧本.txt", { type: "text/plain" });
-    const form = buildCreateForm({ file, styleKey: "real_city_film", genre: "", ratio: "" });
-    expect(form.get("file")).toBeInstanceOf(File);
-    expect(form.get("text")).toBeNull();
-    expect(form.get("style_key")).toBe("real_city_film");
-    expect(form.has("genre")).toBe(false);
-    expect(form.has("ratio")).toBe(false);
-    expect(form.has("target_episodes")).toBe(false);
-    // 没选模型：不传，后端跟随后台第一个
-    expect(form.has("text_model")).toBe(false);
-  });
-
-  test("新建（文本）：text 与创作设置转 snake_case 字符串", () => {
-    const form = buildCreateForm({
-      text: "正文",
-      title: " 我的短剧 ",
-      styleKey: "custom",
-      styleCustom: "赛博",
-      genre: "悬疑推理",
-      ratio: "16:9",
-      targetEpisodes: 10,
-      episodeSeconds: 90,
-      textModel: "pro",
-    });
-    expect(form.get("text")).toBe("正文");
-    expect(form.get("file")).toBeNull();
-    expect(form.get("title")).toBe("我的短剧");
-    expect(form.get("style_custom")).toBe("赛博");
-    expect(form.get("ratio")).toBe("16:9");
-    expect(form.get("target_episodes")).toBe("10");
-    expect(form.get("episode_seconds")).toBe("90");
-    expect(form.get("text_model")).toBe("pro");
-  });
-
   test("改短剧 / 改集：只带传了的字段", () => {
     expect(toUpdateDramaBody({ revision: 3, title: "新名" })).toEqual({
       revision: 3,
@@ -159,18 +122,15 @@ describe("api/drama：请求", () => {
   let get: Mock<typeof service.get>;
   let post: Mock<typeof service.post>;
   let patch: Mock<typeof service.patch>;
-  let upload: Mock<typeof service.upload>;
   beforeEach(() => {
     get = spyOn(service, "get");
     post = spyOn(service, "post");
     patch = spyOn(service, "patch");
-    upload = spyOn(service, "upload");
   });
   afterEach(() => {
     get.mockRestore();
     post.mockRestore();
     patch.mockRestore();
-    upload.mockRestore();
   });
 
   test("列表：list/page_size 映射，list 为 null 兜底", async () => {
@@ -200,15 +160,30 @@ describe("api/drama：请求", () => {
     });
     const page = await listDramas();
     expect(page.items[0]).toMatchObject({ episodeCount: 6, lockedCount: 1, coverUrl: null });
+    // 老后端没有 phase：按 done
+    expect(page.items[0].phase).toBe("done");
   });
 
-  test("新建走 multipart 上传且静默（67002 / 67003 就地提示）", async () => {
-    upload.mockResolvedValue(rawDrama());
-    const drama = await createDrama({ text: "正文", styleKey: "real_city_film" });
-    expect(upload.mock.calls[0][0]).toBe("/dramas");
-    expect(upload.mock.calls[0][1]).toBeInstanceOf(FormData);
-    expect(upload.mock.calls[0][2]).toMatchObject({ silent: true });
-    expect(drama.id).toBe("1a2b");
+  test("列表项：带上自动规划阶段 phase", async () => {
+    get.mockResolvedValue({
+      list: [
+        {
+          id: "1",
+          title: "t",
+          status: "outlined",
+          phase: "running",
+          episode_count: 6,
+          locked_count: 0,
+          cover_url: "",
+          updated_at: "x",
+        },
+      ],
+      total: 1,
+      page: 1,
+      page_size: 20,
+    });
+    const page = await listDramas();
+    expect(page.items[0].phase).toBe("running");
   });
 
   test("改短剧 / 改集静默（409 由调用方弹冲突提示）", async () => {

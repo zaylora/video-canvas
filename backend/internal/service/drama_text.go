@@ -30,13 +30,21 @@ func (s *DramaService) callDrama(ctx context.Context, j *model.DramaJob, snap *p
 		if invalid != nil {
 			vars["validation_error"] = invalid.Error()
 		}
-		prompt, e := drama.Prompt(step, vars)
+		cfg := jobConfig(j)
+		if step == "breakdown" {
+			vars["assets"] = cfg.KnownCast
+			delete(vars, "known_cast")
+		} else {
+			vars["known_cast"] = cfg.KnownCast
+		}
+		template, body := dramaTemplate(step, vars, cfg.Prompt)
+		prompt, e := drama.PromptWithBody(template, vars, body)
 		if e != nil {
 			return nil, 0, e
 		}
 		chars := utf8.RuneCountInString(prompt)
-		if c := snap.Model.Capabilities.Context; c != nil && c.Window > 0 && chars > c.Window {
-			return nil, 0, errcode.ErrDramaStepNotReady.WithMsg("模型上下文不足以执行当前步骤")
+		if chars > dramaContextLimit(snap) {
+			return nil, 0, errcode.ErrDramaContext
 		}
 		result, e := s.streamDramaText(ctx, j, snap, prompt)
 		if e != nil {
@@ -57,11 +65,32 @@ func (s *DramaService) callDrama(ctx context.Context, j *model.DramaJob, snap *p
 		quoted := modelcfg.Quote(snap.Model.Pricing, snap.Model.Capabilities, modelcfg.Spec{PromptChars: chars, Params: map[string]any{}})
 		return decoded, modelcfg.Settle(snap.Model.Pricing, quoted, usage), nil
 	}
+	if cfg := jobConfig(j); cfg.Prompt.Source != "" && cfg.Prompt.Source != "builtin" {
+		return nil, 0, errcode.ErrDramaCustomPrompt.WithMsg("自定义提示词或技能导致输出不合格（" + dramaStepGroup(step) + "）")
+	}
 	return nil, 0, errcode.ErrDramaOutputInvalid
+}
+
+// dramaTemplate 选择本次调用的模板与正文：用户自写或技能提示词是「替换正文、Schema 固定」，始终用用户正文；
+// 内置来源时始终用当前内置模板（分镜再按 vars["prompt_format"] 取平台变体），已有项目也随发版拿到新提示词。
+func dramaTemplate(step string, vars map[string]any, setting model.DramaPromptSetting) (template, body string) {
+	if setting.Source == "" || setting.Source == "builtin" {
+		// 内置来源不读项目快照里的正文副本：那是建项目时复制的，发版更新内置提示词后会过期。
+		// 空正文让 PromptWithBody 直接用当前内置模板。
+		format, _ := vars["prompt_format"].(string)
+		return drama.PromptVariant(step, format), ""
+	}
+	return step, setting.Bodies[step]
 }
 
 // streamDramaText 经LLM网关向Agent模型的渠道发一次对话请求；请求期间任务被取消会中断上游调用。
 func (s *DramaService) streamDramaText(ctx context.Context, j *model.DramaJob, snap *provider.Snapshot, prompt string) (*llmgateway.Result, error) {
+	return s.streamText(ctx, snap, prompt, func(c context.Context) error { return s.ensureDramaActive(c, j) })
+}
+
+// streamText 是 streamDramaText 的核心：active 每秒调用一次，返回错误就中断上游请求并把该错误交给调用方。
+// 预检这类还没有任务的调用传一个只看 ctx 的 active。
+func (s *DramaService) streamText(ctx context.Context, snap *provider.Snapshot, prompt string, active func(context.Context) error) (*llmgateway.Result, error) {
 	if s.streamer == nil || s.secrets == nil {
 		return nil, errcode.ErrInternal
 	}
@@ -89,7 +118,7 @@ func (s *DramaService) streamDramaText(ctx context.Context, j *model.DramaJob, s
 			case <-callCtx.Done():
 				return
 			case <-tick.C:
-				if s.ensureDramaActive(callCtx, j) != nil {
+				if active(callCtx) != nil {
 					cancel()
 					return
 				}
@@ -101,7 +130,7 @@ func (s *DramaService) streamDramaText(ctx context.Context, j *model.DramaJob, s
 	<-watched
 
 	// 2. 取消造成的上游中断按取消处理，其余按上游失败。
-	if stop := s.ensureDramaActive(ctx, j); stop != nil {
+	if stop := active(ctx); stop != nil {
 		return nil, stop
 	}
 	if e != nil {

@@ -31,7 +31,8 @@ export interface GroupTool {
   failed: boolean;
 }
 
-const chars = (s: string, n: number): string => (Array.from(s).length > n ? Array.from(s).slice(0, n).join("") : s);
+const chars = (s: string, n: number): string =>
+  Array.from(s).length > n ? Array.from(s).slice(0, n).join("") : s;
 
 /** 说明请求里的用户内容：用户这一轮的需求（去掉 @ 引用的内部语法）和这一段每条操作 */
 export function buildActivityPrompt(question: string, tools: GroupTool[]): string {

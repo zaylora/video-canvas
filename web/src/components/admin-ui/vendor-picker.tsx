@@ -57,7 +57,7 @@ function VendorPicker({
           seed={seed}
           className="size-6 rounded-md text-xs"
         />
-        <span className="truncate">{current?.name ?? "不选（用首字头像）"}</span>
+        <span className="truncate">{current?.name ?? "不选"}</span>
         <ChevronDown className="ml-auto opacity-60" />
       </PopoverTrigger>
       <PopoverContent align="start" className="w-80 gap-2 p-2">
@@ -79,7 +79,7 @@ function VendorPicker({
               onClick={() => pick("")}
             >
               <VendorAvatar name={name} seed={seed} className="size-6 rounded-md text-xs" />
-              不选（用首字头像）
+              不选
               {!current && <Check className="ml-auto size-4" />}
             </button>
           )}

@@ -1,22 +1,27 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Loader2, RotateCw, X } from "lucide-react";
+import { Loader2, Play, RotateCw, X } from "lucide-react";
 import { toast } from "sonner";
 
-import { cancelJob, submitJob } from "@/api/drama";
+import { cancelJob, pausePlanning, resumePlanning, retryBuiltin, submitJob } from "@/api/drama";
 import { dramaErrorMessage, jobFailureMessage } from "@/api/drama/errors";
 import type { DramaJob } from "@/api/drama/type";
 import { Button } from "@/components/ui/button";
 import { DURATION, EASE_OUT, SPRING } from "@/lib/motion";
 import { useDramaJobsStore } from "@/store/drama";
 import { cn } from "@/lib/utils";
+import { durationLabel } from "@/utils/drama/start-settings";
 import {
   bannerJobs,
   coveredInPlace,
   isActiveJob,
   jobRunningText,
   jobTitle,
+  planningEtaMinutes,
+  planningRow,
+  userJobs,
   type InPlaceView,
+  type PlanningAction,
 } from "@/utils/drama/jobs";
 
 import { useWorkspace } from "./context";
@@ -66,7 +71,6 @@ function JobRow({ job }: { job: DramaJob }) {
       const next = await submitJob(drama.id, {
         step: job.step,
         episodes: job.episodes,
-        ratio: job.step === "breakdown" ? drama.ratio : undefined,
       });
       useDramaJobsStore.getState().dismiss(drama.id, job.id);
       useDramaJobsStore.getState().applyJob(drama.id, next);
@@ -136,16 +140,113 @@ function JobRow({ job }: { job: DramaJob }) {
 }
 
 /**
+ * 自动规划（pipeline 线）那一行：研读 / 正在规划第 a–b 章 · 已出 N 集目录 · 还需多久 · 暂停；
+ * 暂停或失败时写原因，给「继续 / 重试」，自定义提示词导致失败时多一个「改用内置重试」。
+ * 与用户任务互不影响，两者同时存在就各占一行。
+ */
+function PlanningRow() {
+  const { drama, jobs, refresh } = useWorkspace();
+  const [busy, setBusy] = useState(false);
+  /** 当前时间，每 30 秒更新一次：只用来估「还需多久」 */
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
+  const row = planningRow(drama, jobs);
+  if (!row) return null;
+
+  const run = async (task: () => Promise<void>, failure: string) => {
+    setBusy(true);
+    try {
+      await task();
+      await refresh();
+    } catch (e) {
+      toast.error(dramaErrorMessage(e, failure));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const act = (action: PlanningAction) => {
+    if (action === "builtin") return run(() => retryBuiltin(drama.id, "adapt"), "重试失败");
+    return run(() => resumePlanning(drama.id), "继续失败");
+  };
+  const eta = row.kind === "running" ? planningEtaMinutes(drama, now) : null;
+
+  return (
+    <motion.div
+      layout="position"
+      initial={{ opacity: 0, y: -6 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, transition: { duration: DURATION.exit } }}
+      transition={{ duration: DURATION.base, ease: EASE_OUT }}
+      role={row.kind === "running" ? "status" : "alert"}
+      data-slot="planning-row"
+      className="grid gap-1.5 px-4 py-2.5"
+    >
+      <div className="flex items-center gap-2 text-sm">
+        {row.kind === "running" ? (
+          <>
+            <Loader2 className="text-status-running size-4 shrink-0 animate-spin motion-reduce:animate-none" />
+            <span className="min-w-0 flex-1 truncate">
+              <b className="font-medium">{row.title}</b>
+              <span className="text-muted-foreground ml-2 text-xs">
+                {row.detail}
+                {eta !== null && ` · 还需约 ${durationLabel(eta)}`}
+              </span>
+            </span>
+            <span className="text-muted-foreground text-xs tabular-nums">{row.progress}%</span>
+            <Button
+              variant="ghost"
+              size="xs"
+              disabled={busy}
+              onClick={() => void run(() => pausePlanning(drama.id), "暂停失败")}
+            >
+              暂停
+            </Button>
+          </>
+        ) : (
+          <>
+            <span
+              className={cn("min-w-0 flex-1 truncate", row.tone === "error" && "text-destructive")}
+            >
+              <b className="font-medium">{row.title}</b>
+              <span className={cn("ml-2 text-xs", row.tone === "muted" && "text-muted-foreground")}>
+                {row.reason}
+              </span>
+            </span>
+            {row.actions.map((action) => (
+              <Button
+                key={action}
+                variant="outline"
+                size="xs"
+                disabled={busy}
+                onClick={() => void act(action)}
+              >
+                {action === "resume" ? <Play /> : action === "retry" ? <RotateCw /> : null}
+                {action === "resume" ? "继续" : action === "retry" ? "重试" : "改用内置重试"}
+              </Button>
+            ))}
+          </>
+        )}
+      </div>
+      {row.kind === "running" && <JobProgressBar progress={row.progress} />}
+    </motion.div>
+  );
+}
+
+/**
  * 工作台顶栏下方的进度条：点了「开始 / 分析 / 拆解」之后，不管用户在哪一页都能立刻看到正在做什么。
  * 进行中的任务显示话术和进度，最新一条失败时显示原因并可重试。
  * 页面里已经就地显示进度的任务（研读视图里的研读、片场里当前集的分镜）不重复显示。
  */
 export function JobBar({ inPlace }: { inPlace: InPlaceView }) {
   const { jobs } = useWorkspace();
-  const shown = bannerJobs(jobs).filter((job) => !coveredInPlace(job, inPlace));
+  const shown = bannerJobs(userJobs(jobs)).filter((job) => !coveredInPlace(job, inPlace));
   return (
     <div aria-label="任务进度" className="border-border shrink-0 border-b empty:hidden">
       <AnimatePresence initial={false}>
+        <PlanningRow key="planning" />
         {shown.map((job) => (
           <JobRow key={job.id} job={job} />
         ))}

@@ -10,9 +10,23 @@
  * 运行状态（步数、事件、审批、暂停）归运行引擎，工具层只通过 ToolHost 和它交互，所以可以单独测试。
  */
 import type { Context, JsonValue } from "@earendil-works/chord";
-import { defineExtension, type Extension, type ToolExecutionApi, type ToolRegistration } from "@earendil-works/pi-durable";
+import {
+  defineExtension,
+  type Extension,
+  type ToolExecutionApi,
+  type ToolRegistration,
+} from "@earendil-works/pi-durable";
 import { wrapScalarArrays } from "./tools.ts";
-import { PlatformError, platformToolCallId, type ApprovalKind, type Platform, type PlatformToolResult, type RunContext, type ToolDecl, type ToolEndEvent } from "./platform-client.ts";
+import {
+  PlatformError,
+  platformToolCallId,
+  type ApprovalKind,
+  type Platform,
+  type PlatformToolResult,
+  type RunContext,
+  type ToolDecl,
+  type ToolEndEvent,
+} from "./platform-client.ts";
 import { CARD_LIMITS, validateCard, type Card } from "./card.ts";
 import type { WebTools } from "./web-access.ts";
 import { callWebTool, WEB_TOOL_NAMES } from "./web-tools.ts";
@@ -42,7 +56,10 @@ export interface ToolHost {
   /** 搜索和抓取共享本片段的联网额度；缓存读取不占用，后台模式不限。 */
   takeWebCall?(run: ToolRun): boolean;
   /** 工具开始：发 tool.start，检查步数上限。返回值表示拒绝执行（步数用尽等），工具层把 content 当结果交给模型 */
-  begin(run: ToolRun, call: ToolCallInfo): Promise<{ content: string; terminate: boolean } | undefined>;
+  begin(
+    run: ToolRun,
+    call: ToolCallInfo,
+  ): Promise<{ content: string; terminate: boolean } | undefined>;
   /** 工具结束：发 tool.end（内容由 Go 给出），并计步数 */
   end(run: ToolRun, call: ToolCallInfo, event: ToolEndEvent): Promise<void>;
   /** 计划更新：发 plan.updated */
@@ -52,7 +69,16 @@ export interface ToolHost {
   /** 展示卡片：发 card.shown（id 是工具调用 id，前端靠它把卡片和活动组里的这次调用对上） */
   card(run: ToolRun, id: string, card: Card): Promise<void>;
   /** 创建审批并让运行进入等待状态。必须按 toolCallId 幂等：崩溃后重放同一个调用不能出现两个审批 */
-  approval(run: ToolRun, a: { kind: ApprovalKind; toolCallId: string; payload: unknown; quoteCredits: number; summary: string }): Promise<void>;
+  approval(
+    run: ToolRun,
+    a: {
+      kind: ApprovalKind;
+      toolCallId: string;
+      payload: unknown;
+      quoteCredits: number;
+      summary: string;
+    },
+  ): Promise<void>;
 }
 
 export interface PlanStep {
@@ -63,10 +89,15 @@ export interface PlanStep {
 /** 这几个工具要用户决定，对应的审批种类 */
 const APPROVAL_KIND: Record<string, ApprovalKind> = {
   admin_propose_changes: "admin_change",
-  admin_request_secret: "admin_secret", admin_test_run: "admin_test_run",
-  generate_media: "generate", canvas_delete: "delete", ask_user: "ask",
-  drama_update_outline: "drama_update_outline", drama_update_episode: "drama_update_episode",
-  drama_update_segment: "drama_update_segment", drama_run_job: "drama_run_job",
+  admin_request_secret: "admin_secret",
+  admin_test_run: "admin_test_run",
+  generate_media: "generate",
+  canvas_delete: "delete",
+  ask_user: "ask",
+  drama_update_outline: "drama_update_outline",
+  drama_update_episode: "drama_update_episode",
+  drama_update_segment: "drama_update_segment",
+  drama_run_job: "drama_run_job",
 };
 
 /**
@@ -77,12 +108,41 @@ const APPROVAL_KIND: Record<string, ApprovalKind> = {
  *  - 其余（截帧会写素材）和没登记的新工具：unsafe，崩溃后模型会收到「被中断，可能已经执行」，自己确认现状。
  */
 const SAFE = new Set([
-  "admin_query", "admin_get_resource",
-  "admin_list_plugins", "admin_get_plugin", "admin_plugin_check", "admin_request_secret", "admin_test_run",
-  "admin_list_models", "admin_get_model", "admin_list_channels", "admin_get_pricing_settings", "admin_get_recent_errors", "admin_quote_preview", "admin_propose_changes",
-  "canvas_get_state", "model_list", "task_get", "skill_search", "skill_read", "canvas_inspect_image", "canvas_inspect_video", "web_search", "web_fetch",
-  "canvas_apply_ops", "canvas_arrange", "plan_update", "show_card", "generate_media", "canvas_delete", "ask_user",
-  "drama_read", "drama_update_outline", "drama_update_episode", "drama_update_segment", "drama_run_job",
+  "admin_query",
+  "admin_get_resource",
+  "admin_list_plugins",
+  "admin_get_plugin",
+  "admin_plugin_check",
+  "admin_request_secret",
+  "admin_test_run",
+  "admin_list_models",
+  "admin_get_model",
+  "admin_list_channels",
+  "admin_get_pricing_settings",
+  "admin_get_recent_errors",
+  "admin_quote_preview",
+  "admin_propose_changes",
+  "canvas_get_state",
+  "model_list",
+  "task_get",
+  "skill_search",
+  "skill_read",
+  "canvas_inspect_image",
+  "canvas_inspect_video",
+  "web_search",
+  "web_fetch",
+  "canvas_apply_ops",
+  "canvas_arrange",
+  "plan_update",
+  "show_card",
+  "generate_media",
+  "canvas_delete",
+  "ask_user",
+  "drama_read",
+  "drama_update_outline",
+  "drama_update_episode",
+  "drama_update_segment",
+  "drama_run_job",
 ]);
 export const replayOf = (name: string): "safe" | "unsafe" => (SAFE.has(name) ? "safe" : "unsafe");
 
@@ -91,7 +151,9 @@ const MAX_PLAN_TITLE = 80;
 const SKIPPED_TEXT = "本轮已暂停等待用户，这条调用没有执行；用户回应后如仍需要请重新调用。";
 const MAX_SUMMARY = 120;
 
-export type Output = Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }>;
+export type Output = Array<
+  { type: "text"; text: string } | { type: "image"; data: string; mimeType: string }
+>;
 export interface Result {
   details?: JsonValue;
   output: Output;
@@ -99,8 +161,13 @@ export interface Result {
   control?: { terminate: boolean };
 }
 
-const text = (t: string, isError = false, terminate = false): Result => ({ output: [{ type: "text", text: t }], ...(isError && { isError }), ...(terminate && { control: { terminate } }) });
-export const clip = (s: string, n: number) => (Array.from(s).length > n ? Array.from(s).slice(0, n).join("") : s);
+const text = (t: string, isError = false, terminate = false): Result => ({
+  output: [{ type: "text", text: t }],
+  ...(isError && { isError }),
+  ...(terminate && { control: { terminate } }),
+});
+export const clip = (s: string, n: number) =>
+  Array.from(s).length > n ? Array.from(s).slice(0, n).join("") : s;
 
 /** 脚本里发起的嵌套调用的调用 id 是 `<外层 id>/<key>`；返回外层 id */
 export function parentOf(callId: string): string | undefined {
@@ -117,10 +184,17 @@ export interface ToolsExtensionOptions {
   web?: WebTools;
 }
 
-export function createToolsExtension({ platform, decls, host, name = "canvas-tools", web }: ToolsExtensionOptions): Extension {
+export function createToolsExtension({
+  platform,
+  decls,
+  host,
+  name = "canvas-tools",
+  web,
+}: ToolsExtensionOptions): Extension {
   const tools: ToolRegistration[] = decls.map((d) => {
     const localWeb = !!web && WEB_TOOL_NAMES.has(d.name);
-    if (!localWeb && (d.executor ?? "server") !== "server") throw new Error(`不支持的工具执行方：${d.name}（${d.executor}）`);
+    if (!localWeb && (d.executor ?? "server") !== "server")
+      throw new Error(`不支持的工具执行方：${d.name}（${d.executor}）`);
     return {
       name: d.name,
       description: d.description,
@@ -134,59 +208,132 @@ export function createToolsExtension({ platform, decls, host, name = "canvas-too
       executionMode: "sequential",
       // 模型常把 nodeIds 写成一个字符串；校验前补成数组，和迁移前的行为一致
       prepareArguments: (args: unknown) => wrapScalarArrays(d.parameters, args) as never,
-      execute: (args: unknown, api: ToolExecutionApi, context: Context) => execute(d, args, api, context),
+      execute: (args: unknown, api: ToolExecutionApi, context: Context) =>
+        execute(d, args, api, context),
     } as ToolRegistration;
   });
 
-  async function execute(d: ToolDecl, args: unknown, api: ToolExecutionApi, context: Context): Promise<Result> {
-    return trackedCall(host, d, args, api, context, (run, call) => dispatch(d, args, run, api, context, call));
+  async function execute(
+    d: ToolDecl,
+    args: unknown,
+    api: ToolExecutionApi,
+    context: Context,
+  ): Promise<Result> {
+    return trackedCall(host, d, args, api, context, (run, call) =>
+      dispatch(d, args, run, api, context, call),
+    );
   }
 
-  async function dispatch(d: ToolDecl, args: unknown, run: ToolRun, api: ToolExecutionApi, context: Context, call: ToolCallInfo): Promise<{ result: Result; end: ToolEndEvent }> {
+  async function dispatch(
+    d: ToolDecl,
+    args: unknown,
+    run: ToolRun,
+    api: ToolExecutionApi,
+    context: Context,
+    call: ToolCallInfo,
+  ): Promise<{ result: Result; end: ToolEndEvent }> {
     if (web && WEB_TOOL_NAMES.has(d.name)) {
       if (d.name !== "get_search_content" && host.takeWebCall?.(run) === false) {
-        return { result: text("本轮联网次数已达上限（20 次），请基于已有资料继续；缓存内容仍可用 get_search_content 读取。", true), end: endEvent(call, true, "本轮联网次数已达上限") };
+        return {
+          result: text(
+            "本轮联网次数已达上限（20 次），请基于已有资料继续；缓存内容仍可用 get_search_content 读取。",
+            true,
+          ),
+          end: endEvent(call, true, "本轮联网次数已达上限"),
+        };
       }
-      const r = await callWebTool(web, run.rc, d.name, args as Record<string, unknown>, context.abortSignal);
+      const r = await callWebTool(
+        web,
+        run.rc,
+        d.name,
+        args as Record<string, unknown>,
+        context.abortSignal,
+      );
       return { result: text(r.content, r.isError), end: endEvent(call, r.isError, r.summary) };
     }
     const kind = APPROVAL_KIND[d.name];
     if (kind) {
       const p = await platform.propose(run.rc, kind, args, context.abortSignal, String(api.taskId));
-      if (p.is_error) return { result: text(p.content, true), end: endEvent(call, true, clip(p.content, MAX_SUMMARY)) };
-      await host.approval(run, { kind, toolCallId: api.callId, payload: p.payload, quoteCredits: p.quote_credits, summary: p.summary ?? "" });
-      return { result: text(p.content, false, p.terminate), end: endEvent(call, false, p.summary ?? "") };
+      if (p.is_error)
+        return {
+          result: text(p.content, true),
+          end: endEvent(call, true, clip(p.content, MAX_SUMMARY)),
+        };
+      await host.approval(run, {
+        kind,
+        toolCallId: api.callId,
+        payload: p.payload,
+        quoteCredits: p.quote_credits,
+        summary: p.summary ?? "",
+      });
+      return {
+        result: text(p.content, false, p.terminate),
+        end: endEvent(call, false, p.summary ?? ""),
+      };
     }
     if (d.name === "plan_update") return plan(call, run, args);
     if (d.name === "show_card") return showCard(call, run, args);
-    const r = await platform.tool(run.rc, d.name, args, { toolCallId: call.id, idemKey: String(api.taskId), signal: context.abortSignal });
-    return { result: toResult(r), end: r.tool_end ?? endEvent(call, r.is_error, r.is_error ? clip(r.content, MAX_SUMMARY) : "") };
+    const r = await platform.tool(run.rc, d.name, args, {
+      toolCallId: call.id,
+      idemKey: String(api.taskId),
+      signal: context.abortSignal,
+    });
+    return {
+      result: toResult(r),
+      end: r.tool_end ?? endEvent(call, r.is_error, r.is_error ? clip(r.content, MAX_SUMMARY) : ""),
+    };
   }
 
-  async function plan(call: Pick<ToolCallInfo, "id" | "name" | "label" | "verb">, run: ToolRun, args: unknown): Promise<{ result: Result; end: ToolEndEvent }> {
-    const fail = (msg: string) => ({ result: text(msg, true), end: endEvent(call, true, clip(msg, MAX_SUMMARY)) });
-    const raw = ((args as { steps?: Array<{ title?: unknown; status?: unknown }> } | undefined)?.steps ?? []) as Array<{ title?: unknown; status?: unknown }>;
+  async function plan(
+    call: Pick<ToolCallInfo, "id" | "name" | "label" | "verb">,
+    run: ToolRun,
+    args: unknown,
+  ): Promise<{ result: Result; end: ToolEndEvent }> {
+    const fail = (msg: string) => ({
+      result: text(msg, true),
+      end: endEvent(call, true, clip(msg, MAX_SUMMARY)),
+    });
+    const raw = ((args as { steps?: Array<{ title?: unknown; status?: unknown }> } | undefined)
+      ?.steps ?? []) as Array<{ title?: unknown; status?: unknown }>;
     if (!Array.isArray(raw)) return fail("参数格式不对：steps 必须是数组");
     if (raw.length > MAX_PLAN_STEPS) return fail(`计划最多 ${MAX_PLAN_STEPS} 步`);
     const steps: PlanStep[] = [];
     for (const [i, s] of raw.entries()) {
       const title = typeof s?.title === "string" ? s.title.trim() : "";
-      if (title === "" || Array.from(title).length > MAX_PLAN_TITLE) return fail(`第 ${i + 1} 步的标题不能为空，且不超过 ${MAX_PLAN_TITLE} 个字`);
-      if (s.status !== "todo" && s.status !== "doing" && s.status !== "done") return fail(`第 ${i + 1} 步的状态只能是 todo / doing / done`);
+      if (title === "" || Array.from(title).length > MAX_PLAN_TITLE)
+        return fail(`第 ${i + 1} 步的标题不能为空，且不超过 ${MAX_PLAN_TITLE} 个字`);
+      if (s.status !== "todo" && s.status !== "doing" && s.status !== "done")
+        return fail(`第 ${i + 1} 步的状态只能是 todo / doing / done`);
       steps.push({ title, status: s.status });
     }
     await host.plan(run, steps);
-    return { result: text("计划已更新。"), end: endEvent(call, false, `更新计划（${steps.length} 步）`) };
+    return {
+      result: text("计划已更新。"),
+      end: endEvent(call, false, `更新计划（${steps.length} 步）`),
+    };
   }
 
   /** 展示卡片：本地校验，通过后交给宿主发 card.shown；校验不过或超过一轮的上限返回错误，让模型自己改 */
-  async function showCard(call: Pick<ToolCallInfo, "id" | "name" | "label" | "verb">, run: ToolRun, args: unknown): Promise<{ result: Result; end: ToolEndEvent }> {
-    const fail = (msg: string) => ({ result: text(msg, true), end: endEvent(call, true, clip(msg, MAX_SUMMARY)) });
+  async function showCard(
+    call: Pick<ToolCallInfo, "id" | "name" | "label" | "verb">,
+    run: ToolRun,
+    args: unknown,
+  ): Promise<{ result: Result; end: ToolEndEvent }> {
+    const fail = (msg: string) => ({
+      result: text(msg, true),
+      end: endEvent(call, true, clip(msg, MAX_SUMMARY)),
+    });
     const v = validateCard(args);
     if (!v.ok) return fail(`卡片参数不合法：${v.error}。请按要求修改后重新调用 show_card。`);
-    if (host.takeCard?.(run) === false) return fail(`本轮最多展示 ${CARD_LIMITS.perRun} 张卡片，已经用完；把剩下的内容用一两句话写进正文。`);
+    if (host.takeCard?.(run) === false)
+      return fail(
+        `本轮最多展示 ${CARD_LIMITS.perRun} 张卡片，已经用完；把剩下的内容用一两句话写进正文。`,
+      );
     await host.card(run, call.id, v.card);
-    return { result: text("卡片已展示给用户，正文不要重复卡片里的内容。"), end: endEvent(call, false, `展示卡片：${v.card.title}`) };
+    return {
+      result: text("卡片已展示给用户，正文不要重复卡片里的内容。"),
+      end: endEvent(call, false, `展示卡片：${v.card.title}`),
+    };
   }
 
   return defineExtension({ name, tools });
@@ -210,7 +357,14 @@ export async function trackedCall(
   const parentId = parentOf(api.callId);
   // 本轮已暂停：后面的调用不执行，连 tool.start 都不发（嵌套调用属于已经开始的脚本，不受这个限制）
   if (!parentId && host.isPaused(run)) return text(SKIPPED_TEXT, true, true);
-  const call: ToolCallInfo = { id: platformToolCallId(api.callId), name: info.name, label: info.label, verb: info.verb, parentId: parentId && platformToolCallId(parentId), args };
+  const call: ToolCallInfo = {
+    id: platformToolCallId(api.callId),
+    name: info.name,
+    label: info.label,
+    verb: info.verb,
+    parentId: parentId && platformToolCallId(parentId),
+    args,
+  };
   const blocked = await host.begin(run, call);
   if (blocked) return text(blocked.content, true, blocked.terminate);
 
@@ -221,21 +375,48 @@ export async function trackedCall(
   } catch (e) {
     if (context.abortSignal?.aborted) throw e; // 被中止：不是工具出错，让 pi 按中止处理
     // 平台调用本身失败（HTTP 500、连不上）：模型看到错误结果自己决定怎么办，时间线上这一步要收尾
-    const msg = e instanceof PlatformError ? e.message : `工具执行出错：${String((e as Error)?.message ?? e)}`;
+    const msg =
+      e instanceof PlatformError
+        ? e.message
+        : `工具执行出错：${String((e as Error)?.message ?? e)}`;
     result = text(msg, true);
     end = endEvent(call, true, clip(msg, MAX_SUMMARY));
   }
-  await host.end(run, call, { ...end, id: call.id, ...(call.parentId && { parent_id: call.parentId }) });
+  await host.end(run, call, {
+    ...end,
+    id: call.id,
+    ...(call.parentId && { parent_id: call.parentId }),
+  });
   return result;
 }
 
 /** 工具自己（不是 Go）产生的 tool.end 事件：和 Go 组的字段一致 */
-export function endEvent(call: Pick<ToolCallInfo, "id" | "name" | "label" | "verb">, isError: boolean, summary: string): ToolEndEvent {
-  return { id: call.id, name: call.name, is_error: isError, summary, label: call.label, verb: call.verb };
+export function endEvent(
+  call: Pick<ToolCallInfo, "id" | "name" | "label" | "verb">,
+  isError: boolean,
+  summary: string,
+): ToolEndEvent {
+  return {
+    id: call.id,
+    name: call.name,
+    is_error: isError,
+    summary,
+    label: call.label,
+    verb: call.verb,
+  };
 }
 
 function toResult(r: PlatformToolResult): Result {
   // 对象存储里的图片只有地址：放进 data，发请求前由模型提供方还原成 URL
-  const images = (r.images ?? []).map((i) => ({ type: "image" as const, data: (i.url ?? i.data) as string, mimeType: i.mime_type }));
-  return { output: [{ type: "text", text: r.content }, ...images], ...(r.data !== undefined && { details: r.data }), ...(r.is_error && { isError: true }), ...(r.terminate && { control: { terminate: true } }) };
+  const images = (r.images ?? []).map((i) => ({
+    type: "image" as const,
+    data: (i.url ?? i.data) as string,
+    mimeType: i.mime_type,
+  }));
+  return {
+    output: [{ type: "text", text: r.content }, ...images],
+    ...(r.data !== undefined && { details: r.data }),
+    ...(r.is_error && { isError: true }),
+    ...(r.terminate && { control: { terminate: true } }),
+  };
 }

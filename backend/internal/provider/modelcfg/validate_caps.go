@@ -48,8 +48,22 @@ func validateCapabilities(kind string, c *Capabilities, issues *[]Issue) {
 	if c.Video && kind != KindAgent {
 		add("video", "只有 Agent 模型可以声明 video（能看视频）")
 	}
+	validatePromptFormat(kind, c.PromptFormat, add)
 	validateParams(c.Params, add)
 	validateContext(kind, c, add)
+}
+
+// validatePromptFormat 只允许 seedance / h3（空 = 通用），且只有视频模型有提示词写法。
+func validatePromptFormat(kind, format string, add func(path, msg string)) {
+	switch format {
+	case "":
+	case PromptFormatSeedance, PromptFormatH3:
+		if kind != KindVideo {
+			add("prompt_format", "只有视频模型可以声明提示词写法")
+		}
+	default:
+		add("prompt_format", "提示词写法只能是 seedance、h3，或留空表示通用")
+	}
 }
 
 func validateOps(kind string, c *Capabilities, add func(path, msg string)) {

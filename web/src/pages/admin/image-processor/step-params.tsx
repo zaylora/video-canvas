@@ -6,7 +6,6 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import {
   configFields,
-  isOwnStorageVendor,
   WIDTH_MAX,
   WIDTH_MIN,
   type ProcessorFormErrors,
@@ -148,7 +147,7 @@ export function StepParams({
         </FormField>
       ) : (
         <Notice tone="danger" title="该厂商不支持视频封面">
-          视频节点显示占位，点击仍可播放；图片缩略图不受影响。
+          视频节点将显示占位
         </Notice>
       )}
 
@@ -156,7 +155,7 @@ export function StepParams({
         <SwitchRow
           id="processor-media"
           title="已开通数据万象“媒体处理”"
-          hint="视频封面（截帧）需要单独开通并另行计费；未开通时没有视频封面。"
+          hint="未开通则无视频封面"
           checked={config.media_enabled ?? false}
           onChange={(checked) => onConfigChange({ media_enabled: checked })}
         />
@@ -169,12 +168,6 @@ export function StepParams({
           checked={config.on_error_redirect ?? true}
           onChange={(checked) => onConfigChange({ on_error_redirect: checked })}
         />
-      )}
-
-      {isOwnStorageVendor(preset.vendor) && (
-        <Notice tone="info">
-          私有桶签名直接使用「{storageName}」存储配置里已有的 AccessKey，这里不需要再填密钥。
-        </Notice>
       )}
     </fieldset>
   );

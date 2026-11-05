@@ -48,7 +48,7 @@ func TestDramaCanvasRepositoryAtomicWrites(t *testing.T) {
 			if scenario == "commit" {
 				svc := service.NewDramaCanvasService(repo, nil)
 				assets := []drama.Asset{{Type: "character", Name: "林川", Look: "童年", Aliases: []string{}, Episodes: []int{1}, Description: "少年", VoicePrompt: "少年声"}}
-				created, err := svc.ApplyBreakdown(ctx, 11, project.ID, canvas.ID, job.ID, []int{1}, assets)
+				created, err := svc.ApplyBreakdown(ctx, 11, project.ID, canvas.ID, job.ID, []int{1}, assets, nil)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -86,7 +86,7 @@ func TestDramaCanvasRepositoryAtomicWrites(t *testing.T) {
 				if checkpoint["canvas_committed"] != true || checkpoint["cost"] != float64(7) || checkpoint["result"] == nil {
 					t.Fatalf("checkpoint=%+v", checkpoint)
 				}
-				replayed, err := svc.ApplyBreakdown(ctx, 11, project.ID, canvas.ID, job.ID, []int{1}, assets)
+				replayed, err := svc.ApplyBreakdown(ctx, 11, project.ID, canvas.ID, job.ID, []int{1}, assets, nil)
 				if err != nil || !reflect.DeepEqual(replayed, created) {
 					t.Fatalf("replay=%+v err=%v", replayed, err)
 				}
@@ -101,7 +101,7 @@ func TestDramaCanvasRepositoryAtomicWrites(t *testing.T) {
 				if err := db.Model(&job).Update("status", "canceled").Error; err != nil {
 					t.Fatal(err)
 				}
-				_, err := service.NewDramaCanvasService(repo, nil).ApplyBreakdown(ctx, 11, project.ID, canvas.ID, job.ID, []int{1}, []drama.Asset{{Type: "scene", Name: "街道", Aliases: []string{}, Episodes: []int{1}, Description: "街道"}})
+				_, err := service.NewDramaCanvasService(repo, nil).ApplyBreakdown(ctx, 11, project.ID, canvas.ID, job.ID, []int{1}, []drama.Asset{{Type: "scene", Name: "街道", Aliases: []string{}, Episodes: []int{1}, Description: "街道"}}, nil)
 				var business *errcode.Error
 				if !errors.As(err, &business) || business.Code != 67006 {
 					t.Fatalf("canceled job wrote canvas: %v", err)

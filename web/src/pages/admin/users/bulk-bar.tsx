@@ -8,11 +8,10 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@/components/admin-ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
   batchPlan,
@@ -146,7 +145,6 @@ function BulkCreditDialog({
       <DialogContent className="sm:max-w-md" initialFocus={amountRef}>
         <DialogHeader>
           <DialogTitle>给 {users.length} 个用户发积分</DialogTitle>
-          <DialogDescription>只支持增加。每人都会写一条流水和审计记录。</DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-2">
           <div className="flex gap-1.5">
@@ -185,16 +183,12 @@ function BulkCreditDialog({
             autoComplete="off"
             maxLength={NOTE_MAX}
             aria-label="备注"
-            placeholder="备注（必填，用户可见，如：国庆活动补发）"
-            aria-describedby="bulk-note-hint"
+            placeholder="备注（必填，用户可见）"
             value={note}
             disabled={busy}
             onChange={(event) => setNote(event.target.value)}
             onKeyDown={onEnter}
           />
-          <p id="bulk-note-hint" className="text-muted-foreground -mt-1 text-xs">
-            该备注会显示在用户的积分流水中
-          </p>
           <div className="bg-muted rounded-lg px-3 py-2 text-xs" aria-live="polite">
             <span className="tabular-nums">
               {plan.run.length} 人 × {value} ={" "}

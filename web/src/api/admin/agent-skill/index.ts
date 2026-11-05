@@ -1,6 +1,7 @@
 import service from "@/utils/requests/service";
 import { adminAgentSkillEndpoints as ep } from "./endpoints";
 import type {
+  DramaStepKey,
   ListSkillsParams,
   SkillDeleteCheck,
   SkillDetail,
@@ -16,6 +17,7 @@ import type {
 const normalizeItem = (item: SkillItem): SkillItem => ({
   ...item,
   unsupported_fields: item.unsupported_fields ?? [],
+  drama_steps: item.drama_steps ?? [],
 });
 
 const normalizeImport = (view: SkillImportView): SkillImportView => ({
@@ -180,6 +182,15 @@ export const renameSkill = async (name: string, title: string): Promise<SkillIte
  */
 export const setSkillEnabled = async (name: string, enabled: boolean): Promise<SkillItem> =>
   normalizeItem(await service.put<SkillItem>(ep.enabled(name), { enabled }));
+
+/**
+ * 设置技能适用的短剧环节（导入技能；内置技能只读）；不产生新版本
+ * @param name 技能名
+ * @param steps 适用环节，可以为空（取消全部）
+ * @returns 更新后的技能
+ */
+export const setSkillDramaSteps = async (name: string, steps: DramaStepKey[]): Promise<SkillItem> =>
+  normalizeItem(await service.put<SkillItem>(ep.dramaSteps(name), { steps }));
 
 /**
  * 设为生效版本（回滚就是把旧版本设为生效）；已启用时只影响之后新开始的 Agent 运行

@@ -78,6 +78,10 @@ func (s *DramaService) estimateStoryboard(ctx context.Context, userID, id uint64
 	if err != nil {
 		return 0, dramaError(err)
 	}
+	// 与提交共用时长解析，视频模型读取失败时两边同样报错
+	if _, err = s.storyboardSeconds(ctx, project, req); err != nil {
+		return 0, err
+	}
 	snap, err := s.resolveModel(ctx, project.TextModel)
 	if err != nil {
 		return 0, err
@@ -87,9 +91,10 @@ func (s *DramaService) estimateStoryboard(ctx context.Context, userID, id uint64
 
 // enqueueStoryboard 保存不可变输入并标记generating，随冻结和队列插入一起回滚。
 func enqueueStoryboard(ctx context.Context, tx repository.DramaTx, j *model.DramaJob, req *model.DramaJobReq, eps []model.DramaEpisode) error {
+	// 提交前已由 storyboardSeconds 解析；0 只在直接调用时出现，按契约缺省
 	limit := req.MaxSeconds
 	if limit == 0 {
-		limit = 15
+		limit = storyboardDefaultSeconds
 	}
 	input, err := json.Marshal(dramaStoryboardInput{MaxSeconds: limit})
 	if err != nil {
@@ -126,6 +131,7 @@ func (s *DramaService) runStoryboard(ctx context.Context, run *dramaRun, vars ma
 		return nil, err
 	}
 	vars["script_md"], vars["episode_no"], vars["assets"], vars["max_seconds"] = ep.ScriptMD, ep.No, assets, input.MaxSeconds
+	vars["prompt_format"] = s.storyboardPromptFormat(ctx, run.project)
 	output, cost, err := s.callDrama(ctx, run.job, &run.snapshot, "storyboard", vars, func(value any) error {
 		return value.(drama.StoryboardOutput).ValidateMaxSeconds(input.MaxSeconds)
 	})

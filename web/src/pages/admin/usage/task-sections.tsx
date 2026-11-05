@@ -288,9 +288,7 @@ function FailureDetail({ detail }: { detail: UsageDetail }) {
       </DescriptionList>
       {error.upstream ? (
         <div className="flex flex-col gap-1">
-          <span className="text-muted-foreground text-xs">
-            上游返回的原文（仅渠道 Key 被遮，上限 16KB）
-          </span>
+          <span className="text-muted-foreground text-xs">上游原文</span>
           <FoldableCode text={error.upstream} defaultOpen />
         </div>
       ) : (

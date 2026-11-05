@@ -52,8 +52,8 @@ type dramaScope struct {
 	selected                         map[int]bool
 }
 
-// ApplyBreakdown 合并资产并原子锁定选择集；新增角色直接写成带 character 元数据的节点，只返回本次新增节点。
-func (s *DramaCanvasService) ApplyBreakdown(ctx context.Context, userID, dramaID, canvasID, jobID uint64, episodes []int, assets []drama.Asset) ([]DramaCanvasAsset, error) {
+// ApplyBreakdown 合并资产并原子锁定选择集；models 是各类资产（character / scene / prop）新建节点的默认图片模型 key，可为 nil；新增角色直接写成带 character 元数据的节点，只返回本次新增节点。
+func (s *DramaCanvasService) ApplyBreakdown(ctx context.Context, userID, dramaID, canvasID, jobID uint64, episodes []int, assets []drama.Asset, models map[string]string) ([]DramaCanvasAsset, error) {
 	// 1. 先校验真实模型结果与选择范围，避免非法输出造成部分写画布或锁集。
 	if err := (drama.BreakdownOutput{Assets: assets}).Validate(); err != nil {
 		return nil, errcode.ErrDramaOutputInvalid
@@ -68,7 +68,7 @@ func (s *DramaCanvasService) ApplyBreakdown(ctx context.Context, userID, dramaID
 	out, err := WriteCanvas(ctx, s.repo, userID, canvasID, func(g *canvasgraph.Graph, revision uint64) (breakdownAttempt, error) {
 		attempt := breakdownAttempt{created: []DramaCanvasAsset{}, before: revision, revision: revision}
 		err := s.repo.WithTx(ctx, func(tx repository.DramaCanvasTx) error {
-			return breakdownTx(ctx, tx, g, revision, &attempt, sc, assets)
+			return breakdownTx(ctx, tx, g, revision, &attempt, sc, assets, models)
 		})
 		return attempt, err
 	})
@@ -115,7 +115,7 @@ func lockedJobCheckpoint(ctx context.Context, tx repository.DramaCanvasTx, userI
 }
 
 // breakdownTx 在单个事务里完成任务校验、集锁校验、合并、画布 CAS、锁集与提交标记。
-func breakdownTx(ctx context.Context, tx repository.DramaCanvasTx, g *canvasgraph.Graph, revision uint64, attempt *breakdownAttempt, sc dramaScope, assets []drama.Asset) error {
+func breakdownTx(ctx context.Context, tx repository.DramaCanvasTx, g *canvasgraph.Graph, revision uint64, attempt *breakdownAttempt, sc dramaScope, assets []drama.Asset, models map[string]string) error {
 	job, checkpoint, err := lockedJobCheckpoint(ctx, tx, sc.userID, sc.canvasID, sc.jobID, "breakdown")
 	if err != nil {
 		return err
@@ -137,7 +137,7 @@ func breakdownTx(ctx context.Context, tx repository.DramaCanvasTx, g *canvasgrap
 	for i, a := range assets {
 		graphAssets[i] = canvasgraph.DramaAsset{Type: a.Type, Name: a.Name, Look: a.Look, Aliases: a.Aliases, Episodes: a.Episodes, Description: a.Description, VoicePrompt: a.VoicePrompt}
 	}
-	merged, err := canvasgraph.MergeDrama(g, graphAssets, canvasgraph.Options{})
+	merged, err := canvasgraph.MergeDrama(g, graphAssets, canvasgraph.Options{DramaModels: models})
 	if err != nil {
 		return errcode.ErrDramaOutputInvalid
 	}
@@ -277,6 +277,13 @@ func (s *DramaCanvasService) DeleteEpisode(ctx context.Context, userID, dramaID,
 func deleteEpisodeTx(ctx context.Context, tx repository.DramaCanvasTx, g *canvasgraph.Graph, revision uint64, out *breakdownAttempt, userID, dramaID, canvasID uint64, no int) error {
 	if err := tx.LockProject(ctx, userID, dramaID); err != nil {
 		return dramaError(err)
+	}
+	phase, err := tx.ProjectPhase(ctx, userID, dramaID)
+	if err != nil {
+		return dramaError(err)
+	}
+	if phase == "running" {
+		return errcode.ErrDramaPhase
 	}
 	busy, err := tx.HasActiveJob(ctx, userID, dramaID)
 	if err != nil {

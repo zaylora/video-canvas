@@ -90,9 +90,10 @@ func capabilitiesSchema() obj {
 			"window": obj{"type": "integer", "minimum": 1, "maximum": maxContextWin, "description": "上下文窗口（Token）"},
 			"output": obj{"type": "integer", "minimum": minContextOut, "maximum": maxContextOut, "description": "最大输出（Token），小于上下文窗口"},
 		}, "window", "output"),
-		"system": str("固定系统提示（仅 text）：每次请求都会带上，用户看不到"),
-		"vision": obj{"type": "boolean", "description": "能不能看图（仅 agent）：不能看图的模型不会收到「看图」工具"},
-		"video":  obj{"type": "boolean", "description": "能不能理解视频画面和声音（仅 Gemini 格式的 agent）"},
+		"system":        str("固定系统提示（仅 text）：每次请求都会带上，用户看不到"),
+		"vision":        obj{"type": "boolean", "description": "能不能看图（仅 agent）：不能看图的模型不会收到「看图」工具"},
+		"video":         obj{"type": "boolean", "description": "能不能理解视频画面和声音（仅 Gemini 格式的 agent）"},
+		"prompt_format": obj{"type": "string", "enum": []string{"", PromptFormatSeedance, PromptFormatH3}, "description": "视频模型的提示词写法（仅 video）：短剧分镜据此选模板。留空 = 通用；seedance = 即梦 / Seedance；h3 = MiniMax H3"},
 	}, "prompt")
 }
 

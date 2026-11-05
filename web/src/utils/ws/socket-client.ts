@@ -119,6 +119,11 @@ export function parseServerMessage(raw: unknown): ServerMessage | null {
       }
       return msg as ServerMessage;
     }
+    case "drama": {
+      if (typeof data !== "object" || data === null) return null;
+      if (typeof (data as { drama_id?: unknown }).drama_id !== "string") return null;
+      return msg as ServerMessage;
+    }
     case "drama.episode": {
       if (typeof data !== "object" || data === null) return null;
       const event = data as { drama_id?: unknown; episode_no?: unknown };
@@ -200,6 +205,8 @@ export type SocketClientDeps = {
   onPayment?: (update: PaymentWsUpdate) => void;
   /** 收到短剧流水线任务的状态 / 进度变化 */
   onDramaJob?: (event: { drama_id: string; job: BackendJobView }) => void;
+  /** 收到短剧项目的规划阶段 / 游标变化：前端据此重新拉详情 */
+  onDrama?: (event: { drama_id: string }) => void;
   /** 收到短剧分集保存完成。 */
   onDramaEpisode?: (event: DramaEpisodeEvent) => void;
   /** 收到短剧片段的变化 */
@@ -357,6 +364,7 @@ export class TaskSocketClient {
       else if (msg.type === "canvas.patch") this.deps.onCanvasPatch?.(msg.data);
       else if (msg.type === "agent.event") this.deps.onAgentEvent?.(msg.data);
       else if (msg.type === "payment.updated") this.deps.onPayment?.(msg.data);
+      else if (msg.type === "drama") this.deps.onDrama?.(msg.data);
       else if (msg.type === "drama.job") this.deps.onDramaJob?.(msg.data);
       else if (msg.type === "drama.episode") this.deps.onDramaEpisode?.(msg.data);
       else if (msg.type === "drama.segment") this.deps.onDramaSegment?.(msg.data);

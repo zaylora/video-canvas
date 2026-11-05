@@ -10,7 +10,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+} from "@/components/admin-ui/alert-dialog";
 
 import { Notice } from "@/components/admin-ui/notice";
 import { openDialog, type DialogControl } from "@/store/dialog";

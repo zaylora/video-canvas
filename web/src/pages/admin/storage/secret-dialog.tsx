@@ -5,7 +5,6 @@ import { toast } from "sonner";
 import { replaceStorageSecret } from "@/api/admin/storage";
 import type { CloudProvider, StorageView } from "@/api/admin/storage/type.d";
 import { FormField } from "@/components/admin-ui/form-field";
-import { Notice } from "@/components/admin-ui/notice";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -14,7 +13,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@/components/admin-ui/dialog";
 import { Input } from "@/components/ui/input";
 
 import { useAliveRef } from "../use-admin";
@@ -95,7 +94,7 @@ function SecretBody({
       <DialogHeader>
         <DialogTitle>替换凭证</DialogTitle>
         <DialogDescription>
-          存储 <b>{storage.name}</b>。AccessKey ID 与 Secret 必须一起更换，Secret 只写不读。
+          存储 <b>{storage.name}</b>
         </DialogDescription>
       </DialogHeader>
       <FormField label={meta.keyLabel} htmlFor="storage-new-key" required>
@@ -121,9 +120,6 @@ function SecretBody({
           onChange={(event) => setSecretKey(event.target.value)}
         />
       </FormField>
-      <Notice tone="info">
-        保存前会先用新凭证测试连接，测试不通过则不会替换，正在使用的凭证不受影响。
-      </Notice>
       <DialogFooter>
         <Button type="button" variant="outline" disabled={busy} onClick={onClose}>
           取消

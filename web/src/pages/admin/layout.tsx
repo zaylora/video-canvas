@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useState, type CSSProperties }
 import { ShieldCheck } from "lucide-react";
 import { Outlet, useLocation } from "react-router";
 
+import { AdminGlow } from "@/components/admin-ui/glass";
 import { FocusLoader } from "@/components/focus-loader";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -41,8 +42,8 @@ export default function AdminLayout() {
   const [cached] = useState(() => status === "ready");
 
   /**
-   * 后台用设计稿的 zinc 配色：挂在 <html> 上，弹窗（挂在 body）也能拿到；离开后台时摘掉。
-   * 用 layout effect：在首帧绘制前挂上，加载层第一眼就是后台配色，不会先闪一下首页的灰
+   * 后台配色（中性色同前台，图表换彩色）：挂在 <html> 上，弹窗（挂在 body）也能拿到；离开后台时摘掉。
+   * 用 layout effect：在首帧绘制前挂上，加载层第一眼就是后台配色，不会先闪一下别的底色
    */
   useLayoutEffect(() => {
     document.documentElement.classList.add("admin-theme");
@@ -96,7 +97,7 @@ function AdminBody() {
       <main className="grid min-h-svh place-items-center p-6">
         <div className="flex max-w-sm flex-col items-center gap-3 text-center">
           <h1 className="text-lg font-semibold">没能确认你的管理权限</h1>
-          <p className="text-muted-foreground text-sm">网络或服务暂时有问题，不代表你没有权限。</p>
+          <p className="text-muted-foreground text-sm">网络或服务异常</p>
           <Button variant="outline" onClick={() => void load(true)}>
             重试
           </Button>
@@ -130,9 +131,11 @@ function AdminBody() {
       style={{ "--sidebar-width": "15rem", "--sidebar-width-icon": "3rem" } as CSSProperties}
     >
       <AdminSidebar />
-      {/* 和首页同一套外壳：侧栏是底层，内容区是浮起的圆角页面；内容在区内滚动，高度扣掉上下外边距 */}
-      <SidebarInset className="ring-border h-svh min-w-0 overflow-hidden md:peer-data-[variant=inset]:h-[calc(100svh-1rem)] md:peer-data-[variant=inset]:rounded-[22px] md:peer-data-[variant=inset]:shadow-[0_12px_40px_-18px_oklch(0_0_0/0.35)] md:peer-data-[variant=inset]:ring-1">
-        <header className="bg-background/85 sticky top-0 z-20 flex h-14 shrink-0 items-center gap-3 px-4 backdrop-blur lg:px-5">
+      {/* 和首页同一套外壳：侧栏是底层，内容区是浮起的圆角页面；内容在区内滚动，高度扣掉上下外边距。
+          内容区顶部铺一层光晕，各页的清透面板透出它；isolate 让光晕的 -z-10 只压在内容区里 */}
+      <SidebarInset className="ring-border isolate h-svh min-w-0 overflow-hidden md:peer-data-[variant=inset]:h-[calc(100svh-1rem)] md:peer-data-[variant=inset]:rounded-[22px] md:peer-data-[variant=inset]:shadow-[0_12px_40px_-18px_oklch(0_0_0/0.35)] md:peer-data-[variant=inset]:ring-1">
+        <AdminGlow />
+        <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-3 px-4 lg:px-5">
           <SidebarTrigger className="size-8 rounded-full" />
           <Breadcrumb>
             <BreadcrumbList>

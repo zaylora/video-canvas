@@ -27,7 +27,7 @@ describe("短剧错误码映射（契约 §8）", () => {
   });
 
   test("67003 超长、67004 忙、67005 锁定、67007 无模型各有固定文案", () => {
-    expect(dramaErrorMessage(err(DRAMA_ERR.sourceTooLong, 400))).toContain("30 万字");
+    expect(dramaErrorMessage(err(DRAMA_ERR.sourceTooLong, 400))).toContain("500 万字");
     expect(dramaErrorMessage(err(DRAMA_ERR.jobBusy, 409))).toContain("进行中");
     expect(dramaErrorMessage(err(DRAMA_ERR.episodeLocked, 409))).toContain("锁定");
     expect(dramaErrorMessage(err(DRAMA_ERR.noTextModel, 400))).toContain("Agent 模型");

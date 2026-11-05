@@ -93,7 +93,7 @@ func TestDramaCreateKeepsChosenAgentModel(t *testing.T) {
 			r := newDramaMemory()
 			s, registry := dramaTestService(r, &dramaTextStreamer{}, nil)
 			registry.models = []provider.ModelInfo{{Key: "text", Kind: "agent"}, {Key: "pro", Kind: "agent"}}
-			_, err := s.Create(context.Background(), 7, &model.CreateDramaReq{Text: "第一章\n正文", StyleKey: "custom", StyleCustom: "写实", TextModel: tc.chosen})
+			_, err := s.Create(context.Background(), 7, &model.CreateDramaReq{SourceToken: seedDramaDraft(r, "第一章\n正文"), SourceKind: "novel", StyleKey: "custom", StyleCustom: "写实", TextModel: tc.chosen})
 			if err != nil {
 				t.Fatal(err)
 			}

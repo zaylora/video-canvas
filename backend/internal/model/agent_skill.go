@@ -28,15 +28,16 @@ const (
 
 // AgentSkill 是后台导入的 Agent 技能。内置技能随二进制发布，不在这张表里。
 type AgentSkill struct {
-	ID            uint64    `gorm:"primaryKey" json:"id"`                     // 技能 id（审计 target_id）
-	Name          string    `gorm:"size:64;not null;uniqueIndex" json:"name"` // frontmatter 的 name，不可变；也是 skill_read 参数和 skill:key
-	Title         string    `gorm:"size:128;not null" json:"title"`           // 显示名，可改，不产生版本
-	Enabled       bool      `gorm:"not null;default:false" json:"enabled"`    // 是否出现在目录和 @ 弹层
-	ActiveVersion *int      `json:"active_version"`                           // 生效版本号；首个版本入库时设为 1
-	LatestVersion int       `gorm:"not null;default:0" json:"latest_version"` // 已分配的最大版本号，只增不减（删除后不复用）
-	CreatedBy     uint64    `gorm:"not null;default:0" json:"created_by"`     // 首次导入人
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	DramaSteps    datatypes.JSONSlice[string] `gorm:"type:jsonb;not null;default:'[]'" json:"drama_steps"`
+	ID            uint64                      `gorm:"primaryKey" json:"id"`                     // 技能 id（审计 target_id）
+	Name          string                      `gorm:"size:64;not null;uniqueIndex" json:"name"` // frontmatter 的 name，不可变；也是 skill_read 参数和 skill:key
+	Title         string                      `gorm:"size:128;not null" json:"title"`           // 显示名，可改，不产生版本
+	Enabled       bool                        `gorm:"not null;default:false" json:"enabled"`    // 是否出现在目录和 @ 弹层
+	ActiveVersion *int                        `json:"active_version"`                           // 生效版本号；首个版本入库时设为 1
+	LatestVersion int                         `gorm:"not null;default:0" json:"latest_version"` // 已分配的最大版本号，只增不减（删除后不复用）
+	CreatedBy     uint64                      `gorm:"not null;default:0" json:"created_by"`     // 首次导入人
+	CreatedAt     time.Time                   `json:"created_at"`
+	UpdatedAt     time.Time                   `json:"updated_at"`
 }
 
 // TableName 返回表名。

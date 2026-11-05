@@ -204,7 +204,7 @@ export function useUserActions(options: {
         title: `封禁 ${user.username} 并取消任务？`,
         destructive: true,
         confirmLabel: "封禁并取消任务",
-        description: `将取消 ${user.active_tasks} 个进行中任务并退还 ${user.frozen} 冻结积分，此操作无法撤销。账号封禁之后可以再启用。`,
+        description: `将取消 ${user.active_tasks} 个进行中任务并退还 ${user.frozen} 冻结积分，无法撤销。`,
         onConfirm: () => setUserStatus(user.id, { status: "disabled", cancel_active: true }),
       });
       if (!done) return false;

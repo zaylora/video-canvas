@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"strconv"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -333,6 +334,15 @@ func (s *GenerationTaskService) insertAndFreeze(ctx context.Context, task *model
 	}
 	var existing *model.GenerationTask
 	err = s.repo.WithTx(ctx, func(tx repository.GenerationTaskTx) error {
+		// 0. 片段媒体先锁短剧项目，再锁账户；与短剧任务采用同一顺序，防止同集并发与死锁。
+		if strings.HasPrefix(task.NodeID, "seg:") {
+			if existing, err = s.findIdempotent(ctx, tx, userID, key); err != nil || existing != nil {
+				return err
+			}
+			if err := guardDramaGeneration(ctx, tx, task); err != nil {
+				return err
+			}
+		}
 		// 1. 惰性创建积分账户（初始积分来自系统设置，缺省 config；真正建出新账户时仓储会在同一事务补写 initial 流水），
 		//    再对账户行加锁：同一个用户的并发提交在这里被串行化，余额与并发数的检查因此不会被并发穿透
 		if err := tx.EnsureCredit(ctx, userID, initial); err != nil {

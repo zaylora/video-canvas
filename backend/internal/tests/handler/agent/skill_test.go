@@ -102,6 +102,7 @@ func newSkillRouter(api SkillAPI) *gin.Engine {
 	a.GET("/:name", h.Get)
 	a.PUT("/:name", h.Rename)
 	a.PUT("/:name/enabled", h.SetEnabled)
+	a.PUT("/:name/drama-steps", h.SetDramaSteps)
 	a.PUT("/:name/active-version", h.SetActiveVersion)
 	a.GET("/:name/delete-check", h.DeleteCheck)
 	a.GET("/:name/versions/:v", h.Version)
@@ -153,6 +154,8 @@ func TestSkillHandler_Endpoints(t *testing.T) {
 		{"放弃暂存", "DELETE", base + "/imports/x", "", 200, "discard"},
 		{"确认导入", "POST", base + "/imports/x/confirm", "", 200, "confirm"},
 		{"启停", "PUT", base + "/demo/enabled", `{"enabled":false}`, 200, "enabled"},
+		{"短剧适用环节", "PUT", base + "/demo/drama-steps", `{"steps":["assets","video"]}`, 200, "drama_steps"},
+		{"清空短剧环节", "PUT", base + "/demo/drama-steps", `{"steps":[]}`, 200, "drama_steps"},
 		{"设为生效", "PUT", base + "/demo/active-version", `{"version":2}`, 200, "active"},
 		{"改名", "PUT", base + "/demo", `{"title":"演示"}`, 200, "rename"},
 		{"删除预检", "GET", base + "/demo/delete-check", "", 200, "check"},
@@ -274,4 +277,10 @@ func TestSkillHandler_Import(t *testing.T) {
 			t.Errorf("%d %v", status, resp)
 		}
 	})
+}
+
+func (f *fakeSkillAPI) SetDramaSteps(_ context.Context, a uint64, n string, _ []string) (*agentsvc.SkillItem, error) {
+	f.gotActor = a
+	f.gotName = n
+	return &agentsvc.SkillItem{}, f.rec("drama_steps")
 }

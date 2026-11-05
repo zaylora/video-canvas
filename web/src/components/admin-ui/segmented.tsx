@@ -5,7 +5,7 @@ import { SPRING } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 /**
- * 分段选择（设计稿的 seg）：灰底里一排按钮，选中的浮起来。
+ * 分段选择：清透胶囊里一排按钮，选中的浮起一块同画布 ChromeSegment 的滑块。
  * <Segmented aria-label="能力"><SegmentedItem active>全部</SegmentedItem>…</Segmented>
  * 给每个 SegmentedItem 传同一个 slideId，选中的浮块就会用 layoutId + SPRING 滑到新位置；
  * 不传则选中项直接换底色（其他页面的旧用法不变）。同一页多组分段要用不同的 slideId。
@@ -15,7 +15,10 @@ function Segmented({ className, ...props }: ComponentProps<"div">) {
     <div
       role="group"
       data-slot="segmented"
-      className={cn("bg-muted inline-flex gap-0.5 rounded-lg p-0.5 text-xs", className)}
+      className={cn(
+        "bg-chrome ring-chrome-border inline-flex gap-0.5 rounded-full p-0.5 text-xs ring-1 backdrop-blur-xl",
+        className,
+      )}
       {...props}
     />
   );
@@ -39,10 +42,10 @@ function SegmentedItem({
       data-slot="segmented-item"
       data-active={active || undefined}
       className={cn(
-        "text-muted-foreground hover:text-foreground rounded-md px-3 py-1.5 font-medium",
+        "text-muted-foreground hover:text-foreground rounded-full px-3 py-1.5 font-medium",
         slideId
           ? "relative data-active:text-foreground"
-          : "data-active:bg-background data-active:text-foreground data-active:shadow-sm",
+          : "data-active:bg-chrome-hover data-active:ring-chrome-border data-active:text-foreground data-active:ring-1",
         "disabled:cursor-not-allowed disabled:opacity-40",
         className,
       )}
@@ -52,7 +55,7 @@ function SegmentedItem({
         <motion.span
           layoutId={slideId}
           transition={SPRING}
-          className="bg-background absolute inset-0 rounded-md shadow-sm"
+          className="bg-chrome-hover ring-chrome-border absolute inset-0 rounded-full ring-1"
         />
       )}
       {slideId ? <span className="relative">{children}</span> : children}

@@ -108,8 +108,8 @@ function UpgradeModelsDialog({
       error={error}
       description={
         retrying
-          ? `已升级 ${upgradedTotal} 个模型到 v${toVersion}。失败的模型保持原样，原因见下方。`
-          : "升级后新任务用新版本，进行中的任务按旧版本跑完；新版本不再声明的协议设置项会被丢弃；建议升级后对相关模型“测试模型”一次。逐个处理，失败不中断，失败原因留在这里。"
+          ? `已升级 ${upgradedTotal} 个，失败项保持原样`
+          : "进行中的任务按旧版本跑完；新版本未声明的协议设置项会被丢弃。"
       }
       onConfirm={() => void run()}
       onCancel={cancel}

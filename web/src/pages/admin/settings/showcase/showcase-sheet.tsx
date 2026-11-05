@@ -14,7 +14,7 @@ import {
   SheetFooter,
   SheetHeader,
   SheetTitle,
-} from "@/components/ui/sheet";
+} from "@/components/admin-ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -271,12 +271,8 @@ function SheetForm({
             >
               <div>
                 <Upload className="mx-auto size-5" />
-                <b className="text-foreground mt-2 mb-1 block font-medium">
-                  拖入视频，或点击选择文件
-                </b>
-                <span className="text-xs">
-                  MP4 / WebM · 建议横屏 16:9、720p、5–15 秒、10 MB 以内
-                </span>
+                <b className="text-foreground mt-2 mb-1 block font-medium">上传视频</b>
+                <span className="text-xs">MP4 / WebM · 16:9 · 10 MB 内</span>
               </div>
             </button>
           )}
@@ -294,14 +290,7 @@ function SheetForm({
         </FormField>
 
         <FormField
-          label={
-            <>
-              生成它的那句话
-              <span className="text-muted-foreground font-normal">
-                显示在画面左下角，「做同款」会把它带进首页输入框
-              </span>
-            </>
-          }
+          label="提示词"
           htmlFor="showcase-prompt"
           error={touched ? errors.prompt : undefined}
         >
@@ -348,11 +337,7 @@ function SheetForm({
           </FormField>
         </div>
 
-        <FormField
-          label="封面"
-          error={touched ? errors.cover : undefined}
-          hint="封面会先于视频显示，也是视频加载失败、省流量、减少动态效果时的画面。"
-        >
+        <FormField label="封面" error={touched ? errors.cover : undefined}>
           <div className="flex gap-2">
             {coverOptions.map((option) => (
               <label
@@ -408,12 +393,9 @@ function SheetForm({
         </FormField>
 
         <div className="flex items-center justify-between gap-4">
-          <div>
-            <label htmlFor="showcase-enabled" className="text-sm font-medium">
-              启用
-            </label>
-            <p className="text-muted-foreground text-xs">关闭后保留在列表，不参与轮播</p>
-          </div>
+          <label htmlFor="showcase-enabled" className="text-sm font-medium">
+            启用
+          </label>
           <Switch id="showcase-enabled" checked={enabled} onCheckedChange={setEnabled} />
         </div>
       </div>

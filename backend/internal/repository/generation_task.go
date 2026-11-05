@@ -69,6 +69,9 @@ func NewGenerationTaskRepository(db *gorm.DB) *GenerationTaskRepository {
 	return &GenerationTaskRepository{db: db}
 }
 
+// DramaTx 将当前生成事务适配到短剧原语，共享项目锁，避免片段并发检查与任务插入分离。
+func (r *GenerationTaskRepository) DramaTx() DramaTx { return &DramaRepository{db: r.db} }
+
 // SetEnqueuer 设置事务内入队的实现。在组装依赖时调用一次，之后只读。
 func (r *GenerationTaskRepository) SetEnqueuer(e TaskEnqueuer) { r.enq = e }
 

@@ -7,7 +7,6 @@ import { AnimatedNumber } from "@/components/admin-ui/animated-number";
 import {
   EmptyState,
   EmptyStateActions,
-  EmptyStateDescription,
   EmptyStateIcon,
   EmptyStateTitle,
 } from "@/components/admin-ui/empty-state";
@@ -115,7 +114,6 @@ function UserTable({
     return (
       <EmptyState className="m-4 mt-0">
         <EmptyStateTitle>加载失败</EmptyStateTitle>
-        <EmptyStateDescription>用户列表没有加载出来，请检查网络后重试。</EmptyStateDescription>
         <EmptyStateActions>
           <Button variant="outline" onClick={onRetry}>
             <RotateCw />
@@ -135,7 +133,6 @@ function UserTable({
         <EmptyStateTitle>
           {filterText.trim() ? `没有匹配 “${filterText.trim()}” 的用户` : "没有匹配条件的用户"}
         </EmptyStateTitle>
-        <EmptyStateDescription>换个关键词，或清除筛选条件。</EmptyStateDescription>
         {filtering && (
           <EmptyStateActions>
             <Button variant="outline" onClick={onClearFilters}>

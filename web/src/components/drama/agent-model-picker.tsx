@@ -42,10 +42,13 @@ export function AgentModelPicker({
   value,
   onChange,
   variant = "chip",
+  disabledReason,
 }: {
   value: string;
   onChange: (key: string) => void;
-  variant?: "chip" | "chrome";
+  variant?: "chip" | "chrome" | "field";
+  /** 某个模型不能选的原因（返回非空即禁用，悬停显示原因）；不传全部可选 */
+  disabledReason?: (model: ModelInfo) => string | null;
 }) {
   const { models, model, label, stale, loading } = useAgentModel(value);
   return (
@@ -67,21 +70,27 @@ export function AgentModelPicker({
           )}
           {models.map((item, index) => {
             const active = model?.key === item.key;
+            const blocked = disabledReason?.(item) ?? null;
             return (
               <button
                 key={item.key}
                 type="button"
+                disabled={!!blocked}
+                title={blocked ?? undefined}
                 onClick={() => {
                   close();
                   onChange(index === 0 ? "" : item.key);
                 }}
                 className={cn(
-                  "hover:bg-muted focus-visible:ring-ring/50 flex min-h-8 items-center gap-2 rounded-md px-2 text-left text-sm outline-none focus-visible:ring-2",
+                  "hover:bg-muted focus-visible:ring-ring/50 flex min-h-8 items-center gap-2 rounded-md px-2 text-left text-sm outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent",
                   active && "bg-muted font-medium",
                 )}
               >
                 <ModelLogo vendor={item.vendor} name={item.label} className="size-5" />
                 <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                {blocked && (
+                  <span className="text-muted-foreground shrink-0 text-[10px]">不可选</span>
+                )}
                 {index === 0 && (
                   <span className="bg-muted text-muted-foreground rounded-full px-1.5 text-[10px] leading-4">
                     默认

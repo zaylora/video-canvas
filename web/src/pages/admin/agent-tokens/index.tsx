@@ -21,7 +21,7 @@ export default function AgentTokensPage() {
       title: `注销「${item.name}」？`,
       destructive: true,
       confirmLabel: "注销",
-      description: "注销后立即失效，使用它的 agent-trace 会收到 401，不可恢复。",
+      description: "立即失效，不可恢复",
       onConfirm: () => api.revoke(item),
     });
 

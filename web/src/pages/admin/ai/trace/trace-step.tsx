@@ -112,7 +112,7 @@ export function TraceStepRow({
             </p>
           )}
           {step.blocks.length === 0 && !step.error && step.logs.length === 0 && (
-            <p className="text-muted-foreground">这一步没有记录内容。</p>
+            <p className="text-muted-foreground">无记录内容</p>
           )}
           {step.blocks.map((block) => (
             <div key={block.label} className="flex flex-col gap-1">

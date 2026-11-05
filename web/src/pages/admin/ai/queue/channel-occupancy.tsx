@@ -2,7 +2,8 @@ import { useMemo } from "react";
 
 import type { QueueChannel } from "@/api/admin/queue/type";
 import { Tag } from "@/components/admin-ui/tag";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { GLASS_PANEL } from "@/components/admin-ui/glass";
 import {
   Table,
   TableBody,
@@ -24,12 +25,9 @@ export function ChannelOccupancy({ channels, idle }: { channels: QueueChannel[];
   const rows = useMemo(() => channels.map(channelRow), [channels]);
 
   return (
-    <Card data-slot="channel-occupancy" size="sm">
+    <Card className={GLASS_PANEL} data-slot="channel-occupancy" size="sm">
       <CardHeader>
         <CardTitle>渠道占用</CardTitle>
-        <CardDescription className="text-xs">
-          占用的名额 = 提交中 + 上游生成中。最大同时生成数在「模型渠道」里修改，这里只读。
-        </CardDescription>
       </CardHeader>
       <CardContent>
         <Table>

@@ -176,7 +176,7 @@ function MessageStep({
         <span className="text-xs font-medium">{view.label}</span>
         {step.partial && (
           <Tag tone="warning" title="回答没说完就被中断了">
-            半截回答，被中断
+            已中断
           </Tag>
         )}
         <StepTime view={view} />
@@ -237,8 +237,7 @@ export function RunTimeline({
   startMs: number | null;
   expandAll?: boolean;
 }) {
-  if (steps.length === 0)
-    return <p className="text-muted-foreground text-sm">这次运行没有记录到步骤。</p>;
+  if (steps.length === 0) return <p className="text-muted-foreground text-sm">暂无步骤</p>;
   return (
     <ol data-slot="run-timeline" className="flex flex-col">
       {steps.map((step) => {

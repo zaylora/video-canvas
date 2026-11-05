@@ -32,9 +32,6 @@ export function DropOverlay({ active }: { active: boolean }) {
             <UploadCloud className="size-6" />
           </span>
           <b className="text-lg">松开以导入技能包</b>
-          <span className="text-muted-foreground text-sm">
-            支持 .zip 压缩包、文件夹或单个 SKILL.md
-          </span>
         </motion.div>
       )}
     </AnimatePresence>

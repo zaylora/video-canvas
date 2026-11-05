@@ -19,9 +19,8 @@ export function confirmRollback(target: ProcessorView, onDone: () => void) {
     confirmLabel: "回滚",
     description: (
       <>
-        线上配置会切回上一个已发布版本
+        线上将切回
         <b className="text-foreground tabular-nums"> v{target.previous_version}</b>
-        ，当前线上版本 <span className="tabular-nums">v{target.published_version}</span> 不再生效。
       </>
     ),
     onConfirm: async () => {
@@ -42,12 +41,7 @@ export function confirmDisable(target: ProcessorView, onDone: () => void) {
     title: `停用「${target.name}」？`,
     confirmLabel: "停用",
     destructive: true,
-    description: (
-      <>
-        停用后，「{target.storage_name}」存储里的素材回退为原图（缩略图）或占位（视频封面）。
-        之后可以重新校验并发布。
-      </>
-    ),
+    description: <>「{target.storage_name}」的素材将回退原图 / 占位</>,
     onConfirm: async () => {
       await disableImageProcessor(target.id);
       toast.success(`已停用，「${target.storage_name}」回退原图 / 占位`);
@@ -66,7 +60,7 @@ export function confirmDelete(target: ProcessorView, onDone: () => void) {
     title: `删除「${target.name}」？`,
     confirmLabel: "删除",
     destructive: true,
-    description: <>删除后无法恢复；绑定的存储和里面的素材不受影响。</>,
+    description: <>删除后无法恢复，存储与素材不受影响</>,
     onConfirm: async () => {
       await deleteImageProcessor(target.id);
       toast.success(`已删除「${target.name}」`);

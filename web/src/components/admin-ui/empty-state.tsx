@@ -11,7 +11,7 @@ function EmptyState({ className, ...props }: ComponentProps<"div">) {
     <div
       data-slot="empty-state"
       className={cn(
-        "text-muted-foreground flex min-h-48 flex-col items-center justify-center gap-2 rounded-xl border border-dashed p-8 text-center",
+        "text-muted-foreground flex min-h-48 flex-col items-center justify-center gap-2 border-chrome-border rounded-3xl border border-dashed p-8 text-center",
         className,
       )}
       {...props}

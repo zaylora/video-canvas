@@ -107,7 +107,7 @@ export function TestNode({
       <div className="flex flex-col gap-3 p-3">
         {!caps && (
           <p className="text-muted-foreground rounded-md border border-dashed p-3 text-center text-xs">
-            capabilities 还没有配置，节点上没有可填的内容。
+            未配置 capabilities
           </p>
         )}
         {caps && (

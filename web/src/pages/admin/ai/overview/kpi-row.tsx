@@ -1,6 +1,4 @@
 import { Boxes, CircleCheck, Clapperboard, RadioTower } from "lucide-react";
-import { Bar, BarChart, Line, LineChart, YAxis } from "recharts";
-import type { BarShapeProps } from "recharts";
 
 import type { AdminStats, AdminStatsDays } from "@/api/admin/ai/type";
 import { AnimatedNumber } from "@/components/admin-ui/animated-number";
@@ -9,14 +7,12 @@ import {
   StatCard,
   StatCardHint,
   StatCardLabel,
-  StatCardSpark,
   StatCardUnit,
   StatCardValue,
 } from "@/components/admin-ui/stat-card";
-import { ChartContainer, type ChartConfig } from "@/components/ui/chart";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 import {
-  dayTotal,
   modelHint,
   successRate,
   todayAndYesterday,
@@ -25,40 +21,24 @@ import {
 
 import type { LoadStatus } from "../../use-admin";
 
-const taskSparkConfig = { total: { color: "var(--chart-1)" } } satisfies ChartConfig;
-const rateSparkConfig = { rate: { color: "var(--status-success)" } } satisfies ChartConfig;
-
-/** 迷你图固定取最近 7 天，最后一根（今天）的下标 */
-const SPARK_LAST = 6;
-
-/** 迷你柱：最后一根（今天）不透明，其余压到 45% */
-function SparkBar({ x, y, width, height, index }: BarShapeProps) {
-  return (
-    <rect
-      x={x}
-      y={y}
-      width={width}
-      height={Math.max(height, 0)}
-      rx={1.5}
-      fill="var(--color-total)"
-      opacity={index === SPARK_LAST ? 1 : 0.45}
-    />
-  );
-}
+/** 嵌在总览主面板里的指标格：不要卡片自己的底和描边，大数字再放大一档 */
+const CELL = "h-full rounded-2xl bg-transparent p-5 shadow-none ring-0 backdrop-blur-none";
+const CELL_INTERACTIVE = "hover:bg-chrome-hover";
+const VALUE = "text-4xl tracking-tight";
 
 /** 一个卡里的数字与说明还没就绪时的占位 */
 function KpiSkeleton() {
   return (
     <>
       <Skeleton className="h-3.5 w-16" />
-      <Skeleton className="mt-1.5 h-8 w-24" />
+      <Skeleton className="mt-2 h-10 w-24" />
       <Skeleton className="mt-1 h-3.5 w-20" />
     </>
   );
 }
 
 /**
- * 总览顶部的四张关键指标卡。
+ * 总览主面板顶部的四个关键指标格（外层的清透面板由页面给）。
  * - 今日任务、成功率来自统计接口，统计加载失败时只这两张显示“—”；在线模型、可用渠道来自配置清单，互不影响；
  * - 在线模型、可用渠道整卡可点，都去渠道与模型主从页；
  * - 状态色只出现在说明文字上：有不可用的模型显示 danger，有待配置的模型或没设 Key 的渠道显示 warning。
@@ -110,12 +90,6 @@ export function KpiRow({
   const { today, yesterday } = todayAndYesterday(daily);
   const rate = successRate(daily);
   const failed = daily.reduce((sum, day) => sum + day.failed, 0);
-  const recent = daily.slice(-7);
-  const rateSeries = recent.map((day) => ({
-    rate:
-      day.succeeded + day.failed > 0 ? (day.succeeded / (day.succeeded + day.failed)) * 100 : null,
-  }));
-  const idle = !stats || daily.every((day) => dayTotal(day) === 0);
   const dash = <span className="text-muted-foreground">—</span>;
 
   const modelCardHint = modelHint({
@@ -133,9 +107,9 @@ export function KpiRow({
         : { tone: "neutral", text: "全部可用" };
 
   return (
-    <section aria-label="关键指标" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+    <section aria-label="关键指标" className="grid grid-cols-2 gap-1 p-2 lg:grid-cols-4">
       <Reveal index={1}>
-        <StatCard className="h-full">
+        <StatCard className={CELL}>
           {!stats && !statsFailed ? (
             <KpiSkeleton />
           ) : (
@@ -144,31 +118,19 @@ export function KpiRow({
                 <Clapperboard />
                 今日任务
               </StatCardLabel>
-              <StatCardValue>{statsFailed ? dash : <AnimatedNumber value={today} />}</StatCardValue>
+              <StatCardValue className={VALUE}>
+                {statsFailed ? dash : <AnimatedNumber value={today} />}
+              </StatCardValue>
               <StatCardHint>
                 {statsFailed ? "统计加载失败" : `昨日 ${yesterday.toLocaleString()}`}
               </StatCardHint>
-              {!statsFailed && !idle && (
-                <StatCardSpark>
-                  <ChartContainer config={taskSparkConfig} className="aspect-auto h-8 w-19">
-                    <BarChart
-                      data={recent.map((day) => ({ total: dayTotal(day) }))}
-                      margin={{ top: 0, right: 0, bottom: 0, left: 0 }}
-                      barCategoryGap={3}
-                    >
-                      <YAxis hide domain={[0, "dataMax"]} />
-                      <Bar dataKey="total" shape={SparkBar} isAnimationActive={false} />
-                    </BarChart>
-                  </ChartContainer>
-                </StatCardSpark>
-              )}
             </>
           )}
         </StatCard>
       </Reveal>
 
       <Reveal index={2}>
-        <StatCard className="h-full">
+        <StatCard className={CELL}>
           {!stats && !statsFailed ? (
             <KpiSkeleton />
           ) : (
@@ -177,7 +139,7 @@ export function KpiRow({
                 <CircleCheck />
                 成功率 · 近 {days} 天
               </StatCardLabel>
-              <StatCardValue>
+              <StatCardValue className={VALUE}>
                 {statsFailed || rate === null ? (
                   dash
                 ) : (
@@ -197,36 +159,13 @@ export function KpiRow({
                     ? "还没有已结束的任务"
                     : `失败 ${failed.toLocaleString()} 次`}
               </StatCardHint>
-              {!statsFailed &&
-                rate !== null &&
-                rateSeries.filter((p) => p.rate !== null).length > 1 && (
-                  <StatCardSpark>
-                    <ChartContainer config={rateSparkConfig} className="aspect-auto h-8 w-19">
-                      <LineChart
-                        data={rateSeries}
-                        margin={{ top: 3, right: 2, bottom: 3, left: 2 }}
-                      >
-                        <YAxis hide domain={["dataMin", "dataMax"]} />
-                        <Line
-                          dataKey="rate"
-                          type="monotone"
-                          stroke="var(--color-rate)"
-                          strokeWidth={2}
-                          dot={false}
-                          connectNulls
-                          isAnimationActive={false}
-                        />
-                      </LineChart>
-                    </ChartContainer>
-                  </StatCardSpark>
-                )}
             </>
           )}
         </StatCard>
       </Reveal>
 
       <Reveal index={3}>
-        <StatCard className="h-full" onClick={onOpenModels}>
+        <StatCard className={cn(CELL, CELL_INTERACTIVE)} onClick={onOpenModels}>
           {!configReady ? (
             <KpiSkeleton />
           ) : (
@@ -235,7 +174,7 @@ export function KpiRow({
                 <Boxes />
                 在线模型
               </StatCardLabel>
-              <StatCardValue>
+              <StatCardValue className={VALUE}>
                 <AnimatedNumber value={online} />
                 <StatCardUnit>/ {modelTotal}</StatCardUnit>
               </StatCardValue>
@@ -246,7 +185,7 @@ export function KpiRow({
       </Reveal>
 
       <Reveal index={4}>
-        <StatCard className="h-full" onClick={onOpenChannels}>
+        <StatCard className={cn(CELL, CELL_INTERACTIVE)} onClick={onOpenChannels}>
           {!configReady ? (
             <KpiSkeleton />
           ) : (
@@ -255,7 +194,7 @@ export function KpiRow({
                 <RadioTower />
                 可用渠道
               </StatCardLabel>
-              <StatCardValue>
+              <StatCardValue className={VALUE}>
                 <AnimatedNumber value={usableChannels} />
                 <StatCardUnit>/ {channelTotal}</StatCardUnit>
               </StatCardValue>

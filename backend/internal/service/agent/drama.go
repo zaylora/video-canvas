@@ -93,8 +93,8 @@ func (b *AgentBridge) toolDramaRead(ctx context.Context, tc *toolCall) (*toolOut
 	case "overview":
 		value = p
 	case "episode", "segments":
-		if a.EpisodeNo < 1 || a.EpisodeNo > 100 {
-			return nil, fail("episode_no 必须是 1 到 100 的集号")
+		if a.EpisodeNo < 1 || a.EpisodeNo > 100000 {
+			return nil, fail("episode_no 必须是 1 到 100000 的集号")
 		}
 		if a.Scope == "episode" {
 			value, err = b.d.Drama.GetEpisode(ctx, tc.run.UserID, uint64(p.ID), a.EpisodeNo)

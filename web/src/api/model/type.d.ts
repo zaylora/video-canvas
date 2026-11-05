@@ -61,7 +61,12 @@ export interface Capabilities {
   vision?: boolean;
   /** 能不能理解视频画面和声音，仅 Gemini 格式的 agent */
   video?: boolean;
+  /** 提示词格式，仅视频；缺省或空 = 通用 */
+  prompt_format?: PromptFormat;
 }
+
+/** 视频提示词格式：空 = 通用，seedance = Seedance 格式，h3 = MiniMax H3 格式 */
+export type PromptFormat = "" | "seedance" | "h3";
 
 /** 计费方式：按次 / 按秒（× 时长参数 duration）/ 按 Token（仅文本） */
 export type Billing = "per_call" | "per_second" | "token";

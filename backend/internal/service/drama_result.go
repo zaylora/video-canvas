@@ -23,10 +23,37 @@ func (s *DramaService) applyDramaOutput(ctx context.Context, tx repository.Drama
 		p.Status = "ready"
 		fields["status"] = "ready"
 	case drama.AnalyzeOutput:
-		p.SourceKind = result.SourceKind
+		if p.SourceKind == "" {
+			p.SourceKind = result.SourceKind
+		}
 		p.SourceSummary = result.Summary
 		p.CharactersMD = result.CharactersMD
-		fields = map[string]any{"source_kind": result.SourceKind, "source_summary": result.Summary, "characters_md": result.CharactersMD}
+		p.OutlineMD = result.OutlineMD
+		fields = map[string]any{"source_kind": p.SourceKind, "source_summary": result.Summary, "characters_md": result.CharactersMD, "outline_md": result.OutlineMD}
+	case drama.PlanOutput:
+		if p.PlanCursor+1 != j.BatchFrom {
+			return nil
+		}
+		eps, e := tx.Episodes(ctx, p.UserID, p.ID)
+		if e != nil {
+			return e
+		}
+		next := 1
+		for _, ep := range eps {
+			next = max(next, ep.No+1)
+		}
+		if e := result.ValidateCoverage(j.BatchFrom, j.BatchTo); e != nil {
+			return errcode.ErrDramaOutputInvalid
+		}
+		for i, want := range result.Episodes {
+			ep := model.DramaEpisode{UserID: p.UserID, DramaID: p.ID, No: next + i, Title: want.Title, Synopsis: want.Synopsis, Hook: want.Hook, Cliffhanger: want.Cliffhanger, UnitFrom: want.UnitFrom, UnitTo: want.UnitTo, ScriptStatus: "empty", Revision: 1}
+			if e := tx.SaveEpisode(ctx, &ep, 0); e != nil {
+				return e
+			}
+		}
+		p.PlanCursor = j.BatchTo
+		p.Status = "outlined"
+		fields = map[string]any{"plan_cursor": p.PlanCursor, "status": p.Status}
 	case drama.OutlineOutput:
 		ready, e := saveDramaOutline(ctx, tx, p, result)
 		if e != nil {
@@ -182,6 +209,9 @@ func (s *DramaService) failDrama(ctx context.Context, j *model.DramaJob, cause e
 			return e
 		}
 		j = current
+		if pipelineJob(*j) {
+			return setPlanningState(ctx, tx, p, "paused", planningPauseCode(code), message)
+		}
 		return tx.UpdateProject(ctx, p.UserID, p.ID, p.Revision, map[string]any{"status": "failed"})
 	})
 	if errors.Is(err, repository.ErrNotFound) {
@@ -191,6 +221,7 @@ func (s *DramaService) failDrama(ctx context.Context, j *model.DramaJob, cause e
 		return err
 	}
 	s.publish(ctx, j)
+	s.publishDrama(ctx, j.UserID, j.DramaID)
 	return nil
 }
 

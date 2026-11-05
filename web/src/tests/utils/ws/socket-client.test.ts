@@ -155,6 +155,7 @@ function setup(
   const agentEvents: AgentEventDto[] = [];
   const payments: PaymentWsUpdate[] = [];
   const dramaEpisodes: DramaEpisodeEvent[] = [];
+  const dramas: { drama_id: string }[] = [];
   let opens = 0;
   let tickets = 0;
   const client = new TaskSocketClient({
@@ -174,6 +175,7 @@ function setup(
     onCanvasPatch: (patch) => patches.push(patch),
     onAgentEvent: (event) => agentEvents.push(event),
     onPayment: (update) => payments.push(update),
+    onDrama: (event) => dramas.push(event),
     onDramaEpisode: (event) => dramaEpisodes.push(event),
     onOpen: () => {
       opens += 1;
@@ -194,6 +196,7 @@ function setup(
     agentEvents,
     payments,
     dramaEpisodes,
+    dramas,
     advance,
     flush,
     opens: () => opens,
@@ -447,6 +450,20 @@ describe("TaskSocketClient", () => {
     expect(t.pendingCount()).toBe(0);
     await t.advance(120_000);
     expect(t.sockets.length).toBe(1);
+  });
+});
+
+describe("规划阶段推送", () => {
+  test("收到 drama 消息：分发给订阅者，让工作台重新拉详情", async () => {
+    const env = setup();
+    env.client.start();
+    await env.flush();
+    const socket = env.sockets[0];
+    socket.open();
+    socket.message({ type: "drama", data: { drama_id: "d1" } });
+    socket.message({ type: "drama", data: {} });
+    expect(env.dramas).toEqual([{ drama_id: "d1" }]);
+    env.client.stop();
   });
 });
 

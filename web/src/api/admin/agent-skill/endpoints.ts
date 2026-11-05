@@ -12,6 +12,7 @@
  *   PUT    /admin/agent/skills/:name                        改显示名，body = {title}
  *   PUT    /admin/agent/skills/:name/enabled                启停，body = {enabled}
  *   PUT    /admin/agent/skills/:name/active-version         设为生效版本，body = {version}
+ *   PUT    /admin/agent/skills/:name/drama-steps            短剧适用环节，body = {steps}（接口契约 docs/design/短剧开拍设置）
  *   GET    /admin/agent/skills/:name/delete-check           删除预检
  *   DELETE /admin/agent/skills/:name                        删除技能
  *   GET    /admin/agent/skills/:name/versions/:v            某版本的清单、问题、正文
@@ -31,6 +32,7 @@ export const adminAgentSkillEndpoints = {
   remove: skill,
   enabled: (name: string) => `${skill(name)}/enabled`,
   activeVersion: (name: string) => `${skill(name)}/active-version`,
+  dramaSteps: (name: string) => `${skill(name)}/drama-steps`,
   deleteCheck: (name: string) => `${skill(name)}/delete-check`,
   version,
   versionFile: (name: string, v: number) => `${version(name, v)}/files`,

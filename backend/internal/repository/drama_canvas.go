@@ -27,6 +27,8 @@ type DramaCanvasTx interface {
 	LockEpisodes(ctx context.Context, userID, dramaID uint64, nos []int) error
 	// LockProject 按用户锁未删除的短剧项目行，与新增分集、拆解同一把锁；不存在返回 ErrNotFound。
 	LockProject(ctx context.Context, userID, dramaID uint64) error
+	// ProjectPhase 在已锁定项目内读取阶段，不存在返回 ErrNotFound。
+	ProjectPhase(ctx context.Context, userID, dramaID uint64) (string, error)
 	// HasActiveJob 报告该短剧是否有排队或运行中的流水线任务。
 	HasActiveJob(ctx context.Context, userID, dramaID uint64) (bool, error)
 	// DeleteEpisode 删第 no 集及其片段（片段软删，生成任务和素材保留），后面的集号依次减 1；不存在返回 ErrNotFound。
@@ -107,6 +109,13 @@ func (t *dramaCanvasTx) LockProject(ctx context.Context, userID, dramaID uint64)
 	err := t.db.WithContext(ctx).Clauses(clause.Locking{Strength: "UPDATE"}).
 		Where("user_id = ? AND id = ?", userID, dramaID).First(&p).Error
 	return translate(err)
+}
+
+// ProjectPhase 按本人项目查询规划阶段，调用者已持有该项目行锁。
+func (t *dramaCanvasTx) ProjectPhase(ctx context.Context, userID, dramaID uint64) (string, error) {
+	var p model.DramaProject
+	err := t.db.WithContext(ctx).Select("id", "phase").Where("user_id = ? AND id = ?", userID, dramaID).First(&p).Error
+	return p.Phase, translate(err)
 }
 
 // HasActiveJob 查该用户该短剧是否有 queued / running 的任务。

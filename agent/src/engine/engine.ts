@@ -10,25 +10,87 @@ import { randomUUID } from "node:crypto";
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
 import type { AssistantMessage, Message } from "@earendil-works/pi-ai";
 import {
-  CompactionTask, GenerationTask, Harness, ProviderDoc, createRegistry, defineExtension, hook, watchEvents,
-  type Conversation, type ConversationId, type Extension, type SetTimer, type Storage, type Submission, type TaskId, type ToolRegistration,
+  CompactionTask,
+  GenerationTask,
+  Harness,
+  ProviderDoc,
+  createRegistry,
+  defineExtension,
+  hook,
+  watchEvents,
+  type Conversation,
+  type ConversationId,
+  type Extension,
+  type SetTimer,
+  type Storage,
+  type Submission,
+  type TaskId,
+  type ToolRegistration,
 } from "@earendil-works/pi-durable";
-import { SUMMARY_SYSTEM_PROMPT, buildPrompt, compactionLimits, serializeMessages, summaryMaxTokens } from "../compaction.ts";
+import {
+  SUMMARY_SYSTEM_PROMPT,
+  buildPrompt,
+  compactionLimits,
+  serializeMessages,
+  summaryMaxTokens,
+} from "../compaction.ts";
 import { createCodemode } from "../codemode.ts";
-import { TITLE_SYSTEM_PROMPT, buildTitlePrompt, draftTitle, parseTitle, stripMentions } from "../title.ts";
+import {
+  TITLE_SYSTEM_PROMPT,
+  buildTitlePrompt,
+  draftTitle,
+  parseTitle,
+  stripMentions,
+} from "../title.ts";
 import { attachmentViews, inputContent, type AttachmentCheck } from "../attachments.ts";
-import { ACTIVITY_CONCURRENCY, ACTIVITY_MIN_TOOLS, ACTIVITY_SYSTEM_PROMPT, buildActivityPrompt, type GroupTool } from "../activity-summary.ts";
+import {
+  ACTIVITY_CONCURRENCY,
+  ACTIVITY_MIN_TOOLS,
+  ACTIVITY_SYSTEM_PROMPT,
+  buildActivityPrompt,
+  type GroupTool,
+} from "../activity-summary.ts";
 import { CARD_LIMITS } from "../card.ts";
 import { createToolsExtension, type ToolHost, type ToolRun } from "../durable-tools.ts";
 import type { IdCodec } from "../ids.ts";
-import { PROVIDER_ID, createModelRegistry, createRunContexts, runContextExtension, type RunContexts } from "../model-provider.ts";
-import { PlatformError, TERMINAL_TASK_STATUSES, platformToolCallId, type ApprovalDecision, type ApprovalExecution, type ApprovalKind, type ApprovalOutcome, type Platform, type PlatformUsage, type RunContext, type RunSetup, type ToolDecl } from "../platform-client.ts";
+import {
+  PROVIDER_ID,
+  createModelRegistry,
+  createRunContexts,
+  runContextExtension,
+  type RunContexts,
+} from "../model-provider.ts";
+import {
+  PlatformError,
+  TERMINAL_TASK_STATUSES,
+  platformToolCallId,
+  type ApprovalDecision,
+  type ApprovalExecution,
+  type ApprovalKind,
+  type ApprovalOutcome,
+  type Platform,
+  type PlatformUsage,
+  type RunContext,
+  type RunSetup,
+  type ToolDecl,
+} from "../platform-client.ts";
 import { DuplicateError, NotFoundError, StateConflictError } from "../store/errors.ts";
 import type { AgentStore } from "../store/store.ts";
 import type { Approval, Run, Session } from "../store/types.ts";
 import { AgentError, Err, OVER_BUDGET_CODE } from "./errors.ts";
 import { ACTIVE_STATUSES, isActive, statusEvent } from "./status.ts";
-import { Watches, allSettled, createWatchExtension, isClosed, pruneBatches, wakeText, type WatchBatch, type WatchTaskStatus, type WatchesDoc, type WatchExtension } from "./watch.ts";
+import {
+  Watches,
+  allSettled,
+  createWatchExtension,
+  isClosed,
+  pruneBatches,
+  wakeText,
+  type WatchBatch,
+  type WatchTaskStatus,
+  type WatchesDoc,
+  type WatchExtension,
+} from "./watch.ts";
 import type { WebTools } from "../web-access.ts";
 import { prepareWebTools } from "../web-tools.ts";
 
@@ -36,7 +98,8 @@ const DEFAULT_TITLE = "新对话";
 const DEFAULT_MAX_STEPS = 40;
 const APPROVAL_TTL_MS = 24 * 3600 * 1000;
 const DELTA_FLUSH_MS = 50;
-const OUTPUT_TRUNCATED = "模型的回答被截断：达到了单次输出的上限（思考内容也占用这部分额度）。请把任务拆小一点再试，或请管理员调大这个模型的输出上限。";
+const OUTPUT_TRUNCATED =
+  "模型的回答被截断：达到了单次输出的上限（思考内容也占用这部分额度）。请把任务拆小一点再试，或请管理员调大这个模型的输出上限。";
 /** Pi 提交流式中间状态的最小间隔。每次提交是一次存储写入，所以不要太密；前端的增量就是按它出现的 */
 const PARTIAL_INTERVAL_MS = 100;
 const MAX_ERROR_CHARS = 200;
@@ -49,7 +112,8 @@ const WAITING = ["waiting_approval", "waiting_input"];
 const RESUMABLE = ["interrupted", "budget_exhausted", "step_limit"];
 const CONTINUE_TEXT = "请继续刚才的任务。";
 /** 运行被中断时，最后一步的工具结果可能丢了，而那一步可能已经执行（Pi 补上的结果只说「被中止」，没说这一点） */
-const INTERRUPTED_TEXT = "上一次运行被中断了，最后一步的工具结果丢失，那一步可能已经执行。请先读取画布或任务确认现状，再继续刚才的任务。";
+const INTERRUPTED_TEXT =
+  "上一次运行被中断了，最后一步的工具结果丢失，那一步可能已经执行。请先读取画布或任务确认现状，再继续刚才的任务。";
 const APPROVAL_NUDGE = "（用户已处理上面的请求，请根据结果继续）";
 const DEFAULT_LEASE_INTERVAL_MS = 10_000;
 const DEFAULT_LEASE_TTL_MS = 30_000;
@@ -183,7 +247,8 @@ interface ActivityGroup {
   tools: Map<string, GroupTool & { ended: boolean }>;
 }
 
-const truncate = (s: string, n: number) => (Array.from(s).length > n ? Array.from(s).slice(0, n).join("") : s);
+const truncate = (s: string, n: number) =>
+  Array.from(s).length > n ? Array.from(s).slice(0, n).join("") : s;
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /** 审批的对外视图（事件和决定接口共用）：id 是 idcodec 编码串 */
@@ -210,12 +275,19 @@ export interface WatchBatchView {
   state: WatchBatch["state"];
   total: number;
   settled: number;
-  tasks: Array<{ task_id: string; node_id: string; label: string; status: "pending" | "settled"; task_status?: WatchTaskStatus }>;
+  tasks: Array<{
+    task_id: string;
+    node_id: string;
+    label: string;
+    status: "pending" | "settled";
+    task_status?: WatchTaskStatus;
+  }>;
 }
 
 /** Go 平台的业务错误原样变成引擎的业务错误；连不上、5xx 是「Agent 暂不可用」 */
 export function fromPlatform(e: unknown): Error {
-  if (e instanceof PlatformError && e.code !== undefined && e.status >= 400 && e.status < 500) return new AgentError(e.code, e.status, e.message);
+  if (e instanceof PlatformError && e.code !== undefined && e.status >= 400 && e.status < 500)
+    return new AgentError(e.code, e.status, e.message);
   if (e instanceof PlatformError) return Err.unavailable();
   return e as Error;
 }
@@ -267,7 +339,9 @@ export class AgentEngine {
 
   async #init(): Promise<void> {
     this.#models = createModelRegistry({
-      baseUrl: this.#o.baseUrl, serviceToken: this.#o.serviceToken, contexts: this.#contexts,
+      baseUrl: this.#o.baseUrl,
+      serviceToken: this.#o.serviceToken,
+      contexts: this.#contexts,
       onCall: ({ sessionId, callId, purpose }) => {
         const a = this.#active.get(this.#contexts.conversationOf(sessionId ?? "") ?? "");
         // 摘要、命名不是助手的话，没有对应的 message.done：它们的调用 id 单独放，免得错配到下一条对话消息上
@@ -281,22 +355,41 @@ export class AgentEngine {
     this.#registry.install(runContextExtension(this.#contexts));
     this.#registry.install(this.#hooksExtension());
     this.#registry.install(this.#compactionExtension());
-    const watch = createWatchExtension({ check: (conv, batch) => this.#watchCheck(conv, batch), pollMs: this.#o.watchPollMs ?? DEFAULT_WATCH_POLL_MS });
+    const watch = createWatchExtension({
+      check: (conv, batch) => this.#watchCheck(conv, batch),
+      pollMs: this.#o.watchPollMs ?? DEFAULT_WATCH_POLL_MS,
+    });
     this.#watchTask = watch.task;
     this.#registry.install(watch.extension);
     const codemode = createCodemode(this.host);
     for (const t of codemode.tools ?? []) this.#toolRegs.set(t.name, t);
     this.#registry.install(codemode);
-    this.#harness = await Harness.open(this.#o.storage, {
-      models: this.#models.models, registry: this.#registry, ...this.#o.harness,
-      // 重试策略在 Go；同一轮的工具调用一个个执行；插话用官方效果（排队，下一次请求前一起带上）
-      // 压缩的触发线按模型的上下文窗口算（窗口小的模型收紧）；后台压缩不用：写摘要要有运行的上下文，运行结束后没有
-      settings: () => ({
-        retry: { enabled: false }, toolExecution: "sequential", steeringMode: "all", progress: { partialIntervalMs: PARTIAL_INTERVAL_MS },
-        compaction: { enabled: true, backgroundTokens: 0, modelOverrides: Object.fromEntries(this.#compaction) },
-      }),
-    }, context);
-    this.#leaseTimer = setInterval(() => this.#touchLeases(), this.#o.leaseIntervalMs ?? DEFAULT_LEASE_INTERVAL_MS);
+    this.#harness = await Harness.open(
+      this.#o.storage,
+      {
+        models: this.#models.models,
+        registry: this.#registry,
+        ...this.#o.harness,
+        // 重试策略在 Go；同一轮的工具调用一个个执行；插话用官方效果（排队，下一次请求前一起带上）
+        // 压缩的触发线按模型的上下文窗口算（窗口小的模型收紧）；后台压缩不用：写摘要要有运行的上下文，运行结束后没有
+        settings: () => ({
+          retry: { enabled: false },
+          toolExecution: "sequential",
+          steeringMode: "all",
+          progress: { partialIntervalMs: PARTIAL_INTERVAL_MS },
+          compaction: {
+            enabled: true,
+            backgroundTokens: 0,
+            modelOverrides: Object.fromEntries(this.#compaction),
+          },
+        }),
+      },
+      context,
+    );
+    this.#leaseTimer = setInterval(
+      () => this.#touchLeases(),
+      this.#o.leaseIntervalMs ?? DEFAULT_LEASE_INTERVAL_MS,
+    );
     this.#leaseTimer.unref();
     await this.#recover();
   }
@@ -314,7 +407,7 @@ export class AgentEngine {
     const store = this.#o.store;
     const runs = store.listRunsByStatus(["queued", "running"]);
     const insp = await this.#harness.inspect(context);
-    const liveByConv = new Map<string, typeof insp.tasks[number][]>();
+    const liveByConv = new Map<string, (typeof insp.tasks)[number][]>();
     for (const t of insp.tasks) {
       const c = String(t.record.conversationId);
       liveByConv.set(c, [...(liveByConv.get(c) ?? []), t]);
@@ -338,17 +431,43 @@ export class AgentEngine {
       const tasks = liveByConv.get(convId) ?? [];
       const downtime = this.#now() - (run.leaseUntil ? run.leaseUntil - ttl : run.updatedAt);
       // 试跑等待不占 Pi 的活任务；恢复时按已批准卡片重算签名，Go 用审批 ID 对账原任务。
-      const trial = store.listApprovals(run.id).find((a) => a.kind === "admin_test_run" && a.status === "approved");
-      if (sess && convId && trial && downtime <= window) { trials.push({ run, sess, approval: trial }); continue; }
-      if (sess && convId && tasks.length > 0 && !tasks.some((t) => t.state.kind === "blocked") && downtime <= window) {
+      const trial = store
+        .listApprovals(run.id)
+        .find((a) => a.kind === "admin_test_run" && a.status === "approved");
+      if (sess && convId && trial && downtime <= window) {
+        trials.push({ run, sess, approval: trial });
+        continue;
+      }
+      if (
+        sess &&
+        convId &&
+        tasks.length > 0 &&
+        !tasks.some((t) => t.state.kind === "blocked") &&
+        downtime <= window
+      ) {
         try {
           const rc = this.#rc(run, sess, []);
           const a = await this.#attach(sess, run, rc, await this.#o.platform.prepare(rc, {}), true);
           a.recovering = true;
           // 重启前交给 Pi 的插话：用插话 id 当请求 id 找回它们的提交（已知的请求 id 返回原来的提交，不会重复提交），读到时才发得出 steer.read
-          for (const [id, text] of a.unread) a.steers.set(id, await a.conv.submit({ type: "input", content: text, whenBusy: "steer", requestId: id }, context));
+          for (const [id, text] of a.unread)
+            a.steers.set(
+              id,
+              await a.conv.submit(
+                { type: "input", content: text, whenBusy: "steer", requestId: id },
+                context,
+              ),
+            );
           for (const e of store.listEvents(run.sessionId, 0, 100_000)) {
-            if (e.runId !== run.id || e.type !== "tool.start" || !e.payload || typeof e.payload !== "object" || !("id" in e.payload) || typeof e.payload.id !== "string") continue;
+            if (
+              e.runId !== run.id ||
+              e.type !== "tool.start" ||
+              !e.payload ||
+              typeof e.payload !== "object" ||
+              !("id" in e.payload) ||
+              typeof e.payload.id !== "string"
+            )
+              continue;
             const id = e.payload.id;
             a.startedBefore.add(id);
             // 兼容升级前落下的原始长 id；新事件已经是短 id，不能再次散列脚本子调用。
@@ -366,22 +485,33 @@ export class AgentEngine {
 
     // 过期的：收掉 Pi 里没跑完的任务，标为中断。注意 abort 会启动调度，所以放在窗口内的都接好之后
     for (const { run, convId } of stale) {
-      if (convId && liveByConv.has(convId)) await (await this.#convOf(convId))?.abort(context).catch(() => {});
+      if (convId && liveByConv.has(convId))
+        await (await this.#convOf(convId))?.abort(context).catch(() => {});
       try {
         store.updateRunIf(run.id, ["queued", "running"], { status: "interrupted" });
         await this.#dropUnread(run, "interrupted");
-        this.#emit({ id: run.id, userId: run.userId, sessionId: run.sessionId, canvasId: run.canvasId }, "run.status", statusEvent("interrupted"));
+        this.#emit(
+          { id: run.id, userId: run.userId, sessionId: run.sessionId, canvasId: run.canvasId },
+          "run.status",
+          statusEvent("interrupted"),
+        );
       } catch {
         // 已经不在 queued / running：别处处理过了；会话删了写不了事件也不要紧
       }
     }
     // 不属于任何待恢复运行的活任务（运行早已结束）：收掉，免得调度一启动它们就自己跑起来
-    for (const convId of liveByConv.keys()) if (!claimed.has(convId)) await (await this.#convOf(convId))?.abort(context).catch(() => {});
+    for (const convId of liveByConv.keys())
+      if (!claimed.has(convId)) await (await this.#convOf(convId))?.abort(context).catch(() => {});
 
     this.#harness.resume();
     for (const { run, sess, approval } of trials) {
       try {
-        const outcome = await this.#o.platform.resolve(this.#rc(run, sess, []), "admin_test_run", approval.payload, { decision: "approve" });
+        const outcome = await this.#o.platform.resolve(
+          this.#rc(run, sess, []),
+          "admin_test_run",
+          approval.payload,
+          { decision: "approve" },
+        );
         this.#queueTrialDecision(run, sess, approval, outcome);
       } catch {
         store.updateRunIf(run.id, ["running"], { status: "interrupted" });
@@ -400,7 +530,11 @@ export class AgentEngine {
 
   /** 给某个运行追加一条事件（撤销等不由引擎自己驱动的动作用），写库并交给 onEvent */
   recordEvent(run: Run, type: string, payload: unknown): void {
-    this.#emit({ id: run.id, userId: run.userId, sessionId: run.sessionId, canvasId: run.canvasId }, type, payload);
+    this.#emit(
+      { id: run.id, userId: run.userId, sessionId: run.sessionId, canvasId: run.canvasId },
+      type,
+      payload,
+    );
   }
 
   /** Pi 里还没跑完的任务数（诊断和测试用）：启动恢复之后，没有对应进行中运行的任务应该是 0 */
@@ -441,7 +575,11 @@ export class AgentEngine {
 
   // ---- 事件 ----
 
-  #emit(run: { id: string; userId: string; sessionId: string; canvasId: string }, type: string, payload: unknown): void {
+  #emit(
+    run: { id: string; userId: string; sessionId: string; canvasId: string },
+    type: string,
+    payload: unknown,
+  ): void {
     const resuming = this.#byRun.get(run.id);
     if (resuming?.recovering && type !== "run.status") {
       // 自动续跑接上了：第一件真正的事发生之前，先告诉前端不再是「恢复中」
@@ -449,7 +587,17 @@ export class AgentEngine {
       this.#emit(run, "run.status", statusEvent("running"));
     }
     const rec = this.#o.store.appendEvent(run.sessionId, run.id, type, payload);
-    this.#o.onEvent?.({ id: rec.id, sessionId: run.sessionId, runId: run.id, userId: run.userId, canvasId: run.canvasId, seq: rec.seq, type, payload, createdAt: rec.createdAt });
+    this.#o.onEvent?.({
+      id: rec.id,
+      sessionId: run.sessionId,
+      runId: run.id,
+      userId: run.userId,
+      canvasId: run.canvasId,
+      seq: rec.seq,
+      type,
+      payload,
+      createdAt: rec.createdAt,
+    });
     this.#trackActivity(run.id, type, payload);
   }
 
@@ -467,7 +615,12 @@ export class AgentEngine {
         const id = s(p.id);
         if (!id) return;
         a.group ??= { id, tools: new Map() };
-        a.group.tools.set(id, { label: s(p.label) || s(p.name), summary: "", failed: false, ended: false });
+        a.group.tools.set(id, {
+          label: s(p.label) || s(p.name),
+          summary: "",
+          failed: false,
+          ended: false,
+        });
         return;
       }
       case "tool.end": {
@@ -501,7 +654,10 @@ export class AgentEngine {
     if (!g || this.#o.activitySummary === false || this.#closing) return;
     const tools = [...g.tools.values()];
     if (tools.length < ACTIVITY_MIN_TOOLS || tools.some((t) => !t.ended)) return;
-    a.activityQueue.push({ groupId: g.id, tools: tools.map(({ label, summary, failed }) => ({ label, summary, failed })) });
+    a.activityQueue.push({
+      groupId: g.id,
+      tools: tools.map(({ label, summary, failed }) => ({ label, summary, failed })),
+    });
     this.#pumpActivity(a);
   }
 
@@ -525,13 +681,30 @@ export class AgentEngine {
     try {
       const model = this.#models.models.getModel(PROVIDER_ID, a.rc.model_key!);
       const question = this.#runQuestion(a);
-        if (!model || !question) return;
+      if (!model || !question) return;
       const sessionId = `activity:${a.run.id}`;
       this.#contexts.bindSession(sessionId, a.convId);
       const msg = await this.#models.models.completeSimple(
         model,
-        { systemPrompt: ACTIVITY_SYSTEM_PROMPT, messages: [{ role: "user", content: [{ type: "text", text: buildActivityPrompt(question, job.tools) }], timestamp: Date.now() }] },
-        { signal: AbortSignal.any([AbortSignal.timeout(ACTIVITY_TIMEOUT_MS), a.activityAbort.signal]), maxTokens: ACTIVITY_MAX_TOKENS, sessionId, headers: { "X-Agent-Purpose": "activity" } },
+        {
+          systemPrompt: ACTIVITY_SYSTEM_PROMPT,
+          messages: [
+            {
+              role: "user",
+              content: [{ type: "text", text: buildActivityPrompt(question, job.tools) }],
+              timestamp: Date.now(),
+            },
+          ],
+        },
+        {
+          signal: AbortSignal.any([
+            AbortSignal.timeout(ACTIVITY_TIMEOUT_MS),
+            a.activityAbort.signal,
+          ]),
+          maxTokens: ACTIVITY_MAX_TOKENS,
+          sessionId,
+          headers: { "X-Agent-Purpose": "activity" },
+        },
       );
       if (msg.stopReason === "error" || msg.stopReason === "aborted") return;
       const text = parseTitle(msg.content.map((p) => (p.type === "text" ? p.text : "")).join(""));
@@ -545,7 +718,9 @@ export class AgentEngine {
 
   /** 这一轮用户自己发的第一条消息（不是插话），给说明当上下文；没有返回空串 */
   #runQuestion(a: Active): string {
-    const hit = this.#o.store.listRunEvents(a.run.id).find((e) => e.type === "message.user" && !(e.payload as { steer?: boolean }).steer);
+    const hit = this.#o.store
+      .listRunEvents(a.run.id)
+      .find((e) => e.type === "message.user" && !(e.payload as { steer?: boolean }).steer);
     return truncate(String((hit?.payload as { text?: string } | undefined)?.text ?? ""), 800);
   }
 
@@ -564,14 +739,41 @@ export class AgentEngine {
   }
 
   /** 只推送不落库的临时事件 */
-  #push(run: { id: string; userId: string; sessionId: string; canvasId: string }, type: string, payload: unknown): void {
-    this.#o.onEvent?.({ id: "0", sessionId: run.sessionId, runId: run.id, userId: run.userId, canvasId: run.canvasId, seq: 0, type, payload, createdAt: this.#now() });
+  #push(
+    run: { id: string; userId: string; sessionId: string; canvasId: string },
+    type: string,
+    payload: unknown,
+  ): void {
+    this.#o.onEvent?.({
+      id: "0",
+      sessionId: run.sessionId,
+      runId: run.id,
+      userId: run.userId,
+      canvasId: run.canvasId,
+      seq: 0,
+      type,
+      payload,
+      createdAt: this.#now(),
+    });
   }
 
   #approvalView(a: Approval): ApprovalView {
     const c = this.#o.codec;
-    const result = a.status === "executed" || a.status === "failed" || Object.keys(a.result ?? {}).length > 0 ? a.result : null;
-    return { id: c.encode(BigInt(a.id)), run_id: c.encode(BigInt(a.runId)), kind: a.kind, status: a.status, payload: a.payload, quote_credits: a.quoteCredits, decision: a.decision, result, expires_at: new Date(a.expiresAt).toISOString() };
+    const result =
+      a.status === "executed" || a.status === "failed" || Object.keys(a.result ?? {}).length > 0
+        ? a.result
+        : null;
+    return {
+      id: c.encode(BigInt(a.id)),
+      run_id: c.encode(BigInt(a.runId)),
+      kind: a.kind,
+      status: a.status,
+      payload: a.payload,
+      quote_credits: a.quoteCredits,
+      decision: a.decision,
+      result,
+      expires_at: new Date(a.expiresAt).toISOString(),
+    };
   }
 
   // ---- 发起运行 ----
@@ -589,27 +791,57 @@ export class AgentEngine {
     // 同一画布同时只能有一个活跃运行，由数据库的部分唯一索引保证
     let run: Run;
     try {
-      run = store.createRun({ sessionId: sess.id, canvasId: sess.canvasId, userId: req.userId, status: "queued", mode, budgetCredits: req.budgetCredits ?? 0, maxSteps });
+      run = store.createRun({
+        sessionId: sess.id,
+        canvasId: sess.canvasId,
+        userId: req.userId,
+        status: "queued",
+        mode,
+        budgetCredits: req.budgetCredits ?? 0,
+        maxSteps,
+      });
     } catch (e) {
       if (e instanceof DuplicateError) throw Err.runActive();
       throw e;
     }
     const selection = req.selection ?? [];
     // 标题还是默认的「新对话」时，先用首条消息当草稿；首轮成功后再由模型命名（见 #autoTitle）
-    const draft = sess.title === DEFAULT_TITLE && sess.titleSource === "draft" ? draftTitle(message, DEFAULT_TITLE) : "";
-    store.updateSession(req.userId, sess.id, { mode, modelKey: req.modelKey, ...(draft && { title: draft }) });
+    const draft =
+      sess.title === DEFAULT_TITLE && sess.titleSource === "draft"
+        ? draftTitle(message, DEFAULT_TITLE)
+        : "";
+    store.updateSession(req.userId, sess.id, {
+      mode,
+      modelKey: req.modelKey,
+      ...(draft && { title: draft }),
+    });
     const ev = { id: run.id, userId: req.userId, sessionId: sess.id, canvasId: sess.canvasId };
     if (draft) this.#push(ev, "session.titled", { title: draft }); // 面板标题马上跟上，不用等刷新会话列表
     const attachments = req.attachments ?? [];
     this.#emit(ev, "message.user", {
-      text: message, mode, selection, ...(attachments.length > 0 && { attachments: attachmentViews(attachments) }),
-      ...(sess.mode === "admin" && req.pageContext !== undefined && { page_context: req.pageContext }),
+      text: message,
+      mode,
+      selection,
+      ...(attachments.length > 0 && { attachments: attachmentViews(attachments) }),
+      ...(sess.mode === "admin" &&
+        req.pageContext !== undefined && { page_context: req.pageContext }),
     });
     this.#emit(ev, "run.status", statusEvent("queued"));
 
     await this.#launch(run, this.#session(req.userId, sess.id), {
-      selection, prepare: { message, max_steps: maxSteps, ...(mode === "admin" && { page_context: req.pageContext }) }, recordHarness: true, fresh: true,
-      kickoff: (a, setup) => a.conv.submit({ type: "input", content: inputContent(setup.first_message ?? message, attachments) }, context),
+      selection,
+      prepare: {
+        message,
+        max_steps: maxSteps,
+        ...(mode === "admin" && { page_context: req.pageContext }),
+      },
+      recordHarness: true,
+      fresh: true,
+      kickoff: (a, setup) =>
+        a.conv.submit(
+          { type: "input", content: inputContent(setup.first_message ?? message, attachments) },
+          context,
+        ),
     });
     return { ...run, status: "queued" };
   }
@@ -626,35 +858,102 @@ export class AgentEngine {
   #failQueued(run: Run, sess: Session, cause: unknown): void {
     const msg = truncate(String((cause as Error)?.message ?? cause), MAX_ERROR_CHARS);
     try {
-      this.#o.store.updateRunIf(run.id, [...ACTIVE_STATUSES], { status: "failed", errorCode: "60005", errorMessage: Err.unavailable().message, endedAt: this.#now() });
-      this.#emit({ id: run.id, userId: run.userId, sessionId: sess.id, canvasId: sess.canvasId }, "run.status", statusEvent("failed", { error: msg }));
+      this.#o.store.updateRunIf(run.id, [...ACTIVE_STATUSES], {
+        status: "failed",
+        errorCode: "60005",
+        errorMessage: Err.unavailable().message,
+        endedAt: this.#now(),
+      });
+      this.#emit(
+        { id: run.id, userId: run.userId, sessionId: sess.id, canvasId: sess.canvasId },
+        "run.status",
+        statusEvent("failed", { error: msg }),
+      );
     } catch {
       // 已经不在活跃状态：不动
     }
   }
 
   /** 让这个运行有一个可用的 Pi 会话：创建或取出，配置模型、系统提示词和这一轮可用的工具 */
-  async #attach(sess: Session, run: Run, rc: RunContext, setup: RunSetup, loadUnread: boolean): Promise<Active> {
+  async #attach(
+    sess: Session,
+    run: Run,
+    rc: RunContext,
+    setup: RunSetup,
+    loadUnread: boolean,
+  ): Promise<Active> {
     const limits = compactionLimits(setup.model.context_window);
-    this.#compaction.set(`${PROVIDER_ID}/${rc.model_key}`, { reserveTokens: limits.reserve, keepRecentTokens: limits.keepRecent });
-    this.#models.ensure({ key: rc.model_key!, name: setup.model.name, context_window: setup.model.context_window, max_tokens: setup.model.max_tokens, vision: setup.model.vision });
-    const tools = this.#o.web ? prepareWebTools(setup.tools).filter(t => !setup.disabled_tools?.includes(t.name)) : setup.tools;
+    this.#compaction.set(`${PROVIDER_ID}/${rc.model_key}`, {
+      reserveTokens: limits.reserve,
+      keepRecentTokens: limits.keepRecent,
+    });
+    this.#models.ensure({
+      key: rc.model_key!,
+      name: setup.model.name,
+      context_window: setup.model.context_window,
+      max_tokens: setup.model.max_tokens,
+      vision: setup.model.vision,
+    });
+    const tools = this.#o.web
+      ? prepareWebTools(setup.tools).filter((t) => !setup.disabled_tools?.includes(t.name))
+      : setup.tools;
     this.#ensureTools(tools);
-    const enabled = [...tools.map((t) => t.name), ...(tools.some((t) => t.scriptable) && !setup.disabled_tools?.includes("codemode") ? ["codemode"] : [])]
-      .map((n) => this.#toolRegs.get(n)).filter((t): t is ToolRegistration => !!t);
-    const agent = { model: { provider: PROVIDER_ID, modelId: rc.model_key! }, instructions: setup.system_prompt, tools: enabled };
+    const enabled = [
+      ...tools.map((t) => t.name),
+      ...(tools.some((t) => t.scriptable) && !setup.disabled_tools?.includes("codemode")
+        ? ["codemode"]
+        : []),
+    ]
+      .map((n) => this.#toolRegs.get(n))
+      .filter((t): t is ToolRegistration => !!t);
+    const agent = {
+      model: { provider: PROVIDER_ID, modelId: rc.model_key! },
+      instructions: setup.system_prompt,
+      tools: enabled,
+    };
     let conv: Conversation;
     if (sess.conversationId) {
-      conv = (await this.#harness.conversation(Number(sess.conversationId) as unknown as ConversationId /* Pi 的会话 id 是带品牌的数字，库里存的是它的十进制串 */, context))!;
+      conv = (await this.#harness.conversation(
+        Number(
+          sess.conversationId,
+        ) as unknown as ConversationId /* Pi 的会话 id 是带品牌的数字，库里存的是它的十进制串 */,
+        context,
+      ))!;
       await conv.configure(agent, context);
     } else {
-      conv = await this.#harness.createConversation({ ownership: { kind: "ownerless" }, agent }, context);
+      conv = await this.#harness.createConversation(
+        { ownership: { kind: "ownerless" }, agent },
+        context,
+      );
       this.#o.store.bindConversation(sess.id, String(conv.id));
     }
     const convId = String(conv.id);
     await this.#watch(conv, convId);
     this.#contexts.set(convId, rc);
-    const a: Active = { run, convId, rc, conv, paused: false, finishing: false, steps: run.steps, maxSteps: run.maxSteps, webCalls: 0, cards: 0, callIds: [], summaryCallIds: [], compactionDisabled: false, recovering: false, startedBefore: new Set(), steers: new Map(), unread: new Map(loadUnread ? this.#unreadSteers(run) : []), wakes: new Map(), lock: Promise.resolve(), activityQueue: [], activityActive: 0, activityAbort: new AbortController() };
+    const a: Active = {
+      run,
+      convId,
+      rc,
+      conv,
+      paused: false,
+      finishing: false,
+      steps: run.steps,
+      maxSteps: run.maxSteps,
+      webCalls: 0,
+      cards: 0,
+      callIds: [],
+      summaryCallIds: [],
+      compactionDisabled: false,
+      recovering: false,
+      startedBefore: new Set(),
+      steers: new Map(),
+      unread: new Map(loadUnread ? this.#unreadSteers(run) : []),
+      wakes: new Map(),
+      lock: Promise.resolve(),
+      activityQueue: [],
+      activityActive: 0,
+      activityAbort: new AbortController(),
+    };
     this.#active.set(convId, a);
     this.#answered.set(convId, 0);
     this.#byRun.set(run.id, a);
@@ -668,7 +967,12 @@ export class AgentEngine {
     const key = JSON.stringify([...this.#decls.values()]);
     if (key === this.#toolsKey) return;
     this.#toolsKey = key;
-    const ext = createToolsExtension({ platform: this.#o.platform, decls: [...this.#decls.values()], host: this.host, web: this.#o.web });
+    const ext = createToolsExtension({
+      platform: this.#o.platform,
+      decls: [...this.#decls.values()],
+      host: this.host,
+      web: this.#o.web,
+    });
     for (const t of ext.tools ?? []) this.#toolRegs.set(t.name, t);
     this.#registry.install(ext);
   }
@@ -677,15 +981,19 @@ export class AgentEngine {
    * 为一个运行启动一段（开始、审批后续跑、「继续」共用）：运行准备 → 配置 Pi → 标 running（从 queued 来的才有这一步）→ 后台驱动。
    * 启动失败说明 Agent 暂时不可用（模型下线、平台连不上）：运行标为失败，画布立刻空出来，对用户说 60005。
    */
-  async #launch(run: Run, sess: Session, o: {
-    selection: string[];
-    prepare: { message?: string; max_steps?: number };
-    /** 第一段才记版本；之后沿用，运行中途发版也不会让同一次运行有两个版本 */
-    recordHarness?: boolean;
-    /** 新发起的运行：还没有任何事件，不用去找没读到的插话 */
-    fresh?: boolean;
-    kickoff: (a: Active, setup: RunSetup) => Promise<Submission>;
-  }): Promise<void> {
+  async #launch(
+    run: Run,
+    sess: Session,
+    o: {
+      selection: string[];
+      prepare: { message?: string; max_steps?: number };
+      /** 第一段才记版本；之后沿用，运行中途发版也不会让同一次运行有两个版本 */
+      recordHarness?: boolean;
+      /** 新发起的运行：还没有任何事件，不用去找没读到的插话 */
+      fresh?: boolean;
+      kickoff: (a: Active, setup: RunSetup) => Promise<Submission>;
+    },
+  ): Promise<void> {
     if (this.#closing) throw Err.unavailable();
     const store = this.#o.store;
     const rc = this.#rc(run, sess, o.selection);
@@ -693,7 +1001,13 @@ export class AgentEngine {
     let kickoff: () => Promise<Submission | undefined>;
     try {
       const setup = await this.#o.platform.prepare(rc, o.prepare);
-      if (o.recordHarness) store.updateRunIf(run.id, ["queued"], { promptVersion: setup.harness.prompt_version, toolsHash: setup.harness.tools_hash, buildSha: setup.harness.build_sha, harnessKey: setup.harness.key });
+      if (o.recordHarness)
+        store.updateRunIf(run.id, ["queued"], {
+          promptVersion: setup.harness.prompt_version,
+          toolsHash: setup.harness.tools_hash,
+          buildSha: setup.harness.build_sha,
+          harnessKey: setup.harness.key,
+        });
       a = await this.#attach(sess, run, rc, setup, !o.fresh);
       kickoff = () => o.kickoff(a, setup);
     } catch (e) {
@@ -713,8 +1027,15 @@ export class AgentEngine {
   #rc(run: Run, sess: Session, selection: string[]): RunContext {
     const extras = this.#extras(run.id);
     return {
-      run_id: run.id, user_id: run.userId, session_id: sess.id, canvas_id: sess.canvasId, mode: run.mode, model_key: sess.modelKey, selection,
-      ...(run.budgetCredits ? { budget_credits: run.budgetCredits } : {}), ...(extras ? { spent_extra: extras } : {}),
+      run_id: run.id,
+      user_id: run.userId,
+      session_id: sess.id,
+      canvas_id: sess.canvasId,
+      mode: run.mode,
+      model_key: sess.modelKey,
+      selection,
+      ...(run.budgetCredits ? { budget_credits: run.budgetCredits } : {}),
+      ...(extras ? { spent_extra: extras } : {}),
     };
   }
 
@@ -755,7 +1076,12 @@ export class AgentEngine {
       this.#titleTried.add(sess.id);
       const events = store.listEvents(sess.id, 0, TITLE_EVENT_SCAN);
       const textOf = (type: string, skip?: (p: { text?: string; steer?: boolean }) => boolean) => {
-        const hit = events.find((e) => e.type === type && !skip?.(e.payload as { text?: string; steer?: boolean }) && String((e.payload as { text?: string }).text ?? "").trim());
+        const hit = events.find(
+          (e) =>
+            e.type === type &&
+            !skip?.(e.payload as { text?: string; steer?: boolean }) &&
+            String((e.payload as { text?: string }).text ?? "").trim(),
+        );
         return String((hit?.payload as { text?: string } | undefined)?.text ?? "");
       };
       const question = stripMentions(textOf("message.user", (p) => !!p.steer)).trim();
@@ -766,13 +1092,33 @@ export class AgentEngine {
       this.#contexts.bindSession(sessionId, a.convId);
       const msg = await this.#models.models.completeSimple(
         model,
-        { systemPrompt: TITLE_SYSTEM_PROMPT, messages: [{ role: "user", content: [{ type: "text", text: buildTitlePrompt(question, stripMentions(textOf("message.done"))) }], timestamp: Date.now() }] },
-        { signal: AbortSignal.timeout(TITLE_TIMEOUT_MS), maxTokens: TITLE_MAX_TOKENS, sessionId, headers: { "X-Agent-Purpose": "title" } },
+        {
+          systemPrompt: TITLE_SYSTEM_PROMPT,
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: buildTitlePrompt(question, stripMentions(textOf("message.done"))),
+                },
+              ],
+              timestamp: Date.now(),
+            },
+          ],
+        },
+        {
+          signal: AbortSignal.timeout(TITLE_TIMEOUT_MS),
+          maxTokens: TITLE_MAX_TOKENS,
+          sessionId,
+          headers: { "X-Agent-Purpose": "title" },
+        },
       );
       await this.#settleSummaries(a); // 命名也要计费：结算出来有扣费就推一条 run.usage
       if (msg.stopReason === "error" || msg.stopReason === "aborted") return;
       const title = parseTitle(msg.content.map((p) => (p.type === "text" ? p.text : "")).join(""));
-      if (title && store.setLlmTitle(sess.userId, sess.id, title)) this.#push(this.#ev(a), "session.titled", { title });
+      if (title && store.setLlmTitle(sess.userId, sess.id, title))
+        this.#push(this.#ev(a), "session.titled", { title });
     } catch {
       // 命名只是锦上添花：任何失败都保留草稿标题，不影响运行
     }
@@ -783,11 +1129,15 @@ export class AgentEngine {
     for (;;) {
       await a.conv.waitForIdle(context);
       const quiet = await this.#locked(a, async () => {
-        const pending = async () => (await this.#harness.inspect(context)).submissions.some((s) => s.conversationId === a.conv.id);
+        const pending = async () =>
+          (await this.#harness.inspect(context)).submissions.some(
+            (s) => s.conversationId === a.conv.id,
+          );
         let busy = await pending();
         if (busy && a.modelError) {
           // 模型调用失败：Pi 把没读到的插话留在收件箱里，空闲了也不会有人去读。不撤回的话这里会一直等下去（还是一个不让出事件循环的空转）
-          for (const sub of [...a.steers.values(), ...a.wakes.values()]) await sub.abort(context).catch(() => {});
+          for (const sub of [...a.steers.values(), ...a.wakes.values()])
+            await sub.abort(context).catch(() => {});
           busy = await pending();
         }
         if (!busy) a.finishing = true;
@@ -816,8 +1166,16 @@ export class AgentEngine {
       fields = { status: "budget_exhausted", endedAt: this.#now() };
       extra = {};
     } else if (a.modelError || fallbackError) {
-      const msg = truncate(a.modelError?.message || fallbackError || "模型调用失败", MAX_ERROR_CHARS);
-      fields = { status: "failed", errorCode: "agent_error", errorMessage: msg, endedAt: this.#now() };
+      const msg = truncate(
+        a.modelError?.message || fallbackError || "模型调用失败",
+        MAX_ERROR_CHARS,
+      );
+      fields = {
+        status: "failed",
+        errorCode: "agent_error",
+        errorMessage: msg,
+        endedAt: this.#now(),
+      };
       extra = { error: msg };
     } else {
       fields = { status: "succeeded", endedAt: this.#now() };
@@ -841,7 +1199,12 @@ export class AgentEngine {
   }
 
   #ev(a: Active) {
-    return { id: a.run.id, userId: a.run.userId, sessionId: a.run.sessionId, canvasId: a.run.canvasId };
+    return {
+      id: a.run.id,
+      userId: a.run.userId,
+      sessionId: a.run.sessionId,
+      canvasId: a.run.canvasId,
+    };
   }
 
   // ---- 取消和插话 ----
@@ -864,18 +1227,37 @@ export class AgentEngine {
     }
     const run = this.#run(userId, approval.runId);
     // 已处理（重复点击）、已过期、运行已被停止都按「审批已处理或已过期」
-    if (approval.status !== "pending" || this.#now() >= approval.expiresAt || !WAITING.includes(run.status)) throw Err.approvalGone();
+    if (
+      approval.status !== "pending" ||
+      this.#now() >= approval.expiresAt ||
+      !WAITING.includes(run.status)
+    )
+      throw Err.approvalGone();
     const sess = this.#session(userId, run.sessionId);
 
     // 密钥只能经 Go 的渠道密钥接口保存；不能把任意回答转发或写进 SQLite。
-    if (approval.kind === "admin_secret" && req.decision === "approve" && req.answer !== "configured") throw Err.invalidParams("密钥决定只接受 answer=configured");
+    if (
+      approval.kind === "admin_secret" &&
+      req.decision === "approve" &&
+      req.answer !== "configured"
+    )
+      throw Err.invalidParams("密钥决定只接受 answer=configured");
     if (approval.kind === "admin_secret" || approval.kind === "admin_test_run") {
-      req = { decision: req.decision, ...(approval.kind === "admin_secret" && req.decision === "approve" && { answer: "configured" }) };
+      req = {
+        decision: req.decision,
+        ...(approval.kind === "admin_secret" &&
+          req.decision === "approve" && { answer: "configured" }),
+      };
     }
 
     let outcome: ApprovalOutcome;
     try {
-      outcome = await this.#o.platform.resolve(this.#rc(run, sess, []), approval.kind as ApprovalKind, approval.payload, req);
+      outcome = await this.#o.platform.resolve(
+        this.#rc(run, sess, []),
+        approval.kind as ApprovalKind,
+        approval.payload,
+        req,
+      );
     } catch (e) {
       throw fromPlatform(e);
     }
@@ -883,14 +1265,22 @@ export class AgentEngine {
 
     // 审批状态迁移是 CAS：重复点击、同时在另一个标签页点，只有一次生效
     try {
-      store.updateApprovalIf(approval.id, ["pending"], { status: outcome.status, decision: outcome.decision, quoteCredits: outcome.quote_credits, decidedAt: this.#now() });
+      store.updateApprovalIf(approval.id, ["pending"], {
+        status: outcome.status,
+        decision: outcome.decision,
+        quoteCredits: outcome.quote_credits,
+        decidedAt: this.#now(),
+      });
     } catch (e) {
       if (e instanceof StateConflictError) throw Err.approvalGone();
       throw e;
     }
     // 运行回到 running（追加的预算一并生效）
     try {
-      store.updateRunIf(run.id, WAITING, { status: "running", ...(req.add_budget && !rejected && { budgetCredits: run.budgetCredits + req.add_budget }) });
+      store.updateRunIf(run.id, WAITING, {
+        status: "running",
+        ...(req.add_budget && !rejected && { budgetCredits: run.budgetCredits + req.add_budget }),
+      });
     } catch (e) {
       if (e instanceof StateConflictError) throw Err.approvalGone();
       throw e;
@@ -902,13 +1292,20 @@ export class AgentEngine {
     if (outcome.quote_credits > 0 && !rejected) {
       store.addRunUsage(run.id, 0, outcome.quote_credits);
       const cur = store.getRun(userId, run.id);
-      this.#emit(ev, "run.usage", { spent_credits: cur.spentCredits, context_tokens: cur.contextTokens });
+      this.#emit(ev, "run.usage", {
+        spent_credits: cur.spentCredits,
+        context_tokens: cur.contextTokens,
+      });
     }
 
     // 执行批准的内容；失败不让这次请求失败（决定已生效），模型会从结果里知道
     const fresh = store.getRun(userId, run.id);
     if (approval.kind === "admin_test_run" && !rejected) {
-      this.#emit(ev, "approval.decided", this.#approvalView(store.getApproval(userId, approval.id)));
+      this.#emit(
+        ev,
+        "approval.decided",
+        this.#approvalView(store.getApproval(userId, approval.id)),
+      );
       this.#queueTrialDecision(fresh, sess, approval, outcome);
       return this.#approvalView(store.getApproval(userId, approval.id));
     }
@@ -918,18 +1315,33 @@ export class AgentEngine {
   /** 等待试跑归入引擎生命周期；停机、租约和 idle 都能跟踪它。 */
   #queueTrialDecision(run: Run, sess: Session, approval: Approval, outcome: ApprovalOutcome): void {
     this.#decisionRuns.add(run.id);
-    const waiting = this.#finishDecision(run, sess, approval, outcome).then(() => {}).catch(() => {
-      // 决定已保存，恢复时按原审批及幂等任务对账，不将内部异常写入审批。
-      try {
-        this.#o.store.updateRunIf(run.id, ["running"], { status: "interrupted" });
-        this.#emit({ id: run.id, userId: run.userId, sessionId: run.sessionId, canvasId: run.canvasId }, "run.status", statusEvent("interrupted"));
-      } catch {}
-    }).finally(() => { this.#decisionRuns.delete(run.id); this.#drives.delete(waiting); });
+    const waiting = this.#finishDecision(run, sess, approval, outcome)
+      .then(() => {})
+      .catch(() => {
+        // 决定已保存，恢复时按原审批及幂等任务对账，不将内部异常写入审批。
+        try {
+          this.#o.store.updateRunIf(run.id, ["running"], { status: "interrupted" });
+          this.#emit(
+            { id: run.id, userId: run.userId, sessionId: run.sessionId, canvasId: run.canvasId },
+            "run.status",
+            statusEvent("interrupted"),
+          );
+        } catch {}
+      })
+      .finally(() => {
+        this.#decisionRuns.delete(run.id);
+        this.#drives.delete(waiting);
+      });
     this.#drives.add(waiting);
   }
 
   /** 完成已持久化的决定；两种执行时机共用结果持久化与模型续跑。 */
-  async #finishDecision(fresh: Run, sess: Session, approval: Approval, outcome: ApprovalOutcome): Promise<ApprovalView> {
+  async #finishDecision(
+    fresh: Run,
+    sess: Session,
+    approval: Approval,
+    outcome: ApprovalOutcome,
+  ): Promise<ApprovalView> {
     const store = this.#o.store;
     const run = fresh;
     const userId = run.userId;
@@ -937,18 +1349,23 @@ export class AgentEngine {
     const exec = await this.#execute(this.#rc(fresh, sess, []), approval, outcome);
     let final = store.getApproval(userId, approval.id);
     if (exec.status !== "none") {
-      final = store.updateApprovalIf(approval.id, ["approved", "partially_approved", "rejected"], { status: exec.status, result: exec.result ?? {} });
+      final = store.updateApprovalIf(approval.id, ["approved", "partially_approved", "rejected"], {
+        status: exec.status,
+        result: exec.result ?? {},
+      });
     }
     this.#emit(ev, "approval.decided", this.#approvalView(final));
     // 用户在试跑期间停止运行，终态仍可回放，但不得重新启动模型对话。
-    if (approval.kind === "admin_test_run" && store.getRun(userId, run.id).status !== "running") return this.#approvalView(final);
+    if (approval.kind === "admin_test_run" && store.getRun(userId, run.id).status !== "running")
+      return this.#approvalView(final);
     // 批准的生成已经提交：登记要等的任务（先于续跑，任务结束的门铃来得再早也找得到）
     await this.#registerWatch(fresh, sess, approval, exec).catch(() => {});
 
     // 让运行接着往下走；起不来就标为中断，用户可以稍后点「继续」
     try {
       await this.#launch(fresh, sess, {
-        selection: [], prepare: {},
+        selection: [],
+        prepare: {},
         kickoff: (a) => this.#feedBack(a, approval, exec.outcome_text),
       });
     } catch {
@@ -964,11 +1381,21 @@ export class AgentEngine {
   }
 
   /** 执行批准的内容。平台的执行是幂等的（键是审批 id），连不上就重试；仍不行就如实说「不知道有没有执行」 */
-  async #execute(rc: RunContext, approval: Approval, outcome: ApprovalOutcome): Promise<ApprovalExecution> {
+  async #execute(
+    rc: RunContext,
+    approval: Approval,
+    outcome: ApprovalOutcome,
+  ): Promise<ApprovalExecution> {
     let last: unknown;
     for (let i = 0; i < EXECUTE_ATTEMPTS; i++) {
       try {
-        return await this.#o.platform.execute(rc, approval.kind as ApprovalKind, approval.id, approval.toolCallId, outcome);
+        return await this.#o.platform.execute(
+          rc,
+          approval.kind as ApprovalKind,
+          approval.id,
+          approval.toolCallId,
+          outcome,
+        );
       } catch (e) {
         last = e;
         if (i < EXECUTE_ATTEMPTS - 1) await sleep(EXECUTE_RETRY_MS * (i + 1));
@@ -976,7 +1403,8 @@ export class AgentEngine {
     }
     const reason = String((last as Error)?.message ?? last);
     return {
-      status: "failed", result: { error: truncate(reason, MAX_ERROR_CHARS) },
+      status: "failed",
+      result: { error: truncate(reason, MAX_ERROR_CHARS) },
       outcome_text: `用户已做出决定，但执行时出错：${truncate(reason, MAX_ERROR_CHARS)}。这次执行可能已经生效也可能没有，请先读取画布或任务确认现状，再决定要不要重做。`,
     };
   }
@@ -984,10 +1412,24 @@ export class AgentEngine {
   /** 把审批的结果交给模型：用真实结果替换那次工具调用的占位结果，再提交一条输入让模型接着往下走 */
   async #feedBack(a: Active, approval: Approval, text: string): Promise<Submission> {
     const entries = (await a.conv.entries({}, 50, undefined, context)).items;
-    const placeholder = entries.find((e) => e.kind === "pi.tool-result" && (e.model?.[0] as { toolCallId?: string } | undefined)?.toolCallId === approval.toolCallId);
+    const placeholder = entries.find(
+      (e) =>
+        e.kind === "pi.tool-result" &&
+        (e.model?.[0] as { toolCallId?: string } | undefined)?.toolCallId === approval.toolCallId,
+    );
     if (!placeholder?.model) return this.#submitWithHeld(a, `${APPROVAL_NUDGE}\n${text}`);
     const real = { ...placeholder.model[0], isError: false, content: [{ type: "text", text }] };
-    const write = await a.conv.submit({ type: "write", entry: { kind: "app.approval", data: { approvalId: approval.id }, edits: [{ target: placeholder.id, action: "replace", messages: [real] }] } } as never, context);
+    const write = await a.conv.submit(
+      {
+        type: "write",
+        entry: {
+          kind: "app.approval",
+          data: { approvalId: approval.id },
+          edits: [{ target: placeholder.id, action: "replace", messages: [real] }],
+        },
+      } as never,
+      context,
+    );
     await write.wait(context);
     return this.#submitWithHeld(a, APPROVAL_NUDGE);
   }
@@ -998,9 +1440,14 @@ export class AgentEngine {
    */
   async #submitWithHeld(a: Active, text: string): Promise<Submission> {
     const held = [...a.unread];
-    const content = held.length ? `${text}\n\n用户在等待期间补充了：\n${held.map(([, t]) => `- ${t}`).join("\n")}` : text;
+    const content = held.length
+      ? `${text}\n\n用户在等待期间补充了：\n${held.map(([, t]) => `- ${t}`).join("\n")}`
+      : text;
     const sub = await a.conv.submit({ type: "input", content }, context);
-    this.#emitRead(a, held.map(([id]) => id));
+    this.#emitRead(
+      a,
+      held.map(([id]) => id),
+    );
     return sub;
   }
 
@@ -1012,26 +1459,37 @@ export class AgentEngine {
     const run = this.#run(userId, runId);
     if (!RESUMABLE.includes(run.status)) throw Err.state();
     // 额度用完时必须追加，否则一继续又会立刻用尽
-    if (run.status === "budget_exhausted" && addBudget <= 0) throw Err.invalidParams("预算已用尽，请追加预算");
+    if (run.status === "budget_exhausted" && addBudget <= 0)
+      throw Err.invalidParams("预算已用尽，请追加预算");
     const sess = this.#session(userId, run.sessionId);
     if (!sess.conversationId) throw Err.state();
     // 回到 queued 重新占用画布；步数用尽时上限也放宽一轮，否则继续后马上又到上限
     let queued: Run;
     try {
       queued = store.updateRunIf(runId, RESUMABLE, {
-        status: "queued", errorCode: "", errorMessage: "", endedAt: null,
+        status: "queued",
+        errorCode: "",
+        errorMessage: "",
+        endedAt: null,
         ...(addBudget > 0 && { budgetCredits: run.budgetCredits + addBudget }),
-        ...(run.status === "step_limit" && { maxSteps: run.maxSteps + (this.#o.defaultMaxSteps ?? DEFAULT_MAX_STEPS) }),
+        ...(run.status === "step_limit" && {
+          maxSteps: run.maxSteps + (this.#o.defaultMaxSteps ?? DEFAULT_MAX_STEPS),
+        }),
       });
     } catch (e) {
       if (e instanceof DuplicateError) throw Err.runActive();
       if (e instanceof StateConflictError) throw Err.state();
       throw e;
     }
-    this.#emit({ id: run.id, userId, sessionId: run.sessionId, canvasId: run.canvasId }, "run.status", statusEvent("queued", { resumed: true }));
+    this.#emit(
+      { id: run.id, userId, sessionId: run.sessionId, canvasId: run.canvasId },
+      "run.status",
+      statusEvent("queued", { resumed: true }),
+    );
     const interrupted = run.status === "interrupted";
     await this.#launch(queued, sess, {
-      selection: [], prepare: {},
+      selection: [],
+      prepare: {},
       kickoff: async (a) => {
         await a.conv.abort(context); // 被中断时 Pi 里可能还留着没跑完的任务：先收掉，从干净的状态接着走
         return this.#submitWithHeld(a, interrupted ? INTERRUPTED_TEXT : CONTINUE_TEXT);
@@ -1058,16 +1516,26 @@ export class AgentEngine {
     }
     // 没读到的插话（Pi 里排队的已被上面的中止撤回，等回答期间扣着的在引擎里）都不会再被读到，在「已停止」之前说清楚
     await this.#dropUnread(run, "canceled", a);
-    this.#emit({ id: run.id, userId: run.userId, sessionId: run.sessionId, canvasId: run.canvasId }, "run.status", statusEvent("canceled"));
+    this.#emit(
+      { id: run.id, userId: run.userId, sessionId: run.sessionId, canvasId: run.canvasId },
+      "run.status",
+      statusEvent("canceled"),
+    );
     return store.getRun(userId, runId);
   }
 
-  async interject(userId: string, runId: string, text: string, attachments: AttachmentCheck[] = []): Promise<void> {
+  async interject(
+    userId: string,
+    runId: string,
+    text: string,
+    attachments: AttachmentCheck[] = [],
+  ): Promise<void> {
     const run = this.#run(userId, runId);
     const msg = text.trim();
     if (!msg) throw Err.invalidParams("消息不能为空");
     // 等审批：只落库、不交给 Pi，决定后续跑时再带给模型（等回答 waiting_input 不放开：前端会先拒绝那个提问）
-    if (run.status === "waiting_approval") return this.#holdInterject(userId, run, msg, attachments);
+    if (run.status === "waiting_approval")
+      return this.#holdInterject(userId, run, msg, attachments);
     if (run.status !== "running") throw Err.state();
     const a = this.#byRun.get(runId);
     if (!a) throw Err.unavailable();
@@ -1076,11 +1544,27 @@ export class AgentEngine {
       if (this.#o.store.getRun(userId, runId).status !== "running") throw Err.state(); // 刚好进入等待回答 / 等审批
       // 先落库再交给 Pi：Pi 在边界放进记录时 steer.read 要跟在 message.user 后面。id 同时当 Pi 的请求 id，重启后靠它找回这条提交
       const id = randomUUID();
-      this.#emit(this.#ev(a), "message.user", { id, text: msg, steer: true, ...(attachments.length > 0 && { attachments: attachmentViews(attachments) }) });
+      this.#emit(this.#ev(a), "message.user", {
+        id,
+        text: msg,
+        steer: true,
+        ...(attachments.length > 0 && { attachments: attachmentViews(attachments) }),
+      });
       a.unread.set(id, msg);
       try {
         // 官方效果：工具跑完后、下一次请求前一起带上；不打断正在进行的步骤。本轮要用户回答时由 #withdrawSteers 撤回，等回答后再交
-        a.steers.set(id, await a.conv.submit({ type: "input", content: inputContent(msg, attachments), whenBusy: "steer", requestId: id }, context));
+        a.steers.set(
+          id,
+          await a.conv.submit(
+            {
+              type: "input",
+              content: inputContent(msg, attachments),
+              whenBusy: "steer",
+              requestId: id,
+            },
+            context,
+          ),
+        );
       } catch (e) {
         a.unread.delete(id);
         this.#emit(this.#ev(a), "steer.dropped", { ids: [id], reason: "failed" });
@@ -1100,7 +1584,16 @@ export class AgentEngine {
   #holdInterject(userId: string, run: Run, msg: string, attachments: AttachmentCheck[]): void {
     if (this.#o.store.getRun(userId, run.id).status !== "waiting_approval") throw Err.state();
     const id = randomUUID();
-    this.#emit({ id: run.id, userId: run.userId, sessionId: run.sessionId, canvasId: run.canvasId }, "message.user", { id, text: msg, steer: true, ...(attachments.length > 0 && { attachments: attachmentViews(attachments) }) });
+    this.#emit(
+      { id: run.id, userId: run.userId, sessionId: run.sessionId, canvasId: run.canvasId },
+      "message.user",
+      {
+        id,
+        text: msg,
+        steer: true,
+        ...(attachments.length > 0 && { attachments: attachmentViews(attachments) }),
+      },
+    );
     this.#byRun.get(run.id)?.unread.set(id, msg);
   }
 
@@ -1110,7 +1603,8 @@ export class AgentEngine {
     for (const e of this.#o.store.listRunEvents(run.id)) {
       const p = e.payload as { id?: string; text?: string; steer?: boolean; ids?: string[] } | null;
       if (e.type === "message.user" && p?.steer && p.id) open.set(p.id, p.text ?? "");
-      else if (e.type === "steer.read" || e.type === "steer.dropped") for (const id of p?.ids ?? []) open.delete(id);
+      else if (e.type === "steer.read" || e.type === "steer.dropped")
+        for (const id of p?.ids ?? []) open.delete(id);
     }
     return [...open];
   }
@@ -1145,7 +1639,11 @@ export class AgentEngine {
         const r = await sub.abort(context).catch(() => "settled" as const);
         a.steers.delete(id);
         // 撤回时其实已经被放进记录：照读到处理
-        if (r === "already_placed" || (r === "settled" && (await sub.status(context).catch(() => undefined))?.status === "done")) read.push(id);
+        if (
+          r === "already_placed" ||
+          (r === "settled" && (await sub.status(context).catch(() => undefined))?.status === "done")
+        )
+          read.push(id);
       }
       this.#emitRead(a, read);
     });
@@ -1166,7 +1664,12 @@ export class AgentEngine {
     } else {
       ids = this.#unreadSteers(run).map(([id]) => id);
     }
-    if (ids.length > 0) this.#emit({ id: run.id, userId: run.userId, sessionId: run.sessionId, canvasId: run.canvasId }, "steer.dropped", { ids, reason });
+    if (ids.length > 0)
+      this.#emit(
+        { id: run.id, userId: run.userId, sessionId: run.sessionId, canvasId: run.canvasId },
+        "steer.dropped",
+        { ids, reason },
+      );
   }
 
   // ---- 后台等待生成 ----
@@ -1177,39 +1680,91 @@ export class AgentEngine {
 
   /** 会话文档里的所有批（文档还没创建过就是空） */
   async #watchDoc(convId: string): Promise<WatchesDoc> {
-    const doc = await this.#harness.snapshot(Watches, Number(convId) as unknown as ConversationId, context);
+    const doc = await this.#harness.snapshot(
+      Watches,
+      Number(convId) as unknown as ConversationId,
+      context,
+    );
     return (doc ?? { batches: {} }) as WatchesDoc;
   }
 
   #batchView(id: string, b: WatchBatch): WatchBatchView {
-    const tasks = Object.entries(b.tasks).map(([task_id, t]) => ({ task_id, node_id: t.nodeId, label: t.label, status: t.status, ...(t.taskStatus && { task_status: t.taskStatus }) }));
-    return { batch_id: id, state: b.state, total: tasks.length, settled: tasks.filter((t) => t.status === "settled").length, tasks };
+    const tasks = Object.entries(b.tasks).map(([task_id, t]) => ({
+      task_id,
+      node_id: t.nodeId,
+      label: t.label,
+      status: t.status,
+      ...(t.taskStatus && { task_status: t.taskStatus }),
+    }));
+    return {
+      batch_id: id,
+      state: b.state,
+      total: tasks.length,
+      settled: tasks.filter((t) => t.status === "settled").length,
+      tasks,
+    };
   }
 
   /** 一批的状态变了：落库并推给前端。事件挂在登记这批的那次运行名下（它早就结束了也一样） */
   #emitWatch(sess: Session, id: string, b: WatchBatch): void {
-    this.#emit({ id: b.runId, userId: sess.userId, sessionId: sess.id, canvasId: sess.canvasId }, "watch.updated", this.#batchView(id, b));
+    this.#emit(
+      { id: b.runId, userId: sess.userId, sessionId: sess.id, canvasId: sess.canvasId },
+      "watch.updated",
+      this.#batchView(id, b),
+    );
   }
 
   /** 批准了生成并且执行成功：登记要等的任务。登记失败不影响运行（模型从结果里知道任务已提交，用户可以手动叫它） */
-  async #registerWatch(run: Run, sess: Session, approval: Approval, exec: ApprovalExecution): Promise<void> {
+  async #registerWatch(
+    run: Run,
+    sess: Session,
+    approval: Approval,
+    exec: ApprovalExecution,
+  ): Promise<void> {
     if (approval.kind !== "generate" || exec.status !== "executed" || !sess.conversationId) return;
-    const payload = (approval.payload ?? {}) as { items?: Array<{ node_id?: string; label?: string }>; wait?: boolean };
+    const payload = (approval.payload ?? {}) as {
+      items?: Array<{ node_id?: string; label?: string }>;
+      wait?: boolean;
+    };
     if (payload.wait !== true) return;
-    const created = ((exec.result as { tasks?: Array<{ node_id?: string; task_id?: string }> } | undefined)?.tasks ?? []).filter((t) => typeof t.task_id === "string" && t.task_id !== "");
+    const created = (
+      (exec.result as { tasks?: Array<{ node_id?: string; task_id?: string }> } | undefined)
+        ?.tasks ?? []
+    ).filter((t) => typeof t.task_id === "string" && t.task_id !== "");
     if (created.length === 0) return;
-    const labels = new Map((payload.items ?? []).map((i) => [String(i.node_id), String(i.label || i.node_id)]));
+    const labels = new Map(
+      (payload.items ?? []).map((i) => [String(i.node_id), String(i.label || i.node_id)]),
+    );
     const conv = await this.#convOf(sess.conversationId);
     if (!conv) return;
     const now = this.#now();
     const batch: WatchBatch = {
-      runId: run.id, watcherTaskId: "", createdAt: now, state: "waiting",
-      tasks: Object.fromEntries(created.map((t) => [t.task_id!, { nodeId: t.node_id ?? "", label: labels.get(t.node_id ?? "") ?? t.node_id ?? "", status: "pending" as const }])),
+      runId: run.id,
+      watcherTaskId: "",
+      createdAt: now,
+      state: "waiting",
+      tasks: Object.fromEntries(
+        created.map((t) => [
+          t.task_id!,
+          {
+            nodeId: t.node_id ?? "",
+            label: labels.get(t.node_id ?? "") ?? t.node_id ?? "",
+            status: "pending" as const,
+          },
+        ]),
+      ),
     };
     // 文档和监听任务在同一次提交里：不会出现登记了没人守，或者有人守没登记
     await conv.commit(async (tx) => {
       const doc = await tx.doc(Watches, conv.id);
-      const task = await tx.createTask(this.#watchTask, { batchId: approval.id, firstCheckAt: now + (this.#o.watchGraceMs ?? DEFAULT_WATCH_GRACE_MS) }, { ownership: { kind: "conversation" }, background: true, conversationId: conv.id });
+      const task = await tx.createTask(
+        this.#watchTask,
+        {
+          batchId: approval.id,
+          firstCheckAt: now + (this.#o.watchGraceMs ?? DEFAULT_WATCH_GRACE_MS),
+        },
+        { ownership: { kind: "conversation" }, background: true, conversationId: conv.id },
+      );
       batch.watcherTaskId = String(task);
       doc.batches[approval.id] = JSON.parse(JSON.stringify(batch));
       pruneBatches(doc, now);
@@ -1218,7 +1773,10 @@ export class AgentEngine {
   }
 
   /** 把这些任务记成已结束；这批全部结束就改成待交付。返回这些任务是否在某个还没关闭的批里（重复通知也算在里面） */
-  async #recordSettled(sess: Session, entries: Array<{ taskId: string; status: string }>): Promise<boolean> {
+  async #recordSettled(
+    sess: Session,
+    entries: Array<{ taskId: string; status: string }>,
+  ): Promise<boolean> {
     const conv = sess.conversationId ? await this.#convOf(sess.conversationId) : undefined;
     if (!conv) return false;
     let found = false;
@@ -1256,7 +1814,8 @@ export class AgentEngine {
    */
   async taskSettled(runId: string, taskId: string, status: string): Promise<boolean> {
     if (this.#closing) throw Err.unavailable();
-    if (!(TERMINAL_TASK_STATUSES as readonly string[]).includes(status)) throw Err.invalidParams("status 必须是任务的终态");
+    if (!(TERMINAL_TASK_STATUSES as readonly string[]).includes(status))
+      throw Err.invalidParams("status 必须是任务的终态");
     let sess: Session;
     try {
       const run = this.#o.store.getRunById(runId);
@@ -1275,7 +1834,10 @@ export class AgentEngine {
     const sess = this.#session(userId, sessionId);
     if (!sess.conversationId) return [];
     const doc = await this.#watchDoc(sess.conversationId);
-    return Object.entries(doc.batches).filter(([, b]) => !isClosed(b)).sort(([, a], [, b]) => a.createdAt - b.createdAt).map(([id, b]) => this.#batchView(id, b));
+    return Object.entries(doc.batches)
+      .filter(([, b]) => !isClosed(b))
+      .sort(([, a], [, b]) => a.createdAt - b.createdAt)
+      .map(([id, b]) => this.#batchView(id, b));
   }
 
   /** 不用等了：取消还没交付的批，收掉它们的监听任务。只取消 Agent 的跟进，生成任务照常完成 */
@@ -1294,7 +1856,10 @@ export class AgentEngine {
       }
     }, context);
     for (const [id, b] of canceled) {
-      if (b.watcherTaskId) await this.#harness.abortTask(Number(b.watcherTaskId) as unknown as TaskId, context).catch(() => {});
+      if (b.watcherTaskId)
+        await this.#harness
+          .abortTask(Number(b.watcherTaskId) as unknown as TaskId, context)
+          .catch(() => {});
       this.#emitWatch(sess, id, b);
     }
     return canceled.map(([id, b]) => this.#batchView(id, b));
@@ -1307,12 +1872,20 @@ export class AgentEngine {
     if (!sess) return true; // 会话已经删了
     const b = (await this.#watchDoc(convId)).batches[batchId];
     if (isClosed(b)) return true;
-    const pending = Object.entries(b.tasks).filter(([, t]) => t.status === "pending").map(([id]) => id);
+    const pending = Object.entries(b.tasks)
+      .filter(([, t]) => t.status === "pending")
+      .map(([id]) => id);
     if (pending.length > 0) {
       try {
         const states = await this.#o.platform.taskStates(sess.userId, pending);
-        const done = states.filter((st) => (TERMINAL_TASK_STATUSES as readonly string[]).includes(st.status));
-        if (done.length > 0) await this.#recordSettled(sess, done.map((st) => ({ taskId: st.task_id, status: st.status })));
+        const done = states.filter((st) =>
+          (TERMINAL_TASK_STATUSES as readonly string[]).includes(st.status),
+        );
+        if (done.length > 0)
+          await this.#recordSettled(
+            sess,
+            done.map((st) => ({ taskId: st.task_id, status: st.status })),
+          );
       } catch {
         // Go 暂时不可用：下次醒来再查
       }
@@ -1327,7 +1900,9 @@ export class AgentEngine {
     const prev = this.#wakeLocks.get(sess.id) ?? Promise.resolve();
     const next = prev.then(() => this.#wakeOnce(sess, o)).catch(() => undefined);
     this.#wakeLocks.set(sess.id, next);
-    void next.finally(() => { if (this.#wakeLocks.get(sess.id) === next) this.#wakeLocks.delete(sess.id); });
+    void next.finally(() => {
+      if (this.#wakeLocks.get(sess.id) === next) this.#wakeLocks.delete(sess.id);
+    });
     return next;
   }
 
@@ -1335,12 +1910,14 @@ export class AgentEngine {
     if (this.#closing || !stale.conversationId) return;
     const sess = this.#session(stale.userId, stale.id); // 模型、模式可能在这期间改过
     const ready = Object.entries((await this.#watchDoc(sess.conversationId)).batches)
-      .filter(([, b]) => b.state === "deliverable").sort(([, a], [, b]) => a.createdAt - b.createdAt);
+      .filter(([, b]) => b.state === "deliverable")
+      .sort(([, a], [, b]) => a.createdAt - b.createdAt);
     if (ready.length === 0) return;
     const active = this.#o.store.activeRun(sess.canvasId, sess.userId);
     if (active) {
       const a = this.#byRun.get(active.id);
-      if (a && active.sessionId === sess.id && active.status === "running") return this.#wakeIntoRun(a, sess, ready, o);
+      if (a && active.sessionId === sess.id && active.status === "running")
+        return this.#wakeIntoRun(a, sess, ready, o);
       this.#wakePending.set(sess.id, { userId: sess.userId, canvasId: sess.canvasId }); // 等占着画布的运行结束
       return;
     }
@@ -1348,7 +1925,17 @@ export class AgentEngine {
   }
 
   /** 向 Go 取这批任务的最新结果，写成交给模型的那条消息；取不到返回 undefined（留给下一次） */
-  async #wakeMessage(sess: Session, ready: Array<[string, WatchBatch]>): Promise<{ text: string; requestId: string; tasks: Array<{ task_id: string; node_id: string; label: string; task_status: string }> } | undefined> {
+  async #wakeMessage(
+    sess: Session,
+    ready: Array<[string, WatchBatch]>,
+  ): Promise<
+    | {
+        text: string;
+        requestId: string;
+        tasks: Array<{ task_id: string; node_id: string; label: string; task_status: string }>;
+      }
+    | undefined
+  > {
     const ids = ready.flatMap(([, b]) => Object.keys(b.tasks));
     let states;
     try {
@@ -1358,15 +1945,31 @@ export class AgentEngine {
     }
     const byId = new Map(states.map((st) => [st.task_id, st.status]));
     return {
-      text: wakeText(ready.map(([, b]) => b), states),
+      text: wakeText(
+        ready.map(([, b]) => b),
+        states,
+      ),
       // 同一批交付两次得到同一个请求 id：重启后重放、重复触发都只会提交一次
       requestId: `wake:${sess.id}:${ready.map(([id]) => id).join("+")}`,
-      tasks: ready.flatMap(([, b]) => Object.entries(b.tasks).map(([task_id, t]) => ({ task_id, node_id: t.nodeId, label: t.label, task_status: byId.get(task_id) ?? t.taskStatus ?? "missing" }))),
+      tasks: ready.flatMap(([, b]) =>
+        Object.entries(b.tasks).map(([task_id, t]) => ({
+          task_id,
+          node_id: t.nodeId,
+          label: t.label,
+          task_status: byId.get(task_id) ?? t.taskStatus ?? "missing",
+        })),
+      ),
     };
   }
 
   /** 改这些批的状态（交付成功记 delivered 和交给了哪次运行；交付失败改回 deliverable），并推给前端 */
-  async #markBatches(sess: Session, ids: string[], state: WatchBatch["state"], runId?: string, o: WakeOptions = {}): Promise<void> {
+  async #markBatches(
+    sess: Session,
+    ids: string[],
+    state: WatchBatch["state"],
+    runId?: string,
+    o: WakeOptions = {},
+  ): Promise<void> {
     const conv = await this.#convOf(sess.conversationId);
     if (!conv) return;
     const changed: Array<[string, WatchBatch]> = [];
@@ -1383,13 +1986,20 @@ export class AgentEngine {
     }, context);
     for (const [id, b] of changed) {
       // 交付了：监听任务没有别的事可做，立刻收掉，不等它下次醒来
-      if (state === "delivered" && !o.fromWatcher && b.watcherTaskId) await this.#harness.abortTask(Number(b.watcherTaskId) as unknown as TaskId, context).catch(() => {});
+      if (state === "delivered" && !o.fromWatcher && b.watcherTaskId)
+        await this.#harness
+          .abortTask(Number(b.watcherTaskId) as unknown as TaskId, context)
+          .catch(() => {});
       this.#emitWatch(sess, id, b);
     }
   }
 
   /** 画布空闲：新开一轮运行，把结果当作第一条输入交给模型 */
-  async #wakeNewRun(sess: Session, ready: Array<[string, WatchBatch]>, o: WakeOptions): Promise<void> {
+  async #wakeNewRun(
+    sess: Session,
+    ready: Array<[string, WatchBatch]>,
+    o: WakeOptions,
+  ): Promise<void> {
     if (!sess.modelKey) return; // 会话没有选过模型，没法开新一轮
     const msg = await this.#wakeMessage(sess, ready);
     if (!msg) return;
@@ -1397,7 +2007,15 @@ export class AgentEngine {
     const maxSteps = this.#o.defaultMaxSteps ?? DEFAULT_MAX_STEPS;
     let run: Run;
     try {
-      run = store.createRun({ sessionId: sess.id, canvasId: sess.canvasId, userId: sess.userId, status: "queued", mode: sess.mode, budgetCredits: 0, maxSteps });
+      run = store.createRun({
+        sessionId: sess.id,
+        canvasId: sess.canvasId,
+        userId: sess.userId,
+        status: "queued",
+        mode: sess.mode,
+        budgetCredits: 0,
+        maxSteps,
+      });
     } catch (e) {
       if (e instanceof DuplicateError) {
         this.#wakePending.set(sess.id, { userId: sess.userId, canvasId: sess.canvasId }); // 刚好有人开了运行
@@ -1412,8 +2030,12 @@ export class AgentEngine {
     await this.#markBatches(sess, batchIds, "delivered", run.id, o);
     try {
       await this.#launch(run, this.#session(sess.userId, sess.id), {
-        selection: [], prepare: { max_steps: maxSteps }, recordHarness: true, fresh: true,
-        kickoff: (a) => a.conv.submit({ type: "input", content: msg.text, requestId: msg.requestId }, context),
+        selection: [],
+        prepare: { max_steps: maxSteps },
+        recordHarness: true,
+        fresh: true,
+        kickoff: (a) =>
+          a.conv.submit({ type: "input", content: msg.text, requestId: msg.requestId }, context),
       });
     } catch {
       await this.#markBatches(sess, batchIds, "deliverable").catch(() => {}); // 运行没起来（已标为失败）：这批还要交付，监听任务稍后再试
@@ -1421,15 +2043,31 @@ export class AgentEngine {
   }
 
   /** 本会话正在回答：把结果插进当前这一轮（工具跑完后、下一次请求前交给模型），不另开一轮 */
-  async #wakeIntoRun(a: Active, sess: Session, ready: Array<[string, WatchBatch]>, o: WakeOptions): Promise<void> {
+  async #wakeIntoRun(
+    a: Active,
+    sess: Session,
+    ready: Array<[string, WatchBatch]>,
+    o: WakeOptions,
+  ): Promise<void> {
     const msg = await this.#wakeMessage(sess, ready);
     if (!msg) return;
     const batchIds = ready.map(([id]) => id);
     const delivered = await this.#locked(a, async () => {
       // 刚好在收尾、或进入等回答 / 等审批：这一轮不会再读了，留给运行结束后的交付
-      if (a.finishing || this.#o.store.getRun(a.run.userId, a.run.id).status !== "running") return false;
-      this.#emit(this.#ev(a), "tasks.settled", { batch_ids: batchIds, steer: true, tasks: msg.tasks });
-      a.wakes.set(msg.requestId, await a.conv.submit({ type: "input", content: msg.text, whenBusy: "steer", requestId: msg.requestId }, context));
+      if (a.finishing || this.#o.store.getRun(a.run.userId, a.run.id).status !== "running")
+        return false;
+      this.#emit(this.#ev(a), "tasks.settled", {
+        batch_ids: batchIds,
+        steer: true,
+        tasks: msg.tasks,
+      });
+      a.wakes.set(
+        msg.requestId,
+        await a.conv.submit(
+          { type: "input", content: msg.text, whenBusy: "steer", requestId: msg.requestId },
+          context,
+        ),
+      );
       return true;
     });
     if (delivered) await this.#markBatches(sess, batchIds, "delivered", a.run.id, o);
@@ -1464,15 +2102,18 @@ export class AgentEngine {
   #hooksExtension(): Extension {
     return defineExtension({
       name: "engine-events",
-      hooks: [hook(GenerationTask, {
-        // 每次请求模型之前：这时 Pi 已经把到边界的插话放进了记录，它们就是在这一刻被读到的
-        beforeRequest: async (_request, api) => {
-          const a = this.#active.get(String(api.conversationId));
-          if (a && a.steers.size > 0) await this.#markRead(a);
-          return undefined;
-        },
-        afterResponse: async (message, api) => this.#onAssistant(String(api.conversationId), message),
-      })],
+      hooks: [
+        hook(GenerationTask, {
+          // 每次请求模型之前：这时 Pi 已经把到边界的插话放进了记录，它们就是在这一刻被读到的
+          beforeRequest: async (_request, api) => {
+            const a = this.#active.get(String(api.conversationId));
+            if (a && a.steers.size > 0) await this.#markRead(a);
+            return undefined;
+          },
+          afterResponse: async (message, api) =>
+            this.#onAssistant(String(api.conversationId), message),
+        }),
+      ],
     });
   }
 
@@ -1483,42 +2124,66 @@ export class AgentEngine {
   #compactionExtension(): Extension {
     return defineExtension({
       name: "engine-compaction",
-      hooks: [hook(CompactionTask, {
-        beforeCompact: async (c, api, ctx) => {
-          const a = this.#active.get(String(api.conversationId));
-          if (!a || a.compactionDisabled) return { decline: true };
-          const model = api.models.getModel(PROVIDER_ID, a.rc.model_key!);
-          if (!model) return { decline: true };
-          const window = model.contextWindow;
-          // 前端靠这两个事件提示用户：开始是临时事件（状态行换文案），结束落库（时间线里留一条分隔行）
-          const before = this.#o.store.getRun(a.run.userId, a.run.id).contextTokens;
-          this.#push(this.#ev(a), "context.compacting", {});
-          try {
-            const sessionId = (await api.snapshot(ProviderDoc, api.conversationId, ctx))?.sessionId;
-            if (sessionId) this.#contexts.bindSession(sessionId, a.convId);
-            const [first, ...rest] = c.messages;
-            const previous = previousSummary(first);
-            let conversation = serializeMessages((previous === undefined ? c.messages : rest) as never);
-            const maxChars = Math.floor(window * 0.7); // 摘要请求本身也要装得进窗口：留出提示词和输出的位置
-            if (conversation.length > maxChars) conversation = `…（更早的内容已省略）\n${conversation.slice(-maxChars)}`;
-            const msg = await api.models.completeSimple(
-              model,
-              { systemPrompt: SUMMARY_SYSTEM_PROMPT, messages: [{ role: "user", content: [{ type: "text", text: buildPrompt(previous ?? "", conversation) }], timestamp: Date.now() }] },
-              { signal: ctx.abortSignal, maxTokens: summaryMaxTokens(window), sessionId, headers: { "X-Agent-Purpose": "summary" } },
-            );
-            await this.#settleSummaries(a);
-            if (msg.stopReason === "error" || msg.stopReason === "aborted") throw new Error(msg.errorMessage || "摘要请求失败");
-            const summary = msg.content.map((p) => (p.type === "text" ? p.text : "")).join("").trim();
-            if (!summary) throw new Error("摘要为空");
-            this.#emit(this.#ev(a), "context.compacted", { before });
-            return { summary };
-          } catch {
-            a.compactionDisabled = true;
-            this.#emit(this.#ev(a), "context.compacted", { failed: true });
-            return { decline: true };
-          }
-        },
-      })],
+      hooks: [
+        hook(CompactionTask, {
+          beforeCompact: async (c, api, ctx) => {
+            const a = this.#active.get(String(api.conversationId));
+            if (!a || a.compactionDisabled) return { decline: true };
+            const model = api.models.getModel(PROVIDER_ID, a.rc.model_key!);
+            if (!model) return { decline: true };
+            const window = model.contextWindow;
+            // 前端靠这两个事件提示用户：开始是临时事件（状态行换文案），结束落库（时间线里留一条分隔行）
+            const before = this.#o.store.getRun(a.run.userId, a.run.id).contextTokens;
+            this.#push(this.#ev(a), "context.compacting", {});
+            try {
+              const sessionId = (await api.snapshot(ProviderDoc, api.conversationId, ctx))
+                ?.sessionId;
+              if (sessionId) this.#contexts.bindSession(sessionId, a.convId);
+              const [first, ...rest] = c.messages;
+              const previous = previousSummary(first);
+              let conversation = serializeMessages(
+                (previous === undefined ? c.messages : rest) as never,
+              );
+              const maxChars = Math.floor(window * 0.7); // 摘要请求本身也要装得进窗口：留出提示词和输出的位置
+              if (conversation.length > maxChars)
+                conversation = `…（更早的内容已省略）\n${conversation.slice(-maxChars)}`;
+              const msg = await api.models.completeSimple(
+                model,
+                {
+                  systemPrompt: SUMMARY_SYSTEM_PROMPT,
+                  messages: [
+                    {
+                      role: "user",
+                      content: [{ type: "text", text: buildPrompt(previous ?? "", conversation) }],
+                      timestamp: Date.now(),
+                    },
+                  ],
+                },
+                {
+                  signal: ctx.abortSignal,
+                  maxTokens: summaryMaxTokens(window),
+                  sessionId,
+                  headers: { "X-Agent-Purpose": "summary" },
+                },
+              );
+              await this.#settleSummaries(a);
+              if (msg.stopReason === "error" || msg.stopReason === "aborted")
+                throw new Error(msg.errorMessage || "摘要请求失败");
+              const summary = msg.content
+                .map((p) => (p.type === "text" ? p.text : ""))
+                .join("")
+                .trim();
+              if (!summary) throw new Error("摘要为空");
+              this.#emit(this.#ev(a), "context.compacted", { before });
+              return { summary };
+            } catch {
+              a.compactionDisabled = true;
+              this.#emit(this.#ev(a), "context.compacted", { failed: true });
+              return { decline: true };
+            }
+          },
+        }),
+      ],
     });
   }
 
@@ -1529,7 +2194,10 @@ export class AgentEngine {
       if (!u?.call || u.call.charged <= 0) continue;
       const spent = u.spent_credits + this.#extras(a.run.id);
       this.#o.store.setRunUsage(a.run.id, { spentCredits: spent });
-      this.#emit(this.#ev(a), "run.usage", { spent_credits: spent, context_tokens: this.#o.store.getRun(a.run.userId, a.run.id).contextTokens });
+      this.#emit(this.#ev(a), "run.usage", {
+        spent_credits: spent,
+        context_tokens: this.#o.store.getRun(a.run.userId, a.run.id).contextTokens,
+      });
     }
   }
 
@@ -1545,20 +2213,39 @@ export class AgentEngine {
       const u = await this.#settled(a, callId);
       if (u?.call) {
         credits = { charged: u.call.charged, estimated: u.call.estimated };
-        this.#o.store.setRunUsage(a.run.id, { spentCredits: u.spent_credits + this.#extras(a.run.id), contextTokens: u.context_tokens });
-        this.#emit(this.#ev(a), "run.usage", { spent_credits: u.spent_credits + this.#extras(a.run.id), context_tokens: u.context_tokens });
+        this.#o.store.setRunUsage(a.run.id, {
+          spentCredits: u.spent_credits + this.#extras(a.run.id),
+          contextTokens: u.context_tokens,
+        });
+        this.#emit(this.#ev(a), "run.usage", {
+          spent_credits: u.spent_credits + this.#extras(a.run.id),
+          context_tokens: u.context_tokens,
+        });
       }
     }
-    if (msg.stopReason === "error") a.modelError = { ...a.modelError, message: msg.errorMessage ?? "模型调用失败" };
+    if (msg.stopReason === "error")
+      a.modelError = { ...a.modelError, message: msg.errorMessage ?? "模型调用失败" };
     // 输出达到单次上限（思考内容也占额度）：回答是空的或半截的，工具调用的参数也可能被截断。不能当成功，否则用户什么提示都没有
     if (msg.stopReason === "length") a.modelError = { ...a.modelError, message: OUTPUT_TRUNCATED };
-    const text = msg.content.filter((p) => p.type === "text").map((p) => (p as { text: string }).text).join("");
-    const thinking = msg.content.filter((p) => p.type === "thinking").map((p) => (p as { thinking: string }).thinking).join("");
-    const calls = msg.content.filter((p) => p.type === "toolCall").map((p) => ({ id: (p as { id: string }).id, name: (p as { name: string }).name }));
+    const text = msg.content
+      .filter((p) => p.type === "text")
+      .map((p) => (p as { text: string }).text)
+      .join("");
+    const thinking = msg.content
+      .filter((p) => p.type === "thinking")
+      .map((p) => (p as { thinking: string }).thinking)
+      .join("");
+    const calls = msg.content
+      .filter((p) => p.type === "toolCall")
+      .map((p) => ({ id: (p as { id: string }).id, name: (p as { name: string }).name }));
     if (!text && calls.length === 0) return;
     this.#emit(this.#ev(a), "message.done", {
-      text, tool_calls: calls, partial: msg.stopReason === "aborted" || msg.stopReason === "error" || msg.stopReason === "length",
-      ...(thinking && { thinking }), ...(credits && { credits: credits.charged, estimated: credits.estimated }),
+      text,
+      tool_calls: calls,
+      partial:
+        msg.stopReason === "aborted" || msg.stopReason === "error" || msg.stopReason === "length",
+      ...(thinking && { thinking }),
+      ...(credits && { credits: credits.charged, estimated: credits.estimated }),
     });
   }
 
@@ -1579,7 +2266,10 @@ export class AgentEngine {
 
   /** 已批准的生成占用的积分（模型调用的部分由 Go 按调用记录累加，不在这里） */
   #extras(runId: string): number {
-    return this.#o.store.listApprovals(runId).filter((x) => SPENDING_APPROVAL.includes(x.status)).reduce((n, x) => n + x.quoteCredits, 0);
+    return this.#o.store
+      .listApprovals(runId)
+      .filter((x) => SPENDING_APPROVAL.includes(x.status))
+      .reduce((n, x) => n + x.quoteCredits, 0);
   }
 
   // ---- 文字增量 ----
@@ -1625,13 +2315,17 @@ export class AgentEngine {
         } else if (e.type === "message_update") {
           for (const c of e.changes) {
             if (c.type === "text_delta") text += (c as unknown as { delta: string }).delta;
-            else if (c.type === "thinking_delta") thinking += (c as unknown as { delta: string }).delta;
+            else if (c.type === "thinking_delta")
+              thinking += (c as unknown as { delta: string }).delta;
           }
           timer ??= setTimeout(flush, DELTA_FLUSH_MS);
         }
       }
     });
-    this.#stops.push(async () => { if (timer) clearTimeout(timer); await stream.stop(); });
+    this.#stops.push(async () => {
+      if (timer) clearTimeout(timer);
+      await stream.stop();
+    });
   }
 
   // ---- 工具层的宿主 ----
@@ -1655,7 +2349,13 @@ export class AgentEngine {
         return { content: "已达到本轮的步数上限，运行已暂停，等待用户继续。", terminate: true };
       }
       if (a.startedBefore.delete(call.id)) return undefined; // 续跑时被重放的工具：tool.start 重启前已经发过
-      this.#emit(this.#ev(a), "tool.start", { id: call.id, name: call.name, label: call.label, verb: call.verb, ...(call.parentId && { parent_id: call.parentId }) });
+      this.#emit(this.#ev(a), "tool.start", {
+        id: call.id,
+        name: call.name,
+        label: call.label,
+        verb: call.verb,
+        ...(call.parentId && { parent_id: call.parentId }),
+      });
       return undefined;
     },
     end: async (run, call, event) => {
@@ -1666,12 +2366,14 @@ export class AgentEngine {
         this.#o.store.addRunUsage(run.id, 1, 0);
       }
     },
-    plan: async (run, steps) => this.#emit(this.#ev(this.#byRun.get(run.id)!), "plan.updated", { steps }),
+    plan: async (run, steps) =>
+      this.#emit(this.#ev(this.#byRun.get(run.id)!), "plan.updated", { steps }),
     takeCard: (run) => {
       const a = this.#byRun.get(run.id)!;
       return a.cards < CARD_LIMITS.perRun && ++a.cards > 0;
     },
-    card: async (run, id, card) => this.#emit(this.#ev(this.#byRun.get(run.id)!), "card.shown", { id, card }),
+    card: async (run, id, card) =>
+      this.#emit(this.#ev(this.#byRun.get(run.id)!), "card.shown", { id, card }),
     approval: async (run, x) => {
       const a = this.#byRun.get(run.id)!;
       this.#createApproval(a, x);
@@ -1691,23 +2393,45 @@ export class AgentEngine {
   }
 
   /** 创建审批并让运行进入等待状态。按工具调用 id 幂等：崩溃后重放同一个调用不会出现两个审批 */
-  #createApproval(a: Active, x: { kind: ApprovalKind; toolCallId: string; payload: unknown; quoteCredits: number; summary: string }): void {
+  #createApproval(
+    a: Active,
+    x: {
+      kind: ApprovalKind;
+      toolCallId: string;
+      payload: unknown;
+      quoteCredits: number;
+      summary: string;
+    },
+  ): void {
     const store = this.#o.store;
     a.paused = true;
     if (store.listApprovals(a.run.id).some((p) => p.toolCallId === x.toolCallId)) return;
     const next = x.kind === "ask" ? "waiting_input" : "waiting_approval";
     // 先把运行置为等待状态（CAS）：运行已经被取消或结束时，不再产生审批。崩溃后重放时已经在等待状态，也算成功
     try {
-      store.updateRunIf(a.run.id, ["running", "waiting_approval", "waiting_input"], { status: next });
+      store.updateRunIf(a.run.id, ["running", "waiting_approval", "waiting_input"], {
+        status: next,
+      });
     } catch (e) {
       if (e instanceof StateConflictError) throw Err.state();
       throw e;
     }
     const createdAt = this.#now();
-    const approval = store.createApproval({
-      runId: a.run.id, sessionId: a.run.sessionId, canvasId: a.run.canvasId, userId: a.run.userId, kind: x.kind, toolCallId: x.toolCallId,
-      payload: x.payload, quoteCredits: x.quoteCredits, status: "pending", expiresAt: createdAt + (this.#o.approvalTtlMs ?? APPROVAL_TTL_MS),
-    }, createdAt);
+    const approval = store.createApproval(
+      {
+        runId: a.run.id,
+        sessionId: a.run.sessionId,
+        canvasId: a.run.canvasId,
+        userId: a.run.userId,
+        kind: x.kind,
+        toolCallId: x.toolCallId,
+        payload: x.payload,
+        quoteCredits: x.quoteCredits,
+        status: "pending",
+        expiresAt: createdAt + (this.#o.approvalTtlMs ?? APPROVAL_TTL_MS),
+      },
+      createdAt,
+    );
     this.#emit(this.#ev(a), "approval.created", this.#approvalView(approval));
     this.#emit(this.#ev(a), "run.status", statusEvent(next));
   }
@@ -1716,8 +2440,13 @@ export class AgentEngine {
 /** Pi 把摘要放回上下文时套的说明：取出里面的摘要正文（下一次压缩时当作「之前的摘要」增量更新） */
 function previousSummary(first: Message | undefined): string | undefined {
   if (first?.role !== "user") return undefined;
-  const text = typeof first.content === "string" ? first.content : first.content.map((p) => (p.type === "text" ? p.text : "")).join("");
-  return /^The conversation history before this point was compacted into the following summary:\n\n<summary>\n([\s\S]*)\n<\/summary>/.exec(text)?.[1];
+  const text =
+    typeof first.content === "string"
+      ? first.content
+      : first.content.map((p) => (p.type === "text" ? p.text : "")).join("");
+  return /^The conversation history before this point was compacted into the following summary:\n\n<summary>\n([\s\S]*)\n<\/summary>/.exec(
+    text,
+  )?.[1];
 }
 
 /** 首条消息当会话标题：空白压成一个空格，最多 40 字 */

@@ -10,10 +10,19 @@ const [dbPath, goUrl, sessionId, action = "start", message = "拆分镜"] = proc
 const TOKEN = "service-token-0123456789abcdef0123456789";
 const store = openStore(dbPath, { workerId: 1 });
 const engine = await AgentEngine.open({
-  store, platform: createPlatform({ baseUrl: goUrl, serviceToken: TOKEN }), baseUrl: goUrl, serviceToken: TOKEN,
-  storage: await openNodeSqliteStorage(dbPath, { prefix: "pi_" }), codec: createIdCodec("test-key"), leaseIntervalMs: 30,
+  store,
+  platform: createPlatform({ baseUrl: goUrl, serviceToken: TOKEN }),
+  baseUrl: goUrl,
+  serviceToken: TOKEN,
+  storage: await openNodeSqliteStorage(dbPath, { prefix: "pi_" }),
+  codec: createIdCodec("test-key"),
+  leaseIntervalMs: 30,
 });
 const ids: string[] = [];
-if (action === "start") for (const sid of sessionId.split(",")) ids.push((await engine.startRun({ userId: "1", sessionId: sid, message, modelKey: "claude" })).id);
+if (action === "start")
+  for (const sid of sessionId.split(","))
+    ids.push(
+      (await engine.startRun({ userId: "1", sessionId: sid, message, modelKey: "claude" })).id,
+    );
 process.stdout.write(`started ${ids.join(",") || "0"}\n`);
 setInterval(() => {}, 1000);

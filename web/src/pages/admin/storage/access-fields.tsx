@@ -35,7 +35,7 @@ export function AccessFields({ form, patch, errors, readOnly }: SectionProps) {
           onClick={() => patch({ access: "private" })}
         >
           <span className="text-sm font-medium">私有桶 · 签名</span>
-          <span className="text-muted-foreground text-xs">推荐。按需生成临时地址</span>
+          <span className="text-muted-foreground text-xs">推荐</span>
         </ChoiceCard>
         <ChoiceCard
           selected={form.access === "public"}
@@ -44,22 +44,12 @@ export function AccessFields({ form, patch, errors, readOnly }: SectionProps) {
           onClick={() => patch({ access: "public" })}
         >
           <span className="text-sm font-medium">公开读 / CDN</span>
-          <span className="text-muted-foreground text-xs">地址固定，靠 key 不可猜测</span>
+          <span className="text-muted-foreground text-xs">地址固定</span>
         </ChoiceCard>
       </ChoiceCardGroup>
 
       {form.access === "private" ? (
-        <FormField
-          label="签名有效期"
-          htmlFor="storage-ttl"
-          error={errors.signedTtlSec}
-          hint={
-            <>
-              画布里存的是稳定地址 <code className="font-mono">/files/&lt;key&gt;</code>
-              ，有效期只影响单次播放，不会让画布里的素材失效。
-            </>
-          }
-        >
+        <FormField label="签名有效期" htmlFor="storage-ttl" error={errors.signedTtlSec}>
           <OptionSelect
             id="storage-ttl"
             value={String(form.signedTtlSec)}
@@ -114,9 +104,6 @@ export function DirectUploadFields({ form, patch, readOnly, preset }: SectionPro
           <Label htmlFor="storage-direct" className="text-sm font-semibold">
             允许浏览器直传
           </Label>
-          <p className="text-muted-foreground mt-0.5 text-xs">
-            开启后，用户上传的文件直接传到桶里，不经过后端；失败时会自动回退到后端中转。
-          </p>
         </div>
         <Switch
           id="storage-direct"

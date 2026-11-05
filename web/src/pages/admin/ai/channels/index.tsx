@@ -10,7 +10,6 @@ import { DataPage } from "@/components/admin-ui/data-panel";
 import {
   EmptyState,
   EmptyStateActions,
-  EmptyStateDescription,
   EmptyStateIcon,
   EmptyStateTitle,
 } from "@/components/admin-ui/empty-state";
@@ -198,7 +197,7 @@ export default function ChannelsPage() {
       title: "停用渠道？",
       destructive: true,
       confirmLabel: "停用",
-      description: `停用「${target.name}」后，它的所有模型在画布里不可见；进行中的任务按快照继续。`,
+      description: `「${target.name}」的模型将在画布中不可见，进行中的任务不受影响。`,
       onConfirm: () => setEnabled(target, false),
     });
   };
@@ -284,7 +283,6 @@ export default function ChannelsPage() {
                 <RadioTower />
               </EmptyStateIcon>
               <EmptyStateTitle>还没有渠道</EmptyStateTitle>
-              <EmptyStateDescription>先新增渠道，再拉取模型。</EmptyStateDescription>
               <EmptyStateActions>
                 <ReasonTooltip reason={canWrite ? null : SUPER_ONLY}>
                   <Button disabled={!canWrite} onClick={newChannel}>

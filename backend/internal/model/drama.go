@@ -16,21 +16,34 @@ type DramaProject struct {
 	CanvasID       uint64    `gorm:"column:canvas_project_id;not null;uniqueIndex:uk_drama_canvas"`
 	SourceAssetID  *uint64
 	TextModelID    *uint64
-	Title          string `gorm:"size:255;not null"`
-	SourceText     string `gorm:"type:text;not null"`
-	SourceKind     string `gorm:"size:16;not null;default:''"`
-	SourceSummary  string `gorm:"type:text;not null;default:''"`
-	Genre          string `gorm:"size:32;not null;default:''"`
-	StyleKey       string `gorm:"size:32;not null"`
-	StyleCustom    string `gorm:"type:text;not null;default:''"`
-	Ratio          string `gorm:"size:8;not null;default:''"`
-	TargetEpisodes int    `gorm:"not null;default:0"`
-	EpisodeSeconds int    `gorm:"not null;default:60"`
-	TextModel      string `gorm:"size:128;not null;default:''"`
-	OutlineMD      string `gorm:"type:text;not null;default:''"`
-	CharactersMD   string `gorm:"type:text;not null;default:''"`
-	Status         string `gorm:"size:16;not null;default:analyzing"`
-	Revision       int64  `gorm:"not null;default:1"`
+	Title          string         `gorm:"size:255;not null"`
+	SourceText     string         `gorm:"type:text;not null"`
+	SourceChars    int            `gorm:"not null;default:0"`
+	SourceSHA256   string         `gorm:"size:64;not null;default:''"`
+	SourceFilename string         `gorm:"size:255;not null;default:''"`
+	UnitsTotal     int            `gorm:"not null;default:0"`
+	UnitKind       string         `gorm:"size:16;not null;default:''"`
+	Phase          string         `gorm:"size:16;not null;default:done"`
+	PlanCursor     int            `gorm:"not null;default:0"`
+	RangeEnd       int            `gorm:"not null;default:0"`
+	PauseReason    string         `gorm:"size:255;not null;default:''"`
+	PauseCode      string         `gorm:"size:16;not null;default:''"`
+	PromptSettings datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
+	SourceKind     string         `gorm:"size:16;not null;default:''"`
+	SourceSummary  string         `gorm:"type:text;not null;default:''"`
+	Genre          string         `gorm:"size:32;not null;default:''"`
+	StyleKey       string         `gorm:"size:32;not null"`
+	StyleCustom    string         `gorm:"type:text;not null;default:''"`
+	Ratio          string         `gorm:"size:8;not null;default:''"`
+	TargetEpisodes int            `gorm:"not null;default:0"`
+	EpisodeSeconds int            `gorm:"not null;default:60"`
+	TextModel      string         `gorm:"size:128;not null;default:''"`
+	VideoModel     string         `gorm:"size:128;not null;default:''"`
+	ImageModels    datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
+	OutlineMD      string         `gorm:"type:text;not null;default:''"`
+	CharactersMD   string         `gorm:"type:text;not null;default:''"`
+	Status         string         `gorm:"size:16;not null;default:analyzing"`
+	Revision       int64          `gorm:"not null;default:1"`
 }
 
 // TableName 返回 DramaProject 对应的表名。
@@ -43,6 +56,10 @@ type DramaEpisode struct {
 	DramaID             uint64 `gorm:"not null;uniqueIndex:uk_drama_episode_no,priority:1"`
 	No                  int    `gorm:"not null;uniqueIndex:uk_drama_episode_no,priority:2"`
 	Title               string `gorm:"size:255;not null;default:''"`
+	UnitFrom            int    `gorm:"not null;default:0"`
+	UnitTo              int    `gorm:"not null;default:0"`
+	Hook                string `gorm:"type:text;not null;default:''"`
+	Cliffhanger         string `gorm:"type:text;not null;default:''"`
 	Synopsis            string `gorm:"type:text;not null;default:''"`
 	ScriptMD            string `gorm:"type:text;not null;default:''"`
 	ScriptStatus        string `gorm:"size:16;not null;default:empty"`
@@ -61,7 +78,10 @@ func (DramaEpisode) TableName() string { return "drama_episodes" }
 type DramaJob struct {
 	BaseModel
 	UserID         uint64                   `gorm:"not null;index;uniqueIndex:uk_drama_job_approval,priority:1"`
-	DramaID        uint64                   `gorm:"not null;index;uniqueIndex:uk_drama_active_job,where:status = 'queued' OR status = 'running'"`
+	DramaID        uint64                   `gorm:"not null;index"`
+	Lane           string                   `gorm:"size:16;not null;default:user"`
+	BatchFrom      int                      `gorm:"not null;default:0"`
+	BatchTo        int                      `gorm:"not null;default:0"`
 	Step           string                   `gorm:"size:16;not null"`
 	Episodes       datatypes.JSONSlice[int] `gorm:"type:jsonb;not null;default:'[]'"`
 	Status         string                   `gorm:"size:16;not null;default:queued"`
@@ -82,33 +102,58 @@ type DramaJob struct {
 // TableName 返回 DramaJob 对应的表名。
 func (DramaJob) TableName() string { return "drama_jobs" }
 
-// CreateDramaReq 新建短剧的表单字段；文件由 handler 提取为 Filename/Data。
+// CreateDramaReq 通过有效预检草稿新建短剧，原文不在此重复上传。
 type CreateDramaReq struct {
-	Text           string `form:"text"`
-	Filename       string `form:"-"`
-	Data           []byte `form:"-"`
-	Title          string `form:"title" binding:"max=255"`
-	Genre          string `form:"genre" binding:"max=32"`
-	StyleKey       string `form:"style_key" binding:"required,max=32"`
-	StyleCustom    string `form:"style_custom" binding:"max=500"`
-	Ratio          string `form:"ratio" binding:"omitempty,oneof=9:16 16:9 21:9 3:4 4:3 1:1"`
-	TargetEpisodes int    `form:"target_episodes" binding:"min=0,max=100"`
-	EpisodeSeconds int    `form:"episode_seconds" binding:"omitempty,min=30,max=180"`
+	SourceToken    string                       `json:"source_token" binding:"required"`
+	SourceKind     string                       `json:"source_kind" binding:"required,oneof=script novel"`
+	RangeEnd       int                          `json:"range_end" binding:"min=0"`
+	Prompts        map[string]DramaPromptChoice `json:"prompts"`
+	Title          string                       `json:"title" binding:"max=255"`
+	Genre          string                       `json:"genre" binding:"max=32"`
+	StyleKey       string                       `json:"style_key" binding:"required,max=32"`
+	StyleCustom    string                       `json:"style_custom" binding:"max=500"`
+	Ratio          string                       `json:"ratio" binding:"required,oneof=9:16 16:9 4:3"`
+	EpisodeSeconds int                          `json:"episode_seconds" binding:"omitempty,min=30,max=180"`
 	// TextModel 流水线用的 Agent 模型 key；空串跟随后台第一个，选的模型停用时也回落到它
-	TextModel string `form:"text_model" binding:"max=128"`
+	TextModel string `json:"text_model" binding:"max=128"`
+	// VideoModel 分镜与片段用的视频模型 key；空串表示不指定
+	VideoModel string `json:"video_model" binding:"max=128"`
+	// ImageModels 人物 / 场景 / 物品资产节点新建时默认的图片模型 key；空串表示不指定
+	ImageModels DramaImageModels `json:"image_models"`
+}
+
+// DramaImageModels 三类资产各自默认的图片模型 key，空串表示不指定。
+type DramaImageModels struct {
+	Character string `json:"character" binding:"max=128"`
+	Scene     string `json:"scene" binding:"max=128"`
+	Prop      string `json:"prop" binding:"max=128"`
+}
+
+// ByType 返回资产类型（character / scene / prop）到模型 key 的映射，只含已指定的项。
+func (m DramaImageModels) ByType() map[string]string {
+	out := map[string]string{}
+	for typ, key := range map[string]string{"character": m.Character, "scene": m.Scene, "prop": m.Prop} {
+		if key != "" {
+			out[typ] = key
+		}
+	}
+	return out
 }
 
 // UpdateDramaReq 部分更新项目，revision 用于乐观锁。
 type UpdateDramaReq struct {
-	Revision     int64   `json:"revision" binding:"required,min=1"`
-	Title        *string `json:"title" binding:"omitempty,min=1,max=255"`
-	Genre        *string `json:"genre" binding:"omitempty,max=32"`
-	StyleKey     *string `json:"style_key" binding:"omitempty,min=1,max=32"`
-	StyleCustom  *string `json:"style_custom" binding:"omitempty,max=500"`
-	Ratio        *string `json:"ratio" binding:"omitempty,oneof=9:16 16:9 21:9 3:4 4:3 1:1"`
-	TextModel    *string `json:"text_model" binding:"omitempty,max=128"`
-	OutlineMD    *string `json:"outline_md"`
-	CharactersMD *string `json:"characters_md"`
+	Prompts      map[string]DramaPromptChoice `json:"prompts"`
+	Revision     int64                        `json:"revision" binding:"required,min=1"`
+	Title        *string                      `json:"title" binding:"omitempty,min=1,max=255"`
+	Genre        *string                      `json:"genre" binding:"omitempty,max=32"`
+	StyleKey     *string                      `json:"style_key" binding:"omitempty,min=1,max=32"`
+	StyleCustom  *string                      `json:"style_custom" binding:"omitempty,max=500"`
+	Ratio        *string                      `json:"ratio" binding:"omitempty,oneof=9:16 16:9 21:9 3:4 4:3 1:1"`
+	TextModel    *string                      `json:"text_model" binding:"omitempty,max=128"`
+	VideoModel   *string                      `json:"video_model" binding:"omitempty,max=128"`
+	ImageModels  *DramaImageModels            `json:"image_models"`
+	OutlineMD    *string                      `json:"outline_md"`
+	CharactersMD *string                      `json:"characters_md"`
 }
 
 // CreateDramaEpisodeReq 追加空白集。
@@ -119,16 +164,18 @@ type CreateDramaEpisodeReq struct {
 
 // UpdateDramaEpisodeReq 集的部分更新。
 type UpdateDramaEpisodeReq struct {
-	Revision int64   `json:"revision" binding:"required,min=1"`
-	Title    *string `json:"title" binding:"omitempty,max=255"`
-	Synopsis *string `json:"synopsis"`
-	ScriptMD *string `json:"script_md"`
+	Hook        *string `json:"hook"`
+	Cliffhanger *string `json:"cliffhanger"`
+	Revision    int64   `json:"revision" binding:"required,min=1"`
+	Title       *string `json:"title" binding:"omitempty,max=255"`
+	Synopsis    *string `json:"synopsis"`
+	ScriptMD    *string `json:"script_md"`
 }
 
 // DramaJobReq 提交或估价的步骤与范围。
 type DramaJobReq struct {
-	Step       string `json:"step" binding:"required,oneof=analyze outline scripts breakdown asset_prompts storyboard compose"`
-	Episodes   []int  `json:"episodes" binding:"max=100,dive,min=1,max=100"`
+	Step       string `json:"step" binding:"required,oneof=scripts breakdown asset_prompts storyboard compose"`
+	Episodes   []int  `json:"episodes" binding:"max=200,dive,min=1,max=100000"`
 	Ratio      string `json:"ratio" binding:"omitempty,oneof=9:16 16:9 21:9 3:4 4:3 1:1"`
 	MaxSeconds int    `json:"max_seconds" binding:"omitempty,min=4,max=60"`
 }
@@ -138,6 +185,7 @@ type DramaSummary struct {
 	ID           idcodec.ID `json:"id"`
 	Title        string     `json:"title"`
 	Status       string     `json:"status"`
+	Phase        string     `json:"phase"` // 自动规划阶段 running / paused / done，首页据此显示「规划中」
 	EpisodeCount int        `json:"episode_count"`
 	LockedCount  int        `json:"locked_count"`
 	CoverURL     string     `json:"cover_url"`
@@ -146,6 +194,10 @@ type DramaSummary struct {
 
 // DramaEpisodeSummary 集概要。
 type DramaEpisodeSummary struct {
+	Hook             string     `json:"hook"`
+	Cliffhanger      string     `json:"cliffhanger"`
+	UnitFrom         int        `json:"unit_from"`
+	UnitTo           int        `json:"unit_to"`
 	No               int        `json:"no"`
 	Title            string     `json:"title"`
 	Synopsis         string     `json:"synopsis"`
@@ -169,6 +221,9 @@ type DramaEpisodeView struct {
 
 // DramaJobView 任务状态与结算结果。
 type DramaJobView struct {
+	Lane         string              `json:"lane"`
+	BatchFrom    int                 `json:"batch_from"`
+	BatchTo      int                 `json:"batch_to"`
 	ID           idcodec.ID          `json:"id"`
 	Step         string              `json:"step"`
 	Episodes     []int               `json:"episodes"`
@@ -190,23 +245,34 @@ type DramaComposeResult struct {
 
 // DramaView 项目详情。
 type DramaView struct {
-	ID             idcodec.ID            `json:"id"`
-	Title          string                `json:"title"`
-	CanvasID       idcodec.ID            `json:"canvas_id"`
-	Status         string                `json:"status"`
-	SourceKind     string                `json:"source_kind"`
-	Genre          string                `json:"genre"`
-	StyleKey       string                `json:"style_key"`
-	StyleCustom    string                `json:"style_custom"`
-	Ratio          string                `json:"ratio"`
-	TargetEpisodes int                   `json:"target_episodes"`
-	EpisodeSeconds int                   `json:"episode_seconds"`
-	TextModel      string                `json:"text_model"`
-	OutlineMD      string                `json:"outline_md"`
-	CharactersMD   string                `json:"characters_md"`
-	Revision       int64                 `json:"revision"`
-	Episodes       []DramaEpisodeSummary `json:"episodes"`
-	ActiveJobs     []DramaJobView        `json:"active_jobs"`
-	CreatedAt      time.Time             `json:"created_at"`
-	UpdatedAt      time.Time             `json:"updated_at"`
+	SourceChars    int                           `json:"source_chars"`
+	UnitsTotal     int                           `json:"units_total"`
+	UnitKind       string                        `json:"unit_kind"`
+	Phase          string                        `json:"phase"`
+	PlanCursor     int                           `json:"plan_cursor"`
+	RangeEnd       int                           `json:"range_end"`
+	PauseReason    string                        `json:"pause_reason"`
+	PauseCode      string                        `json:"pause_code"`
+	PromptSettings map[string]DramaPromptSetting `json:"prompt_settings"`
+	ID             idcodec.ID                    `json:"id"`
+	Title          string                        `json:"title"`
+	CanvasID       idcodec.ID                    `json:"canvas_id"`
+	Status         string                        `json:"status"`
+	SourceKind     string                        `json:"source_kind"`
+	Genre          string                        `json:"genre"`
+	StyleKey       string                        `json:"style_key"`
+	StyleCustom    string                        `json:"style_custom"`
+	Ratio          string                        `json:"ratio"`
+	TargetEpisodes int                           `json:"target_episodes"`
+	EpisodeSeconds int                           `json:"episode_seconds"`
+	TextModel      string                        `json:"text_model"`
+	VideoModel     string                        `json:"video_model"`
+	ImageModels    DramaImageModels              `json:"image_models"`
+	OutlineMD      string                        `json:"outline_md"`
+	CharactersMD   string                        `json:"characters_md"`
+	Revision       int64                         `json:"revision"`
+	Episodes       []DramaEpisodeSummary         `json:"episodes"`
+	ActiveJobs     []DramaJobView                `json:"active_jobs"`
+	CreatedAt      time.Time                     `json:"created_at"`
+	UpdatedAt      time.Time                     `json:"updated_at"`
 }

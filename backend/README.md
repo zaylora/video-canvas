@@ -150,14 +150,14 @@ make run
 | POST                | /api/v1/asset-library/items                           | 加入资产库 `{asset_id, folder_id?}`：新增 **201**，素材已在库里 **200** 并返回现有归属；素材不属于自己 40007，文件夹不存在 64004 |
 | PATCH/DELETE        | /api/v1/asset-library/items/:id                       | 移动 `{folder_id: id|null}`（返回条目）/ 移出资产库（不动素材）；不存在或不属于自己 64005 |
 | GET                 | /api/v1/drama-styles                                  | 内置题材与画风目录 `{genres:[{key,name}](12), styles:[{key,name,prompt}](11)}` |
-| GET/POST            | /api/v1/dramas                                        | 短剧列表 `?keyword=&page=&page_size=`（`OKPage`，`updated_at` 倒序，项含 `status/episode_count/locked_count/cover_url`）/ 创建：`multipart/form-data`，`file`（txt / md / docx）或 `text` 二选一 + `title? genre? style_key style_custom? ratio? target_episodes? episode_seconds?`；原文 1–300,000 字（空或格式不支持 67002，超长 67003）；返回 **201** `DramaView`，同事务建好短剧专属画布并排队 `analyze`（成功后自动接 `outline`；原文已带「第N集」标记则直接把各集原文写进 `script_md`，不再需要 `scripts`）；id 是十六进制串 |
-| GET/PATCH/DELETE    | /api/v1/dramas/:id                                    | 详情（含 `episodes`、`active_jobs`）/ 改 `{revision, title?, genre?, style_key?, style_custom?, ratio?, text_model?, outline_md?, characters_md?}`（revision 冲突 409 / 30002）/ 软删，连带短剧画布（角色数据内嵌在画布里，随画布一起软删），返回 **204**；不存在或不属于自己 67001 |
-| GET/PATCH           | /api/v1/dramas/:id/episodes/:no                       | 单集（含 `script_md` 及 `storyboard_status/segment_count/segment_seconds/done_segment_count`，项目详情集概要同样返回这四项）/ 改 `{revision, title?, synopsis?, script_md?}`：已拆解（锁定）的集改 `script_md` / `synopsis` 返回 409 / 67005（改 `title` 允许）；集用集号 `no` 定位 |
+| GET/POST | /api/v1/dramas | 用户短剧列表 / JSON 建剧 `{source_token,source_kind,range_end?,ratio,genre?,style_key,style_custom?,episode_seconds?,text_model?,prompts?}`；原文先预检，返回 201；自动研读并按批规划，剧本型直接按原文切集。模型上下文须至少 128k。 |
+| GET/PATCH/DELETE    | /api/v1/dramas/:id                                    | 详情（含 `episodes`、`active_jobs`、`phase/plan_cursor/range_end/pause_code` 和不含正文的 `prompt_settings`）/ 改 `{revision, title?, genre?, style_key?, style_custom?, ratio?, text_model?, outline_md?, characters_md?, prompts?}`（revision 冲突 409 / 30002）/ 软删，连带短剧画布（角色数据内嵌在画布里，随画布一起软删），返回 **204**；不存在或不属于自己 67001 |
+| GET/PATCH           | /api/v1/dramas/:id/episodes/:no                       | 单集（含 `script_md` 及 `storyboard_status/segment_count/segment_seconds/done_segment_count`，项目详情集概要同样返回这四项）/ 改 `{revision, title?, synopsis?, script_md?,hook?,cliffhanger?}`：已拆解（锁定）的集改 `script_md` / `synopsis` 返回 409 / 67005（改 `title` 允许）；集用集号 `no` 定位 |
 | DELETE              | /api/v1/dramas/:id/episodes/:no                       | 删一集，返回 **204**：同事务内删集与它的片段（片段软删，生成任务与素材保留），后面的集号依次减 1；短剧画布上资产的出现集数一起改写（后面的集号减 1，只出现在被删集的资产改为 `episodes: null`＝未分类，保留类型和名字）并推 `canvas.patch`；有排队或运行中的任务返回 409 / 67004，项目或集不存在 67001 |
-| POST                | /api/v1/dramas/:id/episodes                           | 追加一集 `{title?, synopsis?}`，返回 **201** |
-| POST                | /api/v1/dramas/:id/estimate                           | `{step, episodes, max_seconds?}` → `{credits}`，按所选 Agent 模型现有计价估算，不冻结；前置不满足 67006，无可用 Agent 模型 67007；`storyboard` 与提交使用相同的单集、时长上限与已有 take 校验（67013） |
-| POST/GET            | /api/v1/dramas/:id/jobs                               | 提交流水线任务 `{step: analyze\|outline\|scripts\|breakdown\|asset_prompts, episodes, ratio?}`，返回 **202** `JobView`；同一短剧同时只能有一个 queued / running 任务（409 / 67004），`scripts` 需已有集、`breakdown` 需所选集剧本就绪且未锁定、项目未定比例时必须带 `ratio`（400 / 67006），积分不足沿用 40001，提交时冻结、成功按实际用量结算、失败或取消全额退回 / 列出任务 `?status=active` 只看进行中 `{items}`。`text_model` 为空或已下架时回落到「Agent」类别第一个启用模型，一个都没有 67007；文本步骤经 LLM 网关直接请求渠道，按 Token 用量结算。输出 JSON 校验不过自动重试 1 次，仍失败任务 `failed` / 67008 且不扣积分；`scripts` 每集一个请求、串行并带上一集结尾约 800 字衔接，单集失败不影响已成功的集；`breakdown` 成功后锁定所选集、合并写入短剧画布（同类型 `name+look` 相同或命中别名只并集号，新资产建节点，新角色节点直接内嵌 `data.character` 元数据：`name`、`look`（空则「基础形象」）、`description`、`extras: []`、`voice: null`，`voice_prompt` 非空时写入 `voicePrompt` 作为生成声音的提示词，主图为空；不再建角色卡）并推 `canvas.patch`，随后自动排队只为本次新资产写提示词的 `asset_prompts`（失败后可手动重提同范围任务，仍只处理这批新资产） |
-| POST                | /api/v1/dramas/:id/jobs/:job_id/cancel                | 取消任务并退还冻结积分，返回 `JobView`；画布已写入的任务不可取消（正在结算）；WebSocket `drama.job` `{drama_id, job}` 推送状态与进度 |
+| POST                | /api/v1/dramas/:id/episodes                           | 追加一集 `{title?, synopsis?}`，返回 **201**；规划 running 时拒绝增删集（67019） |
+| POST                | /api/v1/dramas/:id/estimate                           | `{step, episodes, max_seconds?}` → `{credits,gap_episodes}`（写剧本时提示上一集缺剧本的集号），按所选 Agent 模型现有计价估算，不冻结；前置不满足 67006，无可用 Agent 模型 67007；`storyboard` 与提交使用相同的单集、时长上限与已有 take 校验（67013） |
+| POST/GET | /api/v1/dramas/:id/jobs | 用户提交 `scripts / breakdown / asset_prompts / storyboard / compose`，返回 202；`analyze / plan` 仅系统提交。pipeline 与 user 互不阻塞，用户文本彼此互斥；媒体只允许已锁集，同集互斥、不同集并行。单次最多 200 集，集号 1–100000。拆解完成后自动写新资产提示词；任务冻结模型、提示词和已登记名单快照。 |
+| POST                | /api/v1/dramas/:id/jobs/:job_id/cancel                | 取消用户任务并退还冻结积分（自动规划使用暂停接口），返回 `JobView`；画布已写入的任务不可取消（正在结算）；WebSocket `drama.job` `{drama_id, job}` 推送状态与进度 |
 | POST                | /api/v1/dramas/:id/jobs                               | 二期新增 `step: storyboard`：`{step, episodes:[n], max_seconds?}`，单集须已拆解且剧本就绪（67006），`max_seconds` 缺省 15、范围 4–60；成功原子替换全部片段并将 `storyboard_status` 置 `ready`，模型 JSON 非法重试一次后失败 67008 且不扣费；已有任何视频 take 返回 409 / 67013，执行期间产生 take 也保留原片段并退款；未知 `@[名称](节点id)` 引用降为名称文字 |
 | POST                | /api/v1/dramas/:id/jobs                               | 三期新增 `step: compose`：`{step, episodes:[n]}`（须且只能一集），把该集按 `seq` 排序、有「采用」视频的片段用服务端 ffmpeg 统一到第一段的分辨率、30fps、H.264 + AAC（无音轨补静音）后拼接，存为当前用户的视频素材（`source=upload`、不进资产库）并写 `final_asset_id`；没有采用的片段跳过，一个都没有 400 / 67010；**不扣积分、不调模型**（估价恒为 0）；下载、转码各有失败文案，整次处理 10 分钟超时，临时文件与未提交的对象在所有退出路径清理；`JobView.result` 在 compose 成功时为 `{asset, skipped_seqs}`（`skipped_seqs` 是片段 `seq`，从 0 起），其他步骤为 `null`；集概要与单集新增 `final`（`AssetView \| null`）和 `final_stale`（成片之后有片段改了采用、顺序或增删，含改回原值，则为 true；合成期间改动同样判过期） |
 | GET/POST            | /api/v1/dramas/:id/episodes/:no/segments               | 按 `seq` 列表 `{items: SegmentView[]}` / 新增 `{prompt?, seconds?, after_seq?}`，未传插入位置则追加，返回 **201**；列表中的 `takes/status` 从真实生成任务推导并对账 |
@@ -251,3 +251,20 @@ make run
 新增写操作仍通过 `admin_propose_changes` 的签名变更单审批：用户状态/并发/积分/角色，注册设置，邮件非密码配置与测试邮件，已有存储的配置/测试/默认/删除，图片服务的创建/草稿/校验/发布/回滚/停用/删除。沿用各管理页面的角色、业务校验与版本限制；审批执行前再次核对快照。定价设置继续使用原工具和变更单。
 
 密码、SMTP 密码、存储密钥的填写与新建存储仍走专用表单，不进入模型上下文。新增管理操作不支持整单自动回滚；执行前持久化一次性占位，重放不会再次发积分或发邮件。中断后状态未确认时需先核对业务现状，再申请新审批，不自动重试。
+
+短剧开拍设置新增接口（均需登录，技能环节管理需管理员）：
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| POST | /api/v1/drama-sources/preflight | multipart 文件或粘贴正文，64MB 请求上限；txt/md/docx，最多 500 万字；去噪、切分、识别、估价，返回目录及 24 小时 token，每人最多三份草稿。 |
+| POST | /api/v1/drama-sources/:token/estimate | 根据类型、范围、单集时长和模型重新估价；过期 67014，小上下文 67022。 |
+| GET | /api/v1/drama-prompt-templates | 四环节内置可替换正文，固定协议不公开。 |
+| GET/POST/PUT/DELETE | /api/v1/drama-prompts[/:id] | 本人提示词 CRUD；更新带 revision，缺页使用内置；项目与任务使用独立正文快照。 |
+| GET | /api/v1/drama-skills?step=assets | 只返回已启用且管理员标记适用环节的技能。 |
+| PUT | /api/v1/admin/agent/skills/:name/drama-steps | 设置 adapt/assets/asset_prompts/video 子集，可为空；审计 agent_skill.drama_steps。 |
+| POST | /api/v1/dramas/:id/planning/pause | 当前任务完成后暂停，不中断上游请求。 |
+| POST | /api/v1/dramas/:id/planning/resume | 继续未完成规划；积分不足仍为 paused。 |
+| POST | /api/v1/dramas/:id/planning/range | done 后扩大规划终点，0 表示全部。 |
+| POST | /api/v1/dramas/:id/planning/estimate | 继续规划的自动部分积分和耗时预估。 |
+| POST | /api/v1/dramas/:id/planning/retry-builtin | 自定义改编正文失败后恢复内置并继续。 |
+| GET | /api/v1/dramas/:id/units[/:no] | 原文目录 / 单元正文，列表支持 from、to。 |

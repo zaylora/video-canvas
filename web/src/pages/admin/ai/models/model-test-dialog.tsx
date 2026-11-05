@@ -8,7 +8,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@/components/admin-ui/dialog";
 import { readModelKind, readModelPricing, readModelString } from "@/utils/admin/model-body";
 
 import { ResultPanel } from "../result-panel";
@@ -54,10 +54,9 @@ export function ModelTestDialog({
           />
           <div className="min-w-0 flex-1">
             <DialogTitle className="text-base font-semibold">测试 {label || "模型"}</DialogTitle>
-            <DialogDescription className="text-xs">
-              用当前配置真实调用一次上游，不扣用户积分，结果不进素材库。
-              {ws.dirty && "有未保存的修改，开始前会先保存。"}
-            </DialogDescription>
+            {ws.dirty && (
+              <DialogDescription className="text-xs">开始前会先保存修改</DialogDescription>
+            )}
           </div>
         </div>
 

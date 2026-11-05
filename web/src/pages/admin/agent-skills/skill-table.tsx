@@ -175,7 +175,7 @@ export function SkillTable({
               onClick={() => onOpen(item)}
               onKeyDown={(event) => openOnEnter(event, () => onOpen(item))}
               className={cn(
-                "bg-card hover:bg-muted/50 focus-visible:ring-ring/50 grid gap-2 rounded-xl border p-3.5 transition-colors outline-none focus-visible:ring-2",
+                "bg-chrome ring-chrome-border ring-1 shadow-lg backdrop-blur-xl backdrop-saturate-150 hover:bg-card focus-visible:ring-ring/50 grid gap-2 rounded-3xl p-4 transition-colors outline-none focus-visible:ring-2",
                 item.name === freshName && FRESH_ROW,
               )}
             >

@@ -2,7 +2,7 @@ import { useState } from "react";
 
 import type { StoragePreset, StorageView } from "@/api/admin/storage/type.d";
 import { ConfirmDialog } from "@/components/admin-ui/confirm-dialog";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent } from "@/components/admin-ui/dialog";
 import { useRetained } from "@/hooks/use-retained";
 import { StorageForm } from "./storage-dialog-form";
 
@@ -74,7 +74,6 @@ export function StorageDialog({
       <ConfirmDialog
         open={confirmClose}
         title="放弃未保存的修改？"
-        description="关闭后，这次对存储配置的修改不会保存。"
         confirmLabel="放弃修改"
         destructive
         onConfirm={() => {

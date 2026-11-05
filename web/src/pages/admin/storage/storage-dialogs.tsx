@@ -20,24 +20,19 @@ export function confirmSetDefault(
     title: `把「${target.name}」设为默认？`,
     confirmLabel: "设为默认",
     description: (
-      <ul className="text-muted-foreground mt-1 list-disc space-y-1 pl-5 text-left">
-        <li>
-          之后<b className="text-foreground">新上传和新生成</b>的素材写入「{target.name}」
-        </li>
-        <li>
-          {current ? (
-            <>
-              「{current.name}」里已有的{" "}
-              <b className="text-foreground tabular-nums">{formatCount(current.asset_count)}</b>{" "}
-              个素材
-            </>
-          ) : (
-            <>已有素材</>
-          )}
-          <b className="text-foreground">不会移动</b>，仍从原处读取，画布不受影响
-        </li>
-        <li>正在进行中的生成任务，产物会写入新的默认存储</li>
-      </ul>
+      <>
+        新素材将写入「{target.name}」，
+        {current ? (
+          <>
+            「{current.name}」里已有的{" "}
+            <b className="text-foreground tabular-nums">{formatCount(current.asset_count)}</b>{" "}
+            个素材
+          </>
+        ) : (
+          <>已有素材</>
+        )}
+        <b className="text-foreground">不会移动</b>
+      </>
     ),
     onConfirm: async () => {
       try {
@@ -46,7 +41,7 @@ export function confirmSetDefault(
         onDone();
         throw error;
       }
-      toast.success("默认存储已切换，新素材将写入这里");
+      toast.success("默认存储已切换");
       onDone();
     },
   });
@@ -70,7 +65,7 @@ export async function requestDeleteStorage(target: StorageView, onDone: () => vo
       description: check.pending_uploads > 0 && (
         <>
           还有 <span className="tabular-nums">{formatCount(check.pending_uploads)}</span>{" "}
-          个进行中的上传在使用它，等它们完成或过期后再试。
+          个上传进行中，完成后再试
         </>
       ),
     });
@@ -82,8 +77,7 @@ export async function requestDeleteStorage(target: StorageView, onDone: () => vo
     confirmLabel: "删除",
     description: (
       <>
-        该存储没有任何素材引用。删除后加密保存的密钥一并删除，桶里的文件
-        <b className="text-foreground">不会</b>被清理。
+        密钥一并删除，桶里的文件<b className="text-foreground">不会</b>被清理
       </>
     ),
     onConfirm: async () => {

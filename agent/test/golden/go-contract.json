@@ -86,10 +86,7 @@
     "feedback.set": {
       "comment": "我要 6 个，它给了 12 个",
       "rating": -1,
-      "reasons": [
-        "misread",
-        "slow"
-      ]
+      "reasons": ["misread", "slow"]
     },
     "message.delta": {
       "text": "我先看看画布。"
@@ -109,9 +106,7 @@
     },
     "message.user": {
       "mode": "all",
-      "selection": [
-        "n_script"
-      ],
+      "selection": ["n_script"],
       "text": "拆分镜"
     },
     "plan.updated": {
@@ -283,9 +278,7 @@
         "created_at": "\u003ctime\u003e",
         "data": {
           "mode": "all",
-          "selection": [
-            "n_script"
-          ],
+          "selection": ["n_script"],
           "text": "拆分镜"
         },
         "run_id": "\u003cid\u003e",
@@ -446,16 +439,12 @@
         "canvas_id": null,
         "created_at": "\u003ctime\u003e",
         "data": {
-          "created": [
-            "\u003cnode\u003e"
-          ],
+          "created": ["\u003cnode\u003e"],
           "id": "tc-canvas_apply_ops",
           "is_error": false,
           "label": "修改画布",
           "name": "canvas_apply_ops",
-          "node_ids": [
-            "\u003cnode\u003e"
-          ],
+          "node_ids": ["\u003cnode\u003e"],
           "summary": "应用 2 项操作",
           "updated": [],
           "verb": "修改"
@@ -685,10 +674,7 @@
     "feedback": {
       "comment": "我要 6 个，它给了 12 个",
       "rating": -1,
-      "reasons": [
-        "misread",
-        "slow"
-      ]
+      "reasons": ["misread", "slow"]
     },
     "history": {
       "events": [
@@ -697,9 +683,7 @@
           "created_at": "\u003ctime\u003e",
           "data": {
             "mode": "all",
-            "selection": [
-              "n_script"
-            ],
+            "selection": ["n_script"],
             "text": "拆分镜"
           },
           "run_id": "\u003cid\u003e",
@@ -860,16 +844,12 @@
           "canvas_id": null,
           "created_at": "\u003ctime\u003e",
           "data": {
-            "created": [
-              "\u003cnode\u003e"
-            ],
+            "created": ["\u003cnode\u003e"],
             "id": "tc-canvas_apply_ops",
             "is_error": false,
             "label": "修改画布",
             "name": "canvas_apply_ops",
-            "node_ids": [
-              "\u003cnode\u003e"
-            ],
+            "node_ids": ["\u003cnode\u003e"],
             "summary": "应用 2 项操作",
             "updated": [],
             "verb": "修改"

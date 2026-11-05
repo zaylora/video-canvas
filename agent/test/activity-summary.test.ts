@@ -20,11 +20,16 @@ test("给模型看的内容：用户需求（去掉 @ 引用的内部语法）�
 });
 
 test("用户需求最多 200 字，每条操作的摘要最多 120 字", () => {
-  const p = buildActivityPrompt("甲".repeat(500), [{ label: "读取画布", summary: "乙".repeat(500), failed: false }]);
+  const p = buildActivityPrompt("甲".repeat(500), [
+    { label: "读取画布", summary: "乙".repeat(500), failed: false },
+  ]);
   assert.equal(Array.from(p.match(/甲+/)![0]).length, 200);
   assert.equal(Array.from(p.match(/乙+/)![0]).length, 120);
 });
 
 test("没有摘要的操作只写名称", () => {
-  assert.match(buildActivityPrompt("hi", [{ label: "整理布局", summary: "", failed: false }]), /1\. 整理布局\n/);
+  assert.match(
+    buildActivityPrompt("hi", [{ label: "整理布局", summary: "", failed: false }]),
+    /1\. 整理布局\n/,
+  );
 });

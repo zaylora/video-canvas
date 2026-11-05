@@ -27,7 +27,7 @@ export type AdminStore = {
   userId: number | null;
   /** 加载状态 */
   status: AdminStatus;
-  /** 后台助手抽屉是否展开：只记在本浏览器，刷新后保持 */
+  /** 后台助手抽屉是否展开：不持久化，每次进后台默认收起 */
   assistantOpen: boolean;
   /**
    * 调用 GET /admin/ai/me 取角色。已在加载中时忽略；ready 后再调用不重新请求，除非 force。
@@ -41,6 +41,16 @@ export type AdminStore = {
   setAssistantOpen: (open: boolean) => void;
   /** 切换后台助手抽屉 */
   toggleAssistant: () => void;
+};
+
+/**
+ * 后台 store 的本地持久化规则：角色和加载状态每次进后台都要重新确认；助手抽屉也不记，
+ * 每次进后台默认收起。目前没有需要跨会话记住的界面偏好，所以不存任何字段；
+ * 旧存档里存过 assistantOpen: true，读回时丢掉，避免升级后第一次还是展开。
+ */
+export const adminPersistRules = {
+  partialize: (): Record<string, never> => ({}),
+  merge: (_persisted: unknown, current: AdminStore): AdminStore => current,
 };
 
 export const useAdminStore = create<AdminStore>()(
@@ -77,10 +87,7 @@ export const useAdminStore = create<AdminStore>()(
     }),
     {
       name: "video-canvas-admin-ui",
-      // 角色和加载状态每次进后台都要重新确认，只记界面偏好
-      partialize: (state) => ({
-        assistantOpen: state.assistantOpen,
-      }),
+      ...adminPersistRules,
     },
   ),
 );

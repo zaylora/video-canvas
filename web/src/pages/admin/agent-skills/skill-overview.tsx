@@ -2,7 +2,7 @@ import { Check, Pencil, Trash2, X } from "lucide-react";
 import { useState } from "react";
 
 import { renameSkill } from "@/api/admin/agent-skill";
-import type { SkillItem, SkillVersionView } from "@/api/admin/agent-skill/type.d";
+import type { DramaStepKey, SkillItem, SkillVersionView } from "@/api/admin/agent-skill/type.d";
 import { ReasonTooltip } from "@/components/admin-ui/reason-tooltip";
 import { Tag } from "@/components/admin-ui/tag";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ import {
   versionBadge,
 } from "@/utils/admin/agent-skill";
 
+import { DramaStepsField } from "./drama-steps-field";
 import { FrontmatterCard } from "./file-preview";
 
 /** 一个带标题的区块 */
@@ -125,6 +126,7 @@ function TitleField({
  * @param onToggle 启停
  * @param onGoVersions 跳到版本页签（“去切换”）
  * @param onRenamed 显示名改好后
+ * @param onDramaSteps 保存“短剧适用环节”
  * @param onDelete 点“删除技能”
  */
 export function SkillOverview({
@@ -134,6 +136,7 @@ export function SkillOverview({
   onToggle,
   onGoVersions,
   onRenamed,
+  onDramaSteps,
   onDelete,
 }: {
   item: SkillItem;
@@ -142,6 +145,8 @@ export function SkillOverview({
   onToggle: (enabled: boolean) => void;
   onGoVersions: () => void;
   onRenamed: (item: SkillItem) => void;
+  /** 保存短剧适用环节；失败返回 null */
+  onDramaSteps: (steps: DramaStepKey[]) => Promise<SkillItem | null>;
   onDelete: () => void;
 }) {
   const badge = versionBadge(item);
@@ -169,13 +174,6 @@ export function SkillOverview({
             </ReasonTooltip>
             <span className="text-sm font-medium">{item.enabled ? "已启用" : "已停用"}</span>
           </div>
-          <p className="text-muted-foreground mt-2 text-sm leading-relaxed">
-            {item.readonly
-              ? "内置技能随版本发布，一直可用，不能停用。"
-              : item.enabled
-                ? "新开始的 Agent 运行会用到它，进行中的运行不受影响。"
-                : "Agent 不会使用它，@ 弹层里也看不到。"}
-          </p>
         </div>
 
         <div className="rounded-xl border p-4">
@@ -184,7 +182,7 @@ export function SkillOverview({
             {badge.active}
           </p>
           {item.source === "builtin" ? (
-            <p className="text-muted-foreground mt-2 text-sm">内置技能没有版本历史。</p>
+            <p className="text-muted-foreground mt-2 text-sm">内置技能没有版本历史</p>
           ) : (
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <span className="text-muted-foreground text-sm tabular-nums">
@@ -230,6 +228,10 @@ export function SkillOverview({
         </dl>
       </Section>
 
+      <Section title="短剧适用环节">
+        <DramaStepsField item={item} onSave={onDramaSteps} />
+      </Section>
+
       <Section title="头部字段">
         <FrontmatterCard className="m-0" frontmatter={frontmatter} unsupported={unsupported} />
       </Section>
@@ -240,7 +242,7 @@ export function SkillOverview({
             <div className="min-w-0 flex-1 text-sm">
               <p className="font-medium">删除技能</p>
               <p className="text-muted-foreground mt-0.5">
-                {deleteReason ?? "删除全部版本和整包，不能撤销。历史会话不受影响。"}
+                {deleteReason ?? "删除全部版本，不能撤销"}
               </p>
             </div>
             <ReasonTooltip reason={deleteReason}>

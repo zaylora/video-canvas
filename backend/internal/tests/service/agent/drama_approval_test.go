@@ -143,7 +143,7 @@ func TestDrama_LockedAfterApprovalAndInvalidRead(t *testing.T) {
 	if err != nil || r.Status != ExecFailed || !strings.Contains(r.OutcomeText, errcode.ErrDramaEpisodeLocked.Msg) {
 		t.Fatalf("锁定后仍写入 %+v %v", r, err)
 	}
-	for _, raw := range []string{`{"scope":"episode"}`, `{"scope":"segments","episode_no":0}`, `{"scope":"segments","episode_no":101}`, `{"scope":"bad"}`, `{"scope":"overview","drama_id":"elsewhere"}`, `{"scope":"episode","episode_no":1.5}`} {
+	for _, raw := range []string{`{"scope":"episode"}`, `{"scope":"segments","episode_no":0}`, `{"scope":"segments","episode_no":100001}`, `{"scope":"bad"}`, `{"scope":"overview","drama_id":"elsewhere"}`, `{"scope":"episode","episode_no":1.5}`} {
 		r, err := br.ExecutePlatformTool(ctx, rc, "r", "drama_read", json.RawMessage(raw))
 		if err != nil || !r.IsError {
 			t.Fatalf("非法读取 %s: %+v %v", raw, r, err)

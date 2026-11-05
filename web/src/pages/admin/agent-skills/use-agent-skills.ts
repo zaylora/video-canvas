@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { listSkills, setSkillActiveVersion, setSkillEnabled } from "@/api/admin/agent-skill";
-import type { SkillItem, SkillPage } from "@/api/admin/agent-skill/type.d";
+import {
+  listSkills,
+  setSkillActiveVersion,
+  setSkillDramaSteps,
+  setSkillEnabled,
+} from "@/api/admin/agent-skill";
+import type { DramaStepKey, SkillItem, SkillPage } from "@/api/admin/agent-skill/type.d";
 import { replaceSkillRow } from "@/utils/admin/agent-skill";
 
 import { useAliveRef } from "../use-admin";
@@ -137,6 +142,25 @@ export function useAgentSkills() {
     [applyVersion],
   );
 
+  /**
+   * 保存短剧适用环节：成功后替换当页那一行并提示；失败的全局 toast 已弹，返回 null
+   * @param item 技能
+   * @param steps 适用环节
+   */
+  const saveDramaSteps = useCallback(
+    async (item: SkillItem, steps: DramaStepKey[]): Promise<SkillItem | null> => {
+      try {
+        const next = await setSkillDramaSteps(item.name, steps);
+        if (aliveRef.current) replaceOne(next);
+        toast.success(`已保存「${next.title}」的短剧适用环节`);
+        return next;
+      } catch {
+        return null;
+      }
+    },
+    [aliveRef, replaceOne],
+  );
+
   return {
     ...list,
     items,
@@ -148,6 +172,7 @@ export function useAgentSkills() {
     markFresh,
     toggleEnabled,
     activateVersion,
+    saveDramaSteps,
   };
 }
 

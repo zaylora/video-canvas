@@ -30,33 +30,72 @@ export interface GoSeen {
   body: any;
 }
 
-type ToolReply = { content?: string; is_error?: boolean; terminate?: boolean; tool_end?: Record<string, unknown>; images?: unknown[] };
+type ToolReply = {
+  content?: string;
+  is_error?: boolean;
+  terminate?: boolean;
+  tool_end?: Record<string, unknown>;
+  images?: unknown[];
+};
 
 export interface FakeGoOptions {
   turns: Turn[];
   /** 工具名 → 回复；函数形式可以延迟、按参数变化 */
-  tools?: Record<string, ToolReply | ((body: any, headers: IncomingMessage["headers"]) => Promise<ToolReply> | ToolReply)>;
+  tools?: Record<
+    string,
+    ToolReply | ((body: any, headers: IncomingMessage["headers"]) => Promise<ToolReply> | ToolReply)
+  >;
   /** 审批预估的回复，按审批种类 */
-  propose?: Record<string, { is_error?: boolean; payload?: unknown; quote_credits?: number; summary?: string; content?: string; terminate?: boolean }>;
+  propose?: Record<
+    string,
+    {
+      is_error?: boolean;
+      payload?: unknown;
+      quote_credits?: number;
+      summary?: string;
+      content?: string;
+      terminate?: boolean;
+    }
+  >;
   /** 审批解析：默认拒绝 → rejected，否则 approved；预估积分取 payload.quote_credits */
-  resolve?: (body: any) => Record<string, unknown> | { error: { status: number; code: number; msg: string } };
+  resolve?: (
+    body: any,
+  ) => Record<string, unknown> | { error: { status: number; code: number; msg: string } };
   /** 审批执行：默认批准的删除 / 生成 executed，拒绝和提问 none */
-  execute?: (body: any) => Record<string, unknown> | { error: { status: number; code: number; msg: string } } | "down" | Promise<Record<string, unknown> | "down">;
+  execute?: (
+    body: any,
+  ) =>
+    | Record<string, unknown>
+    | { error: { status: number; code: number; msg: string } }
+    | "down"
+    | Promise<Record<string, unknown> | "down">;
   /** 摘要请求（X-Agent-Purpose: summary）的回答；函数形式可以按请求变化或出错。不消耗 turns */
-  summary?: string | ((body: any, n: number) => string | { error: { status: number; message: string } });
+  summary?:
+    | string
+    | ((body: any, n: number) => string | { error: { status: number; message: string } });
   /** 会话命名请求（X-Agent-Purpose: title）的回答；函数形式可以按请求变化或出错。不消耗 turns */
-  title?: string | ((body: any, n: number) => string | { error: { status: number; message: string } });
+  title?:
+    | string
+    | ((body: any, n: number) => string | { error: { status: number; message: string } });
   /** 活动摘要请求（X-Agent-Purpose: activity）的回答；函数形式可以按请求变化或出错。不消耗 turns */
-  activity?: string | ((body: any, n: number) => string | { error: { status: number; message: string } });
+  activity?:
+    | string
+    | ((body: any, n: number) => string | { error: { status: number; message: string } });
   /** 会话侧：模型清单、画布归属、消息引用、撤销 */
   models?: unknown[];
   checkCanvas?: (body: any) => { error: { status: number; code: number; msg: string } } | void;
-  checkMessage?: (body: any) => { selection: string[] } | { error: { status: number; code: number; msg: string } };
+  checkMessage?: (
+    body: any,
+  ) => { selection: string[] } | { error: { status: number; code: number; msg: string } };
   /** 附件校验：默认每个素材 id 都通过，给一张 800×600 的 PNG（本地存储，image 是 base64 QUJD） */
-  checkAttachments?: (body: any) => { attachments: unknown[] } | { error: { status: number; code: number; msg: string } };
+  checkAttachments?: (
+    body: any,
+  ) => { attachments: unknown[] } | { error: { status: number; code: number; msg: string } };
   /** 任务状态查询（POST /tasks/status）：按请求里的任务 id 给状态；默认每个任务都成功，节点是 n<任务 id>；"down" 让它连接失败 */
   taskStates?: (ids: string[], body: any) => Array<Record<string, unknown>> | "down";
-  undo?: (runId: string) => Record<string, unknown> | { error: { status: number; code: number; msg: string } };
+  undo?: (
+    runId: string,
+  ) => Record<string, unknown> | { error: { status: number; code: number; msg: string } };
   /** 运行准备的出参覆盖项 */
   setup?: Partial<RunSetup>;
   prepareError?: { status: number; code: number; msg: string };
@@ -69,13 +108,27 @@ export interface FakeGoOptions {
 
 /** 和 Go 里登记的界面名称、短动词一致 */
 const LABELS: Record<string, [string, string]> = {
-  canvas_get_state: ["读取画布", "读取"], canvas_apply_ops: ["修改画布", "修改"], generate_media: ["申请生成", "生成"], canvas_delete: ["申请删除", "删除"],
-  ask_user: ["向你提问", "提问"], plan_update: ["更新计划", "计划"], show_card: ["展示卡片", "展示"], model_list: ["查看可用模型", "查模型"],
+  canvas_get_state: ["读取画布", "读取"],
+  canvas_apply_ops: ["修改画布", "修改"],
+  generate_media: ["申请生成", "生成"],
+  canvas_delete: ["申请删除", "删除"],
+  ask_user: ["向你提问", "提问"],
+  plan_update: ["更新计划", "计划"],
+  show_card: ["展示卡片", "展示"],
+  model_list: ["查看可用模型", "查模型"],
 };
 
 export const DECLS: ToolDecl[] = Object.keys(LABELS).map((name) => ({
-  name, label: LABELS[name][0], verb: LABELS[name][1], description: "说明 " + name, executor: "server", scriptable: false,
-  parameters: { type: "object", properties: { nodeIds: { type: "array", items: { type: "string" } } } },
+  name,
+  label: LABELS[name][0],
+  verb: LABELS[name][1],
+  description: "说明 " + name,
+  executor: "server",
+  scriptable: false,
+  parameters: {
+    type: "object",
+    properties: { nodeIds: { type: "array", items: { type: "string" } } },
+  },
 }));
 
 export async function fakeGo(opts: FakeGoOptions) {
@@ -103,12 +156,27 @@ export async function fakeGo(opts: FakeGoOptions) {
       const base = "/internal/platform/v1";
       try {
         if (path === `${base}/runs/prepare`) {
-          if (prepareError) return json(res, prepareError.status, { code: prepareError.code, msg: prepareError.msg });
+          if (prepareError)
+            return json(res, prepareError.status, {
+              code: prepareError.code,
+              msg: prepareError.msg,
+            });
           return ok(res, {
             model: { name: "Claude", context_window: 200000, max_tokens: 8192, vision: true },
-            system_prompt: "你是小镜", tools: DECLS, disabled_tools: [],
-            ...(body?.message ? { first_message: `${body.message}\n\n<画布目录>（数据）</画布目录>\n最多 ${body.max_steps || 40} 步工具调用。` } : {}),
-            harness: { prompt_version: 15, tools_hash: "04c13780543e", build_sha: "abc1234", key: "harnesskey01" },
+            system_prompt: "你是小镜",
+            tools: DECLS,
+            disabled_tools: [],
+            ...(body?.message
+              ? {
+                  first_message: `${body.message}\n\n<画布目录>（数据）</画布目录>\n最多 ${body.max_steps || 40} 步工具调用。`,
+                }
+              : {}),
+            harness: {
+              prompt_version: 15,
+              tools_hash: "04c13780543e",
+              build_sha: "abc1234",
+              key: "harnesskey01",
+            },
             ...opts.setup,
           });
         }
@@ -117,63 +185,127 @@ export async function fakeGo(opts: FakeGoOptions) {
           const h = opts.tools?.[name];
           const r = typeof h === "function" ? await h(body, req.headers) : h;
           return ok(res, {
-            content: "ok", is_error: false, terminate: false, ...r,
-            tool_end: r?.tool_end ?? { id: body.tool_call_id, name, is_error: !!r?.is_error, summary: "摘要 " + name, label: LABELS[name]?.[0], verb: LABELS[name]?.[1] },
+            content: "ok",
+            is_error: false,
+            terminate: false,
+            ...r,
+            tool_end: r?.tool_end ?? {
+              id: body.tool_call_id,
+              name,
+              is_error: !!r?.is_error,
+              summary: "摘要 " + name,
+              label: LABELS[name]?.[0],
+              verb: LABELS[name]?.[1],
+            },
           });
         }
         if (path === `${base}/approvals/propose`) {
           const p = opts.propose?.[body.kind] ?? {};
-          return ok(res, { is_error: false, payload: { kind: body.kind, args: body.args }, quote_credits: 0, summary: "申请 " + body.kind, content: "已提交，等待决定。", terminate: true, ...p });
+          return ok(res, {
+            is_error: false,
+            payload: { kind: body.kind, args: body.args },
+            quote_credits: 0,
+            summary: "申请 " + body.kind,
+            content: "已提交，等待决定。",
+            terminate: true,
+            ...p,
+          });
         }
         if (path === `${base}/events`) return ok(res, null); // 事件推送：只记录
         if (path === `${base}/tasks/status`) {
           const ids = body.task_ids as string[];
-          const r = opts.taskStates?.(ids, body) ?? ids.map((id) => ({ task_id: id, node_id: "n" + id, kind: "image", status: "succeeded", outputs: [{ media_type: "image", asset_id: "9" + id }] }));
+          const r =
+            opts.taskStates?.(ids, body) ??
+            ids.map((id) => ({
+              task_id: id,
+              node_id: "n" + id,
+              kind: "image",
+              status: "succeeded",
+              outputs: [{ media_type: "image", asset_id: "9" + id }],
+            }));
           if (r === "down") return void res.destroy();
           return ok(res, { items: r });
         }
         const idm = /^\/internal\/platform\/v1\/ids\/(\d+)$/.exec(path);
-        if (idm) return ok(res, { encoded: createIdCodec(opts.idKey ?? "test-id-key").encode(BigInt(idm[1])) });
-        if (path === `${base}/agent/models`) return ok(res, opts.models ?? [{ key: "claude", name: "Claude", vision: true, context_window: 200000 }]);
+        if (idm)
+          return ok(res, {
+            encoded: createIdCodec(opts.idKey ?? "test-id-key").encode(BigInt(idm[1])),
+          });
+        if (path === `${base}/agent/models`)
+          return ok(
+            res,
+            opts.models ?? [
+              { key: "claude", name: "Claude", vision: true, context_window: 200000 },
+            ],
+          );
         if (path === `${base}/canvases/check`) {
           const r = opts.checkCanvas?.(body);
-          if (r && isFailure(r)) return json(res, r.error.status, { code: r.error.code, msg: r.error.msg });
+          if (r && isFailure(r))
+            return json(res, r.error.status, { code: r.error.code, msg: r.error.msg });
           return ok(res, null);
         }
         if (path === `${base}/attachments/check`) {
-          const r = opts.checkAttachments?.(body) ?? { attachments: (body.asset_ids as string[]).map((id, i) => ({ asset_id: id, name: `图片 ${i + 1}`, mime_type: "image/png", width: 800, height: 600, url: `/files/u1/${id}.png`, image: { mime_type: "image/png", data: "QUJD" } })) };
-          if (isFailure(r)) return json(res, r.error.status, { code: r.error.code, msg: r.error.msg });
+          const r = opts.checkAttachments?.(body) ?? {
+            attachments: (body.asset_ids as string[]).map((id, i) => ({
+              asset_id: id,
+              name: `图片 ${i + 1}`,
+              mime_type: "image/png",
+              width: 800,
+              height: 600,
+              url: `/files/u1/${id}.png`,
+              image: { mime_type: "image/png", data: "QUJD" },
+            })),
+          };
+          if (isFailure(r))
+            return json(res, r.error.status, { code: r.error.code, msg: r.error.msg });
           return ok(res, r);
         }
         if (path === `${base}/messages/check`) {
           const r = opts.checkMessage?.(body) ?? { selection: body.selection ?? [] };
-          if (isFailure(r)) return json(res, r.error.status, { code: r.error.code, msg: r.error.msg });
+          if (isFailure(r))
+            return json(res, r.error.status, { code: r.error.code, msg: r.error.msg });
           return ok(res, r);
         }
         if (req.method === "POST" && /\/runs\/\d+\/undo$/.test(path)) {
-          const r = opts.undo?.(path.split("/").at(-2)!) ?? { reverted: 1, skipped: [], revision: 5 };
-          if (isFailure(r)) return json(res, r.error.status, { code: r.error.code, msg: r.error.msg });
+          const r = opts.undo?.(path.split("/").at(-2)!) ?? {
+            reverted: 1,
+            skipped: [],
+            revision: 5,
+          };
+          if (isFailure(r))
+            return json(res, r.error.status, { code: r.error.code, msg: r.error.msg });
           return ok(res, r);
         }
         if (path === `${base}/approvals/resolve`) {
           const r = opts.resolve?.(body) ?? defaultResolve(body);
-          if (isFailure(r)) return json(res, r.error.status, { code: r.error.code, msg: r.error.msg });
+          if (isFailure(r))
+            return json(res, r.error.status, { code: r.error.code, msg: r.error.msg });
           return ok(res, r);
         }
         if (path === `${base}/approvals/execute`) {
           const r = await (opts.execute?.(body) ?? defaultExecute(body));
           if (r === "down") return void res.destroy();
-          if (isFailure(r)) return json(res, r.error.status, { code: r.error.code, msg: r.error.msg });
+          if (isFailure(r))
+            return json(res, r.error.status, { code: r.error.code, msg: r.error.msg });
           return ok(res, r);
         }
         if (req.method === "GET" && path.startsWith(`${base}/runs/`) && path.includes("/usage")) {
           const runId = path.slice(`${base}/runs/`.length).split("/")[0];
           const callId = new URL(path, "http://x").searchParams.get("call_id") ?? undefined;
-          const u = opts.usage?.(runId, callId, calls) ?? defaultUsage(callId, calls, opts.creditsPerCall ?? 1);
+          const u =
+            opts.usage?.(runId, callId, calls) ??
+            defaultUsage(callId, calls, opts.creditsPerCall ?? 1);
           return ok(res, u);
         }
         if (req.method === "DELETE" && path.startsWith(`${base}/runs/`)) return ok(res, null);
-        if (path === `${base}/model/chat/completions`) return await (req.headers["x-agent-purpose"] === "summary" ? summarize(res, body) : req.headers["x-agent-purpose"] === "title" ? nameSession(res, body) : req.headers["x-agent-purpose"] === "activity" ? summarizeActivity(res, body) : model(res, body));
+        if (path === `${base}/model/chat/completions`)
+          return await (req.headers["x-agent-purpose"] === "summary"
+            ? summarize(res, body)
+            : req.headers["x-agent-purpose"] === "title"
+              ? nameSession(res, body)
+              : req.headers["x-agent-purpose"] === "activity"
+                ? summarizeActivity(res, body)
+                : model(res, body));
         json(res, 404, { code: 10002, msg: "资源不存在：" + path });
       } catch (e) {
         json(res, 500, { code: 50000, msg: String(e) });
@@ -185,33 +317,59 @@ export async function fakeGo(opts: FakeGoOptions) {
   let titles = 0;
   let activities = 0;
   async function summarize(res: ServerResponse, body: any) {
-    return sideCall(res, "summary", typeof opts.summary === "function" ? opts.summary(body, ++summaries) : (opts.summary ?? "## 目标\n摘要正文"));
+    return sideCall(
+      res,
+      "summary",
+      typeof opts.summary === "function"
+        ? opts.summary(body, ++summaries)
+        : (opts.summary ?? "## 目标\n摘要正文"),
+    );
   }
   async function nameSession(res: ServerResponse, body: any) {
-    return sideCall(res, "title", typeof opts.title === "function" ? opts.title(body, ++titles) : (opts.title ?? "默认标题"));
+    return sideCall(
+      res,
+      "title",
+      typeof opts.title === "function" ? opts.title(body, ++titles) : (opts.title ?? "默认标题"),
+    );
   }
   async function summarizeActivity(res: ServerResponse, body: any) {
-    return sideCall(res, "activity", typeof opts.activity === "function" ? opts.activity(body, ++activities) : (opts.activity ?? "默认活动说明"));
+    return sideCall(
+      res,
+      "activity",
+      typeof opts.activity === "function"
+        ? opts.activity(body, ++activities)
+        : (opts.activity ?? "默认活动说明"),
+    );
   }
   /** 摘要、命名、活动说明这类不是助手说的话的调用：不消耗 turns，照常计费 */
-  function sideCall(res: ServerResponse, purpose: "summary" | "title" | "activity", r: string | { error: { status: number; message: string } }) {
+  function sideCall(
+    res: ServerResponse,
+    purpose: "summary" | "title" | "activity",
+    r: string | { error: { status: number; message: string } },
+  ) {
     if (typeof r !== "string") {
       res.writeHead(r.error.status, { "content-type": "application/json" });
-      return void res.end(JSON.stringify({ error: { message: r.error.message, type: "upstream_error" } }));
+      return void res.end(
+        JSON.stringify({ error: { message: r.error.message, type: "upstream_error" } }),
+      );
     }
     calls++;
     const callId = nextCallId++;
     callLog.push({ callId: String(callId), purpose });
     res.writeHead(200, { "content-type": "text/event-stream", "x-agent-call-id": String(callId) });
-    const chunk = (delta: object, finish: string | null = null) => `data: ${JSON.stringify({ id: "x", object: "chat.completion.chunk", choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
+    const chunk = (delta: object, finish: string | null = null) =>
+      `data: ${JSON.stringify({ id: "x", object: "chat.completion.chunk", choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
     res.write(chunk({ role: "assistant", content: r }));
     res.write(chunk({}, "stop"));
-    res.write(`data: ${JSON.stringify({ id: "x", object: "chat.completion.chunk", choices: [], usage: { prompt_tokens: 500, completion_tokens: 80, total_tokens: 580 } })}\n\n`);
+    res.write(
+      `data: ${JSON.stringify({ id: "x", object: "chat.completion.chunk", choices: [], usage: { prompt_tokens: 500, completion_tokens: 80, total_tokens: 580 } })}\n\n`,
+    );
     res.end("data: [DONE]\n\n");
   }
 
   /** 按请求的大小报输入用量（约 3 个字符一个 Token）：Pi 估算上下文大小时会用上一次回答报告的真实用量 */
-  const promptTokens = (body: any) => Math.max(100, Math.ceil(JSON.stringify(body?.messages ?? []).length / 3));
+  const promptTokens = (body: any) =>
+    Math.max(100, Math.ceil(JSON.stringify(body?.messages ?? []).length / 3));
 
   async function model(res: ServerResponse, body: any) {
     const turn = turns.shift() ?? { text: "（没有更多预设的回答）" };
@@ -220,7 +378,11 @@ export async function fakeGo(opts: FakeGoOptions) {
       const headers: Record<string, string> = { "content-type": "application/json" };
       if (turn.error.errorCode) headers["x-agent-error-code"] = String(turn.error.errorCode);
       res.writeHead(turn.error.status, headers);
-      return void res.end(JSON.stringify({ error: { message: turn.error.message, type: turn.error.type ?? "agent_error" } }));
+      return void res.end(
+        JSON.stringify({
+          error: { message: turn.error.message, type: turn.error.type ?? "agent_error" },
+        }),
+      );
     }
     calls++;
     const callId = nextCallId++;
@@ -228,7 +390,8 @@ export async function fakeGo(opts: FakeGoOptions) {
     res.writeHead(200, { "content-type": "text/event-stream", "x-agent-call-id": String(callId) });
     open.add(res);
     res.on("close", () => open.delete(res));
-    const chunk = (delta: object, finish: string | null = null) => `data: ${JSON.stringify({ id: "x", object: "chat.completion.chunk", choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
+    const chunk = (delta: object, finish: string | null = null) =>
+      `data: ${JSON.stringify({ id: "x", object: "chat.completion.chunk", choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
     res.write(chunk({ role: "assistant", content: "" }));
     if (turn.thinking) res.write(chunk({ reasoning_content: turn.thinking }));
     for (const ch of Array.from(turn.text ?? "")) {
@@ -236,9 +399,24 @@ export async function fakeGo(opts: FakeGoOptions) {
       if (turn.charDelayMs) await new Promise((r) => setTimeout(r, turn.charDelayMs));
     }
     if (turn.hang) return; // 不结束：等调用方断开
-    (turn.tools ?? []).forEach((t, i) => res.write(chunk({ tool_calls: [{ index: i, id: t.id, type: "function", function: { name: t.name, arguments: JSON.stringify(t.args ?? {}) } }] })));
+    (turn.tools ?? []).forEach((t, i) =>
+      res.write(
+        chunk({
+          tool_calls: [
+            {
+              index: i,
+              id: t.id,
+              type: "function",
+              function: { name: t.name, arguments: JSON.stringify(t.args ?? {}) },
+            },
+          ],
+        }),
+      ),
+    );
     res.write(chunk({}, turn.finishReason ?? (turn.tools?.length ? "tool_calls" : "stop")));
-    res.write(`data: ${JSON.stringify({ id: "x", object: "chat.completion.chunk", choices: [], usage: { prompt_tokens: promptTokens(body), completion_tokens: 20, total_tokens: promptTokens(body) + 20 } })}\n\n`);
+    res.write(
+      `data: ${JSON.stringify({ id: "x", object: "chat.completion.chunk", choices: [], usage: { prompt_tokens: promptTokens(body), completion_tokens: 20, total_tokens: promptTokens(body) + 20 } })}\n\n`,
+    );
     res.end("data: [DONE]\n\n");
   }
 
@@ -249,39 +427,108 @@ export async function fakeGo(opts: FakeGoOptions) {
     /** 每次成功的模型调用的 id 和用途，按服务顺序 */
     callLog,
     /** 之后的运行准备都失败（null 恢复） */
-    setPrepareError: (e: FakeGoOptions["prepareError"] | null) => { prepareError = e ?? undefined; },
+    setPrepareError: (e: FakeGoOptions["prepareError"] | null) => {
+      prepareError = e ?? undefined;
+    },
     /** 模型请求（按顺序） */
-    get modelRequests() { return seen.filter((s) => s.path.endsWith("/model/chat/completions") && s.headers["x-agent-purpose"] !== "summary" && s.headers["x-agent-purpose"] !== "title" && s.headers["x-agent-purpose"] !== "activity"); },
+    get modelRequests() {
+      return seen.filter(
+        (s) =>
+          s.path.endsWith("/model/chat/completions") &&
+          s.headers["x-agent-purpose"] !== "summary" &&
+          s.headers["x-agent-purpose"] !== "title" &&
+          s.headers["x-agent-purpose"] !== "activity",
+      );
+    },
     /** 活动摘要请求（按顺序） */
-    get activityRequests() { return seen.filter((s) => s.path.endsWith("/model/chat/completions") && s.headers["x-agent-purpose"] === "activity"); },
+    get activityRequests() {
+      return seen.filter(
+        (s) =>
+          s.path.endsWith("/model/chat/completions") && s.headers["x-agent-purpose"] === "activity",
+      );
+    },
     /** 会话命名请求（按顺序） */
-    get titleRequests() { return seen.filter((s) => s.path.endsWith("/model/chat/completions") && s.headers["x-agent-purpose"] === "title"); },
+    get titleRequests() {
+      return seen.filter(
+        (s) =>
+          s.path.endsWith("/model/chat/completions") && s.headers["x-agent-purpose"] === "title",
+      );
+    },
     /** 摘要请求（按顺序） */
-    get summaryRequests() { return seen.filter((s) => s.path.endsWith("/model/chat/completions") && s.headers["x-agent-purpose"] === "summary"); },
+    get summaryRequests() {
+      return seen.filter(
+        (s) =>
+          s.path.endsWith("/model/chat/completions") && s.headers["x-agent-purpose"] === "summary",
+      );
+    },
     paths: () => seen.map((s) => `${s.method} ${s.path.replace("/internal/platform/v1", "")}`),
-    close: () => new Promise<void>((r) => { for (const o of open) o.destroy(); server.close(() => r()); }),
+    close: () =>
+      new Promise<void>((r) => {
+        for (const o of open) o.destroy();
+        server.close(() => r());
+      }),
   };
 }
 
 function defaultUsage(callId: string | undefined, calls: number, credits: number): PlatformUsage {
   return {
-    spent_credits: calls * credits, context_tokens: calls * 100,
-    ...(callId ? { call: { id: callId, status: "settled" as const, credits, charged: credits, estimated: false, input_tokens: 100, output_tokens: 20 } } : {}),
+    spent_credits: calls * credits,
+    context_tokens: calls * 100,
+    ...(callId
+      ? {
+          call: {
+            id: callId,
+            status: "settled" as const,
+            credits,
+            charged: credits,
+            estimated: false,
+            input_tokens: 100,
+            output_tokens: 20,
+          },
+        }
+      : {}),
   };
 }
 
 function defaultResolve(body: any) {
   const reject = body.decision?.decision === "reject";
-  if (reject) return { status: "rejected", decision: { decision: "reject", ...(body.decision.answer && { answer: body.decision.answer }) }, quote_credits: 0 };
-  return { status: "approved", decision: { decision: "approve", ...(body.decision?.answer && { answer: body.decision.answer }) }, quote_credits: Number(body.payload?.quote_credits ?? 0), node_ids: body.payload?.node_ids ?? [] };
+  if (reject)
+    return {
+      status: "rejected",
+      decision: {
+        decision: "reject",
+        ...(body.decision.answer && { answer: body.decision.answer }),
+      },
+      quote_credits: 0,
+    };
+  return {
+    status: "approved",
+    decision: {
+      decision: "approve",
+      ...(body.decision?.answer && { answer: body.decision.answer }),
+    },
+    quote_credits: Number(body.payload?.quote_credits ?? 0),
+    node_ids: body.payload?.node_ids ?? [],
+  };
 }
 
 function defaultExecute(body: any) {
   const o = body.outcome;
-  if (o.status === "rejected") return { status: "none", outcome_text: "用户拒绝了这次请求。" + (o.decision?.answer ? "用户的说明：" + o.decision.answer : "") };
-  if (body.kind === "ask") return { status: "none", outcome_text: "用户回答：" + o.decision?.answer };
-  return { status: "executed", result: { ok: true }, outcome_text: `用户批准了${body.kind}，已执行。` };
+  if (o.status === "rejected")
+    return {
+      status: "none",
+      outcome_text:
+        "用户拒绝了这次请求。" + (o.decision?.answer ? "用户的说明：" + o.decision.answer : ""),
+    };
+  if (body.kind === "ask")
+    return { status: "none", outcome_text: "用户回答：" + o.decision?.answer };
+  return {
+    status: "executed",
+    result: { ok: true },
+    outcome_text: `用户批准了${body.kind}，已执行。`,
+  };
 }
 
 type Failure = { error: { status: number; code: number; msg: string } };
-const isFailure = (r: unknown): r is Failure => typeof r === "object" && r !== null && "error" in r && typeof (r as Failure).error === "object";
+const isFailure = (r: unknown): r is Failure =>
+  typeof r === "object" && r !== null && "error" in r && typeof (r as Failure).error === "object";

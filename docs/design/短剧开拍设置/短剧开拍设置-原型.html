@@ -1,0 +1,759 @@
+<!doctype html>
+<html lang="zh-CN" class="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>短剧开拍设置原型</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&family=Noto+Serif+SC:wght@700;900&display=swap" rel="stylesheet" />
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+    <style>
+      /* 令牌照抄 web/src/index.css（:root / .dark / .home-theme / .drama-theme），数值一致 */
+      :root {
+        --background: oklch(1 0 0); --foreground: oklch(0.145 0 0);
+        --card: oklch(1 0 0); --popover: oklch(1 0 0); --popover-foreground: oklch(0.145 0 0);
+        --primary: oklch(0.205 0 0); --primary-foreground: oklch(0.985 0 0);
+        --muted: oklch(0.97 0 0); --muted-foreground: oklch(0.556 0 0);
+        --destructive: oklch(0.577 0.245 27.325);
+        --border: oklch(0.922 0 0); --input: oklch(0.922 0 0); --ring: oklch(0.708 0 0);
+        --sidebar: oklch(0.985 0 0); --sidebar-border: oklch(0.922 0 0);
+        --chrome: oklch(1 0 0 / 0.82); --chrome-border: oklch(0 0 0 / 0.08); --chrome-hover: oklch(0 0 0 / 0.05);
+        --credit: oklch(0.72 0.15 75);
+        --status-running: oklch(0.58 0.15 250); --status-success: oklch(0.6 0.15 155); --status-warning: oklch(0.7 0.16 70);
+        --beam: oklch(0.62 0.16 55);
+        --cover-scrim: oklch(0 0 0 / 0.62); --cover-foreground: oklch(0.985 0 0);
+        --paper: oklch(1 0 0); --paper-foreground: oklch(0.145 0 0);
+        --font-sans: "Geist", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+        --font-mono: "Geist Mono", "SF Mono", Consolas, monospace;
+        --font-display: "Songti SC", "Noto Serif SC", "Source Han Serif SC", "STSong", serif;
+        color-scheme: light;
+      }
+      .dark {
+        --background: oklch(0.145 0 0); --foreground: oklch(0.985 0 0);
+        --card: oklch(0.205 0 0); --popover: oklch(0.205 0 0); --popover-foreground: oklch(0.985 0 0);
+        --primary: oklch(0.922 0 0); --primary-foreground: oklch(0.205 0 0);
+        --muted: oklch(0.269 0 0); --muted-foreground: oklch(0.708 0 0);
+        --destructive: oklch(0.704 0.191 22.216);
+        --border: oklch(1 0 0 / 10%); --input: oklch(1 0 0 / 15%); --ring: oklch(0.556 0 0);
+        --sidebar: oklch(0.205 0 0); --sidebar-border: oklch(1 0 0 / 10%);
+        --chrome: oklch(0.2 0 0 / 0.78); --chrome-border: oklch(1 0 0 / 0.08); --chrome-hover: oklch(1 0 0 / 0.07);
+        --credit: oklch(0.82 0.15 85);
+        --status-running: oklch(0.75 0.12 240); --status-success: oklch(0.75 0.15 155); --status-warning: oklch(0.8 0.15 75);
+        --beam: oklch(0.78 0.15 70);
+        color-scheme: dark;
+      }
+      :root:not(.dark) .home-theme {
+        --background: oklch(0.95 0.007 85); --card: oklch(0.985 0.004 85); --popover: oklch(0.985 0.004 85);
+        --muted: oklch(0.92 0.008 85); --muted-foreground: oklch(0.5 0.015 85);
+        --border: oklch(0.22 0.02 85 / 0.1); --input: oklch(0.22 0.02 85 / 0.16);
+        --sidebar: oklch(0.925 0.009 85); --sidebar-border: oklch(0.22 0.02 85 / 0.1);
+        --chrome: oklch(0.97 0.006 85 / 0.8); --chrome-border: oklch(0.22 0.02 85 / 0.1);
+      }
+      .drama-theme {
+        --background: oklch(0.95 0.007 85); --foreground: oklch(0.22 0.01 85);
+        --card: oklch(1 0 0); --popover: oklch(0.985 0.004 85); --popover-foreground: oklch(0.22 0.01 85);
+        --primary: oklch(0.67 0.14 78); --primary-foreground: oklch(1 0 0);
+        --muted: oklch(0.92 0.008 85); --muted-foreground: oklch(0.5 0.015 85);
+        --destructive: oklch(0.58 0.2 28);
+        --border: oklch(0.22 0.02 85 / 0.1); --input: oklch(0.22 0.02 85 / 0.16); --ring: oklch(0.67 0.14 78);
+        --chrome: oklch(0.95 0.007 85 / 0.78); --chrome-border: oklch(0.22 0.02 85 / 0.1); --chrome-hover: oklch(0.22 0.02 85 / 0.06);
+        --status-running: oklch(0.67 0.14 78); --status-success: oklch(0.6 0.13 160); --status-warning: oklch(0.67 0.14 78);
+        --paper: oklch(0.99 0.006 90); --paper-foreground: oklch(0.26 0.012 85);
+      }
+      .dark .drama-theme {
+        --background: oklch(0.145 0.002 286); --foreground: oklch(0.955 0.008 85);
+        --card: oklch(0.19 0.004 286); --popover: oklch(0.225 0.006 286); --popover-foreground: oklch(0.955 0.008 85);
+        --primary: oklch(0.81 0.15 82); --primary-foreground: oklch(0.2 0.03 85);
+        --muted: oklch(0.275 0.01 286); --muted-foreground: oklch(0.75 0.015 85);
+        --destructive: oklch(0.68 0.2 28);
+        --border: oklch(1 0 0 / 0.08); --input: oklch(1 0 0 / 0.13); --ring: oklch(0.81 0.15 82);
+        --chrome: oklch(0.145 0.002 286 / 0.72); --chrome-border: oklch(1 0 0 / 0.08); --chrome-hover: oklch(1 0 0 / 0.06);
+        --status-running: oklch(0.81 0.15 82); --status-success: oklch(0.8 0.15 160); --status-warning: oklch(0.81 0.15 82);
+        --paper: oklch(0.19 0.004 286); --paper-foreground: oklch(0.925 0.01 85);
+      }
+
+      * { box-sizing: border-box; }
+      html, body { height: 100%; margin: 0; }
+      body { font-family: var(--font-sans); font-size: 14px; line-height: 1.5; background: var(--sidebar); color: var(--foreground); -webkit-font-smoothing: antialiased; overflow: hidden; }
+      button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+      button:disabled { cursor: not-allowed; opacity: 0.5; }
+      input, textarea { font: inherit; color: inherit; }
+      [data-lucide] { width: 16px; height: 16px; flex: none; stroke-width: 2; }
+      [hidden] { display: none !important; }
+      .mono { font-family: var(--font-mono); }
+      .tnum { font-variant-numeric: tabular-nums; }
+      .muted { color: var(--muted-foreground); }
+      .display { font-family: var(--font-display); font-weight: 900; letter-spacing: 0.025em; }
+      .row { display: flex; align-items: center; }
+      .grow { flex: 1; min-width: 0; }
+      .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .spin { animation: spin 0.9s linear infinite; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      .pulse { animation: pulse 1.6s ease-in-out infinite; }
+      @keyframes pulse { 50% { opacity: 0.4; } }
+
+      /* 通用：清透胶囊（ChromePill）、按钮、弹层 */
+      .chrome { background: var(--chrome); box-shadow: 0 10px 15px -3px oklch(0 0 0 / 0.1), 0 0 0 1px var(--chrome-border); backdrop-filter: blur(24px) saturate(1.5); }
+      .pill-bar { display: flex; align-items: center; gap: 2px; border-radius: 999px; height: 40px; padding: 0 4px; }
+      .sep { width: 1px; height: 18px; background: var(--chrome-border); margin: 0 4px; flex: none; }
+      .icon-btn { width: 32px; height: 32px; border-radius: 999px; display: inline-grid; place-items: center; transition: background 0.15s; }
+      .icon-btn:hover { background: var(--muted); }
+      .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 36px; padding: 0 16px; border-radius: 999px; font-size: 14px; font-weight: 500; white-space: nowrap; transition: background 0.15s, opacity 0.15s; }
+      .btn-sm { height: 32px; padding: 0 12px; font-size: 13.5px; }
+      .btn-xs { height: 28px; padding: 0 10px; font-size: 12px; }
+      .btn-primary { background: var(--primary); color: var(--primary-foreground); }
+      .btn-primary:hover:not(:disabled) { opacity: 0.88; }
+      .btn-ghost:hover:not(:disabled) { background: var(--muted); }
+      .btn-outline { box-shadow: inset 0 0 0 1px var(--border); }
+      .btn-outline:hover:not(:disabled) { background: var(--muted); }
+      .chip { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 999px; font-size: 13px; box-shadow: inset 0 0 0 1px var(--border); transition: background 0.15s; white-space: nowrap; }
+      .chip:hover:not(:disabled) { background: var(--muted); }
+      .chip [data-lucide] { width: 16px; height: 16px; }
+      .chip.warn { box-shadow: inset 0 0 0 1.5px var(--status-warning); }
+      .chip.bad { box-shadow: inset 0 0 0 1.5px var(--destructive); }
+      .status { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 8px; border-radius: 999px; font-size: 11px; font-weight: 500; line-height: 1; white-space: nowrap; flex: none; }
+      .status [data-lucide] { width: 12px; height: 12px; }
+      .s-success { background: color-mix(in oklch, var(--status-success) 15%, transparent); color: var(--status-success); }
+      .s-running { background: color-mix(in oklch, var(--status-running) 15%, transparent); color: var(--status-running); }
+      .s-warning { background: color-mix(in oklch, var(--status-warning) 15%, transparent); color: var(--status-warning); }
+      .s-bad { background: color-mix(in oklch, var(--destructive) 10%, transparent); color: var(--destructive); }
+      .s-muted { background: var(--muted); color: var(--muted-foreground); }
+      .popover { position: fixed; z-index: 80; min-width: 240px; max-height: 340px; overflow-y: auto; border-radius: 12px; background: var(--popover); color: var(--popover-foreground); padding: 8px; box-shadow: 0 4px 12px oklch(0 0 0 / 0.18), 0 0 0 1px var(--border); display: flex; flex-direction: column; gap: 2px; }
+      .opt { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 34px; padding: 6px 10px; border-radius: 8px; font-size: 13px; text-align: left; }
+      .opt:hover:not(:disabled) { background: var(--muted); }
+      .opt .sub { font-size: 11.5px; color: var(--muted-foreground); }
+      .opt-group { font-size: 11.5px; color: var(--muted-foreground); padding: 8px 10px 2px; }
+      .overlay { position: fixed; inset: 0; z-index: 60; background: oklch(0 0 0 / 0.5); backdrop-filter: blur(4px); display: grid; place-items: center; padding: 16px; }
+      @keyframes fade { from { opacity: 0; } }
+      .dialog { width: 100%; max-width: 576px; max-height: calc(100vh - 48px); border-radius: 12px; background: var(--popover); color: var(--popover-foreground); box-shadow: 0 25px 50px -12px oklch(0 0 0 / 0.45), 0 0 0 1px color-mix(in oklch, var(--foreground) 10%, transparent); padding: 16px; display: grid; gap: 16px; font-size: 14px; position: relative; overflow: hidden; }
+      @keyframes pop { from { opacity: 0; transform: scale(0.96); } }
+      .dialog-title { font-size: 16px; font-weight: 600; }
+      .dialog-close { position: absolute; top: 10px; right: 10px; }
+      .dialog-foot { display: flex; justify-content: flex-end; gap: 8px; }
+      .tip { display: flex; align-items: center; gap: 8px; border-radius: 8px; padding: 8px 12px; font-size: 13.5px; }
+      .tip-warn { background: color-mix(in oklch, var(--status-warning) 10%, transparent); }
+      .tip-warn > [data-lucide] { color: var(--status-warning); }
+      .tip-muted { background: color-mix(in oklch, var(--muted) 50%, transparent); }
+      .tip-bad { background: color-mix(in oklch, var(--destructive) 10%, transparent); color: var(--destructive); }
+      .credit { color: var(--credit); }
+      .toast { position: fixed; bottom: 24px; right: 24px; z-index: 99; pointer-events: none; }
+      .toast > div { display: flex; align-items: center; gap: 8px; border-radius: 12px; padding: 12px 16px; background: var(--popover); color: var(--popover-foreground); box-shadow: 0 10px 30px oklch(0 0 0 / 0.25), 0 0 0 1px var(--border); font-size: 13.5px; animation: pop 0.2s ease-out; }
+
+      /* ---- 首页外壳 ---- */
+      .shell { display: flex; height: 100vh; }
+      .sidebar { width: 240px; flex: none; display: flex; flex-direction: column; padding: 8px; gap: 4px; }
+      .logo { display: flex; align-items: center; gap: 10px; padding: 8px 10px 14px; font-size: 18px; }
+      .nav-item { position: relative; isolation: isolate; display: flex; align-items: center; gap: 12px; height: 40px; padding: 0 12px 0 14px; border-radius: 999px; color: var(--muted-foreground); transition: background 0.15s, color 0.15s; white-space: nowrap; }
+      .nav-item:hover { background: var(--chrome-hover); color: var(--foreground); }
+      .nav-item [data-lucide] { width: 18px; height: 18px; }
+      .nav-item.active { color: var(--foreground); font-weight: 600; }
+      .nav-item.active::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: 999px; background: var(--chrome-hover); box-shadow: 0 0 0 1px var(--chrome-border); }
+      .nav-item.soon { opacity: 0.5; }
+      .badge-new { margin-left: auto; border-radius: 999px; padding: 1px 6px; font-size: 10px; line-height: 16px; font-weight: 500; background: color-mix(in oklch, var(--beam) 15%, transparent); color: var(--beam); }
+      .group-label { display: flex; align-items: center; justify-content: space-between; padding: 14px 14px 6px; font-size: 12.5px; color: var(--muted-foreground); }
+      .group-item { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 14px; border-radius: 999px; font-size: 13.5px; color: var(--foreground); opacity: 0.86; }
+      .group-item:hover { background: var(--chrome-hover); }
+      .thumb { width: 20px; height: 20px; border-radius: 5px; flex: none; background: linear-gradient(135deg, oklch(0.55 0.08 60), oklch(0.35 0.05 280)); }
+      .account { margin-top: auto; display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 14px; }
+      .account:hover { background: var(--chrome-hover); }
+      .avatar { width: 32px; height: 32px; border-radius: 999px; display: grid; place-items: center; background: var(--muted); font-size: 13px; font-weight: 600; }
+      .inset { flex: 1; min-width: 0; margin: 8px 8px 8px 0; border-radius: 22px; background: var(--background); box-shadow: 0 12px 40px -18px oklch(0 0 0 / 0.35), 0 0 0 1px var(--border); display: flex; flex-direction: column; overflow: hidden; }
+      .site-header { height: 56px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 20px; }
+      .home-main { flex: 1; overflow-y: auto; }
+      .home-wrap { max-width: 1280px; margin: 0 auto; padding: 24px 40px 96px; }
+      .home-title { text-align: center; font-size: 34px; line-height: 1.25; padding-top: 16px; }
+      .home-title span { color: var(--beam); }
+      .upload-card { max-width: 1080px; margin: 28px auto 0; border-radius: 30px; padding: 10px; }
+      .seg { display: inline-flex; align-items: center; padding: 3px; border-radius: 999px; background: var(--chrome-hover); box-shadow: 0 0 0 1px var(--chrome-border); }
+      .seg button { position: relative; height: 34px; padding: 0 16px; border-radius: 999px; font-size: 13.5px; color: var(--muted-foreground); }
+      .seg button.on { color: var(--foreground); font-weight: 500; background: var(--background); box-shadow: 0 1px 2px oklch(0 0 0 / 0.1), 0 0 0 1px var(--chrome-border); }
+      .dark .seg button.on { background: oklch(1 0 0 / 0.1); }
+      .panes { display: grid; margin-top: 10px; }
+      .pane { grid-area: 1 / 1; height: 176px; border-radius: 22px; transition: opacity 0.18s ease-out, filter 0.18s ease-out; }
+      .pane.off { opacity: 0; filter: blur(2px); pointer-events: none; }
+      .drop { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; border: 1px dashed color-mix(in oklch, var(--foreground) 16%, transparent); cursor: pointer; padding: 0 16px; }
+      .drop.has { border-style: solid; border-color: var(--chrome-border); }
+      .drop.err { border-color: color-mix(in oklch, var(--destructive) 50%, transparent); }
+      .pick { display: inline-flex; align-items: center; height: 36px; padding: 0 16px; border-radius: 999px; font-size: 14px; background: var(--chrome-hover); box-shadow: 0 0 0 1px var(--chrome-border); }
+      .mini-link { border-radius: 999px; padding: 2px 8px; }
+      .mini-link:hover { background: var(--chrome-hover); color: var(--foreground); }
+      .paste { position: relative; box-shadow: 0 0 0 1px var(--chrome-border); }
+      .paste textarea { width: 100%; height: 100%; resize: none; border: 0; background: transparent; padding: 16px 20px 36px; font-size: 15.5px; line-height: 1.65; outline: none; }
+      .send { width: 44px; height: 44px; border-radius: 999px; display: grid; place-items: center; background: var(--foreground); color: var(--background); margin-left: auto; transition: background 0.2s; }
+      .send:disabled { background: var(--chrome-hover); color: var(--muted-foreground); opacity: 1; }
+      .send [data-lucide] { width: 18px; height: 18px; }
+      .section-head { display: flex; align-items: center; gap: 8px; margin: 56px 0 20px; }
+      .cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 28px 16px; }
+      .card-cover { aspect-ratio: 16 / 10; border-radius: 18px; box-shadow: 0 0 0 1px var(--chrome-border); overflow: hidden; position: relative; }
+      .stepper { display: flex; gap: 3px; margin-top: 10px; }
+      .stepper i { height: 3px; flex: 1; border-radius: 999px; background: var(--chrome-hover); }
+
+      /* ---- 开拍设置 ---- */
+      .start { max-width: 672px; padding: 0; gap: 0; }
+      .slides { display: flex; width: 200%; transition: transform 0.26s cubic-bezier(0.2, 0.8, 0.2, 1); }
+      .slide { width: 50%; max-height: calc(100vh - 48px); overflow-y: auto; padding: 16px; display: grid; gap: 14px; align-content: start; }
+      .src { display: flex; align-items: center; gap: 12px; border-radius: 12px; padding: 12px; background: color-mix(in oklch, var(--muted) 50%, transparent); }
+      .src-icon { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--background); box-shadow: 0 0 0 1px var(--border); flex: none; }
+      .field { display: grid; grid-template-columns: 84px minmax(0, 1fr); align-items: center; gap: 12px; }
+      .field > label { font-size: 13px; color: var(--muted-foreground); }
+      .ratio-card { display: grid; place-items: center; gap: 6px; width: 84px; height: 72px; border-radius: 12px; box-shadow: inset 0 0 0 1px var(--border); font-size: 12.5px; transition: background 0.15s, box-shadow 0.15s; }
+      .ratio-card:hover { background: var(--muted); }
+      .ratio-card.on { box-shadow: inset 0 0 0 1.5px var(--foreground); background: var(--muted); }
+      .ratio-card i { display: block; border: 1.5px solid currentColor; border-radius: 3px; }
+      .prompt-row { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 4px 0 12px; border-radius: 10px; }
+      .prompt-row:hover { background: color-mix(in oklch, var(--muted) 50%, transparent); }
+      .prompt-row .name { width: 96px; flex: none; font-size: 13.5px; }
+      .divider { height: 1px; background: var(--border); }
+      .editor-ta { width: 100%; min-height: 220px; resize: vertical; border-radius: 10px; border: 0; box-shadow: inset 0 0 0 1px var(--input); background: transparent; padding: 10px 12px; font-size: 13.5px; line-height: 1.7; outline: none; }
+      .editor-ta:focus, .input:focus { box-shadow: inset 0 0 0 1.5px var(--ring); }
+      .input { height: 36px; border-radius: 10px; border: 0; box-shadow: inset 0 0 0 1px var(--input); background: transparent; padding: 0 12px; font-size: 14px; outline: none; }
+      details.ro { border-radius: 10px; box-shadow: inset 0 0 0 1px var(--border); padding: 8px 12px; font-size: 12.5px; }
+      details.ro summary { cursor: pointer; color: var(--muted-foreground); }
+      details.ro pre { margin: 8px 0 0; white-space: pre-wrap; font-family: var(--font-mono); font-size: 11.5px; color: var(--muted-foreground); }
+
+      /* ---- 工作台 ---- */
+      .ws { height: 100vh; display: flex; flex-direction: column; background: var(--background); color: var(--foreground); overflow: hidden; }
+      .topbar { position: relative; z-index: 30; height: 56px; flex: none; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(max-content, 1fr); align-items: center; gap: 12px; padding: 0 12px; border-bottom: 1px solid var(--border); background: var(--chrome); backdrop-filter: blur(24px); }
+      .title-input { height: 32px; width: 176px; border-radius: 8px; border: 0; background: transparent; padding: 0 8px; font-family: var(--font-display); font-weight: 700; font-size: 14px; letter-spacing: 0.025em; outline: none; }
+      .title-input:hover, .title-input:focus { background: var(--muted); }
+      .saved { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted-foreground); }
+      .saved [data-lucide] { width: 14px; height: 14px; }
+      .stages { display: flex; gap: 2px; padding: 4px; border-radius: 999px; }
+      .stage { position: relative; display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 14px; border-radius: 999px; font-size: 13px; font-weight: 500; color: var(--muted-foreground); transition: color 0.15s; }
+      .stage:hover { color: var(--foreground); }
+      .stage.on { color: var(--foreground); background: var(--chrome-hover); box-shadow: 0 0 0 1px var(--chrome-border); }
+      .stage .dot { width: 6px; height: 6px; border-radius: 999px; background: var(--primary); }
+      .proj { height: 40px; }
+      .proj span { display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; font-size: 13px; white-space: nowrap; border-radius: 999px; }
+      .proj button.part:hover { background: var(--chrome-hover); }
+      .kbd { background: var(--muted); border-radius: 4px; padding: 0 4px; font-family: var(--font-mono); font-size: 11px; }
+      .jobbar { flex: none; border-bottom: 1px solid var(--border); }
+      .jobbar:empty { display: none; }
+      .job { display: grid; gap: 6px; padding: 10px 16px; }
+      .job + .job { border-top: 1px solid var(--border); }
+      .job-line { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+      .job-line > [data-lucide] { width: 16px; height: 16px; }
+      .job-track { height: 4px; border-radius: 999px; background: var(--muted); overflow: hidden; }
+      .job-track > i { display: block; height: 100%; border-radius: 999px; background: var(--status-running); transform-origin: left; transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1); }
+      .body { flex: 1; min-height: 0; display: flex; }
+      .rail { width: 78px; flex: none; display: flex; flex-direction: column; gap: 4px; overflow-y: auto; padding: 10px 8px; border-right: 1px solid var(--border); }
+      .rail-label { padding: 4px 0; text-align: center; font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.12em; color: var(--muted-foreground); }
+      .rail-item { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%; padding: 8px 0; border-radius: 12px; font-size: 11px; color: var(--muted-foreground); transition: background 0.15s; }
+      .rail-item:hover { background: color-mix(in oklch, var(--muted) 60%, transparent); color: var(--foreground); }
+      .rail-item.on { background: var(--muted); color: var(--foreground); }
+      .rail-item.on::before { content: ""; position: absolute; top: 10px; bottom: 10px; left: -8px; width: 3px; border-radius: 0 999px 999px 0; background: var(--primary); }
+      .rail-item .no { font-family: var(--font-mono); font-size: 15px; line-height: 1; font-weight: 600; letter-spacing: -0.02em; color: var(--foreground); }
+      .rail-item .lock { position: absolute; top: 6px; right: 6px; width: 10px; height: 10px; color: var(--muted-foreground); }
+      .rail-item [data-lucide]:not(.lock) { width: 16px; height: 16px; }
+      .pips { display: flex; gap: 3px; }
+      .pips i { width: 6px; height: 3px; border-radius: 999px; background: color-mix(in oklch, var(--muted-foreground) 25%, transparent); }
+      .pips i.on { background: var(--status-success); }
+      .pips i.run { background: var(--primary); animation: pulse 1.6s infinite; }
+      .rail-sep { height: 1px; margin: 4px 8px; background: var(--border); }
+      .main { position: relative; flex: 1; min-width: 0; overflow-y: auto; }
+      .doc { display: flex; justify-content: center; gap: 32px; padding: 24px 24px 112px; }
+      .doc-col { width: 100%; max-width: 720px; min-width: 0; }
+      .doc-h { font-family: var(--font-display); font-weight: 900; font-size: 22px; letter-spacing: 0.025em; }
+      .paper { position: relative; margin-top: 16px; border-radius: 6px 6px 16px 16px; background: var(--paper); color: var(--paper-foreground); padding: 48px clamp(20px, 6vw, 72px); box-shadow: 0 24px 60px -24px rgb(0 0 0 / 0.5), 0 0 0 1px var(--border); font-size: 15px; line-height: 1.9; }
+      .paper::before { content: ""; position: absolute; top: 0; bottom: 0; left: 36px; width: 1px; background: repeating-linear-gradient(180deg, var(--border) 0 3px, transparent 3px 9px); }
+      .paper.locked { filter: saturate(0.7); }
+      .paper h1 { font-family: var(--font-display); font-weight: 900; font-size: 22px; margin: 0 0 18px; letter-spacing: 0.025em; }
+      .paper .scene { display: inline-flex; border-radius: 6px; padding: 6px 12px; font-family: var(--font-mono); font-size: 12.5px; letter-spacing: 0.05em; background: var(--muted); margin: 22px 0 8px; }
+      .paper p { margin: 0 0 6px; }
+      .aside { position: sticky; top: 24px; width: 208px; flex: none; align-self: flex-start; padding-top: 48px; }
+      @media (max-width: 1280px) { .aside { display: none; } }
+      .aside-h { margin-bottom: 8px; font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.14em; color: var(--muted-foreground); }
+      .toc { display: block; width: 100%; text-align: left; border-radius: 8px; padding: 6px 8px; font-size: 13px; color: var(--muted-foreground); }
+      .toc:hover { background: var(--muted); color: var(--foreground); }
+      .synopsis { margin-top: 20px; border-left: 2px solid var(--border); padding-left: 12px; }
+      .next-pill { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 10; display: flex; align-items: center; gap: 12px; max-width: calc(100% - 32px); border-radius: 999px; padding: 6px 6px 6px 16px; font-size: 14px; }
+      @keyframes rise { from { opacity: 0; transform: translate(-50%, 8px); } }
+      .empty { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-top: 64px; text-align: center; }
+      .empty-icon { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; background: var(--muted); color: var(--muted-foreground); }
+      .kv { display: grid; grid-template-columns: 72px 1fr; gap: 8px 12px; font-size: 13.5px; margin-top: 18px; }
+      .kv > :nth-child(odd) { color: var(--muted-foreground); }
+      .ep-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; max-height: 288px; overflow-y: auto; }
+      .ep-opt { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 8px; border-radius: 8px; box-shadow: inset 0 0 0 1px var(--border); text-align: left; font-size: 13.5px; }
+      .ep-opt.on { box-shadow: inset 0 0 0 1px var(--foreground); background: var(--muted); }
+      .ep-opt:disabled { opacity: 0.5; }
+      .box { width: 16px; height: 16px; border-radius: 4px; display: grid; place-items: center; flex: none; background: var(--background); box-shadow: inset 0 0 0 1px var(--border); }
+      .box [data-lucide] { width: 12px; height: 12px; }
+      .tag-mini { flex: none; border-radius: 999px; padding: 0 6px; font-size: 10px; line-height: 16px; background: var(--muted); color: var(--muted-foreground); }
+      .analyze ol { list-style: none; padding: 0; margin: 24px 0 0; display: grid; gap: 12px; }
+      .analyze li { display: flex; align-items: flex-start; gap: 12px; }
+      .step-dot { margin-top: 2px; width: 20px; height: 20px; border-radius: 999px; display: grid; place-items: center; box-shadow: inset 0 0 0 1px var(--border); flex: none; }
+      .step-dot.done { background: var(--status-success); color: #fff; box-shadow: none; }
+      .step-dot.run { box-shadow: inset 0 0 0 1px var(--status-running); color: var(--status-running); }
+      .step-dot [data-lucide] { width: 12px; height: 12px; }
+      .skel { height: 16px; border-radius: 6px; background: var(--muted); animation: pulse 1.6s infinite; }
+      .sheet { position: fixed; top: 0; right: 0; bottom: 0; width: min(440px, 100vw); z-index: 70; background: var(--popover); box-shadow: -20px 0 50px oklch(0 0 0 / 0.25), 0 0 0 1px var(--border); padding: 16px; display: grid; gap: 14px; align-content: start; overflow-y: auto; }
+      @keyframes slidein { from { transform: translateX(24px); opacity: 0; } }
+
+      /* ---- 演示控制（只在原型里，产品里没有） ---- */
+      .demo-ctrl { position: fixed; left: 12px; bottom: 12px; z-index: 95; width: 228px; border-radius: 14px; padding: 10px 12px; font-size: 12px; background: oklch(0.3 0.12 295 / 0.92); color: #fff; box-shadow: 0 10px 30px oklch(0 0 0 / 0.35); }
+      .demo-ctrl b { font-size: 12px; }
+      .demo-ctrl label { display: flex; align-items: center; gap: 6px; margin-top: 4px; cursor: pointer; }
+      .demo-ctrl .x { position: absolute; top: 6px; right: 8px; opacity: 0.8; }
+      .demo-fab { position: fixed; left: 12px; bottom: 12px; z-index: 95; height: 30px; padding: 0 12px; border-radius: 999px; background: oklch(0.3 0.12 295 / 0.92); color: #fff; font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <div id="pop"></div>
+    <div id="modal"></div>
+    <div class="toast" id="toast"></div>
+    <div id="demo"></div>
+
+    <script>
+      const $ = (s, r = document) => r.querySelector(s);
+      const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const icons = () => window.lucide && lucide.createIcons();
+      const fmt = (n) => Number(Math.round(n)).toLocaleString("zh-CN");
+      const wan = (n) => (n >= 10000 ? (n / 10000).toFixed(1).replace(/\.0$/, "") + " 万" : fmt(n)) + "字";
+      const dur = (sec) => (sec < 3600 ? Math.max(1, Math.round(sec / 60)) + " 分钟" : (sec / 3600).toFixed(1).replace(/\.0$/, "") + " 小时");
+      let timers = [];
+      const later = (fn, ms) => timers.push(setTimeout(fn, ms));
+      let toastT;
+      function toast(msg, icon = "circle-check", color = "var(--status-success)") {
+        $("#toast").innerHTML = `<div><i data-lucide="${icon}" style="color:${color}"></i>${esc(msg)}</div>`;
+        icons(); clearTimeout(toastT); toastT = setTimeout(() => ($("#toast").innerHTML = ""), 2600);
+      }
+
+      /* ================= 示例数据（示意） ================= */
+      const FILES = {
+        novel: { name: "霜刃.docx", size: "14.2 MB", chars: 4862000, units: 1215, unitWord: "章", kind: "novel", marks: false, why: "找到 1,206 个“第N章”，对白行占 4%", issues: ["9 章超过 1.2 万字，已按段落拆开", "清掉 312 行网文站插入语", "第 588 章与第 589 章标题重复"] },
+        script: { name: "都市逆袭.md", size: "1.1 MB", chars: 380000, units: 180, unitWord: "集", kind: "script", marks: true, why: "找到 180 个“第N集”", issues: [] },
+        unknown: { name: "无题.txt", size: "0.4 MB", chars: 120000, units: 14, unitWord: "段", kind: "unknown", marks: false, why: "没有分集或章节标题，对白特征不明显", issues: ["没有标题，按约 9000 字切成 14 段"] },
+        bad: { name: "损坏.pdf", size: "2.0 MB", bad: true },
+      };
+      const GENRES = ["都市", "古装", "玄幻修仙", "悬疑", "甜宠", "复仇", "战神", "穿越"];
+      const STYLES = ["真人都市电影", "国风3D", "日漫90年代", "赛博朋克", "水墨", "自定义画风"];
+      const MODELS = [{ key: "gpt-6-sol", ctx: 400 }, { key: "claude-sonnet-5-5", ctx: 1000 }, { key: "gemini-3.8-flash", ctx: 1000 }, { key: "qwen-lite", ctx: 64 }];
+      const STEPS = [{ key: "adapt", name: "剧本改编" }, { key: "breakdown", name: "资产拆解" }, { key: "asset_prompts", name: "资产图提示词" }, { key: "video", name: "视频提示词" }];
+      const BUILTIN = {
+        adapt: { plan: "你负责把一批章节规划为短剧分集。每集写出可见事件、冲突推进和结尾钩子，前后集因果连贯；信息密度高的一章可以拆成两集，过渡章节可以并入相邻集……", scripts: "你负责一次只完成指定的一集短剧剧本。照本集对应原文写出可拍摄的 Markdown 剧本，包含场次标题、时空、人物动作和对白；原著引号内的对白逐字保留……" },
+        breakdown: { body: "你负责从给定剧本提取实际制作需要的角色、场景、道具。已登记的角色沿用原名，新称呼写进别名；同一人物只有在年龄、服装或身份明显变化时才新增造型……" },
+        asset_prompts: { body: "你负责为每个新资产写一段可直接用于图片生成的中文正向提示词。先保持资产的视觉身份，再融入画风的材质、光照和色彩……" },
+        video: { body: "你负责把一集锁定剧本切成可以独立生成视频的片段，每段写清镜头、动作与运镜，资产用 @[名](节点id) 引用……" },
+      };
+      const SKILLS = {
+        adapt: [{ name: "drama-hook", title: "爆款短剧改编法", desc: "前 3 秒钩子、每集一个反转" }],
+        breakdown: [{ name: "drama-continuity", title: "跨集连续性", desc: "区分新资产与状态变体", scripts: true }],
+        asset_prompts: [],
+        video: [{ name: "seedance-video", title: "Seedance 2.0 视频提示词", desc: "时间轴分段 + 运镜词表" }],
+      };
+      const TITLES = ["雪夜入门", "断剑认主", "药园风波", "夜探后山", "师兄的秘密", "宗门大比", "血色石阶", "旧账", "藏经阁", "替罪", "下山", "重逢", "风起青州", "孤城", "灯下", "破境", "暗桩", "归来", "对峙", "拜别"];
+      const SYN = ["沈砚冒雪上山拜师，在石阶尽头捡到一把断剑。", "断剑夜里发光，师兄闻声而来，想把剑抢走。", "沈砚被罚看守药园，发现有人每夜偷走灵草。", "跟着偷草人进了后山，撞见不该看见的交易。"];
+      const POSTERS = ["linear-gradient(160deg,oklch(0.42 0.06 250),oklch(0.2 0.03 260))", "linear-gradient(160deg,oklch(0.5 0.1 40),oklch(0.25 0.05 20))", "linear-gradient(160deg,oklch(0.45 0.05 160),oklch(0.22 0.03 200))", "linear-gradient(160deg,oklch(0.55 0.08 80),oklch(0.28 0.04 60))"];
+
+      /* ================= 状态（内存，刷新复原） ================= */
+      let S;
+      function init(fileKey = "novel") {
+        timers.forEach(clearTimeout); timers = [];
+        const f = FILES[fileKey];
+        S = {
+          dark: document.documentElement.classList.contains("dark"),
+          screen: "home", tab: "file", fileKey, loading: false, cardErr: "",
+          kind: f.kind === "unknown" ? null : f.kind || null,
+          rangeAll: true, rangeN: Math.min(120, f.units || 120),
+          ratio: "9:16", genre: "", style: "真人都市电影", seconds: 60, model: "gpt-6-sol",
+          prompts: { adapt: { source: "builtin" }, breakdown: { source: "builtin" }, asset_prompts: { source: "builtin" }, video: { source: "builtin" } },
+          mine: { adapt: [{ id: "m1", name: "坏示例：只输出 Markdown", bodies: { plan: "请直接用 Markdown 列出分集，不要 JSON。", scripts: "请直接写剧本 Markdown，不要 JSON。" }, bad: true }], breakdown: [], asset_prompts: [], video: [{ id: "m2", name: "Seedance 爆款", bodies: { body: "每段 10–15 秒，开头特写，结尾留悬念……" } }] },
+          editor: null, pop: null, modal: null,
+          ws: null,
+          sim: S?.sim || { expired: false, credit: false, open: true },
+        };
+        try { const r = localStorage.getItem("drama-proto-ratio"); if (r) S.ratio = r; } catch {}
+      }
+      const F = () => FILES[S.fileKey];
+      const isScript = () => S.kind === "script";
+      function est(from = 0, to = null) {
+        const f = F(); const end = to ?? (isScript() ? f.units : S.rangeAll ? f.units : S.rangeN);
+        const n = Math.max(1, end - from), per = f.chars / f.units, chars = per * n, k = S.seconds / 60;
+        if (isScript()) { const eps = f.marks ? f.units : Math.round(f.chars / (1000 * k)); return { min: eps, max: eps, credits: 120, secs: 60, batches: 0 }; }
+        const batches = Math.ceil(n / Math.max(1, Math.min(12, Math.floor(30000 / per))));
+        return { min: Math.max(1, Math.round(chars / (2500 * k))), max: Math.max(1, Math.round(chars / (1500 * k))), credits: (from ? 0 : 120) + batches * 9, secs: (from ? 0 : 60) + batches * 60, batches };
+      }
+
+      function render() {
+        document.documentElement.classList.toggle("dark", S.dark);
+        $("#app").innerHTML = S.screen === "ws" ? wsHTML() : homeHTML();
+        $("#modal").innerHTML = S.modal ? modalHTML() : "";
+        $("#pop").innerHTML = S.pop ? popHTML() : "";
+        $("#demo").innerHTML = demoHTML();
+        icons();
+        if (S.pop) placePop();
+      }
+
+      /* ================= 首页 ================= */
+      function themeBtn() { return `<button class="icon-btn" onclick="S.dark=!S.dark;render()" aria-label="切换主题"><i data-lucide="${S.dark ? "moon" : "sun"}"></i></button>`; }
+      function creditsBtn() {
+        return `<button class="row mono tnum" style="height:36px;gap:8px;padding:0 12px 0 10px;font-size:14px;font-weight:600"><span style="width:6px;height:6px;border-radius:999px;background:var(--status-success);box-shadow:0 0 0 3px color-mix(in oklch,var(--status-success) 15%,transparent)"></span><i data-lucide="sparkle" style="width:18px;height:18px;color:var(--credit);fill:var(--credit);stroke-width:0"></i>99,998,504</button>`;
+      }
+      function logoSVG() {
+        return `<svg width="30" height="30" viewBox="0 0 30 30" fill="none"><path d="M10 4 C4 9 4 21 10 26" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><path d="M20 4 C26 9 26 21 20 26" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><path d="M13.5 6 L16.5 24" stroke="var(--beam)" stroke-width="2.6" stroke-linecap="round"/></svg>`;
+      }
+      function homeHTML() {
+        const f = F();
+        const nav = [["clapperboard", "创作"], ["compass", "探索", "soon"], ["folder-open", "资产"], ["film", "短剧工作室", "active"]];
+        const canvases = ["未命名画布", "漫剧老李（导入）", "未命名画布", "未命名画布", "未命名画布"];
+        const dramas = [["霜刃·第一季", "剧本就绪 · 已拆解 12 集", "40 集 · 2 小时前", ["on", "on", "warn"]], ["豪门千金归来", "研读中", "— · 刚刚", ["warn", "", ""]], ["都市逆袭", "剧本就绪", "80 集 · 昨天", ["on", "", ""]], ["月下白衣", "已出片 6 集", "24 集 · 3 天前", ["on", "on", "on"]]];
+        return `<div class="shell home-theme">
+          <aside class="sidebar">
+            <div class="logo">${logoSVG()}<span class="display" style="font-size:18px">连镜</span></div>
+            ${nav.map(([ic, t, st]) => `<a class="nav-item ${st || ""}"><i data-lucide="${ic}"></i><span>${t}</span>${t === "短剧工作室" ? '<span class="badge-new">New</span>' : ""}</a>`).join("")}
+            <div class="group-label"><span>对话</span><i data-lucide="plus"></i></div>
+            <div class="group-label"><span>画布</span><span>全部</span></div>
+            ${canvases.map((c, i) => `<a class="group-item"><span class="thumb" style="${i ? "background:var(--muted)" : ""}"></span><span class="truncate">${c}</span></a>`).join("")}
+            <div class="account"><span class="avatar">A</span><div class="grow"><div style="font-weight:600;font-size:13.5px">admin</div><div class="muted" style="font-size:12px">管理员</div></div><i data-lucide="chevrons-up-down" class="muted"></i></div>
+          </aside>
+          <div class="inset">
+            <header class="site-header"><button class="icon-btn" aria-label="收起侧栏"><i data-lucide="panel-left"></i></button><div style="margin-left:auto" class="pill-bar chrome">${themeBtn()}<span class="sep"></span>${creditsBtn()}</div></header>
+            <div class="home-main"><div class="home-wrap">
+              <h1 class="home-title display">把剧本交给 <span>短剧工作室</span></h1>
+              <div class="upload-card chrome">
+                <div class="seg" role="radiogroup"><button class="${S.tab === "file" ? "on" : ""}" onclick="S.tab='file';render()">上传剧本 / 小说</button><button class="${S.tab === "paste" ? "on" : ""}" onclick="S.tab='paste';render()">粘贴正文</button></div>
+                <div class="panes">
+                  <div class="pane drop has ${S.tab === "file" ? "" : "off"} ${S.cardErr ? "err" : ""}">
+                    <div style="font-size:15.5px;font-weight:500">${esc(f.name)}</div>
+                    <div class="muted tnum row" style="gap:4px;font-size:13px">${esc(f.size)}<span class="mini-link">更换</span><button class="mini-link">移除</button></div>
+                  </div>
+                  <div class="pane paste ${S.tab === "paste" ? "" : "off"}"><textarea placeholder="粘贴剧本或小说正文"></textarea><span class="muted tnum" style="position:absolute;right:16px;bottom:12px;font-size:12px">0 / 5,000,000 字</span></div>
+                </div>
+                ${S.cardErr ? `<p style="color:var(--destructive);font-size:13px;margin:8px 8px 0">${esc(S.cardErr)}</p>` : ""}
+                <div class="row" style="padding:10px 2px 0;gap:4px">
+                  <span class="muted" style="font-size:13px;padding-left:10px;letter-spacing:0.02em">txt · md · docx　500 万字以内</span>
+                  <button class="send" ${S.loading ? "disabled" : ""} onclick="preflight()" aria-label="开始">${S.loading ? '<i data-lucide="loader-2" class="spin"></i>' : '<i data-lucide="arrow-up"></i>'}</button>
+                </div>
+              </div>
+              <div class="section-head"><h2 style="margin:0;font-size:17px;font-weight:600">我的短剧</h2><span class="muted tnum" style="font-size:14px">${dramas.length}</span><a class="muted row" style="margin-left:auto;font-size:13px;gap:2px">更多<i data-lucide="chevron-right"></i></a></div>
+              <div class="cards">${dramas.map(([t, st, meta, steps], i) => `<div>
+                <div class="card-cover" style="background:${POSTERS[i]}"><span class="display" style="position:absolute;left:16px;bottom:14px;color:#fff;font-size:20px;text-shadow:0 2px 10px rgb(0 0 0/.4)">${t}</span></div>
+                <div style="padding:12px 4px 0"><div class="truncate" style="font-size:15px;font-weight:500">${t}</div>
+                  <div class="muted row" style="gap:6px;margin-top:4px;font-size:13px">${st === "研读中" ? '<i data-lucide="loader-2" class="spin" style="width:12px;height:12px;color:var(--status-running)"></i>' : '<span style="width:6px;height:6px;border-radius:999px;background:var(--status-success)"></span>'}${st}<span class="tnum" style="margin-left:auto">${meta}</span></div>
+                  <div class="stepper">${steps.map((x) => `<i style="${x === "on" ? "background:var(--status-success)" : x === "warn" ? "background:var(--status-warning)" : ""}"></i>`).join("")}</div></div></div>`).join("")}</div>
+            </div></div>
+          </div>
+        </div>`;
+      }
+      function preflight() {
+        S.cardErr = ""; S.loading = true; render();
+        later(() => {
+          S.loading = false;
+          if (F().bad) { S.cardErr = "只支持 txt、md、docx 文件"; render(); return; }
+          S.modal = { kind: "start" }; render();
+        }, 900);
+      }
+
+      /* ================= 弹层（Popover） ================= */
+      function openPop(kind, ev) {
+        ev.stopPropagation();
+        const r = ev.currentTarget.getBoundingClientRect();
+        S.pop = { kind, r: { left: r.left, top: r.top, bottom: r.bottom } };
+        render();
+      }
+      function placePop() {
+        const el = $("#pop .popover"); if (!el) return;
+        const r = S.pop.r, h = el.offsetHeight, w = el.offsetWidth;
+        let top = r.bottom + 6; if (top + h > innerHeight - 8) top = Math.max(8, r.top - h - 6);
+        el.style.top = top + "px"; el.style.left = Math.min(r.left, innerWidth - w - 8) + "px";
+      }
+      document.addEventListener("click", (e) => { if (S.pop && !e.target.closest(".popover")) { S.pop = null; render(); } });
+      const ck = (on) => (on ? '<i data-lucide="check" style="margin-left:auto"></i>' : "");
+      function popHTML() {
+        const p = S.pop, f = F();
+        let inner = "";
+        if (p.kind === "kind") inner = [["novel", "小说", "先改编成剧本"], ["script", "剧本", "直接导入，不改编"]].map(([k, n, d]) => `<button class="opt" onclick="S.kind='${k}';S.pop=null;render()"><div><div>${n}</div><div class="sub">${d}</div></div>${ck(S.kind === k)}</button>`).join("");
+        else if (p.kind === "range") inner = `<button class="opt" onclick="S.rangeAll=true;S.pop=null;render()">全部（${fmt(f.units)} ${f.unitWord}）${ck(S.rangeAll)}</button>${[20, 60, 120, 300].filter((n) => n < f.units).map((n) => `<button class="opt" onclick="S.rangeAll=false;S.rangeN=${n};S.pop=null;render()">规划到第 ${n} ${f.unitWord}${ck(!S.rangeAll && S.rangeN === n)}</button>`).join("")}<div class="row" style="gap:6px;padding:6px 10px;font-size:13px">第<input class="input tnum" style="width:84px;height:30px" type="number" min="1" max="${f.units}" value="${S.rangeN}" onchange="S.rangeN=Math.max(1,Math.min(${f.units},+this.value||1));S.rangeAll=false;S.pop=null;render()" />${f.unitWord}</div>`;
+        else if (p.kind === "genre") inner = GENRES.map((g) => `<button class="opt" onclick="S.genre='${g}';S.pop=null;render()">${g}${ck(S.genre === g)}</button>`).join("");
+        else if (p.kind === "style") inner = STYLES.map((g) => `<button class="opt" onclick="S.style='${g}';S.pop=null;render()">${g}${ck(S.style === g)}</button>`).join("");
+        else if (p.kind === "seconds") inner = [60, 90, 120, 180].map((v) => `<button class="opt" onclick="S.seconds=${v};S.pop=null;render()">${v} 秒 / 集${ck(S.seconds === v)}</button>`).join("");
+        else if (p.kind === "model") inner = MODELS.map((m) => { const ok = m.ctx >= 128; return `<button class="opt" ${ok ? "" : 'disabled title="上下文低于 128k，装不下一批完整原文"'} onclick="S.model='${m.key}';S.pop=null;render()"><div><div>${m.key}</div><div class="sub">${m.ctx >= 1000 ? "1M" : m.ctx + "k"} 上下文${ok ? "" : " · 低于 128k"}</div></div>${ck(S.model === m.key)}</button>`; }).join("");
+        else if (p.kind.startsWith("prompt:")) {
+          const step = p.kind.slice(7), cur = S.prompts[step];
+          inner = `<button class="opt" onclick="setPrompt('${step}',{source:'builtin'})">内置<span class="tag-mini">推荐</span>${ck(cur.source === "builtin")}</button>
+            <div class="opt-group">我的提示词</div>
+            ${S.mine[step].map((m) => `<div class="row"><button class="opt grow" onclick="setPrompt('${step}',{source:'mine',id:'${m.id}'})"><span class="truncate">${esc(m.name)}</span>${ck(cur.source === "mine" && cur.id === m.id)}</button><button class="icon-btn" title="编辑" onclick="openEditor('${step}','${m.id}')"><i data-lucide="pencil"></i></button><button class="icon-btn" title="删除" onclick="delMine('${step}','${m.id}')"><i data-lucide="trash-2"></i></button></div>`).join("")}
+            <button class="opt" onclick="openEditor('${step}',null)"><i data-lucide="plus"></i>新建</button>
+            <div class="opt-group">技能</div>
+            ${SKILLS[step].length ? SKILLS[step].map((k) => `<button class="opt" onclick="setPrompt('${step}',{source:'skill',skill:'${k.name}'})"><div class="grow"><div class="row" style="gap:6px">${esc(k.title)}${k.scripts ? '<span class="status s-warning">仅用正文</span>' : ""}</div><div class="sub">${esc(k.desc)}</div></div>${ck(cur.source === "skill" && cur.skill === k.name)}</button>`).join("") : `<button class="opt" disabled title="后台还没有给技能标这个环节">暂无适用技能</button>`}`;
+        }
+        return `<div class="popover" onclick="event.stopPropagation()" style="min-width:${p.kind.startsWith("prompt:") ? 280 : 220}px">${inner}</div>`;
+      }
+      function setPrompt(step, v) { S.prompts[step] = v; S.pop = null; render(); }
+      function delMine(step, id) { S.mine[step] = S.mine[step].filter((m) => m.id !== id); if (S.prompts[step].id === id) S.prompts[step] = { source: "builtin" }; S.pop = null; toast("已删除，已建的短剧不受影响"); render(); }
+      function promptLabel(step) {
+        const v = S.prompts[step];
+        if (step === "adapt" && isScript()) return "剧本直接导入";
+        if (v.source === "builtin") return "内置";
+        if (v.source === "mine") return "我的 · " + (S.mine[step].find((m) => m.id === v.id)?.name || "已删除");
+        return "技能 · " + (SKILLS[step].find((k) => k.name === v.skill)?.title || "已停用");
+      }
+
+      /* ================= 弹窗 ================= */
+      function modalHTML() {
+        const m = S.modal;
+        const body = m.kind === "editor" ? `<div class="dialog" style="max-width:640px" role="dialog">${editorHTML()}</div>` : m.kind === "start" ? startHTML() : m.kind === "scripts" ? scriptsDlgHTML() : m.kind === "breakdown" ? breakdownDlgHTML() : m.kind === "range" ? rangeDlgHTML() : m.kind === "prompts" ? "" : "";
+        if (m.kind === "prompts") return `<div class="overlay" style="background:oklch(0 0 0/.3);backdrop-filter:none" onclick="if(event.target===this){S.modal=null;render()}"><div class="sheet" onclick="event.stopPropagation()">${promptsSheetHTML()}</div></div>`;
+        return `<div class="overlay" onclick="if(event.target===this){S.modal=null;S.editor=null;render()}">${body}</div>`;
+      }
+      function startHTML() {
+        const f = F(), e = est();
+        const kindLabel = S.kind ? { script: "剧本", novel: "小说" }[S.kind] : "请选择";
+        const model = MODELS.find((x) => x.key === S.model);
+        const secLocked = isScript() && f.marks;
+        return `<div class="dialog start" role="dialog" aria-label="开拍设置"><div class="slides" style="transform:translateX(${S.editor ? "-50%" : "0"})">
+          <div class="slide">
+            <div class="row"><div class="dialog-title">开拍设置</div><button class="icon-btn" style="margin-left:auto" onclick="S.modal=null;render()" aria-label="关闭"><i data-lucide="x"></i></button></div>
+            <div class="src">
+              <span class="src-icon"><i data-lucide="file-text"></i></span>
+              <div class="grow"><div class="truncate" style="font-weight:500">${esc(f.name)}</div><div class="muted tnum" style="font-size:12.5px">${wan(f.chars)} · ${fmt(f.units)} ${f.unitWord}</div></div>
+              <button class="chip ${S.kind ? "" : "warn"}" onclick="openPop('kind',event)">${kindLabel}<i data-lucide="chevron-down"></i></button>
+            </div>
+            <div class="muted" style="font-size:12.5px;margin-top:-6px;padding:0 4px">依据：${esc(f.why)}${S.kind === "novel" ? " · 先改编成剧本" : S.kind === "script" ? (f.marks ? " · 按原分集直接导入" : " · 按场次切集直接导入") : ""}${f.issues.length ? ` · <details style="display:inline"><summary style="display:inline;cursor:pointer;text-decoration:underline dotted">已处理 ${f.issues.length} 处</summary><span style="display:block;padding-top:4px">${f.issues.map(esc).join("；")}</span></details>` : ""}</div>
+            <div class="divider"></div>
+            <div class="field"><label>规划范围</label>
+              ${isScript() ? `<span class="muted tnum" style="font-size:13.5px">剧本一次切完 · ${fmt(e.min)} 集</span>` : `<div class="row" style="gap:10px;flex-wrap:wrap"><button class="chip" onclick="openPop('range',event)">${S.rangeAll ? "全部" : `规划到第 ${fmt(S.rangeN)} ${f.unitWord}`}<i data-lucide="chevron-down"></i></button><span class="muted tnum" style="font-size:12.5px">预计约 ${fmt(e.min)}–${fmt(e.max)} 集 · 约 <span class="credit">${fmt(e.credits)}</span> 积分 · 约 ${dur(e.secs)}</span></div>`}
+            </div>
+            <div class="field"><label>画幅</label><div class="row" style="gap:8px">${[["9:16", 12, 20], ["16:9", 24, 14], ["4:3", 20, 15]].map(([r, w, h]) => `<button class="ratio-card ${S.ratio === r ? "on" : ""}" onclick="S.ratio='${r}';try{localStorage.setItem('drama-proto-ratio','${r}')}catch(e){};render()"><i style="width:${w}px;height:${h}px"></i>${r}</button>`).join("")}</div></div>
+            <div class="field"><label>风格</label><div class="row" style="gap:6px;flex-wrap:wrap">
+              <button class="chip" onclick="openPop('genre',event)">${S.genre || "题材"}<i data-lucide="chevron-down"></i></button>
+              <button class="chip" onclick="openPop('style',event)"><i data-lucide="palette"></i>${S.style}<i data-lucide="chevron-down"></i></button>
+              <button class="chip" ${secLocked ? 'disabled title="剧本按原分集"' : ""} onclick="openPop('seconds',event)">${secLocked ? `按原分集 · ${f.units} 集` : `${S.seconds}s/集${isScript() ? "（参考）" : ""}`}<i data-lucide="chevron-down"></i></button>
+            </div></div>
+            <div class="field"><label>文本模型</label><div><button class="chip" onclick="openPop('model',event)"><i data-lucide="cpu"></i>${model.key}<i data-lucide="chevron-down"></i></button></div></div>
+            <div class="divider"></div>
+            <div>
+              <div class="muted" style="font-size:13px;margin:0 0 4px 12px">提示词</div>
+              ${STEPS.map((s) => { const dis = s.key === "adapt" && isScript(); return `<div class="prompt-row"><span class="name">${s.name}</span><button class="chip" ${dis ? 'disabled title="剧本直接导入，不改编"' : ""} onclick="openPop('prompt:${s.key}',event)"><span class="truncate" style="max-width:260px">${esc(promptLabel(s.key))}</span><i data-lucide="chevron-down"></i></button></div>`; }).join("")}
+            </div>
+            ${S.startErr ? `<div class="tip tip-bad"><i data-lucide="circle-x"></i>${esc(S.startErr)}</div>` : ""}
+            <div class="dialog-foot"><button class="btn btn-ghost" onclick="S.modal=null;render()">取消</button><button class="btn btn-primary" ${S.kind ? "" : 'disabled title="先确认是剧本还是小说"'} onclick="startDrama()">开始</button></div>
+          </div>
+          <div class="slide">${S.editor ? editorHTML() : ""}</div>
+        </div></div>`;
+      }
+      function openEditor(step, id) {
+        const item = id ? S.mine[step].find((m) => m.id === id) : null;
+        S.editor = { step, id, name: item ? item.name : "", bodies: item ? { ...item.bodies } : { ...BUILTIN[step] }, page: step === "adapt" ? "plan" : "body", err: "" };
+        S.pop = null; if (S.modal && S.modal.kind === "prompts") { S.editor.back = "prompts"; S.modal = { kind: "editor" }; } render();
+      }
+      function editorHTML() {
+        const e = S.editor, stepName = STEPS.find((s) => s.key === e.step).name, body = e.bodies[e.page] ?? "";
+        return `<div class="row" style="gap:6px"><button class="icon-btn" onclick="closeEditor()" aria-label="返回"><i data-lucide="arrow-left"></i></button><div class="dialog-title">${stepName} · ${e.id ? "编辑" : "新建"}</div></div>
+          <input class="input" maxlength="40" placeholder="名称" value="${esc(e.name)}" oninput="S.editor.name=this.value" />
+          ${e.err ? `<div style="color:var(--destructive);font-size:13px;margin-top:-6px">${esc(e.err)}</div>` : ""}
+          ${e.step === "adapt" ? `<div class="seg"><button class="${e.page === "plan" ? "on" : ""}" onclick="S.editor.page='plan';render()">分集规划</button><button class="${e.page === "scripts" ? "on" : ""}" onclick="S.editor.page='scripts';render()">分集剧本</button></div>` : ""}
+          <div><textarea class="editor-ta" oninput="S.editor.bodies[S.editor.page]=this.value;document.getElementById('cnt').textContent=this.value.length.toLocaleString()">${esc(body)}</textarea><div class="muted mono tnum" style="text-align:right;font-size:11.5px"><span id="cnt">${fmt(body.length)}</span> / 20,000</div></div>
+          <div class="dialog-foot"><button class="btn btn-ghost" style="margin-right:auto" onclick="S.editor.bodies[S.editor.page]=BUILTIN[S.editor.step][S.editor.page];render()">恢复内置</button><button class="btn btn-primary" onclick="saveEditor()">保存</button></div>`;
+      }
+      function closeEditor() { const back = S.editor && S.editor.back; S.editor = null; if (back) S.modal = { kind: back }; render(); }
+      function saveEditor() {
+        const e = S.editor, name = e.name.trim();
+        if (!name) { e.err = "请填写名称"; render(); return; }
+        if (S.mine[e.step].some((m) => m.name === name && m.id !== e.id)) { e.err = "这个环节里已有同名提示词"; render(); return; }
+        if (Object.values(e.bodies).some((b) => !String(b).trim())) { e.err = "正文不能为空"; render(); return; }
+        let id = e.id;
+        if (id) Object.assign(S.mine[e.step].find((m) => m.id === id), { name, bodies: { ...e.bodies } });
+        else { id = "m" + Date.now(); S.mine[e.step].push({ id, name, bodies: { ...e.bodies } }); }
+        S.prompts[e.step] = { source: "mine", id }; closeEditor(); toast("已存进「我的提示词」");
+      }
+
+      /* ================= 工作台 ================= */
+      function startDrama() {
+        S.startErr = "";
+        if (S.sim.expired) { S.modal = null; S.cardErr = "文件已过期，请重新上传"; render(); return; }
+        const f = F();
+        S.modal = null; S.screen = "ws";
+        S.ws = { stage: "script", view: "outline", phase: "running", analyzed: false, planned: 0, rangeEnd: isScript() ? f.units : S.rangeAll ? f.units : S.rangeN, eps: [], pause: "", failPrompt: false, userJob: null, sel: [], dlgRange: { a: 1, b: 10 } };
+        render(); later(planTick, 1400);
+      }
+      const badPrompt = () => !isScript() && S.prompts.adapt.source === "mine" && S.mine.adapt.find((m) => m.id === S.prompts.adapt.id)?.bad;
+      function planTick() {
+        const w = S.ws; if (!w || w.phase !== "running") return;
+        const f = F();
+        if (!w.analyzed) { w.analyzed = true; render(); later(planTick, 1100); return; }
+        if (isScript()) { for (let i = 0; i < Math.min(f.units, 180); i++) w.eps.push(mkEp(i + 1, i + 1, "ready")); w.planned = f.units; w.phase = "done"; w.view = 1; render(); toast("剧本已按原分集切好"); return; }
+        if (badPrompt()) { w.phase = "paused"; w.failPrompt = true; w.pause = "第 1–7 章的分集规划没成功：当前提示词的输出不符合结构"; render(); return; }
+        if (S.sim.credit && w.eps.length >= 18) { w.phase = "paused"; w.pause = "积分不足，充值后继续"; render(); return; }
+        const from = w.planned, to = Math.min(w.rangeEnd, from + 7), n = Math.round((to - from) * 1.4), start = w.eps.length;
+        for (let i = 0; i < n; i++) w.eps.push(mkEp(start + i + 1, from + 1 + Math.floor((i * (to - from)) / Math.max(1, n)), "empty"));
+        w.planned = to;
+        if (start === 0 && w.view === "outline") w.view = 1;
+        if (w.planned >= w.rangeEnd) { w.phase = "done"; render(); toast("规划范围已完成"); return; }
+        render(); later(planTick, 1500);
+      }
+      function mkEp(no, unit, script) { return { no, unit, unitTo: unit, title: TITLES[(no - 1) % TITLES.length], synopsis: SYN[(no - 1) % SYN.length], hook: "雪地里的断剑在发光。", cliff: "师兄认出了这把剑。", script, locked: false, sb: false }; }
+      function resume() { const w = S.ws; S.sim.credit = false; w.phase = "running"; w.pause = ""; w.failPrompt = false; render(); later(planTick, 800); }
+      function retryBuiltin() { S.prompts.adapt = { source: "builtin" }; toast("剧本改编已切回内置，重新规划"); resume(); }
+
+      function wsHTML() {
+        const w = S.ws, f = F();
+        const ep = typeof w.view === "number" ? w.eps.find((e) => e.no === w.view) : null;
+        return `<div class="ws drama-theme">
+          <header class="topbar">
+            <div class="row" style="gap:6px;min-width:0"><button class="icon-btn" onclick="init(S.fileKey);render()" aria-label="返回"><i data-lucide="arrow-left"></i></button><input class="title-input" value="${esc(f.name.replace(/\..*$/, ""))}" /><span class="saved"><i data-lucide="cloud-check"></i>已保存</span></div>
+            <nav class="stages chrome">${["总览", "剧本", "资产管理", "片场", "成片"].map((t, i) => `<button class="stage ${i === 1 ? "on" : ""}" onclick="${i === 1 ? "" : "toast('原型只做剧本页','info','var(--muted-foreground)')"}">${t}${i === 1 && w.phase === "running" ? '<span class="dot pulse"></span>' : ""}</button>`).join("")}</nav>
+            <div class="row" style="justify-content:flex-end;gap:4px">
+              <div class="pill-bar chrome proj"><button class="part" onclick="S.modal={kind:'prompts'};render()" style="border-radius:999px"><span><i data-lucide="sliders-horizontal" style="width:14px;height:14px"></i>${esc(S.style)}</span></button><span class="sep"></span><span class="tnum">${S.ratio}</span><span class="sep"></span><span><i data-lucide="cpu" style="width:14px;height:14px"></i>${S.model}</span></div>
+              <button class="btn btn-ghost btn-sm"><i data-lucide="search"></i><span class="kbd">⌘K</span></button>
+              <div class="pill-bar chrome">${themeBtn()}<span class="sep"></span>${creditsBtn()}</div>
+            </div>
+          </header>
+          <div class="jobbar">${jobsHTML()}</div>
+          <div class="body">
+            <nav class="rail">
+              <div class="rail-label">分集</div>
+              <button class="rail-item ${w.view === "outline" ? "on" : ""}" onclick="S.ws.view='outline';render()"><i data-lucide="scroll-text"></i>大纲</button>
+              <button class="rail-item ${w.view === "cast" ? "on" : ""}" onclick="S.ws.view='cast';render()"><i data-lucide="users"></i>人物</button>
+              <div class="rail-sep"></div>
+              ${w.eps.slice(0, 120).map((e) => `<button class="rail-item ${w.view === e.no ? "on" : ""}" onclick="S.ws.view=${e.no};render()" title="第 ${e.no} 集 · ${esc(e.title)}">${e.locked ? '<i data-lucide="lock" class="lock"></i>' : ""}<span class="no">${String(e.no).padStart(2, "0")}</span><span class="pips"><i class="${e.script === "ready" ? "on" : e.script === "generating" ? "run" : ""}"></i><i class="${e.locked ? "on" : e.breaking ? "run" : ""}"></i><i class="${e.sb ? "on" : ""}"></i><i></i></span></button>`).join("")}
+              ${w.eps.length > 120 ? `<div class="muted tnum" style="text-align:center;font-size:11px">… ${fmt(w.eps.length)}</div>` : ""}
+              ${w.phase === "done" && w.rangeEnd < f.units && !isScript() ? `<button class="rail-item" onclick="S.modal={kind:'range',all:true,n:Math.min(${f.units},S.ws.rangeEnd+120)};render()"><i data-lucide="chevrons-down"></i>继续规划</button>` : ""}
+              <button class="rail-item" ${w.phase === "running" ? 'disabled title="正在规划，完成或暂停后再新增"' : ""}><i data-lucide="plus"></i>新增一集</button>
+            </nav>
+            <main class="main">${w.view === "outline" ? outlineHTML() : w.view === "cast" ? castHTML() : ep ? epHTML(ep) : ""}${nextPillHTML()}</main>
+          </div>
+        </div>`;
+      }
+      function jobsHTML() {
+        const w = S.ws, f = F(); let out = "";
+        if (w.phase === "running") {
+          const pct = w.analyzed ? Math.round((w.planned / w.rangeEnd) * 100) : 4;
+          const remain = est(w.planned, w.rangeEnd);
+          out += `<div class="job" role="status"><div class="job-line"><i data-lucide="loader-2" class="spin" style="color:var(--status-running)"></i><span class="grow truncate"><b style="font-weight:500">${!w.analyzed ? "正在粗读全书" : `正在规划第 ${fmt(w.planned + 1)}–${fmt(Math.min(w.rangeEnd, w.planned + 7))} ${f.unitWord}`}</b><span class="muted" style="margin-left:8px;font-size:12px">${!w.analyzed ? "研读 · 抽样读开篇与后文，整理人物与梗概" : `分集规划 · 已出 ${fmt(w.eps.length)} 集目录 · 还需约 ${dur(remain.secs)}`} · 可以离开这个页面，完成后会通知你</span></span><span class="muted tnum" style="font-size:12px">${pct}%</span><button class="btn btn-ghost btn-xs" onclick="S.ws.phase='paused';S.ws.pause='已暂停';render()">暂停</button></div><div class="job-track"><i style="transform:scaleX(${pct / 100})"></i></div></div>`;
+        } else if (w.phase === "paused") {
+          out += `<div class="job" role="alert"><div class="job-line"><span class="grow truncate" style="${w.pause === "已暂停" ? "" : "color:var(--destructive)"}"><b style="font-weight:500">${w.pause === "已暂停" ? "分集规划已暂停" : "分集规划暂停"}</b><span style="margin-left:8px;font-size:12px" class="${w.pause === "已暂停" ? "muted" : ""}">${esc(w.pause === "已暂停" ? `已规划到第 ${fmt(w.planned)} ${f.unitWord}，已规划的集照常可以写剧本` : w.pause + " · 失败不扣积分")}</span></span>${w.failPrompt ? `<button class="btn btn-outline btn-xs" onclick="retryBuiltin()">改用内置重试</button><button class="btn btn-ghost btn-xs" onclick="S.modal={kind:'prompts'};render()">提示词设置</button>` : `<button class="btn btn-outline btn-xs" onclick="resume()"><i data-lucide="play" style="width:12px;height:12px"></i>继续</button>`}</div></div>`;
+        }
+        const j = w.userJob;
+        if (j) out += `<div class="job" role="status"><div class="job-line"><i data-lucide="loader-2" class="spin" style="color:var(--status-running)"></i><span class="grow truncate"><b style="font-weight:500">${esc(j.label)}</b><span class="muted" style="margin-left:8px;font-size:12px">${j.kind === "scripts" ? "生成分集剧本" : "拆解资产"} · 可以离开这个页面，完成后会通知你</span></span><span class="muted tnum" style="font-size:12px">${j.pct}%</span><button class="btn btn-ghost btn-xs">取消</button></div><div class="job-track"><i style="transform:scaleX(${j.pct / 100})"></i></div></div>`;
+        return out;
+      }
+      function outlineHTML() {
+        const w = S.ws;
+        if (!w.analyzed || !w.eps.length) {
+          const cur = w.analyzed ? 1 : 0;
+          const steps = [["粗读全书", "抽样读开篇与后文，整理人物与梗概"], ["分集规划", "按批读原文，生成分集目录"]];
+          return `<div class="doc"><div class="doc-col analyze"><div class="doc-h">大纲</div><div style="padding-top:24px"><h3 style="margin:0;font-size:16px;font-weight:600">${w.phase === "paused" ? "分集规划已暂停" : "正在研读剧本…"}</h3><p class="muted" style="margin:4px 0 0;font-size:14px">可以离开这个页面，完成后会通知你</p>
+            <ol>${steps.map(([t, d], i) => `<li><span class="step-dot ${i < cur ? "done" : i === cur ? "run" : ""}">${i < cur ? '<i data-lucide="check"></i>' : i === cur && w.phase === "running" ? '<i data-lucide="loader-2" class="spin"></i>' : ""}</span><div><div style="font-size:14px;font-weight:500">${t}</div><div class="muted" style="font-size:12px">${d}</div></div></li>`).join("")}</ol>
+            <div style="margin-top:32px;display:grid;gap:10px">${[96, 88, 92, 70, 84].map((x) => `<div class="skel" style="width:${x}%"></div>`).join("")}</div></div></div></div>`;
+        }
+        return `<div class="doc"><div class="doc-col"><div class="doc-h">大纲</div><div class="paper"><h1>霜刃 · 故事大纲</h1><div class="scene">全书主线（后文为抽样推断）</div><p>药童沈砚在雪夜上山拜师，捡到一把来历不明的断剑。剑中封着一段被宗门抹去的旧案，他一边在外门挣扎求存，一边被卷入长老之间的争斗……</p><div class="scene">分集目录</div>${w.eps.slice(0, 12).map((e) => `<p><b>第 ${e.no} 集 · ${esc(e.title)}</b>　<span style="opacity:.75">${esc(e.synopsis)}</span></p>`).join("")}${w.eps.length > 12 ? `<p style="opacity:.6">……共 ${fmt(w.eps.length)} 集</p>` : ""}</div></div></div>`;
+      }
+      function castHTML() { return `<div class="doc"><div class="doc-col"><div class="doc-h">人物</div><div class="paper"><h1>人物传记</h1><div class="scene">沈砚</div><p>药童出身，十六岁上山，沉默寡言，记性极好。</p><div class="scene">韩启</div><p>外门大师兄，表面照顾沈砚，暗中盯着那把断剑。</p></div></div></div>`; }
+      function epHTML(e) {
+        const head = `<div class="row" style="gap:8px"><h2 class="doc-h truncate" style="margin:0">第 ${e.no} 集 · ${esc(e.title)}</h2>${e.locked ? '<span class="status s-warning"><i data-lucide="lock"></i>已锁定</span>' : e.script === "ready" ? "" : e.script === "generating" ? '<span class="status s-running">生成中</span>' : '<span class="status s-muted">待写剧本</span>'}</div>`;
+        const aside = `<aside class="aside"><div class="aside-h">本集场次</div>${e.script === "ready" ? ["1-1 山门石阶 夜外", "1-2 外门柴房 夜内", "1-3 石阶尽头 夜外"].map((t) => `<button class="toc">${t}</button>`).join("") : '<p class="muted" style="font-size:12px;margin:0">—</p>'}<div class="synopsis"><b class="muted" style="display:block;font-size:12.5px;font-weight:500">梗概</b><p class="muted" style="margin:2px 0 0;font-size:12px;line-height:20px">${esc(e.synopsis)}</p></div><div class="synopsis"><b class="muted" style="display:block;font-size:12.5px;font-weight:500">对应原文</b><p class="muted tnum" style="margin:2px 0 0;font-size:12px">第 ${e.unit} ${F().unitWord}</p></div></aside>`;
+        let body;
+        if (e.script === "generating") body = `<div class="empty muted"><i data-lucide="loader-2" class="spin" style="width:24px;height:24px"></i>正在生成这一集的剧本…</div>`;
+        else if (e.script === "ready") body = `${e.locked ? '<div class="tip tip-warn" style="margin-top:12px"><i data-lucide="lock"></i>这一集已经拆解资产，剧本已锁定。资产和分镜都以这一版为准。</div>' : ""}<div class="paper ${e.locked ? "locked" : ""}"><h1>第 ${e.no} 集 · ${esc(e.title)}</h1>${isScript() ? '<div class="scene">1-1 公司大堂 日内</div><p>△ 苏晴拎着外卖穿过人群。</p><p>前台：外卖放那边。</p><p>苏晴：（停住）我是来面试的。</p>' : '<div class="scene">1-1 山门石阶 夜外</div><p>△ 风雪里，沈砚背着药篓一步步往上爬。</p><p>沈砚：（喘气）“师父说，过了这九百级，就不冷了。”</p><div class="scene">1-2 外门柴房 夜内</div><p>△ 油灯下，沈砚擦去断剑上的雪。剑身映出一行小字。</p><p>韩启（画外）：“新来的，那把剑给我。”</p><div class="scene">1-3 石阶尽头 夜外</div><p>△ 韩启盯着剑柄上的纹路，脸色一变。</p>'}</div>`;
+        else body = `<div class="empty"><span class="empty-icon"><i data-lucide="file-pen-line"></i></span><div style="font-size:15px;font-weight:500">这一集还没有剧本</div><button class="btn btn-primary btn-sm" onclick="openScripts([${e.no}])">生成剧本</button></div>
+          <div class="kv" style="max-width:560px;margin:28px auto 0"><span>梗概</span><span>${esc(e.synopsis)}</span><span>开场钩子</span><span>${esc(e.hook)}</span><span>结尾悬念</span><span>${esc(e.cliff)}</span></div>`;
+        return `<div class="doc"><div class="doc-col">${head}${body}</div>${aside}</div>`;
+      }
+      function nextPillHTML() {
+        const w = S.ws; if (!w.eps.length || w.userJob) return "";
+        const empty = w.eps.filter((e) => e.script === "empty" || e.script === "failed");
+        const ready = w.eps.filter((e) => e.script === "ready" && !e.locked);
+        if (!isScript() && empty.length) return `<div class="next-pill chrome"><span class="tnum">${fmt(empty.length)} 集还没有剧本</span><span class="muted tnum" style="font-size:12px">约 <span class="credit">${fmt(Math.min(empty.length, 10) * 22)}</span> 积分</span><button class="btn btn-primary btn-sm" onclick="openScripts()">生成分集剧本</button>${ready.length ? `<button class="btn btn-ghost btn-sm" onclick="openBreakdown()">资产拆解</button>` : ""}</div>`;
+        if (ready.length) return `<div class="next-pill chrome"><span>剧本整理完毕，下一步拆解角色和场景</span><button class="btn btn-primary btn-sm" onclick="openBreakdown()">资产拆解</button></div>`;
+        return "";
+      }
+
+      /* ---- 写剧本 / 资产拆解（沿用现有弹窗） ---- */
+      function openScripts(pre) {
+        const w = S.ws;
+        w.sel = pre || w.eps.filter((e) => e.script === "empty" || e.script === "failed").slice(0, 10).map((e) => e.no);
+        S.modal = { kind: "scripts" }; render();
+      }
+      function openBreakdown() { const w = S.ws; w.sel = w.eps.filter((e) => e.script === "ready" && !e.locked).slice(0, 10).map((e) => e.no); S.modal = { kind: "breakdown" }; render(); }
+      function toggleEp(no) { const w = S.ws; w.sel = w.sel.includes(no) ? w.sel.filter((x) => x !== no) : [...w.sel, no]; render(); }
+      function selRange() { const w = S.ws, { a, b } = w.dlgRange; const kind = S.modal.kind; w.sel = w.eps.filter((e) => e.no >= a && e.no <= b && selectable(e, kind)).map((e) => e.no); render(); }
+      const selectable = (e, kind) => (kind === "scripts" ? !e.locked && e.script !== "generating" : e.script === "ready" && !e.locked);
+      function epGrid(kind) {
+        const w = S.ws;
+        return `<div class="ep-grid">${w.eps.map((e) => { const ok = selectable(e, kind), on = w.sel.includes(e.no); return `<button class="ep-opt ${on ? "on" : ""}" ${ok ? "" : "disabled"} onclick="toggleEp(${e.no})"><span class="box">${!ok && e.locked ? '<i data-lucide="lock"></i>' : on ? '<i data-lucide="check"></i>' : ""}</span><span class="muted tnum">${e.no}.</span><span class="grow truncate">${esc(e.title)}</span>${kind === "scripts" && e.script === "ready" && !e.locked ? '<span class="tag-mini">已有剧本</span>' : ""}</button>`; }).join("")}</div>`;
+      }
+      function selTools(kind) {
+        const w = S.ws, max = w.eps.length;
+        return `<div class="row" style="gap:6px;flex-wrap:wrap"><b style="font-weight:600">${kind === "scripts" ? "选择集数" : "解析范围"}</b><span class="muted tnum" style="font-size:12px">已选 ${w.sel.length} 集</span>
+          <span style="margin-left:auto" class="row">
+            ${kind === "scripts" ? `<button class="btn btn-ghost btn-sm" onclick="S.ws.sel=S.ws.eps.filter(e=>e.script==='empty'||e.script==='failed').map(e=>e.no);render()">没有剧本的</button>` : ""}
+            <button class="btn btn-ghost btn-sm" onclick="S.ws.sel=S.ws.eps.filter(e=>selectable(e,'${kind}')).map(e=>e.no);render()">${kind === "scripts" ? "全选" : "全选可用"}</button>
+            <button class="btn btn-ghost btn-sm" onclick="S.ws.sel=[];render()">清空</button></span></div>
+          <div class="row muted" style="gap:6px;font-size:13px;margin-top:-6px">按范围选：第<input class="input tnum" style="width:64px;height:28px;padding:0 8px" type="number" min="1" max="${max}" value="${w.dlgRange.a}" onchange="S.ws.dlgRange.a=+this.value||1" />–<input class="input tnum" style="width:64px;height:28px;padding:0 8px" type="number" min="1" max="${max}" value="${w.dlgRange.b}" onchange="S.ws.dlgRange.b=+this.value||1" />集<button class="btn btn-outline btn-xs" onclick="selRange()">选中</button></div>`;
+      }
+      function scriptsDlgHTML() {
+        const w = S.ws, sel = [...w.sel].sort((a, b) => a - b);
+        const over = sel.filter((no) => w.eps.find((e) => e.no === no).script === "ready").length;
+        const has = (no) => { const x = w.eps.find((e) => e.no === no); return x && (x.script === "ready" || x.locked); };
+        const gap = sel.find((no) => no > 1 && !has(no - 1) && !sel.includes(no - 1));
+        return `<div class="dialog" role="dialog"><div class="dialog-title">生成分集剧本</div><button class="icon-btn dialog-close" onclick="S.modal=null;render()"><i data-lucide="x"></i></button>
+          ${selTools("scripts")}${epGrid("scripts")}
+          ${gap ? `<div class="tip tip-warn"><i data-lucide="link-2-off"></i><span class="grow">第 <b class="tnum">${gap - 1}</b> 集还没有剧本，第 <b class="tnum">${gap}</b> 集会按它的梗概和结尾悬念衔接</span></div>` : ""}
+          <div class="tip ${over ? "tip-warn" : "tip-muted"}">${over ? '<i data-lucide="triangle-alert"></i>' : ""}<span class="grow">${over ? `其中 <b class="tnum">${over}</b> 集会<b>覆盖</b>现有剧本` : `生成 <b class="tnum">${sel.length}</b> 集`}</span><span class="tnum" style="font-size:12px">约 <b class="credit" style="font-size:14px">${fmt(sel.length * 22)}</b> 积分</span></div>
+          <div class="dialog-foot"><button class="btn btn-ghost" onclick="S.modal=null;render()">取消</button><button class="btn btn-primary" ${sel.length ? "" : "disabled"} onclick="runScripts()">${over ? "覆盖并生成" : "生成"} ${sel.length} 集剧本</button></div></div>`;
+      }
+      function breakdownDlgHTML() {
+        const w = S.ws, n = w.sel.length;
+        return `<div class="dialog" role="dialog"><div class="dialog-title">资产拆解</div><button class="icon-btn dialog-close" onclick="S.modal=null;render()"><i data-lucide="x"></i></button>
+          ${selTools("breakdown")}${epGrid("breakdown")}
+          <div class="tip tip-warn"><i data-lucide="lock"></i><span class="grow">拆解后这 <b class="tnum">${n}</b> 集的剧本会<b>锁定</b>，不能再修改。</span><span class="tnum" style="font-size:12px">约 <b class="credit" style="font-size:14px">${fmt(n * 24)}</b> 积分</span></div>
+          <div class="dialog-foot"><button class="btn btn-ghost" onclick="S.modal=null;render()">取消</button><button class="btn btn-primary" ${n ? "" : "disabled"} onclick="runBreakdown()">开始拆解（${n} 集）</button></div></div>`;
+      }
+      function runScripts() {
+        const w = S.ws, nos = [...w.sel].sort((a, b) => a - b); S.modal = null;
+        w.userJob = { kind: "scripts", label: `正在生成第 ${nos.length > 3 ? nos[0] + "–" + nos[nos.length - 1] : nos.join("、")} 集的剧本`, pct: 0 };
+        nos.forEach((no) => (w.eps.find((e) => e.no === no).script = "generating"));
+        let i = 0;
+        const step = () => {
+          if (S.screen !== "ws") return;
+          const e = w.eps.find((x) => x.no === nos[i]); e.script = "ready"; i++;
+          w.userJob.pct = Math.round((i / nos.length) * 100);
+          if (i >= nos.length) { w.userJob = null; render(); toast(`${nos.length} 集剧本已生成`); return; }
+          render(); later(step, 700);
+        };
+        render(); later(step, 900);
+      }
+      function runBreakdown() {
+        const w = S.ws, nos = [...w.sel]; S.modal = null;
+        w.userJob = { kind: "breakdown", label: `正在拆解第 ${nos.length > 3 ? Math.min(...nos) + "–" + Math.max(...nos) : nos.join("、")} 集的资产`, pct: 10 };
+        nos.forEach((no) => (w.eps.find((e) => e.no === no).breaking = true));
+        render();
+        later(() => { w.userJob.pct = 60; render(); }, 800);
+        later(() => { nos.forEach((no) => { const e = w.eps.find((x) => x.no === no); e.locked = true; e.breaking = false; }); w.userJob = null; render(); toast(`已拆解 ${nos.length} 集，资产图提示词已写好`); }, 1700);
+      }
+      function rangeDlgHTML() {
+        const m = S.modal, f = F(), w = S.ws, end = m.all ? f.units : m.n, e = est(w.rangeEnd, end);
+        return `<div class="dialog" role="dialog"><div class="dialog-title">继续规划</div><button class="icon-btn dialog-close" onclick="S.modal=null;render()"><i data-lucide="x"></i></button>
+          <div class="seg"><button class="${m.all ? "on" : ""}" onclick="S.modal.all=true;render()">全部剩余</button><button class="${m.all ? "" : "on"}" onclick="S.modal.all=false;render()">规划到第 N ${f.unitWord}</button></div>
+          ${m.all ? "" : `<div class="row" style="gap:6px;font-size:14px">规划到第<input class="input tnum" style="width:100px" type="number" min="${w.rangeEnd + 1}" max="${f.units}" value="${m.n}" onchange="S.modal.n=Math.max(${w.rangeEnd + 1},Math.min(${f.units},+this.value||${w.rangeEnd + 1}));render()" />${f.unitWord}</div>`}
+          <div class="tip tip-muted"><span class="grow tnum">第 ${fmt(w.rangeEnd + 1)}–${fmt(end)} ${f.unitWord} · 约 ${wan((f.chars / f.units) * (end - w.rangeEnd))} · 预计约 ${fmt(e.min)}–${fmt(e.max)} 集 · 约 ${dur(e.secs)}</span><span class="tnum" style="font-size:12px">约 <b class="credit" style="font-size:14px">${fmt(e.credits)}</b> 积分</span></div>
+          <div class="dialog-foot"><button class="btn btn-ghost" onclick="S.modal=null;render()">取消</button><button class="btn btn-primary" onclick="S.ws.rangeEnd=${end};S.ws.phase='running';S.modal=null;render();later(planTick,800)">开始规划</button></div></div>`;
+      }
+      function promptsSheetHTML() {
+        return `<div class="row"><div class="dialog-title">提示词设置</div><button class="icon-btn" style="margin-left:auto" onclick="S.modal=null;render()"><i data-lucide="x"></i></button></div>
+          <div class="tip tip-muted" style="font-size:13px">修改只影响之后发起的任务</div>
+          ${STEPS.map((s) => { const dis = s.key === "adapt" && isScript(); return `<div class="prompt-row"><span class="name">${s.name}</span><button class="chip" ${dis ? 'disabled title="剧本直接导入，不改编"' : ""} onclick="openPop('prompt:${s.key}',event)"><span class="truncate" style="max-width:220px">${esc(promptLabel(s.key))}</span><i data-lucide="chevron-down"></i></button></div>`; }).join("")}
+          <div class="dialog-foot"><button class="btn btn-primary" onclick="S.modal=null;toast('已保存，之后的任务使用新提示词');render()">完成</button></div>`;
+      }
+
+      /* ---- 演示控制（原型专用） ---- */
+      function demoHTML() {
+        if (!S.sim.open) return `<button class="demo-fab" onclick="S.sim.open=true;render()">演示控制</button>`;
+        return `<div class="demo-ctrl"><button class="x" onclick="S.sim.open=false;render()">✕</button><b>演示控制（原型专用）</b>
+          <div style="margin-top:6px;opacity:.85">示例文件</div>
+          ${[["novel", "霜刃.docx（小说 486 万字）"], ["script", "都市逆袭.md（剧本）"], ["unknown", "无题.txt（识别不出）"], ["bad", "损坏.pdf（格式错误）"]].map(([k, t]) => `<label><input type="radio" name="f" ${S.fileKey === k ? "checked" : ""} onchange="pickFile('${k}')" />${t}</label>`).join("")}
+          <div style="margin-top:6px;opacity:.85">模拟失败</div>
+          <label><input type="checkbox" ${S.sim.expired ? "checked" : ""} onchange="S.sim.expired=this.checked" />草稿已过期</label>
+          <label><input type="checkbox" ${S.sim.credit ? "checked" : ""} onchange="S.sim.credit=this.checked" />规划时积分不足</label>
+          <div style="margin-top:6px;opacity:.75">把「剧本改编」选成「我的 · 坏示例」可看规划失败</div>
+          <button style="margin-top:8px;height:26px;padding:0 10px;border-radius:999px;background:rgb(255 255 255/.18)" onclick="init(S.fileKey);render()">回到首页</button></div>`;
+      }
+      function pickFile(k) { const sim = S.sim; init(k); S.sim = sim; render(); }
+
+      init();
+      render();
+    </script>
+  </body>
+</html>

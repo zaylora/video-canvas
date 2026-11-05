@@ -88,7 +88,7 @@ jobs:
 
   # 画布 Agent 运行时（Node/TypeScript）：和 backend 镜像里用的是同一套 npm ci 与构建
   agent:
-    name: Agent (typecheck + test + build)
+    name: Agent (format + lint + typecheck + test + build)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -104,6 +104,12 @@ jobs:
 
       - name: Install
         run: npm ci
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Lint
+        run: npm run lint
 
       - name: Typecheck
         run: npm run typecheck

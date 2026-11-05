@@ -3,12 +3,18 @@ import { test } from "node:test";
 import { buildTitlePrompt, draftTitle, parseTitle, stripMentions } from "../src/title.ts";
 
 test("@ 引用只留名字，内部节点 id 不外露", () => {
-  assert.equal(stripMentions("把@[剧本](node:n_script)拆开，再连到@[分镜](node:n_2)"), "把@剧本拆开，再连到@分镜");
+  assert.equal(
+    stripMentions("把@[剧本](node:n_script)拆开，再连到@[分镜](node:n_2)"),
+    "把@剧本拆开，再连到@分镜",
+  );
   assert.equal(stripMentions("没有引用"), "没有引用");
 });
 
 test("草稿标题：去掉引用语法、空白压成一个空格、最多 40 字、空消息用兜底", () => {
-  assert.equal(draftTitle("  帮我把@[剧本](node:n1)   拆成分镜 ", "新对话"), "帮我把@剧本 拆成分镜");
+  assert.equal(
+    draftTitle("  帮我把@[剧本](node:n1)   拆成分镜 ", "新对话"),
+    "帮我把@剧本 拆成分镜",
+  );
   assert.equal(Array.from(draftTitle("字".repeat(60), "新对话")).length, 40);
   assert.equal(draftTitle("   ", "新对话"), "新对话");
   assert.equal(draftTitle("@[剧本](node:n1)", "新对话"), "@剧本");

@@ -74,7 +74,7 @@ func enqueueCompose(ctx context.Context, tx repository.DramaTx, p *model.DramaPr
 	if err != nil {
 		return nil, err
 	}
-	job := &model.DramaJob{UserID: p.UserID, DramaID: p.ID, Step: "compose", Episodes: append([]int{}, req.Episodes...), Status: "queued", ConfigSnapshot: []byte(`{}`), InputJSON: raw, Output: []byte(`{}`), ApprovalID: approvalID}
+	job := &model.DramaJob{UserID: p.UserID, DramaID: p.ID, Lane: "user", Step: "compose", Episodes: append([]int{}, req.Episodes...), Status: "queued", ConfigSnapshot: []byte(`{}`), InputJSON: raw, Output: []byte(`{}`), ApprovalID: approvalID}
 	if err := tx.InsertJob(ctx, job); err != nil {
 		return nil, err
 	}

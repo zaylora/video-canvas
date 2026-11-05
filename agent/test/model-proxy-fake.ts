@@ -16,12 +16,17 @@ export async function fakeModelProxy(answer = "好的") {
     req.on("data", (d) => (raw += d));
     req.on("end", () => {
       requests.push({ path: req.url ?? "", headers: req.headers, body: JSON.parse(raw || "{}") });
-      res.writeHead(200, { "content-type": "text/event-stream", "x-agent-call-id": String(nextCallId++) });
+      res.writeHead(200, {
+        "content-type": "text/event-stream",
+        "x-agent-call-id": String(nextCallId++),
+      });
       const chunk = (delta: object, finish: string | null = null) =>
         `data: ${JSON.stringify({ id: "x", object: "chat.completion.chunk", choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
       res.write(chunk({ role: "assistant", content: answer }));
       res.write(chunk({}, "stop"));
-      res.write(`data: ${JSON.stringify({ id: "x", object: "chat.completion.chunk", choices: [], usage: { prompt_tokens: 10, completion_tokens: 2, total_tokens: 12 } })}\n\n`);
+      res.write(
+        `data: ${JSON.stringify({ id: "x", object: "chat.completion.chunk", choices: [], usage: { prompt_tokens: 10, completion_tokens: 2, total_tokens: 12 } })}\n\n`,
+      );
       res.end("data: [DONE]\n\n");
     });
   });

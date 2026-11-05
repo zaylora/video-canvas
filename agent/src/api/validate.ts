@@ -25,7 +25,8 @@ export class ValidationError extends Error {}
 const runes = (s: string) => Array.from(s).length;
 
 export function validateBody(body: unknown, specs: readonly FieldSpec[]): Record<string, any> {
-  if (typeof body !== "object" || body === null || Array.isArray(body)) throw new ValidationError("请求参数格式错误");
+  if (typeof body !== "object" || body === null || Array.isArray(body))
+    throw new ValidationError("请求参数格式错误");
   const obj = body as Record<string, unknown>;
   // 类型不对是解析错误，先于字段校验报出（和 Go 的 JSON 解析一致）
   for (const s of specs) {
@@ -36,7 +37,11 @@ export function validateBody(body: unknown, specs: readonly FieldSpec[]): Record
       (s.kind === "int" && !(typeof v === "number" && Number.isInteger(v))) ||
       (s.kind === "bool" && typeof v !== "boolean") ||
       (s.kind === "strings" && !(Array.isArray(v) && v.every((x) => typeof x === "string"))) ||
-      (s.kind === "items" && !(Array.isArray(v) && v.every((x) => typeof x === "object" && x !== null && !Array.isArray(x))));
+      (s.kind === "items" &&
+        !(
+          Array.isArray(v) &&
+          v.every((x) => typeof x === "object" && x !== null && !Array.isArray(x))
+        ));
     if (bad) throw new ValidationError(`${s.key} 类型错误`);
   }
   const errors: string[] = [];
@@ -46,7 +51,12 @@ export function validateBody(body: unknown, specs: readonly FieldSpec[]): Record
   return out;
 }
 
-function check(obj: Record<string, unknown>, specs: readonly FieldSpec[], errors: string[], out: Record<string, any>): void {
+function check(
+  obj: Record<string, unknown>,
+  specs: readonly FieldSpec[],
+  errors: string[],
+  out: Record<string, any>,
+): void {
   for (const s of specs) {
     const v = obj[s.key];
     const missing = v === undefined || v === null;
@@ -54,8 +64,10 @@ function check(obj: Record<string, unknown>, specs: readonly FieldSpec[], errors
       case "string": {
         const str = missing ? "" : (v as string);
         if (s.required && str === "") errors.push(`${s.label}为必填字段`);
-        else if (s.oneof && str !== "" && !s.oneof.includes(str)) errors.push(`${s.label}必须是[${s.oneof.join(" ")}]中的一个`);
-        if (s.max !== undefined && runes(str) > s.max) errors.push(`${s.label}长度不能超过${s.max}个字符`);
+        else if (s.oneof && str !== "" && !s.oneof.includes(str))
+          errors.push(`${s.label}必须是[${s.oneof.join(" ")}]中的一个`);
+        if (s.max !== undefined && runes(str) > s.max)
+          errors.push(`${s.label}长度不能超过${s.max}个字符`);
         out[s.key] = str;
         break;
       }
@@ -67,7 +79,8 @@ function check(obj: Record<string, unknown>, specs: readonly FieldSpec[], errors
           break;
         }
         const n = v as number;
-        if (s.oneof && !s.oneof.includes(String(n))) errors.push(`${s.label}必须是[${s.oneof.join(" ")}]中的一个`);
+        if (s.oneof && !s.oneof.includes(String(n)))
+          errors.push(`${s.label}必须是[${s.oneof.join(" ")}]中的一个`);
         if (s.min !== undefined && n < s.min) errors.push(`${s.label}必须大于或等于${s.min}`);
         if (s.max !== undefined && n > s.max) errors.push(`${s.label}必须小于或等于${s.max}`);
         out[s.key] = n;
@@ -79,7 +92,12 @@ function check(obj: Record<string, unknown>, specs: readonly FieldSpec[], errors
       case "strings": {
         const arr = missing ? [] : (v as string[]);
         if (s.max !== undefined && arr.length > s.max) errors.push(`${s.label}最多包含${s.max}项`);
-        if (s.itemMax !== undefined) arr.forEach((x, i) => runes(x) > s.itemMax! && errors.push(`${s.label}[${i}]长度不能超过${s.itemMax}个字符`));
+        if (s.itemMax !== undefined)
+          arr.forEach(
+            (x, i) =>
+              runes(x) > s.itemMax! &&
+              errors.push(`${s.label}[${i}]长度不能超过${s.itemMax}个字符`),
+          );
         out[s.key] = arr;
         break;
       }
@@ -101,7 +119,13 @@ function check(obj: Record<string, unknown>, specs: readonly FieldSpec[], errors
 }
 
 /** 查询参数里的整数：不是整数是「参数格式错误：xxx」，再按 min / max 校验 */
-export function queryInt(q: URLSearchParams, key: string, label: string, min: number, max?: number): number {
+export function queryInt(
+  q: URLSearchParams,
+  key: string,
+  label: string,
+  min: number,
+  max?: number,
+): number {
   const raw = q.get(key);
   if (raw === null || raw === "") return 0;
   if (!/^-?\d+$/.test(raw)) throw new ValidationError(`参数格式错误：${raw}`);

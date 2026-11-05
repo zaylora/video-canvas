@@ -42,15 +42,15 @@ func TestParseSource(t *testing.T) {
 		{"空白", "empty.md", []byte("\xef\xbb\xbf \t\r\n"), "", ErrSourceInvalid},
 		{"非法UTF8", "bad.txt", []byte{0xff}, "", ErrSourceInvalid},
 		{"非文本控制符", "bad.txt", []byte("原\x00文"), "", ErrSourceInvalid},
-		{"上限按汉字", "large.txt", []byte(strings.Repeat("汉", 300000)), strings.Repeat("汉", 300000), nil},
-		{"超过汉字上限", "large.txt", []byte(strings.Repeat("汉", 300001)), "", ErrSourceTooLong},
+		{"上限按汉字", "large.txt", []byte(strings.Repeat("汉", 5000000)), strings.Repeat("汉", 5000000), nil},
+		{"超过汉字上限", "large.txt", []byte(strings.Repeat("汉", 5000001)), "", ErrSourceTooLong},
 		{"未支持格式", "script.pdf", []byte("正文"), "", ErrSourceInvalid},
 		{"无扩展名", "script", []byte("正文"), "", ErrSourceInvalid},
 		{"损坏Word", "bad.docx", []byte("正文"), "", ErrSourceInvalid},
 		{"Word缺正文", "bad.docx", docxFile(t, "word/header1.xml", document), "", ErrSourceInvalid},
 		{"WordXML损坏", "bad.docx", docxFile(t, "word/document.xml", "<w:document>"), "", ErrSourceInvalid},
 		{"Word空正文", "empty.docx", docxFile(t, "word/document.xml", `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p/></w:body></w:document>`), "", ErrSourceInvalid},
-		{"Word超长", "large.docx", docxFile(t, "word/document.xml", `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>`+strings.Repeat("汉", 300001)+`</w:t></w:r></w:p></w:body></w:document>`), "", ErrSourceTooLong},
+		{"Word超长", "large.docx", docxFile(t, "word/document.xml", `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>`+strings.Repeat("汉", 5000001)+`</w:t></w:r></w:p></w:body></w:document>`), "", ErrSourceTooLong},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -70,7 +70,7 @@ func TestDecodeOutput(t *testing.T) {
 		name, step, data string
 		valid            bool
 	}{
-		{"研读", "analyze", `{"source_kind":"novel","summary":"故事梗概","characters_md":"人物表"}`, true},
+		{"研读", "analyze", `{"source_kind":"novel","summary":"故事梗概","characters_md":"人物表","outline_md":"主线"}`, true},
 		{"大纲", "outline", `{"outline_md":"大纲","characters_md":"人物","episodes":[{"no":1,"title":"初见","synopsis":"故事开端","script_md":""}]}`, true},
 		{"剧本", "scripts", `{"script_md":"第一场：街头，日，外。"}`, true},
 		{"拆解", "breakdown", `{"assets":[{"type":"character","name":"林川","look":"童年","aliases":["小川"],"episodes":[1,2],"description":"短发少年","voice_prompt":"清亮的少年声线"}]}`, true},

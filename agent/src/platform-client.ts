@@ -77,7 +77,10 @@ export function encodeRunContext(rc: RunContext): string {
     }
   }
   const header = Buffer.from(JSON.stringify(rc), "utf8").toString("base64url");
-  if (header.length > MAX_CONTEXT_HEADER) throw new Error(`运行上下文太大（${header.length} 字节，上限 ${MAX_CONTEXT_HEADER}）：选中的节点太多`);
+  if (header.length > MAX_CONTEXT_HEADER)
+    throw new Error(
+      `运行上下文太大（${header.length} 字节，上限 ${MAX_CONTEXT_HEADER}）：选中的节点太多`,
+    );
   return header;
 }
 
@@ -94,7 +97,14 @@ export interface ToolImage {
 }
 
 /** tool.end 事件的内容，由 Go 给出（摘要、被改动的节点、界面名称……），Agent 原样落库 */
-export type ToolEndEvent = { id: string; name: string; is_error: boolean; summary: string; label?: string; verb?: string } & Record<string, unknown>;
+export type ToolEndEvent = {
+  id: string;
+  name: string;
+  is_error: boolean;
+  summary: string;
+  label?: string;
+  verb?: string;
+} & Record<string, unknown>;
 
 export interface PlatformToolResult {
   data?: JsonValue;
@@ -125,7 +135,17 @@ export interface RunSetup {
   harness: { prompt_version: number; tools_hash: string; build_sha: string; key: string };
 }
 
-export type ApprovalKind = "generate" | "delete" | "ask" | "drama_update_outline" | "drama_update_episode" | "drama_update_segment" | "drama_run_job" | "admin_change" | "admin_secret" | "admin_test_run";
+export type ApprovalKind =
+  | "generate"
+  | "delete"
+  | "ask"
+  | "drama_update_outline"
+  | "drama_update_episode"
+  | "drama_update_segment"
+  | "drama_run_job"
+  | "admin_change"
+  | "admin_secret"
+  | "admin_test_run";
 
 export interface ApprovalProposal {
   is_error: boolean;
@@ -200,7 +220,13 @@ export interface TaskState {
 }
 
 /** 任务到了这些状态就不会再变：成功、失败、超时、取消；missing 也算（再等也等不来） */
-export const TERMINAL_TASK_STATUSES = ["succeeded", "failed", "expired", "canceled", "missing"] as const;
+export const TERMINAL_TASK_STATUSES = [
+  "succeeded",
+  "failed",
+  "expired",
+  "canceled",
+  "missing",
+] as const;
 
 export interface AgentModel {
   key: string;
@@ -238,9 +264,17 @@ export interface ToolCallOptions {
 export function createPlatform({ baseUrl, serviceToken, fetchImpl = fetch }: PlatformOptions) {
   const base = baseUrl.replace(/\/+$/, "") + "/internal/platform/v1";
 
-  async function call<T>(method: string, path: string, rc: RunContext | undefined, body?: unknown, extra: { idemKey?: string; signal?: AbortSignal; longWait?: boolean } = {}): Promise<T> {
+  async function call<T>(
+    method: string,
+    path: string,
+    rc: RunContext | undefined,
+    body?: unknown,
+    extra: { idemKey?: string; signal?: AbortSignal; longWait?: boolean } = {},
+  ): Promise<T> {
     if (extra.idemKey !== undefined && !IDEM_KEY.test(extra.idemKey)) {
-      throw new Error(`幂等键只能是 1 到 64 个字母、数字或 . _ : -，当前是 ${JSON.stringify(extra.idemKey)}`);
+      throw new Error(
+        `幂等键只能是 1 到 64 个字母、数字或 . _ : -，当前是 ${JSON.stringify(extra.idemKey)}`,
+      );
     }
     const headers: Record<string, string> = { "X-Agent-Service-Token": serviceToken };
     if (rc) headers["X-Agent-Context"] = encodeRunContext(rc);
@@ -249,12 +283,21 @@ export function createPlatform({ baseUrl, serviceToken, fetchImpl = fetch }: Pla
     let res: Response;
     try {
       const request = extra.longWait && fetchImpl === fetch ? waitForPlatform : fetchImpl;
-      res = await request(base + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), signal: extra.signal });
+      res = await request(base + path, {
+        method,
+        headers,
+        body: body === undefined ? undefined : JSON.stringify(body),
+        signal: extra.signal,
+      });
     } catch (e) {
       if (extra.signal?.aborted) throw e;
       throw new PlatformError(`连接平台失败（${base}）：${String((e as Error)?.message ?? e)}`, 0);
     }
-    const env = (await res.json().catch(() => null)) as { code: number; msg?: string; data: T } | null;
+    const env = (await res.json().catch(() => null)) as {
+      code: number;
+      msg?: string;
+      data: T;
+    } | null;
     if (!res.ok || !env || env.code !== 0) {
       throw new PlatformError(env?.msg || `平台返回 HTTP ${res.status}`, res.status, env?.code);
     }
@@ -262,7 +305,10 @@ export function createPlatform({ baseUrl, serviceToken, fetchImpl = fetch }: Pla
   }
 
   const userCanvas = (userId: string, canvasId: string) => {
-    for (const [name, v] of [["user_id", userId], ["canvas_id", canvasId]] as const) {
+    for (const [name, v] of [
+      ["user_id", userId],
+      ["canvas_id", canvasId],
+    ] as const) {
       try {
         if (parseDecimal(v) === 0n) throw new Error("zero");
       } catch {
@@ -274,60 +320,178 @@ export function createPlatform({ baseUrl, serviceToken, fetchImpl = fetch }: Pla
 
   return {
     /** 某个 id 在 Go 那边编码后的串：启动时用它核对两边的 ID 编码密钥是否一致（id-check.ts） */
-    encodeId: async (n: string, signal?: AbortSignal): Promise<string> => (await call<{ encoded: string }>("GET", `/ids/${encodeURIComponent(n)}`, undefined, undefined, { signal })).encoded,
+    encodeId: async (n: string, signal?: AbortSignal): Promise<string> =>
+      (
+        await call<{ encoded: string }>(
+          "GET",
+          `/ids/${encodeURIComponent(n)}`,
+          undefined,
+          undefined,
+          { signal },
+        )
+      ).encoded,
     /** 当前可用的 Agent 模型（没有时是空数组） */
-    models: (signal?: AbortSignal) => call<AgentModel[]>("GET", "/agent/models", undefined, undefined, { signal }),
+    models: (signal?: AbortSignal) =>
+      call<AgentModel[]>("GET", "/agent/models", undefined, undefined, { signal }),
     /** 确认画布归属；drama 模式同时要求短剧画布，保留普通画布的请求格式。 */
-    checkCanvas: async (userId: string, canvasId: string, signal?: AbortSignal, mode?: string): Promise<void> => {
-      await call<null>("POST", "/canvases/check", undefined, { ...userCanvas(userId, canvasId), ...(mode && { mode }) }, { signal });
+    checkCanvas: async (
+      userId: string,
+      canvasId: string,
+      signal?: AbortSignal,
+      mode?: string,
+    ): Promise<void> => {
+      await call<null>(
+        "POST",
+        "/canvases/check",
+        undefined,
+        { ...userCanvas(userId, canvasId), ...(mode && { mode }) },
+        { signal },
+      );
     },
     /** 校验消息里的引用（节点、模型、技能），返回去掉了已不存在节点的选中列表 */
-    checkMessage: async (userId: string, canvasId: string, message: string, selection: string[] = [], signal?: AbortSignal): Promise<string[]> =>
-      (await call<{ selection: string[] }>("POST", "/messages/check", undefined, { ...userCanvas(userId, canvasId), message, selection }, { signal })).selection,
+    checkMessage: async (
+      userId: string,
+      canvasId: string,
+      message: string,
+      selection: string[] = [],
+      signal?: AbortSignal,
+    ): Promise<string[]> =>
+      (
+        await call<{ selection: string[] }>(
+          "POST",
+          "/messages/check",
+          undefined,
+          { ...userCanvas(userId, canvasId), message, selection },
+          { signal },
+        )
+      ).selection,
     /** 校验消息的图片附件（归属、格式、大小、数量），返回展示信息和交给模型的图；不合法抛业务错误（10001，点名第几张） */
-    checkAttachments: async (userId: string, assetIds: string[], signal?: AbortSignal): Promise<AttachmentCheck[]> =>
-      (await call<{ attachments: AttachmentCheck[] }>("POST", "/attachments/check", undefined, { user_id: userId, asset_ids: assetIds }, { signal })).attachments,
+    checkAttachments: async (
+      userId: string,
+      assetIds: string[],
+      signal?: AbortSignal,
+    ): Promise<AttachmentCheck[]> =>
+      (
+        await call<{ attachments: AttachmentCheck[] }>(
+          "POST",
+          "/attachments/check",
+          undefined,
+          { user_id: userId, asset_ids: assetIds },
+          { signal },
+        )
+      ).attachments,
     /** 撤销某运行对画布的全部改动（改动记录在 Go）。运行是不是自己的、是否已结束由调用方校验 */
-    undo: (rc: RunContext, signal?: AbortSignal) => call<UndoResult>("POST", `/runs/${rc.run_id}/undo`, rc, undefined, { signal }),
+    undo: (rc: RunContext, signal?: AbortSignal) =>
+      call<UndoResult>("POST", `/runs/${rc.run_id}/undo`, rc, undefined, { signal }),
     /** 执行一次工具调用。工具层的失败是 is_error 的普通结果；调用本身出错才抛 PlatformError */
     tool: (rc: RunContext, name: string, args: unknown, o: ToolCallOptions) =>
-      call<PlatformToolResult>("POST", `/tools/${encodeURIComponent(name)}`, rc, { tool_call_id: platformToolCallId(o.toolCallId), args: args ?? {} }, { idemKey: o.idemKey, signal: o.signal }),
+      call<PlatformToolResult>(
+        "POST",
+        `/tools/${encodeURIComponent(name)}`,
+        rc,
+        { tool_call_id: platformToolCallId(o.toolCallId), args: args ?? {} },
+        { idemKey: o.idemKey, signal: o.signal },
+      ),
     /** 运行准备：模型规格、系统提示词、工具声明、版本；带 message 时还有第一条用户消息。不带 message 是续跑 */
-    prepare: (rc: RunContext, req: { message?: string; max_steps?: number; page_context?: unknown } = {}, signal?: AbortSignal) => call<RunSetup>("POST", "/runs/prepare", rc, req, { signal }),
+    prepare: (
+      rc: RunContext,
+      req: { message?: string; max_steps?: number; page_context?: unknown } = {},
+      signal?: AbortSignal,
+    ) => call<RunSetup>("POST", "/runs/prepare", rc, req, { signal }),
     /** 审批预估：工具参数 → 审批内容和预估积分，不落库 */
-    propose: (rc: RunContext, kind: ApprovalKind, args: unknown, signal?: AbortSignal, idemKey?: string) => call<ApprovalProposal>("POST", "/approvals/propose", rc, { kind, args: args ?? {} }, { signal, idemKey }),
+    propose: (
+      rc: RunContext,
+      kind: ApprovalKind,
+      args: unknown,
+      signal?: AbortSignal,
+      idemKey?: string,
+    ) =>
+      call<ApprovalProposal>(
+        "POST",
+        "/approvals/propose",
+        rc,
+        { kind, args: args ?? {} },
+        { signal, idemKey },
+      ),
     /** 审批解析：用户的决定 → 实际批准了什么（逐项勾选、张数、重新算价、检查预算） */
-    resolve: (rc: RunContext, kind: ApprovalKind, payload: unknown, decision: ApprovalDecision, signal?: AbortSignal) =>
-      call<ApprovalOutcome>("POST", "/approvals/resolve", rc, { kind, payload, decision }, { signal }),
+    resolve: (
+      rc: RunContext,
+      kind: ApprovalKind,
+      payload: unknown,
+      decision: ApprovalDecision,
+      signal?: AbortSignal,
+    ) =>
+      call<ApprovalOutcome>(
+        "POST",
+        "/approvals/resolve",
+        rc,
+        { kind, payload, decision },
+        { signal },
+      ),
     /** 审批执行：删除或创建生成任务；幂等，键是审批 id。审批 id 是十进制字符串 */
-    execute: async (rc: RunContext, kind: ApprovalKind, approvalId: string, toolCallId: string, outcome: ApprovalOutcome, signal?: AbortSignal) => {
+    execute: async (
+      rc: RunContext,
+      kind: ApprovalKind,
+      approvalId: string,
+      toolCallId: string,
+      outcome: ApprovalOutcome,
+      signal?: AbortSignal,
+    ) => {
       try {
         if (parseDecimal(approvalId) === 0n) throw new Error("zero");
       } catch {
         throw new Error(`审批 id 必须是正整数的十进制字符串，当前是 ${JSON.stringify(approvalId)}`);
       }
-      return call<ApprovalExecution>("POST", "/approvals/execute", rc, { kind, approval_id: approvalId, tool_call_id: platformToolCallId(toolCallId), outcome }, { signal, longWait: kind === "admin_test_run" });
+      return call<ApprovalExecution>(
+        "POST",
+        "/approvals/execute",
+        rc,
+        { kind, approval_id: approvalId, tool_call_id: platformToolCallId(toolCallId), outcome },
+        { signal, longWait: kind === "admin_test_run" },
+      );
     },
     /** 运行的用量；带 callId（模型调用的 id，十进制字符串）时一并给出这次调用的结算情况 */
     usage: (rc: RunContext, callId?: string, signal?: AbortSignal) =>
-      call<PlatformUsage>("GET", `/runs/${rc.run_id}/usage${callId ? `?call_id=${encodeURIComponent(callId)}` : ""}`, rc, undefined, { signal }),
+      call<PlatformUsage>(
+        "GET",
+        `/runs/${rc.run_id}/usage${callId ? `?call_id=${encodeURIComponent(callId)}` : ""}`,
+        rc,
+        undefined,
+        { signal },
+      ),
     /** 把事件成批推给 Go，由它经 WebSocket 发给浏览器（顺序由调用方保证）；事件已落在 Agent 自己的库里，推送失败不影响运行 */
     pushEvents: async (events: RelayEvent[], signal?: AbortSignal): Promise<void> => {
       await call<null>("POST", "/events", undefined, { events }, { signal });
     },
     /** 一批生成任务的最新状态（顺序与 taskIds 一致，最多 50 个）：补收没送到的结束通知、整批结束后取结果交给模型 */
-    taskStates: async (userId: string, taskIds: string[], signal?: AbortSignal): Promise<TaskState[]> => {
-      for (const [name, v] of [["user_id", userId], ...taskIds.map((t) => ["task_ids", t] as const)] as const) {
+    taskStates: async (
+      userId: string,
+      taskIds: string[],
+      signal?: AbortSignal,
+    ): Promise<TaskState[]> => {
+      for (const [name, v] of [
+        ["user_id", userId],
+        ...taskIds.map((t) => ["task_ids", t] as const),
+      ] as const) {
         try {
           if (parseDecimal(v) === 0n) throw new Error("zero");
         } catch {
           throw new Error(`${name} 必须是正整数的十进制字符串，当前是 ${JSON.stringify(v)}`);
         }
       }
-      return (await call<{ items: TaskState[] }>("POST", "/tasks/status", undefined, { user_id: userId, task_ids: taskIds }, { signal })).items;
+      return (
+        await call<{ items: TaskState[] }>(
+          "POST",
+          "/tasks/status",
+          undefined,
+          { user_id: userId, task_ids: taskIds },
+          { signal },
+        )
+      ).items;
     },
     /** 运行结束：释放 Go 内存里这个运行的状态（联网次数、技能固定版本）；不调用也会在闲置过期后清掉 */
-    endRun: (rc: RunContext, signal?: AbortSignal) => call<null>("DELETE", `/runs/${rc.run_id}`, rc, undefined, { signal }),
+    endRun: (rc: RunContext, signal?: AbortSignal) =>
+      call<null>("DELETE", `/runs/${rc.run_id}`, rc, undefined, { signal }),
   };
 }
 

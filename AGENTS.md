@@ -26,6 +26,17 @@
 - 不需要使用 playright 进行端到端测试
 - 前端格式化和 lint 只用仓库自带的 oxfmt / oxlint（`web/` 下 `bun run format`、`bun run format:check`、`bun run lint`），不要用 prettier 或编辑器的默认格式化，否则会把无关代码改成另一种风格。本机默认 node 是 v16，直接跑会报 `ERR_UNKNOWN_FILE_EXTENSION`，改用 `bun node_modules/oxfmt/bin/oxfmt <文件>` 和 `bun node_modules/oxlint/bin/oxlint src`。
 
+## 格式与提交前检查
+
+CI 经常因为格式 / lint 挂掉返工，下面几条是硬约束：
+
+- **改完一个文件就格式化它**，不要攒到最后：web 文件 `cd web && bun node_modules/oxfmt/bin/oxfmt <文件>`；agent 文件 `cd agent && npx oxfmt <文件>`（和 web 同一套 oxfmt / oxlint 规则，CI 同样检查）；Go 文件 `cd backend && golangci-lint fmt <文件>`（gofmt + goimports，与 CI 相同）。Claude Code 已用项目钩子自动完成（`.claude/settings.json` → `scripts/ai-hooks/format-on-edit.mjs`），其他助手需要自己跑。
+- **提交前跑 `bash scripts/check.sh`**（`--fix` 先自动格式化，`SKIP_TESTS=1` 跳过测试，可指定 `web` / `backend` / `agent`），它按改动范围执行和 `.github/workflows/ci.yml` 相同的检查。全部通过再提交。
+- **不许跳过 Git 钩子**：不用 `--no-verify`、`git commit -n`，不把 `core.hooksPath` 指空。钩子报什么修什么；确认是钩子本身坏了就停下来告诉用户。
+- 写 Go 就按 golangci 限额写：函数 ≤ 80 行、≤ 50 条语句、认知复杂度 ≤ 20；超了就拆函数，不加 `//nolint` 糊过去。
+- 本机 `BUN_OPTIONS` 带 `--preload` 时 `bun run <脚本>` 会只打印帮助并返回 0（假通过），在 `web/` 下跑脚本前先 `unset BUN_OPTIONS`（PowerShell：`$env:BUN_OPTIONS=''`）。
+- 完整流程和常见报错修法见 `.claude/skills/ci-check/SKILL.md`（Codex 直接读该文件）。
+
 ## 线上 Agent 观测
 
 - 线上画布 Agent 的运行记录用 `scripts/agent-trace` 拉到本地（`node scripts/agent-trace/agent-trace.mjs pull|show|compare`，用法见该目录 README），再用 `/agent-review` skill（`.claude/skills/agent-review/SKILL.md`，Codex 直接读该文件按流程执行）分析；失败分类见 `docs/agent-eval/failure-taxonomy.md`。

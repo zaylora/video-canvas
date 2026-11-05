@@ -2,35 +2,49 @@ import { Check, Loader2 } from "lucide-react";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { isActiveJob } from "@/utils/drama/jobs";
+import { isActiveJob, isPipelineJob } from "@/utils/drama/jobs";
 
 import { useWorkspace } from "./context";
 
 /**
- * 是否在研读：analyzing 是研读中；showAnalyzing 表示大纲和分集都还没有，这时剧本页的大纲里显示研读视图
- * （刚从首页提交进来的短剧落在「剧本 → 大纲」，看到的就是它）。
+ * 是否在研读 / 规划：analyzing 是自动规划还没完（研读中或规划中）；
+ * showAnalyzing 表示第一集还没有出来，这时剧本页的大纲里显示研读视图
+ * （刚从首页提交进来的短剧落在「剧本 → 大纲」，看到的就是它），第一集出现后立刻退出。
+ * 暂停时（还没有任何集）视图仍在，标题写「分集规划已暂停」。
  */
 export function useAnalyzing() {
   const { drama, jobs } = useWorkspace();
   const analyzing =
+    drama.phase === "running" ||
     drama.status === "analyzing" ||
-    jobs.some((job) => (job.step === "analyze" || job.step === "outline") && isActiveJob(job));
-  return { analyzing, showAnalyzing: analyzing && !drama.outlineMd && drama.episodes.length === 0 };
+    jobs.some((job) => isPipelineJob(job) && isActiveJob(job));
+  const paused = drama.phase === "paused";
+  return {
+    analyzing,
+    paused,
+    showAnalyzing: (analyzing || paused) && drama.episodes.length === 0,
+  };
 }
 
-/** 研读中的步骤与骨架屏（放在大纲页标题下面） */
+/**
+ * 研读 / 规划中的步骤与骨架屏（放在大纲页标题下面）：「粗读全书」「分集规划」两步。
+ * 粗读完成（已有大纲，或已经开始规划）后进入第二步。
+ */
 export function AnalyzingView() {
-  const { jobs } = useWorkspace();
-  const outlineRunning = jobs.some((job) => job.step === "outline" && isActiveJob(job));
-  const current = outlineRunning ? 1 : 0;
+  const { drama, jobs } = useWorkspace();
+  const { paused } = useAnalyzing();
+  const planning =
+    drama.planCursor > 0 ||
+    !!drama.outlineMd ||
+    jobs.some((job) => job.step === "plan" && isActiveJob(job));
+  const current = planning ? 1 : 0;
   const steps = [
-    ["研读剧本", "判断是剧本还是小说，整理章节与人物"],
-    ["故事大纲与人物传记", "提炼主线、人物关系和每集梗概"],
-    ["按集拆分", "生成分集目录"],
+    ["粗读全书", "抽样读开篇与后文，整理人物与梗概"],
+    ["分集规划", "按批读原文，生成分集目录"],
   ] as const;
   return (
     <div className="pt-6">
-      <h3 className="text-base font-semibold">正在研读剧本…</h3>
+      <h3 className="text-base font-semibold">{paused ? "分集规划已暂停" : "正在研读剧本…"}</h3>
       <p className="text-muted-foreground mt-1 text-sm">可以离开这个页面，完成后会通知你</p>
       <ol className="mt-6 grid gap-3">
         {steps.map(([title, detail], index) => (
@@ -44,7 +58,7 @@ export function AnalyzingView() {
             >
               {index < current ? (
                 <Check className="size-3" />
-              ) : index === current ? (
+              ) : index === current && !paused ? (
                 <Loader2 className="size-3 animate-spin" />
               ) : null}
             </span>

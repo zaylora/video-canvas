@@ -38,7 +38,7 @@ const TITLES: Record<ScriptDoc, string> = { outline: "故事大纲", characters:
  */
 export function ProjectDoc({ doc }: { doc: ScriptDoc }) {
   const { drama, patch, reportSave } = useWorkspace();
-  const { analyzing } = useAnalyzing();
+  const { analyzing, paused } = useAnalyzing();
   const markdown = doc === "outline" ? drama.outlineMd : drama.charactersMd;
   const [view, setView] = useState<CharactersView>("cards");
   const cards = useMemo(
@@ -46,7 +46,7 @@ export function ProjectDoc({ doc }: { doc: ScriptDoc }) {
     [doc, markdown],
   );
   const showCards = cards.length > 0 && view === "cards";
-  if (analyzing && !markdown) {
+  if ((analyzing || paused) && !markdown) {
     return (
       <div className="mx-auto w-full max-w-[720px] px-6 pt-6 pb-28 max-sm:px-3">
         <h2 className="font-display text-[22px] font-black tracking-wide">{TITLES[doc]}</h2>

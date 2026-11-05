@@ -29,7 +29,10 @@ export interface IdCodec {
  */
 export function createIdCodec(key: string): IdCodec {
   if (!key) throw new Error("idcodec 的密钥不能为空");
-  const aesKey = createHash("sha256").update("video-canvas/idcodec/" + key).digest().subarray(0, 16);
+  const aesKey = createHash("sha256")
+    .update("video-canvas/idcodec/" + key)
+    .digest()
+    .subarray(0, 16);
   const run = (make: typeof createCipheriv, input: Buffer): Buffer => {
     const c = make("aes-128-ecb", aesKey, null);
     c.setAutoPadding(false);
@@ -45,7 +48,10 @@ export function createIdCodec(key: string): IdCodec {
   };
   const decode = (hex: string): bigint | undefined => {
     if (!HEX32.test(hex)) return undefined;
-    const plain = run(createDecipheriv as unknown as typeof createCipheriv, Buffer.from(hex, "hex"));
+    const plain = run(
+      createDecipheriv as unknown as typeof createCipheriv,
+      Buffer.from(hex, "hex"),
+    );
     if (!plain.subarray(8).equals(TAG)) return undefined;
     const id = plain.readBigUInt64BE(0);
     return id > 0n ? id : undefined;

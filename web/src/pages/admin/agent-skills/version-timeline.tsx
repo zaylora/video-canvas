@@ -100,7 +100,7 @@ export function VersionTimeline({
                   下载
                 </Button>
                 <ReasonTooltip
-                  reason={state === "active" ? "生效版本不能删除，请先切换到其他版本" : null}
+                  reason={state === "active" ? "生效版本不能删除" : null}
                   className="ml-auto"
                 >
                   <Button

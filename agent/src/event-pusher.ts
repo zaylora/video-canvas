@@ -23,8 +23,14 @@ export interface RelayEvent {
 
 export function toRelayEvent(e: PublishedEvent): RelayEvent {
   return {
-    user_id: e.userId, session_id: e.sessionId, canvas_id: e.canvasId, run_id: e.runId, seq: e.seq, type: e.type,
-    data: e.payload === undefined ? null : e.payload, created_at: new Date(e.createdAt).toISOString(),
+    user_id: e.userId,
+    session_id: e.sessionId,
+    canvas_id: e.canvasId,
+    run_id: e.runId,
+    seq: e.seq,
+    type: e.type,
+    data: e.payload === undefined ? null : e.payload,
+    created_at: new Date(e.createdAt).toISOString(),
   };
 }
 

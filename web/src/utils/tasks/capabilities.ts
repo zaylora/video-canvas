@@ -3,6 +3,7 @@ import type {
   GenerationOp,
   ParamField,
   ParamOption,
+  PromptFormat,
   RefKind,
   RefSpec,
 } from "@/api/model/type";
@@ -41,6 +42,24 @@ export const OP_LABEL: Record<GenerationOp, string> = {
   t2i: "文生图",
   i2i: "图生图",
 };
+
+/** 视频提示词格式的可选项与中文名 */
+export const PROMPT_FORMATS: ReadonlyArray<{ value: PromptFormat; label: string }> = [
+  { value: "", label: "通用" },
+  { value: "seedance", label: "Seedance" },
+  { value: "h3", label: "MiniMax H3" },
+];
+
+/** 提示词格式的中文名；缺省（旧数据）= 通用 */
+export function promptFormatLabel(format: PromptFormat | undefined): string {
+  return PROMPT_FORMATS.find((item) => item.value === (format ?? ""))?.label ?? "通用";
+}
+
+/** 设置提示词格式；选通用时不写这个键，保持 capabilities 干净 */
+export function withPromptFormat(caps: Capabilities, format: PromptFormat): Capabilities {
+  const { prompt_format: _old, ...rest } = caps;
+  return format ? { ...rest, prompt_format: format } : rest;
+}
 
 /** 各生成方式能引用的素材种类：文生不引用，图生只引用图片，全能参考不限类型（以 refs 里开启的为准） */
 const REF_KINDS_OF_OP: Record<GenerationOp, RefKind[]> = {

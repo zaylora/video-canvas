@@ -10,18 +10,31 @@ import type {
   BackendJobView,
   BackendSegmentView,
   AddSegmentInput,
+  BackendSourcePreflight,
   CreateDramaInput,
   Drama,
   DramaJob,
   DramaJobInput,
   DramaPage,
+  DramaSkill,
   DramaStyles,
   DramaSummary,
+  DramaUnit,
   Episode,
   EpisodeSummary,
+  JobEstimate,
+  MyPrompt,
+  MyPromptInput,
+  PreflightInput,
+  PromptSettings,
+  PromptStep,
+  PromptTemplate,
   Segment,
   SegmentGenerateBody,
   SegmentGenerateResult,
+  SourceEstimate,
+  SourceEstimateInput,
+  SourcePreflight,
   UpdateDramaInput,
   UpdateEpisodeInput,
   UpdateSegmentInput,
@@ -31,6 +44,7 @@ export const mapDramaSummary = (raw: BackendDramaSummary): DramaSummary => ({
   id: raw.id,
   title: raw.title,
   status: raw.status,
+  phase: raw.phase ?? "done",
   episodeCount: raw.episode_count,
   lockedCount: raw.locked_count,
   coverUrl: raw.cover_url ? raw.cover_url : null,
@@ -51,6 +65,10 @@ export const mapEpisodeSummary = (raw: BackendEpisodeSummary): EpisodeSummary =>
   doneSegmentCount: raw.done_segment_count ?? 0,
   final: raw.final ? mapAsset(raw.final) : null,
   finalStale: raw.final_stale ?? false,
+  hook: raw.hook ?? "",
+  cliffhanger: raw.cliffhanger ?? "",
+  unitFrom: raw.unit_from ? raw.unit_from : null,
+  unitTo: raw.unit_to ? raw.unit_to : null,
 });
 
 export const mapEpisode = (raw: BackendEpisodeView): Episode => ({
@@ -72,6 +90,20 @@ export const mapJob = (raw: BackendJobView): DramaJob => ({
   result: raw.result
     ? { asset: mapAsset(raw.result.asset), skippedSeqs: raw.result.skipped_seqs ?? [] }
     : null,
+  lane: raw.lane ?? "user",
+  batchFrom: raw.batch_from ? raw.batch_from : null,
+  batchTo: raw.batch_to ? raw.batch_to : null,
+});
+
+/** 没有提示词设置（老项目）时四个环节都是内置 */
+const BUILTIN_SETTING = { source: "builtin", label: "内置" } as const;
+
+/** 四个环节的提示词设置：缺的环节补成内置 */
+export const mapPromptSettings = (raw: Partial<PromptSettings> | undefined): PromptSettings => ({
+  adapt: raw?.adapt ?? BUILTIN_SETTING,
+  assets: raw?.assets ?? BUILTIN_SETTING,
+  asset_prompts: raw?.asset_prompts ?? BUILTIN_SETTING,
+  video: raw?.video ?? BUILTIN_SETTING,
 });
 
 export const mapDrama = (raw: BackendDramaView): Drama => ({
@@ -87,6 +119,12 @@ export const mapDrama = (raw: BackendDramaView): Drama => ({
   targetEpisodes: raw.target_episodes,
   episodeSeconds: raw.episode_seconds,
   textModel: raw.text_model ?? "",
+  videoModel: raw.video_model ?? "",
+  imageModels: {
+    character: raw.image_models?.character ?? "",
+    scene: raw.image_models?.scene ?? "",
+    prop: raw.image_models?.prop ?? "",
+  },
   outlineMd: raw.outline_md ?? "",
   charactersMd: raw.characters_md ?? "",
   revision: raw.revision,
@@ -94,6 +132,15 @@ export const mapDrama = (raw: BackendDramaView): Drama => ({
   activeJobs: (raw.active_jobs ?? []).map(mapJob),
   createdAt: raw.created_at,
   updatedAt: raw.updated_at,
+  sourceChars: raw.source_chars ?? 0,
+  unitsTotal: raw.units_total ?? 0,
+  unitKind: raw.unit_kind ?? "episode",
+  phase: raw.phase ?? "done",
+  planCursor: raw.plan_cursor ?? 0,
+  rangeEnd: raw.range_end ?? 0,
+  pauseReason: raw.pause_reason ?? "",
+  pauseCode: raw.pause_code ?? "",
+  promptSettings: mapPromptSettings(raw.prompt_settings),
 });
 
 export const mapStyles = (raw: BackendDramaStyles): DramaStyles => ({
@@ -125,24 +172,41 @@ export const mapSegment = (raw: BackendSegmentView): Segment => ({
 const compact = <T extends Record<string, unknown>>(body: T): Partial<T> =>
   Object.fromEntries(Object.entries(body).filter(([, value]) => value !== undefined)) as Partial<T>;
 
-/** 新建短剧的 multipart 表单：file 与 text 二选一，空字段不发 */
-export function buildCreateForm(input: CreateDramaInput): FormData {
-  const form = new FormData();
-  if (input.file) form.append("file", input.file);
-  else form.append("text", input.text ?? "");
-  const fields: Record<string, string | undefined> = {
+/** 图片模型三项里只发有值的；一个都没有整个字段不发 */
+const imageModelsBody = (models: CreateDramaInput["imageModels"]) => {
+  const picked = Object.fromEntries(Object.entries(models ?? {}).filter(([, key]) => !!key));
+  return Object.keys(picked).length > 0 ? picked : undefined;
+};
+
+/**
+ * POST /dramas 请求体（契约 §2）：只带草稿 token 与开拍设置；空的可选字段不发，
+ * 不再有 target_episodes。
+ */
+export const toCreateDramaBody = (input: CreateDramaInput) =>
+  compact({
+    source_token: input.sourceToken,
+    source_kind: input.sourceKind,
+    range_end: input.rangeEnd,
     title: input.title?.trim() || undefined,
+    ratio: input.ratio,
     genre: input.genre || undefined,
     style_key: input.styleKey,
     style_custom: input.styleCustom || undefined,
-    ratio: input.ratio || undefined,
-    target_episodes: input.targetEpisodes ? String(input.targetEpisodes) : undefined,
-    episode_seconds: input.episodeSeconds ? String(input.episodeSeconds) : undefined,
-    text_model: input.textModel || undefined,
-  };
-  for (const [key, value] of Object.entries(fields)) {
-    if (value !== undefined) form.append(key, value);
-  }
+    episode_seconds: input.episodeSeconds,
+    text_model: input.textModel ?? "",
+    video_model: input.videoModel || undefined,
+    image_models: imageModelsBody(input.imageModels),
+    prompts: input.prompts,
+  });
+
+/** 预检的 multipart 表单：file 与 text 二选一，空的可选字段不发 */
+export function buildPreflightForm(input: PreflightInput): FormData {
+  const form = new FormData();
+  if (input.file) form.append("file", input.file);
+  else form.append("text", input.text ?? "");
+  if (input.sourceKind) form.append("source_kind", input.sourceKind);
+  if (input.textModel) form.append("text_model", input.textModel);
+  if (input.episodeSeconds) form.append("episode_seconds", String(input.episodeSeconds));
   return form;
 }
 
@@ -158,6 +222,7 @@ export const toUpdateDramaBody = (input: UpdateDramaInput) =>
     text_model: input.textModel,
     outline_md: input.outlineMd,
     characters_md: input.charactersMd,
+    prompts: input.prompts,
   });
 
 /** PATCH /dramas/:id/episodes/:no 请求体 */
@@ -167,6 +232,8 @@ export const toUpdateEpisodeBody = (input: UpdateEpisodeInput) =>
     title: input.title,
     synopsis: input.synopsis,
     script_md: input.scriptMd,
+    hook: input.hook,
+    cliffhanger: input.cliffhanger,
   });
 
 /** 估价 / 提交任务的请求体 */
@@ -216,13 +283,90 @@ export const listDramas = async (
   };
 };
 
+/** 预检返回的预估：snake_case 转 camelCase */
+const mapEstimate = (raw: {
+  episodes_min: number;
+  episodes_max: number;
+  episodes_exact: boolean;
+  credits: number;
+  minutes: number;
+}): SourceEstimate => ({
+  episodesMin: raw.episodes_min,
+  episodesMax: raw.episodes_max,
+  episodesExact: raw.episodes_exact,
+  credits: raw.credits,
+  minutes: raw.minutes,
+});
+
+/** 预检结果：units / issues 可能是 null，统一补成空数组 */
+const mapPreflight = (raw: BackendSourcePreflight): SourcePreflight => ({
+  sourceToken: raw.source_token,
+  filename: raw.filename,
+  chars: raw.chars,
+  kindGuess: raw.kind_guess,
+  kindSignals: raw.kind_signals ?? "",
+  unitKind: raw.unit_kind,
+  units: raw.units ?? [],
+  unitsTotal: raw.units_total,
+  issues: raw.issues ?? [],
+  estimate: mapEstimate(raw.estimate),
+});
+
 /**
- * 新建短剧并排队研读；67002 / 67003 由调用方就地展示，不弹全局提示
- * @param input 原文（文件或文本）与创作设置
+ * 预检原文：解析、去噪、切单元、识别类型并估价，不调用模型；67002 / 67003 由调用方就地展示，不弹全局提示。
+ * @param input 原文（文件或粘贴文本）与可选的类型、模型、单集时长
+ * @param onProgress 上传进度（0 到 1），大文件时用来给按钮画进度环
+ * @returns 预检结果（含草稿 token）
+ */
+export const preflightSource = async (
+  input: PreflightInput,
+  onProgress?: (ratio: number) => void,
+): Promise<SourcePreflight> =>
+  mapPreflight(
+    await service.upload<BackendSourcePreflight>(
+      "/drama-sources/preflight",
+      buildPreflightForm(input),
+      {
+        silent: true,
+        timeout: 5 * 60 * 1000,
+        onUploadProgress: (event) => {
+          if (event.total) onProgress?.(event.loaded / event.total);
+        },
+      },
+    ),
+  );
+
+/**
+ * 草稿预估：改范围 / 时长 / 模型 / 类型时重算自动部分（研读 + 规划）的集数、积分、耗时；草稿过期为 67014
+ * @param token 草稿 token
+ * @param input 用户选的类型、范围、单集时长、模型
+ * @returns 预估
+ */
+export const estimateSource = async (
+  token: string,
+  input: SourceEstimateInput,
+): Promise<SourceEstimate> =>
+  mapEstimate(
+    await service.post(
+      `/drama-sources/${token}/estimate`,
+      {
+        source_kind: input.sourceKind,
+        range_end: input.rangeEnd,
+        episode_seconds: input.episodeSeconds,
+        text_model: input.textModel,
+      },
+      { silent: true },
+    ),
+  );
+
+/**
+ * 按开拍设置新建短剧并自动入队研读；67014 / 67016 / 67018 / 67022 等由调用方就地展示，不弹全局提示
+ * @param input 草稿 token 与开拍设置
+ * @returns 新建的短剧
  */
 export const createDrama = async (input: CreateDramaInput): Promise<Drama> =>
   mapDrama(
-    await service.upload<BackendDramaView>("/dramas", buildCreateForm(input), { silent: true }),
+    await service.post<BackendDramaView>("/dramas", toCreateDramaBody(input), { silent: true }),
   );
 
 /** 短剧详情 */
@@ -272,13 +416,24 @@ export const updateEpisode = async (
     ),
   );
 
-/** 估算一次任务要多少积分 */
-export const estimateJob = async (id: string, input: DramaJobInput): Promise<number> => {
-  const res = await service.post<{ credits: number }>(`/dramas/${id}/estimate`, toJobBody(input), {
-    silent: true,
-  });
-  return res.credits;
+/**
+ * 估算一次任务：积分，以及 scripts 时「上一集没有剧本」的衔接缺口
+ * @param id 短剧 id
+ * @param input 任务步骤与选中的集
+ * @returns 积分与缺口集号
+ */
+export const estimateJobDetail = async (id: string, input: DramaJobInput): Promise<JobEstimate> => {
+  const res = await service.post<{ credits: number; gap_episodes?: number[] | null }>(
+    `/dramas/${id}/estimate`,
+    toJobBody(input),
+    { silent: true },
+  );
+  return { credits: res.credits, gapEpisodes: res.gap_episodes ?? [] };
 };
+
+/** 估算一次任务要多少积分 */
+export const estimateJob = async (id: string, input: DramaJobInput): Promise<number> =>
+  (await estimateJobDetail(id, input)).credits;
 
 /** 提交任务（202）；业务错误由调用方展示 */
 export const submitJob = async (id: string, input: DramaJobInput): Promise<DramaJob> =>
@@ -360,3 +515,130 @@ export const generateSegment = (
   service.post<SegmentGenerateResult>(`/drama-segments/${sid}/generate`, body, {
     headers: { "Idempotency-Key": idempotencyKey },
   });
+
+/** 后端的「我的提示词」项 */
+type BackendMyPrompt = Omit<MyPrompt, "updatedAt"> & { updated_at: string };
+
+const mapMyPrompt = (raw: BackendMyPrompt): MyPrompt => ({
+  id: raw.id,
+  step: raw.step,
+  name: raw.name,
+  bodies: raw.bodies ?? {},
+  revision: raw.revision,
+  updatedAt: raw.updated_at,
+});
+
+/** 内置提示词正文（只含可替换的正文，不含输入变量和输出结构） */
+export const listPromptTemplates = async (): Promise<PromptTemplate[]> => {
+  const res = await service.get<{ items: PromptTemplate[] | null }>("/drama-prompt-templates");
+  return res.items ?? [];
+};
+
+/**
+ * 我的提示词列表，updated_at 倒序
+ * @param step 环节；省略返回全部
+ */
+export const listMyPrompts = async (step?: PromptStep): Promise<MyPrompt[]> => {
+  const res = await service.get<{ items: BackendMyPrompt[] | null }>("/drama-prompts", {
+    step,
+  });
+  return (res.items ?? []).map(mapMyPrompt);
+};
+
+/**
+ * 新建我的提示词；正文为空 / 超长 / 重名（67017）由编辑器就地展示，不弹全局提示
+ * @param input 环节、名称与各页正文
+ */
+export const createMyPrompt = async (input: MyPromptInput): Promise<MyPrompt> =>
+  mapMyPrompt(
+    await service.post<BackendMyPrompt>(
+      "/drama-prompts",
+      { step: input.step, name: input.name, bodies: input.bodies },
+      { silent: true },
+    ),
+  );
+
+/**
+ * 修改我的提示词（带 revision 乐观锁）；67016 / 67017 / 409 由调用方处理，不弹全局提示
+ * @param id 提示词 id
+ * @param input 环节、名称、各页正文与 revision
+ */
+export const updateMyPrompt = async (id: string, input: MyPromptInput): Promise<MyPrompt> =>
+  mapMyPrompt(
+    await service.put<BackendMyPrompt>(
+      `/drama-prompts/${id}`,
+      { step: input.step, name: input.name, bodies: input.bodies, revision: input.revision },
+      { silent: true },
+    ),
+  );
+
+/** 删除我的提示词；已建的短剧不受影响（快照） */
+export const deleteMyPrompt = async (id: string): Promise<void> => {
+  await service.delete(`/drama-prompts/${id}`, { silent: true });
+};
+
+/**
+ * 某个环节可用的技能：后台已启用且标了该环节的
+ * @param step 环节
+ */
+export const listDramaSkills = async (step: PromptStep): Promise<DramaSkill[]> => {
+  const res = await service.get<{ items: DramaSkill[] | null }>("/drama-skills", { step });
+  return res.items ?? [];
+};
+
+/** 暂停自动规划：在途的那一批跑完后停，不中途取消；状态不对 67019 */
+export const pausePlanning = async (id: string): Promise<void> => {
+  await service.post(`/dramas/${id}/planning/pause`, undefined, { silent: true });
+};
+
+/** 继续自动规划：失败的批会重试；仍不足积分则保持暂停；状态不对 67019 */
+export const resumePlanning = async (id: string): Promise<void> => {
+  await service.post(`/dramas/${id}/planning/resume`, undefined, { silent: true });
+};
+
+/**
+ * 规划完成后扩大范围，接着规划（只能变大）；状态不对 67019
+ * @param id 短剧 id
+ * @param rangeEnd 新的终点单元号，0 = 全部
+ */
+export const setPlanningRange = async (id: string, rangeEnd: number): Promise<void> => {
+  await service.post(`/dramas/${id}/planning/range`, { range_end: rangeEnd }, { silent: true });
+};
+
+/**
+ * 「继续规划」确认框的预估
+ * @param id 短剧 id
+ * @param rangeEnd 终点单元号，0 = 全部
+ */
+export const estimatePlanning = async (id: string, rangeEnd: number): Promise<SourceEstimate> =>
+  mapEstimate(
+    await service.post(
+      `/dramas/${id}/planning/estimate`,
+      { range_end: rangeEnd },
+      { silent: true },
+    ),
+  );
+
+/**
+ * 把该环节改回内置后继续规划（自定义提示词导致失败时用）
+ * @param id 短剧 id
+ * @param step 要改回内置的环节
+ */
+export const retryBuiltin = async (id: string, step: PromptStep): Promise<void> => {
+  await service.post(`/dramas/${id}/planning/retry-builtin`, { step }, { silent: true });
+};
+
+/**
+ * 原文单元目录（「对应原文」查看用）
+ * @param id 短剧 id
+ * @param from 起始单元号
+ * @param to 结束单元号
+ */
+export const listUnits = async (id: string, from: number, to: number): Promise<DramaUnit[]> => {
+  const res = await service.get<{ items: DramaUnit[] | null }>(
+    `/dramas/${id}/units`,
+    { from, to },
+    { silent: true },
+  );
+  return res.items ?? [];
+};

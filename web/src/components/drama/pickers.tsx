@@ -6,12 +6,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Textarea } from "@/components/ui/textarea";
 import { RatioIcon } from "@/components/ratio-icon";
 import { cn } from "@/lib/utils";
-import {
-  CUSTOM_STYLE_KEY,
-  EPISODE_SECOND_OPTIONS,
-  RATIOS,
-  TARGET_EPISODE_OPTIONS,
-} from "@/utils/drama/options";
+import { CUSTOM_STYLE_KEY, EPISODE_SECOND_OPTIONS, RATIOS } from "@/utils/drama/options";
 
 import { DramaPoster } from "./poster";
 
@@ -36,7 +31,7 @@ export function MenuLabel({ children }: { children: ReactNode }) {
 }
 
 /** 浮层里的一个选项行 */
-function OptionRow({
+export function OptionRow({
   active,
   disabled,
   title,
@@ -76,6 +71,7 @@ export function ChipPopover({
   showChevron = true,
   set = true,
   variant = "chip",
+  tone,
   size = "default",
   disabled,
   title,
@@ -86,8 +82,13 @@ export function ChipPopover({
   label: string;
   showChevron?: boolean;
   set?: boolean;
-  /** chip 带边框的胶囊；bar 工具栏里的平按钮；chrome 放在半透明胶囊（ChromePill）里的圆按钮 */
-  variant?: "chip" | "bar" | "chrome";
+  /**
+   * chip 带边框的胶囊；bar 工具栏里的平按钮；chrome 放在半透明胶囊（ChromePill）里的圆按钮；
+   * field 半透明面板里的表单项胶囊（开拍设置、提示词设置）
+   */
+  variant?: "chip" | "bar" | "chrome" | "field";
+  /** warn 描边警示（如还没确认原文类型） */
+  tone?: "warn";
   /** lg 加高一档、字和图标放大（放在主操作按钮旁边时用） */
   size?: "default" | "lg";
   disabled?: boolean;
@@ -107,13 +108,18 @@ export function ChipPopover({
             ? "hover:bg-muted h-8 rounded-full border px-3"
             : variant === "chrome"
               ? "hover:bg-chrome-hover h-8 rounded-full px-3 transition-colors duration-150"
-              : "hover:bg-muted h-8 rounded-lg px-2.5",
+              : variant === "field"
+                ? "bg-chrome-hover ring-chrome-border hover:bg-chrome-hover/70 h-9 rounded-full px-3.5 ring-1 transition-colors duration-150"
+                : "hover:bg-muted h-8 rounded-lg px-2.5",
+          tone === "warn" && "ring-status-warning text-status-warning",
           variant === "chip" && !set && "text-muted-foreground",
           size === "lg" && "h-9 gap-2 px-3 text-sm [&_svg]:size-5",
         )}
       >
         {icon}
-        <span className="max-w-40 truncate">{label}</span>
+        <span className={cn("truncate", variant === "field" ? "max-w-72" : "max-w-40")}>
+          {label}
+        </span>
         {showChevron && <ChevronDown className="opacity-50" />}
       </PopoverTrigger>
       <PopoverContent align="start" sideOffset={6} className={cn("gap-1", width ?? "w-64")}>
@@ -265,45 +271,22 @@ export function RatioList({
   );
 }
 
-/** 目标集数 + 单集时长 */
-export function EpisodesPicker({
-  target,
+/** 单集时长：60 / 90 / 120 / 180 秒 */
+export function SecondsList({
   seconds,
-  onTarget,
   onSeconds,
 }: {
-  target: number;
   seconds: number;
-  onTarget: (n: number) => void;
   onSeconds: (n: number) => void;
 }) {
   return (
     <>
-      {TARGET_EPISODE_OPTIONS.map((n) => (
-        <OptionRow key={n} active={target === n} onClick={() => onTarget(n)}>
-          {n === 0 ? "自动" : `${n} 集`}
-          {n === 0 && <span className="text-muted-foreground ml-auto text-xs">按剧本已有分集</span>}
+      {EPISODE_SECOND_OPTIONS.map((n) => (
+        <OptionRow key={n} active={seconds === n} onClick={() => onSeconds(n)}>
+          <span className="tabular-nums">{n} 秒 / 集</span>
+          {seconds === n && <Check className="ml-auto size-4" />}
         </OptionRow>
       ))}
-      <MenuLabel>单集时长</MenuLabel>
-      <div className="flex gap-1 px-1 pb-1">
-        {EPISODE_SECOND_OPTIONS.map((n) => (
-          <button
-            key={n}
-            type="button"
-            aria-pressed={seconds === n}
-            onClick={() => onSeconds(n)}
-            className={cn(
-              "focus-visible:ring-ring/50 h-8 flex-1 rounded-md border text-sm tabular-nums outline-none focus-visible:ring-2",
-              seconds === n
-                ? "bg-primary text-primary-foreground border-transparent"
-                : "hover:bg-muted",
-            )}
-          >
-            {n}s
-          </button>
-        ))}
-      </div>
     </>
   );
 }

@@ -32,8 +32,12 @@ func (s *DramaService) CreateEpisode(ctx context.Context, userID, id uint64, req
 	// 1. 同一项目追加串行化，不把行ID暴露给调用方。
 	var e model.DramaEpisode
 	err := s.repo.WithTx(ctx, func(tx repository.DramaTx) error {
-		if _, err := tx.Project(ctx, userID, id, true); err != nil {
+		p, err := tx.Project(ctx, userID, id, true)
+		if err != nil {
 			return err
+		}
+		if p.Phase == "running" {
+			return errcode.ErrDramaPhase
 		}
 		eps, err := tx.Episodes(ctx, userID, id)
 		if err != nil {
@@ -43,8 +47,8 @@ func (s *DramaService) CreateEpisode(ctx context.Context, userID, id uint64, req
 		for _, v := range eps {
 			no = max(no, v.No+1)
 		}
-		if no > 100 {
-			return errcode.ErrInvalidParams.WithMsg("最多100集")
+		if no > 100000 {
+			return errcode.ErrInvalidParams.WithMsg("集号不能超过100000")
 		}
 		e = model.DramaEpisode{UserID: userID, DramaID: id, No: no, Title: req.Title, Synopsis: req.Synopsis, ScriptStatus: "empty", Revision: 1}
 		return tx.SaveEpisode(ctx, &e, 0)
@@ -55,7 +59,7 @@ func (s *DramaService) CreateEpisode(ctx context.Context, userID, id uint64, req
 	return s.dramaEpisodeView(ctx, e)
 }
 
-// UpdateEpisode 乐观锁更新单集；拆解锁定后仅允许改标题。
+// UpdateEpisode 乐观锁更新单集；拆解后正文与梗概锁定，标题、钩子和悬念仍可编辑。
 func (s *DramaService) UpdateEpisode(ctx context.Context, userID, id uint64, no int, req *model.UpdateDramaEpisodeReq) (*model.DramaEpisodeView, error) {
 	// 1. 项目行锁与画布拆解锁集采用同一顺序，避免绕过锁定。
 	var result model.DramaEpisode
@@ -95,6 +99,9 @@ func (s *DramaService) DeleteEpisode(ctx context.Context, userID, id uint64, no 
 	if err != nil {
 		return dramaError(err)
 	}
+	if p.Phase == "running" {
+		return errcode.ErrDramaPhase
+	}
 	return s.canvas.DeleteEpisode(ctx, userID, id, p.CanvasID, no)
 }
 
@@ -105,6 +112,12 @@ func applyDramaEpisodePatch(ep *model.DramaEpisode, req *model.UpdateDramaEpisod
 	}
 	if ep.LockedAt != nil && (req.ScriptMD != nil || req.Synopsis != nil) {
 		return errcode.ErrDramaEpisodeLocked
+	}
+	if req.Hook != nil {
+		ep.Hook = *req.Hook
+	}
+	if req.Cliffhanger != nil {
+		ep.Cliffhanger = *req.Cliffhanger
 	}
 	if req.Title != nil {
 		ep.Title = *req.Title

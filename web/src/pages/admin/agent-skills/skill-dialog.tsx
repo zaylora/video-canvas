@@ -29,7 +29,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@/components/admin-ui/dialog";
 import { StatusLabel } from "@/components/admin-ui/status-dot";
 import { Tag } from "@/components/admin-ui/tag";
 import { Button } from "@/components/ui/button";
@@ -220,7 +220,7 @@ function DialogBody({
   const removeVersion = (head: SkillVersionHead) => {
     void confirm({
       title: `删除 v${head.version}？`,
-      description: "这个版本的整包会从存储里删除，不能撤销。已经产生的会话不受影响。",
+      description: "删除后不能撤销",
       confirmLabel: "删除版本",
       destructive: true,
       onConfirm: async () => {
@@ -248,7 +248,7 @@ function DialogBody({
     }
     void confirm({
       title: `删除技能「${item.title}」？`,
-      description: `共 ${check.version_count} 个版本，将同时删除对象存储里的整包，不能撤销。历史会话不受影响。`,
+      description: `共 ${check.version_count} 个版本，删除后不能撤销`,
       confirmLabel: "删除技能",
       destructive: true,
       blockReason: check.can_delete ? null : (check.reason ?? "暂时不能删除"),
@@ -342,6 +342,7 @@ function DialogBody({
             onToggle={(enabled) => void api.toggleEnabled(item, enabled)}
             onGoVersions={() => setTab("versions")}
             onRenamed={api.replaceOne}
+            onDramaSteps={(steps) => api.saveDramaSteps(item, steps)}
             onDelete={() => void removeSkill()}
           />
         )}

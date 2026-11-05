@@ -26,7 +26,9 @@ const CREATE_SESSION: FieldSpec[] = [
   { key: "mode", label: "任务模式", kind: "string", oneof: MODES },
   { key: "model_key", label: "模型", kind: "string", max: 128 },
 ];
-const RENAME: FieldSpec[] = [{ key: "title", label: "标题", kind: "string", required: true, max: 40 }];
+const RENAME: FieldSpec[] = [
+  { key: "title", label: "标题", kind: "string", required: true, max: 40 },
+];
 const START_RUN: FieldSpec[] = [
   { key: "page_context", label: "页面上下文", kind: "any" },
   { key: "message", label: "消息", kind: "string", required: true, max: 20000 },
@@ -45,13 +47,26 @@ const RESUME: FieldSpec[] = [{ key: "add_budget", label: "追加预算", kind: "
 const DECIDE: FieldSpec[] = [
   { key: "decision", label: "决定", kind: "string", required: true, oneof: ["approve", "reject"] },
   {
-    key: "items", label: "条目", kind: "items", max: 50,
-    item: [{ key: "index", label: "序号", kind: "int", min: 0 }, { key: "approve", label: "approve", kind: "bool" }, { key: "count", label: "数量", kind: "int", min: 0, max: 4 }],
+    key: "items",
+    label: "条目",
+    kind: "items",
+    max: 50,
+    item: [
+      { key: "index", label: "序号", kind: "int", min: 0 },
+      { key: "approve", label: "approve", kind: "bool" },
+      { key: "count", label: "数量", kind: "int", min: 0, max: 4 },
+    ],
   },
   { key: "answer", label: "回答", kind: "string", max: 2000 },
   {
-    key: "answers", label: "回答列表", kind: "items", max: 5,
-    item: [{ key: "id", label: "题目标识", kind: "string", required: true, max: 64 }, { key: "value", label: "回答", kind: "any" }],
+    key: "answers",
+    label: "回答列表",
+    kind: "items",
+    max: 5,
+    item: [
+      { key: "id", label: "题目标识", kind: "string", required: true, max: 64 },
+      { key: "value", label: "回答", kind: "any" },
+    ],
   },
   { key: "add_budget", label: "追加预算", kind: "int", ...BUDGET },
 ];
@@ -83,12 +98,17 @@ export interface ApiOptions {
 type Req = FastifyRequest<{ Params: Record<string, string> }>;
 
 /** 业务错误和校验错误变成 Go 的错误信封；Fastify 自己的请求错误（体太大、内容类型不对）也翻成同样的格式 */
-function errorBody(e: unknown, log: NonNullable<ApiOptions["log"]>): { status: number; body: { code: number; msg: string } } {
+function errorBody(
+  e: unknown,
+  log: NonNullable<ApiOptions["log"]>,
+): { status: number; body: { code: number; msg: string } } {
   if (e instanceof AgentError) return { status: e.status, body: { code: e.code, msg: e.message } };
   if (e instanceof ValidationError) return { status: 400, body: { code: 10001, msg: e.message } };
   const fe = e as { code?: string; statusCode?: number };
-  if (fe?.code === "FST_ERR_CTP_BODY_TOO_LARGE") return { status: 413, body: { code: 10001, msg: "请求体过大" } };
-  if (typeof fe?.statusCode === "number" && fe.statusCode >= 400 && fe.statusCode < 500) return { status: 400, body: { code: 10001, msg: "请求参数格式错误" } };
+  if (fe?.code === "FST_ERR_CTP_BODY_TOO_LARGE")
+    return { status: 413, body: { code: 10001, msg: "请求体过大" } };
+  if (typeof fe?.statusCode === "number" && fe.statusCode >= 400 && fe.statusCode < 500)
+    return { status: 400, body: { code: 10001, msg: "请求参数格式错误" } };
   log("REST 接口出错", { error: String((e as Error)?.stack ?? e) });
   return { status: 500, body: { code: 10000, msg: "服务内部错误" } };
 }
@@ -99,7 +119,8 @@ function errorBody(e: unknown, log: NonNullable<ApiOptions["log"]>): { status: n
  */
 export function createApiApp(o: ApiOptions): FastifyInstance {
   const { service, codec } = o;
-  const log = o.log ?? ((msg, extra) => void process.stderr.write(JSON.stringify({ msg, ...extra }) + "\n"));
+  const log =
+    o.log ?? ((msg, extra) => void process.stderr.write(JSON.stringify({ msg, ...extra }) + "\n"));
   const root = Fastify({ bodyLimit: o.maxBody ?? DEFAULT_MAX_BODY, logger: false });
   const want = Buffer.from(o.serviceToken);
 
@@ -107,7 +128,9 @@ export function createApiApp(o: ApiOptions): FastifyInstance {
     const { status, body } = errorBody(e, log);
     return reply.code(status).send(body);
   });
-  root.setNotFoundHandler((_req, reply) => reply.code(404).send({ code: 10002, msg: "资源不存在" }));
+  root.setNotFoundHandler((_req, reply) =>
+    reply.code(404).send({ code: 10002, msg: "资源不存在" }),
+  );
   // 继续、取消、撤销这类不需要请求体的，前端可能什么都不发（甚至带着 JSON 的内容类型）：空体当 {}；不是合法 JSON 是 400
   root.addContentTypeParser("application/json", { parseAs: "string" }, (_req, body, done) => {
     const raw = String(body).trim();
@@ -127,7 +150,8 @@ export function createApiApp(o: ApiOptions): FastifyInstance {
     app.addHook("onRequest", async (req, reply) => {
       if (!tokenOk(req)) return reply.code(401).send({ code: 10003, msg: "未登录或登录已过期" });
     });
-    const ok = (reply: FastifyReply, data: unknown) => reply.header("cache-control", "no-store").send({ code: 0, msg: "success", data });
+    const ok = (reply: FastifyReply, data: unknown) =>
+      reply.header("cache-control", "no-store").send({ code: 0, msg: "success", data });
     app.get("/observe/runs", async (req, reply) => {
       const q = new URL(req.url, "http://x").searchParams;
       const after = queryInt(q, "updated_after", "updated_after", 0);
@@ -137,7 +161,8 @@ export function createApiApp(o: ApiOptions): FastifyInstance {
     // 门铃：Go 在生成任务进入终态的同一个事务里入队，由 River 调到这里；没有用户，只认服务令牌
     app.post("/internal/v1/watches/task-settled", async (req, reply) => {
       const b = validateBody(req.body ?? {}, TASK_SETTLED);
-      if (!DECIMAL_ID.test(b.task_id) || !DECIMAL_ID.test(b.run_id)) throw Err.invalidParams("task_id 和 run_id 必须是正整数的十进制字符串");
+      if (!DECIMAL_ID.test(b.task_id) || !DECIMAL_ID.test(b.run_id))
+        throw Err.invalidParams("task_id 和 run_id 必须是正整数的十进制字符串");
       await service.taskSettled(b.run_id, b.task_id, b.status);
       return ok(reply, { accepted: true });
     });
@@ -176,19 +201,43 @@ export function createApiApp(o: ApiOptions): FastifyInstance {
     const body = (req: FastifyRequest) => req.body ?? {};
     const query = (req: FastifyRequest) => new URL(req.url, "http://x").searchParams;
     const ok = (reply: FastifyReply, data?: unknown, status = 200) =>
-      reply.code(status).header("cache-control", "no-store").send({ code: 0, msg: "success", ...(data !== undefined && { data }) });
+      reply
+        .code(status)
+        .header("cache-control", "no-store")
+        .send({ code: 0, msg: "success", ...(data !== undefined && { data }) });
 
     app.get("/agent/models", async (_req, reply) => ok(reply, await service.models()));
-    app.get("/admin/sessions", async (req, reply) => ok(reply, await service.listAdminSessions(user(req))));
-    app.post("/admin/sessions", async (req, reply) => ok(reply, await service.createAdminSession(user(req), validateBody(body(req), CREATE_SESSION.filter((f) => f.key !== "mode")))));
-    app.get("/canvas/:id/agent/sessions", async (req: Req, reply) => ok(reply, await service.listSessions(user(req), id(req, "id"))));
+    app.get("/admin/sessions", async (req, reply) =>
+      ok(reply, await service.listAdminSessions(user(req))),
+    );
+    app.post("/admin/sessions", async (req, reply) =>
+      ok(
+        reply,
+        await service.createAdminSession(
+          user(req),
+          validateBody(
+            body(req),
+            CREATE_SESSION.filter((f) => f.key !== "mode"),
+          ),
+        ),
+      ),
+    );
+    app.get("/canvas/:id/agent/sessions", async (req: Req, reply) =>
+      ok(reply, await service.listSessions(user(req), id(req, "id"))),
+    );
     app.post("/canvas/:id/agent/sessions", async (req: Req, reply) => {
       const canvas = id(req, "id");
-      return ok(reply, await service.createSession(user(req), canvas, validateBody(body(req), CREATE_SESSION)));
+      return ok(
+        reply,
+        await service.createSession(user(req), canvas, validateBody(body(req), CREATE_SESSION)),
+      );
     });
     app.patch("/agent/sessions/:sid", async (req: Req, reply) => {
       const sid = id(req, "sid");
-      return ok(reply, await service.renameSession(user(req), sid, validateBody(body(req), RENAME).title));
+      return ok(
+        reply,
+        await service.renameSession(user(req), sid, validateBody(body(req), RENAME).title),
+      );
     });
     app.delete("/agent/sessions/:sid", async (req: Req, reply) => {
       await service.deleteSession(user(req), id(req, "sid"));
@@ -197,35 +246,71 @@ export function createApiApp(o: ApiOptions): FastifyInstance {
     app.get("/agent/sessions/:sid/events", async (req: Req, reply) => {
       const sid = id(req, "sid");
       const q = query(req);
-      return ok(reply, await service.events(user(req), sid, queryInt(q, "after", "after", 0), queryInt(q, "limit", "limit", 0, 200)));
+      return ok(
+        reply,
+        await service.events(
+          user(req),
+          sid,
+          queryInt(q, "after", "after", 0),
+          queryInt(q, "limit", "limit", 0, 200),
+        ),
+      );
     });
     app.get("/agent/sessions/:sid/history", async (req: Req, reply) => {
       const sid = id(req, "sid");
       const q = query(req);
-      return ok(reply, await service.history(user(req), sid, queryInt(q, "before", "before", 0), queryInt(q, "limit", "limit", 0, 200)));
+      return ok(
+        reply,
+        await service.history(
+          user(req),
+          sid,
+          queryInt(q, "before", "before", 0),
+          queryInt(q, "limit", "limit", 0, 200),
+        ),
+      );
     });
     app.post("/agent/sessions/:sid/runs", async (req: Req, reply) => {
       const sid = id(req, "sid");
-      const specs = service.isAdminSession(user(req), sid) ? START_RUN.filter((s) => !["selection", "viewport", "attachments"].includes(s.key)) : START_RUN;
-      return ok(reply, await service.startRun(user(req), sid, validateBody(body(req), specs) as never), 202);
+      const specs = service.isAdminSession(user(req), sid)
+        ? START_RUN.filter((s) => !["selection", "viewport", "attachments"].includes(s.key))
+        : START_RUN;
+      return ok(
+        reply,
+        await service.startRun(user(req), sid, validateBody(body(req), specs) as never),
+        202,
+      );
     });
-    app.get("/agent/sessions/:sid/watches", async (req: Req, reply) => ok(reply, await service.watches(user(req), id(req, "sid"))));
-    app.post("/agent/sessions/:sid/watches/cancel", async (req: Req, reply) => ok(reply, await service.cancelWatches(user(req), id(req, "sid"))));
+    app.get("/agent/sessions/:sid/watches", async (req: Req, reply) =>
+      ok(reply, await service.watches(user(req), id(req, "sid"))),
+    );
+    app.post("/agent/sessions/:sid/watches/cancel", async (req: Req, reply) =>
+      ok(reply, await service.cancelWatches(user(req), id(req, "sid"))),
+    );
     app.post("/agent/runs/:rid/interject", async (req: Req, reply) => {
       const rid = id(req, "rid");
       const b = validateBody(body(req), INTERJECT);
       await service.interject(user(req), rid, b.message, b.attachments);
       return ok(reply);
     });
-    app.post("/agent/runs/:rid/cancel", async (req: Req, reply) => ok(reply, await service.cancel(user(req), id(req, "rid"))));
+    app.post("/agent/runs/:rid/cancel", async (req: Req, reply) =>
+      ok(reply, await service.cancel(user(req), id(req, "rid"))),
+    );
     app.post("/agent/runs/:rid/resume", async (req: Req, reply) => {
       const rid = id(req, "rid");
-      return ok(reply, await service.resume(user(req), rid, validateBody(body(req), RESUME).add_budget));
+      return ok(
+        reply,
+        await service.resume(user(req), rid, validateBody(body(req), RESUME).add_budget),
+      );
     });
-    app.post("/agent/runs/:rid/undo", async (req: Req, reply) => ok(reply, await service.undo(user(req), id(req, "rid"))));
+    app.post("/agent/runs/:rid/undo", async (req: Req, reply) =>
+      ok(reply, await service.undo(user(req), id(req, "rid"))),
+    );
     app.put("/agent/runs/:rid/feedback", async (req: Req, reply) => {
       const rid = id(req, "rid");
-      return ok(reply, await service.setFeedback(user(req), rid, validateBody(body(req), FEEDBACK) as never));
+      return ok(
+        reply,
+        await service.setFeedback(user(req), rid, validateBody(body(req), FEEDBACK) as never),
+      );
     });
     app.delete("/agent/runs/:rid/feedback", async (req: Req, reply) => {
       await service.clearFeedback(user(req), id(req, "rid"));
@@ -233,7 +318,10 @@ export function createApiApp(o: ApiOptions): FastifyInstance {
     });
     app.post("/agent/approvals/:aid/decision", async (req: Req, reply) => {
       const aid = id(req, "aid");
-      return ok(reply, await service.decide(user(req), aid, validateBody(body(req), DECIDE) as never));
+      return ok(
+        reply,
+        await service.decide(user(req), aid, validateBody(body(req), DECIDE) as never),
+      );
     });
   });
 

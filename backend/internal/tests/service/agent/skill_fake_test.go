@@ -459,3 +459,7 @@ func newSkillEnv(t *testing.T) *skillEnv {
 func (r *memSkillRepo) ReserveVersionForTest(name string) (*model.AgentSkill, *model.AgentSkillVersion, error) {
 	return r.ReserveVersion(context.Background(), repository.ReserveSkillInput{Name: name, Title: name, Version: model.AgentSkillVersion{PackageKey: "agent-skills/" + name + "/crashed.zip", StorageID: 1}})
 }
+
+func (r *memSkillRepo) SetDramaSteps(_ context.Context, id uint64, steps []string) error {
+	return r.update(id, func(s *model.AgentSkill) { s.DramaSteps = append([]string{}, steps...) })
+}

@@ -22,6 +22,8 @@ import (
 
 // SkillAPI 是技能管理接口依赖的业务，由 *agentsvc.SkillService 实现；声明成接口是为了 handler 测试不必搭存储。
 type SkillAPI interface {
+	// SetDramaSteps 设置短剧适用环节。
+	SetDramaSteps(context.Context, uint64, string, []string) (*agentsvc.SkillItem, error)
 	// List 返回管理页列表（内置 + 导入，分页），q 按名字/显示名/说明过滤，status 为 enabled / disabled / builtin。
 	List(ctx context.Context, req *model.ListSkillReq) (*agentsvc.SkillPage, error)
 	// Get 返回技能详情。

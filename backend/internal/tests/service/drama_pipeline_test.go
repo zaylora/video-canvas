@@ -21,6 +21,9 @@ import (
 
 type dramaMemory struct {
 	repository.DramaTx
+	drafts     map[string]model.DramaSourceDraft
+	units      []model.DramaUnit
+	prompts    map[uint64]model.DramaPrompt
 	project    model.DramaProject
 	episodes   []model.DramaEpisode
 	jobs       []model.DramaJob
@@ -79,6 +82,18 @@ func (r *dramaMemory) UpdateProject(_ context.Context, userID, id uint64, revisi
 	}
 	for k, v := range fields {
 		switch k {
+		case "phase":
+			r.project.Phase = v.(string)
+		case "plan_cursor":
+			r.project.PlanCursor = v.(int)
+		case "range_end":
+			r.project.RangeEnd = v.(int)
+		case "pause_reason":
+			r.project.PauseReason = v.(string)
+		case "pause_code":
+			r.project.PauseCode = v.(string)
+		case "prompt_settings":
+			r.project.PromptSettings = v.([]byte)
 		case "source_kind":
 			r.project.SourceKind = v.(string)
 		case "source_summary":
@@ -95,6 +110,10 @@ func (r *dramaMemory) UpdateProject(_ context.Context, userID, id uint64, revisi
 			r.project.Title = v.(string)
 		case "text_model":
 			r.project.TextModel = v.(string)
+		case "video_model":
+			r.project.VideoModel = v.(string)
+		case "image_models":
+			r.project.ImageModels = v.([]byte)
 		}
 	}
 	r.project.Revision++
@@ -197,11 +216,6 @@ func (r *dramaMemory) Job(_ context.Context, userID, id, jobID uint64, _ bool) (
 	return nil, repository.ErrNotFound
 }
 func (r *dramaMemory) InsertJob(_ context.Context, j *model.DramaJob) error {
-	for _, old := range r.jobs {
-		if old.Status == "queued" || old.Status == "running" {
-			return repository.ErrDuplicate
-		}
-	}
 	r.nextID++
 	j.ID = r.nextID
 	j.CreatedAt = time.Now()
@@ -267,6 +281,8 @@ type dramaRegistry struct {
 	models      []provider.ModelInfo
 	unavailable map[string]bool
 	requested   []string
+	// snaps 按模型 key 返回专属快照（视频 / 图片模型）；没登记的 key 回落到 snap
+	snaps map[string]*provider.Snapshot
 }
 
 func (r *dramaRegistry) ListModels(_ context.Context, kind string) ([]provider.ModelInfo, error) {
@@ -282,6 +298,9 @@ func (r *dramaRegistry) Snapshot(_ context.Context, key string) (*provider.Snaps
 	r.requested = append(r.requested, key)
 	if r.unavailable[key] {
 		return nil, provider.ErrModelUnavailable
+	}
+	if snap, ok := r.snaps[key]; ok {
+		return snap, nil
 	}
 	return r.snap, nil
 }
@@ -328,6 +347,7 @@ type dramaPipelineCanvas struct {
 	applied  int
 	prompted int
 	created  []service.DramaCanvasAsset
+	models   map[string]string
 	// deleted 记录删集调用：短剧 id、画布 id、集号
 	deleted [][3]uint64
 }
@@ -337,8 +357,9 @@ func (c *dramaPipelineCanvas) DeleteEpisode(_ context.Context, _, dramaID, canva
 	return nil
 }
 
-func (c *dramaPipelineCanvas) ApplyBreakdown(context.Context, uint64, uint64, uint64, uint64, []int, []drama.Asset) ([]service.DramaCanvasAsset, error) {
+func (c *dramaPipelineCanvas) ApplyBreakdown(_ context.Context, _, _, _, _ uint64, _ []int, _ []drama.Asset, models map[string]string) ([]service.DramaCanvasAsset, error) {
 	c.applied++
+	c.models = models
 	return c.created, nil
 }
 func (c *dramaPipelineCanvas) ApplyPrompts(context.Context, uint64, uint64, uint64, []drama.AssetPrompt) error {
@@ -346,10 +367,10 @@ func (c *dramaPipelineCanvas) ApplyPrompts(context.Context, uint64, uint64, uint
 	return nil
 }
 func dramaTestService(r *dramaMemory, e *dramaTextStreamer, c *dramaPipelineCanvas) (*service.DramaService, *dramaRegistry) {
-	snap := &provider.Snapshot{ModelRevisionID: 9, Channel: provider.ChannelSnapshot{Key: "chan", BaseURL: "https://llm.example"}, Model: provider.ModelSnapshot{Key: "text", Kind: "agent", UpstreamModel: "upstream-chat", APIFormat: "openai", Pricing: modelcfg.Pricing{Billing: modelcfg.BillingPerCall, Unit: 5}, Capabilities: modelcfg.Capabilities{Context: &modelcfg.ContextSpec{Window: 100000, Output: 5000}}}}
+	snap := &provider.Snapshot{ModelRevisionID: 9, Channel: provider.ChannelSnapshot{Key: "chan", BaseURL: "https://llm.example"}, Model: provider.ModelSnapshot{Key: "text", Kind: "agent", UpstreamModel: "upstream-chat", APIFormat: "openai", Pricing: modelcfg.Pricing{Billing: modelcfg.BillingPerCall, Unit: 5}, Capabilities: modelcfg.Capabilities{Context: &modelcfg.ContextSpec{Window: 128000, Output: 5000}}}}
 	registry := &dramaRegistry{snap: snap, models: []provider.ModelInfo{{Key: "text", Kind: "agent"}}}
 	secrets := dramaSecrets{model.ChannelSecretName("chan"): "sk-test"}
-	return service.NewDramaService(service.DramaDeps{Repo: r, Registry: registry, Streamer: e, Secrets: secrets, Canvas: c, CanvasAssets: r, Segments: r}), registry
+	return service.NewDramaService(service.DramaDeps{Repo: r, Settings: r, Registry: registry, Streamer: e, Secrets: secrets, Canvas: c, CanvasAssets: r, Segments: r}), registry
 }
 func dramaCheckCode(t *testing.T, err error, code int) {
 	t.Helper()
@@ -476,30 +497,12 @@ func TestDramaScriptsSerialContinuationAndPartialSuccess(t *testing.T) {
 		t.Fatalf("failed job charged %+v", r.credit)
 	}
 }
-func TestDramaAnalyzeAutomaticallyOutlinesMarkedSource(t *testing.T) {
+func TestDramaRejectsUserAnalyzeAndOutline(t *testing.T) {
 	r := newDramaMemory()
-	r.project.SourceText = "第一集 开端\n原文甲\n第2集 继续\n原文乙"
-	r.project.SourceSummary = ""
-	e := &dramaTextStreamer{outputs: []string{`{"source_kind":"script","summary":"故事摘要","characters_md":"人物设定"}`}}
-	s, _ := dramaTestService(r, e, nil)
-	j, err := s.CreateJob(context.Background(), 7, 1, &model.DramaJobReq{Step: "analyze"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = s.HandleDrama(context.Background(), 7, 1, uint64(j.ID)); err != nil {
-		t.Fatal(err)
-	}
-	if len(r.jobs) != 2 || r.jobs[1].Step != "outline" {
-		t.Fatalf("jobs=%+v", r.jobs)
-	}
-	if err = s.HandleDrama(context.Background(), 7, 1, r.jobs[1].ID); err != nil {
-		t.Fatal(err)
-	}
-	if e.calls != 1 || len(r.episodes) != 2 || r.episodes[1].ScriptStatus != "ready" || !strings.Contains(r.episodes[1].ScriptMD, "原文乙") {
-		t.Fatalf("calls=%d eps=%+v", e.calls, r.episodes)
-	}
-	if r.jobs[1].Credits != 0 {
-		t.Fatal("原文捷径不应扣文本模型费用")
+	s, _ := dramaTestService(r, &dramaTextStreamer{}, nil)
+	for _, step := range []string{"analyze", "outline", "plan"} {
+		_, err := s.CreateJob(context.Background(), 7, 1, &model.DramaJobReq{Step: step})
+		dramaCheckCode(t, err, 10001)
 	}
 }
 func TestDramaModelFallbackAndEstimate(t *testing.T) {

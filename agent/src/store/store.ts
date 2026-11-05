@@ -4,7 +4,18 @@ import { SNOWFLAKE_EPOCH_MS, createSnowflake, parseDecimal, type Snowflake } fro
 import { DuplicateError, NotFoundError, StateConflictError } from "./errors.ts";
 import { MIGRATIONS, migrate } from "./migrations.ts";
 import type {
-  AgentEventRecord, Approval, ApprovalPatch, Feedback, NewApproval, NewFeedback, NewRun, NewSession, Run, RunPatch, Session, SessionPatch,
+  AgentEventRecord,
+  Approval,
+  ApprovalPatch,
+  Feedback,
+  NewApproval,
+  NewFeedback,
+  NewRun,
+  NewSession,
+  Run,
+  RunPatch,
+  Session,
+  SessionPatch,
 } from "./types.ts";
 
 export interface StoreOptions {
@@ -24,48 +35,93 @@ type SqlValue = bigint | number | string | null;
 
 const num = (v: unknown): number => Number(v);
 const id = (v: unknown): string => String(v);
-const dec = (v: unknown): bigint => v === "0" ? 0n : parseDecimal(String(v));
+const dec = (v: unknown): bigint => (v === "0" ? 0n : parseDecimal(String(v)));
 const json = (v: unknown): string => JSON.stringify(v === undefined ? {} : v);
 
 function sessionOf(r: Row): Session {
   return {
-    id: id(r.id), userId: id(r.user_id), canvasId: id(r.canvas_id), title: String(r.title), titleSource: String(r.title_source) as Session["titleSource"], mode: String(r.mode),
-    modelKey: String(r.model_key), lastSeq: num(r.last_seq), conversationId: String(r.conversation_id), createdAt: num(r.created_at), updatedAt: num(r.updated_at),
+    id: id(r.id),
+    userId: id(r.user_id),
+    canvasId: id(r.canvas_id),
+    title: String(r.title),
+    titleSource: String(r.title_source) as Session["titleSource"],
+    mode: String(r.mode),
+    modelKey: String(r.model_key),
+    lastSeq: num(r.last_seq),
+    conversationId: String(r.conversation_id),
+    createdAt: num(r.created_at),
+    updatedAt: num(r.updated_at),
   };
 }
 
 function runOf(r: Row): Run {
   return {
-    id: id(r.id), sessionId: id(r.session_id), canvasId: id(r.canvas_id), userId: id(r.user_id), status: String(r.status),
-    mode: String(r.mode), budgetCredits: num(r.budget_credits), spentCredits: num(r.spent_credits),
-    contextTokens: num(r.context_tokens), steps: num(r.steps), maxSteps: num(r.max_steps), errorCode: String(r.error_code),
-    errorMessage: String(r.error_message), promptVersion: num(r.prompt_version), toolsHash: String(r.tools_hash),
-    buildSha: String(r.build_sha), harnessKey: String(r.harness_key), leaseUntil: num(r.lease_until),
-    createdAt: num(r.created_at), updatedAt: num(r.updated_at), endedAt: r.ended_at === null ? null : num(r.ended_at),
+    id: id(r.id),
+    sessionId: id(r.session_id),
+    canvasId: id(r.canvas_id),
+    userId: id(r.user_id),
+    status: String(r.status),
+    mode: String(r.mode),
+    budgetCredits: num(r.budget_credits),
+    spentCredits: num(r.spent_credits),
+    contextTokens: num(r.context_tokens),
+    steps: num(r.steps),
+    maxSteps: num(r.max_steps),
+    errorCode: String(r.error_code),
+    errorMessage: String(r.error_message),
+    promptVersion: num(r.prompt_version),
+    toolsHash: String(r.tools_hash),
+    buildSha: String(r.build_sha),
+    harnessKey: String(r.harness_key),
+    leaseUntil: num(r.lease_until),
+    createdAt: num(r.created_at),
+    updatedAt: num(r.updated_at),
+    endedAt: r.ended_at === null ? null : num(r.ended_at),
   };
 }
 
 function eventOf(r: Row): AgentEventRecord {
   return {
-    id: id(r.id), sessionId: id(r.session_id), runId: id(r.run_id), seq: num(r.seq), type: String(r.type),
-    payload: JSON.parse(String(r.payload)), createdAt: num(r.created_at),
+    id: id(r.id),
+    sessionId: id(r.session_id),
+    runId: id(r.run_id),
+    seq: num(r.seq),
+    type: String(r.type),
+    payload: JSON.parse(String(r.payload)),
+    createdAt: num(r.created_at),
   };
 }
 
 function approvalOf(r: Row): Approval {
   return {
-    id: id(r.id), runId: id(r.run_id), sessionId: id(r.session_id), canvasId: id(r.canvas_id), userId: id(r.user_id),
-    kind: String(r.kind), toolCallId: String(r.tool_call_id), payload: JSON.parse(String(r.payload)),
-    quoteCredits: num(r.quote_credits), status: String(r.status), decision: JSON.parse(String(r.decision)),
-    result: JSON.parse(String(r.result)), decidedAt: r.decided_at === null ? null : num(r.decided_at),
-    expiresAt: num(r.expires_at), createdAt: num(r.created_at), updatedAt: num(r.updated_at),
+    id: id(r.id),
+    runId: id(r.run_id),
+    sessionId: id(r.session_id),
+    canvasId: id(r.canvas_id),
+    userId: id(r.user_id),
+    kind: String(r.kind),
+    toolCallId: String(r.tool_call_id),
+    payload: JSON.parse(String(r.payload)),
+    quoteCredits: num(r.quote_credits),
+    status: String(r.status),
+    decision: JSON.parse(String(r.decision)),
+    result: JSON.parse(String(r.result)),
+    decidedAt: r.decided_at === null ? null : num(r.decided_at),
+    expiresAt: num(r.expires_at),
+    createdAt: num(r.created_at),
+    updatedAt: num(r.updated_at),
   };
 }
 
 function feedbackOf(r: Row): Feedback {
   return {
-    runId: id(r.run_id), userId: id(r.user_id), rating: num(r.rating), reasons: JSON.parse(String(r.reasons)) as string[],
-    comment: String(r.comment), createdAt: num(r.created_at), updatedAt: num(r.updated_at),
+    runId: id(r.run_id),
+    userId: id(r.user_id),
+    rating: num(r.rating),
+    reasons: JSON.parse(String(r.reasons)) as string[],
+    comment: String(r.comment),
+    createdAt: num(r.created_at),
+    updatedAt: num(r.updated_at),
   };
 }
 
@@ -81,7 +137,11 @@ function translate(e: unknown, missing: string): never {
 }
 
 /** 按白名单把补丁变成 SET 子句；字段名只能来自 columns，不会把调用方给的字符串拼进 SQL */
-function setClause(patch: object, columns: Record<string, string>, encode: (key: string, v: unknown) => SqlValue): { sql: string; values: SqlValue[] } {
+function setClause(
+  patch: object,
+  columns: Record<string, string>,
+  encode: (key: string, v: unknown) => SqlValue,
+): { sql: string; values: SqlValue[] } {
   const sets: string[] = [];
   const values: SqlValue[] = [];
   for (const [key, v] of Object.entries(patch)) {
@@ -95,13 +155,36 @@ function setClause(patch: object, columns: Record<string, string>, encode: (key:
   return { sql: sets.join(", "), values };
 }
 
-const SESSION_COLUMNS = { title: "title", titleSource: "title_source", mode: "mode", modelKey: "model_key" };
-const RUN_COLUMNS = {
-  status: "status", errorCode: "error_code", errorMessage: "error_message", endedAt: "ended_at", leaseUntil: "lease_until",
-  mode: "mode", budgetCredits: "budget_credits", spentCredits: "spent_credits", steps: "steps", contextTokens: "context_tokens",
-  maxSteps: "max_steps", promptVersion: "prompt_version", toolsHash: "tools_hash", buildSha: "build_sha", harnessKey: "harness_key",
+const SESSION_COLUMNS = {
+  title: "title",
+  titleSource: "title_source",
+  mode: "mode",
+  modelKey: "model_key",
 };
-const APPROVAL_COLUMNS = { status: "status", decision: "decision", result: "result", decidedAt: "decided_at", quoteCredits: "quote_credits" };
+const RUN_COLUMNS = {
+  status: "status",
+  errorCode: "error_code",
+  errorMessage: "error_message",
+  endedAt: "ended_at",
+  leaseUntil: "lease_until",
+  mode: "mode",
+  budgetCredits: "budget_credits",
+  spentCredits: "spent_credits",
+  steps: "steps",
+  contextTokens: "context_tokens",
+  maxSteps: "max_steps",
+  promptVersion: "prompt_version",
+  toolsHash: "tools_hash",
+  buildSha: "build_sha",
+  harnessKey: "harness_key",
+};
+const APPROVAL_COLUMNS = {
+  status: "status",
+  decision: "decision",
+  result: "result",
+  decidedAt: "decided_at",
+  quoteCredits: "quote_credits",
+};
 
 const plain = (_key: string, v: unknown): SqlValue => v as SqlValue;
 
@@ -183,21 +266,36 @@ export class AgentStore {
     const row = this.#get(
       `INSERT INTO agent_sessions (id, user_id, canvas_id, title, title_source, mode, model_key, last_seq, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?) RETURNING *`,
-      this.#newId(), dec(in_.userId), dec(in_.canvasId), in_.title, in_.titleSource ?? "draft", in_.mode, in_.modelKey, t, t,
+      this.#newId(),
+      dec(in_.userId),
+      dec(in_.canvasId),
+      in_.title,
+      in_.titleSource ?? "draft",
+      in_.mode,
+      in_.modelKey,
+      t,
+      t,
     );
     return sessionOf(row!);
   }
 
   /** 按 id + userId 读会话（不含已删除的）；别人的和不存在的一样抛 NotFoundError */
   getSession(userId: string, sessionId: string): Session {
-    const row = this.#get("SELECT * FROM agent_sessions WHERE id = ? AND user_id = ? AND deleted_at IS NULL", dec(sessionId), dec(userId));
+    const row = this.#get(
+      "SELECT * FROM agent_sessions WHERE id = ? AND user_id = ? AND deleted_at IS NULL",
+      dec(sessionId),
+      dec(userId),
+    );
     if (!row) throw new NotFoundError("会话");
     return sessionOf(row);
   }
 
   /** 按 Pi 会话 id 找会话（后台监听的任务只知道 Pi 会话）；没有或已删除返回 undefined */
   sessionByConversation(conversationId: string): Session | undefined {
-    const row = this.#get("SELECT * FROM agent_sessions WHERE conversation_id = ? AND deleted_at IS NULL", conversationId);
+    const row = this.#get(
+      "SELECT * FROM agent_sessions WHERE conversation_id = ? AND deleted_at IS NULL",
+      conversationId,
+    );
     return row ? sessionOf(row) : undefined;
   }
 
@@ -205,12 +303,17 @@ export class AgentStore {
   listSessions(userId: string, canvasId: string): Session[] {
     return this.#all(
       "SELECT * FROM agent_sessions WHERE user_id = ? AND canvas_id = ? AND deleted_at IS NULL ORDER BY updated_at DESC, id DESC",
-      dec(userId), dec(canvasId),
+      dec(userId),
+      dec(canvasId),
     ).map(sessionOf);
   }
 
   countSessions(userId: string, canvasId: string): number {
-    const row = this.#get("SELECT COUNT(*) AS n FROM agent_sessions WHERE user_id = ? AND canvas_id = ? AND deleted_at IS NULL", dec(userId), dec(canvasId));
+    const row = this.#get(
+      "SELECT COUNT(*) AS n FROM agent_sessions WHERE user_id = ? AND canvas_id = ? AND deleted_at IS NULL",
+      dec(userId),
+      dec(canvasId),
+    );
     return num(row!.n);
   }
 
@@ -218,7 +321,10 @@ export class AgentStore {
     const { sql, values } = setClause(patch, SESSION_COLUMNS, plain);
     const changed = this.#run(
       `UPDATE agent_sessions SET ${sql}, updated_at = ? WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
-      ...values, this.#now(), dec(sessionId), dec(userId),
+      ...values,
+      this.#now(),
+      dec(sessionId),
+      dec(userId),
     );
     if (changed === 0) throw new NotFoundError("会话");
   }
@@ -229,22 +335,36 @@ export class AgentStore {
    * @returns 是否写入了
    */
   setLlmTitle(userId: string, sessionId: string, title: string): boolean {
-    return this.#run(
-      "UPDATE agent_sessions SET title = ?, title_source = 'llm' WHERE id = ? AND user_id = ? AND title_source = 'draft' AND deleted_at IS NULL",
-      title, dec(sessionId), dec(userId),
-    ) > 0;
+    return (
+      this.#run(
+        "UPDATE agent_sessions SET title = ?, title_source = 'llm' WHERE id = ? AND user_id = ? AND title_source = 'draft' AND deleted_at IS NULL",
+        title,
+        dec(sessionId),
+        dec(userId),
+      ) > 0
+    );
   }
 
   /** 记下会话在 Pi 里的会话 id。内部动作，不改更新时间 */
   bindConversation(sessionId: string, conversationId: string): void {
-    const changed = this.#run("UPDATE agent_sessions SET conversation_id = ? WHERE id = ? AND deleted_at IS NULL", conversationId, dec(sessionId));
+    const changed = this.#run(
+      "UPDATE agent_sessions SET conversation_id = ? WHERE id = ? AND deleted_at IS NULL",
+      conversationId,
+      dec(sessionId),
+    );
     if (changed === 0) throw new NotFoundError("会话");
   }
 
   /** 软删除：行还在（运行、事件、审批仍然引用它），但读、列表、追加事件都当它不存在 */
   deleteSession(userId: string, sessionId: string): void {
     const t = this.#now();
-    const changed = this.#run("UPDATE agent_sessions SET deleted_at = ?, updated_at = ? WHERE id = ? AND user_id = ? AND deleted_at IS NULL", t, t, dec(sessionId), dec(userId));
+    const changed = this.#run(
+      "UPDATE agent_sessions SET deleted_at = ?, updated_at = ? WHERE id = ? AND user_id = ? AND deleted_at IS NULL",
+      t,
+      t,
+      dec(sessionId),
+      dec(userId),
+    );
     if (changed === 0) throw new NotFoundError("会话");
   }
 
@@ -257,12 +377,21 @@ export class AgentStore {
   appendEvent(sessionId: string, runId: string, type: string, payload: unknown): AgentEventRecord {
     const sid = dec(sessionId);
     return this.#tx(() => {
-      const seqRow = this.#get("UPDATE agent_sessions SET last_seq = last_seq + 1 WHERE id = ? AND deleted_at IS NULL RETURNING last_seq", sid);
+      const seqRow = this.#get(
+        "UPDATE agent_sessions SET last_seq = last_seq + 1 WHERE id = ? AND deleted_at IS NULL RETURNING last_seq",
+        sid,
+      );
       if (!seqRow) throw new NotFoundError("会话");
       try {
         const row = this.#get(
           "INSERT INTO agent_events (id, session_id, run_id, seq, type, payload, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *",
-          this.#newId(), sid, BigInt(runId), seqRow.last_seq as bigint, type, json(payload), this.#now(),
+          this.#newId(),
+          sid,
+          BigInt(runId),
+          seqRow.last_seq as bigint,
+          type,
+          json(payload),
+          this.#now(),
         );
         return eventOf(row!);
       } catch (e) {
@@ -275,13 +404,18 @@ export class AgentStore {
   listEvents(sessionId: string, afterSeq: number, limit = 0): AgentEventRecord[] {
     return this.#all(
       "SELECT * FROM agent_events WHERE session_id = ? AND seq > ? ORDER BY seq ASC LIMIT ?",
-      dec(sessionId), afterSeq, limit > 0 ? limit : DEFAULT_LIST_LIMIT,
+      dec(sessionId),
+      afterSeq,
+      limit > 0 ? limit : DEFAULT_LIST_LIMIT,
     ).map(eventOf);
   }
 
   /** 一次运行的全部事件，按序号升序（观测导出用） */
   listRunEvents(runId: string): AgentEventRecord[] {
-    return this.#all("SELECT * FROM agent_events WHERE run_id = ? ORDER BY seq ASC", dec(runId)).map(eventOf);
+    return this.#all(
+      "SELECT * FROM agent_events WHERE run_id = ? ORDER BY seq ASC",
+      dec(runId),
+    ).map(eventOf);
   }
 
   /** 同会话里比 runId 更早的 turns 轮的用户消息和最终回复，按序号升序：给读导出的人补上"这一轮是接着什么说的" */
@@ -290,7 +424,9 @@ export class AgentStore {
       `SELECT * FROM agent_events WHERE type IN ('message.user', 'message.done') AND run_id IN
          (SELECT id FROM agent_runs WHERE session_id = ? AND id < ? ORDER BY id DESC LIMIT ?)
        ORDER BY seq ASC`,
-      dec(sessionId), dec(runId), turns,
+      dec(sessionId),
+      dec(runId),
+      turns,
     ).map(eventOf);
   }
 
@@ -303,9 +439,19 @@ export class AgentStore {
   /** 序号小于 beforeSeq 的最新 limit 条，升序（beforeSeq<=0 不设上界，limit<=0 取默认值）；聊天记录从最新往回翻页用 */
   listEventsBefore(sessionId: string, beforeSeq: number, limit = 0): AgentEventRecord[] {
     const n = limit > 0 ? limit : DEFAULT_LIST_LIMIT;
-    const rows = beforeSeq > 0
-      ? this.#all("SELECT * FROM agent_events WHERE session_id = ? AND seq < ? ORDER BY seq DESC LIMIT ?", dec(sessionId), beforeSeq, n)
-      : this.#all("SELECT * FROM agent_events WHERE session_id = ? ORDER BY seq DESC LIMIT ?", dec(sessionId), n);
+    const rows =
+      beforeSeq > 0
+        ? this.#all(
+            "SELECT * FROM agent_events WHERE session_id = ? AND seq < ? ORDER BY seq DESC LIMIT ?",
+            dec(sessionId),
+            beforeSeq,
+            n,
+          )
+        : this.#all(
+            "SELECT * FROM agent_events WHERE session_id = ? ORDER BY seq DESC LIMIT ?",
+            dec(sessionId),
+            n,
+          );
     return rows.reverse().map(eventOf);
   }
 
@@ -319,8 +465,21 @@ export class AgentStore {
         `INSERT INTO agent_runs (id, session_id, canvas_id, user_id, status, mode, budget_credits, max_steps, prompt_version,
            tools_hash, build_sha, harness_key, lease_until, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`,
-        this.#newId(), dec(in_.sessionId), dec(in_.canvasId), dec(in_.userId), in_.status, in_.mode, in_.budgetCredits ?? 0,
-        in_.maxSteps ?? 40, in_.promptVersion ?? 0, in_.toolsHash ?? "", in_.buildSha ?? "", in_.harnessKey ?? "", in_.leaseUntil ?? 0, t, t,
+        this.#newId(),
+        dec(in_.sessionId),
+        dec(in_.canvasId),
+        dec(in_.userId),
+        in_.status,
+        in_.mode,
+        in_.budgetCredits ?? 0,
+        in_.maxSteps ?? 40,
+        in_.promptVersion ?? 0,
+        in_.toolsHash ?? "",
+        in_.buildSha ?? "",
+        in_.harnessKey ?? "",
+        in_.leaseUntil ?? 0,
+        t,
+        t,
       );
       return runOf(row!);
     } catch (e) {
@@ -329,7 +488,11 @@ export class AgentStore {
   }
 
   getRun(userId: string, runId: string): Run {
-    const row = this.#get("SELECT * FROM agent_runs WHERE id = ? AND user_id = ?", dec(runId), dec(userId));
+    const row = this.#get(
+      "SELECT * FROM agent_runs WHERE id = ? AND user_id = ?",
+      dec(runId),
+      dec(userId),
+    );
     if (!row) throw new NotFoundError("运行");
     return runOf(row);
   }
@@ -343,29 +506,49 @@ export class AgentStore {
 
   /** 更新时间晚于 afterMs 的运行，按更新时间升序（同一时刻按 id），最多 limit 条；Go 的观测同步用它找出变过的运行 */
   listRunsUpdatedAfter(afterMs: number, limit: number): Run[] {
-    return this.#all("SELECT * FROM agent_runs WHERE updated_at > ? ORDER BY updated_at ASC, id ASC LIMIT ?", afterMs, limit).map(runOf);
+    return this.#all(
+      "SELECT * FROM agent_runs WHERE updated_at > ? ORDER BY updated_at ASC, id ASC LIMIT ?",
+      afterMs,
+      limit,
+    ).map(runOf);
   }
 
   /** 只刷新运行的更新时间：评价、撤销这类不改运行本身、但 Go 要重新汇总摘要的变化 */
   touchRun(runId: string): void {
-    const changed = this.#run("UPDATE agent_runs SET updated_at = ? WHERE id = ?", this.#now(), dec(runId));
+    const changed = this.#run(
+      "UPDATE agent_runs SET updated_at = ? WHERE id = ?",
+      this.#now(),
+      dec(runId),
+    );
     if (changed === 0) throw new NotFoundError("运行");
   }
 
   /** 处于这些状态的所有运行（启动恢复用） */
   listRunsByStatus(statuses: readonly string[]): Run[] {
     if (statuses.length === 0) return [];
-    return this.#all(`SELECT * FROM agent_runs WHERE status IN (${statuses.map(() => "?").join(",")}) ORDER BY id ASC`, ...statuses).map(runOf);
+    return this.#all(
+      `SELECT * FROM agent_runs WHERE status IN (${statuses.map(() => "?").join(",")}) ORDER BY id ASC`,
+      ...statuses,
+    ).map(runOf);
   }
 
   /** 续租约：服务还活着。不改更新时间，也不看状态以外的东西——只对仍在跑的运行续 */
   touchLease(runIds: readonly string[], leaseUntil: number): void {
-    for (const id of runIds) this.#run("UPDATE agent_runs SET lease_until = ? WHERE id = ? AND status IN ('queued','running')", leaseUntil, dec(id));
+    for (const id of runIds)
+      this.#run(
+        "UPDATE agent_runs SET lease_until = ? WHERE id = ? AND status IN ('queued','running')",
+        leaseUntil,
+        dec(id),
+      );
   }
 
   /** 某画布上占着位置的活跃运行，没有返回 undefined */
   activeRun(canvasId: string, userId = "0"): Run | undefined {
-    const row = this.#get("SELECT * FROM agent_runs WHERE canvas_id = ? AND (canvas_id > 0 OR user_id = ?) AND status IN ('queued','running','waiting_approval','waiting_input')", dec(canvasId), dec(userId));
+    const row = this.#get(
+      "SELECT * FROM agent_runs WHERE canvas_id = ? AND (canvas_id > 0 OR user_id = ?) AND status IN ('queued','running','waiting_approval','waiting_input')",
+      dec(canvasId),
+      dec(userId),
+    );
     return row ? runOf(row) : undefined;
   }
 
@@ -380,7 +563,10 @@ export class AgentStore {
     try {
       const row = this.#get(
         `UPDATE agent_runs SET ${sql}, updated_at = ? WHERE id = ? AND status IN (${from.map(() => "?").join(",")}) RETURNING *`,
-        ...values, this.#now(), dec(runId), ...from,
+        ...values,
+        this.#now(),
+        dec(runId),
+        ...from,
       );
       if (!row) throw new StateConflictError("运行的状态已经变化");
       return runOf(row);
@@ -392,26 +578,52 @@ export class AgentStore {
 
   /** 把还停在 queued / running 的运行标为 interrupted，返回条数。服务启动时调用：等审批和等回答的状态在库里，不受影响 */
   interruptActiveRuns(): number {
-    return this.#run("UPDATE agent_runs SET status = 'interrupted', updated_at = ? WHERE status IN ('queued','running')", this.#now());
+    return this.#run(
+      "UPDATE agent_runs SET status = 'interrupted', updated_at = ? WHERE status IN ('queued','running')",
+      this.#now(),
+    );
   }
 
   /** 原子累加步数和已花积分 */
   addRunUsage(runId: string, steps: number, credits: number): void {
-    const changed = this.#run("UPDATE agent_runs SET steps = steps + ?, spent_credits = spent_credits + ?, updated_at = ? WHERE id = ?", steps, credits, this.#now(), dec(runId));
+    const changed = this.#run(
+      "UPDATE agent_runs SET steps = steps + ?, spent_credits = spent_credits + ?, updated_at = ? WHERE id = ?",
+      steps,
+      credits,
+      this.#now(),
+      dec(runId),
+    );
     if (changed === 0) throw new NotFoundError("运行");
   }
 
   /** 记下运行的已花积分和上下文大小（覆盖旧值）。不看运行状态：取消后，被中止的那次调用结算出来的用量也要记上 */
   setRunUsage(runId: string, usage: { spentCredits: number; contextTokens?: number }): void {
-    const changed = usage.contextTokens === undefined
-      ? this.#run("UPDATE agent_runs SET spent_credits = ?, updated_at = ? WHERE id = ?", usage.spentCredits, this.#now(), dec(runId))
-      : this.#run("UPDATE agent_runs SET spent_credits = ?, context_tokens = ?, updated_at = ? WHERE id = ?", usage.spentCredits, usage.contextTokens, this.#now(), dec(runId));
+    const changed =
+      usage.contextTokens === undefined
+        ? this.#run(
+            "UPDATE agent_runs SET spent_credits = ?, updated_at = ? WHERE id = ?",
+            usage.spentCredits,
+            this.#now(),
+            dec(runId),
+          )
+        : this.#run(
+            "UPDATE agent_runs SET spent_credits = ?, context_tokens = ?, updated_at = ? WHERE id = ?",
+            usage.spentCredits,
+            usage.contextTokens,
+            this.#now(),
+            dec(runId),
+          );
     if (changed === 0) throw new NotFoundError("运行");
   }
 
   /** 记下会话当前的上下文大小（最近一次对话调用的输入 Token 数），覆盖旧值 */
   setRunContextTokens(runId: string, tokens: number): void {
-    const changed = this.#run("UPDATE agent_runs SET context_tokens = ?, updated_at = ? WHERE id = ?", tokens, this.#now(), dec(runId));
+    const changed = this.#run(
+      "UPDATE agent_runs SET context_tokens = ?, updated_at = ? WHERE id = ?",
+      tokens,
+      this.#now(),
+      dec(runId),
+    );
     if (changed === 0) throw new NotFoundError("运行");
   }
 
@@ -423,8 +635,19 @@ export class AgentStore {
       const row = this.#get(
         `INSERT INTO agent_approvals (id, run_id, session_id, canvas_id, user_id, kind, tool_call_id, payload, quote_credits, status, expires_at, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`,
-        this.#newId(), dec(in_.runId), dec(in_.sessionId), dec(in_.canvasId), dec(in_.userId), in_.kind, in_.toolCallId,
-        json(in_.payload), in_.quoteCredits, in_.status, in_.expiresAt, t, t,
+        this.#newId(),
+        dec(in_.runId),
+        dec(in_.sessionId),
+        dec(in_.canvasId),
+        dec(in_.userId),
+        in_.kind,
+        in_.toolCallId,
+        json(in_.payload),
+        in_.quoteCredits,
+        in_.status,
+        in_.expiresAt,
+        t,
+        t,
       );
       return approvalOf(row!);
     } catch (e) {
@@ -433,23 +656,35 @@ export class AgentStore {
   }
 
   getApproval(userId: string, approvalId: string): Approval {
-    const row = this.#get("SELECT * FROM agent_approvals WHERE id = ? AND user_id = ?", dec(approvalId), dec(userId));
+    const row = this.#get(
+      "SELECT * FROM agent_approvals WHERE id = ? AND user_id = ?",
+      dec(approvalId),
+      dec(userId),
+    );
     if (!row) throw new NotFoundError("审批");
     return approvalOf(row);
   }
 
   /** 某运行的审批，按创建先后 */
   listApprovals(runId: string): Approval[] {
-    return this.#all("SELECT * FROM agent_approvals WHERE run_id = ? ORDER BY id ASC", dec(runId)).map(approvalOf);
+    return this.#all(
+      "SELECT * FROM agent_approvals WHERE run_id = ? ORDER BY id ASC",
+      dec(runId),
+    ).map(approvalOf);
   }
 
   /** 审批状态迁移的 CAS：只有当前状态在 from 里才更新，返回更新后的审批；没命中抛 StateConflictError（重复点击、已过期、本轮已停止） */
   updateApprovalIf(approvalId: string, from: readonly string[], patch: ApprovalPatch): Approval {
     if (from.length === 0) throw new Error("updateApprovalIf 的 from 不能为空");
-    const { sql, values } = setClause(patch, APPROVAL_COLUMNS, (key, v) => (key === "decision" || key === "result" ? json(v) : (v as SqlValue)));
+    const { sql, values } = setClause(patch, APPROVAL_COLUMNS, (key, v) =>
+      key === "decision" || key === "result" ? json(v) : (v as SqlValue),
+    );
     const row = this.#get(
       `UPDATE agent_approvals SET ${sql}, updated_at = ? WHERE id = ? AND status IN (${from.map(() => "?").join(",")}) RETURNING *`,
-      ...values, this.#now(), dec(approvalId), ...from,
+      ...values,
+      this.#now(),
+      dec(approvalId),
+      ...from,
     );
     if (!row) throw new StateConflictError("审批已经被处理");
     return approvalOf(row);
@@ -457,7 +692,11 @@ export class AgentStore {
 
   /** 把某运行所有待处理的审批置为已失效，返回条数；运行被停止或结束时调用 */
   expirePendingApprovals(runId: string): number {
-    return this.#run("UPDATE agent_approvals SET status = 'expired', updated_at = ? WHERE run_id = ? AND status = 'pending'", this.#now(), dec(runId));
+    return this.#run(
+      "UPDATE agent_approvals SET status = 'expired', updated_at = ? WHERE run_id = ? AND status = 'pending'",
+      this.#now(),
+      dec(runId),
+    );
   }
 
   // ---- 评价 ----
@@ -470,7 +709,13 @@ export class AgentStore {
         `INSERT INTO agent_feedback (run_id, user_id, rating, reasons, comment, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (run_id, user_id) DO UPDATE SET rating = excluded.rating, reasons = excluded.reasons, comment = excluded.comment, updated_at = excluded.updated_at
          RETURNING *`,
-        dec(in_.runId), dec(in_.userId), in_.rating, JSON.stringify(in_.reasons), in_.comment, t, t,
+        dec(in_.runId),
+        dec(in_.userId),
+        in_.rating,
+        JSON.stringify(in_.reasons),
+        in_.comment,
+        t,
+        t,
       );
       return feedbackOf(row!);
     } catch (e) {
@@ -479,13 +724,23 @@ export class AgentStore {
   }
 
   getFeedback(runId: string, userId: string): Feedback | undefined {
-    const row = this.#get("SELECT * FROM agent_feedback WHERE run_id = ? AND user_id = ?", dec(runId), dec(userId));
+    const row = this.#get(
+      "SELECT * FROM agent_feedback WHERE run_id = ? AND user_id = ?",
+      dec(runId),
+      dec(userId),
+    );
     return row ? feedbackOf(row) : undefined;
   }
 
   /** 取消评价，返回有没有删到 */
   deleteFeedback(runId: string, userId: string): boolean {
-    return this.#run("DELETE FROM agent_feedback WHERE run_id = ? AND user_id = ?", dec(runId), dec(userId)) > 0;
+    return (
+      this.#run(
+        "DELETE FROM agent_feedback WHERE run_id = ? AND user_id = ?",
+        dec(runId),
+        dec(userId),
+      ) > 0
+    );
   }
 
   // ---- 备份和关闭 ----
@@ -526,7 +781,9 @@ export function openStore(path: string, opts: StoreOptions = {}): AgentStore {
     db.exec("PRAGMA synchronous = NORMAL");
     db.exec("PRAGMA foreign_keys = ON");
     migrate(db, MIGRATIONS, now);
-    const ids = opts.ids ?? createSnowflake({ workerId: opts.workerId ?? 1, now, notBefore: newestIdTimestamp(db) });
+    const ids =
+      opts.ids ??
+      createSnowflake({ workerId: opts.workerId ?? 1, now, notBefore: newestIdTimestamp(db) });
     return new AgentStore(db, now, ids);
   } catch (e) {
     db.close();
