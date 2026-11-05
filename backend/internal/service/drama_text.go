@@ -85,6 +85,12 @@ func dramaTemplate(step string, vars map[string]any, setting model.DramaPromptSe
 
 // streamDramaText 经LLM网关向Agent模型的渠道发一次对话请求；请求期间任务被取消会中断上游调用。
 func (s *DramaService) streamDramaText(ctx context.Context, j *model.DramaJob, snap *provider.Snapshot, prompt string) (*llmgateway.Result, error) {
+	return s.streamText(ctx, snap, prompt, func(c context.Context) error { return s.ensureDramaActive(c, j) })
+}
+
+// streamText 是 streamDramaText 的核心：active 每秒调用一次，返回错误就中断上游请求并把该错误交给调用方。
+// 预检这类还没有任务的调用传一个只看 ctx 的 active。
+func (s *DramaService) streamText(ctx context.Context, snap *provider.Snapshot, prompt string, active func(context.Context) error) (*llmgateway.Result, error) {
 	if s.streamer == nil || s.secrets == nil {
 		return nil, errcode.ErrInternal
 	}
@@ -112,7 +118,7 @@ func (s *DramaService) streamDramaText(ctx context.Context, j *model.DramaJob, s
 			case <-callCtx.Done():
 				return
 			case <-tick.C:
-				if s.ensureDramaActive(callCtx, j) != nil {
+				if active(callCtx) != nil {
 					cancel()
 					return
 				}
@@ -124,7 +130,7 @@ func (s *DramaService) streamDramaText(ctx context.Context, j *model.DramaJob, s
 	<-watched
 
 	// 2. 取消造成的上游中断按取消处理，其余按上游失败。
-	if stop := s.ensureDramaActive(ctx, j); stop != nil {
+	if stop := active(ctx); stop != nil {
 		return nil, stop
 	}
 	if e != nil {
