@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, test } from "bun:test";
@@ -51,6 +51,16 @@ describe("预设目录", () => {
   test("风格封面和运镜示意图的文件都真实存在", () => {
     for (const item of [...STYLE_PRESETS, ...MOTION_PRESETS])
       expect(existsSync(publicFile(item.cover))).toBe(true);
+  });
+
+  test("全部运镜封面使用循环多帧 GIF", () => {
+    for (const item of MOTION_PRESETS) {
+      expect(item.cover).toEndWith(".gif");
+      const data = readFileSync(publicFile(item.cover)).toString("latin1");
+      expect(data.slice(0, 6)).toBe("GIF89a");
+      expect(data).toContain("NETSCAPE2.0");
+      expect(data.split("\x21\xf9\x04").length - 1).toBeGreaterThan(1);
+    }
   });
 
   test("按种类和 id 查找，找不到返回 undefined", () => {
