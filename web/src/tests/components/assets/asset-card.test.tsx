@@ -131,6 +131,13 @@ describe("选择模式（画布资产库弹框）", () => {
     expect(out).toContain("角色正面.png");
   });
 
+  test("选中的卡片在勾选框里显示勾选顺序", () => {
+    const out = renderToStaticMarkup(
+      <LibraryAssetCard item={libraryItem} select={{ ...select({ selected: true }), order: 3 }} />,
+    );
+    expect(out).toMatch(/data-slot="select-box"[^>]*>3<\/span>/);
+  });
+
   test("达到上限时其余卡片禁用", () => {
     const out = renderToStaticMarkup(
       <LibraryAssetCard item={libraryItem} select={select({ disabled: true })} />,

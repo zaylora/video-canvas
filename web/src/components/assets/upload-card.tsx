@@ -30,7 +30,7 @@ export function UploadCard({
     <div
       data-slot="upload-card"
       data-status={task.status}
-      className="bg-muted/50 ring-border relative flex aspect-square min-w-0 flex-col items-center justify-center gap-2 rounded-xl px-3 text-center ring-1"
+      className="bg-chrome-hover ring-chrome-border relative flex aspect-square min-w-0 flex-col items-center justify-center gap-2 rounded-2xl px-3 text-center ring-1"
     >
       <Tooltip>
         <TooltipTrigger

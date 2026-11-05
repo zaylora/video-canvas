@@ -1,6 +1,6 @@
 import NumberFlow from "@number-flow/react";
 import { useReactFlow, useStore } from "@xyflow/react";
-import { CircleDashed, CircleHelp, Grid2x2, Grip, Map as MapIcon, Search } from "lucide-react";
+import { CircleDashed, CircleHelp, Grip, Map as MapIcon, Search } from "lucide-react";
 
 import {
   ChromeButton,
@@ -36,18 +36,16 @@ export function ViewControls({
   const { zoomIn, zoomOut, zoomTo, fitView } = useReactFlow();
   const background = useSettingsStore((state) => state.background);
   const updateSettings = useSettingsStore((state) => state.updateSettings);
-  const segmentValue: CanvasBackground = background === "cross" ? "lines" : background;
 
   return (
     <>
       <ChromePill>
-        <ChromeSegment
+        <ChromeSegment<CanvasBackground>
           id="canvas-background"
-          value={segmentValue}
+          value={background}
           onValueChange={(value) => updateSettings("background", value)}
           items={[
             { value: "dots", label: "点阵背景", icon: <Grip /> },
-            { value: "lines", label: "网格背景", icon: <Grid2x2 /> },
             { value: "none", label: "无背景", icon: <CircleDashed /> },
           ]}
         />
