@@ -1,5 +1,5 @@
 import { useMemo, type ReactNode } from "react";
-import { Loader2, RefreshCw, ShieldCheck } from "lucide-react";
+import { Loader2, RefreshCw } from "lucide-react";
 
 import type { TraceStep } from "@/api/admin/ai/type.d";
 import { Button } from "@/components/ui/button";
@@ -67,13 +67,8 @@ export function TraceTimeline({
         </div>
       </div>
 
-      <p className="text-muted-foreground flex items-center gap-1.5 text-xs">
-        <ShieldCheck className="size-3.5 shrink-0" aria-hidden />
-        Key 与鉴权头已脱敏，可以放心复制分享。
-      </p>
-
       {view.steps.length === 0 ? (
-        <Notice tone="info">{loading ? "正在拉取追踪…" : "任务尚未产生追踪，稍后刷新。"}</Notice>
+        <Notice tone="info">{loading ? "正在拉取追踪…" : "暂无追踪"}</Notice>
       ) : (
         <ol className="flex flex-col gap-1.5">
           {view.steps.map((step) => (

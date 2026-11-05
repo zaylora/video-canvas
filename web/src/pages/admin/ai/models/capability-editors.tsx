@@ -41,7 +41,7 @@ const OP_REFS: Record<GenerationOp, string> = {
   t2i: "只用文字",
   i2v: "图片",
   i2i: "图片",
-  omni: "不限类型：已开启的参考素材都能引用，连什么上游节点就是什么",
+  omni: "任意参考素材",
 };
 
 const REF_LABEL: Record<RefKind, string> = {
@@ -501,7 +501,7 @@ export function ParamRowEditor({
               />
             </label>
           )}
-          {!field.open && <span>不开放：画布上不出现，提交时按默认值发送</span>}
+          {!field.open && <span>不开放，按默认值发送</span>}
         </div>
       )}
       {error && <p className="text-destructive mt-2 text-xs">{error}</p>}

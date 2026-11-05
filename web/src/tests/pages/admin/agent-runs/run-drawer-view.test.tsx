@@ -94,7 +94,7 @@ describe("抽屉：头部、Harness、操作栏", () => {
   });
   test("没有读取技能 / 没有摘要：给出说明", () => {
     expect(ready(detail())).toContain("没有读取技能");
-    expect(ready(detail({ digest: null }))).toContain("摘要还没生成");
+    expect(ready(detail({ digest: null }))).toContain("暂无 Harness 信息");
   });
   test("操作栏：复制为 Markdown、下载 JSON；复制中按钮置灰", () => {
     const out = ready(detail());
@@ -134,7 +134,7 @@ describe("抽屉：用户信号", () => {
     for (const label of ["没理解我的需求", "画布改错了", "步骤太多或太慢", "生成结果不好", "其他"])
       expect(out).toContain(label);
     expect(out).toContain("改错了镜头 3");
-    expect(out).toContain("用户撤销了这一轮的画布改动");
+    expect(out).toMatch(/撤销<\/span><div[^>]*>是<\/div>/);
     expect(out).toContain("2 次");
     expect(out).toContain("1 次");
     expect(out).toContain("3 次");
@@ -202,7 +202,7 @@ describe("抽屉：时间线各 kind", () => {
   test("user / steer / assistant 显示正文；半截回答有标记", () => {
     for (const text of ["用户的话", "换成夜景", "我先看一下画布", "没说完"])
       expect(out).toContain(text);
-    expect(out).toContain("半截回答，被中断");
+    expect(out).toContain("已中断");
   });
   test("assistant 的思考默认折叠：只有「思考」触发行，没有正文", () => {
     expect(out).toContain("思考");
@@ -234,7 +234,7 @@ describe("抽屉：时间线各 kind", () => {
     expect(li("plan")).not.toContain("text-status-warning");
   });
   test("时间线为空：给说明", () => {
-    expect(ready(detail({ timeline: [] }))).toContain("这次运行没有记录到步骤");
+    expect(ready(detail({ timeline: [] }))).toContain("暂无步骤");
   });
 });
 

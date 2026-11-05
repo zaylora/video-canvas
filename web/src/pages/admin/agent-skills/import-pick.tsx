@@ -103,10 +103,7 @@ export function ImportPick({
         <span className="bg-muted text-muted-foreground grid size-12 place-items-center rounded-xl">
           <UploadCloud className="size-6" />
         </span>
-        <div>
-          <p className="text-base font-medium">把压缩包、文件夹或 SKILL.md 拖到这里</p>
-          <p className="text-muted-foreground mt-1 text-sm">也可以直接拖到页面任意位置</p>
-        </div>
+        <p className="text-base font-medium">拖入技能包</p>
         <div className="flex flex-wrap justify-center gap-2">
           <motion.div whileTap={TAP} className="inline-flex">
             <Button variant="outline" onClick={() => zipRef.current?.click()}>

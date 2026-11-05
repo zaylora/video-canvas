@@ -8,6 +8,7 @@ import {
 import { Notice } from "@/components/admin-ui/notice";
 import { Tag } from "@/components/admin-ui/tag";
 import { Card, CardContent } from "@/components/ui/card";
+import { GLASS_PANEL } from "@/components/admin-ui/glass";
 import { formatCount, providerLabel, storageLocation } from "@/utils/admin/storage-rules";
 
 import { PROVIDER_META } from "./provider-meta";
@@ -28,7 +29,7 @@ export function DefaultStorageCard({
   const Icon = PROVIDER_META[storage.provider].icon;
   const where = storageLocation(storage);
   return (
-    <Card data-slot="default-storage-card">
+    <Card className={GLASS_PANEL} data-slot="default-storage-card">
       <CardContent className="flex flex-wrap items-center gap-x-6 gap-y-4">
         <span className="bg-muted text-muted-foreground grid size-10 shrink-0 place-items-center rounded-lg">
           <Icon className="size-5" />
@@ -72,8 +73,7 @@ export function DefaultStorageCard({
 export function LocalDefaultNotice() {
   return (
     <Notice tone="warning" title="当前默认是本地磁盘。">
-      本地存储的地址上游 AI 平台访问不到（参考图以 URL
-      传给模型会失败），也不便于多实例部署。生产环境建议新建对象存储并设为默认。
+      上游 AI 平台无法访问本地地址，生产环境建议改用对象存储。
     </Notice>
   );
 }

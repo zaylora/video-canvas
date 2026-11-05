@@ -100,7 +100,7 @@ export function ChannelHeader({
 
       {!channel.enabled && (
         <Notice tone="warning" className="mt-1">
-          渠道已停用：它的所有模型在画布里不可见；进行中的任务按快照继续。
+          渠道已停用，模型在画布中不可见
         </Notice>
       )}
     </section>

@@ -4,11 +4,7 @@ import { Link } from "react-router";
 import type { ProcessorPreset } from "@/api/admin/image-processor/type.d";
 import type { StorageOption } from "@/api/admin/storage/type.d";
 import { ChoiceCard, ChoiceCardGroup } from "@/components/admin-ui/choice-card";
-import {
-  EmptyState,
-  EmptyStateDescription,
-  EmptyStateTitle,
-} from "@/components/admin-ui/empty-state";
+import { EmptyState, EmptyStateTitle } from "@/components/admin-ui/empty-state";
 import { Notice } from "@/components/admin-ui/notice";
 import { Tag } from "@/components/admin-ui/tag";
 import { Button } from "@/components/ui/button";
@@ -57,16 +53,12 @@ export function StepStorage({
   return (
     <div className="flex flex-col gap-3">
       <Notice tone="info" title={preset.name}>
-        只能绑定「{providerName}」存储。一个处理服务只绑定一个存储，创建后不能更改。
+        仅限「{providerName}」存储，绑定后不能更改
       </Notice>
 
       {!hasSelectable && (
         <EmptyState>
           <EmptyStateTitle>没有可绑定的「{providerName}」存储</EmptyStateTitle>
-          <EmptyStateDescription>
-            请先到存储配置新建一套{providerName}
-            {preset.requires_public_base && "并设置公开域名"}，再回来绑定。
-          </EmptyStateDescription>
           <Button variant="outline" size="sm" render={<Link to="/admin/settings/storage" />}>
             去存储配置新建
           </Button>

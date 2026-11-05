@@ -6,11 +6,10 @@ import type { ShowcaseLibraryItem } from "@/api/admin/showcase/type";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@/components/admin-ui/dialog";
 import { Tag } from "@/components/admin-ui/tag";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -116,12 +115,7 @@ function LibraryBody({
   return (
     <>
       <DialogHeader className="shrink-0 flex-row items-start justify-between gap-3 border-b p-5">
-        <div>
-          <DialogTitle className="text-base font-semibold">从素材库添加</DialogTitle>
-          <DialogDescription className="mt-0.5 text-xs">
-            只列出平台生成的视频，提示词和模型会从生成记录自动带入。
-          </DialogDescription>
-        </div>
+        <DialogTitle className="text-base font-semibold">从素材库添加</DialogTitle>
         <Button variant="ghost" size="icon-sm" aria-label="关闭（Esc）" onClick={onClose}>
           <X />
         </Button>
@@ -145,8 +139,7 @@ function LibraryBody({
         )}
         {status === "ready" && items.length === 0 && (
           <div className="text-muted-foreground py-12 text-center text-sm">
-            <b className="text-foreground mb-1 block text-base">还没有平台生成的视频</b>
-            用户生成视频后会出现在这里，也可以直接上传视频。
+            <b className="text-foreground block text-base">还没有平台生成的视频</b>
           </div>
         )}
         {status === "ready" && items.length > 0 && (
@@ -193,7 +186,7 @@ function LibraryBody({
                     </div>
                     <div className="px-3 pt-2.5 pb-3">
                       <p className="line-clamp-2 text-xs leading-normal">
-                        {item.prompt || "（没有找到生成它的提示词）"}
+                        {item.prompt || "（无提示词）"}
                       </p>
                       <div className="text-muted-foreground mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs">
                         {item.model_label && <Tag>{item.model_label}</Tag>}

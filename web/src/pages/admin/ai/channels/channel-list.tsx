@@ -102,7 +102,7 @@ export function ChannelList({
   return (
     <aside
       data-slot="channel-list"
-      className="bg-card flex min-w-0 flex-col gap-3 rounded-xl border p-3 lg:min-h-0"
+      className="bg-chrome ring-chrome-border ring-1 shadow-lg backdrop-blur-xl backdrop-saturate-150 flex min-w-0 flex-col gap-3 rounded-3xl p-3 lg:min-h-0"
     >
       <div className="flex items-center gap-2">
         <h2 className="text-sm font-semibold">渠道</h2>
@@ -243,7 +243,7 @@ function ChannelItem({
     </>
   );
   const className = cn(
-    "bg-card flex items-center gap-1 rounded-lg border px-2.5 py-2 transition-colors",
+    "bg-chrome-hover border-chrome-border flex items-center gap-1 rounded-2xl border px-2.5 py-2 transition-colors",
     selected ? "border-primary/60 bg-primary/5" : "hover:bg-muted/60",
   );
   if (!draggable) return <div className={className}>{body}</div>;

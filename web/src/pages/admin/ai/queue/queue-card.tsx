@@ -6,6 +6,7 @@ import { Tag } from "@/components/admin-ui/tag";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
+import { GLASS_PANEL } from "@/components/admin-ui/glass";
 import { cn } from "@/lib/utils";
 import { countCells, isDraftDirty, shownConcurrency } from "@/utils/admin/queue";
 
@@ -57,7 +58,7 @@ export function QueueCard({
   const locked = denyReason !== null;
 
   return (
-    <Card data-slot="queue-card" size="sm" aria-label="生成任务">
+    <Card className={GLASS_PANEL} data-slot="queue-card" size="sm" aria-label="生成任务">
       <CardContent className="flex flex-col gap-3">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-sm font-semibold">生成任务</h2>

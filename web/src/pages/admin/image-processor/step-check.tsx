@@ -53,17 +53,13 @@ export function StepCheck({
     return (
       <div className="text-muted-foreground flex items-center gap-2 py-6 text-sm" aria-busy="true">
         <Loader2 className="size-4 animate-spin" />
-        正在校验并用真实素材试跑，可能需要几秒…
+        校验中…
       </div>
     );
   }
   const check = processor?.check;
   if (!processor || !check) {
-    return (
-      <Notice tone="neutral">
-        还没有校验结果。点“运行校验”检查绑定、域名、签名并用真实素材试跑。
-      </Notice>
-    );
+    return <Notice tone="neutral">尚未校验</Notice>;
   }
   const stale = checkIsStale(processor);
   const imageLine = trialLine(check, "image");
@@ -74,7 +70,7 @@ export function StepCheck({
     <div className="flex flex-col gap-4">
       {stale && (
         <Notice tone="warning" title="配置已修改">
-          下面是旧配置（v{check.version}）的校验结果，需要重新校验后才能发布。
+          以下为 v{check.version} 的结果，需重新校验才能发布
         </Notice>
       )}
 
@@ -104,13 +100,9 @@ export function StepCheck({
           <Notice
             tone={hasWarn ? "warning" : "success"}
             title={hasWarn ? "可以发布，但有提示。" : "全部通过，可以发布。"}
-          >
-            发布后，「{processor.storage_name}」存储里的素材开始使用处理 URL。
-          </Notice>
+          />
         ) : (
-          <Notice tone="danger" title="校验未通过，不能发布。">
-            改完参数后回到上一步重新保存并校验。
-          </Notice>
+          <Notice tone="danger" title="校验未通过，不能发布。" />
         ))}
     </div>
   );

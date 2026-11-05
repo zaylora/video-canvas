@@ -2,7 +2,6 @@ import { Cloud } from "lucide-react";
 
 import type { ProcessorPreset, ProcessorVendor } from "@/api/admin/image-processor/type.d";
 import { ChoiceCard, ChoiceCardGroup } from "@/components/admin-ui/choice-card";
-import { Notice } from "@/components/admin-ui/notice";
 import { Tag } from "@/components/admin-ui/tag";
 import { isOwnStorageVendor, storageProviderLabel } from "@/utils/admin/image-processor";
 
@@ -45,16 +44,13 @@ export function StepVendor({
                 {!preset.supports_poster && <Tag tone="danger">无视频封面</Tag>}
               </span>
               <span className="text-muted-foreground text-xs">
-                只能绑定「{storageProviderLabel(preset.storage_provider)}」存储
-                {preset.requires_public_base && "，且存储需设置公开域名"}。
+                {storageProviderLabel(preset.storage_provider)} 存储
+                {preset.requires_public_base && " · 需公开域名"}
               </span>
             </span>
           </ChoiceCard>
         ))}
       </ChoiceCardGroup>
-      <Notice tone="neutral">
-        “必须使用自家存储”的厂商，处理能力是存储桶自带的：下一步只能选对应厂商的存储。
-      </Notice>
     </div>
   );
 }

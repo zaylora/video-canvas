@@ -47,7 +47,7 @@ export function ChannelsTab({
   return (
     <div className="flex flex-col gap-4">
       <SettingsCard channels={list} canWrite={canWrite} onSaved={() => void reload()} />
-      <section className="bg-card overflow-hidden rounded-xl border">
+      <section className="bg-chrome ring-chrome-border ring-1 shadow-lg backdrop-blur-xl backdrop-saturate-150 overflow-hidden rounded-3xl">
         <ChannelTable
           channels={list}
           status={status}

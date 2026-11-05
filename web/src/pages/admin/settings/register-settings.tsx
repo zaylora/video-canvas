@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { GLASS_PANEL } from "@/components/admin-ui/glass";
 import { useAdminStore } from "@/store/admin";
 import { canManageInfra } from "@/utils/admin/role";
 import {
@@ -82,7 +83,7 @@ function RegisterForm({
         void save();
       }}
     >
-      <Card>
+      <Card className={GLASS_PANEL}>
         <CardContent className="flex flex-col gap-5">
           <div className="flex items-center justify-between gap-4">
             <div>
@@ -135,7 +136,7 @@ function RegisterForm({
             <FormField
               label="排队倍数"
               htmlFor="register-queue-multiplier"
-              hint="排队上限 = 用户并发 × 倍数，超过后新任务才会被拒绝（1 到 20）"
+              hint="1–20"
               error={errors.queue_multiplier}
             >
               <Input
@@ -152,7 +153,7 @@ function RegisterForm({
             <FormField
               label="排队超时（分钟）"
               htmlFor="register-queue-max-wait"
-              hint="排队超过这个时间的任务会过期并退回积分（5 到 1440）"
+              hint="5–1440"
               error={errors.queue_max_wait_minutes}
             >
               <Input

@@ -31,7 +31,7 @@ import {
   SheetFooter,
   SheetHeader,
   SheetTitle,
-} from "@/components/ui/sheet";
+} from "@/components/admin-ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import {
@@ -159,7 +159,7 @@ function OrderSheetBody({
       confirmLabel: "关单",
       description: (
         <>
-          <p>会先向渠道查单：如果用户其实已经付款，会直接入账，不会关闭；否则关闭订单。</p>
+          <p>先向渠道查单，已付款则直接入账，否则关闭。</p>
           {upstreamWarning && (
             <p className="mt-2 text-amber-700 dark:text-amber-400">{upstreamWarning}</p>
           )}
@@ -182,7 +182,7 @@ function OrderSheetBody({
       <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-4 pb-4">
         {tag.hint && detail.status === "abnormal" && (
           <Notice tone="danger" title={`异常：${tag.hint}`}>
-            订单不会自动入账。核实后请在渠道商户后台退款，或用「调整积分」手动处理并写备注。
+            不会自动入账，需人工退款或调整积分
           </Notice>
         )}
         {detail.status === "create_failed" && detail.fail_reason && (
@@ -295,9 +295,7 @@ function OrderSheetBody({
             </span>
           </h3>
           {detail.notifications.length === 0 ? (
-            <p className="text-muted-foreground text-sm">
-              还没有收到这笔订单的渠道通知。付了款却没到账时，可以用下方的「查单」向渠道确认。
-            </p>
+            <p className="text-muted-foreground text-sm">暂无通知</p>
           ) : (
             <ul className="flex flex-col gap-3">
               {detail.notifications.map((note) => {

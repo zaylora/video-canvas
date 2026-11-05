@@ -15,7 +15,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@/components/admin-ui/dialog";
 import { Label } from "@/components/ui/label";
 import { openDialog, type DialogControl } from "@/store/dialog";
 import { errorMessage, isSecretMissing } from "@/utils/admin/errors";
@@ -144,34 +144,25 @@ export function PullModelsDialog({
           {state.kind === "loading" && (
             <div className="text-muted-foreground flex items-center justify-center gap-2 py-10 text-sm">
               <Loader2 className="size-4 animate-spin" />
-              正在向上游请求模型列表…
+              正在拉取模型…
             </div>
           )}
 
           {state.kind === "error" && (
             <Notice tone="danger" title="拉取失败">
               <p>{state.message}</p>
-              <ul className="mt-1.5 list-disc pl-4 text-xs">
-                {state.secretMissing ? (
-                  <li>
-                    {canWriteChannel
-                      ? "先点“设置 Key”填写 API Key。"
-                      : "请联系 super_admin 设置这个渠道的 API Key。"}
-                  </li>
-                ) : (
-                  <>
-                    <li>检查 Base URL 和 API Key 是否正确。</li>
-                    <li>
-                      该上游可能不提供 <code>/v1/models</code>（视频类上游常见），请手动新增模型。
-                    </li>
-                  </>
-                )}
-              </ul>
+              <p className="mt-1 text-xs">
+                {state.secretMissing
+                  ? canWriteChannel
+                    ? "尚未设置 API Key"
+                    : "尚未设置 API Key，请联系 super_admin"
+                  : "检查 Base URL 与 API Key；上游不支持拉取时可手动新增模型"}
+              </p>
             </Notice>
           )}
 
           {state.kind === "ready" && models.length === 0 && (
-            <Notice tone="warning">上游返回了空列表，请手动新增模型。</Notice>
+            <Notice tone="warning">上游没有返回模型</Notice>
           )}
 
           {state.kind === "ready" && models.length > 0 && (

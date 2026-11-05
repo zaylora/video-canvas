@@ -195,18 +195,18 @@ function PanelBody({
       </div>
 
       {empty ? (
-        <EmptyState className="bg-card min-h-64">
+        <EmptyState className="bg-chrome ring-chrome-border ring-1 shadow-lg backdrop-blur-xl backdrop-saturate-150 min-h-64 border-0">
           <EmptyStateIcon>
             <Box />
           </EmptyStateIcon>
           <EmptyStateTitle>这个渠道下还没有模型</EmptyStateTitle>
-          <EmptyStateDescription>
-            从上游拉取模型清单，或手动新增。拉到的模型是“待配置”，要逐个选好能力和协议才能启用。
-            {!channel.secret_set &&
-              (canWriteChannel
-                ? "渠道还没有设置 API Key，拉取前请先设置。"
-                : "渠道还没有设置 API Key，拉取前请联系 super_admin 设置。")}
-          </EmptyStateDescription>
+          {!channel.secret_set && (
+            <EmptyStateDescription>
+              {canWriteChannel
+                ? "未设置 API Key，拉取前请先设置"
+                : "未设置 API Key，请联系 super_admin 设置"}
+            </EmptyStateDescription>
+          )}
           <EmptyStateActions>
             <Button onClick={onPull}>
               <RefreshCw />

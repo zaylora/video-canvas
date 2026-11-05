@@ -29,10 +29,9 @@ describe("上下文规格的识别提示", () => {
     expect(html).toContain("应用识别值");
     expect(html).toContain("不会被应用");
   });
-  test("还没选上游模型：提示先选好渠道和上游模型", () => {
+  test("还没选上游模型：不显示任何提示", () => {
     const html = render({ state: { kind: "idle" }, current: undefined, onApply: () => {} });
-    expect(html).toContain("上游模型");
-    expect(html).not.toContain("应用");
+    expect(html).toBe("");
   });
 
   test("识别中", () => {

@@ -10,6 +10,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { GLASS_PANEL } from "@/components/admin-ui/glass";
 import {
   formatClock,
   formatDuration,
@@ -47,7 +48,7 @@ export function ThroughputCard({
   const bars = useMemo(() => throughputBars(points ?? []), [points]);
 
   return (
-    <Card data-slot="throughput-card" size="sm">
+    <Card className={GLASS_PANEL} data-slot="throughput-card" size="sm">
       <CardHeader>
         <CardTitle>近 1 小时</CardTitle>
         <CardDescription className="text-xs tabular-nums">
@@ -74,7 +75,7 @@ export function ThroughputCard({
         ) : !points ? (
           <Skeleton style={{ height: CHART_HEIGHT }} />
         ) : summary.empty ? (
-          <p className="text-muted-foreground py-6 text-center text-sm">最近 1 小时没有任务。</p>
+          <p className="text-muted-foreground py-6 text-center text-sm">最近 1 小时没有任务</p>
         ) : (
           <>
             <div

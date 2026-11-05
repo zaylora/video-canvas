@@ -20,7 +20,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@/components/admin-ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -40,11 +40,11 @@ const TARGET_LABEL: Record<DeleteTarget, string> = {
 /** 删除后一起删掉的东西 / 不受影响的东西，写在确认区里 */
 const CASCADE: Record<DeleteTarget, { gone: string; kept: string }> = {
   model: {
-    gone: "草稿与全部历史版本（彻底删除，不能恢复；之后可以用同一个标识重新导入）",
-    kept: "历史生成任务照常可以查看",
+    gone: "草稿与全部历史版本",
+    kept: "历史生成任务",
   },
-  channel: { gone: "渠道的 API Key 与 Secret Key（加密存储）", kept: "历史生成任务照常可以查看" },
-  plugin: { gone: "插件的全部版本代码", kept: "历史生成任务照常可以查看" },
+  channel: { gone: "渠道的 API Key 与 Secret Key", kept: "历史生成任务" },
+  plugin: { gone: "插件的全部版本代码", kept: "历史生成任务" },
 };
 
 export type DeleteDialogProps = {
@@ -162,13 +162,9 @@ function DeleteDialog({
             <DialogTitle>
               {blocked ? "暂时不能删除" : `删除${TARGET_LABEL[target]}？`}「{name}」
             </DialogTitle>
-            <DialogDescription>
-              {!check
-                ? "正在检查有没有别的地方在用它…"
-                : blocked
-                  ? "先处理下面的问题，处理完这里会自动刷新。"
-                  : "删除后不能撤销。"}
-            </DialogDescription>
+            {!blocked && (
+              <DialogDescription>{!check ? "正在检查引用…" : "删除后不能撤销。"}</DialogDescription>
+            )}
           </div>
         </DialogHeader>
 
@@ -333,13 +329,10 @@ function BlockerItem({
                   迁移
                 </Button>
               </div>
-              <p className="text-muted-foreground text-xs">
-                迁移后模型改用新渠道，已上线的立即生效；新渠道不满足条件（已停用、缺
-                Key）的模型会迁移失败，保持原样。
-              </p>
+              <p className="text-muted-foreground text-xs">新渠道需已启用并设置 Key</p>
             </>
           ) : (
-            <p className="text-muted-foreground text-xs">没有别的渠道可迁，先新建一个渠道。</p>
+            <p className="text-muted-foreground text-xs">没有其他可迁移的渠道</p>
           )}
         </div>
       )}
@@ -357,9 +350,7 @@ function BlockerItem({
               </Link>
             ))}
           </div>
-          <p className="text-muted-foreground text-xs">
-            这些模型的协议固定在这个插件上：点开改用别的协议，或删除模型后再来。
-          </p>
+          <p className="text-muted-foreground text-xs">改用别的协议或删除这些模型后再删除插件</p>
         </div>
       )}
     </li>

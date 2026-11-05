@@ -1,9 +1,10 @@
 import type { ComponentProps } from "react";
 
+import { GLASS_PANEL } from "@/components/admin-ui/glass";
 import { cn } from "@/lib/utils";
 
 /**
- * 主从布局左侧的列表卡片（渠道、插件列表）：
+ * 主从布局左侧的列表卡片（清透面板）（渠道、插件列表）：
  * <ListPanel>
  *   <ListPanelHeader><ListPanelTitle>全部渠道<ListPanelCount>3</ListPanelCount></ListPanelTitle>…</ListPanelHeader>
  *   <ListPanelContent><ListPanelItem active>…</ListPanelItem></ListPanelContent>
@@ -13,7 +14,7 @@ function ListPanel({ className, ...props }: ComponentProps<"section">) {
   return (
     <section
       data-slot="list-panel"
-      className={cn("bg-card flex min-h-0 flex-col rounded-xl border", className)}
+      className={cn(GLASS_PANEL, "flex min-h-0 flex-col", className)}
       {...props}
     />
   );
@@ -23,7 +24,7 @@ function ListPanelHeader({ className, ...props }: ComponentProps<"div">) {
   return (
     <div
       data-slot="list-panel-header"
-      className={cn("flex flex-col gap-3 border-b p-4", className)}
+      className={cn("border-chrome-border flex flex-col gap-3 border-b p-4", className)}
       {...props}
     />
   );
@@ -46,7 +47,7 @@ function ListPanelCount({ className, ...props }: ComponentProps<"span">) {
     <span
       data-slot="list-panel-count"
       className={cn(
-        "bg-muted text-muted-foreground rounded-md px-1.5 font-mono text-xs font-normal",
+        "bg-chrome-hover text-muted-foreground rounded-full px-2 font-mono text-xs font-normal",
         className,
       )}
       {...props}
@@ -77,7 +78,7 @@ function ListPanelItem({
         aria-current={active || undefined}
         data-active={active || undefined}
         className={cn(
-          "w-full rounded-lg border border-transparent px-3 py-2.5 text-left transition",
+          "w-full rounded-2xl border border-transparent px-3 py-2.5 text-left transition",
           "hover:bg-accent/60 data-active:bg-accent",
           className,
         )}

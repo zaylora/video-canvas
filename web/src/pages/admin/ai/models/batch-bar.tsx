@@ -25,7 +25,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@/components/admin-ui/dialog";
 import { Input } from "@/components/ui/input";
 import { checkDeadline } from "@/utils/admin/model-body";
 import { settingsProblem, switchModelKind, type ModelProtocol } from "@/utils/admin/model-protocol";
@@ -66,8 +66,7 @@ export function BatchBar({
       title: `删除 ${selected.length} 个模型？`,
       destructive: true,
       confirmLabel: "删除",
-      description:
-        "还在上线的会跳过（要先下线）。模型彻底删除，不能恢复；历史生成任务照常可以查看。",
+      description: "删除后不可恢复，上线中的模型会跳过。",
       onConfirm: () => void batch.remove(selected),
     });
 
@@ -235,9 +234,6 @@ function EditDialog({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>批量修改 {count} 个模型</DialogTitle>
-          <DialogDescription>
-            只改勾选的字段，其余保持不变。已上线的模型保存后立即生效。
-          </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
@@ -247,8 +243,8 @@ function EditDialog({
             </label>
             {creditsOn && (
               <FormField
-                label="统一设置为（积分，按次是每次、按秒是每秒）"
-                hint="只改默认价，规格价格不动；按 Token 计费的模型会跳过。"
+                label="统一设置为（积分）"
+                hint="规格价不变，按 Token 计费的跳过"
                 error={creditsError ?? undefined}
               >
                 <Input
@@ -268,7 +264,7 @@ function EditDialog({
             {deadlineOn && (
               <FormField
                 label="统一设置为"
-                hint="示例：90s、30m、1h"
+                hint="如 90s、30m、1h"
                 error={deadlineError ?? undefined}
               >
                 <Input
@@ -287,7 +283,7 @@ function EditDialog({
             {channelOn && (
               <FormField
                 label="统一切换到"
-                hint="上游模型 ID 与协议不变；已上线的模型换渠道后，新渠道要已启用且设置了 Key，否则保存失败"
+                hint="新渠道需已启用并设置 Key"
                 error={channelError ?? undefined}
               >
                 <OptionSelect
@@ -366,9 +362,7 @@ function ProtocolDialog({
       <DialogContent className="max-h-[92svh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>批量设置能力与协议 · 已选 {count} 个模型</DialogTitle>
-          <DialogDescription>
-            会覆盖所选模型的能力、协议和协议设置，不改价格。已启用的模型如果新配置没有通过启用检查，会被拒绝并列出原因。
-          </DialogDescription>
+          <DialogDescription>覆盖所选模型的能力和协议，不改价格。</DialogDescription>
         </DialogHeader>
         <ProtocolPicker
           idPrefix="batch"

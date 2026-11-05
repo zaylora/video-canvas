@@ -9,7 +9,7 @@ import {
   SheetDescription,
   SheetHeader,
   SheetTitle,
-} from "@/components/ui/sheet";
+} from "@/components/admin-ui/sheet";
 import { channelStatus } from "@/utils/admin/payment/channel";
 import { channelToForm, type ChannelFormValues } from "@/utils/admin/payment/channel-form";
 
@@ -48,8 +48,8 @@ function ChannelSheetBody({
     setRevalidateNotice(
       invalidated
         ? wasEnabled
-          ? "配置已改动，渠道已自动停用，需要重新校验后才能再启用。"
-          : "配置已改动，需要重新校验。"
+          ? "配置已改动，渠道已停用，需重新校验"
+          : "配置已改动，需重新校验"
         : null,
     );
     setStep(2);

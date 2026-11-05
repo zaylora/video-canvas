@@ -3,10 +3,13 @@ import { motion } from "motion/react";
 import type { ComponentProps, ReactNode } from "react";
 
 import { TAP_CARD } from "@/lib/motion";
+import { GLASS_PANEL } from "@/components/admin-ui/glass";
 import { cn } from "@/lib/utils";
 
-const statCardClass =
-  "group/stat bg-card text-card-foreground ring-foreground/10 relative flex w-full flex-col gap-1 overflow-hidden rounded-xl p-4 text-left text-sm ring-1";
+const statCardClass = cn(
+  GLASS_PANEL,
+  "group/stat text-card-foreground relative flex w-full flex-col gap-1 overflow-hidden p-4 text-left text-sm",
+);
 
 /**
  * 关键指标卡（总览页）：
@@ -43,7 +46,7 @@ function StatCard({
       onClick={onClick}
       className={cn(
         statCardClass,
-        "hover:bg-muted/40 focus-visible:ring-ring cursor-pointer transition-colors focus-visible:ring-2 focus-visible:outline-none",
+        "hover:bg-card focus-visible:ring-ring cursor-pointer transition-colors focus-visible:ring-2 focus-visible:outline-none",
         className,
       )}
     >

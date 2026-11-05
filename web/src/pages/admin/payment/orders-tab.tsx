@@ -8,7 +8,6 @@ import type {
 } from "@/api/admin/payment/type.d";
 import { FilterSelect } from "@/components/admin-ui/filter-select";
 import { ListSearch } from "@/components/admin-ui/list-search";
-import { Notice } from "@/components/admin-ui/notice";
 import { RowAction } from "@/components/admin-ui/row-action";
 import { Segmented, SegmentedItem } from "@/components/admin-ui/segmented";
 import { DataPanel, DataPanelBody, DataPanelPagination } from "@/components/admin-ui/data-panel";
@@ -45,9 +44,6 @@ export function OrdersTab({ channels }: { channels: PaymentChannels }) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
-      <Notice tone="info">
-        平台不提供退款。订单页只提供查单和关单，关单前一定先向渠道查单；所有入账都以渠道结果为准。
-      </Notice>
       <DataPanel className={cn(list.refreshing && list.state === "ready" && "opacity-60")}>
         <TableToolbar>
           <ListSearch value={list.q} onCommit={list.setQ} placeholder="搜索订单号或用户名" />

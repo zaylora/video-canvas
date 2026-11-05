@@ -17,7 +17,7 @@ import {
 } from "@/components/admin-ui/form-section";
 import { Notice } from "@/components/admin-ui/notice";
 import { Button } from "@/components/ui/button";
-import { DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DialogFooter, DialogHeader, DialogTitle } from "@/components/admin-ui/dialog";
 import { isStorageFieldLocked, isStorageVersionConflict } from "@/utils/admin/errors";
 import {
   buildCreateBody,
@@ -224,7 +224,6 @@ export function StorageForm({
     <>
       <DialogHeader className="gap-0.5 border-b p-4 pr-12">
         <DialogTitle>{title}</DialogTitle>
-        {!(editing && locked) && <DialogDescription>保存时会自动测试连接</DialogDescription>}
       </DialogHeader>
 
       <form
@@ -238,7 +237,7 @@ export function StorageForm({
         {readOnly && <ReadOnlyNotice what="修改存储配置" className="mb-5" />}
         {submitted && errorCount > 0 && (
           <Notice tone="danger" className="mb-5">
-            还有 {errorCount} 项需要修正，请看标红的字段。
+            {errorCount} 项需要修正
           </Notice>
         )}
 
