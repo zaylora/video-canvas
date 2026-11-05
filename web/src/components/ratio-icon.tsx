@@ -1,23 +1,25 @@
 import { cn } from "@/lib/utils";
-import { RATIO_ICON_BOX, ratioFrame } from "@/utils/ratio-icon";
+import { ratioFrame, ratioIconBox } from "@/utils/ratio-icon";
 
-/** Auto 的四角取景框：和 1:1 的方框区分开 */
+/** Auto 的四角取景框（画在 20×20 里再缩放进图标）：和 1:1 的方框区分开 */
 const AUTO_CORNERS = "M3 7V3h4 M13 3h4v4 M17 13v4h-4 M7 17H3v-4";
 
 /**
- * 比例小图标：按真实宽高比画一个框，所有比例同样大的外框、长边一样长，放在一排能直接比形状。
+ * 比例小图标：按真实宽高比画一个框，所有比例短边一样长（和 1:1 一样大）、长边按比例伸长，
+ * 图标高度一致，放在一排时下面的文字对齐。
  * 画布生成面板、后台测试节点、短剧比例选择共用这一个，画法一致。
  * @param ratio 比例值，如 16:9；Auto 等非比例值画四角取景框
  * @param className 外层 svg 的样式，颜色跟随 currentColor
  */
 export function RatioIcon({ ratio, className }: { ratio: string; className?: string }) {
   const frame = ratioFrame(ratio);
+  const box = ratioIconBox(ratio);
   return (
     <svg
       aria-hidden
-      viewBox={`0 0 ${RATIO_ICON_BOX} ${RATIO_ICON_BOX}`}
-      width={RATIO_ICON_BOX}
-      height={RATIO_ICON_BOX}
+      viewBox={frame ? `0 0 ${box.width} ${box.height}` : "0 0 20 20"}
+      width={box.width}
+      height={box.height}
       fill="none"
       stroke="currentColor"
       className={cn("shrink-0", className)}
