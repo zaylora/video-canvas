@@ -17,7 +17,11 @@ beforeAll(async () => {
   useModelsStore = (await import("@/store/models")).useModelsStore;
   useStudioPrefsStore = (await import("@/store/drama-studio")).useStudioPrefsStore;
 });
-afterAll(() => dom.restore());
+afterAll(() => {
+  // models store 是全局单例：清掉本文件灌进去的模型，免得后面的测试（如连线规则）读到残留
+  useModelsStore.setState({ byKind: {} });
+  dom.restore();
+});
 
 const video = (key: string) =>
   ({
