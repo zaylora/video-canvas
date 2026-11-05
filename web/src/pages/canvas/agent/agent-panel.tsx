@@ -43,6 +43,8 @@ import { SteerTray } from "./steer-tray";
 const MIN_CANVAS_WIDTH = 480;
 /** 调宽手柄每按一次方向键改多少 */
 const RESIZE_STEP = 16;
+/** 停靠侧栏打开 / 关闭时外层宽度的过渡：和后台助手抽屉同样的 200ms ease-out */
+const DOCK_REVEAL = { duration: 0.2, ease: "easeOut" } as const;
 
 /** 停靠宽度的上限：不超过 560，也不超过窗口的一半 */
 const clampDockWidth = (width: number) =>
@@ -134,6 +136,10 @@ export function AgentPanel({
   const offset = useAgentSettings((s) => s.offset);
   const x = useMotionValue(offset?.dx ?? 0);
   const y = useMotionValue(offset?.dy ?? 0);
+  /** 停靠侧栏的打开过渡已经走完：之后宽度变化（调宽、切换停靠）立刻到位 */
+  const [entered, setEntered] = useState(() => !docked || !!reduce);
+  /** 外层宽度正在过渡：这期间裁掉伸出外层的面板 */
+  const [revealing, setRevealing] = useState(false);
 
   // 窗口变小后记住的位置可能已经在画布外：浮窗出现时检查一次，出界就回到默认位置
   useEffect(() => {
@@ -320,13 +326,28 @@ export function AgentPanel({
     );
   }
 
+  // 停靠侧栏的开合和后台助手抽屉一样：外层宽度从 0 展开到侧栏宽（推挤画布），面板本身不淡入、不偏移；
+  // 只有打开和关闭时过渡，拖动调宽、切换停靠时宽度立刻到位
+  const reveal = docked && !reduce;
   return (
-    <div
+    <motion.div
       ref={bounds}
-      className={docked ? "relative h-full shrink-0" : "pointer-events-none absolute inset-3 z-20"}
+      initial={reveal ? { width: 0 } : false}
+      animate={{ width: docked ? dockWidth : "auto" }}
+      exit={reveal ? { width: 0, transition: DOCK_REVEAL } : undefined}
+      transition={{ width: entered ? { duration: 0 } : DOCK_REVEAL }}
+      onAnimationStart={() => setRevealing(true)}
+      onAnimationComplete={() => {
+        setRevealing(false);
+        setEntered(true);
+      }}
+      className={cn(
+        docked ? "relative h-full shrink-0" : "pointer-events-none absolute inset-3 z-20",
+        docked && revealing && "overflow-hidden",
+      )}
       style={
         docked
-          ? ({ width: dockWidth, "--dock-live": `${dockWidth}px` } as CSSProperties)
+          ? ({ "--dock-base": `${dockWidth}px`, "--dock-live": `${dockWidth}px` } as CSSProperties)
           : undefined
       }
     >
@@ -346,7 +367,9 @@ export function AgentPanel({
         style={docked ? { x: 0, y: 0 } : { x, y }}
         className={
           docked
-            ? "absolute inset-y-0 right-0 w-(--dock-live)"
+            ? // 左边贴住外层左沿：开合时外层变宽，面板跟着左沿滑进来（右侧被裁掉）；
+              // 拖动调宽时 --dock-live 和 --dock-base 拉开，面板向左伸出、盖在画布上，右沿不动
+              "absolute inset-y-0 left-[calc(var(--dock-base)-var(--dock-live))] w-(--dock-live)"
             : "pointer-events-auto absolute right-0 bottom-14 h-[min(600px,100%)] w-[400px] max-w-full"
         }
       >
@@ -355,9 +378,9 @@ export function AgentPanel({
           role="dialog"
           aria-label={label}
           onKeyDown={onKeyDown}
-          initial={enter}
+          initial={reveal ? false : enter}
           animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
-          exit={{ ...exit, transition: { duration: DURATION.exit } }}
+          exit={reveal ? undefined : { ...exit, transition: { duration: DURATION.exit } }}
           transition={{ duration: DURATION.base, ease: EASE_OUT }}
           style={{ transformOrigin: docked ? "right center" : "bottom right" }}
           className={cn(
@@ -369,7 +392,7 @@ export function AgentPanel({
           {body}
         </motion.div>
       </motion.div>
-    </div>
+    </motion.div>
   );
 }
 
