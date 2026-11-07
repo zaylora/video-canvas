@@ -17,14 +17,27 @@ const make = (patch: Partial<BubbleInput> = {}): BubbleInput => ({
 const st = () => usePetStore.getState();
 
 beforeEach(() => {
-  usePetStore.setState({ active: false, queue: initialBubbleQueue(), reaction: null });
+  usePetStore.setState({
+    active: false,
+    status: "off",
+    queue: initialBubbleQueue(),
+    reaction: null,
+  });
 });
 
 describe("usePetStore", () => {
-  test("初始：不接管提醒，没有气泡，没有反应", () => {
+  test("初始：不接管提醒，素材状态是 off，没有气泡，没有反应", () => {
     expect(st().active).toBe(false);
+    expect(st().status).toBe("off");
     expect(st().queue.current).toBeNull();
     expect(st().reaction).toBeNull();
+  });
+
+  test("setStatus 记录素材加载状态，供外壳决定画不画胶囊", () => {
+    st().setStatus("loading");
+    expect(st().status).toBe("loading");
+    st().setStatus("failed");
+    expect(st().status).toBe("failed");
   });
 
   test("push 进入队列并显示，dismiss 关闭", () => {

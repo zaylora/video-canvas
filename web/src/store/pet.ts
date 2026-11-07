@@ -8,12 +8,15 @@ import {
   type BubbleQueueAction,
   type BubbleQueueState,
 } from "@/utils/pet/bubble-queue";
+import type { PetAssetsStatus } from "@/utils/pet/assets-status";
 import { nextReaction, type PetReaction, type PetReactionKind } from "@/utils/pet/mood";
 import type { Rect, Size } from "@/utils/pet/placement";
 
 type PetState = {
   /** 桌宠是否在接管画布提醒：档位不是隐藏、图集已加载、桌宠已挂载，由界面层写入 */
   active: boolean;
+  /** 素材加载状态，由界面层写入：外壳据此决定右下角画不画胶囊、给桌宠留不留位 */
+  status: PetAssetsStatus;
   /** 气泡队列状态（bubble-queue 的 reducer）；current 是正在显示的那条 */
   queue: BubbleQueueState;
   /** 一次性反应，播完由界面层 clearReaction */
@@ -22,6 +25,7 @@ type PetState = {
   placement: { rect: Rect; area: Size } | null;
 
   setActive: (active: boolean) => void;
+  setStatus: (status: PetAssetsStatus) => void;
   setPlacement: (placement: { rect: Rect; area: Size } | null) => void;
   /** 推一条气泡；now 缺省取当前时间 */
   push: (bubble: BubbleInput, now?: number) => void;
@@ -59,6 +63,7 @@ export const usePetStore = create<PetState>((set, get) => {
 
   return {
     active: false,
+    status: "off",
     queue: initialBubbleQueue(),
     reaction: null,
     placement: null,
@@ -67,6 +72,7 @@ export const usePetStore = create<PetState>((set, get) => {
       set(active ? { active } : { active, placement: null });
       if (!active) dispatch({ type: "clear" }, Date.now());
     },
+    setStatus: (status) => set({ status }),
     setPlacement: (placement) => set({ placement }),
     push: (bubble, now = Date.now()) => dispatch({ type: "push", bubble, now }, now),
     dismiss: (id, now = Date.now()) => dispatch({ type: "dismiss", id, now }, now),

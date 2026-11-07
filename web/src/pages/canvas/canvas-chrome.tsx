@@ -9,6 +9,7 @@ import { useAgentSettings } from "@/store/agent-settings";
 import { usePetStore } from "@/store/pet";
 import { watchTitlePrefix } from "@/utils/agent/watch";
 import { canvasPageTitle } from "@/utils/page-title";
+import { cornerLayout } from "@/utils/pet/assets-status";
 
 import { useAgentHost } from "./agent-host";
 import { AgentLauncher } from "./chrome/agent-launcher";
@@ -32,8 +33,9 @@ export function CanvasChrome() {
   const shortcutsOpen = useShortcutsDialog((state) => state.open);
   const setShortcutsOpen = useShortcutsDialog((state) => state.setOpen);
   const { title } = editor;
-  // 桌宠接管时用它代替右下角的胶囊；隐藏档、素材没加载好或加载失败时仍显示胶囊
-  const petActive = usePetStore((state) => state.active);
+  // 桌宠用它代替右下角的胶囊：素材加载中先留空位，不让胶囊闪一下；
+  // 隐藏档、加载失败或等太久才显示胶囊
+  const { showLauncher, reserveForPet } = cornerLayout(usePetStore((state) => state.status));
   const petHidden = useAgentSettings((state) => state.pet.mode === "hidden");
   // 标签页标题带上 Agent 的状态（待批准 / 后台等待进度），切到别的标签页也看得到；页面在后台时的系统通知同理
   usePageTitle(
@@ -80,7 +82,7 @@ export function CanvasChrome() {
         />
       </ChromeZone>
       <ChromeZone position="bottom-right">
-        {!petActive && (
+        {showLauncher && (
           // 隐藏档下右键胶囊可以把桌宠请回来
           <ActionContextMenu
             className="contents"
@@ -105,7 +107,7 @@ export function CanvasChrome() {
           </ActionContextMenu>
         )}
         {/* 桌宠在右下角时，统计条往左让出 96px，不被压住 */}
-        <div className={cn("max-md:hidden", petActive && "mr-24")}>
+        <div className={cn("max-md:hidden", reserveForPet && "mr-24")}>
           <StatsBar />
         </div>
       </ChromeZone>

@@ -59,14 +59,20 @@ function useStageArea(ref: RefObject<HTMLElement | null>): Size | null {
 
 /**
  * 画布上的桌宠层（设计稿 桌宠.md 6.1）：和 ChromeZone 同层的绝对定位层，只有桌宠和气泡接收指针事件。
- * 画布空闲后加载素材，成功且档位不是「隐藏」时接管画布提醒（setActive）；
- * 没加载好、加载失败或隐藏时什么都不渲染，页面显示原来的胶囊。
+ * 挂载就加载素材，成功且档位不是「隐藏」时接管画布提醒（setActive）；
+ * 没加载好、加载失败或隐藏时什么都不渲染：加载中外壳留空位，失败、超时或隐藏时页面显示原来的胶囊。
  */
 export const PetLayer = memo(function PetLayer({ canvasId }: { canvasId: string }) {
   const mode = useAgentSettings((s) => s.pet.mode);
   const skin = useAgentSettings((s) => s.pet.skin);
-  const assets = usePetAssets(skin, mode !== "hidden");
+  const { assets, status } = usePetAssets(skin, mode !== "hidden");
   const active = assets !== null && mode !== "hidden";
+
+  // 先于绘制写入：外壳第一次渲染画了胶囊，也会在显示前换成留位
+  useLayoutEffect(() => {
+    usePetStore.getState().setStatus(status);
+    return () => usePetStore.getState().setStatus("off");
+  }, [status]);
 
   useEffect(() => {
     usePetStore.getState().setActive(active);
