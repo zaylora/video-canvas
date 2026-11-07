@@ -13,6 +13,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { canvasNotice } from "@/utils/pet/notice";
+
 import { createCanvas, exportCanvas } from "@/api/canvas";
 import { Logo } from "@/components/brand/logo";
 import { ChromeButton, ChromePill, ChromeTooltip } from "@/components/canvas/chrome/chrome";
@@ -171,7 +173,7 @@ export function TopLeftBar({
   /** 离开前先把没存的内容存掉；存不上就留在原地，别让内容悄悄丢了 */
   const leaveTo = async (to: string) => {
     if (!(await onSaveNow())) {
-      toast.error("还有内容没保存上，已留在当前画布");
+      canvasNotice("error", "还有内容没保存上，已留在当前画布", { id: "leave-save-failed" });
       return;
     }
     navigate(to);
@@ -182,7 +184,7 @@ export function TopLeftBar({
     setCreating(true);
     try {
       if (!(await onSaveNow())) {
-        toast.error("还有内容没保存上，已留在当前画布");
+        canvasNotice("error", "还有内容没保存上，已留在当前画布", { id: "leave-save-failed" });
         return;
       }
       const canvas = await createCanvas();

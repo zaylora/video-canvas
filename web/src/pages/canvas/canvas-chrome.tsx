@@ -1,7 +1,12 @@
 import { ChromeZone } from "@/components/canvas/chrome/chrome";
+import { ActionContextMenu } from "@/components/action-context-menu";
 import { useCanvasEditor } from "@/components/canvas-editor/editor-api";
+import { ASSISTANT_NAME } from "@/constants/agent";
 import { useAgentNotifications } from "@/hooks/use-agent-notifications";
 import { usePageTitle } from "@/hooks/use-page-title";
+import { cn } from "@/lib/utils";
+import { useAgentSettings } from "@/store/agent-settings";
+import { usePetStore } from "@/store/pet";
 import { watchTitlePrefix } from "@/utils/agent/watch";
 import { canvasPageTitle } from "@/utils/page-title";
 
@@ -9,6 +14,7 @@ import { useAgentHost } from "./agent-host";
 import { AgentLauncher } from "./chrome/agent-launcher";
 import { BottomToolbar } from "./chrome/bottom-toolbar";
 import { EmptyState } from "./chrome/empty-state";
+import { PetLayer } from "./pet/pet-layer";
 import { ShortcutsDialog } from "./chrome/shortcuts-dialog";
 import { StatsBar } from "./chrome/stats-bar";
 import { TopLeftBar } from "./chrome/top-left-bar";
@@ -26,6 +32,9 @@ export function CanvasChrome() {
   const shortcutsOpen = useShortcutsDialog((state) => state.open);
   const setShortcutsOpen = useShortcutsDialog((state) => state.setOpen);
   const { title } = editor;
+  // 桌宠接管时用它代替右下角的胶囊；隐藏档、素材没加载好或加载失败时仍显示胶囊
+  const petActive = usePetStore((state) => state.active);
+  const petHidden = useAgentSettings((state) => state.pet.mode === "hidden");
   // 标签页标题带上 Agent 的状态（待批准 / 后台等待进度），切到别的标签页也看得到；页面在后台时的系统通知同理
   usePageTitle(
     canvasPageTitle(title, watchTitlePrefix(agent.ctl.pending !== null, agent.ctl.watch)),
@@ -71,16 +80,36 @@ export function CanvasChrome() {
         />
       </ChromeZone>
       <ChromeZone position="bottom-right">
-        <AgentLauncher
-          open={agent.open}
-          available={agent.models === null ? null : agent.models.length > 0}
-          running={agent.ctl.busy}
-          onToggle={agent.toggle}
-        />
-        <div className="max-md:hidden">
+        {!petActive && (
+          // 隐藏档下右键胶囊可以把桌宠请回来
+          <ActionContextMenu
+            className="contents"
+            actions={
+              petHidden
+                ? [
+                    {
+                      key: "show-pet",
+                      label: `显示${ASSISTANT_NAME}`,
+                      onSelect: () => useAgentSettings.getState().patchPet({ mode: "lively" }),
+                    },
+                  ]
+                : []
+            }
+          >
+            <AgentLauncher
+              open={agent.open}
+              available={agent.models === null ? null : agent.models.length > 0}
+              running={agent.ctl.busy}
+              onToggle={agent.toggle}
+            />
+          </ActionContextMenu>
+        )}
+        {/* 桌宠在右下角时，统计条往左让出 96px，不被压住 */}
+        <div className={cn("max-md:hidden", petActive && "mr-24")}>
           <StatsBar />
         </div>
       </ChromeZone>
+      <PetLayer canvasId={editor.canvasId} />
       <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
     </>
   );
