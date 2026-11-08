@@ -10,10 +10,12 @@ import {
   type AgentController,
 } from "@/hooks/use-agent-controller";
 import type { AgentModelDto } from "@/api/agent/type";
+import { usePetStore } from "@/store/pet";
 import type { CanvasNode } from "@/types";
 import { isReferableKind, type RefNode } from "@/utils/agent/selection-refs";
 
 import { AgentPanel } from "./agent/agent-panel";
+import { PetPeek } from "./pet/pet-peek";
 
 type AgentHost = {
   /** 可用的 Agent 模型；null 是还在加载 */
@@ -68,6 +70,8 @@ export function AgentHostProvider({
 export function AgentDock() {
   const { nodes } = useCanvasEditor();
   const { ctl, models, open, toggle } = useAgentHost();
+  // 桌宠活跃时，浮窗打开后画布上的小镜收起，换成趴在输入框上沿探头
+  const petActive = usePetStore((s) => s.active);
   // 画布选中的节点 id（含组）。nodes 拖动时每帧都是新数组，这里拼成字符串再拆，选中没变时引用不变
   const selectionKey = nodes
     .filter((node) => node.selected)
@@ -107,6 +111,11 @@ export function AgentDock() {
           nodes={nodeOptions}
           refNodes={refOptions}
           onClose={toggle}
+          mascot={
+            petActive ? (
+              <PetPeek busy={ctl.busy} pending={ctl.pending !== null} available />
+            ) : undefined
+          }
         />
       )}
     </AnimatePresence>

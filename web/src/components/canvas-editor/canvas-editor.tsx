@@ -24,7 +24,7 @@ import {
   type NodeTypes,
 } from "@xyflow/react";
 import { useNavigate } from "react-router";
-import { toast } from "sonner";
+import { canvasNotice } from "@/utils/pet/notice";
 
 import {
   AddNodeMenu,
@@ -122,8 +122,8 @@ const NEW_NODE_SIZE = DEFAULT_NODE_SIZE;
 /** 上传完那句话按语气挑 toast */
 function showUploadNotice(notice: UploadNotice | null) {
   if (!notice) return;
-  if (notice.tone === "error") toast.error(notice.text);
-  else toast.info(notice.text);
+  if (notice.tone === "error") canvasNotice("error", notice.text);
+  else canvasNotice("info", notice.text);
 }
 
 /** 节点上挂着的任务号（含批次里还没结清的） */
@@ -328,7 +328,7 @@ export const CanvasEditor = memo(function CanvasEditor({
     edgesRef.current = edges;
   }, [nodes, edges]);
   // 任务结果回填节点；打开画布时对账还在 running 的节点
-  useTaskBackfill(contentNodes, setContentNodes);
+  useTaskBackfill(contentNodes, setContentNodes, canvas.id);
   // 保存撞上冲突要弹「画布已在别处修改」：先关掉导演台，弹窗显示在画布上（设计稿 3D导演台 §7）。
   // 场景早已写进节点，跟着弹窗里「另存为新画布 / 加载最新」走，和画布上其他本地改动一样
   useEffect(() => {
@@ -346,7 +346,7 @@ export const CanvasEditor = memo(function CanvasEditor({
         if (ok) rememberCanvasTitle(canvas.id, next);
         else {
           setTitle(previous);
-          toast.error("改名没保存上，请稍后再试");
+          canvasNotice("error", "改名没保存上，请稍后再试", { id: "rename-failed" });
         }
       });
     },
@@ -700,7 +700,8 @@ export const CanvasEditor = memo(function CanvasEditor({
 
       const { text, clipped } = clipText(content.text);
       addNodeAt("script", origin, { status: "done", text });
-      if (clipped) toast.info(`文字太长，只放进了前 ${TEXT_BODY_MAX} 个字`);
+      if (clipped)
+        canvasNotice("info", `文字太长，只放进了前 ${TEXT_BODY_MAX} 个字`, { id: "text-clipped" });
     },
     [addNodeAt, addUploadedNodes, beginUploadAt, viewportCenter],
   );
@@ -843,7 +844,9 @@ export const CanvasEditor = memo(function CanvasEditor({
                                 if (recovery?.kind === "restored") {
                                   // 内容来自本地草稿，云端还没有：标脏让它排上传
                                   changed();
-                                  toast.info("已恢复上次未同步的改动");
+                                  canvasNotice("info", "已恢复上次未同步的改动", {
+                                    id: "draft-restored",
+                                  });
                                 }
                               }}
                               onMoveEnd={(_event, viewport) => {
@@ -978,13 +981,16 @@ export const CanvasEditor = memo(function CanvasEditor({
                                   const openPath = copyOpenPath
                                     ? copyOpenPath(copy.id)
                                     : `/canvas/${copy.id}`;
-                                  toast.success(`已另存为「${copy.title}」`, {
+                                  canvasNotice("success", `已另存为「${copy.title}」`, {
+                                    id: "save-as-copy",
                                     action: openPath
                                       ? { label: "打开", onClick: () => navigate(openPath) }
                                       : undefined,
                                   });
                                 } catch {
-                                  toast.error("另存失败，请稍后重试");
+                                  canvasNotice("error", "另存失败，请稍后重试", {
+                                    id: "save-as-failed",
+                                  });
                                   return;
                                 }
                                 if (draftConflict) {

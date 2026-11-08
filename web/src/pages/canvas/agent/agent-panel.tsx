@@ -5,6 +5,7 @@ import {
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
+  type ReactNode,
   type RefObject,
 } from "react";
 import {
@@ -23,6 +24,8 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { DURATION, EASE_OUT } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { DOCK_WIDTH, useAgentSettings } from "@/store/agent-settings";
+import { usePetStore } from "@/store/pet";
+import { PET_MARGIN, panelSize, placePanel } from "@/utils/pet/placement";
 import { useAgentAttachments } from "@/hooks/use-agent-attachments";
 import { toAttachmentsPayload } from "@/utils/agent/attachments";
 
@@ -83,6 +86,7 @@ export function AgentPanel({
   contextRefs,
   onRemoveContextRef,
   closeShortcut,
+  mascot,
 }: {
   ctl: AgentController;
   models: AgentModelDto[];
@@ -112,6 +116,8 @@ export function AgentPanel({
   onRemoveContextRef?: (id: string) => void;
   /** 「收起」按钮提示里的快捷键，缺省是画布的 ⌘/ */
   closeShortcut?: string;
+  /** 趴在输入框上沿探头的形象（画布里桌宠活跃时是小镜）：靠右，只露出上半身，下半身被框沿挡住 */
+  mascot?: ReactNode;
 }) {
   const mobile = useIsMobile();
   const reduce = useReducedMotion();
@@ -134,8 +140,15 @@ export function AgentPanel({
   const [scope, animate] = useAnimate<HTMLDivElement>();
   const controls = useDragControls();
   const offset = useAgentSettings((s) => s.offset);
-  const x = useMotionValue(offset?.dx ?? 0);
-  const y = useMotionValue(offset?.dy ?? 0);
+  // 桌宠活跃时浮窗跟着桌宠弹出：位置由桌宠的位置算出，拖过的位置只在本次打开期间有效，不读写 offset
+  const petPlacement = usePetStore((s) => (s.active ? s.placement : null));
+  const petMode = petPlacement !== null && !mobile && !docked && !embedded;
+  const x = useMotionValue(petMode ? 0 : (offset?.dx ?? 0));
+  const y = useMotionValue(petMode ? 0 : (offset?.dy ?? 0));
+  const petPanel = petMode
+    ? placePanel(petPlacement.rect, petPlacement.area, panelSize(petPlacement.area))
+    : null;
+  const petPanelSize = petMode ? panelSize(petPlacement.area) : null;
   /** 停靠侧栏的打开过渡已经走完：之后宽度变化（调宽、切换停靠）立刻到位 */
   const [entered, setEntered] = useState(() => !docked || !!reduce);
   /** 外层宽度正在过渡：这期间裁掉伸出外层的面板 */
@@ -145,7 +158,7 @@ export function AgentPanel({
   useEffect(() => {
     const p = panel.current?.getBoundingClientRect();
     const b = bounds.current?.getBoundingClientRect();
-    if (!p || !b || mobile || docked) return;
+    if (!p || !b || mobile || docked || petMode) return;
     if (
       p.left < b.left - 1 ||
       p.top < b.top - 1 ||
@@ -156,7 +169,19 @@ export function AgentPanel({
       y.set(0);
       useAgentSettings.getState().patch({ offset: null });
     }
-  }, [mobile, docked, x, y]);
+  }, [mobile, docked, petMode, x, y]);
+
+  // 桌宠挪了位置（或窗口变化）：浮窗回到桌宠旁边；退出桌宠模式时恢复记住的位置
+  useEffect(() => {
+    if (petMode) {
+      x.set(0);
+      y.set(0);
+    } else {
+      const saved = useAgentSettings.getState().offset;
+      x.set(saved?.dx ?? 0);
+      y.set(saved?.dy ?? 0);
+    }
+  }, [petMode, petPlacement, x, y]);
 
   // 切换停靠：新形态从右侧（停靠）或入口方向（浮窗）进入；首次挂载由 initial 负责
   const mounted = useRef(false);
@@ -251,39 +276,47 @@ export function AgentPanel({
         />
       )}
       {/* 审批和提问是消息流里的交互卡片，输入框始终可用：等回答时发消息，视为新消息，这张卡被跳过 */}
-      <div
-        className="agent-composer mx-3 mb-3 shrink-0 overflow-hidden"
-        style={{ borderRadius: 18 }}
-      >
-        <div>
-          {/* 计划条并进输入框顶部（设计稿 6.12），不再悬在输入框上方 */}
-          <AnimatePresence initial={false}>
-            {ctl.strip && (
-              <RunStrip key={ctl.strip.runId} strip={ctl.strip} onHide={ctl.hidePlan} />
-            )}
-          </AnimatePresence>
-          <SteerTray items={steerQueue} />
-          <AgentComposer
-            text={text}
-            onTextChange={setText}
-            onSend={() => void send(text)}
-            onStop={() => void ctl.stop()}
-            busy={ctl.busy}
-            sending={ctl.sending}
-            models={models}
-            modelKey={ctl.modelKey}
-            context={ctl.context}
-            selection={selection}
-            refNodes={refNodes}
-            editorRef={editor}
-            nodes={nodes}
-            attachments={attachments}
-            vision={vision}
-            features={features}
-            placeholder={placeholder}
-            contextRefs={contextRefs}
-            onRemoveContextRef={onRemoveContextRef}
-          />
+      <div className={cn("relative mx-3 mb-3 shrink-0", mascot && "mt-9")}>
+        {/* 探头的形象：消息列表底部让出它露出来的高度（mt-9），不盖住最后几行；裁掉框沿以下的部分 */}
+        {mascot && (
+          <div
+            aria-hidden
+            className="pointer-events-none absolute right-5 bottom-full h-11 [clip-path:inset(-48px_-24px_0_-24px)]"
+          >
+            {mascot}
+          </div>
+        )}
+        <div className="agent-composer overflow-hidden" style={{ borderRadius: 18 }}>
+          <div>
+            {/* 计划条并进输入框顶部（设计稿 6.12），不再悬在输入框上方 */}
+            <AnimatePresence initial={false}>
+              {ctl.strip && (
+                <RunStrip key={ctl.strip.runId} strip={ctl.strip} onHide={ctl.hidePlan} />
+              )}
+            </AnimatePresence>
+            <SteerTray items={steerQueue} />
+            <AgentComposer
+              text={text}
+              onTextChange={setText}
+              onSend={() => void send(text)}
+              onStop={() => void ctl.stop()}
+              busy={ctl.busy}
+              sending={ctl.sending}
+              models={models}
+              modelKey={ctl.modelKey}
+              context={ctl.context}
+              selection={selection}
+              refNodes={refNodes}
+              editorRef={editor}
+              nodes={nodes}
+              attachments={attachments}
+              vision={vision}
+              features={features}
+              placeholder={placeholder}
+              contextRefs={contextRefs}
+              onRemoveContextRef={onRemoveContextRef}
+            />
+          </div>
         </div>
       </div>
     </>
@@ -361,16 +394,32 @@ export function AgentPanel({
         dragMomentum={false}
         dragElastic={0}
         dragConstraints={bounds}
-        onDragEnd={() =>
-          useAgentSettings.getState().patch({ offset: { dx: x.get(), dy: y.get() } })
+        onDragEnd={() => {
+          if (petMode) return;
+          useAgentSettings.getState().patch({ offset: { dx: x.get(), dy: y.get() } });
+        }}
+        style={
+          docked
+            ? { x: 0, y: 0 }
+            : petPanel && petPanelSize
+              ? {
+                  x,
+                  y,
+                  left: petPanel.x - PET_MARGIN,
+                  top: petPanel.y - PET_MARGIN,
+                  width: petPanelSize.width,
+                  height: petPanelSize.height,
+                }
+              : { x, y }
         }
-        style={docked ? { x: 0, y: 0 } : { x, y }}
         className={
           docked
             ? // 左边贴住外层左沿：开合时外层变宽，面板跟着左沿滑进来（右侧被裁掉）；
               // 拖动调宽时 --dock-live 和 --dock-base 拉开，面板向左伸出、盖在画布上，右沿不动
               "absolute inset-y-0 left-[calc(var(--dock-base)-var(--dock-live))] w-(--dock-live)"
-            : "pointer-events-auto absolute right-0 bottom-14 h-[min(600px,100%)] w-[400px] max-w-full"
+            : petMode
+              ? "pointer-events-auto absolute max-w-full"
+              : "pointer-events-auto absolute right-0 bottom-14 h-[min(600px,100%)] w-[400px] max-w-full"
         }
       >
         <motion.div
@@ -382,7 +431,9 @@ export function AgentPanel({
           animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
           exit={reveal ? undefined : { ...exit, transition: { duration: DURATION.exit } }}
           transition={{ duration: DURATION.base, ease: EASE_OUT }}
-          style={{ transformOrigin: docked ? "right center" : "bottom right" }}
+          style={{
+            transformOrigin: docked ? "right center" : (petPanel?.origin ?? "bottom right"),
+          }}
           className={cn(
             shell,
             "h-full w-full",

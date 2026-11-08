@@ -1,0 +1,958 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>画布桌宠小镜</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+    <style>
+      :root {
+        --radius: 0.625rem;
+        --background: 0 0% 100%;
+        --foreground: 240 10% 3.9%;
+        --card: 0 0% 100%;
+        --muted: 240 4.8% 95.9%;
+        --muted-foreground: 240 3.8% 46.1%;
+        --primary: 240 5.9% 10%;
+        --primary-foreground: 0 0% 98%;
+        --accent: 240 4.8% 95.9%;
+        --border: 240 5.9% 90%;
+        --ok: 5 150 105;
+        --bad: 220 38 38;
+        --warn: 180 83 9;
+        --info: 2 132 199;
+        --violet: 124 58 237;
+        --amber: 245 158 11;
+        --canvas-bg: 240 5% 97%;
+        --chrome: 0 0% 100% / 0.62;
+        --chrome-border: 240 6% 80% / 0.6;
+        color-scheme: light;
+      }
+      .dark {
+        --background: 240 10% 3.9%;
+        --foreground: 0 0% 98%;
+        --card: 240 10% 5.5%;
+        --muted: 240 3.7% 15.9%;
+        --muted-foreground: 240 5% 64.9%;
+        --primary: 0 0% 98%;
+        --primary-foreground: 240 5.9% 10%;
+        --accent: 240 3.7% 15.9%;
+        --border: 240 3.7% 17%;
+        --ok: 52 211 153;
+        --bad: 248 113 113;
+        --warn: 251 191 36;
+        --info: 56 189 248;
+        --violet: 167 139 250;
+        --canvas-bg: 240 8% 7%;
+        --chrome: 240 8% 14% / 0.6;
+        --chrome-border: 0 0% 100% / 0.1;
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        font-family: Geist, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        background: hsl(var(--background));
+        color: hsl(var(--foreground));
+        -webkit-font-smoothing: antialiased;
+        line-height: 1.55;
+      }
+      code, .mono { font-family: "Geist Mono", "SF Mono", Consolas, monospace; }
+      code { font-size: 0.92em; background: hsl(var(--muted)); padding: 1px 5px; border-radius: 5px; }
+      [data-lucide] { width: 1em; height: 1em; flex: none; }
+      h1, h2, h3, h4, p { margin: 0; }
+      button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+      table { border-collapse: collapse; width: 100%; }
+      th { font-weight: 500; text-align: left; }
+      [hidden] { display: none !important; }
+      .muted { color: hsl(var(--muted-foreground)); }
+      .row { display: flex; align-items: center; gap: 8px; }
+      .wrapflex { flex-wrap: wrap; }
+      .spacer { margin-left: auto; }
+
+      .top { position: sticky; top: 0; z-index: 30; background: hsl(var(--background) / 0.92); backdrop-filter: blur(8px); border-bottom: 1px solid hsl(var(--border)); }
+      .top-in { max-width: 1160px; margin: 0 auto; padding: 0 20px; display: flex; align-items: center; gap: 16px; height: 56px; }
+      .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; white-space: nowrap; }
+      .logo { width: 28px; height: 28px; border-radius: 8px; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; }
+      .tabs { display: flex; gap: 2px; margin-left: 8px; overflow-x: auto; }
+      .tab { height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13px; font-weight: 500; color: hsl(var(--muted-foreground)); white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; transition: background 0.15s, color 0.15s; }
+      .tab:hover { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+      .tab[aria-selected="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn { height: 32px; padding: 0 10px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; }
+      .btn:hover { background: hsl(var(--accent)); }
+      .btn-outline { border: 1px solid hsl(var(--border)); }
+      .btn-primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+      .switch { width: 34px; height: 20px; border-radius: 999px; background: hsl(var(--border)); position: relative; transition: background 0.15s; }
+      .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+      .switch[aria-checked="true"] { background: rgb(var(--violet)); }
+      .switch[aria-checked="true"]::after { transform: translateX(14px); }
+
+      .wrap { max-width: 1160px; margin: 0 auto; padding: 32px 20px 80px; }
+      .h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+      .lead { margin-top: 10px; max-width: 820px; font-size: 15px; color: hsl(var(--muted-foreground)); }
+      .lead b { color: hsl(var(--foreground)); }
+      .sec { margin-top: 36px; }
+      .sec > h2 { font-size: 18px; font-weight: 600; }
+      .sec > .sub { margin: 4px 0 14px; max-width: 820px; font-size: 13.5px; color: hsl(var(--muted-foreground)); }
+      .card { border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: var(--radius); padding: 16px; }
+      .grid { display: grid; gap: 12px; }
+      .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      @media (max-width: 820px) { .g2, .g3, .proto-grid, .demo-grid { grid-template-columns: 1fr !important; } .top-in { padding: 0 12px; } .wrap { padding: 24px 16px 64px; } }
+      ul.list { margin: 0; padding-left: 18px; font-size: 13.5px; }
+
+      .tag { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 999px; font-size: 11.5px; font-weight: 500; white-space: nowrap; }
+      .t-ok { background: rgb(var(--ok) / 0.12); color: rgb(var(--ok)); }
+      .t-bad { background: rgb(var(--bad) / 0.12); color: rgb(var(--bad)); }
+      .t-warn { background: rgb(var(--warn) / 0.12); color: rgb(var(--warn)); }
+      .t-info { background: rgb(var(--info) / 0.12); color: rgb(var(--info)); }
+      .t-vio { background: rgb(var(--violet) / 0.12); color: rgb(var(--violet)); }
+      .t-mute { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
+
+      .callout { display: flex; gap: 10px; padding: 12px 14px; border-radius: var(--radius); font-size: 13.5px; border: 1px solid; }
+      .callout > i { margin-top: 3px; }
+      .c-info { background: rgb(var(--info) / 0.07); border-color: rgb(var(--info) / 0.3); }
+      .c-info > i { color: rgb(var(--info)); }
+      .c-warn { background: rgb(var(--warn) / 0.07); border-color: rgb(var(--warn) / 0.3); }
+      .c-warn > i { color: rgb(var(--warn)); }
+      .c-ok { background: rgb(var(--ok) / 0.07); border-color: rgb(var(--ok) / 0.3); }
+      .c-ok > i { color: rgb(var(--ok)); }
+
+      .flow { display: flex; align-items: stretch; gap: 6px; flex-wrap: wrap; padding: 14px; border-radius: var(--radius); }
+      .flow .node { flex: 1 1 140px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 12px; font-size: 12.5px; }
+      .flow .node b { display: block; font-size: 13px; margin-bottom: 2px; }
+      .flow .node.hl { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+      .flow .arrow { display: grid; place-items: center; color: hsl(var(--muted-foreground)); }
+
+      .cmp-wrap { overflow-x: auto; border: 1px solid hsl(var(--border)); border-radius: var(--radius); }
+      .cmp th, .cmp td { padding: 9px 12px; font-size: 13px; vertical-align: top; border-bottom: 1px solid hsl(var(--border)); }
+      .cmp tr:last-child th, .cmp tr:last-child td { border-bottom: 0; }
+      .cmp thead th { background: hsl(var(--muted)); font-size: 12.5px; white-space: nowrap; }
+      .cmp tbody th { width: 130px; color: hsl(var(--muted-foreground)); font-weight: 500; }
+      .cmp .y { color: rgb(var(--ok)); }
+      .cmp .m { color: rgb(var(--warn)); font-weight: 500; }
+
+      .steps { list-style: none; counter-reset: s; display: grid; gap: 12px; }
+      .steps li { counter-increment: s; position: relative; padding-left: 32px; font-size: 13.5px; }
+      .steps li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 22px; height: 22px; border-radius: 50%; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; font-size: 12px; font-weight: 600; }
+      .steps li small { display: block; color: hsl(var(--muted-foreground)); font-size: 12.5px; }
+
+      .codeblock { background: hsl(var(--muted)); border-radius: var(--radius); padding: 14px; font-family: "Geist Mono", "SF Mono", Consolas, monospace; font-size: 12.5px; overflow-x: auto; }
+      .codeblock pre { margin: 0; font: inherit; white-space: pre-wrap; }
+
+      .frame { border: 1px solid hsl(var(--border)); border-radius: 12px; overflow: hidden; background: hsl(var(--background)); }
+      .frame-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: hsl(var(--muted)); font-size: 12px; color: hsl(var(--muted-foreground)); }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: hsl(var(--border)); }
+
+      .note { outline: 1.5px dashed rgb(var(--violet)); outline-offset: 3px; position: relative; }
+      .note-txt { display: none; margin-top: 6px; font-size: 11.5px; line-height: 1.5; color: rgb(var(--violet)); }
+      .show-notes .note-txt { display: block; }
+      body:not(.show-notes) .note { outline: none; }
+
+      .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 60; pointer-events: none; }
+      .toast > div { display: flex; align-items: center; gap: 8px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 14px; font-size: 13px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); }
+
+      /* ================= 桌宠（示意）：真实实现是雪碧图，这里用 SVG + CSS 模拟各行动作 ================= */
+      .pet { width: 80px; height: 87px; position: relative; display: block; touch-action: none; user-select: none; }
+      .pet svg { width: 100%; height: 100%; overflow: visible; display: block; transform-origin: 50% 100%; }
+      .dark .pet svg, .pet.on-dark svg { filter: drop-shadow(0 0 1px hsl(0 0% 100% / 0.75)); }
+      .pet .arm-r { transform-origin: 63px 62px; }
+      .pet .prop { opacity: 0; transition: opacity 0.15s; }
+      .pet .zz { opacity: 0; }
+      .m-idle svg { animation: breathe 1.1s steps(6) infinite; }
+      .m-working svg { animation: work 0.72s steps(6) infinite; }
+      .m-working .prop-pen { opacity: 1; }
+      .m-waiting svg { animation: breathe 0.9s steps(6) infinite; }
+      .m-waiting .prop-sign { opacity: 1; }
+      .m-watching svg { animation: look 0.9s steps(6) infinite; }
+      .m-watching .eyes { transform: translateX(3px); }
+      .m-celebrate svg { animation: jump 0.84s steps(5) 1; }
+      .m-celebrate .prop-board { opacity: 1; }
+      .m-failed svg { animation: sad 1.2s steps(8) 1; }
+      .m-failed .eyes { transform: translateY(2px) scaleY(0.6); }
+      .m-sleeping svg { opacity: 0.55; animation: breathe 1.6s steps(6) infinite; }
+      .m-sleeping .eyes { transform: scaleY(0.12); transform-origin: 40px 40px; }
+      .m-sleeping .zz { opacity: 1; animation: zz 1.6s steps(6) infinite; }
+      .m-greeting .arm-r { animation: wave 0.7s steps(4) 1; }
+      .m-drag-right svg { transform: rotate(8deg); }
+      .m-drag-left svg { transform: rotate(-8deg); }
+      .reduced .pet svg, .reduced .pet .arm-r, .reduced .pet .zz { animation: none !important; }
+      .paused .pet svg, .paused .pet .arm-r { animation-play-state: paused; }
+      @keyframes breathe { 50% { transform: scale(1.02, 0.97); } }
+      @keyframes work { 25% { transform: rotate(-3deg) translateY(1px); } 75% { transform: rotate(3deg); } }
+      @keyframes look { 50% { transform: translateX(2px); } }
+      @keyframes jump { 20% { transform: scale(1.06, 0.9); } 50% { transform: translateY(-22px); } 80% { transform: scale(1.05, 0.93); } }
+      @keyframes sad { 15%, 45%, 75% { transform: translateX(-3px); } 30%, 60%, 90% { transform: translateX(3px); } 100% { transform: scale(1, 0.94); } }
+      @keyframes zz { 50% { transform: translate(3px, -4px); } }
+      @keyframes wave { 25%, 75% { transform: rotate(-35deg); } 50% { transform: rotate(-10deg); } }
+
+      /* ================= 原型：假画布 ================= */
+      .proto-grid { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 14px; margin-top: 18px; }
+      .canvas { position: relative; height: 560px; overflow: hidden; background-color: hsl(var(--canvas-bg)); background-image: radial-gradient(hsl(var(--muted-foreground) / 0.25) 1px, transparent 1px); background-size: 20px 20px; }
+      .cnode { position: absolute; width: 150px; border-radius: 12px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); font-size: 12px; padding: 8px; transition: box-shadow 0.3s; }
+      .cnode .ph { height: 64px; border-radius: 8px; background: hsl(var(--muted)); margin-top: 6px; display: grid; place-items: center; color: hsl(var(--muted-foreground)); }
+      .cnode.flash { box-shadow: 0 0 0 3px rgb(var(--amber)); }
+      .cnode .st { font-size: 11px; }
+      .chrome { position: absolute; display: flex; gap: 6px; align-items: center; padding: 4px; border-radius: 999px; background: hsl(var(--chrome)); border: 1px solid hsl(var(--chrome-border)); backdrop-filter: blur(12px); font-size: 12px; }
+      .chrome .cb { height: 28px; padding: 0 10px; border-radius: 999px; display: inline-flex; align-items: center; gap: 5px; }
+      .chrome .cb:hover { background: hsl(var(--foreground) / 0.06); }
+      .pet-layer { position: absolute; inset: 0; pointer-events: none; }
+      .pet-wrap { position: absolute; pointer-events: auto; cursor: grab; }
+      .pet-wrap.dragging { cursor: grabbing; }
+      .pet-wrap:focus-visible { outline: 2px solid rgb(var(--violet)); outline-offset: 4px; border-radius: 12px; }
+      .bubble { position: absolute; pointer-events: auto; max-width: 220px; padding: 8px 28px 8px 11px; border-radius: 14px; font-size: 12.5px; line-height: 1.45; background: hsl(var(--chrome)); border: 1px solid hsl(var(--chrome-border)); backdrop-filter: blur(14px); box-shadow: 0 6px 20px rgb(0 0 0 / 0.12); cursor: pointer; animation: pop 0.18s ease-out; }
+      .reduced .bubble { animation: none; }
+      .bubble .x { position: absolute; top: 5px; right: 6px; width: 18px; height: 18px; border-radius: 6px; display: grid; place-items: center; color: hsl(var(--muted-foreground)); }
+      .bubble .x:hover { background: hsl(var(--foreground) / 0.08); }
+      .bubble .act { display: inline-block; margin-top: 4px; font-weight: 600; color: rgb(var(--amber)); }
+      .bubble.k-error { border-color: rgb(var(--bad) / 0.4); }
+      .bubble.k-approval { border-color: rgb(var(--amber) / 0.6); }
+      .bubble .badge { font-size: 10.5px; margin-right: 4px; }
+      @keyframes pop { from { transform: translateY(4px) scale(0.96); opacity: 0; } }
+      .panel { position: absolute; width: 280px; height: 340px; border-radius: 22px; background: hsl(var(--chrome)); border: 1px solid hsl(var(--chrome-border)); backdrop-filter: blur(18px); box-shadow: 0 16px 40px rgb(0 0 0 / 0.16); display: flex; flex-direction: column; overflow: hidden; animation: grow 0.2s ease-out; }
+      @keyframes grow { from { transform: scale(0.9); opacity: 0; } }
+      .panel-h { display: flex; align-items: center; gap: 6px; padding: 10px 12px; font-size: 13px; font-weight: 600; border-bottom: 1px solid hsl(var(--chrome-border)); }
+      .panel-b { flex: 1; padding: 12px; font-size: 12.5px; display: grid; align-content: start; gap: 8px; overflow: auto; }
+      .msg { padding: 8px 10px; border-radius: 12px; background: hsl(var(--foreground) / 0.05); }
+      .approve { border: 1px solid rgb(var(--amber) / 0.5); background: rgb(var(--amber) / 0.08); }
+      .menu { position: absolute; min-width: 150px; padding: 4px; border-radius: 12px; background: hsl(var(--card)); border: 1px solid hsl(var(--border)); box-shadow: 0 10px 30px rgb(0 0 0 / 0.18); font-size: 12.5px; z-index: 5; pointer-events: auto; }
+      .menu button { width: 100%; text-align: left; padding: 6px 8px; border-radius: 8px; display: flex; align-items: center; gap: 8px; }
+      .menu button:hover { background: hsl(var(--accent)); }
+      .menu hr { border: 0; border-top: 1px solid hsl(var(--border)); margin: 4px 0; }
+      .ctl { display: grid; gap: 6px; align-content: start; }
+      .ctl h4 { font-size: 12px; color: hsl(var(--muted-foreground)); font-weight: 500; margin-top: 8px; }
+      .ctl .btn { justify-content: flex-start; width: 100%; }
+      .status-line { font-size: 12px; padding: 8px 10px; border-radius: 8px; background: hsl(var(--muted)); }
+      .pri li { padding: 3px 6px; border-radius: 6px; }
+      .pri li.hit { background: rgb(var(--violet) / 0.12); color: rgb(var(--violet)); font-weight: 600; }
+      .pri li.off { opacity: 0.45; }
+      .chk { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 5px 0; }
+      .chk input { accent-color: rgb(var(--violet)); }
+      .chk select { font: inherit; padding: 2px 6px; border-radius: 6px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); color: inherit; }
+      .demo-grid { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 12px; margin-top: 20px; }
+    </style>
+  </head>
+
+  <body class="show-notes">
+    <header class="top">
+      <div class="top-in">
+        <div class="brand"><span class="logo"><i data-lucide="cat"></i></span>画布桌宠「小镜」</div>
+        <div class="tabs" role="tablist">
+          <button class="tab" role="tab" data-tab="overview" aria-selected="true"><i data-lucide="map"></i>总览</button>
+          <button class="tab" role="tab" data-tab="demo" aria-selected="false"><i data-lucide="mouse-pointer-click"></i>状态与冒泡规则</button>
+          <button class="tab" role="tab" data-tab="proto" aria-selected="false"><i data-lucide="layout-dashboard"></i>可点击原型</button>
+          <button class="tab" role="tab" data-tab="impl" aria-selected="false"><i data-lucide="database"></i>数据与实现</button>
+        </div>
+        <div class="spacer row">
+          <label class="row muted" style="font-size: 12px">设计标注<button class="switch" id="notesSw" role="switch" aria-checked="true" onclick="toggleNotes()"></button></label>
+          <button class="btn" onclick="document.documentElement.classList.toggle('dark')" aria-label="切换明暗主题"><i data-lucide="sun-moon"></i></button>
+        </div>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <!-- ============ 1. 总览 ============ -->
+      <section id="tab-overview">
+        <h1 class="h1">把右下角的助手入口，换成一只会动的小黑猫</h1>
+        <p class="lead">
+          桌宠「小镜」替代画布右下角的 Agent 胶囊按钮。它<b>用动作反映助手和生成任务的状态</b>，可以拖到画布任意位置，结果回来时会冒泡告诉你，还<b>接管画布页的 toast</b>，同一件事只说一遍。<b>一期只在画布页、只有一只内置形象、不会自己走动</b>；换皮肤和用户自己生成桌宠放在二期。
+        </p>
+
+        <div class="callout c-info" style="margin-top: 16px">
+          <i data-lucide="info"></i>
+          <div>
+            <b>阅读说明。</b>项目现状来自 2026-11-06 读取的代码，文件路径见 Markdown §2.1。外部调研由子代理检索，没有逐条复核。原型里的黑猫是 SVG 示意，真实实现是透明雪碧图。<b>本设计尚未实现。</b>对应文档：<code>docs/design/桌宠/桌宠.md</code>。<br />
+            <span class="muted">核实度图例：</span>
+            <span class="tag t-ok">已核对代码 / 官方页面</span>
+            <span class="tag t-info">调研检索，未逐条复核</span>
+            <span class="tag t-warn">未验证 · 需实测</span>
+            <span class="tag t-vio">提案</span>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>一件事从发生到被你看见</h2>
+          <p class="sub">助手和生成任务的状态，怎样变成桌宠的动作和气泡。</p>
+          <div class="flow note">
+            <div class="node"><b>状态源</b><code>ctl.busy / pending</code>、任务库 WS 推送、画布提醒 <span class="tag t-ok">已有</span></div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>petMood()</b>按优先级挑一行动作：拖动 &gt; 反应 &gt; 等审批 &gt; 运行 &gt; 生成中 &gt; 睡 &gt; 打招呼 &gt; 待机 <span class="tag t-vio">提案</span></div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>气泡队列</b>四类来源、一次显示一个、2 秒内同类合并 <span class="tag t-vio">提案</span></div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>雪碧图 + 气泡</b>CSS 按帧切换，React 只在换动作时渲染一次</div>
+          </div>
+          <div class="note-txt">设计：「挑哪个动作」和「说什么」拆成两个纯函数，能单独测试；渲染层只认结果，每一帧都不经过 JS，这是性能硬约束要求的。</div>
+          <div class="callout c-warn" style="margin-top: 10px">
+            <i data-lucide="corner-down-right"></i>
+            <div><b>桌宠不在的时候（永远可用的退路）：</b>图集还没加载完、加载失败、用户选了「隐藏」或者窄屏不支持时，<b>右下角退回现在的「小镜」胶囊按钮，提醒退回 toast</b>，功能一个不少。</div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>桌宠有三档</h2>
+          <p class="sub">右键桌宠切换。档位决定它会主动说多少话。</p>
+          <div class="grid g3">
+            <div class="card">
+              <div class="row"><i data-lucide="sparkles"></i><b>活泼</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-mute">默认</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>全部动作和全部冒泡</b>，包括彩蛋（30 分钟最多 1 条）。空闲 10 分钟后会睡着。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="volume-1"></i><b>安静</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-info">只说正事</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>助手、生成结果、系统提醒照常</b>；不打招呼、没有彩蛋，空闲时也不睡。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="eye-off"></i><b>隐藏</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-mute">等于今天</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>回到胶囊按钮和 toast</b>，行为和今天完全一致。右键胶囊可以把桌宠找回来。</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>为什么选雪碧图，而不是 Rive 或 Lottie</h2>
+          <p class="sub">要兼顾三件事：性能、和你选的位图形象一致、二期能让用户自动生成。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th></th><th>CSS 雪碧图（推荐）</th><th>Rive 状态机</th><th>Lottie</th><th>GIF / SVG 内嵌 PNG</th></tr></thead>
+              <tbody>
+                <tr><th>额外体积</th><td class="y">0</td><td class="m">约 540KB–1MB</td><td class="m">45–75KB（dotlottie 约 500KB）</td><td class="y">0</td></tr>
+                <tr><th>每帧开销</th><td class="y">只动一个 80px 元素的 background-position，没有 JS 帧循环</td><td>WASM 渲染，好</td><td class="m">lottie-web 在主线程</td><td class="m">一直在解码，没法暂停</td></tr>
+                <tr><th>能吃 AI 生成的位图</th><td class="y">能，hatch-pet 流程现成</td><td class="m">不能，要人工绑骨骼</td><td class="m">不能，要矢量制作</td><td class="y">能</td></tr>
+                <tr><th>控制播放</th><td class="y">播一轮、暂停、静态帧都行</td><td class="y">行</td><td class="y">行</td><td class="m">GIF 只能无限循环</td></tr>
+                <tr><th>二期自生成</th><td class="y">直接复用</td><td class="m">走不通</td><td class="m">走不通</td><td class="m">透明底、播放控制都缺</td></tr>
+                <tr><th>核实度</th><td><span class="tag t-info">调研检索</span> <span class="tag t-warn">重绘开销需实测</span></td><td><span class="tag t-info">调研检索</span></td><td><span class="tag t-info">调研检索</span></td><td><span class="tag t-ok">ChatGPT 产出已看过</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>你提交了 6 个视频，然后去干别的，会发生什么</h2>
+          <p class="sub">从提交到结果回来的完整路径，以及一个需要提前说清的边界。</p>
+          <div class="grid g2">
+            <div class="card">
+              <ol class="steps" style="margin: 0; padding: 0">
+                <li><b>小镜进入「盯着看」</b><small>画布里有未结束的生成任务，播 review 行；不说话。</small></li>
+                <li><b>前 3 个在 2 秒内先后完成</b><small>合并成一个气泡「3 个视频好了」，小镜跳一下。</small></li>
+                <li><b>点一下气泡</b><small>画布 fitView 到这 3 个节点，节点闪一下边框。</small></li>
+                <li><b>1 个失败</b><small>小镜垂头丧气，气泡「有 1 个没生成出来，积分退回了：{原因}」，停留 6 秒。</small></li>
+                <li><b>全部结束</b><small>回到待机。原来那条 toast 不再弹出。</small></li>
+              </ol>
+            </div>
+            <div class="card">
+              <div class="callout c-warn">
+                <i data-lucide="triangle-alert"></i>
+                <div>
+                  <b>边界：只对本次打开画布之后新到的结果说话。</b>
+                  <ul class="list" style="margin-top: 6px">
+                    <li>刷新页面、断线重连后对账回来的旧成功，不会再庆祝一次。</li>
+                    <li>页面在后台时，消息照常排队；回到前台只显示一条最重要的，系统通知仍由原来的逻辑发。</li>
+                    <li>冲突弹窗这类必须处理的弹窗不交给桌宠。</li>
+                  </ul>
+                </div>
+              </div>
+              <p class="muted" style="font-size: 12.5px; margin-top: 10px">上线时要告知用户：画布页的 toast 改由小镜来说；不喜欢可以切到「隐藏」，一切回到原样。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 2. 状态与冒泡规则 ============ -->
+      <section id="tab-demo" hidden>
+        <h1 class="h1">状态怎么挑动作，气泡怎么排队</h1>
+        <p class="lead">左边勾选当前有哪些状态，右边实时显示 <code>petMood()</code> 会选哪一行动作，命中的是优先级列表里的哪一条。下面是这一行的帧时长生成的 CSS。<b>规则是提案，帧时长来自 hatch-pet 规范。</b></p>
+        <div class="demo-grid">
+          <div class="card" id="moodInputs"></div>
+          <div class="grid" style="align-content: start">
+            <div class="card note">
+              <div class="row" style="gap: 16px; align-items: flex-start">
+                <div id="demoPet" style="flex: none"></div>
+                <div style="flex: 1">
+                  <div style="font-size: 13px" id="moodOut"></div>
+                  <ol class="pri list" id="priList" style="margin-top: 8px; padding-left: 20px; font-size: 12.5px"></ol>
+                </div>
+              </div>
+            </div>
+            <div class="note-txt">优先级从高到低：拖动永远最高（你手里抓着它）；一次性反应会打断持续状态，播完一轮再回来；「等你」比「它在忙」更重要。</div>
+            <div class="card">
+              <b style="font-size: 13px">这一行生成的 keyframes（<code>step-end</code>，每帧时长可以不同）</b>
+              <div class="codeblock" style="margin-top: 8px"><pre id="kfOut"></pre></div>
+              <p class="muted" style="font-size: 12px; margin-top: 6px">CSS 的 <code>steps()</code> 只能做等长帧；hatch-pet 每行最后一帧会停得更久，所以要在运行时按帧时长算出百分比。</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>气泡的四类来源和优先级</h2>
+          <p class="sub">一次只显示一个；高优先级的会顶掉低优先级的，被顶掉的（彩蛋除外）放回队首。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>优先级</th><th>类别</th><th>什么时候</th><th>停留</th><th>点气泡</th></tr></thead>
+              <tbody>
+                <tr><th>1 审批</th><td>助手</td><td>浮窗收起时出现待审批</td><td>不自动消失，直到处理完</td><td>打开浮窗</td></tr>
+                <tr><th>2 错误</th><td>助手 / 生成 / 系统</td><td>助手出错、生成失败、保存失败、积分不足</td><td>6 秒</td><td>打开浮窗 / 定位节点 / 去充值</td></tr>
+                <tr><th>3 结果</th><td>助手 / 生成</td><td>一轮跑完（浮窗收起时）；本画布生成成功（2 秒内合并）</td><td>4–5 秒</td><td>打开浮窗 / 定位节点</td></tr>
+                <tr><th>4 系统</th><td>画布提醒</td><td>原来那些画布 toast：上传结果、文字截断、取消退款等</td><td>4 秒</td><td>原 toast 有按钮的保留按钮</td></tr>
+                <tr><th>5 彩蛋</th><td>闲聊</td><td>只在活泼档：当天第一次打开、睡醒、深夜</td><td>4 秒</td><td>—</td></tr>
+                <tr><th>核实度</th><td colspan="4"><span class="tag t-vio">提案</span> 文案都是示意，实现时定稿</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 3. 可点击原型 ============ -->
+      <section id="tab-proto" hidden>
+        <h1 class="h1">在假画布里玩一遍</h1>
+        <p class="lead">
+          可点击原型，状态在内存里，刷新后复原；所有生成都是模拟，不会真的调用。<b>点小镜开关浮窗，拖它换位置，右键它切档位。</b>右边的按钮用来制造各种事件。想看失败长什么样：点「提交 3 张图（1 张会失败）」。想看退路：右键选「隐藏桌宠」，提醒会变回 toast。
+        </p>
+        <div class="proto-grid">
+          <div>
+            <div class="frame note">
+              <div class="frame-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span style="margin-left: 8px">video-canvas / 画布 / 雨夜短片</span></div>
+              <div class="canvas" id="canvas"></div>
+            </div>
+            <div class="note-txt">
+              原型画布比真实画布小，浮窗按比例缩成 280×340（真实是 400×最高 600），放置规则不变：上方放得下就放上方，否则放下方，再不行放到左右空间较大的一侧；最后夹回画布内。
+            </div>
+          </div>
+          <div class="ctl card" id="ctl"></div>
+        </div>
+      </section>
+
+      <!-- ============ 4. 数据与实现（提案） ============ -->
+      <section id="tab-impl" hidden>
+        <h1 class="h1">数据与实现（提案）</h1>
+        <p class="lead">下面都是设计提案，尚未实现，对应 Markdown 的 §6 和 §8。<b>一期纯前端：不改后端、不改画布 payload、不影响 revision 乐观锁。</b></p>
+
+        <div class="sec">
+          <h2>谁依赖谁</h2>
+          <p class="sub">桌宠只读状态、只写自己的设置，不碰画布数据。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>对象</th><th>关系</th><th>为什么</th></tr></thead>
+              <tbody>
+                <tr><th>PetLayer</th><td>读 <code>useAgentHost()</code>（<code>ctl.busy / pending</code>、<code>models</code>、<code>open / toggle</code>）</td><td>控制器本来就常驻，浮窗收起后也照常收事件 <span class="tag t-ok">已核对</span></td></tr>
+                <tr><th>PetLayer</th><td>读 <code>useCanvasRunningTaskCount(canvasId)</code>（新增）</td><td>返回一个 number，任务快照变化只要数量没变，就不会重渲染</td></tr>
+                <tr><th>canvasNotice()</th><td>桌宠活跃时写气泡队列，否则调用 sonner</td><td>一个消息只说一遍；替换画布页内的 <code>toast.*</code></td></tr>
+                <tr><th>AgentPanel</th><td>浮动模式下的位置由 <code>placePanel(桌宠, 区域)</code> 计算</td><td>浮窗跟着桌宠弹出（用户确认）；停靠模式不变</td></tr>
+                <tr><th>useAgentSettings</th><td>增加 <code>pet</code> 字段，持久化在本机</td><td>和浮窗的偏移、停靠一样是个人偏好，不跨设备</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>数据模型</h2>
+          <p class="sub">沿用 <code>useAgentSettings</code> 的 zustand persist，把 version 设为 1，并写 migrate 补默认值。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th colspan="2"><code>useAgentSettings.pet</code>（localStorage，持久化）</th></tr></thead>
+              <tbody>
+                <tr><th><code>mode</code></th><td><code>"lively" | "quiet" | "hidden"</code>，默认 <code>"lively"</code></td></tr>
+                <tr><th><code>anchor</code></th><td><code>{ corner: "br"|"bl"|"tr"|"tl", dx: number, dy: number } | null</code>：相对最近一个角的偏移（px）；null 表示默认右下角</td></tr>
+                <tr><th><code>skin</code></th><td><code>string</code>，默认 <code>"xiaojing"</code>；一期只有这一个</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="cmp-wrap" style="margin-top: 10px">
+            <table class="cmp">
+              <thead><tr><th colspan="2"><code>usePetStore</code>（内存，不持久化）</th></tr></thead>
+              <tbody>
+                <tr><th><code>queue / current</code></th><td><code>Bubble[]</code> / <code>Bubble | null</code>，队列上限 5</td></tr>
+                <tr><th><code>Bubble</code></th><td><code>{ id, key, kind: "approval"|"error"|"result"|"system"|"chatter", text, count, action?: {label, run}, mood?, ttl, createdAt }</code></td></tr>
+                <tr><th><code>reaction</code></th><td><code>{ kind: "celebrate"|"failed" } | null</code>，播完一轮（onAnimationEnd）后清空</td></tr>
+                <tr><th><code>lastChatterAt</code></th><td>彩蛋冷却用，30 分钟</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="cmp-wrap" style="margin-top: 10px">
+            <table class="cmp">
+              <thead><tr><th colspan="2"><code>web/public/pets/xiaojing/pet.json</code></th></tr></thead>
+              <tbody>
+                <tr><th>Codex 字段</th><td><code>id, displayName, description, spritesheetPath</code></td></tr>
+                <tr><th><code>extensions</code></th><td><code>["sleeping"]</code>：表示有第 10 行；没有这一行时，「睡觉」改用 idle 第 0 帧，加半透明和 CSS 画的「z」</td></tr>
+                <tr><th>图集</th><td>1536×2080 WebP，8 列 × 10 行，每格 192×208，透明；体积不超过 600KB（示意）</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>动作行</h2>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>行</th><th>名称 · 帧数</th><th>一期用途</th></tr></thead>
+              <tbody id="rowTable"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>核心函数（先写测试）</h2>
+          <div class="codeblock"><pre>// web/src/utils/pet/mood.ts（提案）
+export function petMood(s: MoodInput): { row: PetRow; loop: boolean } {
+  if (s.dragging) return { row: s.dragDir &gt; 0 ? "running-right" : s.dragDir &lt; 0 ? "running-left" : "idle", loop: true };
+  if (s.reaction) return { row: s.reaction === "celebrate" ? "jumping" : "failed", loop: false };
+  if (s.pending) return { row: "waiting", loop: true };
+  if (s.busy) return { row: "running", loop: true };
+  if (s.runningTasks &gt; 0) return { row: "review", loop: true };
+  if (s.available === false || (s.mode === "lively" &amp;&amp; s.idleMs &gt;= 10 * 60_000)) return { row: "sleeping", loop: true };
+  if (s.hovering &amp;&amp; s.mode === "lively" &amp;&amp; s.canGreet) return { row: "waving", loop: false };
+  return { row: "idle", loop: true };
+} // reducedMotion 由渲染层处理：只显示第 0 帧
+
+// web/src/utils/pet/placement.ts（提案）
+export function placePanel(pet: Rect, area: Size, want: Size, gap = 8, pad = 12) {
+  const h = Math.min(want.h, area.h - 2 * pad), w = Math.min(want.w, area.w - 2 * pad);
+  let side = pet.y - h - gap &gt;= pad ? "top" : pet.y + pet.h + gap + h &lt;= area.h - pad ? "bottom"
+           : pet.x &gt; area.w - (pet.x + pet.w) ? "left" : "right";
+  let x = side === "left" ? pet.x - gap - w : side === "right" ? pet.x + pet.w + gap
+        : pet.x + pet.w / 2 &gt; area.w / 2 ? pet.x + pet.w - w : pet.x;
+  let y = side === "top" ? pet.y - gap - h : side === "bottom" ? pet.y + pet.h + gap : pet.y + pet.h / 2 - h / 2;
+  return { x: clamp(x, pad, area.w - pad - w), y: clamp(y, pad, area.h - pad - h), w, h, side };
+}
+
+// web/src/utils/pet/notice.ts（提案）
+export function canvasNotice(kind, text, opts) {
+  if (usePetStore.getState().active) usePetStore.getState().push({ kind: toBubbleKind(kind), text, ...opts });
+  else toast[kind](text, { id: opts?.id, action: opts?.action &amp;&amp; { label: opts.action.label, onClick: opts.action.run } });
+}</pre></div>
+        </div>
+
+        <div class="sec">
+          <h2>素材怎么做（一期，离线）</h2>
+          <div class="card">
+            <ol class="steps" style="margin: 0; padding: 0">
+              <li><b>母图</b><small>从你定稿的四视图里裁出正面，去掉文字。</small></li>
+              <li><b>逐行出图</b><small>用内部生图服务的图生图，背景用纯 #00FF00；去掉浮空的灯泡、对勾、闪光，道具要贴在身上，<b>不能有文字</b>。</small></li>
+              <li><b>切帧、校验、合图</b><small>用 hatch-pet 的脚本；向左跑由向右跑镜像生成；「困了」行单独切好，拼接到第 10 行。</small></li>
+              <li><b>你拍板</b><small>看总览图和每行 GIF 预览；不合格的行单独重做。连续两轮都不达标，就改成你在 ChatGPT 里出行条图、我来合图。</small></li>
+            </ol>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>一期验收</h2>
+          <div class="card">
+            <ul class="list">
+              <li>六种状态（待机、运行、等审批、生成中加完成、失败、不可用）都能触发，动作对得上；点合并后的气泡能定位到节点。</li>
+              <li>拖到四个角和中间，刷新后位置还在；缩小窗口、打开停靠侧栏，桌宠不会跑出画布。</li>
+              <li>在左上角点开浮窗，浮窗从桌宠旁边弹出，并且完整显示在画布内。</li>
+              <li>安静档没有彩蛋；隐藏档回到胶囊按钮和 toast；桌宠可见时没有重复的 toast。</li>
+              <li><b>性能</b>：在 200 个节点的画布上，开启和关闭桌宠相比长任务数不增加；切换动作时只有桌宠重渲染；页面在后台时动画停止。<span class="tag t-warn">需实测</span></li>
+              <li>系统开启「减少动态效果」时显示静态帧；暗色主题下黑猫轮廓清晰；<code>bash scripts/check.sh</code> 通过。</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>二期（提案，细节待二期访谈）</h2>
+          <div class="card">
+            <ul class="list">
+              <li><b>换个形象</b>：右键菜单列出内置皮肤和自己生成的；选中的皮肤存到后端，跨设备同步。</li>
+              <li><b>自己生成</b>：上传一张图，后端用一个 River 任务编排「母图 → 9 行条图 → 抠图、切帧、校验（用 Go 移植 hatch-pet 的确定性部分）→ 合图并落库」；不合格的行自动重做最多 2 次，之后可以手动单行重做；积分按实际任务累加。</li>
+              <li>新表 <code>agent_pets</code>（user_id 隔离、status、base_asset_id、sheet_asset_id、manifest jsonb）；接口 <code>GET/POST /agent-pets</code>、<code>POST /agent-pets/:id/rows/:row/regenerate</code>、<code>DELETE /agent-pets/:id</code>、<code>PUT /me/settings/pet</code>。</li>
+              <li>二期待定：用哪个模型、积分定价、每个用户最多几只、上传图片的内容审核。</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>已确认的决定</h2>
+          <div class="card">
+            <ol class="list" style="padding-left: 18px">
+              <li><b>一期做状态动作、拖动、冒泡，二期做自生成和换皮肤</b>：先验证大家喜不喜欢、会不会觉得吵。</li>
+              <li><b>只在画布页</b>：其他页面没有助手可开。</li>
+              <li><b>自由拖到任意位置、不自己走</b>：画布中间是工作区，乱走会挡节点。</li>
+              <li><b>形象用你在 ChatGPT 里定稿的折耳小黑猫「小镜」</b>，重新出透明雪碧图。</li>
+              <li><b>浮窗跟着桌宠弹出</b>；停靠模式不变。</li>
+              <li><b>冒泡四类都要</b>：助手（浮窗收起时）、生成结果、系统提醒、闲聊彩蛋。</li>
+              <li><b>桌宠可见时接管画布类提醒</b>，隐藏时退回 toast。</li>
+              <li><b>三档：活泼 / 安静 / 隐藏</b>。</li>
+              <li><b>一期素材由我用 hatch-pet 流程离线出</b>，你看总览图拍板。</li>
+              <li><b>已搁置</b>：二期的模型、积分、数量上限、审核。<b>默认值</b>（可推翻）：尺寸 80px（窄屏 56px 且不能拖）、彩蛋冷却 30 分钟、空闲 10 分钟后睡着、浮窗拖动后的位置不持久化。</li>
+            </ol>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+      const $ = (s, r = document) => r.querySelector(s);
+      const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const icons = () => { if (window.lucide) lucide.createIcons(); };
+      const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+      function toggleNotes() { const on = document.body.classList.toggle("show-notes"); $("#notesSw").setAttribute("aria-checked", String(on)); }
+      let toastTimer;
+      function toast(msg, kind = "ok") {
+        const icon = { ok: "circle-check", bad: "circle-x", warn: "triangle-alert", info: "info" }[kind] || "info";
+        $("#toast").innerHTML = `<div><i data-lucide="${icon}" style="color: rgb(var(--${kind === "info" ? "info" : kind}))"></i>${esc(msg)} <span class="tag t-mute">toast</span></div>`;
+        icons(); clearTimeout(toastTimer); toastTimer = setTimeout(() => ($("#toast").innerHTML = ""), 2600);
+      }
+      function showTab(id) {
+        document.querySelectorAll("main > section").forEach((s) => (s.hidden = s.id !== "tab-" + id));
+        document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === id)));
+        window.scrollTo(0, 0);
+        if (id === "proto") renderProto();
+      }
+      document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab)));
+
+      /* ---------- 示意黑猫 SVG：折耳、琥珀眼、橙领巾 ---------- */
+      const CAT = `<svg viewBox="0 0 80 87" aria-hidden="true">
+        <g class="zz" fill="currentColor" font-size="11" font-weight="700" style="color: rgb(var(--info))"><text x="58" y="14">z</text><text x="66" y="6" font-size="8">z</text></g>
+        <path d="M18 84c-4-12-2-26 8-32h28c10 6 12 20 8 32z" fill="#1f1d24"/>
+        <ellipse cx="40" cy="72" rx="10" ry="11" fill="#f2e6d8"/>
+        <path d="M60 78c10-2 14-12 9-20" stroke="#1f1d24" stroke-width="5" fill="none" stroke-linecap="round"/>
+        <g class="arm-r"><path d="M58 60c6 2 9 6 8 10" stroke="#1f1d24" stroke-width="6" fill="none" stroke-linecap="round"/></g>
+        <path d="M14 26l2-20 14 12zM66 26l-2-14-12 2z" fill="#1f1d24"/>
+        <path d="M58 12l8 10-10-2z" fill="#3a3640"/>
+        <ellipse cx="40" cy="36" rx="27" ry="23" fill="#1f1d24"/>
+        <ellipse cx="40" cy="44" rx="11" ry="8" fill="#f2e6d8"/>
+        <g class="eyes" style="transition: transform 0.15s"><circle cx="30" cy="35" r="6.5" fill="#f59e0b"/><circle cx="50" cy="35" r="6.5" fill="#f59e0b"/><circle cx="31" cy="35" r="3" fill="#111"/><circle cx="51" cy="35" r="3" fill="#111"/><circle cx="32.5" cy="33" r="1.2" fill="#fff"/><circle cx="52.5" cy="33" r="1.2" fill="#fff"/></g>
+        <path d="M37 44q3 3 6 0" stroke="#111" stroke-width="1.4" fill="none"/>
+        <path d="M24 55l16 9 16-9-3 6-13 5-13-5z" fill="#f97316"/>
+        <g class="prop prop-pen"><rect x="58" y="62" width="14" height="10" rx="2" fill="#fff" stroke="#1f1d24"/><path d="M60 66h10M60 69h7" stroke="#999" stroke-width="1"/></g>
+        <g class="prop prop-sign"><rect x="56" y="44" width="16" height="14" rx="3" fill="#f59e0b" stroke="#1f1d24"/><text x="64" y="55" font-size="10" font-weight="700" text-anchor="middle" fill="#1f1d24">?</text></g>
+        <g class="prop prop-board"><rect x="56" y="52" width="17" height="12" fill="#1f1d24" stroke="#fff" stroke-width="1"/><path d="M56 52l4-5h13l-4 5" fill="#f2e6d8" stroke="#1f1d24"/></g>
+      </svg>`;
+      const MOOD_CLASS = { idle: "m-idle", running: "m-working", waiting: "m-waiting", review: "m-watching", jumping: "m-celebrate", failed: "m-failed", sleeping: "m-sleeping", waving: "m-greeting", "running-right": "m-drag-right", "running-left": "m-drag-left" };
+
+      /* ---------- 规范：行定义（来自 hatch-pet + 扩展行） ---------- */
+      const ROWS = [
+        { name: "idle", d: [280, 110, 110, 140, 140, 320], use: "待机：呼吸、眨眼" },
+        { name: "running-right", d: [120, 120, 120, 120, 120, 120, 120, 220], use: "拖动中、向右移动" },
+        { name: "running-left", d: [120, 120, 120, 120, 120, 120, 120, 220], use: "拖动中、向左移动" },
+        { name: "waving", d: [140, 140, 140, 280], use: "悬停打招呼、冒出新气泡时播一次" },
+        { name: "jumping", d: [140, 140, 140, 140, 280], use: "庆祝：生成成功、助手一轮跑完（播一轮）" },
+        { name: "failed", d: [140, 140, 140, 140, 140, 140, 140, 240], use: "失败（播一轮）" },
+        { name: "waiting", d: [150, 150, 150, 150, 150, 260], use: "等你：待审批、提问" },
+        { name: "running", d: [120, 120, 120, 120, 120, 220], use: "助手运行中（专注干活）" },
+        { name: "review", d: [150, 150, 150, 150, 150, 280], use: "画布里有生成任务在跑" },
+        { name: "sleeping", d: [220, 220, 220, 220, 220, 400], use: "没有可用模型；活泼档空闲 10 分钟（扩展行）" },
+      ];
+      $("#rowTable").innerHTML = ROWS.map((r, i) => `<tr><th>${i}</th><td><code>${r.name}</code> · ${r.d.length} 帧</td><td>${esc(r.use)}${i === 9 ? ' <span class="tag t-vio">扩展</span>' : ""}</td></tr>`).join("");
+      function buildKeyframes(i) {
+        const r = ROWS[i]; const total = r.d.reduce((a, b) => a + b, 0); let acc = 0;
+        const lines = r.d.map((ms, f) => { const pct = ((acc / total) * 100).toFixed(2); acc += ms; return `  ${pct}% { background-position: ${-f * 192}px ${-i * 208}px; }`; });
+        return `@keyframes pet-row-${i} {\n${lines.join("\n")}\n}\n.pet[data-row="${r.name}"] {\n  animation: pet-row-${i} ${total}ms step-end infinite;\n}`;
+      }
+
+      /* ---------- 纯函数：petMood ---------- */
+      function petMood(s) {
+        if (s.dragging) return { row: s.dragDir > 0 ? "running-right" : s.dragDir < 0 ? "running-left" : "idle", rule: 0 };
+        if (s.reaction) return { row: s.reaction === "celebrate" ? "jumping" : "failed", rule: 1 };
+        if (s.pending) return { row: "waiting", rule: 2 };
+        if (s.busy) return { row: "running", rule: 3 };
+        if (s.runningTasks > 0) return { row: "review", rule: 4 };
+        if (s.available === false || (s.mode === "lively" && s.idleLong)) return { row: "sleeping", rule: 5 };
+        if (s.hovering && s.mode === "lively") return { row: "waving", rule: 6 };
+        return { row: "idle", rule: 7 };
+      }
+      const RULES = ["拖动中 → 左右跑", "一次性反应 → 庆祝 / 失败", "有待审批 → waiting", "助手运行中 → running", "画布有生成在跑 → review", "不可用，或活泼档空闲 10 分钟 → sleeping", "悬停（活泼档）→ waving", "以上都不是 → idle"];
+
+      /* ---------- 标签页 2：规则演示 ---------- */
+      const ms = { dragging: false, dragDir: 1, reaction: "", pending: false, busy: false, runningTasks: 0, available: true, idleLong: false, hovering: false, mode: "lively" };
+      function renderMoodInputs() {
+        const c = (k, label) => `<label class="chk"><input type="checkbox" data-k="${k}" ${ms[k] ? "checked" : ""}/>${label}</label>`;
+        $("#moodInputs").innerHTML = `<b style="font-size: 13px">当前状态</b>
+          ${c("dragging", "正在拖动")}
+          <label class="chk" style="padding-left: 24px">方向 <select data-k="dragDir"><option value="1" ${ms.dragDir > 0 ? "selected" : ""}>向右</option><option value="-1" ${ms.dragDir < 0 ? "selected" : ""}>向左</option></select></label>
+          <label class="chk">一次性反应 <select data-k="reaction"><option value="">无</option><option value="celebrate" ${ms.reaction === "celebrate" ? "selected" : ""}>庆祝</option><option value="failed" ${ms.reaction === "failed" ? "selected" : ""}>失败</option></select></label>
+          ${c("pending", "有待审批")}
+          ${c("busy", "助手运行中")}
+          <label class="chk"><input type="checkbox" data-k="runningTasks" ${ms.runningTasks ? "checked" : ""}/>画布有生成任务在跑</label>
+          <label class="chk"><input type="checkbox" data-k="unavailable" ${ms.available ? "" : "checked"}/>没有可用的 Agent 模型</label>
+          ${c("idleLong", "空闲已满 10 分钟")}
+          ${c("hovering", "鼠标悬停在桌宠上")}
+          <label class="chk">档位 <select data-k="mode"><option value="lively">活泼</option><option value="quiet" ${ms.mode === "quiet" ? "selected" : ""}>安静</option></select></label>`;
+        $("#moodInputs").querySelectorAll("input, select").forEach((el) => el.addEventListener("change", () => {
+          const k = el.dataset.k;
+          if (k === "unavailable") ms.available = !el.checked;
+          else if (k === "runningTasks") ms.runningTasks = el.checked ? 2 : 0;
+          else if (k === "dragDir") ms.dragDir = Number(el.value);
+          else if (el.type === "checkbox") ms[k] = el.checked;
+          else ms[k] = el.value;
+          renderMoodOut();
+        }));
+      }
+      function renderMoodOut() {
+        const m = petMood(ms); const idx = ROWS.findIndex((r) => r.name === m.row);
+        $("#demoPet").innerHTML = `<div class="pet ${MOOD_CLASS[m.row]}" style="width: 96px; height: 104px">${CAT}</div>`;
+        $("#moodOut").innerHTML = `选中第 <b>${idx}</b> 行 <code>${m.row}</code>：${esc(ROWS[idx].use)}`;
+        $("#priList").innerHTML = RULES.map((r, i) => `<li class="${i === m.rule ? "hit" : i > m.rule ? "off" : ""}">${esc(r)}</li>`).join("");
+        $("#kfOut").textContent = buildKeyframes(idx);
+      }
+      renderMoodInputs(); renderMoodOut();
+
+      /* ---------- 标签页 3：原型 ---------- */
+      const P = {
+        mode: "lively", anchor: null, open: false, pending: false, busy: false, available: true, running: 0, reaction: null,
+        hovering: false, greetedAt: 0, dragging: false, dragDir: 0, idleLong: false, reduced: false, menu: null,
+        current: null, queue: [], lastChatter: -Infinity, merge: null, nodes: [], petPos: null, panelDrag: null,
+        msgs: [{ who: "小镜", text: "今天想拍点什么？" }],
+      };
+      const PET_W = 80, PET_H = 87, PAD = 12, PANEL = { w: 280, h: 340 };
+      const PRI = { approval: 1, error: 2, result: 3, system: 4, chatter: 5 };
+      function area() { const c = $("#canvas"); return { w: c.clientWidth, h: c.clientHeight }; }
+      function petRect() {
+        const a = area(); const an = P.anchor || { corner: "br", dx: PAD + 4, dy: PAD + 52 };
+        const x = an.corner.includes("r") ? a.w - an.dx - PET_W : an.dx;
+        const y = an.corner.includes("b") ? a.h - an.dy - PET_H : an.dy;
+        return { x: clamp(x, PAD, a.w - PAD - PET_W), y: clamp(y, PAD, a.h - PAD - PET_H), w: PET_W, h: PET_H };
+      }
+      function anchorOf(x, y) {
+        const a = area(); const cx = x + PET_W / 2, cy = y + PET_H / 2;
+        const r = cx > a.w / 2, b = cy > a.h / 2;
+        return { corner: (b ? "b" : "t") + (r ? "r" : "l"), dx: r ? a.w - x - PET_W : x, dy: b ? a.h - y - PET_H : y };
+      }
+      function placePanel(pet, a, want, gap = 8, pad = PAD) {
+        const h = Math.min(want.h, a.h - 2 * pad), w = Math.min(want.w, a.w - 2 * pad);
+        const side = pet.y - h - gap >= pad ? "top" : pet.y + pet.h + gap + h <= a.h - pad ? "bottom" : pet.x > a.w - (pet.x + pet.w) ? "left" : "right";
+        const x = side === "left" ? pet.x - gap - w : side === "right" ? pet.x + pet.w + gap : pet.x + pet.w / 2 > a.w / 2 ? pet.x + pet.w - w : pet.x;
+        const y = side === "top" ? pet.y - gap - h : side === "bottom" ? pet.y + pet.h + gap : pet.y + pet.h / 2 - h / 2;
+        const origin = { top: "bottom", bottom: "top", left: "right", right: "left" }[side];
+        return { x: clamp(x, pad, a.w - pad - w), y: clamp(y, pad, a.h - pad - h), w, h, side, origin };
+      }
+      const petActive = () => P.mode !== "hidden";
+
+      /* 气泡队列（简化版 reducer）：抢占、合并、去重、上限 5、彩蛋冷却 */
+      function push(b) {
+        b = { count: 1, ttl: 4000, ...b, at: Date.now() };
+        if (!petActive()) { toast(b.text, b.kind === "error" ? "bad" : b.kind === "result" ? "ok" : "info"); return; }
+        if (b.kind === "chatter") {
+          if (P.mode !== "lively" || P.open || P.busy || P.pending || Date.now() - P.lastChatter < 30 * 60_000) { flash("彩蛋被拦下：冷却中 / 浮窗打开 / 助手在忙 / 不是活泼档"); return; }
+          P.lastChatter = Date.now();
+        }
+        if (b.kind === "approval" && P.open) return;
+        const all = [P.current, ...P.queue].filter(Boolean);
+        if (b.id && all.some((x) => x.id === b.id)) return;
+        if (P.current && PRI[b.kind] < PRI[P.current.kind]) { if (P.current.kind !== "chatter") P.queue.unshift(P.current); show(b); }
+        else if (!P.current) show(b);
+        else { P.queue.push(b); P.queue.sort((x, y) => PRI[x.kind] - PRI[y.kind]); P.queue = P.queue.slice(0, 5); }
+        renderProto();
+      }
+      let bubbleTimer;
+      function show(b) {
+        P.current = b; clearTimeout(bubbleTimer);
+        if (b.mood) react(b.mood);
+        if (b.kind !== "approval") bubbleTimer = setTimeout(() => dismiss(b), b.ttl);
+      }
+      function dismiss(b) {
+        if (P.current !== b) return;
+        clearTimeout(bubbleTimer); P.current = null;
+        const next = P.queue.shift(); if (next) show(next);
+        renderProto();
+      }
+      let reactTimer;
+      function react(kind) { P.reaction = kind; clearTimeout(reactTimer); reactTimer = setTimeout(() => { P.reaction = null; renderProto(); }, kind === "celebrate" ? 1400 : 1800); }
+      let flashTimer;
+      function flash(msg) { const el = $("#protoStatus"); if (el) { el.textContent = msg; clearTimeout(flashTimer); flashTimer = setTimeout(() => renderProto(), 2200); } }
+
+      /* 模拟事件 */
+      function submitImages(failOne) {
+        const base = P.nodes.length;
+        for (let i = 0; i < 3; i++) P.nodes.push({ id: base + i, x: 40 + ((base + i) % 4) * 170, y: 40 + Math.floor((base + i) / 4) * 120, st: "生成中…" });
+        P.running += 3; P.idleLong = false; renderProto();
+        [1200, 1700, 2300].forEach((t, i) => setTimeout(() => {
+          const n = P.nodes[base + i]; P.running--;
+          const fail = failOne && i === 2; n.st = fail ? "失败" : "已完成";
+          if (fail) push({ kind: "error", text: "有 1 张没生成出来，积分退回了：内容未通过审核", mood: "failed", ttl: 6000, action: { label: "定位", ids: [n.id] } });
+          else resultMerge(n.id);
+          renderProto();
+        }, t));
+      }
+      function resultMerge(id) {
+        if (P.merge && Date.now() - P.merge.at < 2000 && P.current === P.merge.bubble) {
+          P.merge.ids.push(id); P.merge.at = Date.now(); P.merge.bubble.count++; P.merge.bubble.text = `${P.merge.bubble.count} 张图好了`;
+          P.merge.bubble.action.ids = P.merge.ids; clearTimeout(bubbleTimer); bubbleTimer = setTimeout(() => dismiss(P.merge.bubble), 5000); renderProto(); return;
+        }
+        const b = { kind: "result", key: "result:success", text: "1 张图好了", mood: "celebrate", ttl: 5000, action: { label: "定位", ids: [id] } };
+        P.merge = { at: Date.now(), ids: [id], bubble: b }; push(b);
+        if (!petActive()) return;
+        P.merge.bubble = P.current === b ? b : P.merge.bubble;
+      }
+      function runAgent() {
+        if (!P.available) return flash("没有可用的 Agent 模型");
+        P.busy = true; P.idleLong = false; P.msgs.push({ who: "你", text: "帮我把第一场拆成 4 个镜头" }); renderProto();
+        setTimeout(() => { P.busy = false; P.msgs.push({ who: "小镜", text: "拆好了：远景、近景、特写、反打。" }); if (!P.open) push({ kind: "result", text: "好啦，回复写完了", mood: "celebrate", action: { label: "打开", open: true } }); else react("celebrate"); renderProto(); }, 2600);
+      }
+      function askApproval() {
+        if (!P.available) return flash("没有可用的 Agent 模型");
+        P.pending = true; P.msgs.push({ who: "小镜", text: "要生成 4 张分镜图，预计 8 积分。", approve: true });
+        push({ kind: "approval", id: "approval:1", text: "这一步要你点个头", action: { label: "打开", open: true } }); renderProto();
+      }
+      function approve() {
+        P.pending = false; P.msgs = P.msgs.map((m) => ({ ...m, approve: false })); P.msgs.push({ who: "你", text: "已批准" });
+        if (P.current?.kind === "approval") dismiss(P.current);
+        renderProto(); submitImages(false);
+      }
+      function togglePanel() {
+        if (P.available === false) return flash("管理员尚未配置 Agent 模型");
+        P.open = !P.open; P.panelDrag = null;
+        if (P.open && P.current?.kind === "approval") dismiss(P.current);
+        renderProto();
+      }
+      function bubbleClick() {
+        const b = P.current; if (!b) return;
+        if (b.action?.open && !P.open) togglePanel();
+        if (b.action?.ids) { b.action.ids.forEach((id) => { const el = $(`.cnode[data-id="${id}"]`); if (el) { el.classList.add("flash"); setTimeout(() => el.classList.remove("flash"), 900); } }); }
+        dismiss(b);
+      }
+
+      function renderProto() {
+        const c = $("#canvas"); if (!c || $("#tab-proto").hidden) return;
+        // 拖桌宠、拖浮窗期间推迟重绘（定时器触发的也一样），松手时统一重绘
+        if (P.dragging || P.panelDragging) return;
+        const a = area(); const pr = P.petPos || petRect();
+        const mood = petMood({ ...P, runningTasks: P.running, hovering: P.hovering && Date.now() - P.greetedAt < 900 });
+        const nodes = P.nodes.map((n) => `<div class="cnode" data-id="${n.id}" style="left:${n.x}px;top:${n.y}px"><b>图片 ${n.id + 1}</b> <span class="st muted">${esc(n.st)}</span><div class="ph"><i data-lucide="${n.st === "已完成" ? "image" : n.st === "失败" ? "image-off" : "loader"}"></i></div></div>`).join("");
+        let petHtml = "", bubbleHtml = "", panelHtml = "", menuHtml = "";
+        const statsRight = petActive() && !P.anchor ? 12 + 96 : 12 + 88;
+        if (petActive()) {
+          petHtml = `<div class="pet-wrap ${P.dragging ? "dragging" : ""}" id="petWrap" tabindex="0" role="button" aria-label="小镜" style="left:${pr.x}px;top:${pr.y}px"><div class="pet ${MOOD_CLASS[mood.row]}">${CAT}</div></div>`;
+          if (P.current && !P.dragging) {
+            const b = P.current; const right = pr.x + PET_W / 2 > a.w / 2;
+            const bx = right ? Math.max(PAD, pr.x - 160) : Math.min(a.w - PAD - 220, pr.x + 30);
+            const by = pr.y > 90 ? pr.y - 54 : pr.y + PET_H + 6;
+            bubbleHtml = `<div class="bubble k-${b.kind}" id="bubble" style="left:${bx}px;top:${by}px">${b.count > 1 ? "" : ""}${esc(b.text)}${b.action ? `<br/><span class="act">${esc(b.action.label)}</span>` : ""}<span class="x" id="bubbleX" aria-label="关闭"><i data-lucide="x"></i></span></div>`;
+          }
+        } else {
+          petHtml = `<div class="chrome" style="right:${statsRight}px;bottom:12px" id="pill"><button class="cb" style="font-weight:600;${P.available ? "" : "opacity:.4"}" id="pillBtn"><i data-lucide="sparkles" style="color: rgb(var(--amber))"></i>小镜${P.busy && !P.open ? '<span style="width:6px;height:6px;border-radius:50%;background:rgb(var(--info))"></span>' : ""}</button></div>`;
+        }
+        if (P.open) {
+          const anchorRect = petActive() ? pr : { x: a.w - 12 - 88 - 80, y: a.h - 12 - 36, w: 80, h: 36 };
+          const pl = P.panelDrag || placePanel(anchorRect, a, PANEL);
+          const msgs = P.msgs.map((m) => `<div class="msg ${m.approve ? "approve" : ""}"><b>${esc(m.who)}</b>：${esc(m.text)}${m.approve ? `<div style="margin-top:6px"><button class="btn btn-primary" style="height:26px" id="approveBtn">批准</button></div>` : ""}</div>`).join("");
+          panelHtml = `<div class="panel" style="left:${pl.x}px;top:${pl.y}px;width:${pl.w}px;height:${pl.h}px;transform-origin:${pl.origin || "bottom"} ${pl.side === "left" ? "" : ""}"><div class="panel-h" id="panelHead" style="cursor:move"><i data-lucide="sparkles" style="color: rgb(var(--amber))"></i>小镜<span class="tag t-mute" style="font-weight:400">${P.panelDrag ? "已拖动，本次有效" : "跟随桌宠 · " + pl.side}</span><button class="btn spacer" style="height:24px;padding:0 6px" id="panelClose"><i data-lucide="x"></i></button></div><div class="panel-b">${msgs}${P.busy ? '<div class="muted">小镜在想…</div>' : ""}</div></div>`;
+        }
+        if (P.menu) {
+          const it = (k, icon, label, on) => `<button data-menu="${k}"><i data-lucide="${icon}"></i>${label}${on ? '<i data-lucide="check" class="spacer"></i>' : ""}</button>`;
+          menuHtml = `<div class="menu" style="left:${clamp(P.menu.x, 8, a.w - 160)}px;top:${clamp(P.menu.y, 8, a.h - 170)}px">${petActive() ? it("lively", "sparkles", "活泼", P.mode === "lively") + it("quiet", "volume-1", "安静", P.mode === "quiet") + "<hr/>" + it("home", "corner-down-right", "回到右下角") + it("hidden", "eye-off", "隐藏桌宠") : it("lively", "cat", "显示小镜")}</div>`;
+        }
+        c.className = "canvas" + (P.reduced ? " reduced" : "");
+        c.innerHTML = `${nodes}
+          <div class="chrome" style="left:12px;top:12px"><span class="cb"><i data-lucide="clapperboard"></i>雨夜短片</span></div>
+          <div class="chrome" style="right:12px;bottom:12px"><span class="cb muted">${P.nodes.length} 个节点</span></div>
+          <div class="pet-layer">${petHtml}${bubbleHtml}${panelHtml}${menuHtml}</div>`;
+        icons(); bindProto();
+        renderCtl(mood);
+      }
+      function renderCtl(mood) {
+        const q = P.queue.length;
+        $("#ctl").innerHTML = `
+          <div class="status-line" id="protoStatus">动作：<b>${mood.row}</b> · 档位：${{ lively: "活泼", quiet: "安静", hidden: "隐藏" }[P.mode]}${q ? ` · 排队 ${q}` : ""}</div>
+          <h4>助手</h4>
+          <button class="btn btn-outline" data-a="run"><i data-lucide="play"></i>让助手跑一轮</button>
+          <button class="btn btn-outline" data-a="approval" ${P.pending ? "disabled" : ""}><i data-lucide="hand"></i>触发一次审批</button>
+          <h4>画布生成</h4>
+          <button class="btn btn-outline" data-a="img"><i data-lucide="images"></i>提交 3 张图</button>
+          <button class="btn btn-outline" data-a="imgfail"><i data-lucide="image-off"></i>提交 3 张图（1 张会失败）</button>
+          <h4>系统 / 彩蛋</h4>
+          <button class="btn btn-outline" data-a="credits"><i data-lucide="coins"></i>提交时积分不足</button>
+          <button class="btn btn-outline" data-a="save"><i data-lucide="cloud-off"></i>离开前保存失败</button>
+          <button class="btn btn-outline" data-a="chatter"><i data-lucide="message-circle"></i>彩蛋：当天第一次打开</button>
+          <button class="btn btn-outline" data-a="idle"><i data-lucide="fast-forward"></i>快进：空闲 10 分钟</button>
+          <h4>环境</h4>
+          <label class="chk"><input type="checkbox" data-a="avail" ${P.available ? "" : "checked"}/>没有可用的 Agent 模型</label>
+          <label class="chk"><input type="checkbox" data-a="reduced" ${P.reduced ? "checked" : ""}/>减少动态效果</label>
+          <button class="btn" data-a="reset"><i data-lucide="rotate-ccw"></i>全部复原</button>
+          <p class="muted" style="font-size: 11.5px">全部是模拟，不会真的调用。时长都是示意。</p>`;
+        icons();
+        $("#ctl").querySelectorAll("[data-a]").forEach((el) => el.addEventListener(el.type === "checkbox" ? "change" : "click", () => {
+          const k = el.dataset.a;
+          if (k === "run") runAgent();
+          if (k === "approval") askApproval();
+          if (k === "img") submitImages(false);
+          if (k === "imgfail") submitImages(true);
+          if (k === "credits") push({ kind: "error", text: "积分不够了", mood: "failed", ttl: 6000, action: { label: "去充值" } });
+          if (k === "save") push({ kind: "error", id: "save-failed", text: "还有内容没保存上，已留在当前画布", mood: "failed", ttl: 6000 });
+          if (k === "chatter") push({ kind: "chatter", text: "早呀，今天拍点什么？", mood: null });
+          if (k === "idle") { P.idleLong = true; renderProto(); }
+          if (k === "avail") { P.available = !el.checked; if (!P.available) P.open = false; renderProto(); }
+          if (k === "reduced") { P.reduced = el.checked; renderProto(); }
+          if (k === "reset") { location.hash = "proto"; Object.assign(P, { mode: "lively", anchor: null, open: false, pending: false, busy: false, available: true, running: 0, reaction: null, current: null, queue: [], nodes: [], idleLong: false, lastChatter: -Infinity, panelDrag: null, menu: null, msgs: [{ who: "小镜", text: "今天想拍点什么？" }] }); renderProto(); }
+        }));
+      }
+      function bindProto() {
+        const wrap = $("#petWrap");
+        if (wrap) {
+          let start = null;
+          wrap.addEventListener("pointerdown", (e) => { if (e.button !== 0) return; wrap.setPointerCapture(e.pointerId); const r = petRect(); start = { x: e.clientX, y: e.clientY, ox: r.x, oy: r.y, lastX: e.clientX, moved: false }; });
+          wrap.addEventListener("pointermove", (e) => {
+            if (!start) { return; }
+            const dx = e.clientX - start.x, dy = e.clientY - start.y;
+            if (!start.moved && Math.hypot(dx, dy) <= 4) return;
+            const a = area();
+            // 拖动期间不整体重绘：重绘会替换正在拖的元素，指针捕获就丢了；只直接改 DOM
+            if (!start.moved) { start.moved = true; P.dragging = true; P.menu = null; wrap.classList.add("dragging"); $("#bubble")?.remove(); document.querySelector(".menu")?.remove(); }
+            const x = clamp(start.ox + dx, PAD, a.w - PAD - PET_W), y = clamp(start.oy + dy, PAD, a.h - PAD - PET_H);
+            const dir = Math.sign(e.clientX - start.lastX); start.lastX = e.clientX;
+            const el = $("#petWrap"); el.style.left = x + "px"; el.style.top = y + "px";
+            const pet = el.querySelector(".pet"); if (dir) pet.className = "pet " + (dir > 0 ? "m-drag-right" : "m-drag-left");
+            start.cur = { x, y };
+          });
+          wrap.addEventListener("pointerup", () => {
+            if (!start) return;
+            if (start.moved) { if (start.cur) P.anchor = anchorOf(start.cur.x, start.cur.y); P.dragging = false; P.panelDrag = null; start = null; renderProto(); }
+            else { start = null; togglePanel(); }
+          });
+          wrap.addEventListener("pointerenter", () => { if (P.mode === "lively" && Date.now() - P.greetedAt > 10000 && !P.dragging) { P.hovering = true; P.greetedAt = Date.now(); renderProto(); setTimeout(() => renderProto(), 950); } });
+          wrap.addEventListener("pointerleave", () => { P.hovering = false; });
+          wrap.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); togglePanel(); } if (e.key === "F10" && e.shiftKey) { e.preventDefault(); const r = petRect(); P.menu = { x: r.x - 70, y: r.y - 150 }; renderProto(); } });
+          wrap.addEventListener("contextmenu", (e) => { e.preventDefault(); const cr = $("#canvas").getBoundingClientRect(); P.menu = { x: e.clientX - cr.left, y: e.clientY - cr.top }; renderProto(); });
+        }
+        const pill = $("#pill");
+        if (pill) {
+          $("#pillBtn").addEventListener("click", togglePanel);
+          pill.addEventListener("contextmenu", (e) => { e.preventDefault(); const cr = $("#canvas").getBoundingClientRect(); P.menu = { x: e.clientX - cr.left - 120, y: e.clientY - cr.top - 50 }; renderProto(); });
+        }
+        const bubble = $("#bubble");
+        if (bubble) {
+          bubble.addEventListener("click", (e) => { if (e.target.closest("#bubbleX")) { dismiss(P.current); return; } bubbleClick(); });
+          bubble.addEventListener("mouseenter", () => clearTimeout(bubbleTimer));
+          bubble.addEventListener("mouseleave", () => { const b = P.current; if (b && b.kind !== "approval") bubbleTimer = setTimeout(() => dismiss(b), 1500); });
+        }
+        $("#panelClose")?.addEventListener("click", togglePanel);
+        $("#approveBtn")?.addEventListener("click", approve);
+        const head = $("#panelHead");
+        if (head) {
+          head.addEventListener("pointerdown", (e) => {
+            if (e.target.closest("button")) return;
+            const panel = head.parentElement; const sx = e.clientX, sy = e.clientY, ox = panel.offsetLeft, oy = panel.offsetTop; const a = area();
+            head.setPointerCapture(e.pointerId); P.panelDragging = true;
+            const mv = (ev) => { panel.style.left = clamp(ox + ev.clientX - sx, PAD, a.w - PAD - panel.offsetWidth) + "px"; panel.style.top = clamp(oy + ev.clientY - sy, PAD, a.h - PAD - panel.offsetHeight) + "px"; };
+            const up = () => { head.removeEventListener("pointermove", mv); head.removeEventListener("pointerup", up); P.panelDragging = false; P.panelDrag = { x: panel.offsetLeft, y: panel.offsetTop, w: panel.offsetWidth, h: panel.offsetHeight, side: "dragged" }; renderProto(); };
+            head.addEventListener("pointermove", mv); head.addEventListener("pointerup", up);
+          });
+        }
+        document.querySelectorAll("[data-menu]").forEach((el) => el.addEventListener("click", () => {
+          const k = el.dataset.menu;
+          if (k === "lively" || k === "quiet") P.mode = k;
+          if (k === "home") { P.anchor = null; P.panelDrag = null; }
+          if (k === "hidden") { P.mode = "hidden"; P.current = null; P.queue = []; }
+          P.menu = null; renderProto();
+        }));
+      }
+      document.addEventListener("pointerdown", (e) => { if (P.menu && !e.target.closest(".menu")) { P.menu = null; renderProto(); } });
+      document.addEventListener("keydown", (e) => { if (e.key === "Escape" && P.current && !$("#tab-proto").hidden) dismiss(P.current); });
+      document.addEventListener("visibilitychange", () => { const c = $("#canvas"); if (c) c.classList.toggle("paused", document.hidden); });
+      window.addEventListener("resize", () => renderProto());
+      if (location.hash === "#proto") showTab("proto");
+      icons();
+    </script>
+  </body>
+</html>
