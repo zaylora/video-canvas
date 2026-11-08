@@ -3,7 +3,7 @@ import { toast } from "sonner";
 
 import { usePetStore } from "@/store/pet";
 import { initialBubbleQueue } from "@/utils/pet/bubble-queue";
-import { canvasNotice } from "@/utils/pet/notice";
+import { canvasNotice, petTakesNotices } from "@/utils/pet/notice";
 
 const spies = {
   success: spyOn(toast, "success"),
@@ -34,6 +34,27 @@ describe("canvasNotice：桌宠不活跃时走 toast", () => {
       canvasNotice(kind, "x");
       expect(spies[kind]).toHaveBeenCalledTimes(1);
     }
+  });
+});
+
+describe("canvasNotice：浮窗打开时走 toast", () => {
+  test("桌宠活跃但浮窗打开：画布上的小镜收起了，提醒退回 toast", () => {
+    usePetStore.setState({ active: true });
+    usePetStore.getState().setContext({ panelOpen: true });
+    canvasNotice("error", "另存失败", { id: "save-as-failed" });
+    expect(spies.error).toHaveBeenCalledWith("另存失败", {
+      id: "save-as-failed",
+      action: undefined,
+    });
+    expect(usePetStore.getState().queue.current).toBeNull();
+  });
+
+  test("petTakesNotices：只有活跃且浮窗收起时才由桌宠接管", () => {
+    expect(petTakesNotices()).toBe(false);
+    usePetStore.setState({ active: true });
+    expect(petTakesNotices()).toBe(true);
+    usePetStore.getState().setContext({ panelOpen: true });
+    expect(petTakesNotices()).toBe(false);
   });
 });
 

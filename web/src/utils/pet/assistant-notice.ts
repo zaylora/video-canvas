@@ -1,6 +1,7 @@
 import type { AgentApprovalKind, AgentRunStatus } from "@/api/agent/type";
 
 import type { BubbleInput } from "./bubble-queue";
+import type { PetReactionKind } from "./mood";
 
 /** 点击气泡（打开浮窗）由调用方补上，这里只管内容 */
 export type AssistantBubble = Omit<BubbleInput, "onClick" | "action">;
@@ -57,4 +58,11 @@ export function runEndBubble(
     mood: "failed",
     ttl: 6000,
   };
+}
+
+/** 浮窗打开时一轮结束不冒泡，改让输入框上沿的小镜播一次反应：规则和 runEndBubble 一致 */
+export function runEndReaction(status: AgentRunStatus | undefined): PetReactionKind | null {
+  const bubble = runEndBubble("", status, "");
+  if (!bubble) return null;
+  return bubble.mood === "jumping" ? "celebrate" : "failed";
 }

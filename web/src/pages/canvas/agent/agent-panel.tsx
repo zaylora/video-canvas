@@ -5,6 +5,7 @@ import {
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
+  type ReactNode,
   type RefObject,
 } from "react";
 import {
@@ -85,6 +86,7 @@ export function AgentPanel({
   contextRefs,
   onRemoveContextRef,
   closeShortcut,
+  mascot,
 }: {
   ctl: AgentController;
   models: AgentModelDto[];
@@ -114,6 +116,8 @@ export function AgentPanel({
   onRemoveContextRef?: (id: string) => void;
   /** 「收起」按钮提示里的快捷键，缺省是画布的 ⌘/ */
   closeShortcut?: string;
+  /** 趴在输入框上沿探头的形象（画布里桌宠活跃时是小镜）：靠右，只露出上半身，下半身被框沿挡住 */
+  mascot?: ReactNode;
 }) {
   const mobile = useIsMobile();
   const reduce = useReducedMotion();
@@ -272,39 +276,47 @@ export function AgentPanel({
         />
       )}
       {/* 审批和提问是消息流里的交互卡片，输入框始终可用：等回答时发消息，视为新消息，这张卡被跳过 */}
-      <div
-        className="agent-composer mx-3 mb-3 shrink-0 overflow-hidden"
-        style={{ borderRadius: 18 }}
-      >
-        <div>
-          {/* 计划条并进输入框顶部（设计稿 6.12），不再悬在输入框上方 */}
-          <AnimatePresence initial={false}>
-            {ctl.strip && (
-              <RunStrip key={ctl.strip.runId} strip={ctl.strip} onHide={ctl.hidePlan} />
-            )}
-          </AnimatePresence>
-          <SteerTray items={steerQueue} />
-          <AgentComposer
-            text={text}
-            onTextChange={setText}
-            onSend={() => void send(text)}
-            onStop={() => void ctl.stop()}
-            busy={ctl.busy}
-            sending={ctl.sending}
-            models={models}
-            modelKey={ctl.modelKey}
-            context={ctl.context}
-            selection={selection}
-            refNodes={refNodes}
-            editorRef={editor}
-            nodes={nodes}
-            attachments={attachments}
-            vision={vision}
-            features={features}
-            placeholder={placeholder}
-            contextRefs={contextRefs}
-            onRemoveContextRef={onRemoveContextRef}
-          />
+      <div className={cn("relative mx-3 mb-3 shrink-0", mascot && "mt-9")}>
+        {/* 探头的形象：消息列表底部让出它露出来的高度（mt-9），不盖住最后几行；裁掉框沿以下的部分 */}
+        {mascot && (
+          <div
+            aria-hidden
+            className="pointer-events-none absolute right-5 bottom-full h-11 [clip-path:inset(-48px_-24px_0_-24px)]"
+          >
+            {mascot}
+          </div>
+        )}
+        <div className="agent-composer overflow-hidden" style={{ borderRadius: 18 }}>
+          <div>
+            {/* 计划条并进输入框顶部（设计稿 6.12），不再悬在输入框上方 */}
+            <AnimatePresence initial={false}>
+              {ctl.strip && (
+                <RunStrip key={ctl.strip.runId} strip={ctl.strip} onHide={ctl.hidePlan} />
+              )}
+            </AnimatePresence>
+            <SteerTray items={steerQueue} />
+            <AgentComposer
+              text={text}
+              onTextChange={setText}
+              onSend={() => void send(text)}
+              onStop={() => void ctl.stop()}
+              busy={ctl.busy}
+              sending={ctl.sending}
+              models={models}
+              modelKey={ctl.modelKey}
+              context={ctl.context}
+              selection={selection}
+              refNodes={refNodes}
+              editorRef={editor}
+              nodes={nodes}
+              attachments={attachments}
+              vision={vision}
+              features={features}
+              placeholder={placeholder}
+              contextRefs={contextRefs}
+              onRemoveContextRef={onRemoveContextRef}
+            />
+          </div>
         </div>
       </div>
     </>

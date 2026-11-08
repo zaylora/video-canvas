@@ -298,22 +298,24 @@ describe("拖动", () => {
 });
 
 describe("浮窗打开", () => {
-  test("打开时「助手」类不冒，其他类照常", () => {
+  // 浮窗打开时画布上的小镜收起，气泡没处显示：这期间什么都不收，画布提醒由 canvasNotice 改走 toast
+  test("打开时不收任何气泡", () => {
     const assistant = make({ source: "assistant", priority: "approval" });
     const result = make({ source: "result", priority: "result" });
-    let s = run(initialBubbleQueue(), ctx({ panelOpen: true }), push(assistant));
+    const s = run(initialBubbleQueue(), ctx({ panelOpen: true }), push(assistant), push(result));
     expect(s.current).toBeNull();
-    s = run(s, push(result));
-    expect(s.current?.id).toBe(result.id);
+    expect(s.queue).toEqual([]);
   });
 
-  test("打开浮窗：已显示和排队中的助手气泡收起，其他类留着", () => {
+  test("打开浮窗：已显示和排队中的气泡全部收起，关上后不会再冒出来", () => {
     const assistant = make({ source: "assistant", priority: "approval" });
     const sys = make();
     let s = run(initialBubbleQueue(), push(assistant), push(sys));
     s = run(s, ctx({ panelOpen: true }));
-    expect(s.current?.id).toBe(sys.id);
+    expect(s.current).toBeNull();
     expect(s.queue).toEqual([]);
+    s = run(s, ctx({ panelOpen: false }));
+    expect(s.current).toBeNull();
   });
 });
 

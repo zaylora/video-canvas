@@ -59,7 +59,8 @@ function useStageArea(ref: RefObject<HTMLElement | null>): Size | null {
 
 /**
  * 画布上的桌宠层（设计稿 桌宠.md 6.1）：和 ChromeZone 同层的绝对定位层，只有桌宠和气泡接收指针事件。
- * 挂载就加载素材，成功且档位不是「隐藏」时接管画布提醒（setActive）；
+ * 挂载就加载素材，成功且档位不是「隐藏」时接管画布提醒（setActive）；浮窗打开时小镜淡出、换成趴在输入框上沿探头，
+ * 这期间提醒走 toast（见 petTakesNotices）；
  * 没加载好、加载失败或隐藏时什么都不渲染：加载中外壳留空位，失败、超时或隐藏时页面显示原来的胶囊。
  */
 export const PetLayer = memo(function PetLayer({ canvasId }: { canvasId: string }) {
@@ -277,7 +278,13 @@ function PetStage({
         <>
           <div
             ref={petRef}
-            className="canvas-overlay-interactive pointer-events-auto absolute top-0 left-0"
+            // 浮窗打开时淡出但不卸载：位置照样给浮窗定位用，关上后原地淡入
+            inert={open || undefined}
+            aria-hidden={open || undefined}
+            className={cn(
+              "canvas-overlay-interactive absolute top-0 left-0 transition-opacity duration-200 motion-reduce:transition-none",
+              open ? "pointer-events-none opacity-0" : "pointer-events-auto",
+            )}
             style={{
               width: size.width,
               height: size.height,
@@ -321,7 +328,7 @@ function PetStage({
               />
             </ContextMenu>
           </div>
-          {bubble && !dragging && (
+          {bubble && !dragging && !open && (
             <PetBubble
               key={bubble.id}
               bubble={bubble}

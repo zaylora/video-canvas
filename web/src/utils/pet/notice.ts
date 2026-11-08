@@ -40,12 +40,18 @@ const KIND_DEFAULTS: Record<
 
 let seq = 0;
 
+/** 桌宠此刻接不接管画布提醒：要活跃，且浮窗收起（浮窗打开时画布上的小镜收起了） */
+export function petTakesNotices(): boolean {
+  const s = usePetStore.getState();
+  return s.active && !s.queue.ctx.panelOpen;
+}
+
 /**
- * 画布页的统一提醒出口。桌宠在接管（active）时进气泡队列，
+ * 画布页的统一提醒出口。桌宠接管（petTakesNotices）时进气泡队列，
  * 否则原样调用 sonner 的 toast[kind](text, { id, action })。
  */
 export function canvasNotice(kind: NoticeKind, text: string, opts: NoticeOptions = {}): void {
-  if (!usePetStore.getState().active) {
+  if (!petTakesNotices()) {
     // 气泡里的 {n} 是合并计数，toast 不合并，按 1 显示
     toast[kind](text.replaceAll("{n}", "1"), { id: opts.id, action: opts.action });
     return;

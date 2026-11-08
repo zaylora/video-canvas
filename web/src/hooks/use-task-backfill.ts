@@ -2,10 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { useReactFlow } from "@xyflow/react";
 
 import { reconcileTaskIds } from "@/utils/ws/task-events";
-import { usePetStore } from "@/store/pet";
 import { useTasksStore } from "@/store/tasks";
 import type { CanvasNode } from "@/types";
-import { canvasNotice, type NoticeOptions } from "@/utils/pet/notice";
+import { canvasNotice, petTakesNotices, type NoticeOptions } from "@/utils/pet/notice";
 import {
   NodeIdAccumulator,
   buildResultNotices,
@@ -74,7 +73,7 @@ export function useTaskBackfill(
     const { events } = applyBackfill(nodes, tasks);
     if (events.length === 0) return;
     setNodes((prev) => applyBackfill(prev, tasks).nodes);
-    const petActive = usePetStore.getState().active;
+    const petActive = petTakesNotices();
     const notices = buildResultNotices(events, canvasId, (view) =>
       isFreshTerminal(view, seenActive.current, openedAt.current),
     );

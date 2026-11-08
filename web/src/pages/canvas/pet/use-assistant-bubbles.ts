@@ -2,13 +2,14 @@ import { useEffect, useRef } from "react";
 
 import type { AgentApprovalKind } from "@/api/agent/type";
 import { usePetStore } from "@/store/pet";
-import { approvalBubble, runEndBubble } from "@/utils/pet/assistant-notice";
+import { approvalBubble, runEndBubble, runEndReaction } from "@/utils/pet/assistant-notice";
 import type { AgentRunLive } from "@/utils/agent/session-state";
 
 /**
  * 助手的冒泡（只在浮窗收起时冒；队列本身也会在浮窗打开时丢掉助手类气泡）：
  * - 出现待审批或提问：不自动消失的气泡，点击打开浮窗；审批处理完或浮窗打开时按 id 收起；
- * - 一轮跑完（busy 从 true 变 false）：成功说「好啦，回复写完了」，出错说「卡住了：原因」，用户自己停掉的不冒。
+ * - 一轮跑完（busy 从 true 变 false）：成功说「好啦，回复写完了」，出错说「卡住了：原因」，用户自己停掉的不冒；
+ *   浮窗打开时不冒，改让输入框上沿的小镜播一次庆祝或沮丧。
  */
 export function useAssistantBubbles({
   open,
@@ -39,10 +40,15 @@ export function useAssistantBubbles({
   const prev = useRef({ busy, runId: activeRun });
   useEffect(() => {
     const before = prev.current;
-    if (before.busy && !busy && before.runId && !open) {
+    if (before.busy && !busy && before.runId) {
       const run = runs[before.runId];
-      const bubble = runEndBubble(before.runId, run?.status, run?.error ?? "");
-      if (bubble) usePetStore.getState().push({ ...bubble, onClick: openPanel });
+      if (open) {
+        const kind = runEndReaction(run?.status);
+        if (kind) usePetStore.getState().react(kind);
+      } else {
+        const bubble = runEndBubble(before.runId, run?.status, run?.error ?? "");
+        if (bubble) usePetStore.getState().push({ ...bubble, onClick: openPanel });
+      }
     }
     prev.current = { busy, runId: activeRun ?? (busy ? before.runId : null) };
   }, [busy, activeRun, runs, open, openPanel]);

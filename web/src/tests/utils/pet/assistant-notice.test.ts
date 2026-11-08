@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { approvalBubble, runEndBubble } from "@/utils/pet/assistant-notice";
+import { approvalBubble, runEndBubble, runEndReaction } from "@/utils/pet/assistant-notice";
 
 describe("approvalBubble：等你决定的气泡", () => {
   test("审批：不自动消失、最高优先级、waiting 动作，id 按审批编号", () => {
@@ -51,5 +51,19 @@ describe("runEndBubble：一轮结束的气泡", () => {
     expect(runEndBubble("r6", "canceled", "")).toBeNull();
     expect(runEndBubble("r7", "running", "")).toBeNull();
     expect(runEndBubble("r8", undefined, "")).toBeNull();
+  });
+});
+
+describe("runEndReaction：浮窗打开时一轮结束，输入框上沿的小镜播一次反应", () => {
+  test("成功庆祝，失败沮丧", () => {
+    expect(runEndReaction("succeeded")).toBe("celebrate");
+    expect(runEndReaction("failed")).toBe("failed");
+    expect(runEndReaction("timeout")).toBe("failed");
+  });
+
+  test("用户自己停掉的、还没结束的不播", () => {
+    expect(runEndReaction("canceled")).toBeNull();
+    expect(runEndReaction(undefined)).toBeNull();
+    expect(runEndReaction("running")).toBeNull();
   });
 });

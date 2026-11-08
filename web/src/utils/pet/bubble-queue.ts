@@ -188,7 +188,8 @@ function updateMatching(
 
 function push(state: BubbleQueueState, input: BubbleInput, now: number): BubbleQueueState {
   const { ctx } = state;
-  if (input.source === "assistant" && ctx.panelOpen) return state;
+  // 浮窗打开时画布上的小镜收起，气泡没处显示：什么都不收
+  if (ctx.panelOpen) return state;
   if (isEaster(input)) {
     if (easterBlocked(ctx)) return state;
     if (state.lastEasterAt !== null && now - state.lastEasterAt < EASTER_COOLDOWN_MS) return state;
@@ -252,7 +253,8 @@ export function bubbleQueue(state: BubbleQueueState, action: BubbleQueueAction):
       const prev = state.ctx;
       let next: BubbleQueueState = { ...state, ctx: { ...prev, ...action.patch } };
       const { ctx } = next;
-      if (ctx.panelOpen) next = removeWhere(next, (b) => b.source === "assistant");
+      // 浮窗打开：已显示和排队的全部收起，免得计时停住、关上后又冒出旧消息
+      if (ctx.panelOpen) next = { ...next, current: null, queue: [] };
       if (easterBlocked(ctx)) next = removeWhere(next, isEaster);
       if (ctx.dragging && !prev.dragging) next = putBack(next);
       if (ctx.pageVisible && !prev.pageVisible) next = keepTop(next);
