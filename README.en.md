@@ -23,6 +23,7 @@ Accounts, credits, model channels, usage and audit logs are all built in, and on
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
+[![LINUX DO](https://img.shields.io/badge/Community-LINUX%20DO-ffb000?logo=linux&logoColor=black)](https://linux.do)
 
 </div>
 
@@ -191,6 +192,10 @@ Issues, feature requests and pull requests are welcome. If you use 连镜, we wo
 Before contributing, read the [contributing guide](CONTRIBUTING.en.md) (how to file issues and open pull requests) and the [development guide](docs/development.en.md) (environment setup, coding standards, pre-submit checks).
 
 If 连镜 is useful to you, a ⭐ Star helps more creators find it.
+
+## Community
+
+- [LINUX DO](https://linux.do)
 
 ## License
 

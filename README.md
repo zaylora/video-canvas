@@ -23,6 +23,7 @@
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
+[![LINUX DO](https://img.shields.io/badge/Community-LINUX%20DO-ffb000?logo=linux&logoColor=black)](https://linux.do)
 
 </div>
 
@@ -187,6 +188,10 @@ curl -fsSL https://raw.githubusercontent.com/zaylora/video-canvas/master/scripts
 开始贡献前，请先阅读 [贡献指南](CONTRIBUTING.md)（如何提 Issue 和 PR）和 [开发指南](docs/development.md)（环境、规范、提交前检查）。
 
 如果连镜对你有帮助，欢迎给项目一个 ⭐ Star，让更多创作者发现它。
+
+## 致谢与社区
+
+- [LINUX DO](https://linux.do) — 新的理想型社区
 
 ## 许可证
 
