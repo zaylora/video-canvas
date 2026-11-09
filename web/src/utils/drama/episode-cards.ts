@@ -19,7 +19,7 @@ export type EpisodeCardView = {
 };
 
 export type EpisodeCardContext = {
-  /** 同一部短剧同时只能跑一个流水线任务：有进行中的就是原因，否则 null */
+  /** 这一集提交分镜会撞上的进行中任务（同集的分镜 / 合成），没有为 null；不同集可以并行 */
   busyReason: string | null;
 };
 

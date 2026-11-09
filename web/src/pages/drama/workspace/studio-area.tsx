@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { useDramaVideoModel } from "@/hooks/use-drama-video-model";
 import { episodeCardView } from "@/utils/drama/episode-cards";
 import type { DramaJob } from "@/api/drama/type";
-import { activeStoryboardJob, busyReason } from "@/utils/drama/jobs";
+import { activeStoryboardJob, jobConflictReason } from "@/utils/drama/jobs";
 import type { WorkspaceStage } from "@/utils/drama/stages";
 
 import { StudioView } from "../studio/view";
@@ -86,7 +86,9 @@ export function StudioArea({
     );
   }
 
-  const { action } = episodeCardView(episode, { busyReason: busyReason(jobs) });
+  const { action } = episodeCardView(episode, {
+    busyReason: jobConflictReason(jobs, "storyboard", [episode.no]),
+  });
 
   if (action.kind === "enter") {
     // 换一集整块重来，不让上一集的选中片段、草稿残留

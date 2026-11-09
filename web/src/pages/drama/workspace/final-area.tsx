@@ -15,7 +15,7 @@ import {
   missingVideoSeqs,
   skippedText,
 } from "@/utils/drama/compose";
-import { busyReason } from "@/utils/drama/jobs";
+import { jobConflictReason } from "@/utils/drama/jobs";
 import { reloadSegments } from "@/utils/drama/segment-events";
 import { playableTake } from "@/utils/drama/segments";
 import type { WorkspaceStage } from "@/utils/drama/stages";
@@ -64,7 +64,7 @@ export function FinalArea({
   const final = episode.final;
   const state = finalState(episode);
   const running = activeComposeJob(jobs, no);
-  const check = composeCheck(segments, busyReason(jobs));
+  const check = composeCheck(segments, jobConflictReason(jobs, "compose", [no]));
   const skipped = missingVideoSeqs(segments);
   const adopted = segments.filter((segment) => playableTake(segment)).length;
   const seconds = segments.reduce(
