@@ -33,13 +33,12 @@ describe("节点功能区配置（设计稿 6.16）", () => {
     }
   });
 
-  test("视频节点照参考图：截取帧有首帧、尾帧、自定义，工具里有补帧和深度动作捕捉", () => {
+  test("视频节点的截取帧有首帧、尾帧、自定义", () => {
     const labels = (id: string) =>
       NODE_TOOLBAR.video.actions
         .find((action) => action.id === id)
         ?.menu?.flatMap((group) => group.items.map((item) => item.label));
     expect(labels("frame")).toEqual(["首帧", "尾帧", "自定义"]);
-    expect(labels("tools")).toEqual(["补帧", "深度动作捕捉"]);
   });
 
   test("图片、视频、音频的查看类按钮最后一项是「加入资产库」，文本没有", () => {
@@ -98,14 +97,7 @@ describe("节点功能区配置（设计稿 6.16）", () => {
     expect(NODE_TOOLBAR.script.tail).toEqual(["copy", "zoom"]);
   });
 
-  test("视频节点的按钮不受影响", () => {
-    expect(NODE_TOOLBAR.video.actions.map((action) => action.id)).toEqual([
-      "retake",
-      "upscale",
-      "edit",
-      "frame",
-      "trim",
-      "tools",
-    ]);
+  test("视频节点只剩截取帧和视频修剪，局部重拍、智能超清、视频编辑、工具这些占位按钮都删了", () => {
+    expect(NODE_TOOLBAR.video.actions.map((action) => action.id)).toEqual(["frame", "trim"]);
   });
 });

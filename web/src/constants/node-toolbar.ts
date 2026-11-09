@@ -2,19 +2,13 @@ import type { LucideIcon } from "lucide-react";
 import {
   AudioLines,
   Camera,
-  Clapperboard,
   Columns3,
   Expand,
   Grid3x3,
-  ImageUpscale,
-  Layers,
   PanelLeft,
   PanelRight,
   PenLine,
-  PersonStanding,
   Scissors,
-  SquareDashedMousePointer,
-  Wrench,
 } from "lucide-react";
 
 import type { NodeKind } from "./canvas/node-library";
@@ -74,9 +68,6 @@ const MEDIA_TAIL: ToolbarTail[] = ["zoom", "download", "addToLibrary"];
 export const NODE_TOOLBAR: Record<NodeKind, NodeToolbarConfig> = {
   video: {
     actions: [
-      { id: "retake", label: "局部重拍", icon: SquareDashedMousePointer, paid: true },
-      { id: "upscale", label: "智能超清", icon: ImageUpscale, paid: true },
-      { id: "edit", label: "视频编辑", icon: Clapperboard, paid: true },
       {
         id: "frame",
         label: "截取帧",
@@ -92,20 +83,6 @@ export const NODE_TOOLBAR: Record<NodeKind, NodeToolbarConfig> = {
         ],
       },
       { id: "trim", label: "视频修剪", icon: Scissors },
-      {
-        id: "tools",
-        label: "工具",
-        icon: Wrench,
-        menu: [
-          {
-            label: "编辑",
-            items: [
-              { id: "interpolate", label: "补帧", icon: Layers, paid: true },
-              { id: "mocap", label: "深度动作捕捉", icon: PersonStanding },
-            ],
-          },
-        ],
-      },
     ],
     tail: MEDIA_TAIL,
   },
