@@ -51,11 +51,13 @@ function selectOf(
   onToggle: (asset: AssetDto) => void,
   rules: PickRules,
 ): CardSelect {
-  const checked = selected.some((item) => item.id === asset.id);
+  const index = selected.findIndex((item) => item.id === asset.id);
+  const checked = index >= 0;
   const reason = checked ? null : (rules.reasonOf?.(asset) ?? null);
   const full = !canToggle(selected, asset, rules.limit);
   return {
     selected: checked,
+    order: checked ? index + 1 : undefined,
     disabled: !!reason || full,
     reason: reason ?? (full && rules.limit !== undefined ? "已达上限" : null),
     onToggle: () => onToggle(asset),
@@ -218,11 +220,11 @@ export function LibraryPane({
 
   const crumb =
     folder || searching ? (
-      <nav aria-label="当前位置" className="mb-2.5 flex h-7 items-center gap-1 text-sm">
+      <nav aria-label="当前位置" className="mb-3 flex h-8 items-center gap-1 text-sm">
         <button
           type="button"
           onClick={onLeaveFolder}
-          className="text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 rounded-md px-1 transition-colors outline-none focus-visible:ring-3"
+          className="text-muted-foreground hover:bg-chrome-hover hover:text-foreground focus-visible:ring-ring/50 h-8 rounded-full px-3 transition-colors outline-none focus-visible:ring-3"
         >
           个人资产库
         </button>

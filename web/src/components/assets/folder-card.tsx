@@ -37,7 +37,7 @@ export function FolderCard({
       whileTap={TAP_CARD}
       className={cn(
         "group/card bg-chrome-hover ring-chrome-border hover:bg-muted relative min-w-0 ring-1 transition-colors duration-150",
-        wide ? "aspect-[16/10] rounded-2xl" : "aspect-square rounded-xl",
+        wide ? "aspect-[16/10] rounded-2xl" : "aspect-square rounded-2xl",
       )}
     >
       <button

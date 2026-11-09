@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useReactFlow } from "@xyflow/react";
-import { toast } from "sonner";
+import { canvasNotice } from "@/utils/pet/notice";
 
 import { useTask, useTasksStore } from "@/store/tasks";
 import type { CanvasNode, CanvasNodeData } from "@/types";
@@ -31,7 +31,7 @@ export function useVoiceBackfill(id: string, data: CanvasNodeData): VoiceTaskVie
     if (asset) {
       updateNodeData(id, (node) => applyVoiceResult(node.data, asset));
     } else if (phase === "canceled") {
-      toast.info(`已取消生成声音，${refunded ? "积分已退回" : "积分不退回"}`, {
+      canvasNotice("info", `已取消生成声音，${refunded ? "积分已退回" : "积分不退回"}`, {
         id: `voice-canceled:${taskId}`,
       });
       updateNodeData(id, { voiceTaskId: undefined });

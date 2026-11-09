@@ -444,7 +444,7 @@ export const MOTION_PRESETS: readonly MotionPreset[] = [
     usage: "建立冷静秩序",
     prompt:
       "运镜：固定机位，镜头位置和拍摄方向都保持不变，画面构图稳定，由主体动作或画面内部变化形成运动感。",
-    cover: presetAsset("motion/046-static_shot.webp"),
+    cover: presetAsset("motion/046-static_shot.gif"),
   },
   {
     id: "tilt_up",
@@ -453,7 +453,7 @@ export const MOTION_PRESETS: readonly MotionPreset[] = [
     usage: "展示高度威压",
     prompt:
       "运镜：固定机位上摇，镜头位置不移动，只沿垂直方向缓慢向上转动，画面重心从下方逐步移向上方。",
-    cover: presetAsset("motion/047-tilt_up.webp"),
+    cover: presetAsset("motion/047-tilt_up.gif"),
   },
   {
     id: "tilt_down",
@@ -462,7 +462,7 @@ export const MOTION_PRESETS: readonly MotionPreset[] = [
     usage: "从环境落到人",
     prompt:
       "运镜：固定机位下摇，镜头位置不移动，只沿垂直方向缓慢向下转动，画面重心从上方逐步移向下方。",
-    cover: presetAsset("motion/048-tilt_down.webp"),
+    cover: presetAsset("motion/048-tilt_down.gif"),
   },
   {
     id: "pan_left",
@@ -471,7 +471,7 @@ export const MOTION_PRESETS: readonly MotionPreset[] = [
     usage: "横向展示空间",
     prompt:
       "运镜：固定机位左摇，镜头位置不移动，只沿水平方向缓慢向左转动，让画面内容从右向左连续变化。",
-    cover: presetAsset("motion/049-pan_left.webp"),
+    cover: presetAsset("motion/049-pan_left.gif"),
   },
   {
     id: "pan_right",
@@ -480,7 +480,7 @@ export const MOTION_PRESETS: readonly MotionPreset[] = [
     usage: "引出画外信息",
     prompt:
       "运镜：固定机位右摇，镜头位置不移动，只沿水平方向缓慢向右转动，让画面内容从左向右连续变化。",
-    cover: presetAsset("motion/050-pan_right.webp"),
+    cover: presetAsset("motion/050-pan_right.gif"),
   },
   {
     id: "crane_up",
@@ -489,7 +489,7 @@ export const MOTION_PRESETS: readonly MotionPreset[] = [
     usage: "展开场景规模",
     prompt:
       "运镜：镜头垂直上升，拍摄方向基本保持稳定，机位高度从低到高变化，画面视角随高度产生变化。",
-    cover: presetAsset("motion/051-crane_up.webp"),
+    cover: presetAsset("motion/051-crane_up.gif"),
   },
   {
     id: "truck_left",
@@ -497,7 +497,7 @@ export const MOTION_PRESETS: readonly MotionPreset[] = [
     category: "basic",
     usage: "制造空间视差",
     prompt: "运镜：镜头左移，机位整体向左横向平移，拍摄方向基本不变，前景与背景形成自然视差。",
-    cover: presetAsset("motion/052-truck_left.webp"),
+    cover: presetAsset("motion/052-truck_left.gif"),
   },
   {
     id: "crane_down",
@@ -506,7 +506,7 @@ export const MOTION_PRESETS: readonly MotionPreset[] = [
     usage: "从全局聚焦",
     prompt:
       "运镜：镜头垂直下降，拍摄方向基本保持稳定，机位高度从高到低变化，画面视角随高度产生变化。",
-    cover: presetAsset("motion/053-crane_down.webp"),
+    cover: presetAsset("motion/053-crane_down.gif"),
   },
   {
     id: "truck_right",
@@ -514,7 +514,7 @@ export const MOTION_PRESETS: readonly MotionPreset[] = [
     category: "basic",
     usage: "制造空间视差",
     prompt: "运镜：镜头右移，机位整体向右横向平移，拍摄方向基本不变，前景与背景形成自然视差。",
-    cover: presetAsset("motion/054-truck_right.webp"),
+    cover: presetAsset("motion/054-truck_right.gif"),
   },
   {
     id: "dolly_in",
@@ -523,7 +523,7 @@ export const MOTION_PRESETS: readonly MotionPreset[] = [
     usage: "强调情绪靠近",
     prompt:
       "运镜：镜头缓慢前推，机位沿镜头朝向向前移动，主体在画面中逐渐变大，空间层次产生自然视差。",
-    cover: presetAsset("motion/055-dolly_in.webp"),
+    cover: presetAsset("motion/055-dolly_in.gif"),
   },
   {
     id: "dolly_out",
@@ -531,7 +531,7 @@ export const MOTION_PRESETS: readonly MotionPreset[] = [
     category: "basic",
     usage: "展示人物孤独",
     prompt: "运镜：镜头缓慢后拉，机位沿镜头朝向向后移动，主体在画面中逐渐变小，画面范围逐步变宽。",
-    cover: presetAsset("motion/056-dolly_out.webp"),
+    cover: presetAsset("motion/056-dolly_out.gif"),
   },
   {
     id: "zoom_in",
@@ -539,7 +539,7 @@ export const MOTION_PRESETS: readonly MotionPreset[] = [
     category: "basic",
     usage: "突出表情反应",
     prompt: "运镜：缓慢变焦推进，机位保持不动，只通过焦距变化让画面范围逐渐收紧。",
-    cover: presetAsset("motion/057-zoom_in.webp"),
+    cover: presetAsset("motion/057-zoom_in.gif"),
   },
   {
     id: "zoom_out",
@@ -547,7 +547,7 @@ export const MOTION_PRESETS: readonly MotionPreset[] = [
     category: "basic",
     usage: "从局部到全貌",
     prompt: "运镜：缓慢变焦拉远，机位保持不动，只通过焦距变化让画面范围逐渐放宽。",
-    cover: presetAsset("motion/058-zoom_out.webp"),
+    cover: presetAsset("motion/058-zoom_out.gif"),
   },
   {
     id: "follow_tracking",
@@ -555,7 +555,7 @@ export const MOTION_PRESETS: readonly MotionPreset[] = [
     category: "follow",
     usage: "跟住人物行动",
     prompt: "运镜：跟随拍摄，镜头跟随主体运动方向移动，与主体保持相对稳定的距离和构图。",
-    cover: presetAsset("motion/059-follow_tracking.webp"),
+    cover: presetAsset("motion/059-follow_tracking.gif"),
   },
   {
     id: "leading_tracking",
@@ -563,7 +563,7 @@ export const MOTION_PRESETS: readonly MotionPreset[] = [
     category: "follow",
     usage: "保留人物表情",
     prompt: "运镜：迎面跟拍，镜头位于主体前方并随主体运动同步后退，保持主体正面信息稳定可见。",
-    cover: presetAsset("motion/060-leading_tracking.webp"),
+    cover: presetAsset("motion/060-leading_tracking.gif"),
   },
   {
     id: "profile_tracking",
@@ -571,7 +571,7 @@ export const MOTION_PRESETS: readonly MotionPreset[] = [
     category: "follow",
     usage: "强化行进节奏",
     prompt: "运镜：侧面跟拍，镜头在主体侧方与其平行移动，保持侧向构图稳定，并形成横向空间视差。",
-    cover: presetAsset("motion/061-profile_tracking.webp"),
+    cover: presetAsset("motion/061-profile_tracking.gif"),
   },
   {
     id: "handheld_shot",
@@ -579,7 +579,7 @@ export const MOTION_PRESETS: readonly MotionPreset[] = [
     category: "follow",
     usage: "增加真实紧张",
     prompt: "运镜：手持拍摄，镜头带轻微自然晃动和近距离临场感，可随主体动作产生小幅调整。",
-    cover: presetAsset("motion/062-handheld_shot.webp"),
+    cover: presetAsset("motion/062-handheld_shot.gif"),
   },
   {
     id: "pov_shot",
@@ -587,7 +587,7 @@ export const MOTION_PRESETS: readonly MotionPreset[] = [
     category: "follow",
     usage: "进入角色视角",
     prompt: "运镜：第一视角，镜头模拟角色视线和身体移动，带轻微头部晃动和主观视角的运动反馈。",
-    cover: presetAsset("motion/063-pov_shot.webp"),
+    cover: presetAsset("motion/063-pov_shot.gif"),
   },
   {
     id: "steadicam_walkthrough",
@@ -595,7 +595,7 @@ export const MOTION_PRESETS: readonly MotionPreset[] = [
     category: "follow",
     usage: "平稳进入现场",
     prompt: "运镜：稳定器行进，镜头以稳定、连续的方式向前或跟随移动，运动平滑，晃动幅度低。",
-    cover: presetAsset("motion/064-steadicam_walkthrough.webp"),
+    cover: presetAsset("motion/064-steadicam_walkthrough.gif"),
   },
   {
     id: "slider_reveal",
@@ -603,7 +603,7 @@ export const MOTION_PRESETS: readonly MotionPreset[] = [
     category: "reveal",
     usage: "从遮挡露主体",
     prompt: "运镜：横滑揭示，镜头从遮挡关系中横向滑出，逐步露出被遮挡的主体或关键信息。",
-    cover: presetAsset("motion/065-slider_reveal.webp"),
+    cover: presetAsset("motion/065-slider_reveal.gif"),
   },
   {
     id: "foreground_wipe",
@@ -611,7 +611,7 @@ export const MOTION_PRESETS: readonly MotionPreset[] = [
     category: "reveal",
     usage: "用遮挡完成切换",
     prompt: "运镜：前景擦过，近处遮挡物从镜头前掠过并短暂覆盖画面，随后露出新的画面内容。",
-    cover: presetAsset("motion/066-foreground_wipe.webp"),
+    cover: presetAsset("motion/066-foreground_wipe.gif"),
   },
   {
     id: "push_through",
@@ -620,7 +620,7 @@ export const MOTION_PRESETS: readonly MotionPreset[] = [
     usage: "穿过边界入场",
     prompt:
       "运镜：穿越镜头，镜头持续快速向前推进，并产生短暂运动模糊，穿过明确的前景边界或空间层次，进入后方画面，最后落到新的构图或目标上。",
-    cover: presetAsset("motion/067-push_through.webp"),
+    cover: presetAsset("motion/067-push_through.gif"),
   },
   {
     id: "whip_pan",
@@ -628,7 +628,7 @@ export const MOTION_PRESETS: readonly MotionPreset[] = [
     category: "reveal",
     usage: "快速切换信息",
     prompt: "运镜：甩摇，镜头快速水平转动并产生短暂运动模糊，最后落到新的构图或目标上。",
-    cover: presetAsset("motion/068-whip_pan.webp"),
+    cover: presetAsset("motion/068-whip_pan.gif"),
   },
   {
     id: "rack_focus",
@@ -636,7 +636,7 @@ export const MOTION_PRESETS: readonly MotionPreset[] = [
     category: "reveal",
     usage: "注意力换目标",
     prompt: "运镜：焦点转移，镜头位置可以不变，焦点从一个画面层次平滑切换到另一个画面层次。",
-    cover: presetAsset("motion/069-rack_focus.webp"),
+    cover: presetAsset("motion/069-rack_focus.gif"),
   },
   {
     id: "crash_zoom",
@@ -644,7 +644,7 @@ export const MOTION_PRESETS: readonly MotionPreset[] = [
     category: "emotion",
     usage: "放大戏剧反应",
     prompt: "运镜：急速变焦推进，机位保持不动，画面范围快速收紧到目标区域，形成突然强调。",
-    cover: presetAsset("motion/070-crash_zoom.webp"),
+    cover: presetAsset("motion/070-crash_zoom.gif"),
   },
   {
     id: "dolly_zoom",
@@ -653,7 +653,7 @@ export const MOTION_PRESETS: readonly MotionPreset[] = [
     usage: "现实崩塌瞬间",
     prompt:
       "运镜：希区柯克式变焦，机位移动与反向变焦同时发生，主体大小基本保持稳定，背景透视发生明显变化。",
-    cover: presetAsset("motion/071-dolly_zoom.webp"),
+    cover: presetAsset("motion/071-dolly_zoom.gif"),
   },
   {
     id: "orbit_180",
@@ -662,7 +662,7 @@ export const MOTION_PRESETS: readonly MotionPreset[] = [
     usage: "强化人物气场",
     prompt:
       "运镜：环绕拍摄，镜头围绕主体平稳旋转约180度，主体保持在画面核心位置，背景产生连续旋转视差。",
-    cover: presetAsset("motion/072-orbit_180.webp"),
+    cover: presetAsset("motion/072-orbit_180.gif"),
   },
   {
     id: "ascending_orbit",
@@ -670,7 +670,7 @@ export const MOTION_PRESETS: readonly MotionPreset[] = [
     category: "emotion",
     usage: "高光登场时刻",
     prompt: "运镜：盘旋抬升，镜头围绕主体旋转的同时逐渐升高，主体保持锁定，机位高度持续变化。",
-    cover: presetAsset("motion/073-ascending_orbit.webp"),
+    cover: presetAsset("motion/073-ascending_orbit.gif"),
   },
   {
     id: "descending_orbit",
@@ -678,7 +678,7 @@ export const MOTION_PRESETS: readonly MotionPreset[] = [
     category: "emotion",
     usage: "巨物压迫登场",
     prompt: "运镜：盘旋下降，镜头围绕主体旋转的同时逐渐降低，主体保持锁定，机位高度持续变化。",
-    cover: presetAsset("motion/074-descending_orbit.webp"),
+    cover: presetAsset("motion/074-descending_orbit.gif"),
   },
   {
     id: "fpv_flythrough",
@@ -687,7 +687,7 @@ export const MOTION_PRESETS: readonly MotionPreset[] = [
     usage: "高速掠过空间",
     prompt:
       "运镜：穿越机运镜，fpv 镜头以第一视角高速穿行空间，贴近场景边界和主体灵活飞行，带明显速度感与滚转俯仰变化。",
-    cover: presetAsset("motion/075-fpv_flythrough.webp"),
+    cover: presetAsset("motion/075-fpv_flythrough.gif"),
   },
   {
     id: "aerial_establishing",
@@ -695,7 +695,7 @@ export const MOTION_PRESETS: readonly MotionPreset[] = [
     category: "aerial",
     usage: "建立宏大世界",
     prompt: "运镜：高空航拍，镜头以高角度俯视画面，并保持稳定滑行，用于呈现空间关系和整体布局。",
-    cover: presetAsset("motion/076-aerial_establishing.webp"),
+    cover: presetAsset("motion/076-aerial_establishing.gif"),
   },
   {
     id: "drone_dive",
@@ -703,7 +703,7 @@ export const MOTION_PRESETS: readonly MotionPreset[] = [
     category: "aerial",
     usage: "从高空压向目标",
     prompt: "运镜：俯冲下降，镜头从高处向目标方向快速下降并靠近，形成明显速度感和压迫感。",
-    cover: presetAsset("motion/077-drone_dive.webp"),
+    cover: presetAsset("motion/077-drone_dive.gif"),
   },
   {
     id: "pull_away",
@@ -712,7 +712,7 @@ export const MOTION_PRESETS: readonly MotionPreset[] = [
     usage: "人变小世界变大",
     prompt:
       "运镜：拉升离场，镜头从主体附近向后并向上移动，主体在画面中逐渐变小，画面范围逐步扩大。",
-    cover: presetAsset("motion/078-pull_away.webp"),
+    cover: presetAsset("motion/078-pull_away.gif"),
   },
 ];
 

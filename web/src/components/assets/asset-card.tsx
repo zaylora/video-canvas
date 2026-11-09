@@ -59,7 +59,7 @@ export function AssetCover({ asset }: { asset: AssetDto }) {
 const frameOf = (asset: AssetDto, natural?: boolean) =>
   natural
     ? { className: "rounded-2xl", style: { aspectRatio: assetAspect(asset) } }
-    : { className: aspectOf(asset.kind), style: undefined };
+    : { className: cn("rounded-2xl", aspectOf(asset.kind)), style: undefined };
 
 /** 卡片外框共用的类：封面底色、圆角、聚焦描边 */
 const CARD_FRAME = "group/card bg-muted relative min-w-0 overflow-hidden rounded-xl";
@@ -79,6 +79,8 @@ export type CardSelect = {
   disabled: boolean;
   /** 不能选的原因（「已是主图」「已添加」「已达上限」），显示在封面上；不隐藏卡片 */
   reason?: string | null;
+  /** 选中时是第几个勾选的（从 1 起），显示在勾选框里；确认时按这个顺序引入 */
+  order?: number;
   /** 点击卡片：勾选或取消 */
   onToggle: () => void;
 };
@@ -88,7 +90,8 @@ const selectFrame = (select?: CardSelect) =>
   select &&
   cn(
     "transition-opacity duration-150 motion-reduce:transition-none",
-    select.selected && "ring-foreground ring-2",
+    // 外描边隔开一圈，选中态不压封面
+    select.selected && "outline-foreground outline-2 outline-offset-2",
     select.disabled && "opacity-45",
   );
 
@@ -100,24 +103,28 @@ const selectAttrs = (select?: CardSelect) =>
   };
 
 /** 选择模式下左上角的勾选框：只是状态指示，点击落在整张卡片的点击区上；始终可见，触屏也一眼看得出 */
-function SelectBox({ selected }: { selected: boolean }) {
+function SelectBox({ selected, order }: { selected: boolean; order?: number }) {
   return (
     <span
       data-slot="select-box"
       aria-hidden
       className={cn(
-        "pointer-events-none absolute top-2 left-2 z-10 grid size-5 place-items-center rounded-full transition-colors duration-120 motion-reduce:transition-none",
+        "pointer-events-none absolute top-2 left-2 z-10 grid size-5.5 place-items-center rounded-full text-[11px] font-semibold tabular-nums transition-colors duration-120 motion-reduce:transition-none",
         selected
-          ? "bg-foreground text-background"
-          : "bg-cover-scrim ring-cover-foreground/70 ring-1",
+          ? "bg-foreground text-background shadow-sm"
+          : "bg-cover-scrim ring-cover-foreground/70 opacity-80 ring-1 backdrop-blur-sm group-hover/card:opacity-100",
       )}
     >
-      <Check
-        className={cn(
-          "size-3.5 transition-opacity duration-120 motion-reduce:transition-none",
-          selected ? "opacity-100" : "opacity-0",
-        )}
-      />
+      {selected && order !== undefined ? (
+        order
+      ) : (
+        <Check
+          className={cn(
+            "size-3.5 transition-opacity duration-120 motion-reduce:transition-none",
+            selected ? "opacity-100" : "opacity-0",
+          )}
+        />
+      )}
     </span>
   );
 }
@@ -128,7 +135,7 @@ function ReasonChip({ reason }: { reason?: string | null }) {
   return (
     <span
       data-slot="select-reason"
-      className="bg-cover-scrim text-cover-foreground pointer-events-none absolute right-2 bottom-9 z-10 rounded-md px-1.5 py-0.5 text-[11px]"
+      className="bg-cover-scrim text-cover-foreground pointer-events-none absolute right-2 bottom-9 z-10 rounded-full px-2 py-0.5 text-[11px] backdrop-blur-sm"
     >
       {reason}
     </span>
@@ -187,7 +194,7 @@ export function HistoryAssetCard({
         onClick={select ? select.onToggle : onPreview}
         className={cn(COVER_BUTTON, select?.disabled && "cursor-not-allowed")}
       />
-      {select && <SelectBox selected={select.selected} />}
+      {select && <SelectBox selected={select.selected} order={select.order} />}
       {select && <ReasonChip reason={select.reason} />}
       {(duration || inLibrary) && (
         <span
@@ -282,7 +289,7 @@ export function LibraryAssetCard({
         onClick={select ? select.onToggle : onPreview}
         className={cn(COVER_BUTTON, select?.disabled && "cursor-not-allowed")}
       />
-      {select && <SelectBox selected={select.selected} />}
+      {select && <SelectBox selected={select.selected} order={select.order} />}
       {select && <ReasonChip reason={select.reason} />}
       {duration && (
         <span

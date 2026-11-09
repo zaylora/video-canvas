@@ -4,6 +4,7 @@ import { useParams } from "react-router";
 import { getCanvas } from "@/api/canvas";
 import { draftStore } from "@/utils/canvas/draft-idb";
 import { useCanvasLock } from "@/hooks/use-canvas-lock";
+import { useAgentSettings } from "@/store/agent-settings";
 import { loadCanvasForEditing, type OpenedCanvas } from "@/utils/canvas/open-canvas";
 import { getCanvasTitle } from "@/utils/canvas/title-cache";
 import { getCurrentUserId } from "@/utils/storage/user-id";
@@ -11,6 +12,7 @@ import { getCurrentUserId } from "@/utils/storage/user-id";
 import { CanvasLoader } from "./canvas-loader";
 import { CanvasLockedNotice } from "./canvas-locked-notice";
 import { Flow } from "./flow";
+import { prefetchPetAssets } from "./pet/use-pet-assets";
 
 /** 入场动画播多久后摘掉 data-entering，免得之后新建的节点也跟着播一遍 */
 const ENTERING_MS = 1200;
@@ -25,6 +27,13 @@ export default function Canvas() {
 
   /** 同一张画布只让一个标签页编辑：拿到锁才加载，没拿到先提示，对方关闭后自动接管 */
   const lock = useCanvasLock(id);
+
+  // 桌宠素材和画布数据并行拉：等画布加载完、外壳挂上时素材多半已经到了
+  const petSkin = useAgentSettings((s) => s.pet.skin);
+  const petHidden = useAgentSettings((s) => s.pet.mode === "hidden");
+  useEffect(() => {
+    if (!petHidden) prefetchPetAssets(petSkin);
+  }, [petSkin, petHidden]);
 
   useEffect(() => {
     let active = true;
