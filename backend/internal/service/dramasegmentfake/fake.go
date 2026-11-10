@@ -6,6 +6,7 @@ import (
 	"slices"
 	"time"
 
+	"video-canvas/internal/drama"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/idcodec"
 	"video-canvas/internal/pkg/ws"
@@ -24,7 +25,10 @@ type Repo struct {
 	CreateError    *model.TaskItemError
 	Err            error
 	SegmentVersion int64
-	nextID         uint64
+	// Credit 是用户 1 的积分账户（nil 表示没有账户）；Ledger 记录写入的流水
+	Credit *model.UserCredit
+	Ledger []model.CreditLedger
+	nextID uint64
 }
 
 // New 返回用户1、项目7、画布9、集10的独立测试仓储。
@@ -37,10 +41,17 @@ func (r *Repo) WithTx(_ context.Context, fn func(repository.DramaTx) error) erro
 	}
 	before := slices.Clone(r.Rows)
 	version := r.SegmentVersion
+	ledger := slices.Clone(r.Ledger)
+	var credit *model.UserCredit
+	if r.Credit != nil {
+		copied := *r.Credit
+		credit = &copied
+	}
 	err := fn(r)
 	if err != nil {
 		r.Rows = before
 		r.SegmentVersion = version
+		r.Ledger, r.Credit = ledger, credit
 	}
 	return err
 }
@@ -231,4 +242,68 @@ func sameChosen(a, b *uint64) bool {
 // Jobs 片段测试默认没有短剧媒体任务。
 func (r *Repo) Jobs(context.Context, uint64, uint64, bool) ([]model.DramaJob, error) {
 	return []model.DramaJob{}, nil
+}
+
+// Adapter 模拟文本模型转写：返回预设的 Out / Err；Gate 非空时阻塞到被关闭，用来测并发。
+type Adapter struct {
+	Out     string
+	Credits int
+	Err     error
+	Calls   []drama.AdaptInput
+	Format  []string
+	Gate    chan struct{}
+	// Entered 非空时，每次进入转写先发一个信号，测试据此确认第一次调用已经拿到锁
+	Entered chan struct{}
+	Mutate  func()
+}
+
+// AdaptSegment 记录输入并返回预设结果；Mutate 在返回前执行，模拟转写期间用户改了原稿。
+func (a *Adapter) AdaptSegment(_ context.Context, _ *model.DramaProject, format string, in drama.AdaptInput) (string, int, error) {
+	a.Calls, a.Format = append(a.Calls, in), append(a.Format, format)
+	if a.Entered != nil {
+		a.Entered <- struct{}{}
+	}
+	if a.Gate != nil {
+		<-a.Gate
+	}
+	if a.Mutate != nil {
+		a.Mutate()
+	}
+	if a.Err != nil {
+		return "", 0, a.Err
+	}
+	return a.Out, a.Credits, nil
+}
+
+// EnsureCredit 没有账户时按初始积分建一个。
+func (r *Repo) EnsureCredit(_ context.Context, userID uint64, initial int) error {
+	if r.Credit == nil {
+		r.Credit = &model.UserCredit{UserID: userID, Balance: initial}
+	}
+	return nil
+}
+
+// LockCredit 返回账户副本；没有账户返回 ErrNotFound。
+func (r *Repo) LockCredit(_ context.Context, userID uint64) (*model.UserCredit, error) {
+	if r.Credit == nil || r.Credit.UserID != userID {
+		return nil, repository.ErrNotFound
+	}
+	copied := *r.Credit
+	return &copied, nil
+}
+
+// AddCredit 增减余额和冻结额。
+func (r *Repo) AddCredit(_ context.Context, _ uint64, balance, frozen int) error {
+	if r.Credit == nil {
+		return repository.ErrNotFound
+	}
+	r.Credit.Balance += balance
+	r.Credit.Frozen += frozen
+	return nil
+}
+
+// InsertLedger 记录流水。
+func (r *Repo) InsertLedger(_ context.Context, e *model.CreditLedger) (bool, error) {
+	r.Ledger = append(r.Ledger, *e)
+	return true, nil
 }

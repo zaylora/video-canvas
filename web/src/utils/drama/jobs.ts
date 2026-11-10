@@ -125,6 +125,30 @@ export function busyReason(jobs: readonly DramaJob[]): string | null {
   return `有进行中的任务：${jobTitle(running)}`;
 }
 
+const TEXT_STEPS: readonly DramaStep[] = ["scripts", "breakdown", "asset_prompts"];
+
+/**
+ * 提交某一步会不会撞上进行中的任务（与后端 dramaJobsConflict 同规则，撞上即 67004）：
+ * 文本任务（剧本 / 拆解 / 资产提示词）之间互斥；分镜、合成只和同一集的分镜、合成冲突，不同集可以并行。
+ * 自动规划不算在内。不冲突返回 null。
+ * @param step 要提交的步骤
+ * @param episodes 要提交的集号
+ */
+export function jobConflictReason(
+  jobs: readonly DramaJob[],
+  step: DramaStep,
+  episodes: readonly number[],
+): string | null {
+  const text = TEXT_STEPS.includes(step);
+  const hit = userJobs(jobs).find((job) => {
+    if (!isActiveJob(job)) return false;
+    if (TEXT_STEPS.includes(job.step) !== text) return false;
+    if (text || job.episodes.length === 0) return true;
+    return episodes.some((no) => job.episodes.includes(no));
+  });
+  return hit ? `有进行中的任务：${jobTitle(hit)}` : null;
+}
+
 const RUNNING_TEXT: Record<DramaStep, string> = {
   analyze: "正在研读剧本…",
   plan: "正在规划分集…",

@@ -68,6 +68,24 @@ func (h *DramaSegmentHandler) Update(c *gin.Context) {
 	response.OK(c, v)
 }
 
+// Adapt 把片段原稿转写成目标平台写法并保存，同步等待文本模型，成功返回最新片段。
+func (h *DramaSegmentHandler) Adapt(c *gin.Context) {
+	sid, ok := dramaSegmentPath(c)
+	if !ok {
+		return
+	}
+	var req model.AdaptDramaSegmentReq
+	if !BindJSON(c, &req) {
+		return
+	}
+	v, err := h.svc.Adapt(c.Request.Context(), currentUserID(c), sid, &req)
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, v)
+}
+
 // Delete 软删片段，生成任务和素材保留，成功返回204。
 func (h *DramaSegmentHandler) Delete(c *gin.Context) {
 	sid, ok := dramaSegmentPath(c)

@@ -1,0 +1,761 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>片场平台适配</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+    <style>
+      /* 颜色全走变量，明暗主题只换变量。仓库已有演示或前端令牌时，改用同一套。 */
+      :root {
+        --radius: 0.625rem;
+        --background: 0 0% 100%;
+        --foreground: 240 10% 3.9%;
+        --card: 0 0% 100%;
+        --muted: 240 4.8% 95.9%;
+        --muted-foreground: 240 3.8% 46.1%;
+        --primary: 240 5.9% 10%;
+        --primary-foreground: 0 0% 98%;
+        --accent: 240 4.8% 95.9%;
+        --border: 240 5.9% 90%;
+        --ok: 5 150 105;
+        --bad: 220 38 38;
+        --warn: 180 83 9;
+        --info: 2 132 199;
+        --violet: 124 58 237;
+        color-scheme: light;
+      }
+      .dark {
+        --background: 240 10% 3.9%;
+        --foreground: 0 0% 98%;
+        --card: 240 10% 5.5%;
+        --muted: 240 3.7% 15.9%;
+        --muted-foreground: 240 5% 64.9%;
+        --primary: 0 0% 98%;
+        --primary-foreground: 240 5.9% 10%;
+        --accent: 240 3.7% 15.9%;
+        --border: 240 3.7% 17%;
+        --ok: 52 211 153;
+        --bad: 248 113 113;
+        --warn: 251 191 36;
+        --info: 56 189 248;
+        --violet: 167 139 250;
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        font-family: Geist, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        background: hsl(var(--background));
+        color: hsl(var(--foreground));
+        -webkit-font-smoothing: antialiased;
+        line-height: 1.55;
+      }
+      code, .mono { font-family: "Geist Mono", "SF Mono", Consolas, monospace; }
+      code { font-size: 0.92em; background: hsl(var(--muted)); padding: 1px 5px; border-radius: 5px; }
+      [data-lucide] { width: 1em; height: 1em; flex: none; }
+      h1, h2, h3, h4, p { margin: 0; }
+      button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+      table { border-collapse: collapse; width: 100%; }
+      th { font-weight: 500; text-align: left; }
+      [hidden] { display: none !important; }
+      .muted { color: hsl(var(--muted-foreground)); }
+      .row { display: flex; align-items: center; gap: 8px; }
+      .wrapflex { flex-wrap: wrap; }
+      .spacer { margin-left: auto; }
+
+      /* ---- 顶栏与标签页 ---- */
+      .top {
+        position: sticky; top: 0; z-index: 30;
+        background: hsl(var(--background) / 0.92);
+        backdrop-filter: blur(8px);
+        border-bottom: 1px solid hsl(var(--border));
+      }
+      .top-in { max-width: 1160px; margin: 0 auto; padding: 0 20px; display: flex; align-items: center; gap: 16px; height: 56px; }
+      .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; white-space: nowrap; }
+      .logo { width: 28px; height: 28px; border-radius: 8px; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; }
+      .tabs { display: flex; gap: 2px; margin-left: 8px; overflow-x: auto; }
+      .tab {
+        height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13px; font-weight: 500;
+        color: hsl(var(--muted-foreground)); white-space: nowrap; display: inline-flex; align-items: center; gap: 6px;
+        transition: background 0.15s, color 0.15s;
+      }
+      .tab:hover { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+      .tab[aria-selected="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn { height: 32px; padding: 0 10px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; }
+      .btn:hover { background: hsl(var(--accent)); }
+      .btn-primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn-primary:hover { background: hsl(var(--primary) / 0.9); }
+      .btn-outline { border: 1px solid hsl(var(--border)); }
+      .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+      .switch { width: 34px; height: 20px; border-radius: 999px; background: hsl(var(--border)); position: relative; transition: background 0.15s; }
+      .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+      .switch[aria-checked="true"] { background: rgb(var(--violet)); }
+      .switch[aria-checked="true"]::after { transform: translateX(14px); }
+
+      /* ---- 页面内容 ---- */
+      .wrap { max-width: 1160px; margin: 0 auto; padding: 32px 20px 80px; }
+      .h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+      .lead { margin-top: 10px; max-width: 820px; font-size: 15px; color: hsl(var(--muted-foreground)); }
+      .lead b { color: hsl(var(--foreground)); }
+      .sec { margin-top: 36px; }
+      .sec > h2 { font-size: 18px; font-weight: 600; }
+      .sec > .sub { margin: 4px 0 14px; max-width: 820px; font-size: 13.5px; color: hsl(var(--muted-foreground)); }
+      .card { border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: var(--radius); padding: 16px; }
+      .grid { display: grid; gap: 12px; }
+      .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      @media (max-width: 820px) { .g2, .g3 { grid-template-columns: 1fr; } .top-in { padding: 0 12px; } .wrap { padding: 24px 16px 64px; } }
+      ul.list { margin: 0; padding-left: 18px; font-size: 13.5px; }
+
+      /* ---- 标签：核实度、状态 ---- */
+      .tag { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 999px; font-size: 11.5px; font-weight: 500; }
+      .t-ok { background: rgb(var(--ok) / 0.12); color: rgb(var(--ok)); }
+      .t-bad { background: rgb(var(--bad) / 0.12); color: rgb(var(--bad)); }
+      .t-warn { background: rgb(var(--warn) / 0.12); color: rgb(var(--warn)); }
+      .t-info { background: rgb(var(--info) / 0.12); color: rgb(var(--info)); }
+      .t-mute { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
+
+      /* ---- 提示框 ---- */
+      .callout { display: flex; gap: 10px; padding: 12px 14px; border-radius: var(--radius); font-size: 13.5px; border: 1px solid; }
+      .callout > i { margin-top: 3px; }
+      .c-info { background: rgb(var(--info) / 0.07); border-color: rgb(var(--info) / 0.3); }
+      .c-info > i { color: rgb(var(--info)); }
+      .c-warn { background: rgb(var(--warn) / 0.07); border-color: rgb(var(--warn) / 0.3); }
+      .c-warn > i { color: rgb(var(--warn)); }
+      .c-bad { background: rgb(var(--bad) / 0.07); border-color: rgb(var(--bad) / 0.3); }
+      .c-bad > i { color: rgb(var(--bad)); }
+      .c-ok { background: rgb(var(--ok) / 0.07); border-color: rgb(var(--ok) / 0.3); }
+      .c-ok > i { color: rgb(var(--ok)); }
+
+      /* ---- 主线流程图 ---- */
+      .flow { display: flex; align-items: stretch; gap: 6px; flex-wrap: wrap; padding: 14px; border-radius: var(--radius); }
+      .flow .node { flex: 1 1 140px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 12px; font-size: 12.5px; }
+      .flow .node b { display: block; font-size: 13px; margin-bottom: 2px; }
+      .flow .node.hl { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+      .flow .arrow { display: grid; place-items: center; color: hsl(var(--muted-foreground)); }
+
+      /* ---- 对比表 ---- */
+      .cmp-wrap { overflow-x: auto; border: 1px solid hsl(var(--border)); border-radius: var(--radius); }
+      .cmp th, .cmp td { padding: 9px 12px; font-size: 13px; vertical-align: top; border-bottom: 1px solid hsl(var(--border)); }
+      .cmp tr:last-child th, .cmp tr:last-child td { border-bottom: 0; }
+      .cmp thead th { background: hsl(var(--muted)); font-size: 12.5px; white-space: nowrap; }
+      .cmp tbody th { width: 120px; color: hsl(var(--muted-foreground)); font-weight: 500; }
+      .cmp .y { color: rgb(var(--ok)); }
+      .cmp .m { color: rgb(var(--warn)); }
+      .cmp .m b, .cmp .m { font-weight: 500; }
+
+      /* ---- 有序步骤 ---- */
+      .steps { list-style: none; counter-reset: s; display: grid; gap: 12px; }
+      .steps li { counter-increment: s; position: relative; padding-left: 32px; font-size: 13.5px; }
+      .steps li::before {
+        content: counter(s); position: absolute; left: 0; top: 0; width: 22px; height: 22px; border-radius: 50%;
+        background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; font-size: 12px; font-weight: 600;
+      }
+      .steps li small { display: block; color: hsl(var(--muted-foreground)); font-size: 12.5px; }
+
+      /* ---- 代码块（提案伪代码） ---- */
+      .codeblock { background: hsl(var(--muted)); border-radius: var(--radius); padding: 14px; font-family: "Geist Mono", "SF Mono", Consolas, monospace; font-size: 12.5px; overflow-x: auto; }
+
+      /* ---- 假浏览器框（原型） ---- */
+      .frame { border: 1px solid hsl(var(--border)); border-radius: 12px; overflow: hidden; background: hsl(var(--background)); }
+      .frame-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: hsl(var(--muted)); font-size: 12px; color: hsl(var(--muted-foreground)); }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: hsl(var(--border)); }
+      .proto { min-height: 360px; position: relative; }
+
+      /* ---- 设计标注层：顶栏开关控制显隐 ---- */
+      .note { outline: 1.5px dashed rgb(var(--violet)); outline-offset: 3px; position: relative; }
+      .note-txt { display: none; margin-top: 6px; font-size: 11.5px; line-height: 1.5; color: rgb(var(--violet)); }
+      .show-notes .note-txt { display: block; }
+      body:not(.show-notes) .note { outline: none; }
+
+      /* ---- 轻提示 ---- */
+      .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 60; pointer-events: none; }
+      .toast > div { display: flex; align-items: center; gap: 8px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 14px; font-size: 13px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); }
+    </style>
+    <style>
+      /* ---- 原型专用：仿片场界面 ---- */
+      .amber { --amber: 245 184 46; }
+      .studio { display: grid; grid-template-columns: 190px minmax(0, 1fr) minmax(0, 1.25fr); min-height: 560px; font-size: 13px; }
+      .s-top { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid hsl(var(--border)); flex-wrap: wrap; }
+      .s-title { font-weight: 700; font-size: 15px; letter-spacing: 0.02em; }
+      .pill { height: 30px; padding: 0 11px; border-radius: 999px; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px;
+        background: hsl(var(--foreground) / 0.05); border: 1px solid hsl(var(--foreground) / 0.08); backdrop-filter: blur(6px); }
+      .pill:hover { background: hsl(var(--foreground) / 0.09); }
+      select.pill { appearance: none; padding-right: 26px; cursor: pointer; color: inherit; font: inherit; font-size: 12.5px;
+        background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+        background-position: right 13px center, right 9px center; background-size: 4px 4px; background-repeat: no-repeat; }
+      select.pill option { color: #111; }
+      .gen { height: 32px; padding: 0 14px; border-radius: 9px; background: rgb(245 184 46); color: #1a1405; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+      .gen:disabled { opacity: 0.45; cursor: not-allowed; }
+      .lib { border-right: 1px solid hsl(var(--border)); padding: 12px; display: grid; align-content: start; gap: 4px; }
+      .lib .it { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; }
+      .lib .it:hover { background: hsl(var(--accent)); }
+      .ava { width: 22px; height: 22px; border-radius: 6px; background: linear-gradient(135deg, hsl(var(--muted-foreground) / 0.5), hsl(var(--muted-foreground) / 0.15)); flex: none; }
+      .stage { border-right: 1px solid hsl(var(--border)); display: grid; place-items: center; padding: 16px;
+        background: repeating-linear-gradient(135deg, transparent 0 12px, hsl(var(--foreground) / 0.025) 12px 24px); }
+      .phone { width: 170px; aspect-ratio: 9/16; border-radius: 16px; border: 1px solid hsl(var(--border)); display: grid; place-items: center; text-align: center; background: hsl(var(--card)); }
+      .phone .no { font-family: "Geist Mono", monospace; font-size: 30px; font-weight: 600; opacity: 0.35; }
+      .insp { padding: 14px 16px 18px; display: grid; gap: 12px; align-content: start; min-width: 0; }
+      .seg-h { display: flex; align-items: center; gap: 8px; }
+      .seg-h h3 { font-family: "Geist Mono", monospace; font-size: 20px; font-weight: 600; }
+      .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+      .chip { height: 26px; padding: 0 9px 0 4px; border-radius: 8px; display: inline-flex; align-items: center; gap: 5px; font-size: 12px; background: hsl(var(--foreground) / 0.06); }
+      .chip .ava { width: 18px; height: 18px; border-radius: 5px; }
+      /* 格式标签组：清透胶囊 */
+      .fmt { display: inline-flex; padding: 3px; border-radius: 999px; background: hsl(var(--foreground) / 0.05); border: 1px solid hsl(var(--foreground) / 0.08); gap: 2px; }
+      .fmt button { height: 26px; padding: 0 12px; border-radius: 999px; font-size: 12.5px; display: inline-flex; align-items: center; gap: 6px; color: hsl(var(--muted-foreground)); }
+      .fmt button[aria-selected="true"] { background: hsl(var(--background)); color: hsl(var(--foreground)); box-shadow: 0 1px 3px rgb(0 0 0 / 0.15); }
+      .fmt button:disabled { cursor: default; }
+      .sdot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+      .sdot.ok { background: rgb(var(--ok)); } .sdot.warn { background: rgb(var(--warn)); }
+      .editor { border: 1px solid hsl(var(--border)); border-radius: 14px; background: hsl(var(--card)); padding: 10px 12px; }
+      .editor:focus-within { border-color: hsl(var(--foreground) / 0.4); }
+      .editor textarea { width: 100%; min-height: 220px; resize: vertical; border: 0; outline: 0; background: transparent; color: inherit; font: inherit; font-size: 13px; line-height: 1.9; }
+      .editor textarea[readonly] { opacity: 0.55; }
+      .empty { display: grid; justify-items: center; gap: 10px; padding: 40px 10px; color: hsl(var(--muted-foreground)); }
+      .empty [data-lucide] { width: 26px; height: 26px; }
+      .bar { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; font-size: 12.5px; }
+      .bar.warn { background: rgb(var(--warn) / 0.1); color: rgb(var(--warn)); }
+      .bar.bad { background: rgb(var(--bad) / 0.1); color: rgb(var(--bad)); }
+      .bar .lnk { margin-left: auto; font-weight: 600; text-decoration: underline; }
+      .clips { grid-column: 1 / -1; border-top: 1px solid hsl(var(--border)); padding: 10px 14px; display: flex; gap: 8px; align-items: stretch; overflow-x: auto; }
+      .clip { width: 150px; flex: none; border-radius: 10px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); padding: 8px 10px; text-align: left; display: grid; gap: 4px; font-size: 12px; }
+      .clip[aria-current="true"] { border-color: rgb(245 184 46); box-shadow: 0 0 0 1px rgb(245 184 46); }
+      .clip .mono { font-size: 11px; }
+      .modal-bg { position: absolute; inset: 0; background: rgb(0 0 0 / 0.45); display: grid; place-items: center; z-index: 5; padding: 16px; }
+      .modal { width: min(440px, 100%); background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: 14px; padding: 18px; display: grid; gap: 12px; }
+      .modal h4 { font-size: 15px; }
+      .modal .acts { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+      .spin { animation: spin 1s linear infinite; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      @media (max-width: 900px) { .studio { grid-template-columns: 1fr; } .lib, .stage { display: none; } }
+    </style>
+  </head>
+
+  <body class="show-notes">
+    <header class="top">
+      <div class="top-in">
+        <div class="brand"><span class="logo"><i data-lucide="languages"></i></span>片场平台适配</div>
+        <div class="tabs" role="tablist">
+          <button class="tab" role="tab" data-tab="overview" aria-selected="true"><i data-lucide="map"></i>总览</button>
+          <button class="tab" role="tab" data-tab="proto" aria-selected="false"><i data-lucide="layout-dashboard"></i>可点击原型</button>
+          <button class="tab" role="tab" data-tab="impl" aria-selected="false"><i data-lucide="database"></i>数据与接口</button>
+        </div>
+        <div class="spacer row">
+          <label class="row muted" style="font-size: 12px">设计标注
+            <button class="switch" id="notesSw" role="switch" aria-checked="true" onclick="toggleNotes()"></button>
+          </label>
+          <button class="btn" onclick="document.documentElement.classList.toggle('dark')" aria-label="切换明暗主题"><i data-lucide="sun-moon"></i></button>
+        </div>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <!-- ============ 总览 ============ -->
+      <section id="tab-overview">
+        <h1 class="h1">分镜只写 Seedance，到片场再按模型转写</h1>
+        <p class="lead">
+          今天视频提示词在<b>出分镜时</b>就按项目视频模型定了格式，到片场换模型只能手改或重出分镜。改成：分镜一律写 <b>Seedance 原稿</b>；片场顶栏选了 H3 或通用格式的模型时，右侧多出一个「转写」标签，<b>手动点转写</b>得到目标格式的提示词，生成提交的就是它。<b>原稿永远保留，不被覆盖。</b>
+        </p>
+
+        <div class="callout c-info" style="margin-top: 16px">
+          <i data-lucide="info"></i>
+          <div>
+            <b>阅读说明。</b>现状结论都对照过仓库代码（路径见 Markdown 文档 §2）；界面与接口是设计提案，<b>尚未实现</b>；原型里的转写结果是示意文字，不调用模型。<br />
+            <span class="muted">核实度图例：</span>
+            <span class="tag t-ok">已核对代码</span>
+            <span class="tag t-info">调研未复核</span>
+            <span class="tag t-warn">未验证 · 需实测</span>
+            <span class="tag t-mute">提案</span>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>主线：一段提示词从分镜到提交</h2>
+          <p class="sub">格式只在片场决定一次，原稿和转写稿各存各的。</p>
+          <div class="flow note">
+            <div class="node"><b>分镜脚本</b>固定用 Seedance 模板，写进片段 <code>prompt</code>（原稿）</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>片场选模型</b>读模型的 <code>prompt_format</code>：seedance / h3 / 通用</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>点「转写」</b>项目文本模型按转写模板改写，存进 <code>adaptations[h3]</code></div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>看 / 微调</b>两个标签切换对照，转写稿可手改</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>生成</b>提交当前格式那一份；原稿改过就先确认</div>
+          </div>
+          <div class="note-txt">设计：原稿是唯一事实来源，转写稿只从原稿派生、不反写原稿。转写按格式存而不按模型存，同一格式的多个模型共用一份转写稿。</div>
+          <div class="callout c-warn" style="margin-top: 10px">
+            <i data-lucide="corner-down-right"></i>
+            <div><b>回退：</b>选的是 Seedance 模型时没有转写这一步，片场和今天完全一样。转写失败时旧转写稿不被覆盖；没有转写稿时「立即生成」禁用并写明原因，不会把 Seedance 原稿偷偷交给 H3。</div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>转写稿的四种状态</h2>
+          <p class="sub">决定生成按钮能不能点、点了以后会发生什么。</p>
+          <div class="grid g2" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr))">
+            <div class="card"><div class="row"><i data-lucide="circle-dashed"></i><b>未转写</b></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px">转写标签显示空状态和「转写为 H3」。<b>生成按钮禁用</b>，悬停原因「先把原稿转写为 H3」。</p></div>
+            <div class="card"><div class="row"><i data-lucide="loader"></i><b>转写中</b></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px">编辑器只读，生成禁用。换片段不打断，结果回来会推到界面。</p></div>
+            <div class="card"><div class="row"><span class="sdot ok"></span><b>最新</b></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px">直接生成，<b>提交转写稿</b>。手改过也算最新。</p></div>
+            <div class="card"><div class="row"><span class="sdot warn"></span><b>已过期</b></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px">原稿在转写后改过（指纹不同）。生成时问：<b>重新转写并生成 / 仍用当前转写稿</b>。改回原样自动恢复。</p></div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>为什么选「手动转写 + 标签切换」</h2>
+          <p class="sub">三种触发方式的对比，权重来自访谈：可控性最重要。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th></th><th>A 手动转写（选定）</th><th>B 生成时自动转写</th><th>C 选模型即转写整集</th></tr></thead>
+              <tbody>
+                <tr><th>转写前能否先看</th><td class="y">能，转写完先看再生成</td><td class="m">不能，生成后才知道交了什么</td><td class="y">能</td></tr>
+                <tr><th>操作步数</th><td class="m">多一步「转写」</td><td class="y">最少</td><td class="y">少</td></tr>
+                <tr><th>文本模型开销</th><td class="y">只转用到的片段</td><td class="y">只转生成的</td><td class="m">可能转了用不到的</td></tr>
+                <tr><th>实现复杂度</th><td>中</td><td>中</td><td class="m">高：要整集后台任务</td></tr>
+                <tr><th>同类产品做法</th><td colspan="3">Runway / Kling 的「提示词增强」直接替换输入框，原文要撤销找回；本项目要求原稿永久保留，所以另存转写稿 <span class="tag t-info">调研未复核</span></td></tr>
+                <tr><th>核实度</th><td><span class="tag t-mute">提案</span></td><td><span class="tag t-mute">已放弃</span></td><td><span class="tag t-mute">已放弃</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>批量生成时，有的片段还没转写，会发生什么</h2>
+          <p class="sub">批量是最容易「静默用错格式」的地方，所以一律先问。</p>
+          <div class="grid g2">
+            <div class="card">
+              <ol class="steps" style="margin: 0; padding: 0">
+                <li><b>统计待生成片段</b><small>分出：已就绪、未转写 N、已过期 M、其中手改过 K</small></li>
+                <li><b>N+M&gt;0 时弹窗</b><small>「转写后生成」/「只生成已转写的」/ 取消</small></li>
+                <li><b>选「转写后生成」</b><small>并发 3 依次转写，转完的立刻提交；失败的跳过</small></li>
+                <li><b>结束 toast</b><small>「已提交 X 段，Y 段转写失败：片段 03、05」</small></li>
+              </ol>
+            </div>
+            <div class="card">
+              <div class="callout c-warn"><i data-lucide="triangle-alert"></i>
+                <div><b>边界：重新转写会覆盖手改</b>
+                  <ul class="list" style="margin-top: 6px">
+                    <li>弹窗里单独写「其中 K 个转写稿被手改过，将被覆盖」。</li>
+                    <li>「只生成已转写的」<b>也跳过已过期的</b>，不在批量里用旧稿。</li>
+                    <li>H3 单段上限 15 秒，20 秒的片段转写后仍会被现有时长校验拦下，转写不改时长。</li>
+                  </ul>
+                </div>
+              </div>
+              <p class="muted" style="font-size: 12.5px; margin-top: 10px">交付时要告知：旧项目里按 H3 / 通用模板出的片段，原稿标签仍写「Seedance」（待确认是否补标记）。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 可点击原型 ============ -->
+      <section id="tab-proto" hidden>
+        <h1 class="h1">片场右侧：原稿 / 转写两个标签</h1>
+        <p class="lead">
+          数据在内存里，刷新复原。起点：顶栏已选 <b>MiniMax H3</b>，片段 01 未转写、02 已转写、03 已过期且手改过。可以：点「转写为 H3」、改原稿看过期、切模型、生成、批量生成。
+          <b>想看转写失败：</b>在原稿里写上「失败」两个字再转写。<b>想看不可用：</b>清空原稿。
+        </p>
+        <div class="frame note" style="margin-top: 18px">
+          <div class="frame-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            <span style="margin-left: 8px">video-canvas / 全球修仙：只有我商城 / 第 3 集 / 片场</span></div>
+          <div class="proto" id="proto"></div>
+        </div>
+        <div class="note-txt">
+          标签组放在提示词框正上方、参考素材之下，因为它切换的就是这个框的内容；「转写」按钮紧贴标签组右侧，表明它作用于转写标签。没用上下并列，是因为右栏宽度有限，两块都会变矮。编辑器在真实产品里是 @ chip 编辑器，这里用纯文本示意。<br />顶栏下拉里模型名后的「· Seedance / H3 / 通用」不是从模型名猜的，而是后台「AI 模型 → 编辑视频模型 → 提示词格式」的配置（capabilities.prompt_format，已有字段）；没配的按通用处理。片场据此决定显不显示转写标签。
+        </div>
+      </section>
+
+      <!-- ============ 数据与接口 ============ -->
+      <section id="tab-impl" hidden>
+        <h1 class="h1">数据与接口（提案）</h1>
+        <p class="lead">尚未实现，对应 Markdown 设计文档 §6.4–§8。<b>只加一列、一个接口</b>，生成接口不改。</p>
+
+        <div class="sec">
+          <h2>改哪里</h2>
+          <p class="sub">分镜阶段收窄，片场阶段扩展。</p>
+          <div class="cmp-wrap"><table class="cmp">
+            <thead><tr><th>位置</th><th>现状 <span class="tag t-ok">已核对代码</span></th><th>改为</th></tr></thead>
+            <tbody>
+              <tr><th>分镜模板</th><td><code>storyboardPromptFormat</code> 读项目视频模型，挑 <code>storyboard</code> / <code>_seedance</code> / <code>_h3</code></td><td>固定 <code>storyboard_seedance</code>；另两套正文迁成转写模板后删除</td></tr>
+              <tr><th>转写模板</th><td>无</td><td><code>prompts/adapt_h3.md</code>、<code>adapt_generic.md</code>，输出 <code>{"prompt": "..."}</code></td></tr>
+              <tr><th>片段表</th><td><code>prompt</code>、<code>seconds</code>、<code>revision</code></td><td>加 <code>adaptations jsonb</code></td></tr>
+              <tr><th>片场前端</th><td><code>prompt-pane.tsx</code> 一个编辑器</td><td>原稿 / 转写两个编辑器 + 格式标签 + 转写按钮</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+
+        <div class="sec">
+          <h2>数据模型</h2>
+          <p class="sub">走现有 GORM 迁移；旧片段默认 <code>{}</code>，不迁移。</p>
+          <div class="cmp-wrap"><table class="cmp">
+            <thead><tr><th colspan="2"><code>drama_segments.adaptations</code>（jsonb not null default '{}'）</th></tr></thead>
+            <tbody>
+              <tr><th>键</th><td><code>generic</code> | <code>h3</code>；不存 <code>seedance</code>（原稿就是）</td></tr>
+              <tr><th>prompt</th><td>string，转写稿，<code>@[名](节点id)</code> 写法</td></tr>
+              <tr><th>source_hash</th><td>string，转写时原稿全文 SHA-256；与当前原稿不同 = 已过期</td></tr>
+              <tr><th>edited</th><td>bool，用户手改过为 true；重新转写前据此确认覆盖</td></tr>
+              <tr><th>updated_at</th><td>时间</td></tr>
+              <tr><th>乐观锁</th><td>与原稿共用片段 <code>revision</code></td></tr>
+            </tbody>
+          </table></div>
+        </div>
+
+        <div class="sec">
+          <h2>接口</h2>
+          <div class="cmp-wrap"><table class="cmp">
+            <thead><tr><th>方法与路径</th><th>说明</th><th>业务错误</th></tr></thead>
+            <tbody>
+              <tr><th><code>POST /drama-segments/:sid/adapt</code></th><td>请求 <code>{format, revision}</code>；同步调项目文本模型（超时 50s，须小于服务端 60s 写超时）；按文本模型定价扣积分，调用前预检余额、成功才扣，流水备注「片场转写 · 第 N 集片段 MM · H3」，写入 <code>adaptations[format]</code>、<code>edited=false</code>，返回片段；完成时 WebSocket 推 <code>drama.segment</code></td><td>格式不支持、原稿为空、正在转写（同段同格式加锁）、积分不足（40001）、文本模型不可用、输出两次校验不合格、revision 冲突</td></tr>
+              <tr><th><code>PATCH /drama-segments/:sid</code></th><td>新增可选 <code>adaptation: {format, prompt}</code>，手改转写稿，置 <code>edited=true</code>，不改 <code>source_hash</code></td><td>该格式还没有转写稿、revision 冲突</td></tr>
+              <tr><th><code>GET …/segments</code></th><td>片段视图多 <code>adaptations</code></td><td>—</td></tr>
+              <tr><th><code>POST /drama-segments/:sid/generate</code></th><td><b>不改</b>，前端把 input 里的提示词换成转写稿</td><td>—</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+
+        <div class="sec">
+          <h2>转写与生成伪代码</h2>
+          <div class="codeblock"><pre style="margin: 0; font: inherit; white-space: pre-wrap">// 后端（提案）
+Adapt(user, sid, format, revision):
+  seg = load(sid, user)                      // user_id 隔离
+  if format not in {generic, h3}: ErrAdaptFormat
+  if trim(seg.prompt) == "": ErrAdaptEmpty
+  lock(sid + format) else ErrAdaptBusy
+  hash = sha256(seg.prompt)
+  out = callDrama("adapt_" + format, {source_prompt, seconds, ratio, style, assets(refs in prompt)},
+                  validate: nonEmpty, refs ⊆ sourceRefs 且 sourceRefs 每个至少出现一次,
+                            h3: 三字段齐全且切点 &lt; seconds; generic: 终点 ≤ seconds)
+  seg.adaptations[format] = {prompt: out.prompt, source_hash: hash, edited: false, updated_at: now}
+  save(seg, revision)  → revision+1; broadcast drama.segment
+
+// 前端：生成前取提交文字（提案）
+textToSubmit(seg, format):
+  if format == seedance: return seg.prompt
+  a = seg.adaptations[format]
+  if !a: blocked("先把原稿转写为 " + label(format))
+  if adapting(seg, format): blocked("正在转写")
+  if sha256(seg.prompt) != a.source_hash:
+    choice = confirm("原稿在转写后改过", ["重新转写并生成", "仍用当前转写稿生成"])
+    if choice == 重新转写: if a.edited: confirmOverwrite(); a = await adapt(seg, format)
+  return a.prompt</pre></div>
+        </div>
+
+        <div class="sec">
+          <h2>已确认的决定</h2>
+          <div class="card"><ol class="list" style="padding-left: 18px">
+            <li><b>转写手动触发</b>：可控性优先，不偷偷花文本模型调用。</li>
+            <li><b>原稿 / 转写两个标签切换</b>：右栏宽度有限，一次看一份。</li>
+            <li><b>转写稿可改，原稿变了标「已过期」</b>：生成时确认，重转覆盖手改前再确认。</li>
+            <li><b>先做现有三种格式</b>：通用 / Seedance / H3；以后加平台 = 加枚举 + 加模板。</li>
+            <li><b>批量生成先弹窗问是否全部转写</b>。</li>
+            <li><b>分镜固定写 Seedance</b>；旧片段照旧当原稿，不迁移。</li>
+            <li><b>转写扣积分</b>（2026-11-10）：按文本模型定价，只收通过校验的那次，失败不扣，积分明细里能看到是哪集哪段。</li>
+            <li><b>已搁置</b>：生成时自动转写、选模型即整集转写、后台自定义格式。</li>
+          </ol></div>
+        </div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+      const $ = (s, r = document) => r.querySelector(s);
+      const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const icons = () => { if (window.lucide) lucide.createIcons(); };
+      function toggleNotes() { const on = document.body.classList.toggle("show-notes"); $("#notesSw").setAttribute("aria-checked", String(on)); }
+      let toastTimer;
+      function toast(msg, kind = "ok") {
+        const icon = { ok: "circle-check", bad: "circle-x", warn: "triangle-alert" }[kind] || "info";
+        $("#toast").innerHTML = `<div><i data-lucide="${icon}" style="color: rgb(var(--${kind}))"></i>${esc(msg)}</div>`;
+        icons(); clearTimeout(toastTimer); toastTimer = setTimeout(() => ($("#toast").innerHTML = ""), 2600);
+      }
+      function showTab(id) {
+        document.querySelectorAll("main > section").forEach((s) => (s.hidden = s.id !== "tab-" + id));
+        document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === id)));
+        window.scrollTo(0, 0);
+      }
+      document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab)));
+
+      /* ================= 原型状态（内存，刷新复原） ================= */
+      const MODELS = [
+        { key: "seedance", name: "seedance-2.5（YX）", format: "seedance" },
+        { key: "h3", name: "MiniMax H3", format: "h3" },
+        { key: "wan", name: "通用视频模型 A", format: "generic" },
+      ];
+      const FMT_LABEL = { seedance: "Seedance", h3: "H3", generic: "通用" };
+      const P1 = "【场景】@垂钓台\n【角色】@林阳、@刘峰、@赵海\n【画风】当代都市真人电影质感，自然光，克制色彩。\n【镜头1（0-5秒，特写转中景）】镜头聚焦于@黑色测灵石碑表面，@林阳神情镇定，右手掌心贴合碑面。嗡的一声，一金一绿两道灵光自碑底升至第三层停下。【字幕：三品金木灵根！】\n【镜头2（5-9秒，近景平视）】镜头切至台下人群，@刘峰掩嘴嗤笑：「才三品？」";
+      const P2 = "【场景】@垂钓台\n【角色】@王彪、@方清瑶\n【镜头1（0-4秒，中景）】@王彪大步上前，挡在@方清瑶身前。\n【镜头2（4-8秒，近景）】@方清瑶抬眼，压着怒：「让开。」";
+      const P3 = "【场景】@垂钓台\n【角色】@林阳、@白灵素\n【镜头1（0-6秒，全景缓推）】@白灵素自人群后走出，目光落在@林阳身上。\n【镜头2（6-10秒，近景）】@林阳转身，与她对视。";
+
+      /* 按本剧资产名识别 @ 引用（真实产品里是 @[名](节点id)，这里示意） */
+      const ASSET_NAMES = ["黑色测灵石碑", "垂钓台", "林阳", "方清瑶", "王彪", "赵海", "刘峰", "白灵素"];
+      const refsOf = (src) => ASSET_NAMES.filter((n) => src.includes("@" + n)).map((n) => "@" + n);
+      function toH3(src, seconds) {
+        const refs = refsOf(src);
+        const who = refs.slice(1).join(", ") || "the characters";
+        return `integrated_multimodal_description: [Shot 1] Live-action contemporary urban film look, 9:16, natural directional light, restrained palette. ${refs[0] || "The stage"} is a stone fishing platform; ${who} stand around it. Close-up on the surface, then pull out to a medium shot as the light rises.\n\n[Shot 2] At 00:0${Math.min(5, seconds - 1)}.000, the camera cuts to a near shot at eye level. The speaker (S1), a young man with a mocking, nasal voice, says: <d>[Chinese] 才三品？</d>\n\noverall_soundscape: A low resonant hum from the stele, murmuring crowd, wind over water.\n\nnon_diegetic_music: No non-diegetic music.`;
+      }
+      function toGeneric(src) {
+        return "（通用格式示意）交代场景与角色后按镜头写：\n" + src.replace(/【镜头(\d)（/g, "镜头$1（").replace(/【|】/g, " ").trim();
+      }
+      const convert = (fmt, src, seconds) => (fmt === "h3" ? toH3(src, seconds) : toGeneric(src));
+
+      const S = {
+        model: "h3",
+        sel: 0,
+        view: "auto", // auto | source | adapted
+        segs: [
+          { seq: 0, seconds: 10, prompt: P1, ad: {}, status: "idle" },
+          { seq: 1, seconds: 8, prompt: P2, ad: { h3: { prompt: toH3(P2, 8), source: P2, edited: false } }, status: "done" },
+          { seq: 2, seconds: 10, prompt: P3, ad: { h3: { prompt: toH3(P3.replace("全景缓推", "全景"), 10) + "\n（手改：加了慢动作）", source: P3.replace("全景缓推", "全景"), edited: true } }, status: "idle" },
+        ],
+        adapting: {}, // key seq:fmt -> true
+        err: {}, // key seq:fmt -> message
+        modal: null,
+      };
+      const fmtNow = () => MODELS.find((m) => m.key === S.model).format;
+      const seg = () => S.segs[S.sel];
+      const k = (s, f) => s.seq + ":" + f;
+      function adState(s, f) {
+        if (f === "seedance") return "na";
+        if (S.adapting[k(s, f)]) return "busy";
+        const a = s.ad[f];
+        if (!a) return "none";
+        return a.source === s.prompt ? "fresh" : "stale";
+      }
+      function curView() {
+        const f = fmtNow();
+        if (f === "seedance") return "source";
+        if (S.view !== "auto") return S.view;
+        return seg().ad[f] ? "adapted" : "source";
+      }
+      function blocked(s) {
+        const f = fmtNow();
+        if (s.status === "running") return "这个片段正在生成";
+        if (!s.prompt.trim()) return "原稿是空的";
+        const st = adState(s, f);
+        if (st === "none") return `先把原稿转写为 ${FMT_LABEL[f]}`;
+        if (st === "busy") return "正在转写";
+        return null;
+      }
+
+      /* ---------- 渲染：分区域，输入时不重绘编辑器 ---------- */
+      function render() {
+        $("#proto").innerHTML = `
+          <div class="s-top" id="pTop"></div>
+          <div class="studio">
+            <aside class="lib">
+              <div class="muted" style="font-size:12px;margin-bottom:4px">资产库 · 本集</div>
+              ${["林阳", "方清瑶", "王彪", "赵海", "刘峰", "白灵素"].map((n) => `<div class="it"><span class="ava"></span>${n}</div>`).join("")}
+              <div class="it"><i data-lucide="image"></i>垂钓台</div>
+              <div class="it"><i data-lucide="box"></i>黑色测灵石碑</div>
+            </aside>
+            <div class="stage" id="pStage"></div>
+            <div class="insp" id="pInsp"></div>
+            <div class="clips" id="pClips"></div>
+          </div>
+          <div id="pModal"></div>`;
+        renderTop(); renderStage(); renderInsp(); renderClips(); renderModal(); icons();
+      }
+      function renderTop() {
+        const s = seg(), b = blocked(s);
+        $("#pTop").innerHTML = `
+          <span class="s-title">第 3 集 · 恶毒构陷</span><span class="spacer"></span>
+          <span class="pill"><i data-lucide="timer"></i>${s.seconds}s</span>
+          <span class="pill">720P</span>
+          <select class="pill" id="modelSel" aria-label="视频模型">
+            ${MODELS.map((m) => `<option value="${m.key}" ${m.key === S.model ? "selected" : ""}>${esc(m.name)} · ${FMT_LABEL[m.format]}</option>`).join("")}
+          </select>
+          <button class="gen" id="genBtn" ${b ? "disabled" : ""} title="${esc(b || "生成这个片段")}">
+            ${s.status === "running" ? '<i data-lucide="loader" class="spin"></i>' : ""}${s.status === "done" ? "再生成一次" : "立即生成"} · 600</button>`;
+        $("#modelSel").onchange = (e) => { S.model = e.target.value; S.view = "auto"; render(); };
+        $("#genBtn").onclick = () => generate(s);
+        icons();
+      }
+      function renderStage() {
+        const s = seg();
+        $("#pStage").innerHTML = `<div class="phone"><div><div class="no">${String(s.seq + 1).padStart(2, "0")}</div>
+          <div class="muted" style="font-size:12px">${s.status === "done" ? "已出视频（示意）" : s.status === "running" ? "生成中…" : "还没有生成内容"}</div></div></div>`;
+      }
+      function renderInsp() {
+        const s = seg(), f = fmtNow(), v = curView(), st = adState(s, f), a = s.ad[f];
+        const refs = refsOf(s.prompt);
+        let tabs;
+        if (f === "seedance") {
+          tabs = `<div class="fmt"><button aria-selected="true" disabled>Seedance</button></div>`;
+        } else {
+          const dot = st === "fresh" ? '<span class="sdot ok"></span>' : st === "stale" ? '<span class="sdot warn"></span>已过期' : st === "busy" ? '<i data-lucide="loader" class="spin"></i>' : "";
+          tabs = `<div class="fmt" role="tablist">
+              <button data-v="source" aria-selected="${v === "source"}">原稿 · Seedance</button>
+              <button data-v="adapted" aria-selected="${v === "adapted"}">转写 · ${FMT_LABEL[f]} ${dot}</button></div>`;
+        }
+        let action = "";
+        if (f !== "seedance") {
+          const dis = !s.prompt.trim() || st === "busy";
+          const why = !s.prompt.trim() ? "原稿是空的" : st === "busy" ? "正在转写" : "";
+          action = a
+            ? `<button class="pill" id="adaptBtn" ${dis ? "disabled" : ""} title="${esc(why || "重新转写")}"><i data-lucide="refresh-cw"></i>重新转写</button>`
+            : `<button class="pill" id="adaptBtn" ${dis ? "disabled" : ""} title="${esc(why)}"><i data-lucide="languages"></i>转写为 ${FMT_LABEL[f]}</button>`;
+        }
+        $("#pInsp").innerHTML = `
+          <div class="seg-h"><h3>片段 ${String(s.seq + 1).padStart(2, "0")}</h3><span class="spacer"></span><i data-lucide="trash-2" class="muted"></i></div>
+          <div class="muted" style="font-size:12px">参考素材 ${refs.length}/30</div>
+          <div class="chips">${refs.map((r) => `<span class="chip"><span class="ava"></span>${esc(r.slice(1))}</span>`).join("") || '<span class="muted" style="font-size:12px">无</span>'}</div>
+          <div class="row note" style="flex-wrap:wrap">${tabs}<span class="spacer"></span>${action}</div>
+          <div class="note-txt">两份文字共用上面同一排参考素材：转写只能保留或减少原稿里的 @ 引用，不能新增。</div>
+          <div id="pBody"></div>`;
+        $("#pInsp").querySelectorAll(".fmt button[data-v]").forEach((b) => (b.onclick = () => { S.view = b.dataset.v; renderInsp(); icons(); }));
+        const ab = $("#adaptBtn"); if (ab) ab.onclick = () => adaptOne(s);
+        renderBody();
+        icons();
+      }
+      function renderBody() {
+        const s = seg(), f = fmtNow(), v = curView(), st = adState(s, f), a = s.ad[f], e = S.err[k(s, f)];
+        let html = "";
+        if (v === "source") {
+          html = `<div class="editor"><textarea id="ta" data-kind="source" placeholder="描述这个片段的画面，输入 @ 引用角色、场景、道具">${esc(s.prompt)}</textarea></div>`;
+        } else {
+          if (e) html += `<div class="bar bad"><i data-lucide="circle-x"></i>${esc(e)}<button class="lnk" data-act="retry">重试</button></div>`;
+          if (st === "stale") html += `<div class="bar warn"><i data-lucide="triangle-alert"></i>原稿已修改${a.edited ? "，这份转写稿也被手改过" : ""}<button class="lnk" data-act="retry">重新转写</button></div>`;
+          if (!a && st !== "busy") {
+            html += `<div class="editor"><div class="empty"><i data-lucide="languages"></i><div>还没有 ${FMT_LABEL[f]} 转写稿</div>
+              <button class="pill" data-act="retry" ${s.prompt.trim() ? "" : "disabled title='原稿是空的'"}>转写为 ${FMT_LABEL[f]}</button></div></div>`;
+          } else if (!a && st === "busy") {
+            html += `<div class="editor"><div class="empty"><i data-lucide="loader" class="spin"></i><div>转写中…（模拟，约 1.5 秒）</div></div></div>`;
+          } else {
+            html += `<div class="editor"><textarea id="ta" data-kind="adapted" ${st === "busy" ? "readonly" : ""}>${esc(a.prompt)}</textarea></div>`;
+            if (a.edited) html += `<div class="muted" style="font-size:12px">已手改</div>`;
+          }
+        }
+        $("#pBody").innerHTML = html;
+        $("#pBody").querySelectorAll("[data-act=retry]").forEach((b) => (b.onclick = () => adaptOne(s)));
+        const ta = $("#ta");
+        if (ta) ta.oninput = (ev) => {
+          if (ta.dataset.kind === "source") s.prompt = ev.target.value;
+          else { s.ad[f].prompt = ev.target.value; s.ad[f].edited = true; }
+          clearTimeout(window._lazy);
+          window._lazy = setTimeout(() => { refreshChrome(); }, 250);
+        };
+        icons();
+      }
+      /* 输入后只刷新标签、按钮和时间线，不碰正在输入的 textarea */
+      function refreshChrome() {
+        renderTop(); renderClips();
+        const s = seg(), f = fmtNow(), st = adState(s, f);
+        const tabBtn = $("#pInsp .fmt button[data-v=adapted]");
+        if (tabBtn) {
+          tabBtn.innerHTML = `转写 · ${FMT_LABEL[f]} ` + (st === "fresh" ? '<span class="sdot ok"></span>' : st === "stale" ? '<span class="sdot warn"></span>已过期' : "");
+        }
+        const ab = $("#adaptBtn"); if (ab) { ab.disabled = !s.prompt.trim(); ab.title = s.prompt.trim() ? "" : "原稿是空的"; }
+        icons();
+      }
+      function renderClips() {
+        const f = fmtNow();
+        $("#pClips").innerHTML = S.segs.map((s, i) => {
+          const st = adState(s, f);
+          const tag = f === "seedance" ? "" : st === "fresh" ? `<span class="tag t-ok">${FMT_LABEL[f]} 已转写</span>` : st === "stale" ? `<span class="tag t-warn">已过期</span>` : st === "busy" ? `<span class="tag t-info">转写中</span>` : `<span class="tag t-mute">未转写</span>`;
+          const vs = s.status === "done" ? "已出视频" : s.status === "running" ? "生成中" : "未生成";
+          return `<button class="clip" data-i="${i}" aria-current="${i === S.sel}"><span class="mono muted">片段 ${String(s.seq + 1).padStart(2, "0")} · ${s.seconds}s</span><span>${vs}</span>${tag}</button>`;
+        }).join("") + `<span class="spacer"></span><button class="pill" id="batchBtn" style="align-self:center"><i data-lucide="layers"></i>批量生成</button>`;
+        $("#pClips").querySelectorAll(".clip").forEach((b) => (b.onclick = () => { S.sel = +b.dataset.i; S.view = "auto"; render(); }));
+        $("#batchBtn").onclick = batch;
+        icons();
+      }
+      function renderModal() {
+        const m = S.modal;
+        if (!m) { $("#pModal").innerHTML = ""; return; }
+        $("#pModal").innerHTML = `<div class="modal-bg"><div class="modal" role="dialog" aria-modal="true">
+          <h4>${esc(m.title)}</h4><div class="muted" style="font-size:13px">${m.body}</div>
+          <div class="acts">${m.actions.map((a, i) => `<button class="btn ${a.primary ? "btn-primary" : "btn-outline"}" data-i="${i}">${esc(a.label)}</button>`).join("")}</div></div></div>`;
+        $("#pModal").querySelectorAll("button[data-i]").forEach((b) => (b.onclick = () => { const a = m.actions[+b.dataset.i]; S.modal = null; renderModal(); a.run && a.run(); }));
+      }
+      const ask = (title, body, actions) => { S.modal = { title, body, actions }; renderModal(); };
+
+      /* ---------- 动作（全部模拟，非真实调用） ---------- */
+      function doAdapt(s, f) {
+        return new Promise((resolve) => {
+          S.adapting[k(s, f)] = true; delete S.err[k(s, f)];
+          if (seg() === s) { S.view = "adapted"; renderInsp(); } renderTop(); renderClips();
+          setTimeout(() => {
+            delete S.adapting[k(s, f)];
+            let ok = true;
+            if (s.prompt.includes("失败")) {
+              S.err[k(s, f)] = "转写失败：输出两次校验未通过（缺少 overall_soundscape 字段）。已有转写稿未被覆盖。";
+              ok = false;
+            } else {
+              s.ad[f] = { prompt: convert(f, s.prompt, s.seconds), source: s.prompt, edited: false };
+            }
+            if (seg() === s) { S.view = "adapted"; renderInsp(); } renderTop(); renderClips();
+            resolve(ok);
+          }, 1500);
+        });
+      }
+      function adaptOne(s) {
+        const f = fmtNow(), a = s.ad[f];
+        if (a && a.edited) {
+          ask("覆盖手改的转写稿？", "这份 " + FMT_LABEL[f] + " 转写稿被你改过，重新转写会覆盖这些修改。", [
+            { label: "取消" }, { label: "重新转写", primary: true, run: () => doAdapt(s, f) },
+          ]);
+        } else doAdapt(s, f);
+      }
+      function submit(s, text, which) {
+        s.status = "running"; render();
+        toast(`已提交片段 ${String(s.seq + 1).padStart(2, "0")}：${which}`);
+        setTimeout(() => { s.status = "done"; render(); }, 2000);
+      }
+      function generate(s) {
+        const f = fmtNow();
+        if (blocked(s)) return;
+        if (f === "seedance") return submit(s, s.prompt, "Seedance 原稿");
+        const st = adState(s, f), a = s.ad[f];
+        if (st === "stale") {
+          ask("原稿在转写后改过", "当前 " + FMT_LABEL[f] + " 转写稿是按旧原稿转的" + (a.edited ? "，且被你手改过；重新转写会覆盖这些修改" : "") + "。", [
+            { label: "取消" },
+            { label: "仍用当前转写稿生成", run: () => submit(s, a.prompt, FMT_LABEL[f] + " 转写稿（旧）") },
+            { label: "重新转写并生成", primary: true, run: async () => { if (await doAdapt(s, f)) submit(s, s.ad[f].prompt, FMT_LABEL[f] + " 转写稿"); else toast("转写失败，没有提交", "bad"); } },
+          ]);
+          return;
+        }
+        submit(s, a.prompt, FMT_LABEL[f] + " 转写稿");
+      }
+      function batch() {
+        const f = fmtNow();
+        const targets = S.segs.filter((s) => s.status !== "running" && s.prompt.trim());
+        if (f === "seedance") { targets.forEach((s) => submit(s, s.prompt, "Seedance 原稿")); return; }
+        const none = targets.filter((s) => adState(s, f) === "none");
+        const stale = targets.filter((s) => adState(s, f) === "stale");
+        const ready = targets.filter((s) => adState(s, f) === "fresh");
+        const edited = stale.filter((s) => s.ad[f].edited).length;
+        if (none.length + stale.length === 0) { ready.forEach((s) => submit(s, s.ad[f].prompt, "批量")); return; }
+        const n = (arr) => arr.map((s) => String(s.seq + 1).padStart(2, "0")).join("、");
+        ask(`有 ${none.length + stale.length} 个片段需要先转写为 ${FMT_LABEL[f]}`,
+          `已就绪 ${ready.length} 个${ready.length ? "（" + n(ready) + "）" : ""}；未转写 ${none.length} 个${none.length ? "（" + n(none) + "）" : ""}；已过期 ${stale.length} 个${stale.length ? "（" + n(stale) + "）" : ""}。` +
+            (edited ? `<br><b style="color:rgb(var(--warn))">其中 ${edited} 个转写稿被手改过，将被覆盖。</b>` : ""),
+          [
+            { label: "取消" },
+            { label: "只生成已转写的", run: () => { ready.forEach((s) => submit(s, s.ad[f].prompt, "批量")); if (!ready.length) toast("没有可直接生成的片段", "warn"); } },
+            { label: "转写后生成", primary: true, run: async () => {
+                ready.forEach((s) => submit(s, s.ad[f].prompt, "批量"));
+                const results = await Promise.all([...none, ...stale].map((s) => doAdapt(s, f).then((ok) => { if (ok) submit(s, s.ad[f].prompt, "批量"); return { s, ok }; })));
+                const bad = results.filter((r) => !r.ok).map((r) => r.s);
+                if (bad.length) toast(`${bad.length} 段转写失败：片段 ${n(bad)}`, "bad");
+              } },
+          ]);
+      }
+
+      render();
+      icons();
+    </script>
+  </body>
+</html>

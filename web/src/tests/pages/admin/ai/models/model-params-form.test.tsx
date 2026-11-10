@@ -126,4 +126,10 @@ describe("ModelParamsForm", () => {
     for (const kind of ["image", "audio", "text", "agent"])
       expect(render(kind)).not.toContain("提示词格式");
   });
+
+  test("「提示词格式」下面写明用途：短剧片场据此判断写法，不看模型名", () => {
+    const html = render("video");
+    expect(html).toContain("短剧片场按这里判断提示词写法");
+    expect(html).toContain("不看模型名称");
+  });
 });

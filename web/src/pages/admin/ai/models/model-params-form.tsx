@@ -315,6 +315,7 @@ export function ModelParamsForm({
             className="mt-4"
             label="提示词格式"
             htmlFor="model-prompt-format"
+            hint="短剧片场按这里判断提示词写法，不看模型名称：选 Seedance 直接用分镜原稿；选 H3 或通用，要先在片场把原稿转写成对应格式再生成。"
             error={issueFor(issues, "capabilities.prompt_format")}
           >
             <OptionSelect

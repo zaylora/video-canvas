@@ -114,6 +114,17 @@ describe("流水副标题", () => {
       ledgerSubtitle(item({ type: "admin_adjust", amount: 200, note: "<b>国庆活动补发</b>" })),
     ).toEqual({ text: "<b>国庆活动补发</b>", note: true });
   });
+  test("片场转写的冻结 / 结算流水显示后端写好的备注（哪集哪段转成什么格式）", () => {
+    const note = "片场转写 · 第 1 集片段 01 · H3";
+    expect(ledgerSubtitle(item({ type: "settle", amount: 3, note }))).toEqual({
+      text: note,
+      note: true,
+    });
+    expect(ledgerSubtitle(item({ type: "freeze", amount: 3, note }))).toEqual({
+      text: note,
+      note: true,
+    });
+  });
   test("初始积分显示注册赠送", () => {
     expect(ledgerSubtitle(item({ type: "initial", amount: 50 }))).toEqual({
       text: "注册赠送",

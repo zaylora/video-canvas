@@ -8,7 +8,7 @@ export type ComposeCheck = { enabled: boolean; reason: string | null };
 
 /**
  * 合成整集的可用性（契约 §14）：至少一个片段有采用视频才可点（否则后端 67010）；
- * 同一部短剧同时只有一个进行中的任务（后端 67004），有就禁用并写明是哪个。
+ * 同一集有进行中的分镜 / 合成任务时会撞上后端 67004，有就禁用并写明是哪个；不同集可以并行。
  */
 export function composeCheck(
   segments: readonly Segment[],

@@ -131,7 +131,8 @@ func (s *DramaService) runStoryboard(ctx context.Context, run *dramaRun, vars ma
 		return nil, err
 	}
 	vars["script_md"], vars["episode_no"], vars["assets"], vars["max_seconds"] = ep.ScriptMD, ep.No, assets, input.MaxSeconds
-	vars["prompt_format"] = s.storyboardPromptFormat(ctx, run.project)
+	// 分镜固定写 Seedance 原稿，平台适配在片场转写；变量保留给引用了它的自写提示词。
+	vars["prompt_format"] = drama.PromptFormatSeedance
 	output, cost, err := s.callDrama(ctx, run.job, &run.snapshot, "storyboard", vars, func(value any) error {
 		return value.(drama.StoryboardOutput).ValidateMaxSeconds(input.MaxSeconds)
 	})

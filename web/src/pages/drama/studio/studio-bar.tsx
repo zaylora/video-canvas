@@ -4,7 +4,7 @@ import { ChipPopover, MenuLabel } from "@/components/drama/pickers";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useDramaJobsStore } from "@/store/drama";
-import { busyReason } from "@/utils/drama/jobs";
+import { jobConflictReason } from "@/utils/drama/jobs";
 import { modelMaxSeconds } from "@/utils/drama/video-models";
 import { matchOption, paramEntries } from "@/utils/tasks/capabilities";
 
@@ -120,7 +120,7 @@ export function StudioBar() {
   const jobs = useDramaJobsStore((state) => state.byDrama[drama.id]) ?? NO_JOBS;
   const starter = useStoryboardStart(video.maxSeconds);
   const status = SAVE_LABEL[save];
-  const blocked = busyReason(jobs);
+  const blocked = jobConflictReason(jobs, "storyboard", [no]);
   return (
     <div className="border-border flex h-12 shrink-0 items-center gap-2 border-b px-4">
       <h2 className="font-display min-w-0 truncate text-[17px] font-bold tracking-wide">

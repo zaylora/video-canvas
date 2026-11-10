@@ -9,16 +9,35 @@ import {
 } from "react";
 import { toast } from "sonner";
 
-import { addSegment, deleteSegment, reorderSegments, updateSegment } from "@/api/drama";
+import {
+  adaptSegment,
+  addSegment,
+  deleteSegment,
+  reorderSegments,
+  updateSegment,
+} from "@/api/drama";
 import { DRAMA_ERR, dramaErrorMessage, isDramaError, isRevisionConflict } from "@/api/drama/errors";
 import type { Drama, EpisodeSummary, Segment, UpdateSegmentInput } from "@/api/drama/type";
 import { confirm } from "@/components/admin-ui/confirm-dialog";
+import { choose as chooseOption } from "@/components/drama/choice-dialog";
+import { useTextHashes } from "@/hooks/use-text-hashes";
 import { useDramaAssets, type DramaAssetsState } from "@/hooks/use-drama-assets";
 import { useDramaVideoModel } from "@/hooks/use-drama-video-model";
 import { useCreditsStore } from "@/store/credits";
 import { useDramaJobsStore } from "@/store/drama";
 import { segmentKey, useDramaSegmentsStore } from "@/store/drama-segments";
 import { useStudioPrefs, useStudioPrefsStore } from "@/store/drama-studio";
+import {
+  adaptState,
+  formatLabel,
+  segmentNos,
+  sha256Hex,
+  splitBatch,
+  submitText,
+  targetFormat,
+  type AdaptState,
+  type TargetFormat,
+} from "@/utils/drama/adaptation";
 import { reloadSegments } from "@/utils/drama/segment-events";
 import type { RefAsset } from "@/utils/drama/segment-assets";
 import { planSegmentInput, type SegmentPlan } from "@/utils/drama/segment-input";
@@ -34,6 +53,7 @@ import { describeSubmitError } from "@/utils/tasks/submit";
 import { submitSegmentTask } from "@/utils/tasks/gateway";
 import { priceSpecOf } from "@/utils/tasks/capabilities";
 import { quote } from "@/utils/pricing/quote";
+import { ApiError } from "@/utils/requests/request";
 
 import { summarizeSave, type SaveSummary } from "../workspace/use-workspace";
 import type { AutosaveStatus } from "@/utils/drama/autosave";
@@ -59,9 +79,21 @@ export type Studio = {
   /** 顶栏选的生成参数（分辨率等） */
   overrides: Record<string, unknown>;
   setOverride: (name: string, value: unknown) => void;
-  /** 选中片段的编辑中提示词（还没存下来的也算），参考素材条跟着它变 */
+  /**
+   * 选中片段此刻要提交的文字（还没存下来的也算）：目标格式是 Seedance 时是原稿，
+   * 其他格式有转写稿时是转写稿、没有时是原稿；参考素材条和报价跟着它变
+   */
   prompt: string;
-  setDraft: (id: string, text: string) => void;
+  /** 记下编辑中的文字；kind 默认原稿，转写稿传格式 */
+  setDraft: (id: string, text: string, kind?: DraftKind) => void;
+  /** 顶栏视频模型要的提示词格式（按后台配置的 prompt_format） */
+  format: TargetFormat;
+  /** 正在转写的片段 */
+  adapting: ReadonlySet<string>;
+  /** 转写失败原因，键为「片段 id:格式」；重新转写或成功后清掉 */
+  adaptErrors: Readonly<Record<string, string>>;
+  /** 片段在当前格式下转写稿的状态；目标是 Seedance 时为 null */
+  adaptStateOf: (segment: Segment) => AdaptState | "busy" | null;
   /** 选中片段此刻的组装结果 */
   plan: SegmentPlan | null;
   /** 选中片段的预估积分；算不出来为 undefined */
@@ -71,8 +103,8 @@ export type Studio = {
   reportSave: (key: string, status: AutosaveStatus) => void;
   /** 正在提交视频的片段 */
   submitting: ReadonlySet<string>;
-  /** 提示词编辑器登记：生成前立即存盘 */
-  registerEditor: (handle: EditorHandle | null) => void;
+  /** 提示词编辑器登记：生成 / 转写前立即存盘；返回注销函数 */
+  registerEditor: (handle: EditorHandle) => () => void;
   actions: {
     add: () => Promise<void>;
     remove: (segment: Segment) => Promise<void>;
@@ -82,8 +114,22 @@ export type Studio = {
     choose: (segment: Segment, taskId: string) => Promise<void>;
     generate: (segment: Segment) => Promise<void>;
     batch: () => Promise<void>;
+    /**
+     * 把原稿转写成当前格式；转写稿手改过时先确认覆盖（force 跳过确认）。
+     * 成功返回 true；失败原因写进 adaptErrors
+     */
+    adapt: (segment: Segment, options?: { force?: boolean }) => Promise<boolean>;
   };
 };
+
+/** 编辑中文字的种类：原稿，或某个格式的转写稿 */
+export type DraftKind = "source" | TargetFormat;
+
+/** 转写失败等状态的键 */
+export const adaptKey = (sid: string, format: TargetFormat) => `${sid}:${format}`;
+
+/** 批量转写的并发数 */
+const ADAPT_CONCURRENCY = 3;
 
 export type EditorHandle = {
   flush: () => Promise<void>;
@@ -109,10 +155,12 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
   const segments = list ?? NO_SEGMENTS;
   const [segmentsStatus, setSegmentsStatus] = useState<Studio["segmentsStatus"]>("loading");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [draft, setDraftState] = useState<{ id: string; text: string } | null>(null);
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [adapting, setAdapting] = useState<ReadonlySet<string>>(new Set());
+  const [adaptErrors, setAdaptErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState<ReadonlySet<string>>(new Set());
   const [saveStates, setSaveStates] = useState<Record<string, AutosaveStatus>>({});
-  const editor = useRef<EditorHandle | null>(null);
+  const editors = useRef(new Set<EditorHandle>());
   const queues = useRef(new Map<string, Promise<unknown>>());
 
   // 载入 + 登记「正在看这一集」（WebSocket 重连 / 回到前台时据此对账）
@@ -150,10 +198,38 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
     () => segments.find((item) => item.id === selectedId) ?? segments[0] ?? null,
     [segments, selectedId],
   );
-  const prompt = selected ? (draft?.id === selected.id ? draft.text : selected.prompt) : "";
-  const setDraft = useCallback((id: string, text: string) => setDraftState({ id, text }), []);
-
   const caps = video.model?.capabilities;
+  const format = targetFormat(caps);
+  const setDraft = useCallback<Studio["setDraft"]>((id, text, kind = "source") => {
+    const name = `${id}:${kind}`;
+    setDrafts((prev) => (prev[name] === text ? prev : { ...prev, [name]: text }));
+  }, []);
+  /** 片段原稿此刻的文字：选中片段编辑中的优先（只有它挂着编辑器） */
+  const selectedId0 = selected?.id;
+  const sourceOf = useCallback(
+    (segment: Segment) =>
+      (segment.id === selectedId0 ? drafts[`${segment.id}:source`] : undefined) ?? segment.prompt,
+    [drafts, selectedId0],
+  );
+  const sourceTexts = useMemo(() => segments.map(sourceOf), [segments, sourceOf]);
+  const hashOf = useTextHashes(sourceTexts);
+  const adaptStateOf = useCallback<Studio["adaptStateOf"]>(
+    (segment) => {
+      if (format === "seedance") return null;
+      if (adapting.has(segment.id)) return "busy";
+      if (!segment.adaptations[format]) return "none";
+      const hash = hashOf(sourceOf(segment));
+      // 指纹还没算出来先按最新，算完会重新渲染
+      return hash === undefined ? "fresh" : adaptState(segment, format, hash);
+    },
+    [adapting, format, hashOf, sourceOf],
+  );
+  const prompt = useMemo(() => {
+    if (!selected) return "";
+    const adaptation = format === "seedance" ? undefined : selected.adaptations[format];
+    if (!adaptation) return sourceOf(selected);
+    return drafts[`${selected.id}:${format}`] ?? adaptation.prompt;
+  }, [drafts, format, selected, sourceOf]);
   const plan = useMemo(
     () =>
       selected
@@ -239,6 +315,74 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
     });
   }, []);
 
+  /** 所有挂着的提示词编辑器立即存盘（原稿、转写稿） */
+  const flushEditors = useCallback(async () => {
+    await Promise.all([...editors.current].map((handle) => handle.flush()));
+  }, []);
+
+  const markAdapting = useCallback((sid: string, on: boolean) => {
+    setAdapting((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(sid);
+      else next.delete(sid);
+      return next;
+    });
+  }, []);
+
+  /** 从 store 取片段的最新快照 */
+  const latestOf = useCallback(
+    (sid: string) =>
+      useDramaSegmentsStore.getState().byEpisode[key]?.find((item) => item.id === sid) ?? null,
+    [key],
+  );
+
+  /**
+   * 转写一个片段到当前格式：先存盘原稿，用 store 里最新的 revision 调后端；
+   * 失败只记原因，不动已有转写稿（后端失败也不覆盖）
+   */
+  const adapt = useCallback<Studio["actions"]["adapt"]>(
+    async (segment, options) => {
+      if (format === "seedance" || adapting.has(segment.id)) return false;
+      const existing = segment.adaptations[format];
+      if (existing?.edited && !options?.force) {
+        const go = await confirm({
+          title: "覆盖手改的转写稿？",
+          description: `这份 ${formatLabel(format)} 转写稿被你改过，重新转写会覆盖这些修改。`,
+          confirmLabel: "重新转写",
+        });
+        if (!go) return false;
+      }
+      const errorKey = adaptKey(segment.id, format);
+      markAdapting(segment.id, true);
+      setAdaptErrors((prev) => {
+        const { [errorKey]: _old, ...rest } = prev;
+        return rest;
+      });
+      try {
+        await flushEditors();
+        const current = latestOf(segment.id) ?? segment;
+        if (!current.prompt.trim()) throw new Error("原稿是空的，先写好原稿再转写");
+        const next = await adaptSegment(segment.id, { format, revision: current.revision });
+        useDramaSegmentsStore.getState().apply(dramaId, no, next);
+        return true;
+      } catch (e) {
+        const message =
+          e instanceof ApiError || !(e instanceof Error)
+            ? dramaErrorMessage(e, "转写失败，请稍后重试")
+            : e.message;
+        setAdaptErrors((prev) => ({ ...prev, [errorKey]: message }));
+        if (isRevisionConflict(e)) void reloadSegments(dramaId, no);
+        if (isDramaError(e, DRAMA_ERR.segmentNotFound)) {
+          useDramaSegmentsStore.getState().remove(dramaId, no, segment.id);
+        }
+        return false;
+      } finally {
+        markAdapting(segment.id, false);
+      }
+    },
+    [adapting, dramaId, flushEditors, format, latestOf, markAdapting, no],
+  );
+
   /**
    * 提交前重读一次画布里的资产，用最新的形象和声音组装（资产页刚改的、还没被定时重读捕到的也算）；
    * 读取失败返回 null
@@ -269,17 +413,52 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
     [drama.ratio, prefs.overrides, video.model],
   );
 
+  /**
+   * 提交前确认这个片段在当前格式下用哪份文字：Seedance 用原稿；
+   * 其他格式要有转写稿，原稿在转写后改过就问一次「重新转写并生成 / 仍用当前转写稿」。
+   * 返回要提交的片段快照（prompt 已换成要交的文字），不提交返回 null
+   */
+  const resolveSubmit = useCallback(
+    async (segment: Segment): Promise<Segment | null> => {
+      let current = latestOf(segment.id) ?? segment;
+      if (format === "seedance") return current;
+      const adaptation = current.adaptations[format];
+      if (!adaptation) {
+        toast.error(`先把原稿转写为 ${formatLabel(format)}`);
+        return null;
+      }
+      if (adaptation.sourceHash !== (await sha256Hex(current.prompt))) {
+        const picked = await chooseOption({
+          title: "原稿在转写后改过",
+          description: `当前 ${formatLabel(format)} 转写稿是按旧原稿转的${adaptation.edited ? "，并且被你手改过，重新转写会覆盖这些修改" : ""}。`,
+          options: [
+            { value: "keep", label: "仍用当前转写稿生成" },
+            { value: "readapt", label: "重新转写并生成", primary: true },
+          ],
+        });
+        if (!picked) return null;
+        if (picked === "readapt") {
+          if (!(await adapt(current, { force: true }))) {
+            toast.error("转写失败，没有提交");
+            return null;
+          }
+          current = latestOf(segment.id) ?? current;
+        }
+      }
+      return { ...current, prompt: submitText(current, format) };
+    },
+    [adapt, format, latestOf],
+  );
+
   const generate = useCallback<Studio["actions"]["generate"]>(
     async (segment) => {
       if (submitting.has(segment.id)) return;
       markSubmitting(segment.id, true);
       try {
         // 编辑中的提示词先存盘，提交的就是屏幕上看到的
-        await editor.current?.flush();
-        const fresh = useDramaSegmentsStore
-          .getState()
-          .byEpisode[key]?.find((item) => item.id === segment.id);
-        const current = fresh ?? segment;
+        await flushEditors();
+        const current = await resolveSubmit(segment);
+        if (!current) return;
         const latest = await freshAssets();
         if (!latest) {
           toast.error("资产信息读取失败，请稍后重试");
@@ -314,24 +493,88 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
     [
       drama.ratio,
       dramaId,
+      flushEditors,
       freshAssets,
-      key,
       markSubmitting,
       no,
       prefs.overrides,
+      resolveSubmit,
       submitVideo,
       submitting,
       video.model,
     ],
   );
 
+  /**
+   * 目标格式需要转写时，批量前先把待生成片段分组：未转写 / 已过期的问一次
+   * 「转写后生成 / 只生成已转写的」；转写失败的跳过。返回要提交的片段（prompt 已换成转写稿），取消为 null
+   */
+  const prepareBatch = useCallback(
+    async (targets: Segment[]): Promise<Segment[] | null> => {
+      if (format === "seedance") return targets;
+      const hashes = new Map(
+        await Promise.all(
+          targets.map(async (item) => [item.id, await sha256Hex(item.prompt)] as const),
+        ),
+      );
+      const split = splitBatch(targets, format, (item) => hashes.get(item.id) ?? "");
+      const pending = [...split.none, ...split.stale];
+      let picked: "adapt" | "ready" = "ready";
+      if (pending.length > 0) {
+        const label = formatLabel(format);
+        const choice = await chooseOption({
+          title: `有 ${pending.length} 个片段需要先转写为 ${label}`,
+          description:
+            `已就绪 ${split.ready.length} 个；未转写 ${split.none.length} 个；已过期 ${split.stale.length} 个。` +
+            (split.edited > 0 ? `其中 ${split.edited} 个转写稿被手改过，将被覆盖。` : ""),
+          options: [
+            { value: "ready", label: "只生成已转写的" },
+            { value: "adapt", label: "转写后生成", primary: true },
+          ],
+        });
+        if (!choice) return null;
+        picked = choice;
+      }
+      const ids = split.ready.map((item) => item.id);
+      if (picked === "adapt" && pending.length > 0) {
+        const failed: Segment[] = [];
+        const queue = [...pending];
+        const worker = async () => {
+          for (let item = queue.shift(); item; item = queue.shift()) {
+            if (await adapt(item, { force: true })) ids.push(item.id);
+            else failed.push(item);
+          }
+        };
+        await Promise.all(
+          Array.from({ length: Math.min(ADAPT_CONCURRENCY, queue.length) }, worker),
+        );
+        if (failed.length > 0) {
+          toast.error(`${failed.length} 个片段转写失败，已跳过：片段 ${segmentNos(failed)}`);
+        }
+      }
+      return targets
+        .filter((item) => ids.includes(item.id))
+        .map((item) => {
+          const current = latestOf(item.id) ?? item;
+          return { ...current, prompt: submitText(current, format) };
+        });
+    },
+    [adapt, format, latestOf],
+  );
+
   const batch = useCallback<Studio["actions"]["batch"]>(async () => {
-    const targets = batchTargets(useDramaSegmentsStore.getState().byEpisode[key] ?? NO_SEGMENTS);
-    if (targets.length === 0) {
+    const all = batchTargets(useDramaSegmentsStore.getState().byEpisode[key] ?? NO_SEGMENTS);
+    if (all.length === 0) {
       toast.info("没有待生成的片段");
       return;
     }
-    await editor.current?.flush();
+    await flushEditors();
+    const targets = await prepareBatch(all);
+    if (!targets) return;
+    if (targets.length === 0) {
+      toast.info("没有可以直接生成的片段");
+      return;
+    }
     const latest = await freshAssets();
     if (!latest) {
       toast.error("资产信息读取失败，请稍后重试");
@@ -377,11 +620,13 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
   }, [
     drama.ratio,
     dramaId,
+    flushEditors,
     freshAssets,
     key,
     markSubmitting,
     no,
     prefs.overrides,
+    prepareBatch,
     submitVideo,
     video.model,
   ]);
@@ -460,8 +705,11 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
     [patchWithStatus, refresh],
   );
 
-  const registerEditor = useCallback((handle: EditorHandle | null) => {
-    editor.current = handle;
+  const registerEditor = useCallback((handle: EditorHandle) => {
+    editors.current.add(handle);
+    return () => {
+      editors.current.delete(handle);
+    };
   }, []);
 
   const setOverride = useCallback(
@@ -488,6 +736,10 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
     setOverride,
     prompt,
     setDraft,
+    format,
+    adapting,
+    adaptErrors,
+    adaptStateOf,
     plan,
     credits,
     availableCredits,
@@ -495,6 +747,6 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
     reportSave,
     submitting,
     registerEditor,
-    actions: { add, remove, reorder, setSeconds, patch, choose, generate, batch },
+    actions: { add, remove, reorder, setSeconds, patch, choose, generate, batch, adapt },
   };
 }

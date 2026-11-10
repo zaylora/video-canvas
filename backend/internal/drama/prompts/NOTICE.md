@@ -6,7 +6,7 @@
 - drama-skills：<https://github.com/zenstory-ai/drama-skills>；原著研读、资产身份与变体、跨集连续性、资产图片提示词的职责划分，以及 short-drama-storyboard 的镜头职责 / 动作落实 / 空间连续性与 short-drama-video-prompts 的起止状态 / 对白时机 / 稳定资产绑定规则参考；MIT License。storyboard.md 按本项目片段 JSON 契约独立重写。版权声明：Copyright (c) 2026 drama-skills contributors。许可证原文：<https://github.com/zenstory-ai/drama-skills/blob/main/LICENSE>。
 - shuohao-skills：<https://github.com/eternityspring/shuohao-skills>；大纲、分集剧本、人物与音色字段设计参考；Apache License, Version 2.0。许可证原文：<https://github.com/eternityspring/shuohao-skills/blob/main/LICENSE>，标准许可文本：<https://www.apache.org/licenses/LICENSE-2.0>。本项目重写了相关表达，并改用本项目结构化输入输出；未复制上游文件或模板。
 
-- manju-laoli-skill：<https://github.com/lixiaoxiao9888-create/manju-laoli-skill>；短剧剧本格式与对白口语化、角色 / 场景 / 道具三表提取与复用判定、资产图构图，以及 Seedance 站位声明、光影单一基准、禁比喻修辞、对白语气位和 MiniMax H3 字段与硬约束的思路参考（`storyboard_seedance.md`、`storyboard_h3.md`、`scripts.md`、`breakdown.md`、`asset_prompts.md`）；MIT License。版权声明：Copyright (c) 2026 Short-Drama Director Suite contributors。许可证原文：<https://github.com/lixiaoxiao9888-create/manju-laoli-skill/blob/main/LICENSE>。本项目用自己的话重写，改用本项目 JSON 契约，未复制上游文件。确认许可证日期：2026-11-04。
+- manju-laoli-skill：<https://github.com/lixiaoxiao9888-create/manju-laoli-skill>；短剧剧本格式与对白口语化、角色 / 场景 / 道具三表提取与复用判定、资产图构图，以及 Seedance 站位声明、光影单一基准、禁比喻修辞、对白语气位和 MiniMax H3 字段与硬约束的思路参考（`storyboard.md`、`adapt_h3.md`、`adapt_generic.md`、`scripts.md`、`breakdown.md`、`asset_prompts.md`）；MIT License。版权声明：Copyright (c) 2026 Short-Drama Director Suite contributors。许可证原文：<https://github.com/lixiaoxiao9888-create/manju-laoli-skill/blob/main/LICENSE>。本项目用自己的话重写，改用本项目 JSON 契约，未复制上游文件。确认许可证日期：2026-11-04。
 - 另有本机 h3-prompt-writing 技能与 dexhunter/seedance2-skill 仅用于对照字段结构和写法思路，许可证未确认，未复制其文本。
 
 huobao-drama 使用 CC BY-NC-SA 4.0；本目录不使用、不改编、不复制该项目的任何文本。

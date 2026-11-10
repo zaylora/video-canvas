@@ -65,6 +65,11 @@ func (s *DramaSegmentService) Update(ctx context.Context, userID, sid uint64, re
 		if req.Prompt != nil {
 			row.Prompt = *req.Prompt
 		}
+		if req.Adaptation != nil {
+			if err := editAdaptation(row, req.Adaptation); err != nil {
+				return err
+			}
+		}
 		if req.Seconds != nil {
 			row.Seconds = *req.Seconds
 		}

@@ -173,7 +173,13 @@ function Workspace({ id }: { id: string }) {
                 {stage === "assets" && (
                   <AssetsArea ep={ep} onBreakdownOpen={() => setBreakdownOpen(true)} />
                 )}
-                {stage === "studio" && <StudioArea ep={ep} onGo={nav.go} />}
+                {stage === "studio" && (
+                  <StudioArea
+                    ep={ep}
+                    onGo={nav.go}
+                    onBreakdownOpen={() => setBreakdownOpen(true)}
+                  />
+                )}
                 {stage === "final" && <FinalArea ep={ep} onGo={nav.go} />}
               </main>
             </div>

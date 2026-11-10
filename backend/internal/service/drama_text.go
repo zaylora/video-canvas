@@ -37,7 +37,7 @@ func (s *DramaService) callDrama(ctx context.Context, j *model.DramaJob, snap *p
 		} else {
 			vars["known_cast"] = cfg.KnownCast
 		}
-		template, body := dramaTemplate(step, vars, cfg.Prompt)
+		template, body := dramaTemplate(step, cfg.Prompt)
 		prompt, e := drama.PromptWithBody(template, vars, body)
 		if e != nil {
 			return nil, 0, e
@@ -72,13 +72,12 @@ func (s *DramaService) callDrama(ctx context.Context, j *model.DramaJob, snap *p
 }
 
 // dramaTemplate 选择本次调用的模板与正文：用户自写或技能提示词是「替换正文、Schema 固定」，始终用用户正文；
-// 内置来源时始终用当前内置模板（分镜再按 vars["prompt_format"] 取平台变体），已有项目也随发版拿到新提示词。
-func dramaTemplate(step string, vars map[string]any, setting model.DramaPromptSetting) (template, body string) {
+// 内置来源时始终用当前内置模板，已有项目也随发版拿到新提示词。
+func dramaTemplate(step string, setting model.DramaPromptSetting) (template, body string) {
 	if setting.Source == "" || setting.Source == "builtin" {
 		// 内置来源不读项目快照里的正文副本：那是建项目时复制的，发版更新内置提示词后会过期。
 		// 空正文让 PromptWithBody 直接用当前内置模板。
-		format, _ := vars["prompt_format"].(string)
-		return drama.PromptVariant(step, format), ""
+		return step, ""
 	}
 	return step, setting.Bodies[step]
 }

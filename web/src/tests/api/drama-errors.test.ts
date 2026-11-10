@@ -76,3 +76,16 @@ describe("二期错误码（契约 §12）", () => {
     expect(isRevisionConflict(err(40900, 409))).toBe(true);
   });
 });
+
+describe("转写错误码", () => {
+  test("正在转写（409）不是 revision 冲突", () => {
+    expect(isRevisionConflict(err(DRAMA_ERR.adaptBusy, 409))).toBe(false);
+  });
+  test("各有本地文案", () => {
+    expect(dramaErrorMessage(err(DRAMA_ERR.adaptFormat, 400, ""))).toContain("格式");
+    expect(dramaErrorMessage(err(DRAMA_ERR.adaptEmpty, 400, ""))).toContain("原稿");
+    expect(dramaErrorMessage(err(DRAMA_ERR.adaptBusy, 409, ""))).toContain("正在转写");
+    expect(dramaErrorMessage(err(DRAMA_ERR.adaptInvalid, 502, ""))).toContain("重试");
+    expect(dramaErrorMessage(err(DRAMA_ERR.adaptMissing, 400, ""))).toContain("转写稿");
+  });
+});

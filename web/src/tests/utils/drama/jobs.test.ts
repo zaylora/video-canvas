@@ -10,6 +10,7 @@ import {
   jobStage,
   isActiveJob,
   isPipelineJob,
+  jobConflictReason,
   userJobs,
   planningRow,
   planningEtaMinutes,
@@ -121,6 +122,38 @@ describe("展示与禁用原因", () => {
       "分集剧本",
     );
     expect(busyReason([job({ status: "queued" })])).not.toBeNull();
+  });
+
+  test("jobConflictReason 与后端同规则：分镜/合成只和同一集的分镜/合成冲突", () => {
+    const sb3 = job({ step: "storyboard", episodes: [3] });
+    expect(jobConflictReason([sb3], "storyboard", [4])).toBeNull();
+    expect(jobConflictReason([sb3], "storyboard", [3])).toContain("第 3 集");
+    expect(jobConflictReason([sb3], "compose", [3])).toContain("分镜脚本");
+    expect(jobConflictReason([sb3], "compose", [5])).toBeNull();
+    expect(
+      jobConflictReason(
+        [job({ step: "storyboard", episodes: [3], status: "succeeded" })],
+        "storyboard",
+        [3],
+      ),
+    ).toBeNull();
+    // 文本任务不挡分镜，分镜也不挡文本任务
+    expect(
+      jobConflictReason([job({ step: "scripts", episodes: [3] })], "storyboard", [3]),
+    ).toBeNull();
+    expect(jobConflictReason([sb3], "breakdown", [3])).toBeNull();
+    // 文本任务之间互斥，不看集号
+    expect(
+      jobConflictReason([job({ step: "scripts", episodes: [1] })], "breakdown", [9]),
+    ).toContain("分集剧本");
+    // 自动规划不挡用户任务
+    expect(
+      jobConflictReason([job({ step: "plan", lane: "pipeline", episodes: [] })], "storyboard", [3]),
+    ).toBeNull();
+    // 没写集号的非文本任务按全项目算
+    expect(
+      jobConflictReason([job({ step: "compose", episodes: [] })], "storyboard", [3]),
+    ).not.toBeNull();
   });
 
   test("isActiveJob", () => {
