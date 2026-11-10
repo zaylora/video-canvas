@@ -3,6 +3,7 @@ package repository_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -76,5 +77,35 @@ func TestDramaSegmentRepository_IsolationTakesAndRevision(t *testing.T) {
 	}
 	if _, err := r.SegmentEpisode(ctx, 1, ep.ID); !errors.Is(err, repository.ErrNotFound) {
 		t.Fatalf("已删除项目不得读取下属集：%v", err)
+	}
+}
+
+// 转写稿存在 adaptations 列；保存片段时漏写这一列，转写会返回成功却什么都没存下。
+func TestDramaSegmentRepository_SavesAdaptations(t *testing.T) {
+	db := isolatedDB(t, &model.DramaProject{}, &model.DramaEpisode{}, &model.DramaSegment{})
+	ctx := context.Background()
+	p := model.DramaProject{UserID: 1, CanvasID: 9, Title: "剧", SourceText: "文", StyleKey: "real_city_film"}
+	if err := db.Create(&p).Error; err != nil {
+		t.Fatal(err)
+	}
+	ep := model.DramaEpisode{UserID: 1, DramaID: p.ID, No: 1}
+	if err := db.Create(&ep).Error; err != nil {
+		t.Fatal(err)
+	}
+	r := repository.NewDramaRepository(db)
+	seg := model.DramaSegment{UserID: 1, EpisodeID: ep.ID, Seconds: 5, Prompt: "原稿", Revision: 1}
+	if err := r.SaveSegment(ctx, &seg, 0); err != nil {
+		t.Fatal(err)
+	}
+	seg.Adaptations = []byte(`{"h3":{"prompt":"转写稿","source_hash":"abc","edited":false,"updated_at":"2026-11-10T00:00:00Z"}}`)
+	if err := r.SaveSegment(ctx, &seg, 1); err != nil {
+		t.Fatal(err)
+	}
+	got, err := r.Segment(ctx, 1, seg.ID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(got.Adaptations), "转写稿") || got.Revision != 2 {
+		t.Fatalf("转写稿没有存下：revision=%d adaptations=%s", got.Revision, got.Adaptations)
 	}
 }

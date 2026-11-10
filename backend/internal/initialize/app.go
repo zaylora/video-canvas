@@ -183,6 +183,8 @@ func NewApp(cfg *config.Config) (*App, error) {
 		// 列表封面：资产画布里第一张生成成功的图，和画布列表一样取缩略图
 		Covers: dramaRepo, CoverURL: func(key string) string { return assetSvc.FileURL(key) + "?v=thumb" },
 	})
+	// 片场转写用短剧服务的文本模型调用；两者互相依赖，组装完再注入。
+	dramaSegments.SetAdapter(dramaSvc)
 
 	// 配置服务反向依赖插件宿主与任务服务，所以组装完后再注入。
 	aiCfgSvc.SetDryRunner(executor)

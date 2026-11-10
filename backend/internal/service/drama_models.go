@@ -8,7 +8,6 @@ import (
 	"math"
 	"strconv"
 
-	"video-canvas/internal/drama"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/provider"
@@ -95,19 +94,6 @@ func (s *DramaService) storyboardSeconds(ctx context.Context, p *model.DramaProj
 		return storyboardDefaultSeconds, nil
 	}
 	return min(storyboardMaxSecondsLimit, max(storyboardMinSeconds, int(math.Floor(maxSeconds)))), nil
-}
-
-// storyboardPromptFormat 读项目视频模型的 capabilities.prompt_format（generic / seedance / h3）；
-// 没选视频模型、模型不可用或写法未知都按通用处理，不让分镜因此失败。
-func (s *DramaService) storyboardPromptFormat(ctx context.Context, p *model.DramaProject) string {
-	if p.VideoModel == "" || s.registry == nil {
-		return drama.PromptFormatGeneric
-	}
-	snap, err := s.registry.Snapshot(ctx, p.VideoModel)
-	if err != nil || snap == nil {
-		return drama.PromptFormatGeneric
-	}
-	return drama.NormalizePromptFormat(snap.Model.Capabilities.PromptFormat)
 }
 
 // modelMaxSeconds 读模型 duration 参数的上限：number 取 max，enum 取数字选项里最大的；没有时长参数返回 false。

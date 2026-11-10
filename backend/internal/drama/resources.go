@@ -41,12 +41,13 @@ var promptTemplates = map[string]string{
 	"breakdown":     loadPrompt("breakdown"),
 	"asset_prompts": loadPrompt("asset_prompts"),
 	"storyboard":    loadPrompt("storyboard"),
-	// 分镜的平台变体：输入变量、Schema 和校验与通用版完全相同，只有「提示词正文」的写法不同
-	"storyboard_seedance": loadPrompt("storyboard_seedance"),
-	"storyboard_h3":       loadPrompt("storyboard_h3"),
+	// 片场把 Seedance 原稿转写成其他平台写法；输入是单个片段，输出只有 prompt
+	"adapt_h3":      loadPrompt("adapt_h3"),
+	"adapt_generic": loadPrompt("adapt_generic"),
 }
 
 // PromptFormat 取值：视频模型能力里的 prompt_format，空串或未知值都按通用处理。
+// 分镜固定写 seedance 原稿；generic 与 h3 只在片场转写时使用。
 const (
 	PromptFormatGeneric  = "generic"
 	PromptFormatSeedance = "seedance"
@@ -60,16 +61,6 @@ func NormalizePromptFormat(format string) string {
 		return format
 	}
 	return PromptFormatGeneric
-}
-
-// PromptVariant 返回某步骤在指定平台写法下使用的模板名；该步骤没有对应变体时回落步骤本身。
-func PromptVariant(step, format string) string {
-	if format = NormalizePromptFormat(format); format != PromptFormatGeneric {
-		if _, ok := promptTemplates[step+"_"+format]; ok {
-			return step + "_" + format
-		}
-	}
-	return step
 }
 
 // loadPrompt 读取编译期常量模板；丢失内置资源属于不可恢复的启动错误。

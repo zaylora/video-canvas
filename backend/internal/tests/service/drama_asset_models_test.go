@@ -261,23 +261,16 @@ func runStoryboardWithFormat(t *testing.T, format string, promptSettings string)
 	return e.prompts[0]
 }
 
-func TestDramaStoryboardPicksTemplateByPromptFormat(t *testing.T) {
+// 分镜固定写 Seedance 原稿：不管项目视频模型声明哪种写法，都用 Seedance 模板，平台适配交给片场转写。
+func TestDramaStoryboardAlwaysSeedance(t *testing.T) {
 	const seedanceMark, h3Mark = "即梦 / Seedance", "integrated_multimodal_description"
-	for _, tc := range []struct {
-		name, format, wantFormat string
-		seedance, h3             bool
-	}{
-		{"seedance", "seedance", "seedance", true, false},
-		{"h3", "h3", "h3", false, true},
-		{"空串用通用", "", "generic", false, false},
-		{"未知值回落通用", "sora", "generic", false, false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			prompt := runStoryboardWithFormat(t, tc.format, "")
-			if strings.Contains(prompt, seedanceMark) != tc.seedance || strings.Contains(prompt, h3Mark) != tc.h3 {
-				t.Fatalf("选错模板:\n%s", prompt)
+	for _, format := range []string{"seedance", "h3", "", "sora"} {
+		t.Run("模型写法="+format, func(t *testing.T) {
+			prompt := runStoryboardWithFormat(t, format, "")
+			if !strings.Contains(prompt, seedanceMark) || strings.Contains(prompt, h3Mark) {
+				t.Fatalf("应固定用 Seedance 模板:\n%s", prompt)
 			}
-			for _, want := range []string{`"prompt_format":"` + tc.wantFormat + `"`, `"max_seconds":12`, "硬约束：每段seconds不得超过max_seconds", `"required":["segments"]`} {
+			for _, want := range []string{`"prompt_format":"seedance"`, `"max_seconds":12`, "硬约束：每段seconds不得超过max_seconds", `"required":["segments"]`} {
 				if !strings.Contains(prompt, want) {
 					t.Fatalf("提示词缺少 %s", want)
 				}
@@ -305,11 +298,11 @@ func TestDramaStoryboardCustomPromptNotOverriddenByFormat(t *testing.T) {
 	custom := `{"video":{"source":"mine","id":3,"label":"我的 · 自写","bodies":{"storyboard":"自写正文：只写一句话"}}}`
 	for _, format := range []string{"seedance", "h3"} {
 		prompt := runStoryboardWithFormat(t, format, custom)
-		if !strings.Contains(prompt, "自写正文：只写一句话") || strings.Contains(prompt, "即梦 / Seedance") || strings.Contains(prompt, "integrated_multimodal_description") {
+		if !strings.Contains(prompt, "自写正文：只写一句话") || strings.Contains(prompt, "目标平台是即梦 / Seedance") || strings.Contains(prompt, "integrated_multimodal_description") {
 			t.Fatalf("用户正文被平台模板覆盖:\n%s", prompt)
 		}
-		// 用户提示词也能拿到时长上限与平台写法
-		for _, want := range []string{`"prompt_format":"` + format + `"`, `"max_seconds":12`} {
+		// 用户提示词也能拿到时长上限；写法固定为 seedance
+		for _, want := range []string{`"prompt_format":"seedance"`, `"max_seconds":12`} {
 			if !strings.Contains(prompt, want) {
 				t.Fatalf("变量缺少 %s", want)
 			}

@@ -443,6 +443,29 @@ export interface BackendSegmentView {
   status: SegmentStatus;
   revision: number;
   updated_at: string;
+  /** 按格式存的转写稿；老后端可能没有 */
+  adaptations?: Partial<Record<AdaptFormat, BackendSegmentAdaptation>> | null;
+}
+
+/** 需要转写的提示词格式（Seedance 是原稿本身，不存转写稿） */
+export type AdaptFormat = "h3" | "generic";
+
+export interface BackendSegmentAdaptation {
+  prompt: string;
+  source_hash: string;
+  edited: boolean;
+  updated_at: string;
+}
+
+/** 一份转写稿 */
+export interface SegmentAdaptation {
+  /** `@[名](节点id)` 写法的转写结果 */
+  prompt: string;
+  /** 转写时原稿全文的 SHA-256（小写 hex）；与当前原稿不同 = 已过期 */
+  sourceHash: string;
+  /** 用户手改过；重新转写前要确认覆盖 */
+  edited: boolean;
+  updatedAt: string;
 }
 
 /** 片段的一次视频生成结果 */
@@ -469,6 +492,8 @@ export interface Segment {
   status: SegmentStatus;
   revision: number;
   updatedAt: string;
+  /** 按格式存的转写稿（原稿始终是 prompt，Seedance 格式） */
+  adaptations: Partial<Record<AdaptFormat, SegmentAdaptation>>;
 }
 
 /** PATCH /drama-segments/:sid 可改字段 */
@@ -477,6 +502,14 @@ export interface UpdateSegmentInput {
   prompt?: string;
   seconds?: number;
   chosenTaskId?: string;
+  /** 手改某个格式的转写稿 */
+  adaptation?: { format: AdaptFormat; prompt: string };
+}
+
+/** POST /drama-segments/:sid/adapt 请求体 */
+export interface AdaptSegmentInput {
+  format: AdaptFormat;
+  revision: number;
 }
 
 /** POST /dramas/:id/episodes/:no/segments 请求体 */

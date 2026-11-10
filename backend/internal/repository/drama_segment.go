@@ -60,8 +60,8 @@ func (r *DramaRepository) SaveSegment(ctx context.Context, row *model.DramaSegme
 	now := time.Now()
 	res := r.db.WithContext(ctx).Model(&model.DramaSegment{}).Where("user_id = ? AND episode_id = ? AND id = ? AND revision = ?", row.UserID, row.EpisodeID, row.ID, revision).Updates(map[string]any{
 		"seq": row.Seq, "seconds": row.Seconds, "prompt": row.Prompt,
-		"chosen_task_id": row.ChosenTaskID,
-		"revision":       gorm.Expr("revision + 1"), "updated_at": now,
+		"chosen_task_id": row.ChosenTaskID, "adaptations": segmentAdaptations(row.Adaptations),
+		"revision": gorm.Expr("revision + 1"), "updated_at": now,
 	})
 	if res.Error != nil {
 		return res.Error
@@ -161,4 +161,12 @@ func sameChosenTask(a, b *uint64) bool {
 		return a == nil && b == nil
 	}
 	return *a == *b
+}
+
+// segmentAdaptations 空值按空对象写入：列是 NOT NULL，旧代码构造的片段可能没带这一列。
+func segmentAdaptations(raw []byte) []byte {
+	if len(raw) == 0 {
+		return []byte("{}")
+	}
+	return raw
 }

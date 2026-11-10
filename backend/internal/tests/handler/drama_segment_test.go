@@ -18,7 +18,8 @@ import (
 func segmentHTTP() (*gin.Engine, *dramasegmentfake.Repo) {
 	gin.SetMode(gin.TestMode)
 	repo := dramasegmentfake.New()
-	h := handler.NewDramaSegmentHandler(service.NewDramaSegmentService(service.DramaSegmentDeps{Repo: repo, Tasks: repo, Assets: repo, Broadcaster: repo}))
+	adapter := &dramasegmentfake.Adapter{Out: "integrated_multimodal_description: 转写稿"}
+	h := handler.NewDramaSegmentHandler(service.NewDramaSegmentService(service.DramaSegmentDeps{Repo: repo, Tasks: repo, Assets: repo, Broadcaster: repo, Adapter: adapter}))
 	r := gin.New()
 	r.Use(func(c *gin.Context) { c.Set(middleware.CtxUserIDKey, uint(1)); c.Next() })
 	r.GET("/dramas/:id/episodes/:no/segments", h.List)
@@ -27,6 +28,7 @@ func segmentHTTP() (*gin.Engine, *dramasegmentfake.Repo) {
 	r.PATCH("/drama-segments/:sid", h.Update)
 	r.DELETE("/drama-segments/:sid", h.Delete)
 	r.POST("/drama-segments/:sid/generate", h.Generate)
+	r.POST("/drama-segments/:sid/adapt", h.Adapt)
 	return r, repo
 }
 
@@ -86,5 +88,37 @@ func TestDramaSegmentHandler_IdempotencyAndEmptyView(t *testing.T) {
 	r.ServeHTTP(w, req)
 	if w.Code != 202 || repo.IdempotencyKey != "segment-request" || repo.Created.Kind != "video" || repo.Created.CanvasID != 9 {
 		t.Fatalf("幂等头未正确传递：status=%d key=%s req=%+v", w.Code, repo.IdempotencyKey, repo.Created)
+	}
+}
+
+func TestDramaSegmentHandler_Adapt(t *testing.T) {
+	r, _ := segmentHTTP()
+	_, body := characterCall(t, r, "POST", "/dramas/"+idcodec.Encode(7)+"/episodes/1/segments", `{"prompt":"原稿"}`)
+	base := "/drama-segments/" + responseData(t, body)["id"].(string)
+	for _, tc := range []struct {
+		method, path, body string
+		status, code       int
+	}{
+		{"POST", base + "/adapt", `{"format":"seedance","revision":1}`, 400, 10001},
+		{"POST", base + "/adapt", `{"format":"h3"}`, 400, 10001},
+		{"POST", base + "/adapt", `{"format":"h3","revision":9}`, 409, errcode.ErrCanvasConflict.Code},
+		{"PATCH", base, `{"revision":1,"adaptation":{"format":"h3","prompt":"手改"}}`, 400, errcode.ErrDramaAdaptMissing.Code},
+		{"POST", base + "/adapt", `{"format":"h3","revision":1}`, 200, 0},
+		{"PATCH", base, `{"revision":2,"adaptation":{"format":"h3","prompt":"手改"}}`, 200, 0},
+		{"PATCH", base, `{"revision":3,"adaptation":{"format":"sora","prompt":"x"}}`, 400, 10001},
+		{"POST", "/drama-segments/" + idcodec.Encode(255) + "/adapt", `{"format":"h3","revision":1}`, 404, 67009},
+	} {
+		t.Run(tc.method+tc.path+tc.body, func(t *testing.T) {
+			gotStatus, gotBody := characterCall(t, r, tc.method, tc.path, tc.body)
+			if gotStatus != tc.status || responseCode(t, gotBody) != tc.code {
+				t.Fatalf("status=%d body=%+v", gotStatus, gotBody)
+			}
+		})
+	}
+	// 视图带转写稿，手改后 edited 为 true
+	_, body = characterCall(t, r, "PATCH", base, `{"revision":3,"adaptation":{"format":"h3","prompt":"再改"}}`)
+	h3, ok := responseData(t, body)["adaptations"].(map[string]any)["h3"].(map[string]any)
+	if !ok || h3["prompt"] != "再改" || h3["edited"] != true || h3["source_hash"] == "" {
+		t.Fatalf("转写稿视图：%+v", body)
 	}
 }

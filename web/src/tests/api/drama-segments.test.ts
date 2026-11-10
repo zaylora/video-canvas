@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test, type Mock } from "bun:test";
 
 import {
+  adaptSegment,
   addSegment,
   deleteEpisode,
   deleteSegment,
@@ -225,5 +226,38 @@ describe("api/drama：片段请求", () => {
     expect(post.mock.calls[0][1]).toEqual(body);
     expect(post.mock.calls[0][2]).toMatchObject({ headers: { "Idempotency-Key": "key-1" } });
     expect(result.task.id).toBe("1");
+  });
+});
+
+describe("api/drama：转写稿（片场平台适配）", () => {
+  test("adaptations 映射为 camelCase；缺省为空对象", () => {
+    const seg = mapSegment(
+      rawSegment({
+        adaptations: {
+          h3: { prompt: "integrated", source_hash: "abc", edited: true, updated_at: "t" },
+        },
+      }),
+    );
+    expect(seg.adaptations).toEqual({
+      h3: { prompt: "integrated", sourceHash: "abc", edited: true, updatedAt: "t" },
+    });
+    expect(mapSegment(rawSegment({ adaptations: undefined })).adaptations).toEqual({});
+  });
+
+  test("改转写稿：adaptation 原样带上", () => {
+    expect(
+      toSegmentUpdateBody({ revision: 3, adaptation: { format: "h3", prompt: "新" } }),
+    ).toEqual({ revision: 3, adaptation: { format: "h3", prompt: "新" } });
+  });
+
+  test("转写：POST /adapt，静默，返回片段", async () => {
+    const post = spyOn(service, "post");
+    post.mockResolvedValue(rawSegment({ revision: 4 }));
+    const seg = await adaptSegment("5d2a", { format: "generic", revision: 3 });
+    expect(post.mock.calls[0][0]).toBe("/drama-segments/5d2a/adapt");
+    expect(post.mock.calls[0][1]).toEqual({ format: "generic", revision: 3 });
+    expect(post.mock.calls[0][2]).toMatchObject({ silent: true });
+    expect(seg.revision).toBe(4);
+    post.mockRestore();
   });
 });

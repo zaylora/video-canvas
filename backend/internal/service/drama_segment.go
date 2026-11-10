@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"sync"
 
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
@@ -45,14 +46,19 @@ type DramaSegmentDeps struct {
 	Tasks       DramaSegmentTaskCreator
 	Assets      DramaSegmentAssetReader
 	Broadcaster ws.Broadcaster
+	// Adapter 转写原稿；为 nil 时转写返回「没有可用的 Agent 模型」
+	Adapter DramaSegmentAdapter
 }
 
 // DramaSegmentService 管理片段编辑、真实任务结果与自动采用。
 type DramaSegmentService struct {
-	repo   DramaSegmentRepo
-	tasks  DramaSegmentTaskCreator
-	assets DramaSegmentAssetReader
-	bc     ws.Broadcaster
+	repo    DramaSegmentRepo
+	tasks   DramaSegmentTaskCreator
+	assets  DramaSegmentAssetReader
+	bc      ws.Broadcaster
+	adapter DramaSegmentAdapter
+	// adapting 是进程内的转写锁，键为「片段:格式」
+	adapting sync.Map
 }
 
 // NewDramaSegmentService 创建独立片段服务，任务状态观察者由initialize组装。
@@ -61,7 +67,7 @@ func NewDramaSegmentService(d DramaSegmentDeps) *DramaSegmentService {
 	if bc == nil {
 		bc = ws.NopBroadcaster{}
 	}
-	return &DramaSegmentService{repo: d.Repo, tasks: d.Tasks, assets: d.Assets, bc: bc}
+	return &DramaSegmentService{repo: d.Repo, tasks: d.Tasks, assets: d.Assets, bc: bc, adapter: d.Adapter}
 }
 
 // List 校验用户项目后按顺序返回片段，并恢复漏处理的成功任务写回。

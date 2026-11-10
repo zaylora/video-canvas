@@ -87,32 +87,20 @@ func TestStoryboardTimelineOverrun(t *testing.T) {
 	}
 }
 
-func TestStoryboardPromptVariants(t *testing.T) {
-	vars := map[string]any{"max_seconds": 12, "prompt_format": "x"}
-	for _, tc := range []struct{ format, want, mark string }{
-		{"seedance", "storyboard_seedance", "即梦 / Seedance"},
-		{"h3", "storyboard_h3", "integrated_multimodal_description"},
-		{"", "storyboard", ""},
-		{"unknown", "storyboard", ""},
-	} {
-		if got := drama.PromptVariant("storyboard", tc.format); got != tc.want {
-			t.Fatalf("format=%q got %s", tc.format, got)
-		}
-		prompt, err := drama.Prompt(drama.PromptVariant("storyboard", tc.format), vars)
-		if err != nil {
-			t.Fatal(err)
-		}
-		// 三个模板共享输出 Schema 与硬约束，差别只在正文
-		for _, shared := range []string{`"required":["segments"]`, "max_seconds", "@[名称](node_id)", "放不下就拆"} {
-			if !strings.Contains(prompt, shared) {
-				t.Fatalf("%s 缺少 %s", tc.want, shared)
-			}
-		}
-		if tc.mark != "" && !strings.Contains(prompt, tc.mark) {
-			t.Fatalf("%s 缺少 %s", tc.want, tc.mark)
+// 分镜固定写 Seedance 原稿，平台适配挪到片场转写；旧的平台变体不再存在。
+func TestStoryboardPromptIsSeedance(t *testing.T) {
+	prompt, err := drama.Prompt("storyboard", map[string]any{"max_seconds": 12})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"即梦 / Seedance", `"required":["segments"]`, "max_seconds", "@[名称](node_id)", "放不下就拆"} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("分镜模板缺少 %s", want)
 		}
 	}
-	if drama.PromptVariant("scripts", "seedance") != "scripts" {
-		t.Fatal("没有变体的步骤应回落步骤本身")
+	for _, gone := range []string{"storyboard_seedance", "storyboard_h3"} {
+		if _, err := drama.Prompt(gone, map[string]any{}); err == nil {
+			t.Fatalf("%s 应已删除", gone)
+		}
 	}
 }

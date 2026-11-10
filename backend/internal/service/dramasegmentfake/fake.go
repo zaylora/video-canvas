@@ -6,6 +6,7 @@ import (
 	"slices"
 	"time"
 
+	"video-canvas/internal/drama"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/idcodec"
 	"video-canvas/internal/pkg/ws"
@@ -231,4 +232,31 @@ func sameChosen(a, b *uint64) bool {
 // Jobs 片段测试默认没有短剧媒体任务。
 func (r *Repo) Jobs(context.Context, uint64, uint64, bool) ([]model.DramaJob, error) {
 	return []model.DramaJob{}, nil
+}
+
+// Adapter 模拟文本模型转写：返回预设的 Out / Err；Gate 非空时阻塞到被关闭，用来测并发。
+type Adapter struct {
+	Out    string
+	Err    error
+	Calls  []drama.AdaptInput
+	Format []string
+	Gate   chan struct{}
+	// Entered 非空时，每次进入转写先发一个信号，测试据此确认第一次调用已经拿到锁
+	Entered chan struct{}
+	Mutate  func()
+}
+
+// AdaptSegment 记录输入并返回预设结果；Mutate 在返回前执行，模拟转写期间用户改了原稿。
+func (a *Adapter) AdaptSegment(_ context.Context, _ *model.DramaProject, format string, in drama.AdaptInput) (string, error) {
+	a.Calls, a.Format = append(a.Calls, in), append(a.Format, format)
+	if a.Entered != nil {
+		a.Entered <- struct{}{}
+	}
+	if a.Gate != nil {
+		<-a.Gate
+	}
+	if a.Mutate != nil {
+		a.Mutate()
+	}
+	return a.Out, a.Err
 }

@@ -9,6 +9,8 @@ import type {
   BackendEpisodeView,
   BackendJobView,
   BackendSegmentView,
+  AdaptFormat,
+  AdaptSegmentInput,
   AddSegmentInput,
   BackendSourcePreflight,
   CreateDramaInput,
@@ -166,7 +168,23 @@ export const mapSegment = (raw: BackendSegmentView): Segment => ({
   status: raw.status,
   revision: raw.revision,
   updatedAt: raw.updated_at,
+  adaptations: mapAdaptations(raw.adaptations),
 });
+
+/** 转写稿 snake→camel；缺省为空对象 */
+const mapAdaptations = (raw: BackendSegmentView["adaptations"]): Segment["adaptations"] => {
+  const out: Segment["adaptations"] = {};
+  for (const [format, item] of Object.entries(raw ?? {})) {
+    if (!item) continue;
+    out[format as AdaptFormat] = {
+      prompt: item.prompt ?? "",
+      sourceHash: item.source_hash ?? "",
+      edited: !!item.edited,
+      updatedAt: item.updated_at ?? "",
+    };
+  }
+  return out;
+};
 
 /** 去掉值为 undefined 的键，PATCH 只发要改的字段 */
 const compact = <T extends Record<string, unknown>>(body: T): Partial<T> =>
@@ -252,6 +270,7 @@ export const toSegmentUpdateBody = (input: UpdateSegmentInput) =>
     prompt: input.prompt,
     seconds: input.seconds,
     chosen_task_id: input.chosenTaskId,
+    adaptation: input.adaptation,
   });
 
 /** 获取题材与画风清单 */
@@ -483,6 +502,17 @@ export const addSegment = async (
 export const updateSegment = async (sid: string, input: UpdateSegmentInput): Promise<Segment> =>
   mapSegment(
     await service.patch<BackendSegmentView>(`/drama-segments/${sid}`, toSegmentUpdateBody(input), {
+      silent: true,
+    }),
+  );
+
+/**
+ * 把原稿转写成某个平台格式（同步，可能几十秒）；返回带新转写稿的片段。
+ * 静默：失败原因由片场就地展示
+ */
+export const adaptSegment = async (sid: string, input: AdaptSegmentInput): Promise<Segment> =>
+  mapSegment(
+    await service.post<BackendSegmentView>(`/drama-segments/${sid}/adapt`, input, {
       silent: true,
     }),
   );

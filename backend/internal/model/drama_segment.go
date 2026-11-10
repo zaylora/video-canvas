@@ -3,6 +3,8 @@ package model
 import (
 	"time"
 
+	"gorm.io/datatypes"
+
 	"video-canvas/internal/pkg/idcodec" //nolint:depguard // 对外 ID 与短剧项目沿用十六进制契约
 )
 
@@ -15,7 +17,17 @@ type DramaSegment struct {
 	Seconds      int    `gorm:"not null;default:5"`
 	Prompt       string `gorm:"type:text;not null;default:''"`
 	ChosenTaskID *uint64
-	Revision     int64 `gorm:"not null;default:1"`
+	// Adaptations 按格式（h3 / generic）存原稿的转写稿，值为 DramaSegmentAdaptation；原稿就是 Seedance，不存 seedance 键
+	Adaptations datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
+	Revision    int64          `gorm:"not null;default:1"`
+}
+
+// DramaSegmentAdaptation 是一份转写稿；SourceHash 是转写时原稿的 SHA-256，与当前原稿不同即已过期。
+type DramaSegmentAdaptation struct {
+	Prompt     string    `json:"prompt"`
+	SourceHash string    `json:"source_hash"`
+	Edited     bool      `json:"edited"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 // TableName 返回片段表名。
@@ -32,16 +44,17 @@ type DramaSegmentTakeView struct {
 
 // DramaSegmentView 是片段工作区和 WebSocket 共用视图。
 type DramaSegmentView struct {
-	ID           idcodec.ID             `json:"id"`
-	EpisodeNo    int                    `json:"episode_no"`
-	Seq          int                    `json:"seq"`
-	Seconds      int                    `json:"seconds"`
-	Prompt       string                 `json:"prompt"`
-	Takes        []DramaSegmentTakeView `json:"takes"`
-	ChosenTaskID string                 `json:"chosen_task_id"`
-	Status       string                 `json:"status"`
-	Revision     int64                  `json:"revision"`
-	UpdatedAt    time.Time              `json:"updated_at"`
+	ID           idcodec.ID                        `json:"id"`
+	EpisodeNo    int                               `json:"episode_no"`
+	Seq          int                               `json:"seq"`
+	Seconds      int                               `json:"seconds"`
+	Prompt       string                            `json:"prompt"`
+	Adaptations  map[string]DramaSegmentAdaptation `json:"adaptations"`
+	Takes        []DramaSegmentTakeView            `json:"takes"`
+	ChosenTaskID string                            `json:"chosen_task_id"`
+	Status       string                            `json:"status"`
+	Revision     int64                             `json:"revision"`
+	UpdatedAt    time.Time                         `json:"updated_at"`
 }
 
 // CreateDramaSegmentReq 新增片段，after_seq 未传则追加到末尾。
@@ -57,6 +70,20 @@ type UpdateDramaSegmentReq struct {
 	Prompt       *string     `json:"prompt"`
 	Seconds      *int        `json:"seconds" binding:"omitempty,min=1" label:"片段时长"`
 	ChosenTaskID *idcodec.ID `json:"chosen_task_id"`
+	// Adaptation 手改某个格式的转写稿；该格式必须已经转写过
+	Adaptation *DramaSegmentAdaptationEdit `json:"adaptation"`
+}
+
+// DramaSegmentAdaptationEdit 是对一份转写稿的手改。
+type DramaSegmentAdaptationEdit struct {
+	Format string `json:"format" binding:"required,oneof=h3 generic" label:"转写格式"`
+	Prompt string `json:"prompt"`
+}
+
+// AdaptDramaSegmentReq 把片段原稿转写成目标格式；revision 用来确认转写的是用户眼前这一版。
+type AdaptDramaSegmentReq struct {
+	Format   string `json:"format" binding:"required,oneof=h3 generic" label:"转写格式"`
+	Revision int64  `json:"revision" binding:"required,min=1" label:"版本"`
 }
 
 // OrderDramaSegmentsReq 必须包含该集完整且不重复的片段集合。

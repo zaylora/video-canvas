@@ -267,6 +267,8 @@ func definitionForStep(step string) (outputDefinition, error) {
 	case "storyboard":
 		return outputDefinition{value: &StoryboardOutput{}, fields: []string{"segments"},
 			listKey: "segments", itemFields: []string{"seconds", "prompt"}}, nil
+	case "adapt":
+		return outputDefinition{value: &AdaptOutput{}, fields: []string{"prompt"}}, nil
 	default:
 		return outputDefinition{}, invalidOutput("不支持的流水线步骤")
 	}
@@ -306,6 +308,8 @@ func outputValue(output any) (any, error) {
 	case *AssetPromptsOutput:
 		return *value, nil
 	case *StoryboardOutput:
+		return *value, nil
+	case *AdaptOutput:
 		return *value, nil
 	default:
 		return nil, invalidOutput("不支持的输出类型")

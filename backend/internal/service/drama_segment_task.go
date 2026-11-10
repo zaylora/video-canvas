@@ -82,7 +82,11 @@ func segmentOutputAsset(task *model.GenerationTask, kind string) (uint64, error)
 
 // segmentView 状态优先反映最新take，已有采用不掩盖新一轮生成或失败。
 func (s *DramaSegmentService) segmentView(ctx context.Context, row *model.DramaSegment, no int, tasks []model.GenerationTask) (*model.DramaSegmentView, error) {
-	v := &model.DramaSegmentView{ID: idcodec.ID(row.ID), EpisodeNo: no, Seq: row.Seq, Seconds: row.Seconds, Prompt: row.Prompt, Takes: []model.DramaSegmentTakeView{}, Status: "idle", Revision: row.Revision, UpdatedAt: row.UpdatedAt}
+	adaptations, err := segmentAdaptations(row)
+	if err != nil {
+		return nil, err
+	}
+	v := &model.DramaSegmentView{ID: idcodec.ID(row.ID), EpisodeNo: no, Seq: row.Seq, Seconds: row.Seconds, Prompt: row.Prompt, Adaptations: adaptations, Takes: []model.DramaSegmentTakeView{}, Status: "idle", Revision: row.Revision, UpdatedAt: row.UpdatedAt}
 	if row.ChosenTaskID != nil {
 		v.ChosenTaskID, v.Status = idcodec.Encode(*row.ChosenTaskID), "done"
 	}

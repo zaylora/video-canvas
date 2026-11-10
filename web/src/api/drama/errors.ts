@@ -44,6 +44,16 @@ export const DRAMA_ERR = {
   unitTooLong: 67020,
   /** 模型上下文不足（低于 128k 或装不下一个单元） */
   contextTooSmall: 67022,
+  /** 不支持转写为这种格式 */
+  adaptFormat: 67023,
+  /** 原稿是空的，不能转写 */
+  adaptEmpty: 67024,
+  /** 这个片段正在转写（409） */
+  adaptBusy: 67025,
+  /** 转写结果不合格 */
+  adaptInvalid: 67026,
+  /** 还没有这个格式的转写稿 */
+  adaptMissing: 67027,
 } as const;
 
 /** 各错误码的兜底文案：后端 Msg 为空时用 */
@@ -69,19 +79,25 @@ const FALLBACK: Record<number, string> = {
   [DRAMA_ERR.phaseNotAllowed]: "当前阶段不能进行这个操作",
   [DRAMA_ERR.unitTooLong]: "这一集对应的原文过长",
   [DRAMA_ERR.contextTooSmall]: "模型上下文不足（低于 128k），请换一个模型",
+  [DRAMA_ERR.adaptFormat]: "不支持转写为这种格式",
+  [DRAMA_ERR.adaptEmpty]: "原稿是空的，先写好原稿再转写",
+  [DRAMA_ERR.adaptBusy]: "这个片段正在转写，请稍候",
+  [DRAMA_ERR.adaptInvalid]: "转写结果不合格，请重试",
+  [DRAMA_ERR.adaptMissing]: "还没有这个格式的转写稿，请先转写",
 };
 
 /** 错误是不是这个业务码 */
 export const isDramaError = (error: unknown, code: number): boolean =>
   error instanceof ApiError && error.code === code;
 
-/** 保存撞上 revision 冲突（HTTP 409 且不是 67004 / 67005 / 67013 这几个业务 409） */
+/** 保存撞上 revision 冲突（HTTP 409 且不是 67004 / 67005 / 67013 / 67025 这几个业务 409） */
 export const isRevisionConflict = (error: unknown): boolean =>
   error instanceof ApiError &&
   error.status === 409 &&
   error.code !== DRAMA_ERR.jobBusy &&
   error.code !== DRAMA_ERR.episodeLocked &&
-  error.code !== DRAMA_ERR.storyboardHasTakes;
+  error.code !== DRAMA_ERR.storyboardHasTakes &&
+  error.code !== DRAMA_ERR.adaptBusy;
 
 /** 后端 Msg 写了具体原因、优先展示 Msg 的错误码 */
 const MSG_FIRST = new Set<number>([

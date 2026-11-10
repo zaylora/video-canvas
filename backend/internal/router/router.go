@@ -218,6 +218,7 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		segments.PATCH("/:sid", h.DramaSegment.Update)
 		segments.DELETE("/:sid", h.DramaSegment.Delete)
 		segments.POST("/:sid/generate", h.DramaSegment.Generate)
+		segments.POST("/:sid/adapt", h.DramaSegment.Adapt)
 
 		// 管理员后台接口：读与模型相关的写 = admin 或 super_admin；插件与渠道的写 = 仅 super_admin。
 		// 凭证不再有独立接口，渠道 Key 统一走 PUT /channels/:key/secret。
