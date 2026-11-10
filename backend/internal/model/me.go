@@ -77,7 +77,7 @@ type MeLedgerItem struct {
 	Amount      int       `json:"amount"`
 	TaskID      *uint64   `json:"task_id"`
 	AgentCallID *uint64   `json:"agent_call_id"`
-	Note        string    `json:"note"` // 只有管理员调整时非空，向用户展示
+	Note        string    `json:"note"` // 管理员调整、充值、片场转写时非空，向用户展示
 	CreatedAt   time.Time `json:"created_at"`
 }
 

@@ -109,3 +109,23 @@ func TestDramaSegmentRepository_SavesAdaptations(t *testing.T) {
 		t.Fatalf("转写稿没有存下：revision=%d adaptations=%s", got.Revision, got.Adaptations)
 	}
 }
+
+// 片场转写的扣费流水：关联片段、不唯一（同一片段可以多次转写），备注出现在用户积分明细里。
+func TestDramaSegmentRepository_AdaptLedger(t *testing.T) {
+	db := isolatedDB(t, &model.CreditLedger{}, &model.UserCredit{})
+	ctx := context.Background()
+	r := repository.NewDramaRepository(db)
+	sid := uint64(42)
+	for range 2 {
+		for _, typ := range []string{model.LedgerFreeze, model.LedgerSettle} {
+			ok, err := r.InsertLedger(ctx, &model.CreditLedger{UserID: 1, DramaSegmentID: &sid, Type: typ, Amount: 3, Note: "片场转写 · 第 1 集片段 01 · H3"})
+			if err != nil || !ok {
+				t.Fatalf("写流水：ok=%v err=%v", ok, err)
+			}
+		}
+	}
+	rows, err := repository.NewUserRepository(db).ListLedgerPage(ctx, repository.LedgerPageFilter{UserID: 1, Limit: 10})
+	if err != nil || len(rows) != 4 || rows[0].Note != "片场转写 · 第 1 集片段 01 · H3" {
+		t.Fatalf("积分明细：%+v %v", rows, err)
+	}
+}

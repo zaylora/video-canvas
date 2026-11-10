@@ -19,7 +19,8 @@ func TestDramaSegmentMigration_Upgrade(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, name := range names {
-		if strings.HasPrefix(name, "0018_") {
+		// 0027 给片段表加列，片段表要到升级步骤才建，所以一并留到后面
+		if strings.HasPrefix(name, "0018_") || strings.HasPrefix(name, "0027_") {
 			continue
 		}
 		data, err := migrations.FS.ReadFile(name)

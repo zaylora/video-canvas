@@ -416,7 +416,7 @@
           <div class="cmp-wrap"><table class="cmp">
             <thead><tr><th>方法与路径</th><th>说明</th><th>业务错误</th></tr></thead>
             <tbody>
-              <tr><th><code>POST /drama-segments/:sid/adapt</code></th><td>请求 <code>{format, revision}</code>；同步调项目文本模型（超时 50s，须小于服务端 60s 写超时；平台承担，不扣积分），写入 <code>adaptations[format]</code>、<code>edited=false</code>，返回片段；完成时 WebSocket 推 <code>drama.segment</code></td><td>格式不支持、原稿为空、正在转写（同段同格式加锁）、文本模型不可用、输出两次校验不合格、revision 冲突</td></tr>
+              <tr><th><code>POST /drama-segments/:sid/adapt</code></th><td>请求 <code>{format, revision}</code>；同步调项目文本模型（超时 50s，须小于服务端 60s 写超时）；按文本模型定价扣积分，调用前预检余额、成功才扣，流水备注「片场转写 · 第 N 集片段 MM · H3」，写入 <code>adaptations[format]</code>、<code>edited=false</code>，返回片段；完成时 WebSocket 推 <code>drama.segment</code></td><td>格式不支持、原稿为空、正在转写（同段同格式加锁）、积分不足（40001）、文本模型不可用、输出两次校验不合格、revision 冲突</td></tr>
               <tr><th><code>PATCH /drama-segments/:sid</code></th><td>新增可选 <code>adaptation: {format, prompt}</code>，手改转写稿，置 <code>edited=true</code>，不改 <code>source_hash</code></td><td>该格式还没有转写稿、revision 冲突</td></tr>
               <tr><th><code>GET …/segments</code></th><td>片段视图多 <code>adaptations</code></td><td>—</td></tr>
               <tr><th><code>POST /drama-segments/:sid/generate</code></th><td><b>不改</b>，前端把 input 里的提示词换成转写稿</td><td>—</td></tr>
@@ -460,6 +460,7 @@ textToSubmit(seg, format):
             <li><b>先做现有三种格式</b>：通用 / Seedance / H3；以后加平台 = 加枚举 + 加模板。</li>
             <li><b>批量生成先弹窗问是否全部转写</b>。</li>
             <li><b>分镜固定写 Seedance</b>；旧片段照旧当原稿，不迁移。</li>
+            <li><b>转写扣积分</b>（2026-11-10）：按文本模型定价，只收通过校验的那次，失败不扣，积分明细里能看到是哪集哪段。</li>
             <li><b>已搁置</b>：生成时自动转写、选模型即整集转写、后台自定义格式。</li>
           </ol></div>
         </div>

@@ -104,7 +104,7 @@ export function ledgerAmount(item: Pick<LedgerItemDto, "type" | "amount">): {
 
 /**
  * 流水行的副标题：关联任务显示「任务 #id」，Agent 调用显示「Agent 对话」，
- * 管理员调整和充值显示备注原文（note 为 true，界面按纯文本一行截断、悬停看全文；不显示操作人），初始积分显示「注册赠送」
+ * 管理员调整、充值和片场转写显示备注原文（note 为 true，界面按纯文本一行截断、悬停看全文；不显示操作人），初始积分显示「注册赠送」
  * @param item 一条流水
  * @returns 副标题文案，以及它是不是管理员备注
  */
@@ -115,6 +115,8 @@ export function ledgerSubtitle(item: LedgerItemDto): { text: string; note: boole
   if (item.type === "admin_adjust" || item.type === "recharge")
     return { text: item.note, note: true };
   if (item.type === "initial") return { text: "注册赠送", note: false };
+  // 其余带备注的流水（如片场转写：「片场转写 · 第 1 集片段 01 · H3」）也是后端写好的整句
+  if (item.note) return { text: item.note, note: true };
   return { text: "", note: false };
 }
 
