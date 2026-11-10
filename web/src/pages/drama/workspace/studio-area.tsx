@@ -61,15 +61,18 @@ function StoryboardProgress({ job }: { job: DramaJob | undefined }) {
 
 /**
  * 片场：当前集的片段制作。
- * 还没拆解资产 → 引导去拆解；还没有分镜脚本 → 引导生成（带积分估价）；分镜生成中 → 等待；
+ * 还没拆解资产 → 引导去拆解（直接打开拆解弹窗，剧本没写好才去剧本页）；还没有分镜脚本 → 引导生成（带积分估价）；分镜生成中 → 等待；
  * 分镜就绪 → 进入片场（资产库 / 播放器 / 检查器 / 时间线）。
  */
 export function StudioArea({
   ep,
   onGo,
+  onBreakdownOpen,
 }: {
   ep: number;
   onGo: (stage: WorkspaceStage, ep?: number) => void;
+  /** 打开拆解弹窗（和总览、剧本、资产管理共用同一个） */
+  onBreakdownOpen: () => void;
 }) {
   const { drama, jobs, refresh } = useWorkspace();
   const video = useDramaVideoModel(drama.id, drama.videoModel);
@@ -110,7 +113,7 @@ export function StudioArea({
         title={`先拆解第 ${episode.no} 集的资产`}
         text={`分镜需要知道这一集出场的角色、场景和道具。${hasScript ? "拆解后这一集的剧本会锁定。" : "这一集的剧本也还没写好。"}`}
       >
-        <Button onClick={() => onGo("script", episode.no)}>
+        <Button onClick={hasScript ? onBreakdownOpen : () => onGo("script", episode.no)}>
           <ScrollText />
           {hasScript ? "去拆解" : "去写剧本"}
         </Button>
