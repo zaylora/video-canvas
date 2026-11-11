@@ -41,6 +41,7 @@ func All() []any {
 		&SystemSetting{},
 		&SMTPSetting{},
 		&ShowcaseItem{},
+		&Announcement{},
 		&AgentSession{},
 		&AgentRun{},
 		&AgentEvent{},

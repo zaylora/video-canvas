@@ -18,6 +18,7 @@ import UsagePage from "@/pages/admin/usage";
 import AuditsPage from "@/pages/admin/logs";
 import EmailSettingsPage from "@/pages/admin/settings/email-settings";
 import ShowcaseSettingsPage from "@/pages/admin/settings/showcase";
+import AnnouncementsSettingsPage from "@/pages/admin/settings/announcements";
 import PricingSettingsPage from "@/pages/admin/settings/pricing-settings";
 import RegisterSettingsPage from "@/pages/admin/settings/register-settings";
 import VersionSettingsPage from "@/pages/admin/settings/version-settings";
@@ -166,6 +167,7 @@ export const router = createBrowserRouter([
               { path: "settings/register", element: <RegisterSettingsPage /> },
               { path: "settings/pricing", element: <PricingSettingsPage /> },
               { path: "settings/email", element: <EmailSettingsPage /> },
+              { path: "settings/announcements", element: <AnnouncementsSettingsPage /> },
               { path: "settings/showcase", element: <ShowcaseSettingsPage /> },
               { path: "settings/version", element: <VersionSettingsPage /> },
             ],

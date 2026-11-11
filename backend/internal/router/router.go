@@ -53,6 +53,7 @@ type Handlers struct {
 	AdminSettings  *handler.AdminSettingsHandler       // 注册与邮件设置
 	AdminSystem    *handler.AdminSystemHandler         // 版本面板：当前版本、检查更新、迁移状态
 	Showcase       *handler.ShowcaseHandler            // 登录页展示：公开读取 + 后台配置
+	Announcement   *handler.AnnouncementHandler        // 首页公告：用户端读取 + 后台管理
 	Payment        *handler.PaymentHandler             // 积分商城：商品、下单、订单状态；渠道回调（无需登录）
 	AdminPayment   *handler.PaymentAdminHandler        // 后台支付管理：全局设置、渠道、商品、订单
 	AdminRole      middleware.RoleLookup               // 管理接口的角色查询（与 UserState 同一套：Redis 缓存 + 变更时主动失效）
@@ -92,6 +93,9 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		v1.Any("/admin/river/*path", h.RiverUI.Serve)
 		// 需要登录：JWT 校验之后再查用户状态（停用 → 403，token_version 不符 → 401），封禁与重置密码立即生效
 		auth := v1.Group("", middleware.JWTAuth(jwtSecret), middleware.RequireActive(h.UserState))
+
+		// 首页公告：生效中的公告，最多 5 条，全站共享；只在登录后的首页外壳展示，所以要登录
+		auth.GET("/announcements", h.Announcement.Public)
 
 		// 个人中心：只操作当前登录用户自己的数据
 		me := auth.Group("/me")
@@ -426,6 +430,15 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		settings.DELETE("/showcase/items/:id", superOnly, h.Showcase.DeleteItem)
 		settings.PUT("/showcase/order", superOnly, h.Showcase.Reorder)
 		settings.PUT("/showcase/settings", superOnly, h.Showcase.UpdateSettings)
+
+		// 首页公告：读写都是 admin 或 super_admin（运营内容，不碰凭证与资金），全部写操作进审计。
+		// order 是静态段，与 /:id 同层，Gin 优先匹配静态段
+		settings.GET("/announcements", h.Announcement.AdminList)
+		settings.POST("/announcements", h.Announcement.Create)
+		settings.PUT("/announcements/order", h.Announcement.Reorder)
+		settings.PUT("/announcements/:id", h.Announcement.Update)
+		settings.PUT("/announcements/:id/enabled", h.Announcement.SetEnabled)
+		settings.DELETE("/announcements/:id", h.Announcement.Delete)
 	}
 
 	// 素材的稳定地址：画布 payload 里存的就是它，永不过期、换存储也不变。

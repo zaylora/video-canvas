@@ -1,0 +1,969 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>公告设计演示</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+    <style>
+      :root {
+        --radius: 0.625rem;
+        --background: 0 0% 100%;
+        --foreground: 240 10% 3.9%;
+        --card: 0 0% 100%;
+        --muted: 240 4.8% 95.9%;
+        --muted-foreground: 240 3.8% 46.1%;
+        --primary: 240 5.9% 10%;
+        --primary-foreground: 0 0% 98%;
+        --accent: 240 4.8% 95.9%;
+        --border: 240 5.9% 90%;
+        --brand: 262 83% 58%;
+        --ok: 5 150 105;
+        --bad: 220 38 38;
+        --warn: 180 83 9;
+        --info: 2 132 199;
+        --violet: 124 58 237;
+        color-scheme: light;
+      }
+      .dark {
+        --background: 240 10% 3.9%;
+        --foreground: 0 0% 98%;
+        --card: 240 10% 5.5%;
+        --muted: 240 3.7% 15.9%;
+        --muted-foreground: 240 5% 64.9%;
+        --primary: 0 0% 98%;
+        --primary-foreground: 240 5.9% 10%;
+        --accent: 240 3.7% 15.9%;
+        --border: 240 3.7% 17%;
+        --brand: 263 90% 72%;
+        --ok: 52 211 153;
+        --bad: 248 113 113;
+        --warn: 251 191 36;
+        --info: 56 189 248;
+        --violet: 167 139 250;
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        font-family: Geist, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        background: hsl(var(--background));
+        color: hsl(var(--foreground));
+        -webkit-font-smoothing: antialiased;
+        line-height: 1.55;
+      }
+      code, .mono { font-family: "Geist Mono", "SF Mono", Consolas, monospace; }
+      code { font-size: 0.92em; background: hsl(var(--muted)); padding: 1px 5px; border-radius: 5px; }
+      [data-lucide] { width: 1em; height: 1em; flex: none; }
+      h1, h2, h3, h4, p { margin: 0; }
+      button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+      input, textarea, select { font: inherit; color: inherit; }
+      table { border-collapse: collapse; width: 100%; }
+      th { font-weight: 500; text-align: left; }
+      [hidden] { display: none !important; }
+      .muted { color: hsl(var(--muted-foreground)); }
+      .row { display: flex; align-items: center; gap: 8px; }
+      .wrapflex { flex-wrap: wrap; }
+      .spacer { margin-left: auto; }
+
+      .top { position: sticky; top: 0; z-index: 30; background: hsl(var(--background) / 0.92); backdrop-filter: blur(8px); border-bottom: 1px solid hsl(var(--border)); }
+      .top-in { max-width: 1160px; margin: 0 auto; padding: 0 20px; display: flex; align-items: center; gap: 16px; height: 56px; }
+      .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; white-space: nowrap; }
+      .logo { width: 28px; height: 28px; border-radius: 8px; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; }
+      .tabs { display: flex; gap: 2px; margin-left: 8px; overflow-x: auto; }
+      .tab { height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13px; font-weight: 500; color: hsl(var(--muted-foreground)); white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; transition: background 0.15s, color 0.15s; }
+      .tab:hover { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+      .tab[aria-selected="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn { height: 32px; padding: 0 10px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; white-space: nowrap; }
+      .btn:hover { background: hsl(var(--accent)); }
+      .btn-primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn-primary:hover { background: hsl(var(--primary) / 0.9); }
+      .btn-outline { border: 1px solid hsl(var(--border)); }
+      .btn-sm { height: 26px; padding: 0 8px; font-size: 12px; }
+      .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+      .switch { width: 34px; height: 20px; border-radius: 999px; background: hsl(var(--border)); position: relative; transition: background 0.15s; flex: none; }
+      .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+      .switch[aria-checked="true"] { background: rgb(var(--violet)); }
+      .switch[aria-checked="true"]::after { transform: translateX(14px); }
+      .proto .switch[aria-checked="true"] { background: rgb(var(--ok)); }
+
+      .wrap { max-width: 1160px; margin: 0 auto; padding: 32px 20px 80px; }
+      .h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+      .lead { margin-top: 10px; max-width: 820px; font-size: 15px; color: hsl(var(--muted-foreground)); }
+      .lead b { color: hsl(var(--foreground)); }
+      .sec { margin-top: 36px; }
+      .sec > h2 { font-size: 18px; font-weight: 600; }
+      .sec > .sub { margin: 4px 0 14px; max-width: 820px; font-size: 13.5px; color: hsl(var(--muted-foreground)); }
+      .card { border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: var(--radius); padding: 16px; }
+      .grid { display: grid; gap: 12px; }
+      .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      @media (max-width: 820px) { .g2, .g3 { grid-template-columns: 1fr; } .top-in { padding: 0 12px; } .wrap { padding: 24px 16px 64px; } }
+      ul.list { margin: 0; padding-left: 18px; font-size: 13.5px; }
+
+      .tag { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 999px; font-size: 11.5px; font-weight: 500; white-space: nowrap; }
+      .t-ok { background: rgb(var(--ok) / 0.12); color: rgb(var(--ok)); }
+      .t-bad { background: rgb(var(--bad) / 0.12); color: rgb(var(--bad)); }
+      .t-warn { background: rgb(var(--warn) / 0.12); color: rgb(var(--warn)); }
+      .t-info { background: rgb(var(--info) / 0.12); color: rgb(var(--info)); }
+      .t-vio { background: rgb(var(--violet) / 0.12); color: rgb(var(--violet)); }
+      .t-mute { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
+
+      .callout { display: flex; gap: 10px; padding: 12px 14px; border-radius: var(--radius); font-size: 13.5px; border: 1px solid; }
+      .callout > i { margin-top: 3px; }
+      .c-info { background: rgb(var(--info) / 0.07); border-color: rgb(var(--info) / 0.3); }
+      .c-info > i { color: rgb(var(--info)); }
+      .c-warn { background: rgb(var(--warn) / 0.07); border-color: rgb(var(--warn) / 0.3); }
+      .c-warn > i { color: rgb(var(--warn)); }
+      .c-ok { background: rgb(var(--ok) / 0.07); border-color: rgb(var(--ok) / 0.3); }
+      .c-ok > i { color: rgb(var(--ok)); }
+
+      .flow { display: flex; align-items: stretch; gap: 6px; flex-wrap: wrap; padding: 14px; border-radius: var(--radius); }
+      .flow .node { flex: 1 1 140px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 12px; font-size: 12.5px; }
+      .flow .node b { display: block; font-size: 13px; margin-bottom: 2px; }
+      .flow .node.hl { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+      .flow .arrow { display: grid; place-items: center; color: hsl(var(--muted-foreground)); }
+
+      .cmp-wrap { overflow-x: auto; border: 1px solid hsl(var(--border)); border-radius: var(--radius); }
+      .cmp th, .cmp td { padding: 9px 12px; font-size: 13px; vertical-align: top; border-bottom: 1px solid hsl(var(--border)); }
+      .cmp tr:last-child th, .cmp tr:last-child td { border-bottom: 0; }
+      .cmp thead th { background: hsl(var(--muted)); font-size: 12.5px; white-space: nowrap; }
+      .cmp tbody th { width: 150px; color: hsl(var(--muted-foreground)); font-weight: 500; }
+      .cmp .y { color: rgb(var(--ok)); }
+      .cmp .m { color: rgb(var(--warn)); font-weight: 500; }
+
+      .steps { list-style: none; counter-reset: s; display: grid; gap: 12px; }
+      .steps li { counter-increment: s; position: relative; padding-left: 32px; font-size: 13.5px; }
+      .steps li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 22px; height: 22px; border-radius: 50%; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; font-size: 12px; font-weight: 600; }
+      .steps li small { display: block; color: hsl(var(--muted-foreground)); font-size: 12.5px; }
+
+      .codeblock { background: hsl(var(--muted)); border-radius: var(--radius); padding: 14px; font-family: "Geist Mono", "SF Mono", Consolas, monospace; font-size: 12.5px; overflow-x: auto; }
+
+      .frame { border: 1px solid hsl(var(--border)); border-radius: 12px; overflow: hidden; background: hsl(var(--background)); }
+      .frame-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: hsl(var(--muted)); font-size: 12px; color: hsl(var(--muted-foreground)); }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: hsl(var(--border)); }
+      .proto { min-height: 500px; position: relative; }
+
+      .note { outline: 1.5px dashed rgb(var(--violet)); outline-offset: 3px; position: relative; }
+      .note-txt { display: none; margin-top: 6px; font-size: 11.5px; line-height: 1.5; color: rgb(var(--violet)); }
+      .show-notes .note-txt { display: block; }
+      body:not(.show-notes) .note { outline: none; }
+
+      .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 60; pointer-events: none; }
+      .toast > div { display: flex; align-items: center; gap: 8px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 14px; font-size: 13px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); }
+
+      /* ---- 原型：控制台 ---- */
+      .ctrl { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; border: 1px dashed hsl(var(--border)); border-radius: var(--radius); font-size: 12.5px; margin-top: 18px; }
+      .seg { display: inline-flex; padding: 2px; border-radius: 999px; background: hsl(var(--muted)); gap: 2px; }
+      .seg button { height: 26px; padding: 0 12px; border-radius: 999px; font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+      .seg button[aria-pressed="true"] { background: hsl(var(--card)); color: hsl(var(--foreground)); box-shadow: 0 1px 2px rgb(0 0 0 / 0.08); }
+
+      /* ---- 原型：用户首页 ---- */
+      /* 通栏：只有一种配色（深色）；亮色主题近黑底，暗色主题比页面亮一级的灰 + 底部分隔线 */
+      @property --ah { syntax: "<length>"; inherits: true; initial-value: 0px; }
+      .ban {
+        --ban-bg: hsl(240 6% 10%); --ban-fg: hsl(0 0% 98%); --ban-line: transparent;
+        height: 40px; position: relative; display: flex; align-items: center; justify-content: center;
+        background: var(--ban-bg); color: var(--ban-fg); border-bottom: 1px solid var(--ban-line); font-size: 13px;
+        transition: background-color 0.2s, color 0.2s;
+      }
+      .dark .ban { --ban-bg: hsl(240 4% 15%); --ban-fg: hsl(0 0% 96%); --ban-line: hsl(240 4% 21%); }
+      /* 配色候选（待选）。主题黄取自 index.css 的 .drama-theme --primary：亮 oklch(0.67 0.14 78) / 暗 oklch(0.81 0.15 82)；暖米色取自 .home-theme */
+      .ban.p-amber { --ban-bg: oklch(0.84 0.15 85); --ban-fg: oklch(0.22 0.03 80); --ban-line: transparent; }
+      .dark .ban.p-amber { --ban-bg: oklch(0.81 0.15 82); --ban-fg: oklch(0.2 0.03 85); --ban-line: transparent; }
+      .ban.p-amber-soft { --ban-bg: oklch(0.95 0.06 92); --ban-fg: oklch(0.36 0.08 70); --ban-line: oklch(0.86 0.1 88); }
+      .dark .ban.p-amber-soft { --ban-bg: oklch(0.26 0.05 78); --ban-fg: oklch(0.9 0.11 88); --ban-line: oklch(0.36 0.07 78); }
+      .ban.p-ink-amber { --ban-bg: oklch(0.2 0.01 85); --ban-fg: oklch(0.96 0.01 85); --ban-line: transparent; }
+      .dark .ban.p-ink-amber { --ban-bg: oklch(0.23 0.01 85); --ban-fg: oklch(0.955 0.008 85); --ban-line: oklch(0.3 0.01 85); }
+      .ban.p-ink-amber .more { color: oklch(0.84 0.15 85); opacity: 1; text-decoration-color: oklch(0.84 0.15 85 / 0.45); }
+      .ban.p-paper { --ban-bg: oklch(0.92 0.009 85); --ban-fg: oklch(0.22 0.01 85); --ban-line: oklch(0.22 0.02 85 / 0.1); }
+      .dark .ban.p-paper { --ban-bg: oklch(0.2 0.004 286); --ban-fg: oklch(0.955 0.008 85); --ban-line: oklch(1 0 0 / 0.08); }
+      .pal { display: grid; gap: 10px; }
+      .pal-it { border: 1px solid hsl(var(--border)); border-radius: 12px; overflow: hidden; text-align: left; width: 100%; background: hsl(var(--card)); transition: border-color 0.15s, box-shadow 0.15s; }
+      .pal-it:hover { border-color: hsl(var(--muted-foreground) / 0.5); }
+      .pal-it[aria-pressed="true"] { border-color: rgb(var(--violet)); box-shadow: 0 0 0 1px rgb(var(--violet)); }
+      .pal-it .meta { display: flex; align-items: center; gap: 8px; padding: 9px 12px; font-size: 12.5px; flex-wrap: wrap; }
+      .pal-it .meta b { font-size: 13px; }
+      .ban .in { width: 100%; max-width: 960px; display: flex; align-items: center; justify-content: center; gap: 10px; min-width: 0; padding: 0 56px; overflow: hidden; height: 40px; }
+      .ban .line { display: flex; align-items: center; gap: 10px; min-width: 0; animation: rise 0.2s ease both; }
+      @keyframes rise { from { transform: translateY(6px); opacity: 0; } to { transform: none; opacity: 1; } }
+      .ban .tv { min-width: 0; overflow: hidden; white-space: nowrap; flex: 0 1 auto; }
+      .ban .title { font-weight: 500; white-space: nowrap; display: inline-block; will-change: transform; }
+      .ban .title.ell { display: block; overflow: hidden; text-overflow: ellipsis; }
+      .ban.is-over .in { justify-content: flex-start; }
+      .ban .tv.over { -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 12px, #000 calc(100% - 16px), transparent); mask-image: linear-gradient(90deg, transparent 0, #000 12px, #000 calc(100% - 16px), transparent); padding-left: 12px; margin-left: -12px; }
+      .ban .tv.over.ellmode { -webkit-mask-image: none; mask-image: none; padding-left: 0; margin-left: 0; }
+      .ban .more { white-space: nowrap; display: inline-flex; align-items: center; gap: 3px; opacity: 0.8; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: color-mix(in srgb, currentColor 35%, transparent); }
+      .ban .more:hover { opacity: 1; }
+      .ban .more i { transition: transform 0.15s; }
+      .ban .more:hover i { transform: translateX(2px); }
+      .ban .ctl { position: absolute; right: 8px; top: 0; bottom: 0; display: flex; align-items: center; gap: 0; }
+      .ban .ctl button { height: 28px; min-width: 28px; border-radius: 6px; display: grid; place-items: center; opacity: 0.6; transition: opacity 0.15s, background 0.15s; }
+      .ban .ctl button:hover { opacity: 1; background: color-mix(in srgb, currentColor 12%, transparent); }
+      .ban.compact { justify-content: flex-start; }
+      .ban.compact .in { padding: 0 44px 0 14px; justify-content: flex-start; }
+      @media (max-width: 640px) { .ban .in { padding: 0 44px 0 14px; justify-content: flex-start; } }
+
+      .home-scroll { height: 500px; overflow: auto; position: relative; background: hsl(var(--muted) / 0.6); transition: --ah 0.2s ease; }
+      .ban-wrap { position: sticky; top: 0; z-index: 4; height: var(--ah); overflow: hidden; }
+      .shell { display: flex; gap: 8px; padding: 8px; }
+      /* 亮色主题下用首页真实的暖米色（index.css .home-theme），配色要在真实底色上比较 */
+      html:not(.dark) .home-scroll { background: oklch(0.925 0.009 85); }
+      html:not(.dark) .home-scroll .inset { background: oklch(0.95 0.007 85); border-color: oklch(0.22 0.02 85 / 0.1); }
+      html:not(.dark) .home-scroll .sh { background: oklch(0.95 0.007 85 / 0.85); }
+      html:not(.dark) .home-scroll .composer { background: oklch(0.985 0.004 85); }
+      html:not(.dark) .home-scroll .recent div { background: oklch(0.92 0.008 85); }
+      .side { width: 52px; display: flex; flex-direction: column; align-items: center; gap: 10px; padding-top: 10px; color: hsl(var(--muted-foreground)); position: sticky; top: calc(var(--ah) + 8px); align-self: flex-start; }
+      .side .ic { width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; }
+      .side .ic.on { background: hsl(var(--card)); color: hsl(var(--foreground)); }
+      .inset { flex: 1; min-width: 0; background: hsl(var(--background)); border-radius: 18px; border: 1px solid hsl(var(--border)); position: relative; }
+      .sh { height: 48px; display: flex; align-items: center; padding: 0 14px; gap: 8px; position: sticky; top: var(--ah); z-index: 3; background: hsl(var(--background) / 0.85); backdrop-filter: blur(12px); border-radius: 18px 18px 0 0; }
+      .pill { display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px; border-radius: 999px; background: hsl(var(--muted) / 0.6); border: 1px solid hsl(var(--border) / 0.7); font-size: 12px; backdrop-filter: blur(10px); }
+      .hello { text-align: center; padding: 56px 20px 20px; }
+      .hello h3 { font-size: 26px; font-weight: 600; letter-spacing: -0.02em; }
+      .composer { margin: 22px auto 0; max-width: 520px; height: 96px; border-radius: 18px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); padding: 14px; text-align: left; font-size: 13px; color: hsl(var(--muted-foreground)); }
+      .recent { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; padding: 26px 20px 28px; max-width: 640px; margin: 0 auto; }
+      .recent div { aspect-ratio: 16 / 10; border-radius: 12px; background: hsl(var(--muted)); }
+      @media (max-width: 640px) { .side { display: none; } }
+
+      /* ---- 原型：后台 ---- */
+      .adm { display: flex; min-height: 460px; }
+      .adm-side { width: 170px; border-right: 1px solid hsl(var(--border)); padding: 14px 10px; font-size: 12.5px; flex: none; }
+      .adm-side .grp { color: hsl(var(--muted-foreground)); font-size: 11.5px; margin: 10px 8px 4px; }
+      .adm-side .it { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px; border-radius: 8px; color: hsl(var(--muted-foreground)); }
+      .adm-side .it.on { background: hsl(var(--accent)); color: hsl(var(--foreground)); font-weight: 500; }
+      .adm-main { flex: 1; min-width: 0; padding: 18px; }
+      @media (max-width: 760px) { .adm-side { display: none; } }
+      .tbl th, .tbl td { padding: 8px 10px; font-size: 12.5px; border-bottom: 1px solid hsl(var(--border)); vertical-align: middle; white-space: nowrap; }
+      .tbl thead th { color: hsl(var(--muted-foreground)); font-weight: 500; font-size: 12px; }
+      .tbl td.tt { white-space: normal; min-width: 200px; }
+      .ibtn { width: 26px; height: 26px; border-radius: 7px; display: inline-grid; place-items: center; color: hsl(var(--muted-foreground)); }
+      .ibtn:hover:not(:disabled) { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+      .ibtn:disabled { opacity: 0.35; cursor: not-allowed; }
+      .empty { text-align: center; padding: 60px 20px; }
+      .empty .big { font-size: 30px; color: hsl(var(--muted-foreground)); display: inline-grid; }
+
+      /* ---- 弹窗 ---- */
+      .mask { position: absolute; inset: 0; background: rgb(0 0 0 / 0.35); display: grid; place-items: center; z-index: 5; padding: 16px; }
+      .dlg { width: min(560px, 100%); max-height: 100%; overflow: auto; background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: 16px; padding: 18px; box-shadow: 0 20px 50px rgb(0 0 0 / 0.25); }
+      .dlg h4 { font-size: 15px; font-weight: 600; }
+      .fld { margin-top: 12px; }
+      .fld > label { display: flex; align-items: center; font-size: 12.5px; font-weight: 500; margin-bottom: 5px; }
+      .fld .cnt { margin-left: auto; font-size: 11.5px; color: hsl(var(--muted-foreground)); font-weight: 400; }
+      .inp { width: 100%; height: 34px; border-radius: 8px; border: 1px solid hsl(var(--border)); background: hsl(var(--background)); padding: 0 10px; font-size: 13px; }
+      textarea.inp { height: 110px; padding: 8px 10px; resize: vertical; font-family: "Geist Mono", Consolas, monospace; font-size: 12.5px; }
+      .inp.err { border-color: rgb(var(--bad)); }
+      .errtxt { color: rgb(var(--bad)); font-size: 12px; margin-top: 4px; }
+      .md { font-size: 13.5px; line-height: 1.65; }
+      .md p { margin: 0 0 8px; }
+      .md ul { margin: 0 0 8px; padding-left: 18px; }
+      .mdbox { min-height: 110px; border: 1px solid hsl(var(--border)); border-radius: 8px; padding: 8px 10px; }
+    </style>
+  </head>
+
+  <body class="show-notes">
+    <header class="top">
+      <div class="top-in">
+        <div class="brand"><span class="logo"><i data-lucide="megaphone"></i></span>公告设计演示</div>
+        <div class="tabs" role="tablist">
+          <button class="tab" role="tab" data-tab="overview" aria-selected="true"><i data-lucide="map"></i>总览</button>
+          <button class="tab" role="tab" data-tab="proto" aria-selected="false"><i data-lucide="layout-dashboard"></i>可点击原型</button>
+          <button class="tab" role="tab" data-tab="impl" aria-selected="false"><i data-lucide="database"></i>数据与接口</button>
+        </div>
+        <div class="spacer row">
+          <label class="row muted" style="font-size: 12px">设计标注
+            <button class="switch" id="notesSw" role="switch" aria-checked="true" onclick="toggleNotes()"></button>
+          </label>
+          <button class="btn" onclick="document.documentElement.classList.toggle('dark')" aria-label="切换明暗主题"><i data-lucide="sun-moon"></i></button>
+        </div>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <!-- ============ 总览 ============ -->
+      <section id="tab-overview">
+        <h1 class="h1">首页顶部轮播公告，后台随时发、到点自动下</h1>
+        <p class="lead">
+          运营在后台写一条公告，用户在<b>首页、画布列表、资产、短剧列表、个人资料</b>的<b>窗口最顶部</b>看到一条通栏，滚动时始终可见，多条时每 5 秒切换一次。
+          <b>画布编辑器和短剧工作台里不显示</b>，不打扰创作。普通公告用户可以关掉；<b>标成「重要」的关不掉</b>，适合停机维护。
+        </p>
+
+        <div class="callout c-warn" style="margin-top: 16px"><i data-lucide="triangle-alert"></i><div><b>已更新（v4）：</b>验收时去掉了「了解更多 →」和后台的「链接」字段。有详情的公告改为<b>点标题打开详情</b>。本页原型里的「了解更多」与链接相关内容已作废，以 <code>公告.md</code> 第 13 节为准。</div></div>
+        <div class="callout c-info" style="margin-top: 16px">
+          <i data-lucide="info"></i>
+          <div>
+            <b>阅读说明。</b>这是设计稿，<b>尚未实现</b>。项目现状来自读代码（文件路径见 Markdown 第 2 节）；竞品观察未联网逐条复核。原型数据全在内存，刷新复原，时间是「模拟时钟」。完整依据见同目录 <code>公告.md</code>。<br />
+            <span class="muted">核实度图例：</span>
+            <span class="tag t-ok">已核对代码</span>
+            <span class="tag t-info">调研未复核</span>
+            <span class="tag t-warn">未验证 · 需实测</span>
+            <span class="tag t-vio">提案</span>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>一条公告从写下到被看到</h2>
+          <p class="sub">回答：管理员点了保存之后，用户多久、在哪里、以什么样子看到。</p>
+          <div class="flow note">
+            <div class="node"><b>后台新建</b>标题 + 可选详情 / 链接 / 起止时间，保存进库并记审计</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>服务端筛选</b>启用 + 在生效时间内 + 未删除；重要优先，取前 5 条</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>用户拉取</b>进入首页外壳时拉；回到窗口且距上次 ≥5 分钟再拉</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>本机过滤</b>去掉已关闭的、已过结束时间的</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>顶部通栏</b>一次一条，5 秒切换，悬停暂停</div>
+          </div>
+          <div class="note-txt">设计：「何时生效」由服务端统一判断，客户端只额外判断「结束时间」——下线要即时（维护结束还挂着会误导），上线允许几分钟延迟。照抄登录页展示（showcase）的后台 + 公开接口结构，不另起一套。</div>
+          <div class="callout c-warn" style="margin-top: 10px">
+            <i data-lucide="corner-down-right"></i>
+            <div><b>拉取失败、没有公告、全部关掉时：</b>公告条不出现，零高度，页面和今天完全一样；拉取失败时保留上一次成功的内容，不弹错误。</div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>它长什么样 · 配色已定 <span class="tag t-ok" style="vertical-align: middle">B 浅黄</span></h2>
+          <p class="sub">只有一种类型、一种颜色：<b>浅黄底 + 深琥珀字 + 底部细线</b>，居中一句话 + 「了解更多 →」。下面保留了 5 个候选作对比记录；点其他候选只是临时预览，原型默认用 B。右上角可切明暗主题。</p>
+          <div class="pal note" id="palettes"></div>
+          <div class="note-txt">设计：主题黄取自短剧工作台「暗房片场」的琥珀色（index.css 的 .drama-theme --primary），暖米色取自首页 .home-theme。你选了 B 浅黄：比 A 实色黄柔和、不像警告，又比黑底更贴近米色首页的气质。代价是亮色主题下浅黄和米色页面明度接近，所以底部那条细线必须保留，它负责把通栏和页面分开。</div>
+        </div>
+
+        <div class="sec">
+          <h2>为什么是「窗口最顶部通栏」</h2>
+          <p class="sub">v1 放在内容区顶栏下方，你看过后改为放最顶部；另外两种放法早先已排除。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th></th><th>窗口最顶部通栏（选）</th><th>内容区顶栏下细条（v1，已否）</th><th>横向跑马灯</th></tr></thead>
+              <tbody>
+                <tr><th>显眼程度</th><td class="y">最高，像站点级通知</td><td>中，像页面内提示</td><td>中</td></tr>
+                <tr><th>好读好点</th><td class="y">一次一条静止，链接位置固定</td><td class="y">同左</td><td class="m">文字一直在动，链接会跑</td></tr>
+                <tr><th>滚动时</th><td class="y">始终可见</td><td class="m">随内容滚走</td><td>看实现</td></tr>
+                <tr><th>实现成本</th><td class="m">侧栏、吸顶顶栏要用 <code>--announcement-h</code> 让位</td><td class="y">只插一个组件</td><td class="y">只插一个组件</td></tr>
+                <tr><th>首屏跳动</th><td class="m">整页下推 40px；用本机缓存先渲染避免反复跳</td><td>内容下推 36px</td><td>同左</td></tr>
+                <tr><th>减少动态效果</th><td class="y">降级为淡入淡出</td><td class="y">同左</td><td class="m">无法降级</td></tr>
+                <tr><th>核实度</th><td><span class="tag t-ok">已核对代码</span>（侧栏 <code>fixed h-svh</code>）</td><td><span class="tag t-ok">已核对代码</span></td><td><span class="tag t-info">调研未复核</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>今晚要停机维护时，会发生什么</h2>
+          <p class="sub">最典型也最需要「准时」的场景：提前发、到点出现、结束自动消失。</p>
+          <div class="grid g2">
+            <div class="card">
+              <ol class="steps" style="margin: 0; padding: 0">
+                <li><b>下午建一条公告，勾「重要」</b><small>标题「今晚 22:00–24:00 系统维护，期间无法生成」，开始 20:00、结束 24:00。后台状态显示「待上线」。</small></li>
+                <li><b>20:00 之后用户打开首页即可看到</b><small>已经开着页面的用户：回到窗口时（距上次拉取 ≥5 分钟）出现；刷新则最多受 60 秒缓存影响。</small></li>
+                <li><b>它排在所有公告最前，没有 ×</b><small>用户可以点「查看详情」看维护内容。</small></li>
+                <li><b>24:00 一到，30 秒内从所有人页面上消失</b><small>客户端自己判断结束时间，不等下一次拉取。后台状态变「已过期」。</small></li>
+              </ol>
+            </div>
+            <div class="card">
+              <div class="callout c-warn">
+                <i data-lucide="triangle-alert"></i>
+                <div>
+                  <b>边界：上线不是秒级的</b>
+                  <ul class="list" style="margin-top: 6px">
+                    <li>项目没有全站广播通道，公告不会「推」到已打开的页面；最迟约 5 分钟可见。</li>
+                    <li>已在画布编辑器里的用户看不到公告，回到首页才会看到。</li>
+                    <li>关闭记录存在本机浏览器，换电脑会再看到一次。</li>
+                  </ul>
+                </div>
+              </div>
+              <p class="muted" style="font-size: 12.5px; margin-top: 10px">交付时要告诉运营：紧急公告请把开始时间设得比实际早几分钟。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 可点击原型 ============ -->
+      <section id="tab-proto" hidden>
+        <h1 class="h1">可点击原型</h1>
+        <p class="lead">
+          用户首页和后台共用一份内存数据，刷新复原。已预置 6 条公告，覆盖「展示中 / 待上线 / 已过期 / 已停用」。
+          在后台改了什么，切到「用户首页」立刻能看到效果；用下面的<b>模拟时钟</b>拨快时间，看定时上下线。
+          想看失败：新建公告时<b>链接填 <code>javascript:alert(1)</code> 或 <code>//evil.com</code></b>、标题留空、或结束时间早于开始时间；或打开「模拟拉取失败」。
+        </p>
+
+        <div class="ctrl">
+          <span class="seg" id="viewSeg">
+            <button aria-pressed="true" data-v="user">用户首页</button>
+            <button aria-pressed="false" data-v="admin">后台 · 公告</button>
+          </span>
+          <span class="muted" style="margin-left: 6px">模拟时钟</span>
+          <b class="mono" id="clock"></b>
+          <button class="btn btn-sm btn-outline" onclick="tick(3600e3)">+1 小时</button>
+          <button class="btn btn-sm btn-outline" onclick="tick(86400e3)">+1 天</button>
+          <button class="btn btn-sm" onclick="resetClock()">重置时钟</button>
+          <span class="spacer row">
+            <label class="row muted">模拟拉取失败 <button class="switch" id="failSw" role="switch" aria-checked="false" onclick="toggleFail()"></button></label>
+            <button class="btn btn-sm" onclick="clearDismissed()" title="清掉本机关闭记录">清除关闭记录</button>
+          </span>
+        </div>
+
+        <div class="frame note" style="margin-top: 12px">
+          <div class="frame-bar">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            <span style="margin-left: 8px" id="addr"></span>
+          </div>
+          <div class="proto" id="proto"></div>
+        </div>
+        <div class="note-txt" id="protoNote"></div>
+      </section>
+
+      <!-- ============ 数据与接口 ============ -->
+      <section id="tab-impl" hidden>
+        <h1 class="h1">数据与接口（提案）</h1>
+        <p class="lead">下面都是设计提案，尚未实现，对应 Markdown 第 8 节。<b>结构照抄登录页展示（showcase）</b>：同样的「后台增删改 + 排序 + 公开读取 + 审计」，迁移走现有的版本化 SQL（下一个编号 <code>0029</code>）。</p>
+
+        <div class="sec">
+          <h2>复用关系</h2>
+          <p class="sub">哪些是现成的，哪些要新建。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>要做的事</th><th>复用</th><th>为什么</th></tr></thead>
+              <tbody>
+                <tr><th>后台接口结构、排序</th><td><code>showcase</code> 的 handler / service / <code>PUT .../order</code></td><td>同类需求，已跑通，审计和错误码一致 <span class="tag t-ok">已核对代码</span></td></tr>
+                <tr><th>权限</th><td><code>RequireAdmin</code> 路由组，<b>不加</b> <code>superOnly</code></td><td>访谈确认 admin 可写；支付商品已有同样先例</td></tr>
+                <tr><th>审计</th><td><code>adminAudit(...)</code>，新目标 <code>announcement</code></td><td>「操作审计」页直接能看到</td></tr>
+                <tr><th>建表</th><td><code>backend/migrations/0029_announcements.sql</code></td><td>项目只用版本化 SQL 迁移</td></tr>
+                <tr><th>Markdown 渲染</th><td><code>pages/canvas/agent/markdown.tsx</code>（react-markdown）</td><td>不开原始 HTML，天然防 XSS；若耦合画布则抽通用组件</td></tr>
+                <tr><th>切换动画</th><td><code>motion</code> + 外壳已有 <code>MotionConfig reducedMotion="user"</code></td><td>不引新轮播库</td></tr>
+                <tr><th>侧栏让位</th><td>shadcn 侧栏容器的 <code>data-slot="sidebar-container"</code></td><td>原本 <code>fixed inset-y-0 h-svh</code>（<code>ui/sidebar.tsx:230</code>），只需用 CSS 覆盖 top/height，不改组件 <span class="tag t-ok">已核对代码</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>数据模型</h2>
+          <p class="sub">一张小表，预计永远不到 100 行，不分页、不建组合索引。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th colspan="2"><code>announcements</code> 表</th></tr></thead>
+              <tbody>
+                <tr><th><code>id</code></th><td>bigserial 主键</td></tr>
+                <tr><th><code>title</code></th><td>去首尾空白后 1–60 个字符（service 校验）</td></tr>
+                <tr><th><code>body</code></th><td>text，Markdown，≤5000 个字符，可空</td></tr>
+                <tr><th><code>link_url</code></th><td>varchar(512)，可空；单个 <code>/</code> 开头的站内路径，或 <code>http(s)://</code> 外链</td></tr>
+                <tr><th><code>important</code></th><td>bool，默认 false；true = 用户不可关闭 + 排最前</td></tr>
+                <tr><th><code>enabled</code></th><td>bool，不写数据库默认值（同 showcase，避免零值被吞）；新建默认 true</td></tr>
+                <tr><th><code>starts_at</code> / <code>ends_at</code></th><td>timestamptz，可空 = 不限；都给时 ends &gt; starts</td></tr>
+                <tr><th><code>sort</code></th><td>int，越小越前；新建 = 当前最大 + 1</td></tr>
+                <tr><th><code>created_by</code> / <code>updated_by</code></th><td>管理员 ID，不对外返回</td></tr>
+                <tr><th><code>created_at</code> / <code>updated_at</code> / <code>deleted_at</code></th><td>BaseModel；软删除；<code>updated_at</code> 的毫秒数作为公开字段 <code>version</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="cmp-wrap" style="margin-top: 12px">
+            <table class="cmp">
+              <thead><tr><th>后台状态（派生，不入库）</th><th>条件</th></tr></thead>
+              <tbody>
+                <tr><th><span class="tag t-mute">已停用</span></th><td><code>enabled = false</code></td></tr>
+                <tr><th><span class="tag t-info">待上线</span></th><td>启用，<code>starts_at &gt; now</code></td></tr>
+                <tr><th><span class="tag t-mute">已过期</span></th><td>启用，<code>ends_at &lt;= now</code></td></tr>
+                <tr><th><span class="tag t-warn">超出上限</span></th><td>启用且生效中，但按顺序排在第 5 条之后</td></tr>
+                <tr><th><span class="tag t-ok">展示中</span></th><td>其余启用且生效中的</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>接口</h2>
+          <p class="sub">前缀 <code>/api/v1</code>。后台全部需要 admin 或 super_admin，普通用户 403。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>方法与路径</th><th>说明</th><th>业务错误</th></tr></thead>
+              <tbody>
+                <tr><th><code>GET /announcements</code></th><td>需登录。生效中的公告，重要优先 → sort → id，取前 5。返回 <code>id, title, body, link_url, important, ends_at, version</code>；带 <code>Cache-Control: private, max-age=60</code></td><td>—</td></tr>
+                <tr><th><code>GET /admin/settings/announcements</code></th><td>全部未删除公告 + 派生 <code>status</code>，按 sort、id 升序</td><td>—</td></tr>
+                <tr><th><code>POST /admin/settings/announcements</code></th><td>新建，排最后；返回后台视图</td><td>400 校验</td></tr>
+                <tr><th><code>PUT /admin/settings/announcements/:id</code></th><td>整体替换（编辑弹窗提交全部字段）</td><td>400 校验；404</td></tr>
+                <tr><th><code>PUT /admin/settings/announcements/:id/enabled</code></th><td>列表里的启用开关，<code>{"enabled": bool}</code></td><td>404</td></tr>
+                <tr><th><code>DELETE /admin/settings/announcements/:id</code></th><td>软删除</td><td>404</td></tr>
+                <tr><th><code>PUT /admin/settings/announcements/order</code></th><td><code>{"ids": [...]}</code>，必须恰好包含全部未删除公告各一次</td><td>400「列表已变化，请刷新后重试」</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="cmp-wrap" style="margin-top: 12px">
+            <table class="cmp">
+              <thead><tr><th>校验</th><th>错误文案（400）</th></tr></thead>
+              <tbody>
+                <tr><th>标题空或超 60 字</th><td>标题需要 1–60 个字</td></tr>
+                <tr><th>正文超 5000 字</th><td>详情最多 5000 个字</td></tr>
+                <tr><th>链接不是 <code>/xxx</code> 或 <code>http(s)://host</code>（含 <code>//x</code>、<code>javascript:</code>）</th><td>链接需要以 / 或 http(s):// 开头</td></tr>
+                <tr><th>结束时间 ≤ 开始时间</th><td>结束时间要晚于开始时间</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>核心逻辑伪代码</h2>
+          <div class="codeblock"><pre style="margin: 0; font: inherit; white-space: pre-wrap">// 后端：公开查询（提案）
+func (s *AnnouncementService) Public(ctx) (*AnnouncementPublicView, error) {
+    now := s.now()
+    rows := s.repo.ListActive(ctx, now)
+    // enabled AND (starts_at IS NULL OR starts_at &lt;= now) AND (ends_at IS NULL OR ends_at &gt; now) AND deleted_at IS NULL
+    sortStable(rows, important desc, sort asc, id asc)
+    return toPublic(rows[:min(5, len(rows))])   // Items 永不为 nil
+}
+
+// 前端：本机过滤（提案，web/src/utils/home/announcement.ts，纯函数便于测试）
+function visibleAnnouncements(items, dismissed, now) {
+  return items.filter(a =&gt;
+    (a.ends_at == null || Date.parse(a.ends_at) &gt; now) &amp;&amp;
+    (a.important || dismissed[a.id] !== a.version))
+}
+
+// 关闭：localStorage["announcement-dismissed"] = { [id]: version }，最多 50 条，读写包 try/catch，失败退回内存
+// 轮播：5s 定时；hover / 焦点在条内 / 详情弹窗打开 / document.hidden 时暂停；只有 1 条不切换
+// 刷新：首次进入外壳拉取；window focus 且距上次 ≥ 5 分钟再拉；每 30s 本地检查 ends_at</pre></div>
+        </div>
+
+        <div class="sec">
+          <h2>前端文件</h2>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <tbody>
+                <tr><th><code>components/home/announcement-bar.tsx</code></th><td>通栏 + 详情弹窗；<code>sticky top:0</code>，放在 <code>HomeLayout</code> 里 <code>SidebarProvider</code> 之前（仍在 <code>MotionConfig</code> 内）</td></tr>
+                <tr><th><code>pages/home/layout.tsx</code></th><td>按通栏是否显示在外壳上设 <code>--announcement-h</code>（40px / 0px）</td></tr>
+                <tr><th><code>index.css</code></th><td><code>[data-shell="home"] [data-slot="sidebar-container"]</code> 改为 <code>top: var(--announcement-h); height: calc(100svh - var(--announcement-h))</code>；<code>site-header</code> 吸顶 <code>top: var(--announcement-h)</code>；200ms 过渡</td></tr>
+                <tr><th><code>hooks/use-announcements.ts</code></th><td>读本机缓存首屏渲染、拉取并回写缓存、回焦重拉、过期检查、关闭记录</td></tr>
+                <tr><th><code>utils/home/announcement.ts</code></th><td>过滤、关闭记录裁剪等纯函数</td></tr>
+                <tr><th><code>api/announcement/</code>、<code>api/admin/announcement/</code></th><td>接口与类型</td></tr>
+                <tr><th><code>pages/admin/settings/announcements/</code></th><td>后台列表 + 编辑弹窗；导航放「系统设置」组「登录页展示」之上</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>已确认的决定</h2>
+          <div class="card">
+            <ol class="list" style="padding-left: 18px; display: grid; gap: 6px">
+              <li><b>显示在首页外壳所有页</b>：创作、所有画布、资产、短剧列表、对话、个人资料；画布编辑器、短剧工作台不显示，不打扰创作。</li>
+              <li><b>放在整个窗口最顶部的通栏，始终可见</b>：v1 的「顶栏下细条」你评价太丑、不专业，改为最顶部；一次一条，悬停暂停。</li>
+              <li><b>放得下不动，放不下才从右往左滚</b>：一次一条；长标题先停 1.5 秒，以 60px/秒滚到末尾，再停 1.5 秒后切下一条；只滚标题；开「减少动态效果」时改为省略号。放弃了连续跑马灯。</li>
+              <li><b>视觉去装饰</b>：实色通栏、居中一句话 + 「了解更多 →」，不用图标和标签、不要进度条。</li>
+              <li><b>标题 + 可选 Markdown 详情 + 可选链接</b>：都不填就是纯通知。</li>
+              <li><b>普通可关、重要不可关</b>：关闭记在本机，按「ID + 版本」匹配，内容改了重新出现。</li>
+              <li><b>启用开关 + 可选起止时间</b>：到点自动上下线。</li>
+              <li><b>暂时只要「通知」一种类型、一种颜色</b>：不存 <code>kind</code>，不显示类型标签；原先的通知 / 活动 / 警告作废。<b>配色定为 B 浅黄</b>：亮 <code>oklch(0.95 0.06 92)</code> 底 / <code>oklch(0.36 0.08 70)</code> 字 / <code>oklch(0.86 0.1 88)</code> 底边；暗 <code>oklch(0.26 0.05 78)</code> / <code>oklch(0.9 0.11 88)</code> / <code>oklch(0.36 0.07 78)</code>。底部细线必须保留。将来加类型 = 新迁移加 <code>kind</code> 列（默认 notice）。</li>
+              <li><b>admin 与 super_admin 都能增删改排序</b>：全部写操作进审计。</li>
+              <li><b>已搁置</b>：跨设备关闭记录、按角色定向投放、实时推送（见 Markdown 第 11 节，将来启用时的做法已写好）。</li>
+            </ol>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+      const $ = (s, r = document) => r.querySelector(s);
+      const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const icons = () => { if (window.lucide) lucide.createIcons(); };
+
+      function toggleNotes() {
+        const on = document.body.classList.toggle("show-notes");
+        $("#notesSw").setAttribute("aria-checked", String(on));
+      }
+      let toastTimer;
+      function toast(msg, kind = "ok") {
+        const icon = { ok: "circle-check", bad: "circle-x", warn: "triangle-alert" }[kind] || "info";
+        $("#toast").innerHTML = `<div><i data-lucide="${icon}" style="color: rgb(var(--${kind}))"></i>${esc(msg)}</div>`;
+        icons();
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => ($("#toast").innerHTML = ""), 2200);
+      }
+      function showTab(id) {
+        document.querySelectorAll("main > section").forEach((s) => (s.hidden = s.id !== "tab-" + id));
+        document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === id)));
+        window.scrollTo(0, 0);
+      }
+      document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab)));
+
+      /* ================= 原型：内存状态，刷新复原 ================= */
+      const T0 = new Date(2026, 10, 12, 20, 0).getTime(); // 模拟时钟起点：11-12 20:00（示意）
+      const at = (m, d, h, mi = 0) => new Date(2026, m - 1, d, h, mi).getTime();
+      const MAX_SHOW = 5;
+      const ROTATE_MS = 5000;
+
+      let seq = 7;
+      const S = {
+        now: T0,
+        view: "user",
+        palette: "amber-soft", // 已定 B 浅黄；总览页点其他候选只是临时预览
+        fail: false,
+        cache: null, // 上一次成功拉取的公开数据
+        dismissed: {}, // { id: version }，原型里用内存代替 localStorage
+        idx: 0,
+        paused: false,
+        detail: null,
+        editing: null, // { id|null, form, errors, tab }
+        confirmDel: null,
+        adminLoading: false,
+        items: [
+          { id: 1, title: "今晚 22:00–24:00 系统维护，期间无法提交生成任务", body: "维护期间：\n- 无法提交新的生成任务\n- 已在排队的任务会在维护结束后继续\n- 画布编辑与保存**不受影响**", link: "", important: true, enabled: true, starts: at(11, 12, 18), ends: at(11, 13, 0), sort: 0, version: 1 },
+          { id: 2, title: "Seedance 2.5 已上线，生成速度提升 40%", body: "**Seedance 2.5** 现已在「生成」和画布视频节点中可用。\n\n- 1080p 出片速度提升约 40%（示意）\n- 运镜描述更听话", link: "/", important: false, enabled: true, starts: null, ends: null, sort: 1, version: 1 },
+          { id: 3, title: "短剧工作室现已支持按章节拆分 500 万字长篇小说：自动规划分集、选集写剧本，并可一键生成角色卡与场景图，所有用户可免费试用三天", body: "", link: "/drama", important: false, enabled: true, starts: null, ends: null, sort: 2, version: 1 },
+          { id: 4, title: "双 11 充值送 20% 积分，至 11 月 15 日", body: "", link: "https://example.com/promo", important: false, enabled: true, starts: at(11, 13, 0), ends: at(11, 16, 0), sort: 3, version: 1 },
+          { id: 5, title: "旧版画布导出格式已于 11 月 10 日下线", body: "", link: "", important: false, enabled: true, starts: null, ends: at(11, 10, 0), sort: 4, version: 1 },
+          { id: 6, title: "（草稿）12 月会员体系调整预告", body: "", link: "", important: false, enabled: false, starts: null, ends: null, sort: 5, version: 1 },
+        ],
+      };
+
+      const fmt = (t) => { const d = new Date(t); const p = (n) => String(n).padStart(2, "0"); return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; };
+      const toLocalInput = (t) => { if (t == null) return ""; const d = new Date(t); const p = (n) => String(n).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
+      const fromLocalInput = (s) => (s ? new Date(s).getTime() : null);
+
+      /* ---- 与后端一致的规则（提案） ---- */
+      const inWindow = (a, now) => a.enabled && (a.starts == null || a.starts <= now) && (a.ends == null || a.ends > now);
+      const order = (a, b) => (a.important !== b.important ? (a.important ? -1 : 1) : a.sort - b.sort || a.id - b.id);
+      function publicList(now) { return S.items.filter((a) => inWindow(a, now)).sort(order).slice(0, MAX_SHOW); }
+      function statusOf(a, now) {
+        if (!a.enabled) return "disabled";
+        if (a.starts != null && a.starts > now) return "scheduled";
+        if (a.ends != null && a.ends <= now) return "expired";
+        const live = S.items.filter((x) => inWindow(x, now)).sort(order);
+        return live.indexOf(a) >= MAX_SHOW ? "overflow" : "live";
+      }
+      const STATUS = { live: ["展示中", "t-ok"], scheduled: ["待上线", "t-info"], expired: ["已过期", "t-mute"], disabled: ["已停用", "t-mute"], overflow: ["超出上限", "t-warn"] };
+      function validate(f) {
+        const e = {};
+        const title = f.title.trim();
+        if ([...title].length < 1 || [...title].length > 60) e.title = "标题需要 1–60 个字";
+        if ([...f.body.trim()].length > 5000) e.body = "详情最多 5000 个字";
+        const link = f.link.trim();
+        if (link) {
+          const site = /^\/(?!\/)/.test(link);
+          let web = false;
+          if (/^https?:\/\//i.test(link)) { try { web = !!new URL(link).host; } catch { web = false; } }
+          if ((!site && !web) || link.length > 512) e.link = "链接需要以 / 或 http(s):// 开头";
+        }
+        const s = fromLocalInput(f.starts), en = fromLocalInput(f.ends);
+        if (s != null && en != null && en <= s) e.ends = "结束时间要晚于开始时间";
+        return e;
+      }
+
+      /* ---- 用户端：拉取 + 本机过滤 ---- */
+      function fetchPublic() {
+        if (S.fail) return; // 失败：保留上一次成功的数据，静默
+        S.cache = publicList(S.now).map((a) => ({ ...a }));
+      }
+      function visible() {
+        return (S.cache || []).filter((a) => (a.ends == null || a.ends > S.now) && (a.important || S.dismissed[a.id] !== a.version));
+      }
+
+      /* ---- 时钟 ---- */
+      function tick(ms) { S.now += ms; fetchPublic(); S.idx = 0; render(); toast(`时钟拨到 ${fmt(S.now)}，已重新拉取`, "ok"); }
+      function resetClock() { S.now = T0; fetchPublic(); S.idx = 0; render(); }
+      function toggleFail() { S.fail = !S.fail; $("#failSw").setAttribute("aria-checked", String(S.fail)); toast(S.fail ? "之后的拉取都会失败：公告条保留上一次的内容" : "拉取恢复正常", S.fail ? "warn" : "ok"); if (!S.fail) { fetchPublic(); render(); } }
+      function clearDismissed() { S.dismissed = {}; S.idx = 0; render(); toast("本机关闭记录已清空"); }
+
+      document.querySelectorAll("#viewSeg button").forEach((b) => b.addEventListener("click", () => {
+        S.view = b.dataset.v; S.editing = null; S.detail = null; S.confirmDel = null;
+        document.querySelectorAll("#viewSeg button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+        if (S.view === "user") fetchPublic(); // 回到首页 = 重新进入外壳，拉取一次
+        if (S.view === "admin") { S.adminLoading = true; setTimeout(() => { S.adminLoading = false; render(); }, 450); }
+        render();
+      }));
+
+      /* ---- 配色候选：总览页卡片与原型控制条共用一个选中值 ---- */
+      const PALETTES = [
+        { id: "amber", short: "A 主题黄", name: "A · 主题黄实色", desc: "整条琥珀黄 + 深色字。最醒目、最有品牌感；但看起来像「警告」。" },
+        { id: "amber-soft", short: "B 浅黄", name: "B · 浅黄", desc: "淡黄底 + 深琥珀字 + 底部细线。柔和，像一张便签。", final: true },
+        { id: "ink-amber", short: "C 黑底黄字", name: "C · 黑底 + 主题黄点缀", desc: "暖黑底白字，只有「了解更多」用主题黄。" },
+        { id: "ink", short: "D 中性深色", name: "D · 中性深色", desc: "上一版的样子：近黑底白字，没有品牌色。" },
+        { id: "paper", short: "E 暖米色", name: "E · 暖米色", desc: "和侧栏同一种米色 + 底部细线。最安静，存在感最弱。" },
+      ];
+      const PAL_SAMPLE = { title: "Seedance 2.5 已上线，生成速度提升 40%", body: "x", link: "", important: false };
+      function renderPalettes() {
+        $("#palettes").innerHTML = PALETTES.map((p) => `
+          <button class="pal-it" data-p="${p.id}" aria-pressed="${S.palette === p.id}">
+            <div class="meta"><b>${esc(p.name)}</b>${p.final ? '<span class="tag t-ok">已定</span>' : ""}${S.palette === p.id && !p.final ? '<span class="tag t-vio">临时预览中</span>' : ""}<span class="muted">${esc(p.desc)}</span></div>
+            <div class="ban p-${p.id}"><div class="in"><div class="line"><span class="tv"><span class="title">${esc(PAL_SAMPLE.title)}</span></span><span class="more">了解更多<i data-lucide="arrow-right"></i></span></div></div><div class="ctl"><span style="display:inline-grid;place-items:center;width:28px;opacity:.6"><i data-lucide="x"></i></span></div></div>
+          </button>`).join("");
+        icons();
+      }
+      function pickPalette(id) {
+        S.palette = id;
+        renderPalettes();
+        if (S.editing) { const pv = $("#pv"); if (pv) { pv.innerHTML = barHTML(previewItem(), { preview: true }); icons(); } }
+        else render();
+      }
+      $("#palettes").addEventListener("click", (ev) => { const b = ev.target.closest("[data-p]"); if (b) { pickPalette(b.dataset.p); toast(b.dataset.p === "amber-soft" ? "回到已定的 B 浅黄" : `临时预览 ${PALETTES.find((p) => p.id === b.dataset.p).name}（已定的是 B）`, b.dataset.p === "amber-soft" ? "ok" : "warn"); } });
+
+      /* ---- 极简 Markdown（示意：真实实现用 react-markdown） ---- */
+      function md(src) {
+        const lines = esc(src).split("\n");
+        let html = "", inList = false;
+        const inline = (s) => s.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
+        for (const l of lines) {
+          if (/^- /.test(l)) { if (!inList) { html += "<ul>"; inList = true; } html += `<li>${inline(l.slice(2))}</li>`; continue; }
+          if (inList) { html += "</ul>"; inList = false; }
+          if (l.trim()) html += `<p>${inline(l)}</p>`;
+        }
+        if (inList) html += "</ul>";
+        return html || '<p class="muted">（没有详情）</p>';
+      }
+
+      /* ---- 通栏（用户端与后台预览共用同一个组件） ---- */
+      function barHTML(a, { preview = false } = {}) {
+        const hasBody = a.body && a.body.trim();
+        const link = (a.link || "").trim();
+        const more = hasBody ? `<button class="more" data-act="detail">了解更多<i data-lucide="arrow-right"></i></button>`
+          : link ? `<button class="more" data-act="go">了解更多<i data-lucide="arrow-right"></i></button>` : "";
+        const x = a.important ? "" : `<button data-act="close" aria-label="关闭这条公告"><i data-lucide="x"></i></button>`;
+        return `<div class="ban p-${S.palette} ${preview ? "compact" : ""}" role="region" aria-label="公告" aria-live="off">
+          <div class="in"><div class="line"><span class="tv"><span class="title" title="${esc(a.title.trim())}">${esc(a.title.trim() || "（标题）")}</span></span>${more}</div></div>
+          <div class="ctl">${x}</div>
+        </div>`;
+      }
+
+      /* ---- 渲染 ---- */
+      function render() {
+        $("#clock").textContent = fmt(S.now);
+        $("#addr").textContent = S.view === "user" ? "video-canvas / 创作" : "video-canvas / 后台 / 系统设置 / 公告";
+        $("#protoNote").textContent = S.view === "user"
+          ? "设计：通栏在整个窗口最顶部、横跨侧栏和内容区，始终可见——侧栏和吸顶顶栏都通过 --announcement-h 往下让 40px（框内可滚动试）。去掉了 v1 的彩色图标、圆角卡片和进度条；只有一种颜色、不显示类型，轮播时底色不变。右侧只有一个 ×（60% 不透明度），不做上一条 / 下一条和 1/3 计数——多条只靠自动轮播，视觉焦点只留给那一句话。标题放得下就静止 5 秒；放不下（第 3 条是故意写长的，或把浏览器窗口拉窄）就先停 1.5 秒、从右往左滚到末尾、再停 1.5 秒才切下一条——只滚标题，「了解更多」不动；悬停立刻停在原位。没有用「全部首尾相接的连续跑马灯」，因为难读、链接会跑。关闭 = 只关当前这条；没有剩余时整页平滑上移。原型里关闭记录存在内存，真实实现存 localStorage。"
+          : "设计：状态是派生的（启用 + 时间 + 排名），不让管理员手动维护；「超出上限」直接告诉他为什么用户看不到。原型里用上下箭头代替拖动手柄排序。编辑弹窗顶部是实时预览，所见即所得。";
+        S.view === "user" ? renderUser() : renderAdmin();
+        icons();
+        restartRotation();
+      }
+
+      function renderUser() {
+        const list = visible();
+        if (S.idx >= list.length) S.idx = 0;
+        const cur = list[S.idx];
+        $("#proto").onclick = null;
+        const prevScroll = $("#homeScroll") ? $("#homeScroll").scrollTop : 0;
+        $("#proto").innerHTML = `
+          <div class="home-scroll" id="homeScroll" style="--ah:${cur ? 40 : 0}px">
+            <div class="ban-wrap">${cur ? barHTML(cur) : ""}</div>
+            <div class="shell">
+              <div class="side"><span class="ic on"><i data-lucide="sparkles"></i></span><span class="ic"><i data-lucide="layout-grid"></i></span><span class="ic"><i data-lucide="images"></i></span><span class="ic"><i data-lucide="clapperboard"></i></span></div>
+              <div class="inset">
+                <div class="sh"><span class="ic"><i data-lucide="panel-left"></i></span><span class="spacer"></span><span class="pill"><i data-lucide="sun"></i><span style="opacity:.4">|</span><i data-lucide="coins"></i>1,280</span></div>
+                <div class="hello"><h3>晚上好，今天想创作什么？</h3>
+                  <div class="composer">描述你想生成的画面…</div>
+                  ${!cur ? `<p class="muted" style="font-size:12px;margin-top:18px">（当前没有可显示的公告：通栏高度为 0，页面和今天一样）</p>` : `<p class="muted" style="font-size:12px;margin-top:18px">（往下滚动：通栏和顶栏都保持可见）</p>`}
+                  ${S.fail ? `<p style="font-size:12px;margin-top:8px;color:rgb(var(--warn))">模拟拉取失败中：显示的是上一次成功拉到的内容</p>` : ""}
+                </div>
+                <div class="recent">${"<div></div>".repeat(9)}</div>
+              </div>
+            </div>
+          </div>
+          ${S.detail ? detailHTML(S.detail) : ""}`;
+        $("#homeScroll").scrollTop = prevScroll;
+        setupMarquee();
+        const bar = $(".ban");
+        if (bar) {
+          const pause = () => { S.paused = true; if (marquee) marquee.anim.pause(); restartRotation(); };
+          const resume = () => { S.paused = false; if (marquee && !S.detail) marquee.anim.play(); restartRotation(); };
+          bar.addEventListener("mouseenter", pause);
+          bar.addEventListener("mouseleave", resume);
+          bar.addEventListener("focusin", pause);
+          bar.addEventListener("focusout", resume);
+          bar.addEventListener("click", (ev) => {
+            const b = ev.target.closest("[data-act]"); if (!b) return;
+            const act = b.dataset.act;
+            if (act === "detail") { S.detail = cur; S.paused = true; render(); }
+            if (act === "go") go(cur.link);
+            if (act === "close") {
+              S.dismissed[cur.id] = cur.version; S.paused = false;
+              const rest = visible();
+              if (!rest.length) { $("#homeScroll").style.setProperty("--ah", "0px"); setTimeout(render, 200); }
+              else { if (S.idx >= rest.length) S.idx = 0; render(); }
+              toast("已关闭这条公告（本机记住）");
+            }
+          });
+        }
+        const dlg = $("#detailMask");
+        if (dlg) dlg.addEventListener("click", (ev) => {
+          const b = ev.target.closest("[data-act]");
+          if (ev.target === dlg || (b && b.dataset.act === "dclose")) { S.detail = null; S.paused = false; render(); }
+          if (b && b.dataset.act === "dgo") go(S.detail.link);
+        });
+      }
+      function go(link) {
+        if (link.startsWith("/")) toast(`站内跳转到 ${link}（router.navigate，不整页刷新）`, "ok");
+        else toast(`新窗口打开 ${link}（rel=noopener）`, "ok");
+      }
+      function detailHTML(a) {
+        return `<div class="mask" id="detailMask"><div class="dlg" role="dialog" aria-label="公告详情">
+          <div class="row">${a.important ? '<span class="tag t-mute">重要</span>' : ""}<button class="ibtn spacer" data-act="dclose" aria-label="关闭"><i data-lucide="x"></i></button></div>
+          <h4 style="margin-top:10px">${esc(a.title)}</h4>
+          <div class="md" style="margin-top:10px">${md(a.body)}</div>
+          ${a.link ? `<div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn btn-primary" data-act="dgo">前往<i data-lucide="arrow-right"></i></button></div>` : ""}
+        </div></div>`;
+      }
+
+      /* ---- 轮播计时（真实实现：hover / 焦点 / 弹窗 / document.hidden 时暂停） ---- */
+      /* ---- 放不下才滚：先停 1.5s → 60px/s 从右往左滚到末尾 → 停 1.5s；标签和「了解更多」不动 ---- */
+      const HOLD_MS = 1500, SPEED = 60;
+      let marquee = null; // { anim, total }
+      function setupMarquee() {
+        marquee = null;
+        const bar = $(".ban"), tv = $(".ban .tv"), t = $(".ban .title");
+        if (!tv || !t) return;
+        const over = t.scrollWidth - tv.clientWidth;
+        if (over <= 2) return;
+        bar.classList.add("is-over");
+        tv.classList.add("over");
+        if (matchMedia("(prefers-reduced-motion: reduce)").matches) { tv.classList.add("ellmode"); t.classList.add("ell"); return; } // 减少动态效果：不滚，省略号
+        const travel = tv.scrollWidth - tv.clientWidth + 16; // 加了遮罩内边距后重新量
+        const run = (travel / SPEED) * 1000, total = HOLD_MS + run + HOLD_MS;
+        const anim = t.animate(
+          [
+            { transform: "translateX(0)", offset: 0 },
+            { transform: "translateX(0)", offset: HOLD_MS / total },
+            { transform: `translateX(${-travel}px)`, offset: (HOLD_MS + run) / total },
+            { transform: `translateX(${-travel}px)`, offset: 1 },
+          ],
+          { duration: total, easing: "linear", fill: "forwards" },
+        );
+        if (S.paused || S.detail) anim.pause();
+        marquee = { anim, total };
+      }
+
+      let rotTimer;
+      function restartRotation() {
+        clearTimeout(rotTimer);
+        const list = S.view === "user" ? visible() : [];
+        if (S.view !== "user" || S.paused || S.detail) return;
+        if (list.length < 2 && !marquee) return; // 只有一条且放得下：不动
+        // 停留时长：放得下 5s；放不下 = max(5s, 滚完剩余时间)，暂停后从原位接着算
+        const left = marquee ? Math.max(ROTATE_MS - (marquee.anim.currentTime || 0), marquee.total - (marquee.anim.currentTime || 0)) : ROTATE_MS;
+        rotTimer = setTimeout(() => { const n = visible().length; if (n) S.idx = (S.idx + 1) % n; render(); }, Math.max(0, left));
+      }
+      document.addEventListener("visibilitychange", () => { if (document.hidden) clearTimeout(rotTimer); else restartRotation(); });
+
+      /* ---- 后台 ---- */
+      function renderAdmin() {
+        const rows = [...S.items].sort((a, b) => a.sort - b.sort || a.id - b.id);
+        let main;
+        if (S.adminLoading) main = `<div class="empty"><span class="big"><i data-lucide="loader-circle"></i></span><p class="muted" style="margin-top:8px">加载中…</p></div>`;
+        else if (!rows.length) main = `<div class="empty"><span class="big"><i data-lucide="megaphone"></i></span><p style="margin-top:8px;font-weight:500">还没有公告</p><button class="btn btn-primary" style="margin-top:14px" data-act="new"><i data-lucide="plus"></i>新建公告</button></div>`;
+        else main = `<div class="cmp-wrap"><table class="tbl"><thead><tr><th>排序</th><th>状态</th><th>标题</th><th>生效时间</th><th>启用</th><th></th></tr></thead><tbody>
+          ${rows.map((a, i) => { const st = STATUS[statusOf(a, S.now)]; return `<tr>
+            <td><button class="ibtn" data-act="up" data-id="${a.id}" ${i === 0 ? "disabled" : ""} aria-label="上移"><i data-lucide="chevron-up"></i></button><button class="ibtn" data-act="down" data-id="${a.id}" ${i === rows.length - 1 ? "disabled" : ""} aria-label="下移"><i data-lucide="chevron-down"></i></button></td>
+            <td><span class="tag ${st[1]}">${st[0]}</span></td>
+            <td class="tt">${esc(a.title)} ${a.important ? '<span class="tag t-warn">重要</span>' : ""}</td>
+            <td class="mono" style="font-size:11.5px">${a.starts == null && a.ends == null ? '<span class="muted">不限</span>' : `${a.starts == null ? "立即" : fmt(a.starts)} → ${a.ends == null ? "不限" : fmt(a.ends)}`}</td>
+            <td><button class="switch" role="switch" aria-checked="${a.enabled}" data-act="toggle" data-id="${a.id}" aria-label="启用"></button></td>
+            <td><button class="ibtn" data-act="edit" data-id="${a.id}" aria-label="编辑"><i data-lucide="pencil"></i></button><button class="ibtn" data-act="del" data-id="${a.id}" aria-label="删除"><i data-lucide="trash-2"></i></button></td>
+          </tr>`; }).join("")}
+        </tbody></table></div>`;
+        $("#proto").innerHTML = `<div class="adm">
+          <div class="adm-side">
+            <div class="grp">用户</div><div class="it"><i data-lucide="users"></i>用户管理</div>
+            <div class="grp">系统设置</div>
+            <div class="it"><i data-lucide="hard-drive"></i>存储配置</div><div class="it"><i data-lucide="coins"></i>定价设置</div>
+            <div class="it on"><i data-lucide="megaphone"></i>公告</div><div class="it"><i data-lucide="film"></i>登录页展示</div>
+          </div>
+          <div class="adm-main">
+            <div class="row" style="margin-bottom:14px"><h3 style="font-size:16px;font-weight:600">公告</h3>${rows.length && !S.adminLoading ? `<button class="btn btn-primary spacer" data-act="new"><i data-lucide="plus"></i>新建公告</button>` : ""}</div>
+            ${main}
+          </div>
+          ${S.editing ? editHTML() : ""}
+          ${S.confirmDel ? `<div class="mask"><div class="dlg" style="width:min(380px,100%)"><h4>删除这条公告？</h4><p class="muted" style="font-size:13px;margin-top:8px">「${esc(S.confirmDel.title)}」删除后用户端不再显示，可在操作审计里查到记录。</p><div class="row" style="justify-content:flex-end;margin-top:16px"><button class="btn btn-outline" data-act="cancelDel">取消</button><button class="btn btn-primary" style="background:rgb(var(--bad));color:#fff" data-act="doDel">删除</button></div></div></div>` : ""}
+        </div>`;
+        $("#proto").onclick = adminClick;
+        bindEditor();
+      }
+
+      function adminClick(ev) {
+        const b = ev.target.closest("[data-act]"); if (!b) return;
+        const id = Number(b.dataset.id);
+        const it = S.items.find((x) => x.id === id);
+        const act = b.dataset.act;
+        if (act === "new") { S.editing = { id: null, tab: "edit", errors: {}, form: { title: "", body: "", link: "", important: false, enabled: true, starts: "", ends: "" } }; render(); }
+        if (act === "edit") { S.editing = { id, tab: "edit", errors: {}, form: { title: it.title, body: it.body, link: it.link, important: it.important, enabled: it.enabled, starts: toLocalInput(it.starts), ends: toLocalInput(it.ends) } }; render(); }
+        if (act === "toggle") { it.enabled = !it.enabled; it.version++; render(); toast(it.enabled ? "已启用" : "已停用"); }
+        if (act === "up" || act === "down") {
+          const rows = [...S.items].sort((a, b) => a.sort - b.sort || a.id - b.id);
+          const i = rows.indexOf(it), j = act === "up" ? i - 1 : i + 1;
+          [rows[i], rows[j]] = [rows[j], rows[i]];
+          rows.forEach((r, k) => (r.sort = k));
+          render(); toast("顺序已保存");
+        }
+        if (act === "del") { S.confirmDel = it; render(); }
+        if (act === "cancelDel") { S.confirmDel = null; render(); }
+        if (act === "doDel") { S.items = S.items.filter((x) => x !== S.confirmDel); S.confirmDel = null; render(); toast("已删除"); }
+        if (act === "cancelEdit") { S.editing = null; render(); }
+        if (act === "tabEdit" || act === "tabPrev") { S.editing.tab = act === "tabEdit" ? "edit" : "preview"; render(); }
+        if (act === "save") save();
+      }
+
+      function editHTML() {
+        const { form: f, errors: e, tab, id } = S.editing;
+        const err = (k) => (e[k] ? `<div class="errtxt">${esc(e[k])}</div>` : "");
+        const n = (s) => [...s.trim()].length;
+        return `<div class="mask"><div class="dlg">
+          <div class="row"><h4>${id ? "编辑公告" : "新建公告"}</h4><button class="ibtn spacer" data-act="cancelEdit" aria-label="关闭"><i data-lucide="x"></i></button></div>
+          <div class="note" style="margin-top:12px" id="pv">${barHTML(previewItem(), { preview: true })}</div>
+          <div class="fld"><label>标题<span class="cnt" id="cTitle">${n(f.title)}/60</span></label><input class="inp ${e.title ? "err" : ""}" data-f="title" value="${esc(f.title)}" />${err("title")}</div>
+          <div class="fld"><label>详情<span class="spacer seg" style="margin-left:auto"><button data-act="tabEdit" aria-pressed="${tab === "edit"}">编辑</button><button data-act="tabPrev" aria-pressed="${tab === "preview"}">预览</button></span></label>
+            ${tab === "edit" ? `<textarea class="inp ${e.body ? "err" : ""}" data-f="body" placeholder="可选，支持 Markdown">${esc(f.body)}</textarea>` : `<div class="mdbox md">${md(f.body)}</div>`}${err("body")}</div>
+          <div class="fld"><label>链接</label><input class="inp ${e.link ? "err" : ""}" data-f="link" value="${esc(f.link)}" placeholder="/drama 或 https://…" />${err("link")}</div>
+          <div class="fld grid g2" style="gap:10px">
+            <div><label style="display:block;font-size:12.5px;font-weight:500;margin-bottom:5px">开始时间</label><input type="datetime-local" class="inp" data-f="starts" value="${esc(f.starts)}" /></div>
+            <div><label style="display:block;font-size:12.5px;font-weight:500;margin-bottom:5px">结束时间</label><input type="datetime-local" class="inp ${e.ends ? "err" : ""}" data-f="ends" value="${esc(f.ends)}" />${err("ends")}</div>
+          </div>
+          <div class="fld row" style="gap:18px">
+            <label class="row" style="margin:0;font-weight:400"><input type="checkbox" data-f="important" ${f.important ? "checked" : ""} />重要（用户不能关闭，排最前）</label>
+            <label class="row spacer" style="margin:0;font-weight:400">启用<button class="switch" role="switch" aria-checked="${f.enabled}" data-f="enabled"></button></label>
+          </div>
+          <div class="row" style="justify-content:flex-end;margin-top:18px"><button class="btn btn-outline" data-act="cancelEdit">取消</button><button class="btn btn-primary" data-act="save" id="saveBtn">保存</button></div>
+        </div></div>`;
+      }
+      function previewItem() { const f = S.editing.form; return { id: 0, title: f.title, body: f.body, link: f.link, important: f.important }; }
+
+      /* 输入只改状态 + 局部刷新预览，不整体重绘，避免失焦 */
+      function bindEditor() {
+        if (!S.editing) return;
+        document.querySelectorAll("[data-f]").forEach((el) => {
+          const k = el.dataset.f;
+          if (k === "enabled") { el.addEventListener("click", () => { S.editing.form.enabled = !S.editing.form.enabled; el.setAttribute("aria-checked", String(S.editing.form.enabled)); }); return; }
+          const ev = el.type === "checkbox" ? "change" : "input";
+          el.addEventListener(ev, () => {
+            S.editing.form[k] = el.type === "checkbox" ? el.checked : el.value;
+            if (k === "title") $("#cTitle").textContent = `${[...el.value.trim()].length}/60`;
+            $("#pv").innerHTML = barHTML(previewItem(), { preview: true }); icons();
+          });
+        });
+      }
+
+      function save() {
+        const ed = S.editing;
+        ed.errors = validate(ed.form);
+        if (Object.keys(ed.errors).length) { render(); toast("有字段没填对", "bad"); return; }
+        const btn = $("#saveBtn"); btn.disabled = true; btn.textContent = "保存中…";
+        setTimeout(() => { // 模拟，非真实调用
+          const f = ed.form;
+          const data = { title: f.title.trim(), body: f.body.trim(), link: f.link.trim(), important: f.important, enabled: f.enabled, starts: fromLocalInput(f.starts), ends: fromLocalInput(f.ends) };
+          if (ed.id) { const it = S.items.find((x) => x.id === ed.id); if (!it) { S.editing = null; render(); toast("公告不存在或已删除", "bad"); return; } Object.assign(it, data); it.version++; }
+          else S.items.push({ id: seq++, sort: Math.max(-1, ...S.items.map((x) => x.sort)) + 1, version: 1, ...data });
+          S.editing = null; render(); toast("已保存，切到「用户首页」看看");
+        }, 500);
+      }
+
+      fetchPublic();
+      renderPalettes();
+      render();
+      icons();
+    </script>
+  </body>
+</html>

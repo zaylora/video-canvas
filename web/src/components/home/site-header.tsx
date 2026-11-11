@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 
 import { ChromePill, ChromeSeparator } from "@/components/canvas/chrome/chrome";
+import { AnnouncementBar } from "@/components/home/announcement-bar";
 import { SITE_HEADER_CENTER_ID } from "@/components/home/site-header-center";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import { useAnnouncements } from "@/hooks/use-announcements";
 import { cn } from "@/lib/utils";
 import { CreditsMenu } from "@/pages/canvas/chrome/top-right-bar";
 
@@ -12,9 +14,12 @@ import { CreditsMenu } from "@/pages/canvas/chrome/top-right-bar";
  * 左边是侧栏开关（桌面端收起 / 展开，窄屏打开抽屉，和后台顶栏一致），
  * 右边是一颗半透明胶囊：主题切换 | 积分；账号相关的都在侧栏底部的账号菜单里。
  * 正中留一个挂载点（SITE_HEADER_CENTER_ID），给各页面放收起后的工具条。
+ * 正中还悬浮着公告胶囊（设计稿 docs/design/公告），不占布局；挂载点被工具条占用时它自动隐藏（index.css），
+ * 窄屏中间放不下，改浮在顶栏下方。画布编辑器、短剧工作台不用这个顶栏，所以不显示公告。
  */
 export function SiteHeader() {
   const [scrolled, setScrolled] = useState(false);
+  const announcements = useAnnouncements();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 4);
@@ -36,6 +41,13 @@ export function SiteHeader() {
         id={SITE_HEADER_CENTER_ID}
         className="absolute top-1/2 left-1/2 flex -translate-x-1/2 -translate-y-1/2 justify-center"
       />
+      {announcements.visible.length > 0 && (
+        <div className="announcement-float pointer-events-none absolute top-1/2 left-1/2 z-10 flex w-[min(36rem,calc(100%-22rem))] -translate-x-1/2 -translate-y-1/2 justify-center transition-[opacity,visibility] duration-150 max-md:top-[calc(100%+0.375rem)] max-md:w-[calc(100%-2rem)] max-md:translate-y-0">
+          <div className="pointer-events-auto flex max-w-full min-w-0">
+            <AnnouncementBar items={announcements.visible} onClose={announcements.close} />
+          </div>
+        </div>
+      )}
       <div className="flex-1" />
       <ChromePill>
         <ThemeToggle />
