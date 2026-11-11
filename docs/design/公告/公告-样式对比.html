@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>公告样式对比</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+    <style>
+      /* 令牌取自 web/src/index.css：亮色用 .home-theme（暖米色），暗色用 .dark；chrome = 清透胶囊那套半透明底 */
+      :root {
+        --bg: oklch(0.95 0.007 85);
+        --sidebar: oklch(0.925 0.009 85);
+        --card: oklch(0.985 0.004 85);
+        --fg: oklch(0.22 0.01 85);
+        --muted: oklch(0.5 0.015 85);
+        --border: oklch(0.22 0.02 85 / 0.1);
+        --chrome: oklch(0.97 0.006 85 / 0.8);
+        --chrome-border: oklch(0.22 0.02 85 / 0.1);
+        --chrome-hover: oklch(0.22 0.02 85 / 0.06);
+        --amber: oklch(0.67 0.14 78);
+        --amber-soft: oklch(0.67 0.14 78 / 0.16);
+        --page: oklch(0.9 0.006 85);
+        --ui: oklch(1 0 0);
+        --ui-fg: oklch(0.2 0 0);
+        --ui-border: oklch(0.9 0 0);
+        color-scheme: light;
+      }
+      .dark {
+        --bg: oklch(0.145 0 0);
+        --sidebar: oklch(0.205 0 0);
+        --card: oklch(0.205 0 0);
+        --fg: oklch(0.985 0 0);
+        --muted: oklch(0.708 0 0);
+        --border: oklch(1 0 0 / 0.1);
+        --chrome: oklch(0.2 0 0 / 0.78);
+        --chrome-border: oklch(1 0 0 / 0.08);
+        --chrome-hover: oklch(1 0 0 / 0.07);
+        --amber: oklch(0.81 0.15 82);
+        --amber-soft: oklch(0.81 0.15 82 / 0.14);
+        --page: oklch(0.12 0 0);
+        --ui: oklch(0.18 0 0);
+        --ui-fg: oklch(0.95 0 0);
+        --ui-border: oklch(1 0 0 / 0.1);
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; font-family: Geist, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; background: var(--page); color: var(--ui-fg); -webkit-font-smoothing: antialiased; }
+      button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+      [data-lucide] { width: 1em; height: 1em; flex: none; }
+      .top { position: sticky; top: 0; z-index: 10; background: var(--ui); border-bottom: 1px solid var(--ui-border); }
+      .top-in { max-width: 1240px; margin: 0 auto; padding: 10px 20px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+      .top h1 { font-size: 15px; margin: 0 8px 0 0; }
+      .opt { height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13px; border: 1px solid var(--ui-border); }
+      .opt[aria-pressed="true"] { background: var(--ui-fg); color: var(--ui); border-color: transparent; }
+      .spacer { margin-left: auto; }
+      .wrap { max-width: 1240px; margin: 0 auto; padding: 18px 20px 60px; }
+      .desc { font-size: 14px; line-height: 1.6; margin: 0 0 14px; max-width: 900px; }
+      .desc b { font-weight: 600; }
+      .rec { display: inline-block; font-size: 11.5px; padding: 1px 7px; border-radius: 999px; background: oklch(0.6 0.13 160 / 0.15); color: oklch(0.5 0.13 160); margin-left: 6px; vertical-align: 1px; }
+      .dark .rec { color: oklch(0.75 0.13 160); }
+
+      /* ---- 假首页 ---- */
+      .frame { border-radius: 14px; overflow: hidden; border: 1px solid var(--ui-border); box-shadow: 0 20px 50px -30px rgb(0 0 0 / 0.5); }
+      .app { background: var(--sidebar); height: 560px; overflow: hidden; display: flex; flex-direction: column; color: var(--fg); position: relative; }
+      .shell { flex: 1; display: flex; min-height: 0; }
+      .side { width: 210px; padding: 14px 10px; display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+      .side .logo { display: flex; align-items: center; gap: 8px; color: var(--fg); font-weight: 600; padding: 4px 8px 14px; }
+      .side .logo span { width: 22px; height: 22px; border-radius: 7px; background: var(--fg); }
+      .side .it { display: flex; align-items: center; gap: 9px; height: 32px; padding: 0 8px; border-radius: 9px; }
+      .side .it.on { background: var(--chrome-hover); color: var(--fg); font-weight: 500; }
+      .inset { flex: 1; margin: 8px 8px 8px 0; border-radius: 22px; background: var(--bg); box-shadow: 0 12px 40px -18px oklch(0 0 0 / 0.35); outline: 1px solid var(--border); position: relative; overflow: hidden; }
+      .hdr { height: 56px; display: flex; align-items: center; padding: 0 18px; }
+      .pill { display: inline-flex; align-items: center; gap: 10px; height: 32px; padding: 0 12px; border-radius: 999px; background: var(--chrome); box-shadow: 0 6px 18px -8px rgb(0 0 0 / 0.25), 0 0 0 1px var(--chrome-border); backdrop-filter: blur(20px) saturate(1.5); font-size: 12.5px; }
+      .pill .sep { width: 1px; height: 14px; background: var(--chrome-border); }
+      .hello { text-align: center; padding-top: 74px; position: relative; }
+      .hello::before { content: ""; position: absolute; left: 50%; top: 40px; width: 560px; height: 220px; transform: translateX(-50%); background: radial-gradient(closest-side, var(--amber-soft), transparent); filter: blur(20px); z-index: 0; }
+      .hello h2 { position: relative; font-size: 30px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
+      .seg { position: relative; display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; background: var(--chrome); box-shadow: 0 0 0 1px var(--chrome-border); margin-top: 22px; font-size: 13px; }
+      .seg span { padding: 6px 14px; border-radius: 999px; color: var(--muted); }
+      .seg span.on { background: var(--card); color: var(--fg); box-shadow: 0 1px 3px rgb(0 0 0 / 0.08); }
+      .composer { position: relative; margin: 26px auto 0; width: min(560px, 90%); height: 112px; border-radius: 20px; background: var(--card); box-shadow: 0 0 0 1px var(--border), 0 10px 30px -18px rgb(0 0 0 / 0.3); padding: 16px; text-align: left; font-size: 14px; color: var(--muted); }
+
+      /* ---- 公告：共用 ---- */
+      .x { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; color: var(--muted); }
+      .x:hover { background: var(--chrome-hover); color: var(--fg); }
+      .title { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .title.clickable { cursor: pointer; }
+      .title.clickable:hover { text-decoration: underline; text-underline-offset: 3px; text-decoration-color: color-mix(in oklab, currentColor 40%, transparent); }
+      .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--amber); flex: none; box-shadow: 0 0 0 3px var(--amber-soft); }
+      .chev { color: var(--muted); font-size: 14px; }
+
+      /* A 清透通栏 */
+      .a-bar { height: 38px; display: flex; align-items: center; justify-content: center; gap: 10px; position: relative; font-size: 13px; background: var(--chrome); border-bottom: 1px solid var(--chrome-border); backdrop-filter: blur(20px) saturate(1.5); }
+      .a-bar .x { position: absolute; right: 10px; }
+
+      /* B 悬浮清透胶囊 */
+      .b-wrap { height: 48px; display: flex; align-items: center; justify-content: center; }
+      .b-pill { display: inline-flex; align-items: center; gap: 10px; height: 32px; max-width: min(640px, 90%); padding: 0 6px 0 14px; border-radius: 999px; font-size: 13px; background: var(--chrome); box-shadow: 0 8px 22px -10px rgb(0 0 0 / 0.28), 0 0 0 1px var(--chrome-border); backdrop-filter: blur(20px) saturate(1.5); }
+      .b-pill .sep { width: 1px; height: 14px; background: var(--chrome-border); }
+
+      /* C 琥珀微光通栏 */
+      .c-bar { height: 38px; display: flex; align-items: center; justify-content: center; gap: 10px; position: relative; font-size: 13px; overflow: hidden; background: var(--sidebar); border-bottom: 1px solid var(--chrome-border); }
+      .c-bar::before { content: ""; position: absolute; left: 50%; top: 50%; width: 70%; height: 220%; transform: translate(-50%, -50%); background: radial-gradient(closest-side, var(--amber-soft), transparent); }
+      .c-bar::after { content: ""; position: absolute; left: 20%; right: 20%; bottom: -1px; height: 1px; background: linear-gradient(90deg, transparent, var(--amber), transparent); opacity: 0.7; }
+      .c-bar > * { position: relative; }
+      .c-bar .x { position: absolute; right: 10px; }
+
+      /* D 当前：浅黄实色 */
+      :root { --d-bg: oklch(0.95 0.06 92); --d-fg: oklch(0.36 0.08 70); --d-line: oklch(0.86 0.1 88); }
+      .dark { --d-bg: oklch(0.26 0.05 78); --d-fg: oklch(0.9 0.11 88); --d-line: oklch(0.36 0.07 78); }
+      .d-bar { height: 40px; display: flex; align-items: center; justify-content: center; position: relative; font-size: 13px; background: var(--d-bg); color: var(--d-fg); border-bottom: 1px solid var(--d-line); }
+      .d-bar .x { position: absolute; right: 10px; color: var(--d-fg); opacity: 0.6; }
+    </style>
+  </head>
+  <body>
+    <header class="top">
+      <div class="top-in">
+        <h1>公告样式对比</h1>
+        <button class="opt" data-v="b" aria-pressed="true">B 悬浮清透胶囊</button>
+        <button class="opt" data-v="a" aria-pressed="false">A 清透通栏</button>
+        <button class="opt" data-v="c" aria-pressed="false">C 琥珀微光通栏</button>
+        <button class="opt" data-v="d" aria-pressed="false">D 当前（浅黄实色）</button>
+        <span class="spacer"></span>
+        <button class="opt" id="len">换成长标题</button>
+        <button class="opt" onclick="document.documentElement.classList.toggle('dark')">切换明暗</button>
+      </div>
+    </header>
+    <main class="wrap">
+      <p class="desc" id="desc"></p>
+      <div class="frame"><div class="app" id="app"></div></div>
+    </main>
+
+    <script>
+      const DESC = {
+        b: "<b>B 悬浮清透胶囊</b><span class='rec'>推荐</span>　最顶部居中一颗半透明胶囊，和右上角「主题 | 积分」那颗是同一套材质（chrome 底 + 毛玻璃 + 细描边 + 轻阴影）。不占满整行，像一条轻提示而不是横幅；前面一个主题黄小圆点表示「有新消息」，是唯一的彩色。",
+        a: "<b>A 清透通栏</b>　仍然是整行通栏，但改成半透明毛玻璃底 + 底部细线，不再是一整条色块；彩色只留一个主题黄小圆点。最接近你之前要的「最顶部通栏」，又和界面风格统一。",
+        c: "<b>C 琥珀微光通栏</b>　整行通栏，底色和侧栏一致；文字背后一团很淡的主题黄光晕，底边一条从中间向两侧淡出的金线，呼应首页标题后面的光晕。最有设计感，但存在感也最强。",
+        d: "<b>D 当前（浅黄实色）</b>　现在代码里的样子，作对照。整条实色块，亮色下和米色页面分不太开，暗色下是发闷的棕色，而且和整个界面的半透明风格不搭。",
+      };
+      const SHORT = "Seedance 2.5 已上线，生成速度提升 40%";
+      const LONG = "短剧工作室现已支持按章节拆分 500 万字长篇小说：自动规划分集、选集写剧本，并可一键生成角色卡与场景图";
+      let v = "b", long = false;
+
+      function banner() {
+        const t = long ? LONG : SHORT;
+        const title = `<span class="title clickable" title="${t}">${t}</span>`;
+        const x = `<button class="x" aria-label="关闭这条公告"><i data-lucide="x"></i></button>`;
+        if (v === "a") return `<div class="a-bar"><span class="dot"></span>${title}${x}</div>`;
+        if (v === "b") return `<div class="b-wrap"><div class="b-pill"><span class="dot"></span>${title}<span class="sep"></span>${x}</div></div>`;
+        if (v === "c") return `<div class="c-bar"><span class="dot"></span>${title}${x}</div>`;
+        return `<div class="d-bar">${title}${x}</div>`;
+      }
+
+      function render() {
+        document.querySelectorAll("[data-v]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.v === v)));
+        document.getElementById("len").textContent = long ? "换成短标题" : "换成长标题";
+        document.getElementById("desc").innerHTML = DESC[v];
+        document.getElementById("app").innerHTML = `
+          ${banner()}
+          <div class="shell">
+            <nav class="side">
+              <div class="logo"><span></span>连镜</div>
+              <div class="it on"><i data-lucide="sparkles"></i>创作</div>
+              <div class="it"><i data-lucide="layout-grid"></i>作品</div>
+              <div class="it"><i data-lucide="images"></i>资产</div>
+              <div class="it"><i data-lucide="clapperboard"></i>短剧</div>
+            </nav>
+            <div class="inset">
+              <div class="hdr"><i data-lucide="panel-left" style="color:var(--muted)"></i><span class="spacer"></span>
+                <span class="pill"><i data-lucide="sun"></i><span class="sep"></span><i data-lucide="coins"></i>1,280</span></div>
+              <div class="hello"><h2>晚上好，今天想创作什么？</h2>
+                <div class="seg"><span class="on">生成</span><span>画布</span><span>短剧</span></div>
+                <div class="composer">描述你想生成的画面…</div>
+              </div>
+            </div>
+          </div>`;
+        if (window.lucide) lucide.createIcons();
+      }
+      document.querySelectorAll("[data-v]").forEach((b) => b.addEventListener("click", () => { v = b.dataset.v; render(); }));
+      document.getElementById("len").addEventListener("click", () => { long = !long; render(); });
+      render();
+    </script>
+  </body>
+</html>

@@ -856,23 +856,31 @@ html:has([data-shell="home"]) {
   }
 }
 @keyframes home-drift-a {
-  from {
-    transform: translate(-8%, 4%) scale(0.95);
-    opacity: 0.7;
+  0% {
+    transform: translate(-12%, 6%) scale(0.9);
+    opacity: 0.5;
   }
-  to {
-    transform: translate(8%, -4%) scale(1.08);
+  50% {
+    transform: translate(2%, -6%) scale(1.12);
     opacity: 1;
+  }
+  100% {
+    transform: translate(12%, 2%) scale(0.98);
+    opacity: 0.7;
   }
 }
 @keyframes home-drift-b {
-  from {
-    transform: translate(10%, -2%) scale(1.05);
+  0% {
+    transform: translate(14%, -4%) scale(1.1);
     opacity: 1;
   }
-  to {
-    transform: translate(-10%, 6%) scale(0.9);
-    opacity: 0.6;
+  50% {
+    transform: translate(-4%, 8%) scale(0.92);
+    opacity: 0.45;
+  }
+  100% {
+    transform: translate(-14%, -2%) scale(1.04);
+    opacity: 0.85;
   }
 }
 @keyframes home-ring-spin {
@@ -917,7 +925,7 @@ html:has([data-shell="home"]) {
     color-mix(in oklch, var(--beam) var(--glow, 14%), transparent),
     transparent
   );
-  animation: home-drift-a 11s ease-in-out infinite alternate;
+  animation: home-drift-a 7s ease-in-out infinite alternate;
   &[data-tone="bright"] {
     inset: 10% 20%;
     background: radial-gradient(
@@ -925,7 +933,7 @@ html:has([data-shell="home"]) {
       color-mix(in oklch, var(--beam-bright) var(--glow, 14%), transparent),
       transparent
     );
-    animation: home-drift-b 14s ease-in-out infinite alternate;
+    animation: home-drift-b 9s ease-in-out infinite alternate;
   }
   @media (prefers-reduced-motion: reduce) {
     animation: none;
@@ -1199,4 +1207,30 @@ html:has([data-shell="home"]) {
   @media (prefers-reduced-motion: reduce) {
     animation: none;
   }
+}
+
+/*
+ * 首页公告：顶栏正中悬浮的清透胶囊（设计：docs/design/公告/公告.md §13 v5）。
+ * 材质和右上角「主题 | 积分」那颗 ChromePill 一样，唯一的彩色是前面的主题黄小圆点（取自 .drama-theme 的琥珀色）。
+ * 不占布局：挂在顶栏里绝对定位，跟着吸顶顶栏一直可见。
+ */
+:root {
+  --announcement-dot: oklch(0.67 0.14 78);
+}
+.dark {
+  --announcement-dot: oklch(0.81 0.15 82);
+}
+/* 资产页滚动后会把收起的工具条挂到顶栏正中，这时让出位置，不叠在一起 */
+[data-slot="site-header"]:has(#site-header-center > *) .announcement-float {
+  opacity: 0;
+  visibility: hidden;
+}
+/* 标题放不下：滚动时右侧渐隐提示还有内容，减少动态效果时改成省略号 */
+.announcement-row[data-over="scroll"] .announcement-viewport {
+  mask-image: linear-gradient(90deg, #000 calc(100% - 16px), transparent);
+}
+.announcement-row[data-over="ellipsis"] .announcement-title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

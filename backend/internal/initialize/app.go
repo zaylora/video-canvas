@@ -138,6 +138,11 @@ func NewApp(cfg *config.Config) (*App, error) {
 		Settings: repository.NewSystemSettingRepository(db), Audit: auditRepo,
 	})
 
+	// 首页公告：全站共享的运营内容，后台写操作进审计
+	announcementSvc := service.NewAnnouncementService(service.AnnouncementDeps{
+		Repo: repository.NewAnnouncementRepository(db), Audit: auditRepo,
+	})
+
 	// 实时推送：Redis 开启时 ticket 存 Redis，关闭时降级为进程内存
 	hub := ws.NewHub()
 	ticketStore := ws.NewTicketStore(rdb)
@@ -366,6 +371,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 		AdminSettings:  handler.NewAdminSettingsHandler(settingsSvc, smtpSvc),
 		AdminSystem:    newAdminSystemHandler(cfg, db, taskRepo, auditRepo),
 		Showcase:       handler.NewShowcaseHandler(showcaseSvc),
+		Announcement:   handler.NewAnnouncementHandler(announcementSvc),
 		Payment:        pay.user,
 		AdminPayment:   pay.admin,
 		AdminRole:      roleLookup,

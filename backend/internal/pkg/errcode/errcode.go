@@ -150,6 +150,13 @@ var (
 	ErrShowcaseOrderMismatch = New(54003, "排序列表与现有条目不一致，请刷新后重试", http.StatusBadRequest) // 多了、少了或重复了条目
 )
 
+// 首页公告 56xxx
+var (
+	ErrAnnouncementNotFound      = New(56001, "公告不存在或已删除", http.StatusNotFound)
+	ErrAnnouncementInvalid       = New(56002, "公告内容不合法", http.StatusBadRequest)        // 具体原因写进 Msg
+	ErrAnnouncementOrderMismatch = New(56003, "公告列表已变化，请刷新后重试", http.StatusBadRequest) // 排序列表多了、少了或重复了公告
+)
+
 // 个人中心 55xxx
 var (
 	ErrOldPasswordWrong    = New(55001, "当前密码错误", http.StatusBadRequest) // 剩余尝试次数写进 Msg
