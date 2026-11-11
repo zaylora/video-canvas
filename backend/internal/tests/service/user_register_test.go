@@ -214,6 +214,9 @@ func TestUserService_Register(t *testing.T) {
 		if u.EmailVerifiedAt != nil {
 			t.Fatal("未验证过邮箱不应写 email_verified_at")
 		}
+		if u.LastLoginAt == nil {
+			t.Fatal("注册即登录，应写 last_login_at，否则后台显示「从未登录」")
+		}
 		if bc := u.Password; bc == "" || bc == "Str0ng-Pass" {
 			t.Fatal("密码必须是哈希")
 		}

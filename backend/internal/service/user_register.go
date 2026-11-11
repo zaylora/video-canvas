@@ -227,8 +227,10 @@ func (s *UserService) registerInTx(ctx context.Context, tx repository.UserTx, us
 	if first {
 		user.Role = model.RoleSuperAdmin
 	}
+	// 注册即登录：首次登录也算登录，写最近登录时间，否则后台用户列表会显示「从未登录」
+	now := time.Now()
+	user.LastLoginAt = &now
 	if verified {
-		now := time.Now()
 		user.EmailVerifiedAt = &now
 	}
 	if err := tx.Create(ctx, user); err != nil {
