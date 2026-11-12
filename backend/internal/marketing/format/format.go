@@ -268,9 +268,12 @@ func modelRef(in Input) string { return fmt.Sprintf("@图片%d", in.ProductImage
 // 参考素材说明的固定文案，两种写法共用。
 const (
 	productRefNote = "外观的唯一依据，禁止重新设计、改色、改形、改 logo"
-	modelRefNote   = "模特形象参考"
-	videoRefNote   = "参考节奏与运镜，不照搬其中的商品、人物与品牌"
+	modelRefNote   = "出镜人物的唯一依据，全片出镜的都是这位模特，脸、发型、肤色与之一致"
+	videoRefNote   = "只参考节奏、构图与运镜，不照搬其中的人物外貌、商品、品牌与画面文字"
 )
+
+// basicSound 是基本参数里的声音说明：有配音但不上字幕（模型生成的字不稳定）。
+const basicSound = "有声，无字幕"
 
 // styleParts 返回「整体视觉」的内容：平台写法要点（可被删减去掉）与角度。
 func styleParts(in Input, o options) []string {
@@ -286,12 +289,19 @@ func styleParts(in Input, o options) []string {
 	return out
 }
 
-// hardClauses 返回硬性约束的各条：固定三条 + 平台禁令 + 关键颜色。
+// hardClauses 返回硬性约束的各条：固定三条 + 有模特图时的人物约束 + 平台禁令 + 关键颜色。
 func hardClauses(in Input, o options) []string {
 	out := []string{
 		"商品外观与参考图一致",
 		"商品不出画",
-		"除商品本身印刷的文字外，画面不出现任何文字、字幕或水印",
+		"不加字幕：旁白只配音，除商品本身印刷的文字外，画面不出现任何文字、字幕、花字或水印",
+	}
+	if in.HasModel {
+		person := fmt.Sprintf("出镜人物始终是 %s 的模特", modelRef(in))
+		if hasRef(in) {
+			person += "，不出现 @视频1 里的人物"
+		}
+		out = append(out, person)
 	}
 	out = append(out, in.Platform.Bans...)
 	if colors := keyColors(in, o); len(colors) > 0 {
@@ -337,7 +347,7 @@ func shotLine(in Input, o options, i int) string {
 	s := in.Script.Shots[i]
 	no := i + 1 + o.numberBase
 	timeRange := fmt.Sprintf("%s–%ss", marketing.FmtSec(s.Start), marketing.FmtSec(s.End))
-	scene := strings.TrimRight(strings.TrimSpace(truncateRunes(s.Scene, o.sceneMax)), "。.")
+	scene := strings.TrimRight(strings.TrimSpace(truncateRunes(modelScene(in, s.Scene), o.sceneMax)), "。.")
 	camera := joinNonEmpty("，", s.Shot, s.Camera)
 
 	var b strings.Builder
@@ -362,6 +372,14 @@ func shotLine(in Input, o options, i int) string {
 		}
 	}
 	return b.String()
+}
+
+// modelScene 把画面描述里的「模特图」换成模特图的引用（@图片k），让视频模型对上具体哪张图；没有模特图时原样返回。
+func modelScene(in Input, scene string) string {
+	if !in.HasModel {
+		return scene
+	}
+	return strings.ReplaceAll(scene, "模特图", modelRef(in))
 }
 
 // shotLines 写全部镜头，每镜一行。

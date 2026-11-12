@@ -10,7 +10,7 @@ import (
 // genericLayout 是通用段落写法（h3 暂用同一写法）：内容与 seedance 相同，写成连续段落，没有区块标题。
 func genericLayout(in Input, o options) string {
 	var paras []string
-	paras = append(paras, fmt.Sprintf("画幅 %s，时长 %s 秒，有声。", aspect(in), marketing.FmtSec(totalDuration(in))))
+	paras = append(paras, fmt.Sprintf("画幅 %s，时长 %s 秒，%s。", aspect(in), marketing.FmtSec(totalDuration(in)), basicSound))
 	paras = append(paras, "参考素材："+strings.Join(genericRefParts(in), "；")+"。")
 	if parts := styleParts(in, o); len(parts) > 0 {
 		paras = append(paras, "整体视觉："+strings.Join(parts, "；")+"。")

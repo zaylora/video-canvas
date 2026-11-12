@@ -102,7 +102,7 @@ func TestSeedance_分区块结构(t *testing.T) {
 	}
 	for _, want := range []string{
 		"[基本参数] 9:16，15 秒，有声",
-		"@图片1", "@图片2", "@图片3：模特形象参考",
+		"@图片1", "@图片2", "@图片3：出镜人物的唯一依据",
 		"晨雾香水 50ml", "禁止重新设计、改色、改形、改 logo",
 		"痛点",                     // 角度名
 		"前 3 秒强钩子",               // 平台写法要点
@@ -110,7 +110,7 @@ func TestSeedance_分区块结构(t *testing.T) {
 		"镜头1（0–5s）", "镜头2（5–10s）", "镜头3（10–15s）",
 		"近景，手持推近", "旁白：「早八来不及？」", "旁白：「点下方链接带走它」",
 		"旁白：中文，温柔女声", "配乐：轻快钢琴",
-		"商品外观与参考图一致", "商品不出画", "不出现任何文字、字幕或水印",
+		"商品外观与参考图一致", "商品不出画", "不出现任何文字、字幕、花字或水印",
 		"橙色软管", "米白毛衣", "奶油色背景", // 关键颜色并集
 	} {
 		if !strings.Contains(out, want) {
@@ -153,7 +153,7 @@ func TestSeedance_每镜开头是主体和动作(t *testing.T) {
 
 func TestSeedance_跟拍带参考视频和对应镜头(t *testing.T) {
 	out := mustRender(t, format.For("seedance"), followFixture())
-	if !strings.Contains(out, "@视频1：参考节奏与运镜，不照搬其中的商品、人物与品牌") {
+	if !strings.Contains(out, "@视频1：只参考节奏、构图与运镜，不照搬其中的人物外貌、商品、品牌与画面文字") {
 		t.Errorf("参考素材应说明 @视频1：\n%s", out)
 	}
 	if !strings.Contains(out, "跟拍") {
@@ -384,5 +384,40 @@ func TestRender_没有模特图和商品图时省略对应说明(t *testing.T) {
 	}
 	if !strings.Contains(out, "@图片1") {
 		t.Errorf("应保留 @图片1")
+	}
+}
+
+// 有模特图的跟拍：模特图是出镜人物的唯一依据，画面描述里的「模特图」换成 @图片k，
+// 参考视频只取节奏运镜、不取人物与字幕，硬性约束写明人物不沿用参考视频。两种写法都要做到。
+func TestRender_有模特图时人物以模特图为准(t *testing.T) {
+	in := followFixture()
+	in.Script.Shots[0].Scene = "模特图中的女性手握香水瓶对着镜头"
+	for _, key := range []string{"seedance", "generic"} {
+		out := mustRender(t, format.For(key), in)
+		for _, want := range []string{
+			"@图片3", "出镜人物的唯一依据",
+			"@图片3中的女性手握香水瓶",
+			"不照搬其中的人物外貌",
+			"出镜人物始终是 @图片3 的模特，不出现 @视频1 里的人物",
+		} {
+			if !strings.Contains(out, want) {
+				t.Errorf("%s 缺 %q：\n%s", key, want, out)
+			}
+		}
+		if strings.Contains(out, "模特图中的女性") {
+			t.Errorf("%s 画面描述里的「模特图」应换成 @图片3：\n%s", key, out)
+		}
+	}
+}
+
+// 成片不加字幕：基本参数写「无字幕」，参考视频说明不照搬字幕，硬性约束写明旁白只配音不上字幕。
+func TestRender_成片不加字幕(t *testing.T) {
+	for _, key := range []string{"seedance", "generic"} {
+		out := mustRender(t, format.For(key), followFixture())
+		for _, want := range []string{"有声，无字幕", "不照搬其中的人物外貌、商品、品牌与画面文字", "不加字幕：旁白只配音"} {
+			if !strings.Contains(out, want) {
+				t.Errorf("%s 缺 %q：\n%s", key, want, out)
+			}
+		}
 	}
 }
