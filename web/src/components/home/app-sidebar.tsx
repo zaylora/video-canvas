@@ -54,7 +54,7 @@ const NAV: NavItem[] = [
   { label: "创作", icon: Clapperboard, to: "/" },
   { label: "探索", icon: Compass },
   { label: "资产", icon: FolderOpen, to: "/assets" },
-  { label: "短剧工作室", icon: Film, to: "/drama", badge: "New" },
+  { label: "短剧工作室", icon: Film, to: "/drama" },
   { label: "营销工作室", icon: ShoppingBag, to: "/marketing", badge: "New" },
 ];
 
