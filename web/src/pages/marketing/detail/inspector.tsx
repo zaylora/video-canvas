@@ -677,7 +677,7 @@ export function ScriptInspector({
           >
             <MoreHorizontal />
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" sideOffset={6} className="w-44">
+          <DropdownMenuContent side="top" align="end" sideOffset={6} className="w-44">
             <DropdownMenuItem
               disabled={takes.length === 0}
               onClick={() => {
