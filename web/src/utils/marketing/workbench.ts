@@ -1,8 +1,8 @@
-import type { Reverse, Round, Script } from "@/api/marketing/type";
+import type { Round, Script } from "@/api/marketing/type";
 
 /**
  * 营销创作台（设计 docs/design/营销工作室/创作台.md）的纯逻辑：
- * 选中项（原片 / 某份脚本）的默认与回落、镜头定位、成片 → 原片的镜头对应、能不能对比。
+ * 选中项（原片 / 某份脚本）的默认与回落、镜头定位、时长展示。
  */
 
 /** 左栏选中项：原片用 "ref"，脚本用脚本 ID */
@@ -10,9 +10,6 @@ export type WorkbenchSelection = "ref" | (string & {});
 
 /** 原片在左栏的固定键 */
 export const REF_SELECTION = "ref";
-
-/** 映射结果离原片末尾留一点，免得 seek 到结尾触发 ended */
-const END_GUARD = 0.05;
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
@@ -29,40 +26,6 @@ export function shotIndexAt(shots: readonly { start: number; end: number }[], t:
 /** 脚本时长：最后一镜的终点 */
 export function scriptDuration(script: Pick<Script, "shots">): number {
   return script.shots.at(-1)?.end ?? 0;
-}
-
-/** 成片时间 t 所在镜头对应的参考镜头；改编版或找不到时为 null */
-function pairAt(t: number, script: Script, reverse: Reverse | null) {
-  const index = shotIndexAt(script.shots, t);
-  const shot = script.shots[index];
-  if (!shot || shot.refShot === null || !reverse) return null;
-  const ref = reverse.shots.find((item) => item.id === shot.refShot);
-  return ref && shot.end > shot.start ? { shot, ref } : null;
-}
-
-/**
- * 成片时间 → 原片时间：跟拍版按对应参考镜头分段线性映射；改编版或缺映射按时长比例。
- * 结果夹在 [0, 原片时长 − 0.05]。
- * @param t 成片时间（秒）
- * @param script 脚本
- * @param reverse 拆解；没有为 null
- * @param refDuration 原片时长（秒）
- */
-export function refTimeAt(
-  t: number,
-  script: Script,
-  reverse: Reverse | null,
-  refDuration: number,
-): number {
-  const pair = pairAt(t, script, reverse);
-  const total = scriptDuration(script);
-  const raw = pair
-    ? pair.ref.start +
-      ((t - pair.shot.start) / (pair.shot.end - pair.shot.start)) * (pair.ref.end - pair.ref.start)
-    : total > 0
-      ? (t * refDuration) / total
-      : 0;
-  return clamp(raw, 0, Math.max(0, refDuration - END_GUARD));
 }
 
 /** 左栏的顺序：原片（有参考时）在前，脚本按后端顺序 */
@@ -101,17 +64,6 @@ export function nextSelection(
   const index = current ? keys.indexOf(current) : -1;
   if (index === -1) return keys[0];
   return keys[clamp(index + step, 0, keys.length - 1)];
-}
-
-/** 能不能切到「对比原片」：本轮有参考片，且选中的是已出片的脚本 */
-export function compareState(
-  round: Round,
-  script: Script | null,
-): { ok: true } | { ok: false; reason: string } {
-  if (!round.refVideo) return { ok: false, reason: "这一轮没有参考片" };
-  if (!script) return { ok: false, reason: "选中一份已出片的脚本后可对比" };
-  if (script.status !== "done") return { ok: false, reason: "出片后才能对比" };
-  return { ok: true };
 }
 
 /** 时长展示：最多一位小数，整数不带 .0（14.833 → 14.8s，15 → 15s） */

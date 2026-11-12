@@ -18,7 +18,6 @@ import { useCreditsStore } from "@/store/credits";
 import { useWorkbenchStore } from "@/store/marketing-workbench";
 import { formatPageTitle } from "@/utils/page-title";
 import {
-  compareState,
   defaultSelection,
   nextSelection,
   resolveSelection,
@@ -134,7 +133,7 @@ function Workbench({ project }: { project: Project }) {
     if (next !== selection) useWorkbenchStore.getState().select(next);
   }, [round, selection]);
 
-  // 快捷键：空格播放 / 暂停，← → 上一镜 / 下一镜，↑ ↓ 切换左栏，C 对比，F 全屏，Esc 退出对比 / 收起生成框
+  // 快捷键：空格播放 / 暂停，← → 上一镜 / 下一镜，↑ ↓ 切换左栏，F 全屏，Esc 收起生成框
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" && composerOpen && !document.querySelector("[role='dialog']")) {
@@ -172,17 +171,9 @@ function Workbench({ project }: { project: Project }) {
           store.select(next);
           return;
         }
-        case "c":
-        case "C":
-          if (!compareState(round, script).ok) return;
-          store.setMode(store.mode === "compare" ? "single" : "compare");
-          return;
         case "f":
         case "F":
           controls?.fullscreen();
-          return;
-        case "Escape":
-          if (store.mode === "compare") store.setMode("single");
           return;
       }
     };

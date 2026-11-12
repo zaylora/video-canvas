@@ -2,11 +2,9 @@ import { describe, expect, test } from "bun:test";
 
 import type { Reverse, Round, Script, ScriptShot } from "@/api/marketing/type";
 import {
-  compareState,
   formatSeconds,
   defaultSelection,
   nextSelection,
-  refTimeAt,
   resolveSelection,
   scriptDuration,
   selectionKeys,
@@ -122,23 +120,8 @@ describe("shotIndexAt", () => {
   });
 });
 
-describe("refTimeAt", () => {
-  test("跟拍版按对应参考镜头分段线性映射", () => {
-    const s = script();
-    // 成片镜头 2（2.5–7s）对应参考镜头 2（3–9s）：中点 4.75 → 6
-    expect(refTimeAt(4.75, s, reverse, 12)).toBeCloseTo(6, 5);
-    expect(refTimeAt(0, s, reverse, 12)).toBeCloseTo(0, 5);
-  });
-  test("改编版或缺映射时按时长比例", () => {
-    const s = script({ kind: "create", shots: [shot(0, 5), shot(5, 15)] });
-    expect(refTimeAt(7.5, s, reverse, 12)).toBeCloseTo(6, 5);
-  });
-  test("找不到参考镜头时退回比例；结果夹在原片时长内", () => {
-    const s = script({ shots: [shot(0, 15, 99)] });
-    expect(refTimeAt(15, s, reverse, 12)).toBeCloseTo(11.95, 5);
-    expect(refTimeAt(-1, s, reverse, 12)).toBe(0);
-  });
-  test("脚本时长取最后一镜终点", () => {
+describe("scriptDuration", () => {
+  test("取最后一镜终点；没有镜头为 0", () => {
     expect(scriptDuration(script())).toBe(15);
     expect(scriptDuration(script({ shots: [] }))).toBe(0);
   });
@@ -172,22 +155,6 @@ describe("选中项", () => {
     expect(nextSelection(round(), "b", 1)).toBe("b");
     expect(nextSelection(round(), "ref", -1)).toBe("ref");
     expect(nextSelection(round(), null, 1)).toBe("ref");
-  });
-});
-
-describe("compareState", () => {
-  test("有参考片且脚本已出片才能对比", () => {
-    const r = round();
-    expect(compareState(r, r.scripts[1]).ok).toBe(true);
-  });
-  test("不能对比时给出原因", () => {
-    const r = round();
-    expect(compareState(r, r.scripts[0])).toEqual({ ok: false, reason: "出片后才能对比" });
-    expect(compareState({ ...r, refVideo: null }, r.scripts[1])).toEqual({
-      ok: false,
-      reason: "这一轮没有参考片",
-    });
-    expect(compareState(r, null)).toEqual({ ok: false, reason: "选中一份已出片的脚本后可对比" });
   });
 });
 

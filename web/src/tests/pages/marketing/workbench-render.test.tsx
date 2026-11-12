@@ -171,12 +171,11 @@ describe("创作台：检查器", () => {
     expect(out).toContain("重试拆解");
   });
 
-  test("脚本：标签页、镜头（参考 n）、已修改、方法、配乐音色、出片积分；没对比时镜头对照禁用", async () => {
+  test("脚本：脚本 / 提示词两个标签页、镜头（参考 n）、已修改、方法、配乐音色、出片积分", async () => {
     const r = round();
     const out = await scriptInspector(r, r.scripts[0]);
     expect(out).toContain("提示词");
-    expect(out).toContain("镜头对照");
-    expect(out).toContain('title="切到对比原片后可用"');
+    expect(out).not.toContain("镜头对照");
     expect(out).toContain("参考 1");
     expect(out).toContain("已修改");
     expect(out).toContain("方法：daihuo-fanpai v2");
@@ -229,16 +228,14 @@ describe("创作台：舞台", () => {
     expect(await stage(round({ status: "canceled", scripts: [] }), null)).toContain("已取消");
   });
 
-  test("选中原片：可播放，带单看 / 对比原片切换（选原片时对比禁用并写原因）", async () => {
+  test("选中原片：可播放；不再有单看 / 对比原片切换", async () => {
     const out = await stage(round(), "ref");
-    expect(out).toContain('src="https://x/ref.mp4"');
-    expect(out).toContain("单看");
-    expect(out).toContain("对比原片");
-    expect(out).toContain("选中一份已出片的脚本后可对比");
+    expect(out).toContain('aria-label="播放视频"');
+    expect(out).not.toContain("对比原片");
   });
 });
 
-describe("创作台：监视器与时间轴", () => {
+describe("创作台：播放器", () => {
   const done = () =>
     script({
       status: "done",
@@ -258,11 +255,10 @@ describe("创作台：监视器与时间轴", () => {
       ],
     });
 
-  const renderStage = async (mode: "single" | "compare") => {
+  const renderStage = async () => {
     const s = done();
     const r = round({ scripts: [s] });
     const p = prepare(r, s.id);
-    useWorkbenchStore.setState({ mode });
     const { container, unmount } = await env.mount(
       <MemoryRouter>
         <Stage project={p} available={1000} actions={actions} />
@@ -273,25 +269,14 @@ describe("创作台：监视器与时间轴", () => {
     return html;
   };
 
-  test("已出片：监视器叠播放键；走带条（上一镜 / 播放 / 下一镜 / 静音 / 全屏）；时间轴是一条连续灰色轨道", async () => {
-    const html = await renderStage("single");
-    expect(html).toContain('data-slot="marketing-player-overlay"');
-    expect(html).toContain('aria-label="上一镜（←）"');
-    expect(html).toContain('aria-label="下一镜（→）"');
-    expect(html).toContain('aria-label="静音"');
-    expect(html).toContain('aria-label="全屏（F）"');
-    expect(html).toContain('data-slot="marketing-timeline"');
-    // 时间轴只是一条连续的灰色轨道：不分段、不放文字
+  test("已出片：用共享的视频播放器（停在封面、带播放键）；下面不再有时间轴", async () => {
+    const html = await renderStage();
+    expect(html.split('aria-label="播放视频"').length - 1).toBe(1);
+    // 自写的走带条已去掉，播放 / 进度 / 静音都在共享播放器里
+    expect(html).not.toContain("上一镜");
+    expect(html).not.toContain('data-slot="marketing-timeline"');
     expect(html).not.toContain("镜 1 · 原片 1");
     expect(html).not.toContain("第二句旁白");
-    expect(html).toContain("镜 1 / 2");
-  });
-
-  test("对比原片：时间轴仍是一条轨；不显示静音（声音二选一）", async () => {
-    const html = await renderStage("compare");
-    expect(html.split('data-slot="marketing-timeline"').length - 1).toBe(1);
-    expect(html).not.toContain('aria-label="静音"');
-    expect(html).toContain("原片声");
   });
 });
 

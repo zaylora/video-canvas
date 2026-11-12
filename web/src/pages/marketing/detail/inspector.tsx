@@ -5,7 +5,6 @@ import {
   CircleX,
   Clapperboard,
   CodeXml,
-  Columns2,
   Copy,
   Copyright,
   Download,
@@ -59,7 +58,7 @@ import {
   scriptStatusLabel,
 } from "@/utils/marketing/script";
 import { stepRunOf } from "@/utils/marketing/status";
-import { compareState, formatSeconds, refTimeAt, shotIndexAt } from "@/utils/marketing/workbench";
+import { formatSeconds } from "@/utils/marketing/workbench";
 
 import { useCurrentShot, useRefollowCost } from "./hooks";
 import { CanvasDialog, downloadUrl, takeFileName } from "./script-dialogs";
@@ -485,95 +484,7 @@ function PromptPanel({ script, round }: { script: Script; round: Round }) {
   );
 }
 
-/** 镜头对照页（对比模式）：当前镜头的原片（跟拍版可改）与成片 */
-function PairPanel({
-  round,
-  script,
-  actions,
-}: {
-  round: Round;
-  script: Script;
-  actions: MarketingActions;
-}) {
-  const time = useWorkbenchStore((state) => state.time);
-  const reverse = round.reverse;
-  if (!reverse || !round.refVideo || script.shots.length === 0) return null;
-  const index = Math.max(0, shotIndexAt(script.shots, time));
-  const shot = script.shots[index];
-  const follow = script.kind === "follow";
-  const refIndex =
-    follow && shot.refShot !== null
-      ? reverse.shots.findIndex((item) => item.id === shot.refShot)
-      : shotIndexAt(reverse.shots, refTimeAt(time, script, reverse, round.refVideo.duration));
-  const refShot = reverse.shots[Math.max(refIndex, 0)];
-  const editable = follow && reverseEditable(round) && !actions.busy[`reverse:${round.id}`];
-  const commit = (patch: Parameters<typeof patchReverseShot>[2], field?: "action") => {
-    if (field === "action") {
-      const problem = validateAction(patch.action ?? "");
-      if (problem) {
-        toast.error(problem);
-        return;
-      }
-    }
-    void actions.saveReverse(round, patchReverseShot(reverse, Math.max(refIndex, 0), patch));
-  };
-
-  return (
-    <div className="grid gap-2.5 p-4">
-      <div className="text-muted-foreground text-xs">
-        原片含第三方品牌 {reverse.brands.length} 处、促销背书 {reverse.claims.length} 处
-        {follow ? "，跟拍版已去掉" : "，改编版未使用"}
-      </div>
-      {refShot && (
-        <div className="bg-chrome-hover rounded-[18px] px-3.5 py-3 text-[13px]">
-          <div className="text-muted-foreground mb-1.5 flex items-center gap-1.5 text-xs">
-            原片 · 镜头 {refShot.id}
-            {refShot.isOpening3s && <StatusPill tone="warning">前 3 秒</StatusPill>}
-            {!follow && <StatusPill tone="muted">只读</StatusPill>}
-          </div>
-          <Label className="px-2">主体 + 动作</Label>
-          <EditableText
-            key={`a-${refShot.id}`}
-            multiline
-            value={refShot.action}
-            ariaLabel={`原片镜头 ${refShot.id} 主体和动作`}
-            disabled={!editable}
-            onCommit={(value) => commit({ action: value }, "action")}
-          />
-          <Label className="mt-1 px-2">台词</Label>
-          <EditableText
-            key={`d-${refShot.id}`}
-            value={refShot.dialogue}
-            ariaLabel={`原片镜头 ${refShot.id} 台词`}
-            disabled={!editable}
-            onCommit={(value) => commit({ dialogue: value })}
-          />
-          <div className="text-muted-foreground px-2 pt-1.5 text-xs">
-            商品怎么出现：{PRODUCT_ROLE_NAME[refShot.productRole]}
-            {refShot.productInFrame && ` · ${refShot.productInFrame}`}
-          </div>
-        </div>
-      )}
-      <div className="bg-chrome-hover rounded-[18px] px-3.5 py-3 text-[13px]">
-        <div className="text-muted-foreground mb-1.5 flex items-center text-xs">
-          成片 · 镜头 {index + 1}
-          <span className="flex-1" />
-          <Button
-            variant="ghost"
-            size="xs"
-            onClick={() => useWorkbenchStore.getState().focus(index)}
-          >
-            去改
-          </Button>
-        </div>
-        <p className="leading-relaxed">{shot.scene}</p>
-        <p className="mt-1.5 font-semibold">旁白：{shot.narration || "无"}</p>
-      </div>
-    </div>
-  );
-}
-
-/** 选中脚本时的检查器：脚本 / 提示词 / 镜头对照，底部是配乐 · 音色、问题、方法、更多、出片 */
+/** 选中脚本时的检查器：脚本 / 提示词，底部是配乐 · 音色、问题、方法、更多、出片 */
 export function ScriptInspector({
   project,
   round,
@@ -589,19 +500,15 @@ export function ScriptInspector({
 }) {
   const { angles } = useMarketingOptions();
   const tab = useWorkbenchStore((state) => state.tab);
-  const mode = useWorkbenchStore((state) => state.mode);
   const controls = useWorkbenchStore((state) => state.controls);
-  const focusShot = useWorkbenchStore((state) => state.focusShot);
   const current = useCurrentShot(script.shots);
   const scrolled = useScrolledAt();
-  const bodyRef = useRef<HTMLDivElement>(null);
   const [canvasOpen, setCanvasOpen] = useState(false);
 
   const follow = script.kind === "follow";
   const busy = isScriptBusy(script.status);
   const render = scriptRenderState(script, available);
   const rendering = actions.busy[`render:${script.id}`];
-  const compare = compareState(round, script);
   const playing = script.status === "done" && !!controls;
   const flagsByShot = new Map<number, string[]>();
   script.flags.forEach((flag) =>
@@ -610,36 +517,19 @@ export function ScriptInspector({
       `${FLAG_NAME[flag.type]}「${flag.text}」`,
     ]),
   );
-  const pairTab = tab === "pair" && mode === "compare" && compare.ok;
-  const activeTab: WorkbenchTab = pairTab ? "pair" : tab === "pair" ? "script" : tab;
+  const activeTab: WorkbenchTab = tab;
   const takes = playableTakes(script);
-
-  /** 对比层「去改」：滚到那一镜并聚焦旁白 */
-  useEffect(() => {
-    if (!focusShot) return;
-    const input = bodyRef.current?.querySelector<HTMLInputElement>(
-      `[data-shot="${focusShot.index}"] input`,
-    );
-    input?.scrollIntoView?.({ block: "center" });
-    input?.focus();
-  }, [focusShot]);
 
   const saveNarration = (index: number, value: string) => {
     const narrations = script.shots.map((shot, i) => (i === index ? value : shot.narration));
     if (narrationsChanged(script, narrations)) void actions.saveNarrations(script, narrations);
   };
 
-  /** 「参考 n」：已出片 → 对比并定位；没出片 → 选中原片并跳到那一镜 */
+  /** 「参考 n」：选中原片并跳到那一镜 */
   const openRef = (index: number) => {
     const shot = script.shots[index];
-    const store = useWorkbenchStore.getState();
-    if (compare.ok) {
-      store.setMode("compare");
-      store.controls?.seek(shot.start);
-      return;
-    }
     const ref = round.reverse?.shots.find((item) => item.id === shot.refShot);
-    store.select("ref", ref?.start ?? 0);
+    useWorkbenchStore.getState().select("ref", ref?.start ?? 0);
   };
 
   /** 先同步打开空白标签（异步完成后再开会被拦截），拿到画布 ID 再导航过去 */
@@ -686,16 +576,9 @@ export function ScriptInspector({
         items={[
           { value: "script", label: "脚本", icon: FileText },
           { value: "prompt", label: "提示词", icon: CodeXml },
-          {
-            value: "pair",
-            label: "镜头对照",
-            icon: Columns2,
-            disabled: mode === "compare" && compare.ok ? undefined : "切到对比原片后可用",
-          },
         ]}
       />
       <div
-        ref={bodyRef}
         className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable]"
         onWheel={scrolled.onWheel}
       >
@@ -728,7 +611,7 @@ export function ScriptInspector({
                         <button
                           type="button"
                           onClick={() => openRef(index)}
-                          title={compare.ok ? "对比原片这一镜" : "看原片这一镜"}
+                          title="看原片这一镜"
                           className="bg-status-warning/12 text-status-warning hover:bg-status-warning/20 rounded-full px-2 text-[11px] leading-5"
                         >
                           参考 {shot.refShot}
@@ -760,7 +643,6 @@ export function ScriptInspector({
           </>
         )}
         {activeTab === "prompt" && <PromptPanel script={script} round={round} />}
-        {activeTab === "pair" && <PairPanel round={round} script={script} actions={actions} />}
       </div>
       <div className="border-chrome-border flex flex-wrap items-center gap-1.5 border-t px-3 py-2.5">
         <span
