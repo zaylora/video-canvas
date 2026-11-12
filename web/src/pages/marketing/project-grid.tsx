@@ -44,15 +44,18 @@ function Bars({ bars }: { bars: ProjectSummary["bars"] }) {
   );
 }
 
-/** 一张营销片卡：点击进详情；悬停右上角「⋯」打开 / 删除（要确认） */
+/** 一张营销片卡：点击进详情；悬停右上角「⋯」打开 / 删除（要确认）。营销首页和作品页共用 */
 export function ProjectCard({
   project,
   index,
   deleting,
   onDelete,
+  instant,
 }: {
   project: ProjectSummary;
   index: number;
+  /** 不做入场和位移动画（作品页切换范围时直接换内容） */
+  instant?: boolean;
   deleting: boolean;
   onDelete: () => void;
 }) {
@@ -61,8 +64,8 @@ export function ProjectCard({
   return (
     <motion.div
       data-slot="marketing-card"
-      layout="position"
-      initial={{ opacity: 0, y: 8 }}
+      layout={instant ? false : "position"}
+      initial={instant ? false : { opacity: 0, y: 8 }}
       animate={{ opacity: deleting ? 0.5 : 1, y: 0 }}
       transition={{ duration: DURATION.slow, delay: Math.min(index, STAGGER_MAX) * STAGGER }}
       whileTap={TAP_CARD}

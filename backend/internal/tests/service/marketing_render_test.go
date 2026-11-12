@@ -274,7 +274,7 @@ func TestMarketing_TaskLifecycle_UpdatesScriptAndCover(t *testing.T) {
 	if done.Status != model.MarketingScriptDone || len(done.Takes) != 2 || done.Takes[1].Status != model.TaskSucceeded || len(done.Takes[1].Outputs) != 1 {
 		t.Fatalf("成功后 done，出片历史按时间正序全部保留：%+v", done)
 	}
-	items, _, err := env.svc.ListProjects(context.Background(), env.user, 1, 10)
+	items, _, err := env.svc.ListProjects(context.Background(), env.user, "", 1, 10)
 	if err != nil || items[0].CoverURL != "https://files.test/cover90" || items[0].ScriptCounts.Done != 1 {
 		t.Fatalf("封面应是最新成片首帧：%v %+v", err, items[0])
 	}

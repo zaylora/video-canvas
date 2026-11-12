@@ -47,7 +47,7 @@ type MarketingRepo interface {
 	repository.MarketingTx
 	// WithTx 执行营销事务。
 	WithTx(ctx context.Context, fn func(repository.MarketingTx) error) error
-	ListProjects(ctx context.Context, userID uint64, page, size int) ([]model.MarketingProject, int64, error)
+	ListProjects(ctx context.Context, userID uint64, keyword string, page, size int) ([]model.MarketingProject, int64, error)
 	ScriptCounts(ctx context.Context, projectIDs []uint64) ([]repository.MarketingStatusCount, error)
 	ScriptBars(ctx context.Context, projectIDs []uint64) ([]repository.MarketingBar, error)
 	RoundBriefs(ctx context.Context, projectIDs []uint64) (scripting, latest []repository.MarketingRoundBrief, err error)

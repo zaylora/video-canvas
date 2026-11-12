@@ -31,14 +31,17 @@ func (h *MarketingHandler) Quote(c *gin.Context) {
 	reply(c, v, err)
 }
 
-// List 分页返回项目列表（GET /marketing-projects）。
+// List 按标题搜索并分页返回项目列表（GET /marketing-projects）。
 func (h *MarketingHandler) List(c *gin.Context) {
-	var req pagination.Query
+	var req struct {
+		pagination.Query
+		Keyword string `form:"keyword" binding:"max=255" label:"关键词"`
+	}
 	if !BindQuery(c, &req) {
 		return
 	}
 	req.Normalize()
-	items, total, err := h.svc.ListProjects(c.Request.Context(), currentUserID(c), req.Page, req.PageSize)
+	items, total, err := h.svc.ListProjects(c.Request.Context(), currentUserID(c), req.Keyword, req.Page, req.PageSize)
 	if err != nil {
 		response.Fail(c, err)
 		return

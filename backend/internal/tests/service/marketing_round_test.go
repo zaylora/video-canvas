@@ -403,7 +403,7 @@ func TestMarketing_PushesRoundUpdates(t *testing.T) {
 func TestMarketing_ListProjects_Summary(t *testing.T) {
 	env := newMktEnv(t, 200)
 	v := env.createProject(mktSettings())
-	items, total, err := env.svc.ListProjects(context.Background(), env.user, 1, 20)
+	items, total, err := env.svc.ListProjects(context.Background(), env.user, "", 1, 20)
 	if err != nil || total != 1 || len(items) != 1 {
 		t.Fatalf("列表：%v total=%d", err, total)
 	}
@@ -412,13 +412,31 @@ func TestMarketing_ListProjects_Summary(t *testing.T) {
 		t.Fatalf("写脚本中的轮次按计划份数填 rendering，封面取第一张商品图：%+v", it)
 	}
 	env.runRound(&v.Rounds[0])
-	items, _, _ = env.svc.ListProjects(context.Background(), env.user, 1, 20)
+	items, _, _ = env.svc.ListProjects(context.Background(), env.user, "", 1, 20)
 	it = items[0]
 	if it.Scripting || it.ScriptCounts.Draft != 2 || len(it.Bars) != 2 || it.Bars[0] != "draft" || it.LastRoundFailed {
 		t.Fatalf("完成后：%+v", it)
 	}
 	if it.Title != "晨雾香水 50ml" {
 		t.Fatalf("标题：%q", it.Title)
+	}
+}
+
+func TestMarketing_ListProjects_Keyword(t *testing.T) {
+	env := newMktEnv(t, 200)
+	v := env.createProject(mktSettings())
+	env.runRound(&v.Rounds[0])
+	ctx := context.Background()
+	items, total, err := env.svc.ListProjects(ctx, env.user, "香水", 1, 20)
+	if err != nil || total != 1 || len(items) != 1 {
+		t.Fatalf("标题含关键词应命中：%v total=%d", err, total)
+	}
+	items, total, err = env.svc.ListProjects(ctx, env.user, "咖啡", 1, 20)
+	if err != nil || total != 0 || len(items) != 0 {
+		t.Fatalf("标题不含关键词应为空：%v total=%d", err, total)
+	}
+	if _, total, _ = env.svc.ListProjects(ctx, env.user, "%", 1, 20); total != 0 {
+		t.Fatalf("通配符按字面匹配：total=%d", total)
 	}
 }
 

@@ -322,18 +322,22 @@ export const quoteMarketing = (input: QuoteInput): Promise<Quote> =>
 
 /**
  * 我的营销片列表，按更新时间倒序。
- * @param params 页码与每页条数
+ * @param params 页码、每页条数与标题关键词
  * @returns 当前页与总数
  */
 export const listMarketingProjects = async (
-  params: { page?: number; pageSize?: number } = {},
+  params: { page?: number; pageSize?: number; keyword?: string } = {},
 ): Promise<ProjectPage> => {
   const res = await service.get<{
     list: BackendProjectSummary[] | null;
     total: number;
     page: number;
     page_size: number;
-  }>("/marketing-projects", { page: params.page, page_size: params.pageSize });
+  }>("/marketing-projects", {
+    page: params.page,
+    page_size: params.pageSize,
+    keyword: params.keyword,
+  });
   return { items: (res.list ?? []).map(mapProjectSummary), total: res.total };
 };
 

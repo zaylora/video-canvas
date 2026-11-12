@@ -13,15 +13,15 @@ import (
 	"video-canvas/internal/stepkit"
 )
 
-// ListProjects 分页返回项目列表（更新时间倒序），带脚本状态统计、状态条和封面。
-func (s *MarketingService) ListProjects(ctx context.Context, userID uint64, page, size int) ([]model.MarketingProjectSummary, int64, error) {
+// ListProjects 按标题搜索并分页返回项目列表（更新时间倒序），带脚本状态统计、状态条和封面。
+func (s *MarketingService) ListProjects(ctx context.Context, userID uint64, keyword string, page, size int) ([]model.MarketingProjectSummary, int64, error) {
 	if page < 1 {
 		page = 1
 	}
 	if size < 1 {
 		size = marketingPageSize
 	}
-	rows, total, err := s.repo.ListProjects(ctx, userID, page, size)
+	rows, total, err := s.repo.ListProjects(ctx, userID, keyword, page, size)
 	if err != nil {
 		return nil, 0, err
 	}

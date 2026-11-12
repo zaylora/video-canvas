@@ -138,9 +138,12 @@ func (r *MarketingRepository) ProjectByID(ctx context.Context, id uint64) (*mode
 	return &p, nil
 }
 
-// ListProjects 按更新时间倒序分页返回用户的项目。
-func (r *MarketingRepository) ListProjects(ctx context.Context, userID uint64, page, size int) ([]model.MarketingProject, int64, error) {
+// ListProjects 按更新时间倒序分页返回用户的项目；keyword 非空时按标题模糊匹配。
+func (r *MarketingRepository) ListProjects(ctx context.Context, userID uint64, keyword string, page, size int) ([]model.MarketingProject, int64, error) {
 	q := r.db.WithContext(ctx).Model(&model.MarketingProject{}).Where("user_id = ?", userID)
+	if keyword != "" {
+		q = q.Where("title ILIKE ?", "%"+escapeLike(keyword)+"%")
+	}
 	var n int64
 	if err := q.Count(&n).Error; err != nil {
 		return nil, 0, err
