@@ -276,6 +276,8 @@ func TestMarketing_CreateProject_ValidationErrors(t *testing.T) {
 	badModel.VideoModel = "nope"
 	manyAngles := mktRefSettings()
 	manyAngles.Angles = []string{"pain", "feature", "mood", "unbox"}
+	retired := st
+	retired.Platform = "amazon"
 	cases := []struct {
 		name string
 		req  model.CreateMarketingProjectReq
@@ -287,6 +289,7 @@ func TestMarketing_CreateProject_ValidationErrors(t *testing.T) {
 		{"视频模型不存在", model.CreateMarketingProjectReq{ProductAssetIDs: []uint64{1}, Settings: badModel}, errcode.ErrMarketingVideoModel.Code},
 		{"参考视频不是视频", model.CreateMarketingProjectReq{ProductAssetIDs: []uint64{1}, RefVideoAssetID: idp(2), Settings: mktRefSettings()}, errcode.ErrMarketingAssets.Code},
 		{"改编份数超限", model.CreateMarketingProjectReq{ProductAssetIDs: []uint64{1}, RefVideoAssetID: idp(4), Settings: manyAngles}, errcode.ErrInvalidParams.Code},
+		{"投放平台已下线", model.CreateMarketingProjectReq{ProductAssetIDs: []uint64{1}, Settings: retired}, errcode.ErrInvalidParams.Code},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -482,5 +485,14 @@ func TestMarketing_FailRate7d(t *testing.T) {
 	old, err := env.repo.FailRate7d(context.Background(), marketing.StepFacts, time.Now().Add(time.Hour))
 	if err != nil || old != 0 {
 		t.Fatalf("窗口之外的记录不算：%v %v", old, err)
+	}
+}
+
+func TestMarketing_Options_HidesRetiredPlatforms(t *testing.T) {
+	env := newMktEnv(t, 200)
+	for _, p := range env.svc.Options().Platforms {
+		if p.Key == "amazon" {
+			t.Fatalf("选项里不应再有已下线的亚马逊：%+v", p)
+		}
 	}
 }

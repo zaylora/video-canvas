@@ -21,7 +21,7 @@ import (
 func (s *MarketingService) Options() *model.MarketingOptions {
 	out := &model.MarketingOptions{Platforms: []model.MarketingPlatformOption{}, Angles: []model.MarketingAngleOption{},
 		RefVideoMaxSecond: MarketingRefMaxSeconds}
-	for _, p := range marketing.Platforms() {
+	for _, p := range marketing.ActivePlatforms() {
 		out.Platforms = append(out.Platforms, model.MarketingPlatformOption{Key: p.Key, Name: p.Name, AspectRatio: p.AspectRatio, Language: p.Language, Style: p.Style})
 	}
 	for _, a := range marketing.Angles() {
@@ -160,6 +160,14 @@ func planOf(st model.MarketingSettings, hasRef bool) (int, error) {
 		return 0, errcode.ErrInvalidParams.WithMsg(err.Error())
 	}
 	return n, nil
+}
+
+// checkNewPlatform 新建项目 / 新开一轮时拦截已下线的投放平台；已有轮次的重试、预估不经过这里，照常可用。
+func checkNewPlatform(st model.MarketingSettings) error {
+	if marketing.PlatformRetired(st.Platform) {
+		return errcode.ErrInvalidParams.WithMsg(fmt.Sprintf("投放平台「%s」已下线，请换一个平台", marketing.PlatformOf(st.Platform).Name))
+	}
+	return nil
 }
 
 // stepCosts 是写脚本各环节的预估积分（已含重写一次的上限）。

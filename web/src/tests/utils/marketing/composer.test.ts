@@ -139,7 +139,10 @@ describe("平台切换", () => {
       },
     });
     expect(pickPlatform(platform("tmall"), narrow).aspectRatio).toBe("9:16");
-    expect(pickPlatform(platform("amazon"), narrow).aspectRatio).toBe("16:9");
+    // 平台默认画幅模型支持时照用（亚马逊已下线，这里直接构造一个 16:9 的平台）
+    expect(pickPlatform({ ...platform("generic"), aspectRatio: "16:9" }, narrow).aspectRatio).toBe(
+      "16:9",
+    );
   });
 });
 

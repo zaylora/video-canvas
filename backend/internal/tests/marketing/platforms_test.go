@@ -41,6 +41,29 @@ func TestPlatforms_顺序与取值(t *testing.T) {
 	}
 }
 
+func TestActivePlatforms_不含已下线的亚马逊(t *testing.T) {
+	want := []string{"douyin", "xhs", "tmall", "tiktok", "reels", "generic"}
+	got := marketing.ActivePlatforms()
+	if len(got) != len(want) {
+		t.Fatalf("在线平台应为 %v，实际 %d 个", want, len(got))
+	}
+	for i, p := range got {
+		if p.Key != want[i] {
+			t.Fatalf("第 %d 个在线平台应为 %s，实际 %s", i, want[i], p.Key)
+		}
+	}
+	if !marketing.PlatformRetired("amazon") {
+		t.Error("亚马逊应标为已下线")
+	}
+	if marketing.PlatformRetired("douyin") || marketing.PlatformRetired("nope") {
+		t.Error("在线平台和不认识的 key 都不算已下线")
+	}
+	// 旧轮次仍按亚马逊的规则处理
+	if p := marketing.PlatformOf("amazon"); p.Key != "amazon" || p.AspectRatio != "16:9" {
+		t.Errorf("已下线的平台仍应能按 key 取到：%+v", p)
+	}
+}
+
 func TestPlatformOf_不认识按通用(t *testing.T) {
 	if p := marketing.PlatformOf("nope"); p.Key != "generic" {
 		t.Fatalf("未知平台应回退 generic，实际 %s", p.Key)

@@ -40,13 +40,6 @@ export const DEFAULT_PLATFORMS: PlatformOption[] = [
     style: "原生 UGC 感",
   },
   {
-    key: "amazon",
-    name: "亚马逊",
-    aspectRatio: "16:9",
-    language: "en",
-    style: "产品演示为主",
-  },
-  {
     key: "reels",
     name: "Instagram Reels",
     aspectRatio: "9:16",

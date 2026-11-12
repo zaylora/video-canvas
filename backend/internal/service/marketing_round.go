@@ -29,6 +29,9 @@ func (s *MarketingService) CreateProject(ctx context.Context, userID uint64, req
 	refID := optionalID(req.RefVideoAssetID)
 	modelID := optionalID(req.ModelAssetID)
 	hasRef := refID != nil
+	if err := checkNewPlatform(st); err != nil {
+		return nil, err
+	}
 	createCount, err := planOf(st, hasRef)
 	if err != nil {
 		return nil, err
@@ -205,6 +208,9 @@ func (s *MarketingService) NewRound(ctx context.Context, userID, projectID uint6
 		modelID = p.ModelAssetID
 	}
 	hasRef := refID != nil
+	if err := checkNewPlatform(st); err != nil {
+		return nil, err
+	}
 	createCount, err := planOf(st, hasRef)
 	if err != nil {
 		return nil, err

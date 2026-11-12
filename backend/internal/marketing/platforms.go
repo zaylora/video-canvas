@@ -15,9 +15,10 @@ type Platform struct {
 	Style       string   // 写法要点（一句话），给 /marketing/options 与提示词用
 	Bans        []string // 该平台额外禁令，人能读的短句，写进提示词的硬性约束
 	Domestic    bool     // 国内平台：启用广告法极限词扫描
+	Retired     bool     // 已下线：不再出现在选项里、不能新开轮次；定义保留给已有轮次（出片、重试、改旁白重扫照常）
 }
 
-// platforms 按契约 §1.1 的顺序列出 7 个平台。
+// platforms 按契约 §1.1 的顺序列出 7 个平台；亚马逊 2026-11-12 下线（Retired）。
 var platforms = []Platform{
 	{
 		Key: "douyin", Name: "抖音", AspectRatio: "9:16", Language: LangZH, Domestic: true,
@@ -40,7 +41,7 @@ var platforms = []Platform{
 		Bans:  []string{"不写医疗功效用语（cure、heal、clinically proven 等）"},
 	},
 	{
-		Key: "amazon", Name: "亚马逊", AspectRatio: "16:9", Language: LangEN,
+		Key: "amazon", Name: "亚马逊", AspectRatio: "16:9", Language: LangEN, Retired: true,
 		Style: "产品演示为主，功能与使用场景清楚，克制平实",
 		Bans: []string{
 			"不提价格、促销、折扣、免邮",
@@ -69,7 +70,28 @@ func Platforms() []Platform {
 	return out
 }
 
-// PlatformOf 按 key 取平台；不认识的 key 按 generic。
+// ActivePlatforms 返回在线平台（不含已下线的），给 /marketing/options 用。
+func ActivePlatforms() []Platform {
+	out := make([]Platform, 0, len(platforms))
+	for _, p := range Platforms() {
+		if !p.Retired {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// PlatformRetired 判断平台是否已下线；不认识的 key 不算（由请求校验另行拦截）。
+func PlatformRetired(key string) bool {
+	for _, p := range platforms {
+		if p.Key == key {
+			return p.Retired
+		}
+	}
+	return false
+}
+
+// PlatformOf 按 key 取平台（含已下线的）；不认识的 key 按 generic。
 func PlatformOf(key string) Platform {
 	for _, p := range Platforms() {
 		if p.Key == key {
