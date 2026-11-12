@@ -1,18 +1,6 @@
-import type { ReactNode } from "react";
+import type { ComponentType, ReactNode } from "react";
 import { motion } from "motion/react";
-import {
-  BookHeart,
-  Camera,
-  Check,
-  ChevronDown,
-  Copy,
-  Globe,
-  Lightbulb,
-  Music2,
-  Package,
-  ShoppingCart,
-  type LucideIcon,
-} from "lucide-react";
+import { Check, ChevronDown, Copy, Globe, Lightbulb, Package } from "lucide-react";
 
 import type {
   AngleOption,
@@ -23,6 +11,12 @@ import type {
 } from "@/api/marketing/type";
 import type { ModelInfo } from "@/api/model/type";
 import { RatioIcon } from "@/components/ratio-icon";
+import {
+  InstagramIcon,
+  TaobaoIcon,
+  TikTokIcon,
+  XiaohongshuIcon,
+} from "@/components/marketing/platform-icons";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { TAP } from "@/lib/motion";
 import { cn } from "@/lib/utils";
@@ -39,14 +33,14 @@ import {
 export const BAR_BUTTON =
   "text-foreground hover:bg-muted focus-visible:ring-ring/50 inline-flex h-8 max-w-56 items-center gap-1.5 rounded-[10px] px-2.5 text-[13px] outline-none focus-visible:ring-3 disabled:opacity-60 [&_svg]:size-4 [&_svg]:shrink-0";
 
-/** 平台图标 */
-export const PLATFORM_ICON: Record<MarketingPlatform, LucideIcon> = {
-  douyin: Music2,
-  xhs: BookHeart,
-  tmall: ShoppingCart,
-  tiktok: Music2,
+/** 平台图标：有官方品牌图标的用品牌图标（抖音与 TikTok 同一个音符标），亚马逊（已下线，只给旧轮次显示）与通用用线性图标 */
+export const PLATFORM_ICON: Record<MarketingPlatform, ComponentType<{ className?: string }>> = {
+  douyin: TikTokIcon,
+  xhs: XiaohongshuIcon,
+  tmall: TaobaoIcon,
+  tiktok: TikTokIcon,
   amazon: Package,
-  reels: Camera,
+  reels: InstagramIcon,
   generic: Globe,
 };
 

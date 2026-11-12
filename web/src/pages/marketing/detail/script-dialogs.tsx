@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { Copy, Download, Film, Image as ImageIcon, Loader2, Video } from "lucide-react";
+import { Copy, Film, Image as ImageIcon, Loader2, Video } from "lucide-react";
 import { toast } from "sonner";
 
 import { getMarketingPrompt } from "@/api/marketing";
-import type { AngleOption, Project, Round, Script, TaskLite } from "@/api/marketing/type";
+import type { AngleOption, Project, Round, Script } from "@/api/marketing/type";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -13,9 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { VideoPlayer } from "@/components/video-player";
 import { angleName } from "@/utils/marketing/options";
-import { roundAspect } from "@/utils/marketing/script";
 
 /** 触发浏览器下载一个地址（跨域地址会在新标签打开，由浏览器决定下载还是播放） */
 export function downloadUrl(url: string, name: string) {
@@ -182,62 +180,6 @@ export function CanvasDialog({
             新建并打开
           </Button>
         </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-/** 成片播放器：按成片画幅放大，下面是下载和关闭 */
-export function PlayerDialog({
-  take,
-  index,
-  params,
-  fileName,
-  open,
-  onOpenChange,
-}: {
-  take: TaskLite | undefined;
-  /** 第几条（从 0 起） */
-  index: number;
-  params: Record<string, unknown>;
-  fileName: string;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}) {
-  const [w, h] = roundAspect({ params });
-  const url = take?.outputs[0]?.url;
-  const height = Math.min(typeof window === "undefined" ? 640 : window.innerHeight - 160, 640);
-  const width = Math.min(
-    (height * w) / h,
-    typeof window === "undefined" ? 800 : window.innerWidth - 48,
-  );
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        showCloseButton={false}
-        className="w-auto max-w-none justify-items-center gap-3 bg-transparent p-0 ring-0 sm:max-w-none"
-      >
-        <DialogTitle className="sr-only">成片 第 {index + 1} 条</DialogTitle>
-        <div
-          style={{ width, height: (width * h) / w }}
-          className="overflow-hidden rounded-2xl bg-black"
-        >
-          {url && <VideoPlayer src={url} />}
-        </div>
-        <div className="flex gap-2">
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={!url}
-            onClick={() => url && downloadUrl(url, fileName)}
-          >
-            <Download />
-            下载
-          </Button>
-          <Button variant="secondary" size="sm" onClick={() => onOpenChange(false)}>
-            关闭
-          </Button>
-        </div>
       </DialogContent>
     </Dialog>
   );

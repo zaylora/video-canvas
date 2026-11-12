@@ -1,0 +1,1024 @@
+<!doctype html>
+<html lang="zh-CN" class="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>营销片详情页改版演示</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+    <style>
+      :root {
+        --radius: 0.625rem;
+        --background: 0 0% 98%;
+        --foreground: 240 10% 3.9%;
+        --card: 0 0% 100%;
+        --muted: 240 4.8% 94%;
+        --muted-foreground: 240 3.8% 44%;
+        --primary: 240 5.9% 10%;
+        --primary-foreground: 0 0% 98%;
+        --accent: 240 4.8% 94%;
+        --border: 240 5.9% 88%;
+        --chrome: 0 0% 100% / 0.72;
+        --chrome-hover: 240 5% 50% / 0.07;
+        --chrome-border: 240 5% 40% / 0.14;
+        --beam: 262 83% 58%;
+        --ok: 5 150 105;
+        --bad: 220 38 38;
+        --warn: 180 83 9;
+        --info: 2 132 199;
+        --violet: 124 58 237;
+        color-scheme: light;
+      }
+      .dark {
+        --background: 240 6% 4%;
+        --foreground: 0 0% 96%;
+        --card: 240 5% 7%;
+        --muted: 240 4% 14%;
+        --muted-foreground: 240 5% 62%;
+        --primary: 0 0% 96%;
+        --primary-foreground: 240 6% 8%;
+        --accent: 240 4% 14%;
+        --border: 240 4% 17%;
+        --chrome: 240 5% 11% / 0.66;
+        --chrome-hover: 0 0% 100% / 0.055;
+        --chrome-border: 0 0% 100% / 0.09;
+        --beam: 262 90% 72%;
+        --ok: 52 211 153;
+        --bad: 248 113 113;
+        --warn: 251 191 36;
+        --info: 56 189 248;
+        --violet: 167 139 250;
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body { margin: 0; font-family: Geist, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; background: hsl(var(--background)); color: hsl(var(--foreground)); -webkit-font-smoothing: antialiased; line-height: 1.55; }
+      code, .mono { font-family: "Geist Mono", "SF Mono", Consolas, monospace; }
+      code { font-size: 0.92em; background: hsl(var(--muted)); padding: 1px 5px; border-radius: 5px; }
+      [data-lucide] { width: 1em; height: 1em; flex: none; }
+      h1, h2, h3, h4, p { margin: 0; }
+      button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+      table { border-collapse: collapse; width: 100%; }
+      th { font-weight: 500; text-align: left; }
+      [hidden] { display: none !important; }
+      .muted { color: hsl(var(--muted-foreground)); }
+      .row { display: flex; align-items: center; gap: 8px; }
+      .wrapflex { flex-wrap: wrap; }
+      .spacer { margin-left: auto; }
+
+      .top { position: sticky; top: 0; z-index: 30; background: hsl(var(--background) / 0.92); backdrop-filter: blur(8px); border-bottom: 1px solid hsl(var(--border)); }
+      .top-in { max-width: 1280px; margin: 0 auto; padding: 0 20px; display: flex; align-items: center; gap: 16px; height: 56px; }
+      .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; white-space: nowrap; }
+      .logo { width: 28px; height: 28px; border-radius: 8px; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; }
+      .tabs { display: flex; gap: 2px; margin-left: 8px; overflow-x: auto; }
+      .tab { height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13px; font-weight: 500; color: hsl(var(--muted-foreground)); white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+      .tab:hover { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+      .tab[aria-selected="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn { height: 32px; padding: 0 10px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; }
+      .btn:hover { background: hsl(var(--accent)); }
+      .switch { width: 34px; height: 20px; border-radius: 999px; background: hsl(var(--border)); position: relative; }
+      .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+      .switch[aria-checked="true"] { background: rgb(var(--violet)); }
+      .switch[aria-checked="true"]::after { transform: translateX(14px); }
+
+      .wrap { max-width: 1280px; margin: 0 auto; padding: 32px 20px 80px; }
+      .h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+      .lead { margin-top: 10px; max-width: 880px; font-size: 15px; color: hsl(var(--muted-foreground)); }
+      .lead b { color: hsl(var(--foreground)); }
+      .sec { margin-top: 36px; }
+      .sec > h2 { font-size: 18px; font-weight: 600; }
+      .sec > .sub { margin: 4px 0 14px; max-width: 880px; font-size: 13.5px; color: hsl(var(--muted-foreground)); }
+      .card { border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: var(--radius); padding: 16px; }
+      .grid { display: grid; gap: 12px; }
+      .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      @media (max-width: 820px) { .g2 { grid-template-columns: 1fr; } .wrap { padding: 24px 16px 64px; } }
+      ul.list { margin: 0; padding-left: 18px; font-size: 13.5px; }
+      .tag { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 7px; border-radius: 999px; font-size: 11.5px; font-weight: 500; white-space: nowrap; }
+      .t-ok { background: rgb(var(--ok) / 0.12); color: rgb(var(--ok)); }
+      .t-bad { background: rgb(var(--bad) / 0.12); color: rgb(var(--bad)); }
+      .t-warn { background: rgb(var(--warn) / 0.12); color: rgb(var(--warn)); }
+      .t-info { background: rgb(var(--info) / 0.12); color: rgb(var(--info)); }
+      .t-vio { background: rgb(var(--violet) / 0.12); color: rgb(var(--violet)); }
+      .t-beam { background: hsl(var(--beam) / 0.14); color: hsl(var(--beam)); }
+      .t-mute { background: hsl(var(--chrome-hover)); color: hsl(var(--muted-foreground)); box-shadow: inset 0 0 0 1px hsl(var(--chrome-border)); }
+      .callout { display: flex; gap: 10px; padding: 12px 14px; border-radius: var(--radius); font-size: 13.5px; border: 1px solid; }
+      .callout > i { margin-top: 3px; }
+      .c-info { background: rgb(var(--info) / 0.07); border-color: rgb(var(--info) / 0.3); }
+      .c-info > i { color: rgb(var(--info)); }
+      .c-warn { background: rgb(var(--warn) / 0.07); border-color: rgb(var(--warn) / 0.3); }
+      .c-warn > i { color: rgb(var(--warn)); }
+      .flow { display: flex; align-items: stretch; gap: 6px; flex-wrap: wrap; padding: 14px; border-radius: var(--radius); }
+      .flow .node { flex: 1 1 140px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 12px; font-size: 12.5px; }
+      .flow .node b { display: block; font-size: 13px; margin-bottom: 2px; }
+      .flow .node.hl { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+      .flow .arrow { display: grid; place-items: center; color: hsl(var(--muted-foreground)); }
+      .cmp-wrap { overflow-x: auto; border: 1px solid hsl(var(--border)); border-radius: var(--radius); }
+      .cmp th, .cmp td { padding: 9px 12px; font-size: 13px; vertical-align: top; border-bottom: 1px solid hsl(var(--border)); }
+      .cmp tr:last-child th, .cmp tr:last-child td { border-bottom: 0; }
+      .cmp thead th { background: hsl(var(--muted)); font-size: 12.5px; white-space: nowrap; }
+      .cmp tbody th { width: 150px; color: hsl(var(--muted-foreground)); font-weight: 500; }
+      .cmp .y { color: rgb(var(--ok)); }
+      .cmp .m { color: rgb(var(--warn)); font-weight: 500; }
+      .steps { list-style: none; counter-reset: s; display: grid; gap: 12px; }
+      .steps li { counter-increment: s; position: relative; padding-left: 32px; font-size: 13.5px; }
+      .steps li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 22px; height: 22px; border-radius: 50%; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; font-size: 12px; font-weight: 600; }
+      .steps li small { display: block; color: hsl(var(--muted-foreground)); font-size: 12.5px; }
+      .codeblock { background: hsl(var(--muted)); border-radius: var(--radius); padding: 14px; font-family: "Geist Mono", monospace; font-size: 12.5px; overflow-x: auto; }
+      .frame { border: 1px solid hsl(var(--border)); border-radius: 12px; overflow: hidden; background: hsl(var(--background)); }
+      .frame-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: hsl(var(--muted)); font-size: 12px; color: hsl(var(--muted-foreground)); }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: hsl(var(--border)); }
+      .note { outline: 1.5px dashed rgb(var(--violet)); outline-offset: 3px; position: relative; }
+      .note-txt { display: none; margin-top: 6px; font-size: 11.5px; line-height: 1.5; color: rgb(var(--violet)); }
+      .show-notes .note-txt { display: block; }
+      body:not(.show-notes) .note { outline: none; }
+      .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 90; pointer-events: none; }
+      .toast > div { display: flex; align-items: center; gap: 8px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 14px; font-size: 13px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.2); }
+      .wire { border: 1px dashed hsl(var(--border)); border-radius: 10px; padding: 10px; font-family: "Geist Mono", monospace; font-size: 11.5px; line-height: 1.5; white-space: pre; overflow-x: auto; color: hsl(var(--muted-foreground)); }
+      .simbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 14px; font-size: 12.5px; }
+
+      /* ================= 原型 ================= */
+      .proto { position: relative; height: 900px; overflow: hidden; background: radial-gradient(1200px 500px at 70% -10%, hsl(var(--beam) / 0.07), transparent 60%), hsl(var(--background)); }
+      .proto-scroll { position: absolute; inset: 0; overflow-y: auto; padding: 22px 26px 120px; }
+      .layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 24px; align-items: start; }
+      .glass { background: hsl(var(--chrome)); box-shadow: inset 0 0 0 1px hsl(var(--chrome-border)); backdrop-filter: blur(20px); border-radius: 24px; }
+      .pill { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: 999px; font-size: 12.5px; font-weight: 500; background: hsl(var(--chrome-hover)); box-shadow: inset 0 0 0 1px hsl(var(--chrome-border)); white-space: nowrap; transition: background 0.15s; }
+      .pill:hover:not(:disabled) { background: hsl(var(--chrome-border)); }
+      .pill:disabled { opacity: 0.45; cursor: not-allowed; }
+      .pill-solid { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); box-shadow: none; }
+      .pill-solid:hover:not(:disabled) { background: hsl(var(--primary) / 0.88); }
+      .pill-ghost { background: transparent; box-shadow: none; color: hsl(var(--muted-foreground)); }
+      .pill-ghost:hover:not(:disabled) { background: hsl(var(--chrome-hover)); color: hsl(var(--foreground)); }
+      .chip { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: 999px; font-size: 12px; box-shadow: inset 0 0 0 1px hsl(var(--chrome-border)); white-space: nowrap; }
+      .iconbtn { width: 30px; height: 30px; border-radius: 999px; display: grid; place-items: center; color: hsl(var(--muted-foreground)); }
+      .iconbtn:hover { background: hsl(var(--chrome-hover)); color: hsl(var(--foreground)); }
+      .lbl { font-size: 11px; letter-spacing: 0.02em; color: hsl(var(--muted-foreground)); margin-bottom: 2px; }
+
+      /* 左栏 */
+      .side { position: sticky; top: 0; padding: 18px; display: grid; gap: 18px; }
+      .side .back { font-size: 13px; color: hsl(var(--muted-foreground)); display: inline-flex; align-items: center; gap: 2px; }
+      .side .back:hover { color: hsl(var(--foreground)); }
+      .thumbs { display: flex; gap: 8px; }
+      .thumb { width: 72px; height: 90px; border-radius: 14px; overflow: hidden; position: relative; transition: transform 0.15s; }
+      .thumb:hover { transform: scale(1.04); }
+      .thumb .lab { position: absolute; left: 6px; bottom: 6px; font-size: 10px; padding: 0 6px; height: 16px; line-height: 16px; border-radius: 999px; background: rgb(0 0 0 / 0.55); color: #fff; }
+      .fact h4 { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: hsl(var(--muted-foreground)); }
+      .fact ul { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; font-size: 13px; line-height: 1.55; }
+      .fact li { position: relative; padding-left: 11px; }
+      .fact li::before { content: ""; position: absolute; left: 0; top: 0.68em; width: 4px; height: 4px; border-radius: 50%; background: hsl(var(--muted-foreground) / 0.6); }
+
+      /* 轮次 */
+      .round + .round { margin-top: 44px; padding-top: 32px; border-top: 1px solid hsl(var(--chrome-border)); }
+      .rhead { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-bottom: 10px; }
+      .rno { font-size: 15px; font-weight: 700; margin-right: 4px; }
+      .stepsbar { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-bottom: 16px; font-size: 12.5px; }
+      .stp { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; border-radius: 999px; }
+      .stack { display: grid; gap: 18px; }
+
+      /* 视频（假画面） */
+      .vid { position: relative; aspect-ratio: 9 / 16; border-radius: 16px; overflow: hidden; background: #111; box-shadow: 0 10px 30px -14px rgb(0 0 0 / 0.55); cursor: pointer; flex: none; }
+      .vid .ctrl { position: absolute; left: 0; right: 0; bottom: 0; padding: 18px 8px 7px; display: flex; align-items: center; gap: 6px; background: linear-gradient(transparent, rgb(0 0 0 / 0.6)); opacity: 0; transition: opacity 0.15s; color: #fff; }
+      .vid:hover .ctrl, .vid.playing .ctrl { opacity: 1; }
+      .vid .bar { flex: 1; height: 3px; border-radius: 3px; background: rgb(255 255 255 / 0.25); position: relative; }
+      .vid .bar > i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; background: #fff; }
+      .vid .bigplay { position: absolute; left: 50%; top: 45%; transform: translate(-50%, -50%); width: 46px; height: 46px; border-radius: 50%; background: rgb(0 0 0 / 0.45); display: grid; place-items: center; color: #fff; backdrop-filter: blur(6px); transition: opacity 0.15s; pointer-events: none; }
+      .vid.playing .bigplay { opacity: 0; }
+      .vid .fs { width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; }
+      .vid .fs:hover { background: rgb(255 255 255 / 0.2); }
+      .vid .over { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 8px; padding: 14px; text-align: center; color: #fff; font-size: 12.5px; cursor: default; }
+      .fake { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: flex-end; padding: 12px 12px 30px; color: #fff; overflow: hidden; }
+      .fake .shot { font-size: 10.5px; opacity: 0.85; }
+      .fake .act { font-size: 12px; font-weight: 600; line-height: 1.35; margin-top: 2px; }
+      .fake .tc { position: absolute; right: 8px; top: 8px; font-family: "Geist Mono", monospace; font-size: 10.5px; background: rgb(0 0 0 / 0.35); padding: 1px 6px; border-radius: 6px; }
+      .fake .prod { position: absolute; left: 50%; top: 34%; transform: translate(-50%, -50%); width: 26%; aspect-ratio: 1 / 2.6; border-radius: 30% 30% 12% 12%; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      .spin { animation: spin 1s linear infinite; }
+      .skel { animation: pulse 1.4s ease-in-out infinite; background: hsl(var(--muted)); border-radius: 24px; }
+      @keyframes pulse { 50% { opacity: 0.5; } }
+      @media (prefers-reduced-motion: reduce) { .spin, .skel { animation: none; } }
+
+      /* 拆解卡 */
+      .rev { padding: 20px; }
+      .rev-head { display: flex; gap: 18px; }
+      .rev-head .vid { width: 120px; }
+      .rev-title { font-size: 15px; font-weight: 700; }
+      .why { margin-top: 8px; font-size: 13.5px; line-height: 1.6; display: flex; gap: 6px; }
+      .shotrow { position: relative; display: grid; grid-template-columns: 96px minmax(0, 1fr) 200px; gap: 18px; padding: 14px 14px 14px 16px; border-radius: 16px; cursor: pointer; transition: background 0.15s; }
+      .shotrow:hover { background: hsl(var(--chrome-hover)); }
+      .shotrow.cur { background: hsl(var(--beam) / 0.08); }
+      .shotrow.cur::before { content: ""; position: absolute; left: 4px; top: 14px; bottom: 14px; width: 3px; border-radius: 3px; background: hsl(var(--beam)); }
+      .shotrow.flash { animation: flash 1.2s; }
+      @keyframes flash { 0%, 60% { background: hsl(var(--beam) / 0.18); } }
+      .tcol { font-size: 12px; color: hsl(var(--muted-foreground)); line-height: 1.5; }
+      .tcol .mono { color: hsl(var(--foreground) / 0.85); font-size: 12px; }
+      .ed { outline: 0; border-radius: 8px; padding: 2px 6px; margin: 0 -6px; cursor: text; }
+      .ed:hover { background: hsl(var(--chrome-hover)); }
+      .ed:focus { background: hsl(var(--chrome-hover)); box-shadow: inset 0 0 0 1px hsl(var(--chrome-border)); }
+      .sel { appearance: none; height: 28px; padding: 0 28px 0 11px; border-radius: 999px; border: 0; font: inherit; font-size: 12.5px; color: inherit; background: hsl(var(--chrome-hover)) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 9px center; box-shadow: inset 0 0 0 1px hsl(var(--chrome-border)); cursor: pointer; }
+      .sel option { color: #111; }
+      .colors { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+
+      /* 脚本卡 */
+      .scard { padding: 20px; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 22px; }
+      .scard.follow { box-shadow: inset 0 0 0 1px hsl(var(--beam) / 0.35); }
+      .scard .left { display: grid; gap: 10px; justify-items: center; align-content: start; }
+      .scard .left .vid { width: 220px; }
+      .seg { display: inline-flex; padding: 3px; border-radius: 999px; background: hsl(var(--chrome-hover)); box-shadow: inset 0 0 0 1px hsl(var(--chrome-border)); }
+      .seg button { height: 24px; padding: 0 10px; border-radius: 999px; font-size: 12px; color: hsl(var(--muted-foreground)); }
+      .seg button[aria-pressed="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .hook { margin-top: 8px; padding-left: 10px; border-left: 2px solid hsl(var(--beam) / 0.7); font-size: 13.5px; }
+      .sshot { position: relative; display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 16px; padding: 12px 12px 12px 14px; border-radius: 14px; cursor: pointer; transition: background 0.15s; }
+      .sshot:hover { background: hsl(var(--chrome-hover)); }
+      .sshot.cur { background: hsl(var(--beam) / 0.08); }
+      .sshot.cur::before { content: ""; position: absolute; left: 3px; top: 12px; bottom: 12px; width: 3px; border-radius: 3px; background: hsl(var(--beam)); }
+      .nar { width: 100%; border: 0; outline: 0; resize: none; font: inherit; font-size: 13.5px; font-weight: 600; color: inherit; background: transparent; border-radius: 8px; padding: 3px 6px; margin-left: -6px; field-sizing: content; min-height: 26px; }
+      .nar:hover { background: hsl(var(--chrome-hover)); }
+      .nar:focus { background: hsl(var(--chrome-hover)); box-shadow: inset 0 0 0 1px hsl(var(--chrome-border)); }
+      .nar.bad { color: rgb(var(--bad)); box-shadow: inset 0 -1.5px 0 rgb(var(--bad) / 0.7); }
+      .sfoot { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding-top: 4px; }
+
+      /* 胶囊 dock */
+      .dock { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 20; width: min(380px, calc(100% - 32px)); transition: width 0.18s; }
+      .dock.open { width: min(760px, calc(100% - 32px)); }
+      .dock-pill { width: 100%; height: 46px; border-radius: 999px; display: flex; align-items: center; gap: 10px; padding: 0 8px 0 16px; font-size: 13.5px; color: hsl(var(--muted-foreground)); background: hsl(var(--chrome)); box-shadow: inset 0 0 0 1px hsl(var(--chrome-border)), 0 12px 32px -12px rgb(0 0 0 / 0.5); backdrop-filter: blur(20px); }
+      .dock-box { border-radius: 24px; padding: 14px; background: hsl(var(--card) / 0.94); box-shadow: inset 0 0 0 1px hsl(var(--chrome-border)), 0 20px 50px -20px rgb(0 0 0 / 0.6); backdrop-filter: blur(20px); }
+      .dock-box textarea { width: 100%; resize: none; border: 0; outline: 0; background: transparent; color: inherit; font: inherit; font-size: 14px; min-height: 56px; }
+      .sendbtn { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .dock .thumb { width: 44px; height: 56px; border-radius: 10px; }
+
+      /* 层 */
+      @keyframes fade { from { opacity: 0; } }
+      .scrim { position: absolute; inset: 0; z-index: 40; background: rgb(0 0 0 / 0.4); animation: fade 0.2s; }
+      .modal { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 41; width: min(560px, calc(100% - 32px)); max-height: calc(100% - 60px); overflow-y: auto; border-radius: 22px; padding: 20px 22px; background: hsl(var(--card)); box-shadow: inset 0 0 0 1px hsl(var(--chrome-border)), 0 30px 80px -20px rgb(0 0 0 / 0.7); animation: fade 0.2s; }
+      .modal textarea { width: 100%; resize: vertical; border: 0; outline: 0; font: inherit; font-size: 13px; color: inherit; background: hsl(var(--chrome-hover)); border-radius: 10px; padding: 8px 10px; box-shadow: inset 0 0 0 1px hsl(var(--chrome-border)); }
+      .menu { position: absolute; z-index: 25; min-width: 170px; padding: 5px; border-radius: 14px; background: hsl(var(--card) / 0.96); backdrop-filter: blur(16px); box-shadow: inset 0 0 0 1px hsl(var(--chrome-border)), 0 12px 30px -10px rgb(0 0 0 / 0.5); }
+      .menu button { width: 100%; display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; border-radius: 9px; font-size: 13px; text-align: left; }
+      .menu button:hover:not(:disabled) { background: hsl(var(--chrome-hover)); }
+      .menu button:disabled { opacity: 0.4; cursor: not-allowed; }
+      .layer { position: absolute; inset: 0; z-index: 45; background: rgb(6 6 8 / 0.92); backdrop-filter: blur(10px); color: #fff; display: flex; flex-direction: column; animation: fade 0.2s; }
+      .layer-head { display: flex; align-items: center; gap: 10px; padding: 14px 18px; font-size: 14px; }
+      .gpill { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 13px; border-radius: 999px; font-size: 13px; background: rgb(255 255 255 / 0.1); color: rgb(255 255 255 / 0.9); white-space: nowrap; }
+      .gpill:hover:not(:disabled) { background: rgb(255 255 255 / 0.18); }
+      .gpill:disabled { opacity: 0.4; cursor: not-allowed; }
+      .layer .seg { background: rgb(255 255 255 / 0.08); box-shadow: none; }
+      .layer .seg button { color: rgb(255 255 255 / 0.7); }
+      .layer .seg button[aria-pressed="true"] { background: #fff; color: #111; }
+      .vbox { position: relative; aspect-ratio: 9 / 16; border-radius: 14px; overflow: hidden; background: #111; }
+      .track { display: flex; gap: 3px; height: 34px; }
+      .track button { min-width: 0; border-radius: 8px; background: rgb(255 255 255 / 0.08); font-size: 11.5px; color: rgb(255 255 255 / 0.7); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; padding: 0 6px; }
+      .track button.on { background: rgb(255 255 255 / 0.9); color: #111; font-weight: 600; }
+      .scrub { position: relative; height: 4px; border-radius: 4px; background: rgb(255 255 255 / 0.15); flex: 1; cursor: pointer; }
+      .scrub > i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; background: #fff; }
+      .cpanel { border-radius: 14px; background: rgb(255 255 255 / 0.06); padding: 12px 14px; font-size: 13px; min-width: 0; }
+      .cpanel h4 { font-size: 12px; font-weight: 500; color: rgb(255 255 255 / 0.55); display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+      .layer .ed:hover, .layer .ed:focus { background: rgb(255 255 255 / 0.08); box-shadow: none; }
+      .cmp-videos { display: flex; justify-content: center; gap: 28px; }
+      .cmp-videos .vcol { height: 100%; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+      .cmp-videos .vbox { height: calc(100% - 22px); }
+
+      @media (max-width: 900px) {
+        .layout { grid-template-columns: 1fr; }
+        .side { position: static; }
+        .scard { grid-template-columns: 1fr; }
+        .shotrow { grid-template-columns: 80px minmax(0, 1fr); }
+        .shotrow > :last-child { grid-column: 2; }
+        .cmp-grid { grid-template-columns: 1fr !important; }
+      }
+    </style>
+  </head>
+
+  <body class="show-notes">
+    <header class="top">
+      <div class="top-in">
+        <div class="brand"><span class="logo"><i data-lucide="clapperboard"></i></span>营销片详情页改版 v2</div>
+        <div class="tabs" role="tablist">
+          <button class="tab" role="tab" data-tab="overview" aria-selected="true"><i data-lucide="map"></i>总览</button>
+          <button class="tab" role="tab" data-tab="proto" aria-selected="false"><i data-lucide="layout-dashboard"></i>可点击原型</button>
+          <button class="tab" role="tab" data-tab="impl" aria-selected="false"><i data-lucide="code-xml"></i>实现（提案）</button>
+        </div>
+        <div class="spacer row">
+          <label class="row muted" style="font-size: 12px">设计标注<button class="switch" id="notesSw" role="switch" aria-checked="true" onclick="toggleNotes()"></button></label>
+          <button class="btn" onclick="document.documentElement.classList.toggle('dark')" aria-label="切换明暗主题"><i data-lucide="sun-moon"></i></button>
+        </div>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <!-- ================= 总览 ================= -->
+      <section id="tab-overview">
+        <h1 class="h1">信息一项不删，换样式、加联动、能播放能对比</h1>
+        <p class="lead">
+          事实卡、环节进度、参考拆解、完整脚本、方法、提示词都<b>原样保留</b>。改的是三件事：<b>样式</b>（少框线、字号分三级、标签统一成小胶囊）；<b>交互</b>（原片和成片在页面上直接播放，点镜头就跳到那一段，播放时当前镜头高亮）；<b>对比</b>（跟拍版和原片并排同步播放）。
+          <b>只改前端，不改后端；出片仍需用户点击。</b>
+        </p>
+        <div class="callout c-info" style="margin-top: 16px">
+          <i data-lucide="info"></i>
+          <div>
+            <b>阅读说明。</b>现状来自代码 <code>web/src/pages/marketing/detail/</code>；界面全部是<b>提案</b>，未实现。原型里的视频是「假画面」，按时间显示当前镜头，用来演示跳转、高亮与同步。准绳：<code>docs/design/营销工作室/界面改版.md</code>（v2）。v1 的「成片墙 + 抽屉」已作废。<br />
+            <span class="muted">核实度图例：</span>
+            <span class="tag t-ok">已核对（代码）</span><span class="tag t-info">调研检索，未逐条复核</span><span class="tag t-warn">未验证 · 需实测</span><span class="tag t-vio">提案</span>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>改了什么、没改什么</h2>
+          <p class="sub">逐块对照，左边是现在，右边是改版。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>区块</th><th>现在 <span class="tag t-ok">已核对</span></th><th>改版 <span class="tag t-vio">提案</span></th></tr></thead>
+              <tbody>
+                <tr><th>左栏事实卡</th><td>外观锚点 / 卖点 / 禁用说法 / 引导下单</td><td><b>内容不变</b>；缩略图放大到 72×90、条目圆点、段间距加大；窄屏折到顶部</td></tr>
+                <tr><th>轮次头 + 环节进度</th><td>六个实底胶囊 + 事实卡 / 拆解 › 跟拍 / 创意</td><td><b>内容不变</b>；改成细描边胶囊，环节状态用图标颜色区分</td></tr>
+                <tr><th>参考拆解：原片</th><td>36×48 缩略图，<span class="m">不能直接看</span></td><td class="y">120px 原片播放器，点击原位播放，可全屏</td></tr>
+                <tr><th>参考拆解：镜头表</th><td>全部字段；格子线分隔；默认折叠</td><td><b>字段不变</b>；无格子线、小标题 + 正文分级；<b>点行 → 原片跳到这一镜</b>；播放时当前行高亮；默认展开</td></tr>
+                <tr><th>脚本卡：成片</th><td>≤176px 小框，点开弹窗才播</td><td class="y">220px 原位播放；多条用分段按钮切换；下方「对比原片」</td></tr>
+                <tr><th>脚本卡：镜头</th><td>时间 / 景别 / 参考 n / 画面 / 旁白</td><td><b>字段不变</b>；<b>点镜头 → 成片跳转</b>，播放时高亮；「参考 n」→ 对比层定位到这一镜</td></tr>
+                <tr><th>脚本卡底栏</th><td>配乐 · 音色、风险、方法、提示词、⋯、出片</td><td><b>全部保留</b>，统一成小胶囊</td></tr>
+                <tr><th>对比原片</th><td><span class="m">没有</span></td><td class="y">并排同步播放 + 镜头对照轨 + 就地改拆解</td></tr>
+                <tr><th>生成框</th><td>完整生成框吸底，<span class="m">挡内容</span></td><td>收成「✦ 再写一轮」胶囊，点开展开</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>核心交互：文字和画面联动</h2>
+          <p class="sub">凡是写了时间的镜头，点一下就能看到那一段。</p>
+          <div class="flow note">
+            <div class="node"><b>读拆解第 2 镜</b>「蹲下放篮，抽出一瓶推向镜头」</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>点这一行</b>左上原片跳到 3.2s 开始播</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>看脚本卡第 2 镜</b>点镜头 → 成片跳到 2.5s</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>点「参考 2」</b>对比层打开，两边同时从这一镜播</div>
+          </div>
+          <div class="note-txt">设计：用户认可分析内容，痛点是「读到了却看不到」。所以不删文字，而是让每段文字都能一键对上画面——这是剪辑软件里「转录稿 ↔ 时间线」的通用做法。</div>
+          <div class="callout c-warn" style="margin-top: 10px">
+            <i data-lucide="corner-down-right"></i>
+            <div><b>例外：</b>点在输入框、下拉、标签里不跳转（避免改字时画面乱跳）；原片地址失效时只高亮不跳转，对比入口禁用并写原因；成片还没出时，「参考 n」改为滚动到拆解卡的对应镜头并让原片跳过去。</div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>三种对比方式</h2>
+          <p class="sub">用户选了第一种。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th></th><th>并排同步 + 镜头对照（选）</th><th>仅并排同步</th><th>A/B 切换</th></tr></thead>
+              <tbody>
+                <tr><th>同一时刻看两边</th><td class="y">能</td><td class="y">能</td><td class="m">不能</td></tr>
+                <tr><th>看出镜头是否对上</th><td class="y">能：按镜头分段映射</td><td class="m">时长不同就错位</td><td class="m">难</td></tr>
+                <tr><th>实现成本</th><td>中</td><td>低</td><td>低</td></tr>
+                <tr><th>核实度</th><td><span class="tag t-warn">未验证：真实成片节奏是否贴合脚本时间</span></td><td><span class="tag t-vio">提案</span></td><td><span class="tag t-vio">提案</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>用户想检查「跟拍版第 2 镜拍得像不像」时，会发生什么</h2>
+          <p class="sub">不开任何弹窗也能完成大部分检查。</p>
+          <div class="grid g2">
+            <div class="card">
+              <ol class="steps" style="margin: 0; padding: 0">
+                <li><b>在跟拍版脚本卡点第 2 镜</b><small>成片跳到这一镜开始播放，这一镜左侧出现紫色竖条</small></li>
+                <li><b>点这一镜的「参考 2」</b><small>对比层打开，原片和成片同时从这一镜播放</small></li>
+                <li><b>发现原片动作拆得不准，直接改左侧「主体 + 动作」</b><small>失焦保存；拆解卡和对比层底部都出现「按拆解重写跟拍版 ✦N」</small></li>
+                <li><b>点重写</b><small>跟拍卡进入「重写中」，写完回到待出片，用户再点出片</small></li>
+              </ol>
+            </div>
+            <div class="card">
+              <div class="callout c-warn">
+                <i data-lucide="triangle-alert"></i>
+                <div>
+                  <b>边界：对比只能做到镜头级对齐</b>
+                  <ul class="list" style="margin-top: 6px">
+                    <li>映射靠脚本里的镜头时间；模型实际节奏偏差大时只能「大致同一段」。<span class="tag t-warn">未验证</span></li>
+                    <li>改编版不照拆解写，对比时按时长比例对齐，拆解只读。</li>
+                    <li>两边不同时出声。跟拍版出片中不能重写。</li>
+                  </ul>
+                </div>
+              </div>
+              <p class="muted" style="font-size: 12.5px; margin-top: 10px">验收时用 3 条真实 Seedance 跟拍成片人工核对对齐效果。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= 原型 ================= -->
+      <section id="tab-proto" hidden>
+        <h1 class="h1">可点击原型</h1>
+        <p class="lead">
+          内存数据，刷新复原，异步为模拟。预置第 2 轮（有参考片）：跟拍版已出片 2 条、痛点版旁白有风险词、卖点版出片中、生活方式版出片失败；第 1 轮无参考片。
+          建议试：<b>点原片播放 → 点拆解的镜头行 → 点跟拍版的镜头 → 点「参考 2」进对比层 → 改左侧动作 → 重写</b>；在痛点版把带「最」字的旁白改掉再出片。想看失败：在「再写一轮」输入含<b>「失败」</b>的文字发送。
+        </p>
+        <div class="simbar muted">
+          <span>余额（示意）</span><b id="credits" class="mono" style="color: hsl(var(--foreground))"></b>
+          <button class="btn" onclick="setCredits(20)"><i data-lucide="wallet"></i>模拟余额不足</button>
+          <button class="btn" onclick="setCredits(1200)"><i data-lucide="rotate-ccw"></i>恢复余额</button>
+          <button class="btn" onclick="resetAll()"><i data-lucide="refresh-cw"></i>重置原型</button>
+        </div>
+        <div class="frame" style="margin-top: 12px">
+          <div class="frame-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span style="margin-left: 8px">video-canvas / 营销工作室 / 可口可乐</span></div>
+          <div class="proto" id="proto"></div>
+        </div>
+      </section>
+
+      <!-- ================= 实现 ================= -->
+      <section id="tab-impl" hidden>
+        <h1 class="h1">实现（提案）</h1>
+        <p class="lead">尚未实现。<b>后端、接口、数据库都不改</b>，在现有组件上改样式、加播放器与联动。对应 Markdown 第 6、8 节。</p>
+
+        <div class="sec">
+          <h2>文件改动</h2>
+          <p class="sub">多数是原组件改样式，新增的只有播放器、两个层和胶囊。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>文件</th><th>改动</th><th>用到的现有操作</th></tr></thead>
+              <tbody>
+                <tr><th><code>side-card.tsx</code></th><td>只改样式；每段 &gt;5 条折叠；窄屏折到顶部</td><td><code>saveFacts</code></td></tr>
+                <tr><th><code>round-section.tsx</code></th><td>只改样式：细描边胶囊、轻量 StepsBar</td><td><code>cancelRound</code>、<code>renderAll</code>、<code>retryStep</code></td></tr>
+                <tr><th><code>reverse-card.tsx</code></th><td>头部换 <code>InlinePlayer</code>（原片）；镜头行可点击跳转、当前行高亮；默认展开；去格子线</td><td><code>saveReverse</code>、<code>restoreReverse</code>、<code>refollow</code></td></tr>
+                <tr><th><code>script-card.tsx</code> / <code>video-box.tsx</code></th><td>done 态换 <code>InlinePlayer</code>；多条改分段按钮；镜头点击跳转 + 高亮；「参考 n」打开对比层；「对比原片」按钮</td><td><code>saveNarrations</code>、<code>render</code>、<code>restoreScript</code>、<code>toCanvas</code></td></tr>
+                <tr><th><code>inline-player.tsx</code>（新）</th><td><code>&lt;video&gt;</code> + 播放 / 暂停 / 进度 / 全屏；暴露 <code>seek(t)</code>、<code>onTime(t)</code>；同一时刻只播一个</td><td>—</td></tr>
+                <tr><th><code>player-layer.tsx</code>（新）</th><td>全屏播放层，取代 <code>PlayerDialog</code></td><td>—</td></tr>
+                <tr><th><code>compare-layer.tsx</code>（新）</th><td>对比层 + <code>useSyncedVideos</code></td><td><code>saveReverse</code>、<code>refollow</code></td></tr>
+                <tr><th><code>composer-dock.tsx</code>（新）</th><td>包住 <code>MarketingComposer</code>，加收起态</td><td>同现有</td></tr>
+                <tr><th><code>utils/marketing/compare.ts</code>（新）</th><td><code>shotIndexAt</code>、<code>refTimeAt</code>、<code>rateAt</code></td><td>—</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>镜头联动 <code>useShotSync</code></h2>
+          <div class="codeblock"><pre style="margin: 0; font: inherit; white-space: pre-wrap">// 每张卡一个（提案）
+function useShotSync(shots) {
+  const player = useRef<InlinePlayerHandle>(null)
+  const [current, setCurrent] = useState(-1)
+  const onTime = (t) => setCurrent(shotIndexAt(shots, t))      // 播放 → 高亮
+  const jump = (i, e) => {                                       // 点行 → 跳转
+    if (e.target.closest("input, textarea, select, [contenteditable], button")) return
+    player.current?.seek(shots[i].start); player.current?.play()
+  }
+  return { player, current, onTime, jump }
+}
+// shotIndexAt：返回第一个 t &lt; end 的镜头；t 恰好等于最后一镜 end 时返回最后一镜</pre></div>
+        </div>
+
+        <div class="sec">
+          <h2>对比层的时间映射与同步</h2>
+          <p class="sub">原型的对比层用的就是这段逻辑。</p>
+          <div class="codeblock"><pre style="margin: 0; font: inherit; white-space: pre-wrap">function refTimeAt(t, script, reverse, refDuration) {
+  const s = script.shots[shotIndexAt(script.shots, t)]
+  const r = s.refShot != null ? reverse?.shots.find(x => x.id === s.refShot) : null
+  const raw = r ? r.start + (t - s.start) / (s.end - s.start) * (r.end - r.start)   // 跟拍：分段线性
+                : t * refDuration / scriptDuration(script)                          // 改编：按比例
+  return clamp(raw, 0, refDuration - 0.05)
+}
+// useSyncedVideos：主时钟 = 成片；原片 playbackRate = 当前镜头时长比（0.5–2）
+// 每 250ms 偏差 &gt; 0.15s 直接 seek；任一边 waiting 两边暂停；声音二选一</pre></div>
+        </div>
+
+        <div class="sec">
+          <h2>已确认的决定</h2>
+          <div class="card">
+            <ol class="list" style="padding-left: 18px">
+              <li><b>分析内容一项不删，只改样式与交互</b>：用户认可现有分析（取代 v1 的成片墙 + 抽屉、专业信息收起、草稿脚本卡面）。</li>
+              <li><b>脚本在主界面直接平铺</b>：时间、景别 · 运镜、参考 n、画面、旁白、提示词按钮都在卡片上。</li>
+              <li><b>对比方式为并排同步播放 + 镜头对照</b>。</li>
+              <li><b>保持先看脚本再出片</b>。</li>
+              <li><b>生成框收成「再写一轮」胶囊</b>。</li>
+              <li><b>拆解在拆解卡和对比层都能改</b>（同一份数据）。</li>
+              <li><b>已搁置</b>：专家模式开关；写完自动出片。</li>
+            </ol>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+      const $ = (s, r = document) => r.querySelector(s);
+      const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const icons = () => { if (window.lucide) lucide.createIcons(); };
+      const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+      const fmt = (t) => { const m = Math.floor(t / 60), s = t - m * 60; return `${String(m).padStart(2, "0")}:${s.toFixed(1).padStart(4, "0")}`; };
+      function toggleNotes() { const on = document.body.classList.toggle("show-notes"); $("#notesSw").setAttribute("aria-checked", String(on)); }
+      let toastTimer;
+      function toast(msg, kind = "ok") {
+        const icon = { ok: "circle-check", bad: "circle-x", warn: "triangle-alert" }[kind] || "info";
+        $("#toast").innerHTML = `<div><i data-lucide="${icon}" style="color: rgb(var(--${kind}))"></i>${esc(msg)}</div>`;
+        icons(); clearTimeout(toastTimer); toastTimer = setTimeout(() => ($("#toast").innerHTML = ""), 2200);
+      }
+      function showTab(id) {
+        document.querySelectorAll("main > section").forEach((s) => (s.hidden = s.id !== "tab-" + id));
+        document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === id)));
+        window.scrollTo(0, 0);
+      }
+      document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab)));
+
+      /* ================= 内存数据（示意） ================= */
+      const ROLES = { none: "无", dynamic: "动态出镜", hero_real: "实物主角", package_text: "包装文字清晰" };
+      function seed() {
+        const ref = {
+          dur: 14.8, method: "内置方法",
+          why: "开篇抱篮营造丰盛感，直击熬夜刚需；后段迅速切入高清单品与配料表特写，借原料建立强信任背书。",
+          style: "明亮清新口播带货风，主播亲切自然，近景特写清晰展示卖点。0–9 秒抱满篮果汁引出熬夜加班人群痛点；9–12 秒特写展示单瓶新鲜原料含量；12–15 秒背部配料表特写证实 0 添加纯果汁。",
+          brands: ["某果汁品牌 logo", "背景墙商标"], claims: ["100% 桑葚汁", "每瓶约 100 颗桑葚榨取", "非浓缩还原", "一瓶相当于 100 克新鲜桑葚", "配料：100% 桑葚原汁"],
+          shots: [
+            { id: 1, s: 0, e: 9.2, op: true, size: "中景转近景", cam: "固定微调", act: "双手托抱装满桑葚汁的编织篮面向镜头说话，随后下蹲将篮子放至桌面，右手从篮中抽出一瓶推向镜头展示。", dia: "这么好喝我真的是要说倦了，这桑葚汁啊真的是一口惊艳。尤其是对于经常熬夜加班的朋友来说。", role: "dynamic", inFrame: "编织篮内堆放多瓶果汁，后手持单瓶向前推近，占比 20% 至 35%", colors: ["米白色毛衣", "紫黑色果汁", "米白色编织篮", "浅蓝色牛仔裤"] },
+            { id: 2, s: 9.2, e: 11.8, op: false, size: "特写", cam: "固定", act: "单手手持塑料瓶身平举在镜头前，拇指与食指捏住瓶颈轻微转动展示正面标签文字。", dia: "它这一瓶呢就相当于 100 克新鲜桑葚，", role: "package_text", inFrame: "手持单瓶正面居中展示，占比约 60%", colors: ["紫黑色果汁", "黑色瓶身标签", "白色瓶盖"] },
+            { id: 3, s: 11.8, e: 14.8, op: false, size: "特写", cam: "固定", act: "双手握持瓶身翻转至背面，右手食指指尖紧贴并划过「配料：100% 桑葚原汁」字样发力指认。", dia: "而且呢它还是 NFC 非浓缩还原的。", role: "package_text", inFrame: "瓶身背面居中展示，文字清晰可读，占比约 60%", colors: ["紫黑色果汁", "白色信息标签", "白色瓶盖"] },
+          ],
+        };
+        const follow = { id: "s1", kind: "follow", angle: "跟拍", title: "可口可乐瓶身细节跟拍", status: "done", takes: 2, take: 1, progress: 0, cost: 90, edited: false, error: "", method: "内置方法",
+          hook: "", music: "轻快清新的节奏配乐，音量低于人声", voice: "清晰亲切、语速稍快的女声",
+          shots: [
+            { s: 0, e: 9.33, size: "中景转近景", cam: "固定微调", scene: "模特图中的女性双手托抱装满可口可乐的编织篮，面向镜头说话；随后下蹲将篮子放至桌面，右手从篮中抽出一瓶推向镜头展示。明亮温馨的室内，配绿植，柔和正向补光。瓶身外观以商品图为准。", nar: "这瓶我真的是要说倦了，可口可乐这红白标签，想喝可乐的朋友，看看这瓶。", ref: 1 },
+            { s: 9.33, e: 11.93, size: "特写", cam: "固定", scene: "模特图中女性的单手将可口可乐塑料瓶平举在镜头前，拇指与食指捏住瓶颈，轻微转动展示正面标签文字。室内浅色虚化背景，明亮均匀棚拍光。瓶身与包装上的文字以商品图为准。", nar: "正面红底白字，清楚吧？", ref: 2 },
+            { s: 11.93, e: 15, size: "特写", cam: "固定", scene: "模特图中女性的双手握持可口可乐瓶身翻转至背面，右手食指指尖贴并划过瓶身下半部的凸起圆点纹理，发力指认。室内浅色虚化背景，正面清晰均光。瓶身与包装上的文字以商品图为准，不生成配料表文字。", nar: "下半部有凸起圆点，戳下方看看。", ref: 3 },
+          ], flags: [] };
+        const mk = (id, angle, title, status, extra = {}) => ({ id, kind: "adapt", angle, title, status, takes: status === "done" ? 1 : 0, take: 0, progress: 0, cost: 90, edited: false, error: "", method: "内置方法",
+          hook: "凌晨两点还在改方案？你需要的不是咖啡。", music: "城市夜景氛围电子乐", voice: "沉稳男声",
+          shots: [
+            { s: 0, e: 3, size: "特写", cam: "推近", scene: "深夜办公桌，台灯下疲惫的手揉着眼睛，电脑屏幕的冷光映在脸上。", nar: "又是加班到凌晨的一天", ref: null },
+            { s: 3, e: 8, size: "近景", cam: "跟拍", scene: "拧开可口可乐瓶盖，气泡涌出，瓶身红色标签正对镜头，瓶外凝结水珠。", nar: "一口下去，最提神的就是它", ref: null },
+            { s: 8, e: 15, size: "中景", cam: "固定", scene: "人物靠回椅背，举起可乐微笑，窗外城市灯火。瓶身外观以商品图为准。", nar: "可口可乐，陪你撑过每个夜晚", ref: null },
+          ], flags: [], ...extra });
+        const pain = mk("s2", "痛点-解决", "凌晨两点的救星", "draft", { flags: [{ shot: 1, type: "forbidden", text: "「最」属于广告法极限词" }] });
+        const feat = mk("s3", "卖点拆解", "红标与圆点纹理的秘密", "rendering", { progress: 38 });
+        const life = mk("s4", "生活方式", "周末野餐的气泡时刻", "failed", { error: "视频模型返回：画面包含疑似人物肖像，已拦截（任务 MKT-2291）" });
+        const r2 = { id: "r2", no: 2, status: "ready", settings: { platform: "抖音", model: "MiniMax-H3", spec: "9:16 · 768P · 15s", lang: "中文旁白" }, ref, revOpen: true, reverseDirty: false, reverseEdited: false, scripts: [follow, pain, feat, life], failedStep: null,
+          steps: [["事实卡", "ok"], ["拆解", "ok"], ["跟拍", "ok"], ["创意", "ok"]] };
+        const r1 = { id: "r1", no: 1, status: "ready", settings: { platform: "小红书", model: "Seedance 2.0", spec: "9:16 · 720P · 15s", lang: "中文旁白" }, ref: null, reverseDirty: false,
+          scripts: [mk("s5", "质感大片", "红色经典", "done"), mk("s6", "开箱体验", "一箱可乐的仪式感", "draft")], failedStep: { label: "前后对比版生成失败", reason: "文本模型超时（30s）" },
+          steps: [["事实卡", "ok"], ["创意", "bad"]] };
+        return {
+          credits: 1200,
+          facts: { name: "可口可乐", anchors: ["瓶身正面红色标签上印有白色「可口可乐」字样", "瓶盖为红色，侧面有竖向条纹", "透明瓶身内可见深棕色液体", "瓶身上窄下宽，中下部向内收", "瓶身下半部有凸起圆点纹理和「Coca-Cola」浮雕字样"], points: ["红色标签搭配白色「可口可乐」字样", "瓶身下半部带凸起圆点纹理"], prohibited: ["不编造价格、销量、评价、认证与功效", "不使用最、第一、顶级、绝对等极限词", "不写治疗、保健或其他功效承诺", "不出现站外导流、联系方式或二维码"], cta: "戳下方看看这瓶可口可乐。" },
+          rounds: [r2, r1], player: null, compare: null, dock: false, factsEdit: false, prompt: null, menu: null, nextNo: 3,
+        };
+      }
+      let S = seed();
+      const findScript = (id) => { for (const r of S.rounds) { const s = r.scripts.find((x) => x.id === id); if (s) return { r, s }; } return {}; };
+      const dur = (sc) => sc.shots[sc.shots.length - 1].e;
+
+      /* ---- 时间映射（与 Markdown §6.7 一致） ---- */
+      function shotIndexAt(shots, t) { for (let i = 0; i < shots.length; i++) if (t < shots[i].e) return i; return shots.length - 1; }
+      function refTimeAt(t, sc, ref) {
+        const s = sc.shots[shotIndexAt(sc.shots, t)];
+        const r = s.ref != null ? ref.shots.find((x) => x.id === s.ref) : null;
+        const raw = r ? r.s + ((t - s.s) / (s.e - s.s)) * (r.e - r.s) : (t * ref.dur) / dur(sc);
+        return clamp(raw, 0, ref.dur - 0.05);
+      }
+      function rateAt(t, sc, ref) {
+        const s = sc.shots[shotIndexAt(sc.shots, t)];
+        const r = s.ref != null ? ref.shots.find((x) => x.id === s.ref) : null;
+        return r ? clamp((r.e - r.s) / (s.e - s.s), 0.5, 2) : ref.dur / dur(sc);
+      }
+
+      /* ---- 假画面 ---- */
+      const PROD_COLA = "#c8102e 0 22%, #3a1a0e 22% 100%";
+      const PROD_BERRY = "#f1efe9 0 14%, #3b1030 14% 100%";
+      function fakeFrame(shots, t, hue, prod) {
+        const i = shotIndexAt(shots, t), s = shots[i];
+        const h = (hue + i * 38) % 360, text = s.act || s.scene;
+        return `<div class="fake" style="background: linear-gradient(160deg, hsl(${h} 55% 38%), hsl(${(h + 40) % 360} 60% 14%))">
+          <div class="prod" style="background: linear-gradient(180deg, ${prod})"></div><span class="tc">${fmt(t)}</span>
+          <div class="shot">镜头 ${i + 1} · ${esc(s.size)}</div><div class="act">${esc(text.length > 26 ? text.slice(0, 26) + "…" : text)}</div></div>`;
+      }
+
+      /* ---- 原位播放器注册表：重绘不丢状态；同一时刻只播一个 ---- */
+      const P = {}; // key -> {t, playing, timer}
+      function srcOf(key) {
+        if (key.startsWith("ref:")) { const r = S.rounds.find((x) => x.id === key.slice(4)); return { shots: r.ref.shots, total: r.ref.dur, hue: 290, prod: PROD_BERRY, rows: `rev-${r.id}` }; }
+        const { s } = findScript(key); return { shots: s.shots, total: dur(s), hue: s.kind === "follow" ? 10 : 130 + (key.charCodeAt(1) * 23) % 120, prod: PROD_COLA, rows: `sc-${s.id}` };
+      }
+      const pst = (key) => (P[key] ||= { t: 0, playing: false, timer: null });
+      function paintPlayer(key) {
+        const box = document.getElementById("pl-" + key); if (!box) return;
+        const st = pst(key), src = srcOf(key);
+        box.querySelector(".frame-in").innerHTML = fakeFrame(src.shots, st.t, src.hue, src.prod);
+        box.querySelector(".bar > i").style.width = (st.t / src.total) * 100 + "%";
+        box.querySelector(".tt").textContent = fmt(st.t);
+        box.classList.toggle("playing", st.playing);
+        const pp = box.querySelector(".ppi"); if (pp && pp.dataset.state !== String(st.playing)) { pp.dataset.state = String(st.playing); pp.innerHTML = `<i data-lucide="${st.playing ? "pause" : "play"}"></i>`; icons(); }
+        const cur = st.playing || st.t > 0 ? shotIndexAt(src.shots, st.t) : -1;
+        document.querySelectorAll(`[data-rows="${src.rows}"]`).forEach((el) => el.classList.toggle("cur", +el.dataset.i === cur));
+      }
+      function playKey(key, on) {
+        const st = pst(key);
+        if (on) Object.keys(P).forEach((k) => k !== key && P[k].playing && playKey(k, false));
+        st.playing = on; clearInterval(st.timer);
+        if (on) st.timer = setInterval(() => { const src = srcOf(key); st.t += 0.1; if (st.t >= src.total) { st.t = 0; playKey(key, false); } paintPlayer(key); }, 100);
+        paintPlayer(key);
+      }
+      function stopAll() { Object.keys(P).forEach((k) => P[k].playing && playKey(k, false)); }
+      function playerHtml(key, width) {
+        const st = pst(key), src = srcOf(key);
+        return `<div class="vid ${st.playing ? "playing" : ""}" id="pl-${key}" style="width:${width}px" data-act="toggle" data-k="${key}" role="button" tabindex="0" aria-label="播放 / 暂停">
+          <div class="frame-in">${fakeFrame(src.shots, st.t, src.hue, src.prod)}</div>
+          <span class="bigplay"><i data-lucide="play"></i></span>
+          <div class="ctrl"><span class="ppi" data-state="${st.playing}"><i data-lucide="${st.playing ? "pause" : "play"}"></i></span><span class="bar"><i style="width:${(st.t / src.total) * 100}%"></i></span><span class="tt mono" style="font-size:10.5px">${fmt(st.t)}</span><button class="fs" data-act="full" data-k="${key}" aria-label="全屏"><i data-lucide="maximize-2"></i></button></div></div>`;
+      }
+
+      /* ================= 渲染 ================= */
+      function renderProto() {
+        const p = $("#proto");
+        const top = p.querySelector(".proto-scroll")?.scrollTop || 0;
+        p.innerHTML = `<div class="proto-scroll"><div class="layout">${sideHtml()}<div class="note" style="outline-offset:6px">${S.rounds.map(roundHtml).join("")}</div></div></div>
+          ${dockHtml()}${S.menu ? menuHtml() : ""}${S.factsEdit ? factsModal() : ""}${S.prompt ? promptModal() : ""}${S.player ? fullHtml() : ""}${S.compare ? compareHtml() : ""}`;
+        p.querySelector(".proto-scroll").scrollTop = top;
+        $("#credits").textContent = "✦" + S.credits;
+        icons();
+        Object.keys(P).forEach(paintPlayer);
+      }
+      function safeRender() {
+        const a = document.activeElement;
+        if (a && a.closest && a.closest("#proto") && a.matches("textarea, select, [contenteditable='true']")) { setTimeout(safeRender, 500); return; }
+        renderProto();
+      }
+
+      function sideHtml() {
+        const f = S.facts;
+        const sec = (icon, title, items) => `<div class="fact"><h4><i data-lucide="${icon}"></i>${title}</h4><ul>${items.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>`;
+        const th = (lab, cola) => `<div class="thumb" style="background: linear-gradient(170deg, ${cola ? "#fafafa, #ddd" : "#e9e2d8, #b9ab99"})"><div style="position:absolute; left:50%; top:46%; transform:translate(-50%,-50%); width:${cola ? 28 : 40}%; height:${cola ? 70 : 80}%; border-radius:35% 35% 10% 10%; background:${cola ? `linear-gradient(180deg, ${PROD_COLA})` : "linear-gradient(#f4e6d4, #d9c3a5)"}"></div><span class="lab">${lab}</span></div>`;
+        return `<aside class="glass side note">
+          <button class="back" data-act="noop"><i data-lucide="chevron-left"></i>营销工作室</button>
+          <div class="thumbs">${th("商品", true)}${th("模特", false)}</div>
+          <div class="row"><b style="font-size:18px; letter-spacing:-0.01em">${esc(f.name)}</b><button class="iconbtn spacer" data-act="factsEdit" aria-label="编辑商品信息"><i data-lucide="pencil"></i></button></div>
+          ${sec("scan-eye", "外观锚点", f.anchors)}${sec("badge-check", "卖点", f.points)}${sec("ban", "禁用说法", f.prohibited)}${sec("shopping-cart", "引导下单", [f.cta])}
+        </aside>`;
+      }
+
+      function roundHtml(r, idx) {
+        const st = r.settings;
+        const drafts = r.scripts.filter((s) => (s.status === "draft" && !s.flags.length) || s.status === "failed");
+        const total = drafts.reduce((a, s) => a + s.cost, 0);
+        const chips = [`<i data-lucide="music-2"></i>${st.platform}`, st.model, st.spec, st.lang].concat(r.ref ? [`<i data-lucide="clapperboard"></i>参考 ${r.ref.dur}s`] : []);
+        let head = `<div class="rhead"><span class="rno">第 ${r.no} 轮</span>${chips.map((c) => `<span class="chip">${c}</span>`).join("")}`;
+        if (r.status === "ready" && drafts.length >= 2) { const dis = S.credits < total; head += `<button class="pill pill-solid spacer" data-act="renderAll" data-r="${r.id}" ${dis ? "disabled title='积分不足'" : ""}><i data-lucide="play"></i>全部出片 <span style="opacity:.65">✦${total}</span></button>`; }
+        head += `</div>`;
+        const stIcon = { ok: ["check", "rgb(var(--ok))"], run: ["loader-2", "rgb(var(--info))"], bad: ["circle-x", "rgb(var(--bad))"], wait: ["circle-dashed", "hsl(var(--muted-foreground))"] };
+        const steps = r.steps || [];
+        const stepsHtml = `<div class="stepsbar">${steps.map(([n, k], i) => `${i === 2 && steps.length === 4 ? `<i data-lucide="chevron-right" class="muted"></i>` : ""}<span class="stp" title="${n} · 方法：内置方法"><i data-lucide="${stIcon[k][0]}" class="${k === "run" ? "spin" : ""}" style="color:${stIcon[k][1]}"></i>${n}</span>`).join("")}
+          ${r.status === "scripting" ? `<span class="muted" style="margin-left:6px">${esc(r.stage)}</span><button class="pill pill-ghost spacer" data-act="cancel" data-r="${r.id}">取消</button>` : ""}</div>`;
+        let body;
+        if (r.status === "scripting") body = `<div class="stack">${r.ref ? `<div class="glass rev"><div class="rev-head">${playerHtml("ref:" + r.id, 120)}<div style="flex:1"><div class="rev-title">参考拆解</div><div class="skel" style="height:14px; width:70%; margin-top:12px"></div><div class="skel" style="height:14px; width:50%; margin-top:8px"></div></div></div></div>` : ""}${Array.from({ length: r.plan }, () => `<div class="skel" style="height:260px"></div>`).join("")}</div>`;
+        else if (r.status === "failed") body = `<div class="glass" style="padding:14px 18px; display:flex; align-items:center; gap:10px; font-size:13px; color: rgb(var(--bad))"><i data-lucide="circle-x"></i>${esc(r.error)}<span class="muted">· 积分已退回</span><button class="pill spacer" data-act="retryRound" data-r="${r.id}"><i data-lucide="rotate-ccw"></i>重试</button></div>`;
+        else if (r.status === "canceled") body = `<div class="glass muted" style="padding:14px 18px; font-size:13px">已取消，积分已退回</div>`;
+        else body = `<div class="stack">${r.ref ? revHtml(r, idx === 0) : ""}${r.scripts.map((s, k) => scriptHtml(r, s, idx === 0 && k === 0)).join("")}${r.failedStep ? `<div class="glass" style="padding:14px 18px; display:flex; align-items:center; gap:10px; font-size:13px"><i data-lucide="circle-x" style="color: rgb(var(--bad))"></i>${esc(r.failedStep.label)}：${esc(r.failedStep.reason)}<button class="pill spacer" data-act="retryStep" data-r="${r.id}"><i data-lucide="rotate-ccw"></i>重试</button></div>` : ""}</div>`;
+        return `<section class="round">${head}${stepsHtml}${body}</section>`;
+      }
+
+      function revHtml(r, annotate) {
+        const ref = r.ref, key = "ref:" + r.id;
+        const follow = r.scripts.find((s) => s.kind === "follow");
+        const busy = follow && (follow.status === "rendering" || follow.status === "rewriting");
+        return `<div class="glass rev ${annotate ? "note" : ""}" id="rev-${r.id}">
+          <div class="rev-head">
+            ${playerHtml(key, 120)}
+            <div style="flex:1; min-width:0">
+              <div class="row wrapflex"><span class="rev-title">参考拆解</span><span class="muted" style="font-size:12.5px">${ref.shots.length} 个镜头 · ${ref.dur}s</span>
+                <span class="muted" style="font-size:12px; display:inline-flex; align-items:center; gap:4px"><i data-lucide="book-open"></i>方法：${esc(ref.method)}</span>
+                <span class="spacer"></span>
+                <span class="tag t-bad" title="${esc(ref.brands.join("、"))}"><i data-lucide="copyright"></i>第三方品牌 ${ref.brands.length}</span>
+                <span class="tag t-warn" title="${esc(ref.claims.join("、"))}"><i data-lucide="megaphone"></i>原片背书 ${ref.claims.length}</span>
+                <button class="iconbtn" data-act="revToggle" data-r="${r.id}" aria-label="${r.revOpen ? "收起" : "展开"}"><i data-lucide="${r.revOpen ? "chevron-up" : "chevron-down"}"></i></button></div>
+              <div class="why"><i data-lucide="flame" style="color: rgb(var(--warn)); margin-top:3px"></i><span>${esc(ref.why)}</span></div>
+              ${r.revOpen ? `<div class="muted" style="font-size:13px; margin-top:8px; line-height:1.65">${esc(ref.style)}</div>` : ""}
+            </div>
+          </div>
+          ${r.revOpen ? `<div style="margin-top:14px; display:grid; gap:2px">${ref.shots.map((x, i) => `
+            <div class="shotrow" data-rows="rev-${r.id}" data-i="${i}" data-act="jump" data-k="${key}" id="rv-${r.id}-${x.id}">
+              <div class="tcol"><span class="mono">${x.s}–${x.e}s</span><br/>${esc(x.size)} · ${esc(x.cam)}${x.op ? `<br/><span class="tag t-warn" style="margin-top:5px">前 3 秒</span>` : ""}</div>
+              <div style="min-width:0">
+                <div class="lbl">主体 + 动作</div><div class="ed" contenteditable="true" data-rev="act" data-r="${r.id}" data-id="${x.id}" style="font-size:14px; font-weight:500; line-height:1.6">${esc(x.act)}</div>
+                <div class="lbl" style="margin-top:8px">台词</div><div class="ed" contenteditable="true" data-rev="dia" data-r="${r.id}" data-id="${x.id}" style="font-size:13.5px; line-height:1.6">${esc(x.dia)}</div>
+                <div class="colors">${x.colors.map((c) => `<span class="tag t-mute">${esc(c)}</span>`).join("")}</div>
+              </div>
+              <div><div class="lbl">商品怎么出现</div><select class="sel" data-role="${x.id}" data-r="${r.id}">${Object.entries(ROLES).map(([k, v]) => `<option value="${k}" ${k === x.role ? "selected" : ""}>${v}</option>`).join("")}</select>
+                <div class="muted" style="font-size:12px; margin-top:6px; line-height:1.5">${esc(x.inFrame)}</div></div>
+            </div>`).join("")}</div>
+          <div class="row wrapflex" style="margin-top:10px; padding-top:12px; border-top:1px solid hsl(var(--chrome-border)); font-size:12px">
+            <span class="muted" style="flex:1; min-width:200px">原片背书：${esc(ref.claims.join("、"))}</span>
+            ${r.reverseEdited ? `<button class="pill pill-ghost" data-act="restoreReverse" data-r="${r.id}"><i data-lucide="undo-2"></i>恢复原稿</button>` : ""}
+            <button class="pill ${r.reverseDirty ? "pill-solid" : ""}" data-act="refollow" data-r="${r.id}" ${!r.reverseDirty ? "disabled title='拆解没有改动'" : busy ? "disabled title='跟拍版出片中，完成后再重写'" : ""}><i data-lucide="refresh-cw"></i>按拆解重写跟拍版 <span style="opacity:.65">✦12</span></button>
+          </div>` : ""}
+        </div>
+        ${annotate ? `<div class="note-txt">字段与现在一致（含方法、品牌 / 背书、为什么火、风格、前 3 秒、关键颜色、商品怎么出现与说明）。新增：左上原片可直接播放；点镜头行 → 原片跳到这一镜；播放时当前行出现紫色竖条。去掉表格线，用小标题 + 正文分级。</div>` : ""}`;
+      }
+
+      function scriptHtml(r, s, annotate) {
+        const follow = s.kind === "follow";
+        const busy = s.status === "rendering" || s.status === "rewriting";
+        const again = s.status === "done" || s.status === "failed";
+        const flagged = new Map(s.flags.map((f) => [f.shot, f.text]));
+        const dis = busy || s.flags.length > 0 || S.credits < s.cost;
+        const why = busy ? "出片中" : s.flags.length ? "先改掉标红的旁白" : S.credits < s.cost ? "积分不足" : again ? "按当前脚本再出一条" : "按当前脚本出片";
+        const statusTag = { done: `<span class="tag t-ok"><i data-lucide="check"></i>已出片</span>`, draft: `<span class="tag t-mute">待出片</span>`, rendering: `<span class="tag t-info"><i data-lucide="loader-2" class="spin"></i>出片中</span>`, rewriting: `<span class="tag t-info"><i data-lucide="loader-2" class="spin"></i>重写中</span>`, failed: `<span class="tag t-bad">出片失败</span>` }[s.status];
+        let left;
+        if (s.status === "done") {
+          left = playerHtml(s.id, 220) + (s.takes > 1 ? `<div class="seg">${Array.from({ length: s.takes }, (_, i) => `<button aria-pressed="${i === s.take}" data-act="take" data-s="${s.id}" data-i="${i}">第 ${i + 1} 条</button>`).join("")}</div>` : "") +
+            (r.ref ? `<button class="pill" data-act="compare" data-s="${s.id}"><i data-lucide="columns-2"></i>对比原片</button>` : "");
+        } else {
+          const blur = `<div style="position:absolute; inset:0; background: radial-gradient(circle at 50% 40%, #c8102e, #2a0b0b 70%); filter: blur(14px) saturate(.6); transform: scale(1.3)"></div>`;
+          let over = "";
+          if (s.status === "draft") over = `<i data-lucide="film" style="width:20px;height:20px"></i>还没出片`;
+          if (s.status === "rewriting") over = `<i data-lucide="loader-2" class="spin" style="width:20px;height:20px"></i>重写中`;
+          if (s.status === "rendering") { const c = 2 * Math.PI * 20, pct = Math.round(s.progress); over = `<svg viewBox="0 0 48 48" width="48" height="48" style="transform:rotate(-90deg)"><circle cx="24" cy="24" r="20" fill="none" stroke="#fff" stroke-opacity=".25" stroke-width="3"/><circle cx="24" cy="24" r="20" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - pct / 100)}"/></svg><span class="mono">出片中 ${pct}%</span>`; }
+          if (s.status === "failed") over = `<i data-lucide="circle-x" style="width:20px;height:20px"></i><span>${esc(s.error)}</span>`;
+          left = `<div class="vid" style="width:220px; cursor:default">${blur}<div style="position:absolute; inset:0; background: rgb(0 0 0 / ${s.status === "failed" ? 0.5 : 0.25})"></div><div class="over">${over}</div></div>`;
+        }
+        return `<article class="glass scard ${follow ? "follow" : ""} ${annotate ? "note" : ""}" id="card-${s.id}">
+          <div class="left">${left}</div>
+          <div style="min-width:0">
+            <div class="row wrapflex"><span class="tag ${follow ? "t-beam" : "t-mute"}">${follow ? `<i data-lucide="copy"></i>` : ""}${esc(s.angle)}</span>${statusTag}${s.edited ? `<span class="tag t-mute">已修改</span>` : ""}</div>
+            <div style="font-size:16px; font-weight:700; margin-top:8px">${esc(s.title)}</div>
+            ${s.hook ? `<div class="hook">${esc(s.hook)}</div>` : ""}
+            <div style="margin-top:10px; display:grid; gap:2px">${s.shots.map((x, i) => `
+              <div class="sshot" data-rows="sc-${s.id}" data-i="${i}" data-act="jump" data-k="${s.id}" ${s.status === "done" ? "" : `data-nojump="1"`}>
+                <div class="tcol"><span class="mono">${x.s}–${x.e}s</span><br/>${esc(x.size)} · ${esc(x.cam)}
+                  ${x.ref != null ? `<br/><button class="tag t-warn" style="margin-top:5px" data-act="refShot" data-s="${s.id}" data-i="${i}" title="${s.status === "done" && r.ref ? "和原片对比这一镜" : "看原片这一镜"}">参考 ${x.ref}</button>` : ""}</div>
+                <div style="min-width:0"><div style="font-size:13.5px; line-height:1.65; color: hsl(var(--foreground) / .88)">${esc(x.scene)}</div>
+                  <div class="row" style="gap:4px; margin-top:6px; align-items:flex-start"><i data-lucide="mic" class="muted" style="margin-top:6px"></i>
+                    <textarea class="nar ${flagged.has(i) ? "bad" : ""}" rows="1" data-nar="${i}" data-s="${s.id}" ${busy ? "disabled" : ""} placeholder="无旁白">${esc(x.nar)}</textarea></div>
+                  ${flagged.has(i) ? `<div style="font-size:12px; color: rgb(var(--bad)); margin:2px 0 0 18px">${esc(flagged.get(i))}</div>` : ""}
+                </div></div>`).join("")}</div>
+          </div>
+          <div class="sfoot">
+            <span class="muted" style="font-size:12px; flex:1; min-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:inline-flex; gap:5px; align-items:center" title="配乐：${esc(s.music)}；旁白音色：${esc(s.voice)}"><i data-lucide="music"></i>${esc(s.music)} · ${esc(s.voice)}</span>
+            ${s.flags.length ? `<span class="tag t-bad" title="${esc(s.flags.map((f) => f.text).join("；"))}"><i data-lucide="shield-ban"></i>禁用说法</span>` : ""}
+            <span class="muted" style="font-size:12px; display:inline-flex; gap:4px; align-items:center"><i data-lucide="book-open"></i>方法：${esc(s.method)}</span>
+            <button class="pill pill-ghost" data-act="prompt" data-s="${s.id}"><i data-lucide="code-xml"></i>提示词</button>
+            <button class="iconbtn" data-act="menu" data-s="${s.id}" aria-label="更多操作"><i data-lucide="more-horizontal"></i></button>
+            <button class="pill pill-solid" data-act="render" data-s="${s.id}" ${dis ? `disabled` : ""} title="${why}"><i data-lucide="${again ? "rotate-ccw" : "play"}"></i>${again ? "重出" : "出片"} <span style="opacity:.65">✦${s.cost}</span></button>
+          </div>
+        </article>
+        ${annotate ? `<div class="note-txt">内容与现在一致（时间、景别 · 运镜、参考 n、画面、旁白、配乐 · 音色、方法、提示词、⋯、出片）。新增：成片放大到 220px 原位播放；点镜头 → 成片跳转、播放时高亮；「参考 n」→ 对比层定位到这一镜；「对比原片」入口。</div>` : ""}`;
+      }
+
+      function menuHtml() {
+        const { s } = findScript(S.menu.id);
+        return `<div class="menu" style="left:${S.menu.x}px; top:${S.menu.y}px">
+          <button data-act="download" ${s.status === "done" ? "" : "disabled title='还没有成片'"}><i data-lucide="download"></i>下载成片</button>
+          <button data-act="toCanvas" ${s.status === "rendering" ? "disabled title='出片中'" : ""}><i data-lucide="workflow"></i>发到画布精修</button>
+          <button data-act="restore" data-s="${s.id}" ${s.edited ? "" : "disabled title='没有改动'"}><i data-lucide="undo-2"></i>恢复原稿</button></div>`;
+      }
+
+      function dockHtml() {
+        if (!S.dock) return `<div class="dock"><button class="dock-pill" data-act="dock"><i data-lucide="pen-line" class="muted"></i><span style="flex:1; text-align:left">换个说法、补充卖点，再写一轮</span><span class="sendbtn" style="opacity:.35"><i data-lucide="arrow-up"></i></span></button></div>`;
+        return `<div class="dock open"><div class="dock-box">
+          <div class="row" style="align-items:flex-start; gap:10px">
+            <div class="thumbs"><div class="thumb" style="background:linear-gradient(170deg,#fafafa,#ddd)"></div><div class="thumb" style="background:linear-gradient(170deg,#e9e2d8,#b9ab99)"></div><div class="thumb" style="display:grid; place-items:center; box-shadow: inset 0 0 0 1px hsl(var(--chrome-border))"><i data-lucide="clapperboard" class="muted"></i></div></div>
+            <textarea id="dockText" placeholder="换个说法、补充卖点，再写一轮"></textarea></div>
+          <div class="row wrapflex" style="margin-top:8px"><span class="chip"><i data-lucide="music-2"></i>抖音</span><span class="chip">跟拍 + 改编 ×1</span><span class="chip">MiniMax-H3</span><span class="chip">9:16 · 768P · 15s</span><span class="spacer muted" style="font-size:12px">✦4</span><button class="sendbtn" data-act="send" aria-label="发送"><i data-lucide="arrow-up"></i></button></div>
+        </div></div>`;
+      }
+
+      function factsModal() {
+        const f = S.facts;
+        const area = (k, label, v) => `<label style="display:grid; gap:4px; margin-top:12px; font-size:12px"><span class="muted">${label}</span><textarea data-fact="${k}" rows="${Array.isArray(v) ? Math.max(2, v.length) : 1}">${esc(Array.isArray(v) ? v.join("\n") : v)}</textarea></label>`;
+        return `<div class="scrim" data-act="factsCancel"></div><div class="modal"><div class="row"><b style="font-size:16px">编辑商品信息</b><button class="iconbtn spacer" data-act="factsCancel" aria-label="关闭"><i data-lucide="x"></i></button></div>
+          ${area("name", "商品名", f.name)}${area("anchors", "外观锚点（每行一条）", f.anchors)}${area("points", "卖点（每行一条）", f.points)}${area("prohibited", "禁用说法（每行一条）", f.prohibited)}${area("cta", "引导下单", f.cta)}
+          <div class="row" style="justify-content:flex-end; margin-top:16px"><button class="pill" data-act="factsCancel">取消</button><button class="pill pill-solid" data-act="factsSave">保存</button></div></div>`;
+      }
+
+      function promptModal() {
+        const { r, s } = findScript(S.prompt);
+        const text = `[基本参数] 9:16，${dur(s)} 秒，有声\n[参考素材] @图片1：可口可乐，外观的唯一依据，禁止重新设计、改色、改形、改 logo。@图片2：模特形象参考。${r.ref ? "@视频1：参考节奏与运镜，不照搬其中的商品、人物与品牌" : ""}\n[商品] ${S.facts.anchors.join("；")}\n[分镜]\n${s.shots.map((x, i) => `镜头${i + 1}（${x.s}–${x.e}s）${x.size}，${x.cam}：${x.scene} 旁白：「${x.nar}」`).join("\n")}\n[音乐与配音] 旁白：中文，${s.voice}；配乐：${s.music}\n[硬性约束] 商品外观与参考图一致；除商品本身印刷的文字外画面不出现任何文字、字幕或水印；${S.facts.prohibited.join("；")}`;
+        return `<div class="scrim" data-act="closePrompt"></div><div class="modal" style="width:min(680px, calc(100% - 32px))"><div class="row"><b style="font-size:16px">视频提示词 · ${esc(r.settings.model)}</b><button class="iconbtn spacer" data-act="closePrompt" aria-label="关闭"><i data-lucide="x"></i></button></div>
+          <pre class="mono" style="white-space:pre-wrap; font-size:12px; line-height:1.6; margin:12px 0 0; padding:12px; border-radius:12px; background: hsl(var(--chrome-hover))">${esc(text)}</pre>
+          <div class="row" style="justify-content:flex-end; margin-top:12px"><button class="pill" data-act="copyPrompt"><i data-lucide="copy"></i>复制</button></div></div>`;
+      }
+
+      /* ---- 全屏播放层 ---- */
+      let fT = 0, fPlaying = false, fTimer = null;
+      function doneKeys() { const out = []; for (const r of S.rounds) { if (r.ref && r.status === "ready") out.push("ref:" + r.id); r.scripts.forEach((s) => s.status === "done" && out.push(s.id)); } return out; }
+      function fullHtml() {
+        const key = S.player, src = srcOf(key);
+        const sc = key.startsWith("ref:") ? null : findScript(key).s;
+        const r = key.startsWith("ref:") ? S.rounds.find((x) => x.id === key.slice(4)) : findScript(key).r;
+        const title = sc ? `${sc.angle} · ${sc.title}` : `第 ${r.no} 轮 · 参考原片`;
+        return `<div class="layer"><div class="layer-head"><b>${esc(title)}</b><span class="spacer"></span><button class="gpill" data-act="closeFull" aria-label="关闭"><i data-lucide="x"></i></button></div>
+          <div style="flex:1; min-height:0; display:flex; align-items:center; justify-content:center; gap:16px; padding:0 18px">
+            <button class="gpill" data-act="prevNext" data-d="-1" aria-label="上一条"><i data-lucide="chevron-left"></i></button>
+            <div class="vbox" style="height:100%; max-height:600px" id="fv">${fakeFrame(src.shots, fT, src.hue, src.prod)}</div>
+            <button class="gpill" data-act="prevNext" data-d="1" aria-label="下一条"><i data-lucide="chevron-right"></i></button></div>
+          <div style="padding:12px 18px 16px; display:grid; gap:10px">
+            <div class="row"><button class="gpill" data-act="fpp" id="fppBtn"><i data-lucide="${fPlaying ? "pause" : "play"}"></i></button><span class="mono" style="font-size:12px" id="ftime">${fmt(fT)} / ${fmt(src.total)}</span><div class="scrub" data-act="fscrub"><i id="fbar" style="width:${(fT / src.total) * 100}%"></i></div></div>
+            <div class="row wrapflex" style="justify-content:center">
+              ${sc && sc.takes > 1 ? `<div class="seg">${Array.from({ length: sc.takes }, (_, i) => `<button aria-pressed="${i === sc.take}" data-act="take" data-s="${sc.id}" data-i="${i}">第 ${i + 1} 条</button>`).join("")}</div>` : ""}
+              ${sc ? `<button class="gpill" data-act="compare" data-s="${sc.id}" ${r.ref ? "" : "disabled title='这一轮没有参考片'"}><i data-lucide="columns-2"></i>对比原片</button>` : ""}
+              <button class="gpill" data-act="download"><i data-lucide="download"></i>下载</button></div></div></div>`;
+      }
+      function updateFull() {
+        if (!S.player) return; const src = srcOf(S.player);
+        $("#fv").innerHTML = fakeFrame(src.shots, fT, src.hue, src.prod);
+        $("#ftime").textContent = `${fmt(fT)} / ${fmt(src.total)}`; $("#fbar").style.width = (fT / src.total) * 100 + "%";
+      }
+      function setFull(on) {
+        fPlaying = on; clearInterval(fTimer);
+        if (on) fTimer = setInterval(() => { fT += 0.1; if (fT >= srcOf(S.player).total) fT = 0; updateFull(); }, 100);
+        const b = $("#fppBtn"); if (b) { b.innerHTML = `<i data-lucide="${on ? "pause" : "play"}"></i>`; icons(); }
+      }
+
+      /* ---- 对比层 ---- */
+      let cT = 0, cPlaying = false, cTimer = null;
+      function compareHtml() {
+        const { r, s } = findScript(S.compare.id);
+        const follow = s.kind === "follow", total = dur(s), i = shotIndexAt(s.shots, cT), refT = refTimeAt(cT, s, r.ref);
+        return `<div class="layer">
+          <div class="layer-head"><b>${esc(s.angle)} · 对比原片</b><span style="font-size:12px; color: rgb(255 255 255 / .5)">原片含第三方品牌 ${r.ref.brands.length} 处、促销背书 ${r.ref.claims.length} 处，${follow ? "跟拍版已去掉" : "改编版未使用"}</span><span class="spacer"></span><button class="gpill" data-act="closeCompare" aria-label="关闭"><i data-lucide="x"></i></button></div>
+          <div class="cmp-videos note" style="flex:1 1 48%; min-height:0; padding:0 18px">
+            <div class="vcol"><div class="vbox" id="cv-ref">${fakeFrame(r.ref.shots, refT, 290, PROD_BERRY)}</div><span style="font-size:12px; color: rgb(255 255 255 / .6)">原片 · <span class="mono" id="cv-ref-t">${fmt(refT)}</span> · <span id="cv-rate">${rateAt(cT, s, r.ref).toFixed(2)}×</span></span></div>
+            <div class="vcol"><div class="vbox" id="cv-main">${fakeFrame(s.shots, cT, 10, PROD_COLA)}</div><span style="font-size:12px; color: rgb(255 255 255 / .6)">成片 · <span class="mono" id="cv-main-t">${fmt(cT)}</span></span></div></div>
+          <div class="note-txt" style="padding:0 18px">主时钟是成片；原片按当前镜头时长比变速（显示倍率），每 250ms 校正。两边不同时出声。</div>
+          <div style="padding:10px 18px 14px; display:grid; gap:10px">
+            <div class="row"><button class="gpill" data-act="cpp" id="cppBtn"><i data-lucide="${cPlaying ? "pause" : "play"}"></i></button><span class="mono" style="font-size:12px" id="ctime">${fmt(cT)} / ${fmt(total)}</span><div class="scrub" data-act="cscrub"><i id="cbar" style="width:${(cT / total) * 100}%"></i></div>
+              <div class="seg"><button aria-pressed="${S.compare.audio === "ref"}" data-act="audio" data-v="ref">原片声</button><button aria-pressed="${S.compare.audio !== "ref"}" data-act="audio" data-v="main">成片声</button></div></div>
+            <div class="track">${s.shots.map((x, k) => `<button class="${k === i ? "on" : ""}" style="flex:${x.e - x.s}" data-act="seekShot" data-i="${k}">镜 ${k + 1}${follow && x.ref != null ? ` · 原片 ${x.ref}` : ""}</button>`).join("")}</div>
+            <div class="grid cmp-grid" style="grid-template-columns:1fr 1fr; gap:10px" id="cpanels">${panelsHtml(r, s, i, refT)}</div>
+            ${r.reverseDirty && follow ? `<div class="row" style="justify-content:flex-end"><button class="gpill" data-act="restoreReverse" data-r="${r.id}">恢复原稿</button><button class="gpill" style="background:#fff; color:#111" data-act="refollow" data-r="${r.id}"><i data-lucide="refresh-cw"></i>按拆解重写跟拍版 <span style="opacity:.6">✦12</span></button></div>` : ""}
+          </div></div>`;
+      }
+      function panelsHtml(r, s, i, refT) {
+        const follow = s.kind === "follow", sh = s.shots[i];
+        const rs = follow && sh.ref != null ? r.ref.shots.find((x) => x.id === sh.ref) : r.ref.shots[shotIndexAt(r.ref.shots, refT)];
+        const ed = follow ? `contenteditable="true"` : "";
+        return `<div class="cpanel"><h4>原片 · 镜头 ${rs.id} ${rs.op ? `<span class="tag t-warn">前 3 秒</span>` : ""} ${follow ? "" : `<span class="tag" style="background: rgb(255 255 255 / .08)">只读</span>`}</h4>
+            <div class="ed" ${ed} data-rev="act" data-r="${r.id}" data-id="${rs.id}">${esc(rs.act)}</div>
+            <div style="margin-top:6px; color: rgb(255 255 255 / .7)">台词：<span class="ed" ${ed} data-rev="dia" data-r="${r.id}" data-id="${rs.id}">${esc(rs.dia)}</span></div>
+            <div style="margin-top:6px; font-size:12px; color: rgb(255 255 255 / .55)">商品怎么出现：${ROLES[rs.role]} · ${esc(rs.inFrame)}</div></div>
+          <div class="cpanel"><h4>成片 · 镜头 ${i + 1}<button class="spacer gpill" style="height:24px; font-size:12px" data-act="goEdit" data-s="${s.id}" data-i="${i}">去改</button></h4>
+            <div>${esc(sh.scene)}</div><div style="margin-top:6px; color: rgb(255 255 255 / .7)">旁白：${esc(sh.nar)}</div></div>`;
+      }
+      function updateCompare() {
+        if (!S.compare) return;
+        const { r, s } = findScript(S.compare.id), total = dur(s), refT = refTimeAt(cT, s, r.ref);
+        $("#cv-ref").innerHTML = fakeFrame(r.ref.shots, refT, 290, PROD_BERRY); $("#cv-main").innerHTML = fakeFrame(s.shots, cT, 10, PROD_COLA);
+        $("#cv-ref-t").textContent = fmt(refT); $("#cv-main-t").textContent = fmt(cT); $("#cv-rate").textContent = rateAt(cT, s, r.ref).toFixed(2) + "×";
+        $("#ctime").textContent = `${fmt(cT)} / ${fmt(total)}`; $("#cbar").style.width = (cT / total) * 100 + "%";
+        const i = shotIndexAt(s.shots, cT), btns = [...document.querySelectorAll(".track button")];
+        if (btns.findIndex((b) => b.classList.contains("on")) !== i) {
+          btns.forEach((b, k) => b.classList.toggle("on", k === i));
+          if (!document.activeElement?.closest?.("#cpanels")) $("#cpanels").innerHTML = panelsHtml(r, s, i, refT);
+        }
+      }
+      function setCmp(on) {
+        cPlaying = on; clearInterval(cTimer);
+        if (on) cTimer = setInterval(() => { const { s } = findScript(S.compare.id); cT += 0.1; if (cT >= dur(s)) cT = 0; updateCompare(); }, 100);
+        const b = $("#cppBtn"); if (b) { b.innerHTML = `<i data-lucide="${on ? "pause" : "play"}"></i>`; icons(); }
+      }
+      function openCompare(sid, shot) {
+        const { s } = findScript(sid); stopAll(); setFull(false); S.player = null;
+        S.compare = { id: sid, audio: "main" }; cT = shot != null ? s.shots[shot].s : 0; renderProto(); setCmp(true);
+      }
+      function closeLayers() { setFull(false); setCmp(false); S.player = null; S.compare = null; }
+
+      /* ================= 交互 ================= */
+      function tickRender(s) {
+        const t = setInterval(() => {
+          if (s.status !== "rendering") return clearInterval(t);
+          s.progress += 9 + Math.random() * 8;
+          if (s.progress >= 100) { clearInterval(t); s.progress = 100; s.status = "done"; s.takes += 1; s.take = s.takes - 1; toast(`「${s.angle}」出片完成`); }
+          if (!S.compare && !S.player) safeRender(); else if (s.status === "done") safeRender();
+        }, 650);
+      }
+      function startRender(s) { if (S.credits < s.cost) return toast("积分不足", "bad"); S.credits -= s.cost; s.status = "rendering"; s.progress = 0; s.error = ""; tickRender(s); }
+      function resumeRendering() { S.rounds.forEach((r) => r.scripts.forEach((s) => s.status === "rendering" && tickRender(s))); }
+      const EDITING = "input, textarea, select, [contenteditable='true'], button";
+
+      document.addEventListener("click", (e) => {
+        const el = e.target.closest("[data-act]");
+        if (!el || !el.closest("#proto")) { if (S.menu && !e.target.closest(".menu")) { S.menu = null; renderProto(); } return; }
+        const a = el.dataset.act, sid = el.dataset.s;
+        // 镜头行：点在编辑区域里不跳转
+        if (a === "jump" && e.target.closest(EDITING)) return;
+        const hadMenu = !!S.menu; if (a !== "menu") S.menu = null;
+        switch (a) {
+          case "noop": return toast("返回列表页（原型不跳转）", "info");
+          case "toggle": playKey(el.dataset.k, !pst(el.dataset.k).playing); return;
+          case "full": e.stopPropagation(); stopAll(); S.player = el.dataset.k; fT = pst(el.dataset.k).t; renderProto(); setFull(true); return;
+          case "jump": {
+            if (el.dataset.nojump) { toast("还没出片，出片后点镜头可跳到这一段", "info"); return; }
+            const key = el.dataset.k, src = srcOf(key); pst(key).t = src.shots[+el.dataset.i].s; playKey(key, true); return;
+          }
+          case "refShot": {
+            const { r, s } = findScript(sid); const i = +el.dataset.i, refId = s.shots[i].ref;
+            if (s.status === "done" && r.ref) return openCompare(sid, i);
+            r.revOpen = true; renderProto();
+            const row = document.getElementById(`rv-${r.id}-${refId}`); row?.scrollIntoView?.({ block: "center", behavior: "smooth" }); row?.classList.add("flash");
+            const key = "ref:" + r.id; pst(key).t = r.ref.shots.find((x) => x.id === refId).s; playKey(key, true); return;
+          }
+          case "revToggle": { const r = S.rounds.find((x) => x.id === el.dataset.r); r.revOpen = !r.revOpen; break; }
+          case "factsEdit": S.factsEdit = true; break;
+          case "factsCancel": S.factsEdit = false; break;
+          case "factsSave": document.querySelectorAll("[data-fact]").forEach((t) => { const k = t.dataset.fact; S.facts[k] = ["name", "cta"].includes(k) ? t.value.trim() : t.value.split("\n").map((x) => x.trim()).filter(Boolean); }); S.factsEdit = false; toast("已保存，下一轮写脚本会用新的商品信息"); break;
+          case "prompt": S.prompt = sid; break;
+          case "closePrompt": S.prompt = null; break;
+          case "copyPrompt": toast("已复制（示意）"); return;
+          case "menu": { e.stopPropagation(); if (S.menu?.id === sid) { S.menu = null; break; } const pr = $("#proto").getBoundingClientRect(), br = el.getBoundingClientRect(); S.menu = { id: sid, x: Math.min(br.right - pr.left - 170, pr.width - 180), y: br.top - pr.top - 116 }; break; }
+          case "download": toast("开始下载（示意）"); break;
+          case "toCanvas": toast("已发到新画布（示意），在新标签页打开"); break;
+          case "restore": { const { s } = findScript(sid); s.edited = false; toast("已恢复原稿"); break; }
+          case "render": startRender(findScript(sid).s); break;
+          case "renderAll": { const r = S.rounds.find((x) => x.id === el.dataset.r); r.scripts.filter((s) => (s.status === "draft" && !s.flags.length) || s.status === "failed").forEach(startRender); break; }
+          case "take": { const { s } = findScript(sid); s.take = +el.dataset.i; P[sid] && (P[sid].t = 0); toast(`切到第 ${s.take + 1} 条`, "info"); break; }
+          case "compare": return openCompare(sid, null);
+          case "closeFull": case "closeCompare": closeLayers(); break;
+          case "fpp": setFull(!fPlaying); return;
+          case "fscrub": { const rc = el.getBoundingClientRect(); fT = clamp((e.clientX - rc.left) / rc.width, 0, 0.999) * srcOf(S.player).total; updateFull(); return; }
+          case "prevNext": { const list = doneKeys(), k = list.indexOf(S.player); S.player = list[(k + +el.dataset.d + list.length) % list.length]; fT = 0; renderProto(); setFull(true); return; }
+          case "cpp": setCmp(!cPlaying); return;
+          case "cscrub": { const { s } = findScript(S.compare.id), rc = el.getBoundingClientRect(); cT = clamp((e.clientX - rc.left) / rc.width, 0, 0.999) * dur(s); updateCompare(); return; }
+          case "seekShot": { const { s } = findScript(S.compare.id); cT = s.shots[+el.dataset.i].s; const on = cPlaying; renderProto(); if (on) setCmp(true); return; }
+          case "audio": S.compare.audio = el.dataset.v; toast(el.dataset.v === "ref" ? "现在听原片，成片静音" : "现在听成片，原片静音", "info"); break;
+          case "goEdit": {
+            closeLayers(); renderProto();
+            const ta = document.querySelector(`[data-nar="${el.dataset.i}"][data-s="${sid}"]`); ta?.scrollIntoView?.({ block: "center" }); ta?.focus(); return;
+          }
+          case "restoreReverse": { const r = S.rounds.find((x) => x.id === el.dataset.r); r.ref = seed().rounds[0].ref; r.reverseDirty = false; r.reverseEdited = false; toast("拆解已恢复原稿"); break; }
+          case "refollow": {
+            const r = S.rounds.find((x) => x.id === el.dataset.r), s = r.scripts.find((x) => x.kind === "follow");
+            closeLayers(); S.credits -= 12; s.status = "rewriting"; r.reverseDirty = false;
+            setTimeout(() => { s.status = "draft"; s.edited = false; toast("跟拍版已按新拆解重写，确认后再出片"); safeRender(); }, 1800); break;
+          }
+          case "dock": S.dock = true; renderProto(); $("#dockText")?.focus(); return;
+          case "send": sendRound(); return;
+          case "cancel": { const r = S.rounds.find((x) => x.id === el.dataset.r); clearInterval(r.timer); r.status = "canceled"; toast("已取消，积分已退回"); break; }
+          case "retryRound": { const r = S.rounds.find((x) => x.id === el.dataset.r); r.failing = false; runRound(r); return; }
+          case "retryStep": {
+            const r = S.rounds.find((x) => x.id === el.dataset.r); r.failedStep = null; r.steps = [["事实卡", "ok"], ["创意", "ok"]];
+            r.scripts.push({ ...r.scripts[1], id: "s" + Math.random().toString(36).slice(2, 6), angle: "前后对比", title: "喝前 vs 喝后", status: "draft", takes: 0, take: 0, flags: [] }); toast("前后对比版已写好"); break;
+          }
+          default: if (!hadMenu) return;
+        }
+        renderProto();
+      });
+
+      document.addEventListener("keydown", (e) => {
+        if ($("#tab-proto").hidden) return;
+        if (e.key === "Escape") {
+          if (S.compare || S.player) closeLayers(); else if (S.prompt) S.prompt = null; else if (S.factsEdit) S.factsEdit = false;
+          else if (S.dock && !($("#dockText")?.value || "").trim()) S.dock = false; else return;
+          renderProto();
+        }
+        if (S.player && (e.key === "ArrowRight" || e.key === "ArrowLeft")) { const list = doneKeys(), k = list.indexOf(S.player); S.player = list[(k + (e.key === "ArrowRight" ? 1 : -1) + list.length) % list.length]; fT = 0; renderProto(); setFull(true); }
+        if (e.key === "Enter" && e.target.id === "dockText" && !e.shiftKey) { e.preventDefault(); sendRound(); }
+        if (e.key === "Enter" && e.target.dataset?.nar != null && !e.shiftKey) { e.preventDefault(); e.target.blur(); }
+      });
+
+      document.addEventListener("focusout", (e) => {
+        const t = e.target;
+        if (t.dataset?.nar != null) {
+          const { s } = findScript(t.dataset.s), i = +t.dataset.nar;
+          if (s.shots[i].nar === t.value) return;
+          s.shots[i].nar = t.value; s.edited = true; s.flags = s.flags.filter((f) => f.shot !== i);
+          if (/最|第一|顶级|绝对/.test(t.value)) s.flags.push({ shot: i, type: "forbidden", text: "「最 / 第一 / 顶级 / 绝对」属于广告法极限词" });
+          toast("旁白已保存"); setTimeout(safeRender, 0);
+        }
+        if (t.dataset?.rev) {
+          const r = S.rounds.find((x) => x.id === t.dataset.r), rs = r.ref.shots.find((x) => x.id === +t.dataset.id), v = t.textContent.trim(), k = t.dataset.rev;
+          if (!v && k === "act") { toast("动作不能为空", "bad"); t.textContent = rs.act; return; }
+          if (rs[k] === v) return;
+          rs[k] = v; r.reverseDirty = true; r.reverseEdited = true; toast("拆解已保存");
+          const on = cPlaying; setTimeout(() => { safeRender(); if (on) setCmp(true); }, 0);
+        }
+        if (t.id === "dockText" && S.dock && !t.value.trim()) setTimeout(() => { if (!document.activeElement?.closest?.(".dock")) { S.dock = false; renderProto(); } }, 120);
+      });
+      document.addEventListener("change", (e) => {
+        if (e.target.dataset?.role) { const r = S.rounds.find((x) => x.id === e.target.dataset.r); r.ref.shots.find((x) => x.id === +e.target.dataset.role).role = e.target.value; r.reverseDirty = true; r.reverseEdited = true; toast("拆解已保存"); renderProto(); }
+      });
+
+      function sendRound() {
+        const text = ($("#dockText")?.value || "").trim();
+        if (S.credits < 4) return toast("积分不足", "bad");
+        S.credits -= 4;
+        const r = { id: "r" + S.nextNo, no: S.nextNo++, status: "scripting", settings: { platform: "抖音", model: "MiniMax-H3", spec: "9:16 · 768P · 15s", lang: "中文旁白" }, ref: seed().rounds[0].ref, revOpen: true, reverseDirty: false, scripts: [], plan: 2, failedStep: null, failing: text.includes("失败") };
+        S.rounds.unshift(r); S.dock = false; runRound(r);
+      }
+      function runRound(r) {
+        r.status = "scripting"; r.stage = "正在拆解参考片…"; r.steps = [["事实卡", "run"], ["拆解", "run"], ["跟拍", "wait"], ["创意", "wait"]]; renderProto();
+        const seq = [() => { r.stage = "正在写跟拍版与改编版…"; r.steps = [["事实卡", "ok"], ["拆解", "ok"], ["跟拍", "run"], ["创意", "run"]]; }];
+        let k = 0;
+        r.timer = setInterval(() => {
+          if (k < seq.length && !r.failing) { seq[k++](); safeRender(); return; }
+          clearInterval(r.timer);
+          if (r.failing) { r.status = "failed"; r.error = "商品图里没有识别到商品（事实卡环节失败）"; r.steps = [["事实卡", "bad"], ["拆解", "wait"]]; toast("写脚本失败，积分已退回", "bad"); }
+          else { const base = seed().rounds[0].scripts; r.scripts = [{ ...base[0], id: "n1" + r.no, status: "draft", takes: 0, take: 0 }, { ...base[2], id: "n3" + r.no, status: "draft", progress: 0 }]; r.status = "ready"; r.steps = [["事实卡", "ok"], ["拆解", "ok"], ["跟拍", "ok"], ["创意", "ok"]]; toast(`第 ${r.no} 轮脚本写好了`); }
+          safeRender();
+        }, 1500);
+      }
+      function setCredits(v) { S.credits = v; renderProto(); }
+      function resetAll() { closeLayers(); stopAll(); S.rounds.forEach((r) => clearInterval(r.timer)); for (const k in P) delete P[k]; S = seed(); renderProto(); resumeRendering(); toast("已重置", "info"); }
+
+      renderProto();
+      resumeRendering();
+      icons();
+    </script>
+  </body>
+</html>

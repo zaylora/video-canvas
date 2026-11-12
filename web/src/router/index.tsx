@@ -107,7 +107,6 @@ export const router = createBrowserRouter([
               { path: "assets", element: <Assets /> },
               { path: "drama", element: <DramaList /> },
               { path: "marketing", element: <MarketingList /> },
-              { path: "marketing/:id", element: <MarketingDetail /> },
               /** 旧的「新对话」地址：新建对话现在就是创作页 */
               { path: "conversations/new", element: <Navigate to="/" replace /> },
               { path: "conversations/:id", element: <Conversation /> },
@@ -126,6 +125,11 @@ export const router = createBrowserRouter([
           {
             path: "drama/:id",
             element: <DramaWorkspace />,
+          },
+          /** 营销创作台：全屏，与短剧工作台同级，不带首页侧栏 */
+          {
+            path: "marketing/:id",
+            element: <MarketingDetail />,
           },
           /** 片段工作区：全屏，与短剧工作台同级，一集一页 */
           {
