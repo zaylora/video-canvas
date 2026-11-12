@@ -273,3 +273,29 @@ var (
 	ErrDramaAdaptFailed          = New(67026, "转写结果不合格，请重试", http.StatusBadGateway)
 	ErrDramaAdaptMissing         = New(67027, "还没有这个格式的转写稿", http.StatusBadRequest)
 )
+
+// 环节协议层（stepkit）与营销工作室 68xxx。68001–68011、68015、68016 由营销业务使用（见 docs/design/营销工作室/接口契约.md §6），
+// 这里先落地环节协议层用到的四个，营销业务的在下面，积分不足复用 40001。
+var (
+	ErrStepNotFound     = New(68012, "环节不存在", http.StatusNotFound)
+	ErrStepTrialNeeded  = New(68013, "生效前需要该候选试跑通过", http.StatusConflict)
+	ErrStepSkillUnavail = New(68014, "技能或版本不可用", http.StatusBadRequest)
+	ErrStepTrialBusy    = New(68017, "该环节已有试跑在进行", http.StatusConflict)
+)
+
+// 营销工作室 68xxx（业务部分；68012–68014、68017 在上面，属环节协议层）。积分不足复用 40001。
+var (
+	ErrMarketingNotFound     = New(68001, "营销项目不存在", http.StatusNotFound)
+	ErrMarketingAssets       = New(68002, "商品图数量不对或素材无效", http.StatusBadRequest)
+	ErrMarketingNoTextModel  = New(68003, "没有可用的看图文本模型", http.StatusServiceUnavailable)
+	ErrMarketingVideoModel   = New(68004, "视频模型不可用或不支持所需参考", http.StatusBadRequest)
+	ErrMarketingRefTooLong   = New(68005, "参考视频超出模型限制", http.StatusBadRequest)
+	ErrMarketingScriptBusy   = New(68006, "脚本正在出片或重写，不能修改", http.StatusConflict)
+	ErrMarketingRoundBusy    = New(68007, "这个项目正在写脚本", http.StatusConflict)
+	ErrMarketingPromptLong   = New(68008, "提示词超出模型上限", http.StatusBadRequest)
+	ErrMarketingConflict     = New(68009, "内容已在别处修改，请刷新后重试", http.StatusConflict)
+	ErrMarketingBusyDelete   = New(68010, "有进行中的任务，不能删除", http.StatusConflict)
+	ErrMarketingCanvasFailed = New(68011, "发到画布失败", http.StatusInternalServerError)
+	ErrMarketingReverseBad   = New(68015, "拆解内容不合法", http.StatusBadRequest)
+	ErrMarketingNoReverse    = New(68016, "没有可用的拆解，不能重写跟拍", http.StatusConflict)
+)

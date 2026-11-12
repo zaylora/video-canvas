@@ -37,6 +37,7 @@ import (
 	"video-canvas/internal/router"
 	"video-canvas/internal/service"
 	agentsvc "video-canvas/internal/service/agent"
+	"video-canvas/internal/stepkit"
 	"video-canvas/internal/storage"
 	"video-canvas/internal/updater"
 	"video-canvas/pkg/version"
@@ -180,9 +181,10 @@ func NewApp(cfg *config.Config) (*App, error) {
 	dramaRepo := repository.NewDramaRepository(db)
 	dramaCanvasSvc := service.NewDramaCanvasService(repository.NewDramaCanvasRepository(db), hub)
 	dramaSegments := service.NewDramaSegmentService(service.DramaSegmentDeps{Repo: dramaRepo, Tasks: taskSvc, Assets: assetSvc, Broadcaster: hub})
-	taskSvc.SetTaskObserver(dramaSegments)
+	// 短剧和环节协议层共用同一个 LLM 网关实例，渠道限流（RPS / 并发）才是对两者合计生效。
+	textGateway := llmgateway.New(llmgateway.Options{IPAllowed: outboundIPPolicy(cfg)})
 	dramaSvc := service.NewDramaService(service.DramaDeps{
-		Repo: dramaRepo, Settings: dramaRepo, Skills: skillSvc, Registry: aiCfgSvc, Streamer: llmgateway.New(llmgateway.Options{IPAllowed: outboundIPPolicy(cfg)}), Secrets: aiCfgSvc, Canvas: dramaCanvasSvc, Broadcaster: hub, Credits: settingsSvc,
+		Repo: dramaRepo, Settings: dramaRepo, Skills: skillSvc, Registry: aiCfgSvc, Streamer: textGateway, Secrets: aiCfgSvc, Canvas: dramaCanvasSvc, Broadcaster: hub, Credits: settingsSvc,
 		Segments: dramaSegments, CanvasAssets: canvasProjectRepo,
 		Compose: videoframe.New(videoframe.Options{Timeout: 10 * time.Minute}), Assets: assetSvc,
 		// 列表封面：资产画布里第一张生成成功的图，和画布列表一样取缩略图
@@ -190,6 +192,25 @@ func NewApp(cfg *config.Config) (*App, error) {
 	})
 	// 片场转写用短剧服务的文本模型调用；两者互相依赖，组装完再注入。
 	dramaSegments.SetAdapter(dramaSvc)
+
+	// 环节协议层（stepkit）：注册表在这里创建，业务包（营销等）在 registerSteps 里登记自己的环节；
+	// 后台「环节技能」页读写绑定与试跑，业务运行环节前用 stepSvc.Resolver() 取当前生效的方法。
+	stepRegistry := stepkit.NewRegistry()
+	registerSteps(stepRegistry)
+	stepRepo := repository.NewStepRepository(db)
+	marketingRepo := repository.NewMarketingRepository(db)
+	stepCaller := &stepkit.GatewayCaller{Streamer: textGateway, Secrets: aiCfgSvc}
+	stepSvc := service.NewStepAdminService(service.StepAdminDeps{
+		Registry: stepRegistry, Repo: stepRepo, Skills: skillSvc, Models: aiCfgSvc, Credits: settingsSvc, Audit: auditRepo,
+		Caller: stepCaller, Stats: service.NewMarketingStats(marketingRepo, nil), // 环节失败率读营销环节运行记录
+	})
+	// 营销工作室：四个环节按后台绑定的方法运行（Resolver），写脚本走 River，出片走现有生成任务（node_id = mkt:{脚本id}）。
+	marketingSvc := service.NewMarketingService(service.MarketingDeps{
+		Repo: marketingRepo, Steps: stepRegistry, Resolver: stepSvc.Resolver(), Caller: stepCaller, Models: aiCfgSvc,
+		Assets: assetSvc, Tasks: taskSvc, Canvases: canvasProjectSvc, Frames: newVideoFrames(), Credits: settingsSvc, Broadcaster: hub,
+	})
+	// 生成任务的关联业务观察者：短剧片段和营销脚本各按节点前缀认领自己的任务。
+	taskSvc.SetTaskObserver(service.TaskObservers{dramaSegments, marketingSvc})
 
 	// 配置服务反向依赖插件宿主与任务服务，所以组装完后再注入。
 	aiCfgSvc.SetDryRunner(executor)
@@ -250,15 +271,17 @@ func NewApp(cfg *config.Config) (*App, error) {
 
 	// 生成任务队列（River）：任务调度、并发、重试之外的实例心跳与救回都交给它；业务处理仍是 worker。
 	// 入队和后台操作总是可用，是否在本实例执行任务由 ai.worker.enabled 决定（API-only 实例关闭它）。
-	taskQueue, queueConn, err := newTaskQueue(cfg, db, taskSvc, executor, assetSvc, settingsSvc, dramaSvc)
+	taskQueue, queueConn, err := newTaskQueue(cfg, db, taskSvc, executor, assetSvc, settingsSvc, dramaSvc, stepSvc, marketingSvc)
 	if err != nil {
 		stopRunner(runnerStop)
 		closeRedis(rdb)
 		closeDB(db)
 		return nil, err
 	}
-	taskRepo.SetEnqueuer(taskQueue)  // 创建任务的事务里入队：任务、积分冻结、job 一起提交
-	dramaRepo.SetEnqueuer(taskQueue) // 短剧项目、流水线任务与 River job 在业务事务里一并提交。
+	taskRepo.SetEnqueuer(taskQueue)      // 创建任务的事务里入队：任务、积分冻结、job 一起提交
+	stepRepo.SetEnqueuer(taskQueue)      // 后台试跑与 River job 在业务事务里一并提交。
+	marketingRepo.SetEnqueuer(taskQueue) // 营销轮次与写脚本 job 在业务事务里一并提交。
+	dramaRepo.SetEnqueuer(taskQueue)     // 短剧项目、流水线任务与 River job 在业务事务里一并提交。
 	riverUI, err := taskQueue.UIHandler(riverUIPrefix)
 	if err != nil {
 		queueConn.Close()
@@ -322,6 +345,9 @@ func NewApp(cfg *config.Config) (*App, error) {
 		Me:              handler.NewMeHandler(meSvc),
 		CanvasProject:   handler.NewCanvasProjectHandler(canvasProjectSvc),
 		Drama:           handler.NewDramaHandler(dramaSvc),
+		AdminStep:       handler.NewAdminStepHandler(stepSvc),
+		AdminFormatter:  handler.NewAdminFormatterHandler(),
+		Marketing:       handler.NewMarketingHandler(marketingSvc),
 		DramaSegment:    handler.NewDramaSegmentHandler(dramaSegments),
 		CanvasTransfer: handler.NewCanvasTransferHandler(service.NewCanvasTransferService(service.CanvasTransferDeps{
 			Canvases: canvasProjectRepo, Assets: assetSvc,

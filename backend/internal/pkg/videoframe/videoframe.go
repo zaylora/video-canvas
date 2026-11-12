@@ -152,6 +152,10 @@ func (e *Extractor) Frame(ctx context.Context, src string, at float64, o FrameOp
 		// 逗号要转义，否则会被当成滤镜分隔符；min 保证只缩小不放大。
 		args = append(args, "-vf", `scale=w='if(gt(iw\,ih)\,min(`+m+`\,iw)\,-2)':h='if(gt(iw\,ih)\,-2\,min(`+m+`\,ih))'`)
 	}
+	if o.Format == JPEG {
+		// 常见 H.264 视频是有限范围 YUV，新版 ffmpeg 的 mjpeg 编码器默认拒绝，需放宽标准合规检查。
+		args = append(args, "-strict", "unofficial")
+	}
 	args = append(args, "-c:v", codec, "-f", "image2pipe", "-")
 	out, err := e.run(ctx, e.ffmpeg, args...)
 	if err != nil {
@@ -199,14 +203,20 @@ func sampleTimes(dur float64, n int) []float64 {
 
 // run 在并发上限和超时内执行一个外部命令，返回标准输出。
 func (e *Extractor) run(ctx context.Context, bin string, args ...string) ([]byte, error) {
+	stdout, _, err := e.runBoth(ctx, bin, args...)
+	return stdout, err
+}
+
+// runBoth 同 run，同时返回标准错误输出（场景检测的切点时间在 ffmpeg 的 stderr 里）。
+func (e *Extractor) runBoth(ctx context.Context, bin string, args ...string) ([]byte, []byte, error) {
 	if _, err := exec.LookPath(bin); err != nil {
-		return nil, ErrUnavailable
+		return nil, nil, ErrUnavailable
 	}
 	select {
 	case e.sem <- struct{}{}:
 		defer func() { <-e.sem }()
 	default:
-		return nil, ErrBusy
+		return nil, nil, ErrBusy
 	}
 	cctx, cancel := context.WithTimeout(ctx, e.timeout)
 	defer cancel()
@@ -216,16 +226,16 @@ func (e *Extractor) run(ctx context.Context, bin string, args ...string) ([]byte
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
 		if errors.Is(cctx.Err(), context.DeadlineExceeded) {
-			return nil, ErrTimeout
+			return nil, nil, ErrTimeout
 		}
 		if ctx.Err() != nil {
-			return nil, ctx.Err()
+			return nil, nil, ctx.Err()
 		}
 		msg := strings.TrimSpace(stderr.String())
 		if len(msg) > maxStderr {
 			msg = msg[:maxStderr]
 		}
-		return nil, fmt.Errorf("%w: %s", ErrDecode, msg)
+		return nil, nil, fmt.Errorf("%w: %s", ErrDecode, msg)
 	}
-	return stdout.Bytes(), nil
+	return stdout.Bytes(), stderr.Bytes(), nil
 }

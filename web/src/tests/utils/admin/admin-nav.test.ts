@@ -47,7 +47,7 @@ describe("后台导航", () => {
     expect(findNav("/admin/settings/version")?.item.label).toBe("版本与升级");
   });
 
-  test("AI 配置分组：总览、任务队列、模型渠道、插件、技能、运行记录、分析令牌；独立的“模型”页已并入渠道页，不再有单独的 Agent 分组", () => {
+  test("AI 配置分组：总览、任务队列、模型渠道、插件、技能、环节技能、运行记录、分析令牌；独立的“模型”页已并入渠道页，不再有单独的 Agent 分组", () => {
     const group = ADMIN_NAV.find((item) => item.label === "AI 配置");
     expect(group?.items.map((item) => [item.to, item.label])).toEqual([
       ["ai/overview", "总览"],
@@ -55,6 +55,7 @@ describe("后台导航", () => {
       ["ai/channels", "模型渠道"],
       ["ai/plugins", "插件"],
       ["agent/skills", "技能"],
+      ["agent/steps", "环节技能"],
       ["agent/runs", "运行记录"],
       ["agent/tokens", "分析令牌"],
     ]);
@@ -73,10 +74,21 @@ describe("后台导航", () => {
     expect(found?.item.label).toBe("运行记录");
   });
 
-  test("运行记录菜单项在技能之后、分析令牌之前，图标不与其他菜单项重复", () => {
+  test("环节技能紧跟在技能之后，面包屑落在 AI 配置分组下，图标不与其他菜单项重复", () => {
+    const items = ADMIN_NAV.flatMap((group) => group.items);
+    const index = items.findIndex((item) => item.to === "agent/steps");
+    expect(items[index - 1]?.to).toBe("agent/skills");
+    expect(items[index]?.label).toBe("环节技能");
+    expect(items.filter((item) => item.icon === items[index]?.icon)).toHaveLength(1);
+    const found = findNav("/admin/agent/steps");
+    expect(found?.group.label).toBe("AI 配置");
+    expect(found?.item.label).toBe("环节技能");
+  });
+
+  test("运行记录菜单项在环节技能之后、分析令牌之前，图标不与其他菜单项重复", () => {
     const items = ADMIN_NAV.flatMap((group) => group.items);
     const index = items.findIndex((item) => item.to === "agent/runs");
-    expect(items[index - 1]?.to).toBe("agent/skills");
+    expect(items[index - 1]?.to).toBe("agent/steps");
     expect(items[index + 1]?.to).toBe("agent/tokens");
     const icon = items[index]?.icon;
     expect(items.filter((item) => item.icon === icon)).toHaveLength(1);

@@ -10,6 +10,7 @@ import PluginsPage from "@/pages/admin/ai/plugins";
 import ImageProcessorPage from "@/pages/admin/image-processor";
 import AgentRunsPage from "@/pages/admin/agent-runs";
 import AgentSkillsPage from "@/pages/admin/agent-skills";
+import AgentStepsPage from "@/pages/admin/agent-steps";
 import AgentTokensPage from "@/pages/admin/agent-tokens";
 import StoragePage from "@/pages/admin/storage";
 import UsersPage from "@/pages/admin/users";
@@ -32,6 +33,8 @@ import DramaWorkspace from "@/pages/drama/workspace";
 import Home from "@/pages/home";
 import HomeLayout from "@/pages/home/layout";
 import Login from "@/pages/login";
+import MarketingDetail from "@/pages/marketing/detail";
+import MarketingList from "@/pages/marketing";
 import PayReturn from "@/pages/pay/return";
 import Profile from "@/pages/profile";
 import { useMeStore } from "@/store/me";
@@ -103,6 +106,8 @@ export const router = createBrowserRouter([
               { path: "canvases", element: <CanvasList /> },
               { path: "assets", element: <Assets /> },
               { path: "drama", element: <DramaList /> },
+              { path: "marketing", element: <MarketingList /> },
+              { path: "marketing/:id", element: <MarketingDetail /> },
               /** 旧的「新对话」地址：新建对话现在就是创作页 */
               { path: "conversations/new", element: <Navigate to="/" replace /> },
               { path: "conversations/:id", element: <Conversation /> },
@@ -154,6 +159,7 @@ export const router = createBrowserRouter([
               { path: "ai/plugins", element: <PluginsPage /> },
               { path: "agent", element: <Navigate to="skills" replace /> },
               { path: "agent/skills", element: <AgentSkillsPage /> },
+              { path: "agent/steps", element: <AgentStepsPage /> },
               { path: "agent/runs", element: <AgentRunsPage /> },
               { path: "agent/tokens", element: <AgentTokensPage /> },
               { path: "users", element: <UsersPage /> },

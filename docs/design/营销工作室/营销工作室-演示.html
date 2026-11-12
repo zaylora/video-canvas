@@ -1,0 +1,472 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>营销工作室演示</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+    <style>
+      :root {
+        --radius: 0.625rem;
+        --background: 0 0% 100%; --foreground: 240 10% 3.9%; --card: 0 0% 100%;
+        --muted: 240 4.8% 95.9%; --muted-foreground: 240 3.8% 46.1%;
+        --primary: 240 5.9% 10%; --primary-foreground: 0 0% 98%; --accent: 240 4.8% 95.9%; --border: 240 5.9% 90%;
+        --ok: 5 150 105; --bad: 220 38 38; --warn: 180 83 9; --info: 2 132 199; --violet: 124 58 237; --beam: 194 120 30;
+        color-scheme: light;
+      }
+      .dark {
+        --background: 240 10% 3.9%; --foreground: 0 0% 98%; --card: 240 10% 5.5%;
+        --muted: 240 3.7% 15.9%; --muted-foreground: 240 5% 64.9%;
+        --primary: 0 0% 98%; --primary-foreground: 240 5.9% 10%; --accent: 240 3.7% 15.9%; --border: 240 3.7% 17%;
+        --ok: 52 211 153; --bad: 248 113 113; --warn: 251 191 36; --info: 56 189 248; --violet: 167 139 250; --beam: 240 180 80;
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; font-family: Geist, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; background: hsl(var(--background)); color: hsl(var(--foreground)); -webkit-font-smoothing: antialiased; line-height: 1.55; }
+      code, .mono { font-family: "Geist Mono", "SF Mono", Consolas, monospace; }
+      code { font-size: 0.92em; background: hsl(var(--muted)); padding: 1px 5px; border-radius: 5px; }
+      [data-lucide] { width: 1em; height: 1em; flex: none; }
+      h1, h2, h3, p { margin: 0; }
+      button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+      table { border-collapse: collapse; width: 100%; }
+      th { font-weight: 500; text-align: left; }
+      [hidden] { display: none !important; }
+      .muted { color: hsl(var(--muted-foreground)); }
+      .row { display: flex; align-items: center; gap: 8px; }
+      .wrapflex { flex-wrap: wrap; }
+      .spacer { margin-left: auto; }
+      .top { position: sticky; top: 0; z-index: 30; background: hsl(var(--background) / 0.92); backdrop-filter: blur(8px); border-bottom: 1px solid hsl(var(--border)); }
+      .top-in { max-width: 1160px; margin: 0 auto; padding: 0 20px; display: flex; align-items: center; gap: 16px; height: 56px; }
+      .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; white-space: nowrap; }
+      .logo { width: 28px; height: 28px; border-radius: 8px; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; }
+      .tabs { display: flex; gap: 2px; margin-left: 8px; overflow-x: auto; }
+      .tab { height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13px; font-weight: 500; color: hsl(var(--muted-foreground)); white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+      .tab:hover { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+      .tab[aria-selected="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn { height: 32px; padding: 0 10px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; white-space: nowrap; text-decoration: none; color: inherit; }
+      .btn:hover { background: hsl(var(--accent)); }
+      .btn-outline { border: 1px solid hsl(var(--border)); }
+      .switch { width: 34px; height: 20px; border-radius: 999px; background: hsl(var(--border)); position: relative; }
+      .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+      .switch[aria-checked="true"] { background: rgb(var(--violet)); }
+      .switch[aria-checked="true"]::after { transform: translateX(14px); }
+      .wrap { max-width: 1160px; margin: 0 auto; padding: 32px 20px 80px; }
+      .h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+      .lead { margin-top: 10px; max-width: 860px; font-size: 15px; color: hsl(var(--muted-foreground)); }
+      .lead b { color: hsl(var(--foreground)); }
+      .sec { margin-top: 36px; }
+      .sec > h2 { font-size: 18px; font-weight: 600; }
+      .sec > .sub { margin: 4px 0 14px; max-width: 860px; font-size: 13.5px; color: hsl(var(--muted-foreground)); }
+      .card { border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: var(--radius); padding: 16px; }
+      .grid { display: grid; gap: 12px; }
+      .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .g4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      ul.list { margin: 0; padding-left: 18px; font-size: 13.5px; }
+      .tag { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 999px; font-size: 11.5px; font-weight: 500; white-space: nowrap; }
+      .t-ok { background: rgb(var(--ok) / 0.12); color: rgb(var(--ok)); }
+      .t-bad { background: rgb(var(--bad) / 0.12); color: rgb(var(--bad)); }
+      .t-warn { background: rgb(var(--warn) / 0.12); color: rgb(var(--warn)); }
+      .t-info { background: rgb(var(--info) / 0.12); color: rgb(var(--info)); }
+      .t-vio { background: rgb(var(--violet) / 0.12); color: rgb(var(--violet)); }
+      .t-beam { background: rgb(var(--beam) / 0.14); color: rgb(var(--beam)); }
+      .t-mute { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
+      .callout { display: flex; gap: 10px; padding: 12px 14px; border-radius: var(--radius); font-size: 13.5px; border: 1px solid; }
+      .callout > i { margin-top: 3px; }
+      .c-info { background: rgb(var(--info) / 0.07); border-color: rgb(var(--info) / 0.3); } .c-info > i { color: rgb(var(--info)); }
+      .c-warn { background: rgb(var(--warn) / 0.07); border-color: rgb(var(--warn) / 0.3); } .c-warn > i { color: rgb(var(--warn)); }
+      .c-ok { background: rgb(var(--ok) / 0.07); border-color: rgb(var(--ok) / 0.3); } .c-ok > i { color: rgb(var(--ok)); }
+      .flow { display: flex; align-items: stretch; gap: 6px; flex-wrap: wrap; padding: 14px; border-radius: var(--radius); }
+      .flow .node { flex: 1 1 130px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 12px; font-size: 12.5px; }
+      .flow .node b { display: block; font-size: 13px; margin-bottom: 2px; }
+      .flow .node.hl { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+      .flow .node.swap { border-color: rgb(var(--beam)); box-shadow: 0 0 0 1px rgb(var(--beam)); }
+      .flow .stack { flex: 1 1 150px; display: grid; gap: 6px; }
+      .flow .arrow { display: grid; place-items: center; color: hsl(var(--muted-foreground)); }
+      .cmp-wrap { overflow-x: auto; border: 1px solid hsl(var(--border)); border-radius: var(--radius); }
+      .cmp th, .cmp td { padding: 9px 12px; font-size: 13px; vertical-align: top; border-bottom: 1px solid hsl(var(--border)); }
+      .cmp tr:last-child th, .cmp tr:last-child td { border-bottom: 0; }
+      .cmp thead th { background: hsl(var(--muted)); font-size: 12.5px; white-space: nowrap; }
+      .cmp tbody th { width: 150px; color: hsl(var(--muted-foreground)); font-weight: 500; }
+      .cmp .y { color: rgb(var(--ok)); } .cmp .m { color: rgb(var(--warn)); font-weight: 500; }
+      .steps { list-style: none; counter-reset: s; display: grid; gap: 12px; margin: 0; padding: 0; }
+      .steps li { counter-increment: s; position: relative; padding-left: 32px; font-size: 13.5px; }
+      .steps li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 22px; height: 22px; border-radius: 50%; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; font-size: 12px; font-weight: 600; }
+      .steps li small { display: block; color: hsl(var(--muted-foreground)); font-size: 12.5px; }
+      .codeblock { background: hsl(var(--muted)); border-radius: var(--radius); padding: 14px; font-family: "Geist Mono", "SF Mono", Consolas, monospace; font-size: 12.5px; overflow-x: auto; }
+      .codeblock pre { margin: 0; font: inherit; white-space: pre-wrap; word-break: break-word; }
+      .frame { border: 1px solid hsl(var(--border)); border-radius: 12px; overflow: hidden; }
+      .frame-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: hsl(var(--muted)); font-size: 12px; color: hsl(var(--muted-foreground)); }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: hsl(var(--border)); }
+      .note { outline: 1.5px dashed rgb(var(--violet)); outline-offset: 3px; }
+      .note-txt { display: none; margin-top: 6px; font-size: 11.5px; line-height: 1.5; color: rgb(var(--violet)); }
+      .show-notes .note-txt { display: block; }
+      body:not(.show-notes) .note { outline: none; }
+      .opt { text-align: left; border: 1px solid hsl(var(--border)); border-radius: 10px; padding: 9px 12px; font-size: 13px; background: hsl(var(--card)); }
+      .opt[aria-pressed="true"] { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+      .opt small { display: block; color: hsl(var(--muted-foreground)); font-size: 12px; }
+      .field { display: grid; gap: 4px; font-size: 12.5px; }
+      .field select { height: 32px; border: 1px solid hsl(var(--border)); border-radius: 8px; background: hsl(var(--background)); color: inherit; padding: 0 8px; }
+      .layer3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+      .lyr { border-radius: 12px; padding: 14px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); font-size: 13px; }
+      .lyr h3 { font-size: 15px; display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+      .lyr.swap { border-color: rgb(var(--beam)); box-shadow: 0 0 0 1px rgb(var(--beam)); background: rgb(var(--beam) / 0.05); }
+      @media (max-width: 820px) { .g2, .g3, .g4, .layer3 { grid-template-columns: 1fr; } .top-in { padding: 0 12px; } .wrap { padding: 24px 16px 64px; } #demoGrid { grid-template-columns: 1fr !important; } }
+    </style>
+  </head>
+  <body class="show-notes">
+    <header class="top">
+      <div class="top-in">
+        <div class="brand"><span class="logo"><i data-lucide="shopping-bag"></i></span>营销工作室</div>
+        <div class="tabs" role="tablist">
+          <button class="tab" role="tab" data-tab="overview" aria-selected="true"><i data-lucide="map"></i>总览</button>
+          <button class="tab" role="tab" data-tab="skills" aria-selected="false"><i data-lucide="layers"></i>技能与格式化</button>
+          <button class="tab" role="tab" data-tab="demo" aria-selected="false"><i data-lucide="wand-sparkles"></i>提示词拼装</button>
+          <button class="tab" role="tab" data-tab="proto" aria-selected="false"><i data-lucide="mouse-pointer-click"></i>用户端原型</button>
+          <button class="tab" role="tab" data-tab="impl" aria-selected="false"><i data-lucide="database"></i>数据与接口</button>
+        </div>
+        <div class="spacer row">
+          <label class="row muted" style="font-size: 12px">设计标注<button class="switch" id="notesSw" role="switch" aria-checked="true" onclick="toggleNotes()"></button></label>
+          <button class="btn" onclick="document.documentElement.classList.toggle('dark')" aria-label="切换明暗主题"><i data-lucide="sun-moon"></i></button>
+        </div>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <!-- ============ 总览 ============ -->
+      <section id="tab-overview">
+        <h1 class="h1">上传商品图，拿到几条不同角度的带货视频；传一条爆款，再多一条跟拍版</h1>
+        <p class="lead">首页侧栏新增「营销工作室」。系统按<b>四个文本环节</b>写出脚本给你看、让你改，确认后视频模型<b>一次出整条有声成片</b>。每个环节的「方法」可以由管理员在后台换成别的技能，<b>输出格式和后面的提示词拼装都不变</b>。一期只做营销短视频，不做数字人口播、主图和文案单品。</p>
+        <div class="callout c-info" style="margin-top: 16px"><i data-lucide="info"></i><div>
+          <b>阅读说明。</b>本页对应 <code>营销工作室.md</code>（v2，准绳）。项目现状来自 2026-11-11 代码扫描；即梦、竞品、GitHub 项目来自官方页面与仓库文档；原型里的数据、积分、耗时都是<b>示意</b>；设计<b>尚未实现</b>。<br />
+          <span class="muted">核实度图例：</span><span class="tag t-ok">已核对</span> <span class="tag t-info">调研检索，未逐条复核</span> <span class="tag t-warn">未验证 · 需实测</span> <span class="tag t-vio">提案 / 示意</span>
+        </div></div>
+
+        <div class="sec">
+          <h2>主线：一轮写脚本怎么走</h2>
+          <p class="sub">两层并行；用户只在「拆解 / 脚本」处停下来看和改。</p>
+          <div class="flow note">
+            <div class="node"><b>上传 + 描述</b>商品图 1–4 张，可选模特图、爆款参考；选平台、角度、模型</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="stack"><div class="node swap"><b>① 商品事实卡</b>看商品图：外观锚点、卖点、禁用说法</div><div class="node swap"><b>② 拆解参考片</b>看视频：逐镜动作、商品怎么出现、为什么火</div></div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="stack"><div class="node swap"><b>③ 跟拍改写</b>结构不动，只换商品 / 卖点 / 数字</div><div class="node swap"><b>④ 创意脚本</b>按角度各写一份</div></div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>看、改</b>拆解可改并重写跟拍版；旁白可改，免费</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>格式化 → 出片</b>代码按模型写法拼提示词，omni 一次出整条</div>
+          </div>
+          <div class="note-txt">设计：金色框 = 方法可替换的环节；跟拍和创意是两套方法论，分开才能各绑各的技能（如跟拍用 daihuo-fanpai、创意用 tvc-director）。③④输出同一种脚本结构，格式化器共用。</div>
+          <div class="callout c-warn" style="margin-top: 10px"><i data-lucide="corner-down-right"></i><div>
+            <b>兜底：</b>环节失败互不拖累——拆解失败则跟拍版不出、创意版照常，可「重试拆解」；事实卡失败才整轮失败并退积分。模型不能看视频时退回截帧（没有声音，标警告）。绑定的技能被停用时自动退回内置方法。
+          </div></div>
+        </div>
+
+        <div class="sec">
+          <h2>三种输入组合</h2>
+          <p class="sub">上传位填了哪些，决定跑哪些环节、出几份脚本。</p>
+          <div class="grid g3">
+            <div class="card"><div class="row"><i data-lucide="package"></i><b>只有商品图</b></div><div class="row wrapflex" style="margin-top: 6px"><span class="tag t-mute">① + ④</span></div><p class="muted" style="font-size: 13px; margin-top: 8px"><b>按角度出 1–4 份。</b>镜头以特写、手部互动为主。</p></div>
+            <div class="card"><div class="row"><i data-lucide="user-round"></i><b>+ 模特图</b></div><div class="row wrapflex" style="margin-top: 6px"><span class="tag t-mute">① + ④</span></div><p class="muted" style="font-size: 13px; margin-top: 8px"><b>模特图锁定人物形象。</b>提示词里写成 @图片(k+1)。</p></div>
+            <div class="card"><div class="row"><i data-lucide="clapperboard"></i><b>+ 爆款参考</b></div><div class="row wrapflex" style="margin-top: 6px"><span class="tag t-beam">① ② ③ ④</span><span class="tag t-warn">受视频模型限制</span></div><p class="muted" style="font-size: 13px; margin-top: 8px"><b>1 份跟拍 + 0–3 份改编。</b>跟拍照参考片结构，只换成你的商品；改编只借节奏。</p></div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>和即梦、Topview、daihuo-fanpai 比</h2>
+          <p class="sub">吸收 daihuo-fanpai 的复刻方法，但放进服务端流水线，不在用户本机跑脚本。</p>
+          <div class="cmp-wrap"><table class="cmp">
+            <thead><tr><th></th><th>本方案</th><th>即梦营销工作室</th><th>Topview</th><th>daihuo-fanpai（技能）</th></tr></thead>
+            <tbody>
+              <tr><th>中间脚本</th><td class="y">结构化、可改、改了免费</td><td class="m">没有</td><td class="y">Agent 规划分镜</td><td class="y">分镜表 + 人审 segments.md</td></tr>
+              <tr><th>爆款复刻</th><td class="y">拆解可改 → 跟拍 + 改编</td><td>物体替换 / 动作迁移 / 创意复刻</td><td>有</td><td class="y">反推 → 换产品 → 逐段生成 → 拼接</td></tr>
+              <tr><th>成片方式</th><td>一次出整条（≤15 秒）</td><td>一次出整条</td><td>逐镜生成</td><td class="m">逐段生成 + 配音 + 拼接，需本机环境</td></tr>
+              <tr><th>方法可替换</th><td class="y">后台按环节换技能，格式不变</td><td>—</td><td>—</td><td>改技能文件本身</td></tr>
+              <tr><th>口播</th><td class="m">一期不做</td><td class="m">未证实</td><td class="y">有</td><td class="y">TTS / 换声 / 对口型</td></tr>
+              <tr><th>核实度</th><td><span class="tag t-vio">提案</span></td><td><span class="tag t-ok">源码 + 截图</span></td><td><span class="tag t-info">官网文案</span></td><td><span class="tag t-ok">仓库文档</span></td></tr>
+            </tbody></table></div>
+        </div>
+
+        <div class="sec">
+          <h2>从 GitHub 拿来了什么</h2>
+          <p class="sub">只借方法和字段，不直接运行任何仓库；改写自 MIT / CC BY 的内置方法在 <code>NOTICE.md</code> 署名。</p>
+          <div class="grid g3">
+            <div class="card"><div class="row"><i data-lucide="copy"></i><b>daihuo-fanpai</b></div><div class="row wrapflex" style="margin-top: 6px"><span class="tag t-ok">MIT · Claude Code 技能</span></div><p class="muted" style="font-size: 13px; margin-top: 8px"><b>拆解字段与换产品规则：</b>action 写到发力过程、product_role、关键颜色、前 3 秒、why_viral；结构不动只换产品；去品牌；背书无依据报警；精度靠采样帧率。</p></div>
+            <div class="card"><div class="row"><i data-lucide="clapperboard"></i><b>hypit</b></div><div class="row wrapflex" style="margin-top: 6px"><span class="tag t-warn">Apache-2.0 附条件</span></div><p class="muted" style="font-size: 13px; margin-top: 8px"><b>一期不接。</b>它是程序化剪辑（字幕、动效、按字对齐），要部署 Node + Chromium；二期做字幕包装再评估。</p></div>
+            <div class="card"><div class="row"><i data-lucide="layout-template"></i><b>Seedance 模板 · 叙事模型 · 事实卡</b></div><div class="row wrapflex" style="margin-top: 6px"><span class="tag t-info">YouMind · tvc-director · HiAPIAI</span></div><p class="muted" style="font-size: 13px; margin-top: 8px"><b>格式化器骨架、6 个创意角度、事实卡字段。</b>tvc-director 可作「创意脚本」的候选技能。</p></div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>卖家拿一条护手霜爆款，复刻成自己的香水，会发生什么</h2>
+          <p class="sub">一轮完整的复刻，以及一个要提前说清的边界。</p>
+          <div class="grid g2">
+            <div class="card"><ol class="steps">
+              <li><b>上传香水图 + 10 秒护手霜爆款，平台抖音</b><small>角度变成「跟拍 + 改编 ×1」</small></li>
+              <li><b>事实卡和拆解同时跑</b><small>拆解出 4 个镜头：手背干纹钩子 → 挤膏体慢动作 → 搓手 → 举包装说「全网销量第一」；标出第三方品牌和背书</small></li>
+              <li><b>跟拍版和改编版同时写</b><small>跟拍每镜对应参考镜头，动作原样带入、把护手霜换成香水</small></li>
+              <li><b>跟拍版第 4 镜「全网销量第一」被标红</b><small>事实卡里没有这条依据，也是极限词；改掉才能出片</small></li>
+              <li><b>发现拆解漏了一个动作，改拆解 → 按拆解重写跟拍版</b><small>只重跑跟拍环节，只扣一次文本费用</small></li>
+              <li><b>两份一起出片</b><small>出片时参考视频也交给视频模型借节奏</small></li>
+            </ol></div>
+            <div class="card">
+              <div class="callout c-warn"><i data-lucide="triangle-alert"></i><div><b>边界：复刻的是结构和节奏，不是原片的人和品牌。</b>
+                <ul class="list" style="margin-top: 6px"><li>原片品牌一律去掉，人物不沿用原片外貌。</li><li>原片的促销、背书在事实卡里找不到就标红，系统不替你编。</li><li>参考片要在视频模型上限内（Seedance 2.x 为 15 秒）。</li><li>拆解准不准取决于看视频模型，需要用真实片子校准。</li></ul></div></div>
+              <p class="muted" style="font-size: 12.5px; margin-top: 10px">上线时告诉用户：复刻有版权风险的参考片由用户负责；成片没有字幕。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 技能与格式化 ============ -->
+      <section id="tab-skills" hidden>
+        <h1 class="h1">换技能，不换格式</h1>
+        <p class="lead">每个环节拆成三层：<b>协议层</b>规定输入、输出结构和校验；<b>方法层</b>决定怎么想、怎么写，可以是内置方法或某个技能的某个版本；<b>格式化层</b>把结构化脚本拼成各视频模型的提示词。<b>管理员只在方法层换技能</b>，试跑通过就生效，下游一行代码都不用改。这套协议是通用层，营销先用，短剧以后迁移。</p>
+
+        <div class="sec">
+          <h2>三层分工</h2>
+          <p class="sub">技能碰不到协议层和格式化层，所以换技能不需要「重新适配格式」。</p>
+          <div class="layer3 note">
+            <div class="lyr"><h3><i data-lucide="lock"></i>协议层</h3><span class="tag t-mute">固定 · 代码</span><ul class="list" style="margin-top: 8px"><li>本步职责（1–3 句）</li><li>输入变量 + 媒体需求（看图 / 看视频）</li><li>输出 JSON Schema</li><li>校验：硬错误重写一次；软问题落库标红</li></ul></div>
+            <div class="lyr swap"><h3><i data-lucide="book-open"></i>方法层</h3><span class="tag t-beam">可替换 · 后台绑定</span><ul class="list" style="margin-top: 8px"><li>内置方法正文，或技能 vN（钉死版本）</li><li>以「写作方法」块注入，冲突时以结构为准</li><li>技能里的脚本不执行；超 1.6 万字截断</li><li>换之前必须用样例试跑通过</li></ul></div>
+            <div class="lyr"><h3><i data-lucide="code-xml"></i>格式化层</h3><span class="tag t-mute">固定 · 代码</span><ul class="list" style="margin-top: 8px"><li>按视频模型 <code>prompt_format</code> 注册</li><li>seedance 分区块 / 通用段落（h3 暂用通用）</li><li>跟拍版与改编版共用</li><li>改写法要改代码发版</li></ul></div>
+          </div>
+          <div class="note-txt">短剧开拍设置已有「固定协议 + 可替换正文」的五段模板，这里把它抽成通用的 <code>stepkit</code>，并把「谁选技能」从用户挪到后台，加上试跑和版本钉死。</div>
+        </div>
+
+        <div class="sec">
+          <h2>提示词怎么拼</h2>
+          <p class="sub">协议块放在方法之后，保证结构要求最后出现。</p>
+          <div class="codeblock"><pre>## 本步职责        ← 协议
+## 输入            ← 协议（变量 JSON；图片 / 视频作为多模态附件）
+## 方法            ← 方法层：内置正文，或
+                     【写作方法：{技能标题} v{版本}】
+                     以下是本步骤必须遵循的方法与标准……输出仍只能是下方 JSON 结构；
+                     方法与结构冲突时以结构为准，方法里要求的其他输出格式一律不输出。
+                     &lt;skill&gt;{SKILL.md 正文 + 引用的文本文件，截断到 16,000 字}&lt;/skill&gt;
+## 输出格式        ← 协议（由 Schema 生成的字段说明 + Schema）
+## 校验规则        ← 协议</pre></div>
+        </div>
+
+        <div class="sec">
+          <h2>四个环节</h2>
+          <p class="sub">当前绑定为示意；每轮每个环节都记录用了哪个方法，脚本卡上显示。</p>
+          <div class="cmp-wrap"><table class="cmp">
+            <thead><tr><th>环节</th><th>媒体</th><th>输出</th><th>关键校验</th><th>示意绑定</th></tr></thead>
+            <tbody>
+              <tr><th>① 商品事实卡<br /><code>marketing.facts</code></th><td>看图</td><td>name、anchors、selling_points（含来源）、prohibited、cta</td><td>字段齐全；来源只能是描述或图片</td><td>内置方法</td></tr>
+              <tr><th>② 拆解参考片<br /><code>marketing.reverse</code></th><td>看视频（退回截帧）</td><td>overall、shots（action / product_role / key_colors / is_opening_3s…）、brands、claims</td><td>首尾相接覆盖时长；前 3 秒标记；动作不只是名词</td><td>daihuo-fanpai v2</td></tr>
+              <tr><th>③ 跟拍改写<br /><code>marketing.follow</code></th><td>纯文本</td><td>脚本 + follow_map</td><td>覆盖全部参考镜头；品牌 / 无依据背书 / 极限词标红</td><td>daihuo-fanpai v2</td></tr>
+              <tr><th>④ 创意脚本<br /><code>marketing.create</code></th><td>纯文本</td><td>scripts[]（每个角度一份）</td><td>份数 = 角度数；镜头 2–6 个；旁白长度</td><td>tvc-director v1</td></tr>
+            </tbody></table></div>
+        </div>
+
+        <div class="sec">
+          <h2>管理员把「创意脚本」换成另一个技能时，会发生什么</h2>
+          <p class="sub">以及换了一个不守格式的技能会怎样。</p>
+          <div class="grid g2">
+            <div class="card"><ol class="steps">
+              <li><b>后台「AI 配置 / 环节技能」→ 创意脚本 → 方法</b><small>选候选技能和版本；带脚本的技能标「仅用正文」，超长标「会截断」</small></li>
+              <li><b>试跑：选样例和文本模型，勾「同时跑当前绑定」</b><small>两列并排：格式校验、软问题、耗时、token、积分、输出预览</small></li>
+              <li><b>候选通过 → 设为生效</b><small>之后新开始的环节都用它；进行中的不受影响；写入绑定历史和审计</small></li>
+              <li><b>用户下一轮的脚本卡显示新方法</b><small>出问题时能追到是哪个技能、哪个版本</small></li>
+            </ol></div>
+            <div class="card">
+              <div class="callout c-warn"><i data-lucide="triangle-alert"></i><div><b>边界：格式由系统兜底，质量要靠试跑和对比。</b>
+                <ul class="list" style="margin-top: 6px"><li>只会输出 Markdown 的技能试跑会「格式校验失败」，不能生效（原型里的 old-ad-writer）。</li><li>技能发新版本不会自动跟随，要再试跑。</li><li>技能被停用或版本被删，环节自动退回内置方法，页顶提示。</li><li>格式校验只保证结构，不保证写得好，需要看预览、对比当前绑定。</li></ul></div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>后台原型：环节技能</h2>
+          <p class="sub">照后台布局复刻。点任意一行打开抽屉：协议（只读）/ 方法 / 试跑。试试把「创意脚本」换成 old-ad-writer；顶部演示条可模拟技能被停用。</p>
+          <div class="row wrapflex" style="gap: 12px; margin-bottom: 10px"><a class="btn btn-outline" href="环节技能-后台原型.html" target="_blank" rel="noopener"><i data-lucide="external-link"></i>新窗口打开（推荐）</a></div>
+          <div class="frame note"><div class="frame-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span style="margin-left: 8px">video-canvas / 管理后台 / AI 配置 / 环节技能</span></div>
+            <iframe src="环节技能-后台原型.html" title="环节技能后台原型" style="display: block; width: 100%; height: 760px; border: 0"></iframe></div>
+          <div class="note-txt">放在「技能」页之后，而不是塞进技能详情：技能是素材库，环节绑定是配置；一个技能可以绑多个环节（daihuo-fanpai 同时绑拆解和跟拍）。</div>
+        </div>
+      </section>
+
+      <!-- ============ 提示词拼装（格式化层） ============ -->
+      <section id="tab-demo" hidden>
+        <h1 class="h1">格式化层：脚本怎样变成视频提示词</h1>
+        <p class="lead">左边选创意角度，改平台、视频模型写法、时长，右边实时看到<b>结构化脚本</b>和<b>格式化器拼出的提示词</b>。这一层是纯代码、确定性的，<b>和技能无关</b>：换了写脚本的技能，只要脚本结构不变，这里拼出来的格式就不变。脚本内容是示意，拼装规则与 Markdown §6.6 一致。</p>
+        <div class="grid" style="margin-top: 20px; grid-template-columns: 240px minmax(0, 1fr)" id="demoGrid">
+          <div id="optList" class="grid" style="align-content: start"></div>
+          <div class="grid" style="align-content: start">
+            <div class="card grid" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px">
+              <label class="field">投放平台<select id="dPlat"></select></label>
+              <label class="field">格式化器<select id="dFmt"><option value="seedance">seedance（分区块）</option><option value="generic">通用 / h3（段落）</option></select></label>
+              <label class="field">时长<select id="dDur"><option>5</option><option>10</option><option selected>15</option></select></label>
+              <div class="field">参考素材<div class="row wrapflex" style="font-size: 12.5px"><label class="row"><input type="checkbox" id="dModel" /> 模特图</label><label class="row"><input type="checkbox" id="dRef" /> 参考视频</label></div></div>
+            </div>
+            <div class="grid g2">
+              <div class="card note"><div class="row" style="margin-bottom: 8px"><b>结构化脚本（③④的输出）</b><span class="tag t-vio spacer">示意</span></div><div id="dScript" style="font-size: 12.5px"></div></div>
+              <div class="card"><div class="row" style="margin-bottom: 8px"><b>格式化器输出</b><span class="tag t-vio spacer">提案</span></div><div class="codeblock"><pre id="dPrompt"></pre></div></div>
+            </div>
+            <div class="note-txt">镜头时间按时长等比缩放取 0.5 秒整；外观锚点和禁用说法来自事实卡。待实测：daihuo-fanpai 认为 Seedance 2.0「用镜头序号不写秒数」更好，A/B 后再定；因为在格式化层，改动不影响任何技能。</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 用户端原型 ============ -->
+      <section id="tab-proto" hidden>
+        <h1 class="h1">用户端：写脚本 → 看拆解 → 改 → 出片</h1>
+        <p class="lead">高保真原型照现有产品复刻：令牌取自 <code>web/src/index.css</code>，外壳照 <code>HomeLayout</code>，生成框照 <code>Composer</code>，列表卡照 <code>DramaGrid</code>。数据在内存里，耗时用定时器模拟，<b>不是真实调用</b>。<b>试复刻：</b>点「商品」上传 → 点「参考」选 10 秒那段 → 发送。<b>想看失败：</b>描述写「失败」→ 整轮失败退积分；顶部演示条勾「拆解失败」→ 跟拍不出、创意照常；旁白写「第一」「最」或保留「销量第一」→ 标红不能出片；旁白写「审核」→ 出片失败；参考选 40 秒 → 超限。</p>
+        <div class="row wrapflex" style="margin-top: 12px; gap: 12px"><a class="btn btn-outline" href="营销工作室原型.html" target="_blank" rel="noopener"><i data-lucide="external-link"></i>新窗口打开（推荐）</a><span class="muted" style="font-size: 12.5px">嵌入窗口较小；窄于 860px 时侧栏自动收起。</span></div>
+        <div class="frame note" style="margin-top: 12px"><div class="frame-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span style="margin-left: 8px">video-canvas / 营销工作室</span></div>
+          <iframe src="营销工作室原型.html" title="营销工作室高保真原型" style="display: block; width: 100%; height: 820px; border: 0"></iframe></div>
+        <div class="note-txt">拆解卡默认折叠，只有想核对时才展开；改了拆解只重跑跟拍环节。脚本卡底部的「方法：…」来自后台绑定快照，方便追查。</div>
+      </section>
+
+      <!-- ============ 数据与接口 ============ -->
+      <section id="tab-impl" hidden>
+        <h1 class="h1">数据与接口（提案）</h1>
+        <p class="lead">都是设计提案，尚未实现，对应 Markdown 第 7、8 节。<b>复用点：</b>River 与积分冻结结算照短剧；看视频照 Agent 视频理解链路；出片走现有生成任务（<code>mkt:</code> 前缀）；技能存储复用 <code>agent_skills</code> 与版本表。</p>
+
+        <div class="sec"><h2>关系</h2><p class="sub">通用层三张表不带营销前缀，短剧以后直接复用。</p>
+          <div class="cmp-wrap"><table class="cmp"><thead><tr><th>对象</th><th>关系</th><th>为什么</th></tr></thead><tbody>
+            <tr><th>环节绑定</th><td>每个 <code>step_key</code> 一条：内置，或技能 + 钉死版本 + 生效依据的试跑</td><td>换技能只改这一行</td></tr>
+            <tr><th>试跑</th><td>环节 × 候选 × 样例 × 文本模型；对比时两条互指</td><td>生效前必须有通过的试跑</td></tr>
+            <tr><th>营销项目 → 轮次</th><td>1 : N；轮次存设置、参考视频、拆解（可改）</td><td>同一商品多轮，事实卡复用</td></tr>
+            <tr><th>轮次 → 环节运行</th><td>1 : N；每条存方法快照、模型、状态、费用</td><td>环节失败互不拖累、可单独重试、可追查方法</td></tr>
+            <tr><th>轮次 → 脚本</th><td>1 : N；<code>kind</code> = follow / create</td><td>跟拍与改编共用脚本结构和格式化器</td></tr>
+          </tbody></table></div></div>
+
+        <div class="sec"><h2>数据模型</h2><p class="sub">迁移从 0034 起（以实现时为准）。</p>
+          <div class="grid g3">
+            <div class="cmp-wrap"><table class="cmp"><thead><tr><th colspan="2"><code>step_bindings</code></th></tr></thead><tbody>
+              <tr><th>step_key</th><td>主键</td></tr><tr><th>source</th><td>builtin / skill</td></tr><tr><th>skill_id / skill_version</th><td>钉死版本</td></tr><tr><th>trial_id</th><td>生效依据</td></tr><tr><th>updated_by / at</th><td>审计</td></tr></tbody></table></div>
+            <div class="cmp-wrap"><table class="cmp"><thead><tr><th colspan="2"><code>step_trials</code></th></tr></thead><tbody>
+              <tr><th>step_key</th><td>索引 (step_key, created_at)</td></tr><tr><th>候选</th><td>source / skill_id / version</td></tr><tr><th>sample_key / text_model_id</th><td></td></tr><tr><th>compare_of</th><td>对比的另一条</td></tr><tr><th>status / passed</th><td>格式校验是否通过</td></tr><tr><th>errors / flags / output</th><td>jsonb</td></tr><tr><th>耗时 / token / 积分</th><td>积分扣操作人</td></tr></tbody></table></div>
+            <div class="cmp-wrap"><table class="cmp"><thead><tr><th colspan="2"><code>marketing_step_runs</code></th></tr></thead><tbody>
+              <tr><th>round_id / step_key</th><td>索引</td></tr><tr><th>method</th><td>快照 {source, skill, version, sha256}</td></tr><tr><th>text_model_id</th><td>含能力回退</td></tr><tr><th>status</th><td>queued / running / succeeded / failed / skipped / canceled</td></tr><tr><th>error / attempts</th><td></td></tr><tr><th>frozen / charged</th><td>积分</td></tr></tbody></table></div>
+          </div>
+          <p class="muted" style="font-size: 12.5px; margin-top: 8px">另：<code>marketing_projects</code>（同 v1）；<code>marketing_rounds</code> 加 <code>reverse</code> / <code>reverse_original</code> / <code>reverse_revision</code>；<code>marketing_scripts</code> 加 <code>kind</code>、<code>step_run_id</code>、<code>follow_map</code>，<code>flags</code> 分 forbidden / claim / brand；<code>credit_ledger</code> 加 <code>marketing_step_run_id</code>、<code>step_trial_id</code>；<code>step_binding_history</code> 记绑定变更。v1 的 <code>agent_skills.marketing</code> 取消。</p></div>
+
+        <div class="sec"><h2>接口</h2>
+          <div class="cmp-wrap"><table class="cmp"><thead><tr><th>方法与路径</th><th>说明</th><th>业务错误</th></tr></thead><tbody>
+            <tr><th><code>POST /marketing-projects</code>、<code>/:id/rounds</code></th><td>新建项目 / 新一轮；settings 含 follow 与 adapt_count</td><td>68002–68005、68007、40001</td></tr>
+            <tr><th><code>PUT /marketing-rounds/:id/reverse</code></th><td>改拆解，带 reverse_revision；按 Schema 校验</td><td>68009、68015</td></tr>
+            <tr><th><code>POST /marketing-rounds/:id/refollow</code></th><td>按当前拆解重写跟拍版（只重跑 ③）</td><td>68006、68016、40001</td></tr>
+            <tr><th><code>POST /marketing-step-runs/:id/retry</code></th><td>重试失败的环节</td><td>40001</td></tr>
+            <tr><th><code>PUT /marketing-scripts/:id</code> 等</th><td>同 v1：改、恢复、预览提示词、出片、发到画布</td><td>同 v1</td></tr>
+            <tr><th><code>GET /admin/steps</code>、<code>/:key</code></th><td>环节列表 / 协议详情 + 绑定历史 + 样例</td><td>68012</td></tr>
+            <tr><th><code>POST /admin/steps/:key/trials</code></th><td>发起试跑（可同时跑当前绑定对比）</td><td>68014、68017、40001</td></tr>
+            <tr><th><code>PUT /admin/steps/:key/binding</code></th><td>设为生效，必须带 24 小时内通过的同候选试跑</td><td>68013、68014</td></tr>
+            <tr><th><code>GET /admin/formatters</code></th><td>格式化器列表（只读）</td><td></td></tr>
+          </tbody></table></div></div>
+
+        <div class="sec"><h2>环节运行（伪代码）</h2>
+          <div class="codeblock"><pre>// stepkit.Run（提案）
+func Run(ctx, step, method, model, in):
+  if method.skill != nil and (skill disabled or version deleted): method = Builtin(step); markFallback(step)
+  prompt := Section("本步职责", step.Duty) + Section("输入", in.Vars) + MethodBlock(method, 16000)
+          + Section("输出格式", DescribeSchema(step.Schema)) + Section("校验规则", step.RuleText)
+  for attempt in 1..2:
+    out := llm.Stream(model, Message{Parts: text(prompt) + in.Media})
+    flags, err := Decode(out) then step.Validate(out, in)
+    if err == nil: return Result{out, flags, usage, method.Snapshot()}
+    prompt = WithFeedback(prompt, err)
+  return Failed(err)
+
+// marketing_round（River）
+level1 := parallel(facts if project.facts empty, reverse if ref)
+level2 := parallel(follow if reverse ok, create(angles))   // 任一失败只影响自己
+round.status = any script ? ready : failed</pre></div></div>
+
+        <div class="sec"><h2>已确认的决定</h2>
+          <div class="card"><ol class="list" style="padding-left: 18px">
+            <li><b>国内与跨境都要</b>；<b>生成框 + 脚本确认</b>，一次出整条，可发到画布；<b>一期只做营销短视频</b>（口播搁置）。</li>
+            <li><b>爆款复刻一期做</b>；<b>多版本 = 不同创意角度</b>；<b>独立营销项目</b>；<b>旁白 + 配乐，画面不出字</b>；<b>投放平台预设</b>；<b>发到画布按镜头拆节点</b>。</li>
+            <li><b>有参考时 1 条跟拍 + N 条改编</b>。</li>
+            <li><b>参考拆解可看可改，改了可重写跟拍版</b>。</li>
+            <li><b>技能由后台按环节绑定</b>，用户不感知（取代 v1「技能作为角度给用户选」）。</li>
+            <li><b>环节协议抽成通用层，营销先用</b>，本期不动短剧。</li>
+            <li><b>换技能前用样例试跑，通过再生效</b>。</li>
+            <li><b>文本环节切成 4 个</b>：事实卡、拆解、跟拍、创意。</li>
+            <li><b>daihuo-fanpai / hypit 不直接运行</b>：吸收前者的方法，后者一期不接。</li>
+          </ol>
+          <p class="muted" style="font-size: 12.5px; margin-top: 10px">仍待确认：平台预设表校对；写脚本积分是否与出片合并展示；seedance 格式化器是否去掉秒数（A/B 实测）。</p></div></div>
+      </section>
+    </main>
+
+    <script>
+      const $ = (s, r = document) => r.querySelector(s);
+      const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const icons = () => { if (window.lucide) lucide.createIcons(); };
+      function toggleNotes() { const on = document.body.classList.toggle("show-notes"); $("#notesSw").setAttribute("aria-checked", String(on)); }
+      function showTab(id) {
+        document.querySelectorAll("main > section").forEach((s) => (s.hidden = s.id !== "tab-" + id));
+        document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === id)));
+        window.scrollTo(0, 0);
+      }
+      document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab)));
+
+      const PLAT = {
+        douyin: { name: "抖音", ar: "9:16", lang: "zh", zh: true, style: "前 3 秒强钩子，节奏快，口语化", rules: [] },
+        xhs: { name: "小红书", ar: "3:4", lang: "zh", zh: true, style: "种草口吻、生活方式、质感", rules: [] },
+        tmall: { name: "淘宝天猫", ar: "3:4", lang: "zh", zh: true, style: "卖点直给，商品始终在画面中心", rules: [] },
+        tiktok: { name: "TikTok", ar: "9:16", lang: "en", zh: false, style: "原生 UGC 感，手持、自然光", rules: [] },
+        amazon: { name: "亚马逊", ar: "16:9", lang: "en", zh: false, style: "产品演示为主", rules: ["不提价格、促销、竞品与「best seller」等排名用语"] },
+        reels: { name: "Instagram Reels", ar: "9:16", lang: "en", zh: false, style: "质感、氛围，旁白少", rules: [] },
+        generic: { name: "通用", ar: "9:16", lang: "zh", zh: false, style: "", rules: [] },
+      };
+      const PRODUCT = { name: "晨雾香水 50ml", anchors: ["方形磨砂玻璃瓶身", "金色金属瓶盖", "瓶身正面黑色衬线 logo「BRUME」"], prohibited: ["不编造价格、销量、评价、认证与功效"] };
+      const ANGLES = {
+        follow: { name: "跟拍（参考：护手霜）", title: "跟拍 · 早上喷的香，中午就散了？", music: "原片节奏：轻快鼓点", voice: "年轻女声，亲切",
+          shots: [[0, 0.2, "特写", "手持推近", "左手手腕朝上，右手食指在腕内侧轻点两下后凑近鼻尖，微微皱眉", "早上喷的香，中午就散了？", "Perfume gone by noon?"], [0.2, 0.45, "微距", "固定", "右手拇指按下晨雾香水的金色喷头，细雾在逆光里散开", "这瓶我用了三年。", "I've used this for three years."], [0.45, 0.7, "中景", "缓推", "双手腕内侧轻碰两下后自然垂下，转身时发丝扬起", "木质调，淡淡地留到傍晚。", "Soft woody notes until evening."], [0.7, 1, "特写", "固定", "女生把香水举到镜头前，瓶身 logo 完整朝向镜头，点头微笑", "链接在下面。", "Link below."]] },
+        pain: { name: "痛点-解决", title: "早上喷的香，中午就没了？", music: "轻快电子节拍", voice: "年轻女声，亲切",
+          shots: [[0, 0.2, "特写", "固定", "地铁车厢里女生低头闻袖口，微微皱眉", "早上喷的香，中午就没了？", "Your perfume gone by noon?"], [0.2, 0.4, "中景", "缓推", "她从手包里拿出晨雾香水，方瓶在手心", "试试这瓶晨雾。", "Try Morning Mist."], [0.4, 0.73, "微距", "环绕", "侧光下磨砂瓶身与金色瓶盖，按压喷雾散开", "木质调，从早上留到下班。", "Woody notes from morning to night."], [0.73, 1, "中景", "固定", "傍晚聚会她转身微笑，香水瓶放在桌角", "把清晨带在身上。", "Carry the morning with you."]] },
+        feature: { name: "卖点拆解", title: "一瓶好香，先看质感", music: "极简钢琴", voice: "沉稳女声",
+          shots: [[0, 0.2, "微距", "推", "金色瓶盖旋开的瞬间", "一瓶好香，先看质感。", "Great scent starts with the details."], [0.2, 0.47, "特写", "环绕", "磨砂方瓶在侧光里缓慢转动", "磨砂玻璃方瓶，握感温润。", "Frosted glass, smooth in your hand."], [0.47, 0.73, "特写", "固定", "手把香水放进小手包", "50ml，刚好放进手包。", "50ml, made for your bag."], [0.73, 1, "中景", "缓拉", "喷雾在逆光中散开", "木质调晨雾，淡而持久。", "Soft woody mist that stays."]] },
+        lifestyle: { name: "生活方式种草", title: "我的通勤香只有这一瓶", music: "温暖原声吉他", voice: "自然女声",
+          shots: [[0, 0.2, "中景", "跟拍", "清晨窗边女生整理衬衫领口", "我的通勤香，只有这一瓶。", "My only commute scent."], [0.2, 0.4, "特写", "固定", "手腕喷一下，低头轻嗅", "出门前喷两下。", "Two sprays before I head out."], [0.4, 0.73, "全景", "跟拍", "她走在晨光里的街道", "淡淡的木质香，同事都问是什么味道。", "Everyone asks what it is."], [0.73, 1, "特写", "缓推", "办公桌上香水与一杯咖啡", "晨雾香水，链接在下面。", "Morning Mist, link below."]] },
+      };
+      const half = (x) => Math.round(x * 2) / 2;
+      function buildScript(key, dur, lang) {
+        const a = ANGLES[key];
+        return { angle: key, name: a.name, title: a.title, music: a.music, voice: a.voice, shots: a.shots.map((s) => ({ start: half(s[0] * dur), end: half(s[1] * dur), shot: s[2], camera: s[3], scene: s[4], narr: lang === "en" ? s[6] : s[5] })) };
+      }
+      function compile(sc, o) {
+        const plat = PLAT[o.platform];
+        const ref = [`@图片1：${PRODUCT.name}，外观的唯一依据，禁止重新设计、改色、改形、改 logo。`];
+        if (o.model) ref.push("@图片2：模特形象参考。");
+        if (o.ref || sc.angle === "follow") ref.push("@视频1：参考节奏与运镜，不照搬其中的商品、人物与品牌。");
+        const forbid = [...PRODUCT.prohibited, ...plat.rules];
+        if (plat.zh) forbid.push("不使用广告法极限词（最、第一、顶级、国家级、100%、绝对等）");
+        const lang = o.lang === "en" ? "English" : "中文";
+        const shots = sc.shots.map((s, i) => `镜头${i + 1}（${s.start}–${s.end}s）${s.shot}，${s.camera}：${s.scene}。${s.narr ? "旁白：「" + s.narr + "」" : "无旁白"}`);
+        const hard = ["商品外观与参考图一致", "商品不出画", "除商品本身印刷的文字外，画面不出现任何文字、字幕或水印", ...forbid];
+        const visual = [plat.style, sc.angle === "follow" ? "跟拍参考片的节奏、景别与运镜" : ANGLES[sc.angle].name].filter(Boolean).join("；");
+        if (o.fmt === "seedance") return [`[基本参数] ${o.ar}，${o.dur} 秒，有声`, `[参考素材] ${ref.join("\n           ")}`, `[整体视觉] ${visual}`, `[商品] ${PRODUCT.anchors.join("；")}`, `[分镜] ${shots.join("\n       ")}`, `[音乐与配音] 旁白：${lang}，${sc.voice}；配乐：${sc.music}`, `[硬性约束] ${hard.join("；")}`].join("\n");
+        return [`一条 ${o.dur} 秒、${o.ar} 的有声商品广告。${ref.join("")}`, `整体风格：${visual}。商品外观：${PRODUCT.anchors.join("、")}。`, shots.join(" "), `旁白使用${lang}，${sc.voice}；配乐为${sc.music}。`, `要求：${hard.join("；")}。`].join("\n\n");
+      }
+      const demo = { angle: "follow", platform: "douyin", fmt: "seedance", dur: 15, model: false, ref: false };
+      function renderOpts() {
+        $("#optList").innerHTML = Object.entries(ANGLES).map(([k, a]) => `<button class="opt" aria-pressed="${demo.angle === k}" data-k="${k}"><b>${esc(a.name)}</b><small>${esc(a.title)}</small></button>`).join("");
+        $("#optList").querySelectorAll(".opt").forEach((b) => b.addEventListener("click", () => { demo.angle = b.dataset.k; renderOpts(); renderDemo(); }));
+      }
+      function renderDemo() {
+        const plat = PLAT[demo.platform];
+        const sc = buildScript(demo.angle, demo.dur, plat.lang);
+        $("#dScript").innerHTML = `<div class="row wrapflex" style="margin-bottom:6px"><span class="tag ${demo.angle === "follow" ? "t-beam" : "t-vio"}">${esc(sc.name)}</span><b>${esc(sc.title)}</b></div>` +
+          sc.shots.map((s, i) => `<div style="padding:6px 0;border-top:1px solid hsl(var(--border))"><code>${s.start}–${s.end}s</code> ${esc(s.shot)} · ${esc(s.camera)}${demo.angle === "follow" ? ` <span class="tag t-beam">参考 ${i + 1}</span>` : ""}<br/><span class="muted">${esc(s.scene)}</span>${s.narr ? `<br/>旁白：「${esc(s.narr)}」` : ""}</div>`).join("") +
+          `<div class="muted" style="margin-top:6px">配乐：${esc(sc.music)} · 音色：${esc(sc.voice)}</div>`;
+        $("#dPrompt").textContent = compile(sc, { platform: demo.platform, fmt: demo.fmt, dur: demo.dur, ar: plat.ar, lang: plat.lang, model: demo.model, ref: demo.ref });
+      }
+      $("#dPlat").innerHTML = Object.entries(PLAT).map(([k, p]) => `<option value="${k}">${esc(p.name)}（${p.ar} · ${p.lang === "en" ? "English" : "中文"}）</option>`).join("");
+      $("#dPlat").addEventListener("change", (e) => { demo.platform = e.target.value; renderDemo(); });
+      $("#dFmt").addEventListener("change", (e) => { demo.fmt = e.target.value; renderDemo(); });
+      $("#dDur").addEventListener("change", (e) => { demo.dur = Number(e.target.value); renderDemo(); });
+      $("#dModel").addEventListener("change", (e) => { demo.model = e.target.checked; renderDemo(); });
+      $("#dRef").addEventListener("change", (e) => { demo.ref = e.target.checked; renderDemo(); });
+      renderOpts();
+      renderDemo();
+      icons();
+    </script>
+  </body>
+</html>

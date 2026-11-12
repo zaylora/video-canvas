@@ -36,6 +36,7 @@ const HOME_SECTIONS: Record<string, string> = {
   profile: "个人资料",
   conversations: "对话",
   drama: "短剧工作室",
+  marketing: "营销工作室",
 };
 
 /**

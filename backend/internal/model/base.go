@@ -73,5 +73,12 @@ func All() []any {
 		&RechargeProduct{},
 		&PaymentOrder{},
 		&PaymentNotification{},
+		&StepBinding{},
+		&StepBindingHistory{},
+		&StepTrial{},
+		&MarketingProject{},
+		&MarketingRound{},
+		&MarketingStepRun{},
+		&MarketingScript{},
 	}
 }
