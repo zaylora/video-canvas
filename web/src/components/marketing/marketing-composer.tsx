@@ -7,7 +7,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import { motion } from "motion/react";
-import { ArrowUp, Loader2, Sparkle } from "lucide-react";
+import { ArrowUp, Coins, Loader2 } from "lucide-react";
 
 import { ModelMenu } from "@/components/drama/video-model-menu";
 import { useMarketingComposer } from "@/hooks/use-marketing-composer";
@@ -210,7 +210,7 @@ export function MarketingComposer({ project }: { project?: Project }) {
             insufficient ? "text-destructive font-medium" : "text-muted-foreground",
           )}
         >
-          <Sparkle className="size-3.5" />
+          <Coins className="size-3.5" />
           {composer.credits ?? "–"}
         </span>
         <motion.button
