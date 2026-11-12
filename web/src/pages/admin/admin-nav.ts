@@ -42,7 +42,7 @@ export const ADMIN_NAV: AdminNavSection[] = [
       { to: "ai/channels", label: "模型渠道", icon: RadioTower },
       { to: "ai/plugins", label: "插件", icon: Puzzle },
       { to: "agent/skills", label: "技能", icon: Lightbulb },
-      { to: "agent/steps", label: "环节技能", icon: Workflow, badge: "New" },
+      { to: "agent/steps", label: "环节技能", icon: Workflow },
       { to: "agent/runs", label: "运行记录", icon: History },
       { to: "agent/tokens", label: "分析令牌", icon: KeyRound },
     ],

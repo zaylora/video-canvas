@@ -17,6 +17,10 @@ describe("后台导航", () => {
     ]);
   });
 
+  test("环节技能不再带「New」小标", () => {
+    expect(findNav("/admin/agent/steps")?.item.badge).toBeUndefined();
+  });
+
   test("findNav 能认出公告页，图标不与其他菜单项重复", () => {
     const found = findNav("/admin/settings/announcements");
     expect(found?.group.label).toBe("系统设置");
