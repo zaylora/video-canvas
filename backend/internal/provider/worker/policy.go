@@ -27,14 +27,11 @@ const (
 )
 
 // failureFor 把错误分类映射成（统一错误码，给用户看的文案）。
-// 文案是固定的，不带任何上游或插件的原始信息；原始信息只进日志。插件级失败（异常、超时、结构不合规、runner 崩溃）
-// 的分类是 terminal / retryable，同样落到“平台繁忙”，用户看不到插件的存在。
-func failureFor(class provider.ErrorClass, platformCode string) (code, message string) {
+// 拿到了上游的错误原文（upstream 非空）时文案就是原文（去掉上游的请求编号），让用户看到上游真实的失败原因；
+// 宿主自己判定的失败（超时、转存失败、提交结果未知）没有上游原文，用固定文案。
+// 插件级失败（异常、超时、结构不合规、runner 崩溃）由调用方传空 upstream，落到“平台繁忙”，用户看不到插件的存在。
+func failureFor(class provider.ErrorClass, platformCode, upstream string) (code, message string) {
 	switch class {
-	case provider.ClassModeration:
-		return codeModeration, "内容未通过审核"
-	case provider.ClassProviderBalance:
-		return codeProviderBalance, "服务繁忙，请稍后再试"
 	case provider.ClassSubmitUnknown:
 		return codeSubmitUnknown, "提交结果未知，积分已退回"
 	case failTimeout:
@@ -42,10 +39,31 @@ func failureFor(class provider.ErrorClass, platformCode string) (code, message s
 	case failTransfer:
 		return codeTransferFailed, "生成结果保存失败，积分已退回"
 	}
-	if platformCode == codeInvalidParam {
-		return codeInvalidParam, "参数不合法，请调整后重试"
+	code, message = codeProviderError, "平台繁忙，请稍后重试"
+	switch {
+	case class == provider.ClassModeration:
+		code, message = codeModeration, "内容未通过审核"
+	case class == provider.ClassProviderBalance:
+		code, message = codeProviderBalance, "服务繁忙，请稍后再试"
+	case platformCode == codeInvalidParam:
+		code, message = codeInvalidParam, "参数不合法，请调整后重试"
 	}
-	return codeProviderError, "平台繁忙，请稍后重试"
+	// 上游自己的请求编号对用户没用，去掉；排查用平台的任务编号（界面上和失败原因一起展示）
+	if upstream = clipMessage(provider.StripTraceIDs(upstream)); upstream != "" {
+		message = upstream
+	}
+	return code, message
+}
+
+// maxMessageRunes 是给用户看的失败文案的字数上限：任务表 error_message 是 varchar(512)。
+const maxMessageRunes = 500
+
+// clipMessage 按字数截断失败文案，超出加省略号。
+func clipMessage(s string) string {
+	if r := []rune(s); len(r) > maxMessageRunes {
+		return string(r[:maxMessageRunes]) + "…"
+	}
+	return s
 }
 
 // 轮询与退避的默认值（插件 meta.poll 没写时使用，见 backend/docs/plugin-contract.md §2）。

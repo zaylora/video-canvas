@@ -136,6 +136,14 @@ export function roundAspect(settings: Pick<RoundSettings, "params">): [number, n
   return w > 0 && h > 0 ? [w, h] : [9, 16];
 }
 
+/**
+ * 出片失败时的任务编号：失败原因取自最近一条出片任务，编号也取它，用户复制给运维到日志里查；不是失败状态返回 null
+ */
+export function failedTaskRef(script: Script): string | null {
+  if (script.status !== "failed") return null;
+  return script.takes.at(-1)?.taskRef || null;
+}
+
 /** 脚本卡成片区当前要播的那一条：只算出了成片的 take，选中的下标越界取最后一条 */
 export function playableTakes(script: Script) {
   return script.takes.filter((take) => take.outputs.length > 0);

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"video-canvas/internal/llmgateway"
 	"video-canvas/internal/marketing"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
@@ -183,6 +184,30 @@ func TestMarketing_Round_ReverseFails_FollowSkipped_CreateContinues(t *testing.T
 	}
 	if env.credit().Frozen != 0 {
 		t.Fatalf("全部结束后不应还有冻结：%+v", env.credit())
+	}
+}
+
+// 文本模型返回错误时，环节的失败原因是上游原文；不是上游返回的错误（网络断开等）仍用统一文案。
+func TestMarketing_Round_StepFailureShowsUpstreamError(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{"上游返回错误", &llmgateway.UpstreamError{Status: 400, Message: "Unsupported input: image_url (request id: 2026abc)"}, "Unsupported input: image_url"},
+		{"不是上游返回的错误", errors.New("dial tcp: connection refused"), "文本模型暂时不可用，请稍后重试"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			env := newMktEnv(t, 200)
+			env.caller.on(marketing.StepFacts, func(int) (string, error) { return "", tc.err })
+			v := env.createRefProject()
+			env.runRound(&v.Rounds[0])
+			r := env.round(v.ID, v.Rounds[0].ID)
+			if facts := stepOf(r, "facts"); facts.Status != model.MarketingRunFailed || facts.Error != tc.want {
+				t.Fatalf("事实卡失败原因应是 %q：%+v", tc.want, facts)
+			}
+		})
 	}
 }
 

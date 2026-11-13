@@ -272,6 +272,7 @@ var (
 	ErrDramaAdaptBusy            = New(67025, "这个片段正在转写", http.StatusConflict)
 	ErrDramaAdaptFailed          = New(67026, "转写结果不合格，请重试", http.StatusBadGateway)
 	ErrDramaAdaptMissing         = New(67027, "还没有这个格式的转写稿", http.StatusBadRequest)
+	ErrDramaModelCall            = New(67028, "文本模型调用失败", http.StatusBadGateway) // Msg 换成上游返回的错误原文
 )
 
 // 环节协议层（stepkit）与营销工作室 68xxx。68001–68011、68015、68016、68018 由营销业务使用（见 docs/design/营销工作室/接口契约.md §6），

@@ -9,6 +9,7 @@ import (
 	"sync"
 	"testing"
 
+	"video-canvas/internal/llmgateway"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/pkg/idcodec"
@@ -203,6 +204,20 @@ func TestMarketing_H3Adaptation_FailureChargesNothing(t *testing.T) {
 	}
 	if len(env.adaptLedger(sc.ID)) != 0 || len(env.scriptTasks(sc.ID)) != 0 {
 		t.Fatal("转写失败不扣费、不出片")
+	}
+}
+
+func TestMarketing_H3Adaptation_UpstreamErrorIsShown(t *testing.T) {
+	env := newMktEnv(t, 300)
+	env.useH3()
+	env.caller.byText[mktAdaptStep] = func(string) (string, error) {
+		return "", &llmgateway.UpstreamError{Status: 429, Message: "You exceeded your current quota", Retryable: true}
+	}
+	_, scripts := env.h3Scripts()
+	_, err := env.render(scripts[0].ID, "k1")
+	var biz *errcode.Error
+	if !errors.As(err, &biz) || biz.Code != errcode.ErrMarketingAdaptFailed.Code || !strings.Contains(biz.Msg, "You exceeded your current quota") {
+		t.Fatalf("转写失败应带出上游原文：%v", err)
 	}
 }
 

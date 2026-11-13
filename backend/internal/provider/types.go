@@ -45,12 +45,15 @@ const (
 	CodeSSRFBlocked = "ssrf_blocked"
 )
 
-// Error 是 Executor 返回的分类错误。Message 只用于日志和管理端，不直接给终端用户看。
+// Error 是 Executor 返回的分类错误。Message 与 Cause 只用于日志和管理端，不直接给终端用户看；
+// Upstream 是上游返回的错误原文（已遮掉渠道 Key），任务失败时直接给用户看。
 type Error struct {
 	Class   ErrorClass
 	Code    string // 上游错误码或统一错误码，可空
 	Message string
 	Cause   error
+	// Upstream 只在拿到上游的错误响应时由宿主填写；宿主自己产生的失败（网络、存储、插件异常）为空。
+	Upstream string
 	// PluginFault 为 true 表示这是“插件级失败”（异常 / 超时 / 结构不合规 / runner 崩溃），
 	// 同一渠道连续多次插件级失败会自动停用渠道（阶段 2）。
 	PluginFault bool
@@ -79,6 +82,15 @@ func CodeOf(err error) string {
 	var e *Error
 	if errors.As(err, &e) {
 		return e.Code
+	}
+	return ""
+}
+
+// UpstreamOf 取分类错误携带的上游错误原文；不是 *Error 或没有原文时返回空串。
+func UpstreamOf(err error) string {
+	var e *Error
+	if errors.As(err, &e) {
+		return e.Upstream
 	}
 	return ""
 }

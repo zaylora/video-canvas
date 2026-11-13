@@ -313,6 +313,7 @@ type dramaTextStreamer struct {
 	usage   llmgateway.Usage
 	calls   int
 	failAt  int
+	failErr error // failAt 那次返回的错误，空时返回一个普通错误
 	onCall  func()
 }
 
@@ -324,6 +325,9 @@ func (e *dramaTextStreamer) Stream(_ context.Context, tg llmgateway.Target, req 
 		e.onCall()
 	}
 	if e.calls == e.failAt {
+		if e.failErr != nil {
+			return nil, e.failErr
+		}
 		return nil, errors.New("上游失败")
 	}
 	if len(e.outputs) == 0 {
@@ -495,6 +499,26 @@ func TestDramaScriptsSerialContinuationAndPartialSuccess(t *testing.T) {
 	}
 	if r.credit.Balance != 1000 || r.credit.Frozen != 0 {
 		t.Fatalf("failed job charged %+v", r.credit)
+	}
+}
+
+// 文本模型返回错误时，任务的失败原因是上游原文，不是“服务器内部错误”。
+func TestDramaJobFailureShowsUpstreamError(t *testing.T) {
+	r := newDramaMemory()
+	dramaAddEpisode(r, 1, "")
+	e := &dramaTextStreamer{failAt: 1, failErr: &llmgateway.UpstreamError{Status: 400, Message: "The model gpt-up does not exist"}}
+	s, _ := dramaTestService(r, e, nil)
+	j, err := s.CreateJob(context.Background(), 7, 1, &model.DramaJobReq{Step: "scripts"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = s.HandleDrama(context.Background(), 7, 1, uint64(j.ID))
+	got := r.jobs[len(r.jobs)-1]
+	if got.Status != "failed" || got.ErrorCode != errcode.ErrDramaModelCall.Code || got.ErrorMessage != "The model gpt-up does not exist" {
+		t.Fatalf("任务应带上游原文失败：%s %d %q", got.Status, got.ErrorCode, got.ErrorMessage)
+	}
+	if r.credit.Balance != 1000 || r.credit.Frozen != 0 {
+		t.Fatalf("失败不扣费：%+v", r.credit)
 	}
 }
 func TestDramaRejectsUserAnalyzeAndOutline(t *testing.T) {

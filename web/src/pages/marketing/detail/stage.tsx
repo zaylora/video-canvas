@@ -3,11 +3,17 @@ import { CircleX, Download, Film, Loader2, Play, RotateCcw } from "lucide-react"
 
 import type { Project, Script } from "@/api/marketing/type";
 import { ChromeButton, ChromePill } from "@/components/canvas/chrome/chrome";
+import { TaskIdTag } from "@/components/task-id-tag";
 import { VideoPlayer } from "@/components/video-player";
 import { cn } from "@/lib/utils";
 import { useWorkbenchStore, type WorkbenchControls } from "@/store/marketing-workbench";
 import { useMarketingOptions } from "@/hooks/use-marketing-options";
-import { playableTakes, roundAspect, scriptRenderState } from "@/utils/marketing/script";
+import {
+  failedTaskRef,
+  playableTakes,
+  roundAspect,
+  scriptRenderState,
+} from "@/utils/marketing/script";
 import { scriptDuration } from "@/utils/marketing/workbench";
 
 import { downloadUrl, takeFileName } from "./script-dialogs";
@@ -115,6 +121,7 @@ function ScriptState({
         <CircleX className="text-destructive size-7" />
         <b>出片失败</b>
         <span className="text-muted-foreground">{script.error || "原因未知"}</span>
+        <TaskIdTag id={failedTaskRef(script)} />
         {renderButton("重试", <RotateCcw className="size-4" />)}
       </StateCard>
     );

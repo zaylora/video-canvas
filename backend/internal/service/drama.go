@@ -507,11 +507,15 @@ func selectedEpisodes(eps []model.DramaEpisode, scope []int) []model.DramaEpisod
 	return out
 }
 
-// dramaFailure 将未知上游错误转换为安全错误文案。
+// dramaFailure 把任务失败原因转成（错误码，给用户看的文案）：业务错误用原文案；文本模型上游返回的错误给用户看上游原文；
+// 其余未知错误（网络、超时、内部错误）不透给前端，按内部错误处理。
 func dramaFailure(err error) (int, string) {
 	var e *errcode.Error
 	if errors.As(err, &e) {
 		return e.Code, e.Msg
+	}
+	if msg := upstreamText(err); msg != "" {
+		return errcode.ErrDramaModelCall.Code, msg
 	}
 	return errcode.ErrInternal.Code, errcode.ErrInternal.Msg
 }

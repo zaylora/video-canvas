@@ -263,8 +263,12 @@ func (s *MarketingService) classify(ctx context.Context, round *model.MarketingR
 	case errors.Is(err, stepkit.ErrModelCapability):
 		out.status, out.errMsg = model.MarketingRunFailed, "所选文本模型不能处理这个环节，请换一个模型"
 	case errors.Is(err, stepkit.ErrCallFailed):
+		// 上游返回了错误就给用户看原文；网络断开、超时这类没有原文的用统一文案
 		logger.Warn("营销环节模型调用失败", zap.String("step", stepKey), zap.Error(err))
 		out.status, out.errMsg = model.MarketingRunFailed, "文本模型暂时不可用，请稍后重试"
+		if msg := upstreamText(err); msg != "" {
+			out.errMsg = clipRunes(msg, marketingErrRunes)
+		}
 		out.charge = res != nil && res.Usage.InputTokens+res.Usage.OutputTokens > 0
 	default:
 		logger.Error("营销环节运行出错", zap.String("step", stepKey), zap.Error(err))

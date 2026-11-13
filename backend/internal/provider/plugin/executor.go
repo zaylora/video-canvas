@@ -635,11 +635,14 @@ func (o *operation) requestError(phase string, err error) error {
 	return retryableErr("", "上游请求失败", redactError(err, o.red.str))
 }
 
+// classifyHTTPError 把上游的非 2xx 响应转成分类错误：插件写了 classifyError 用它的分类与原文，否则按默认规则分类。
+// 无论哪种，都把上游原文（遮掉渠道 Key）放进 Upstream，任务失败时给用户看。
 func (o *operation) classifyHTTPError(ctx context.Context, resp hookResponse) error {
 	hc, err := o.buildCtx(ctx)
 	if err != nil {
 		return err
 	}
+	upstream := o.upstreamText(resp)
 	if o.e.loader.mayHave(o.rt.Plugin.SHA256, pluginproto.HookClassifyError) {
 		raw, callErr := o.call(ctx, pluginproto.HookClassifyError, hc, resp)
 		if callErr == nil && !isNull(raw) {
@@ -649,20 +652,66 @@ func (o *operation) classifyHTTPError(ctx context.Context, resp hookResponse) er
 				Message string              `json:"message"`
 			}
 			if json.Unmarshal(raw, &c) == nil && validErrorClass(c.Class) {
-				return &provider.Error{Class: c.Class, Code: c.Code, Message: c.Message}
+				if msg := clipUpstream(o.red.str(c.Message)); msg != "" {
+					upstream = msg
+				}
+				return &provider.Error{Class: c.Class, Code: c.Code, Message: c.Message, Upstream: upstream}
 			}
 		}
 	}
+	code := fmt.Sprintf("%s%d", codeHTTPPrefix, resp.Status)
 	text := strings.ToLower(resp.Text)
 	if strings.Contains(text, "balance") || strings.Contains(text, "insufficient") ||
 		strings.Contains(text, "quota") || strings.Contains(text, "credit") ||
 		strings.Contains(text, "余额") || strings.Contains(text, "额度") {
-		return &provider.Error{Class: provider.ClassProviderBalance, Code: fmt.Sprintf("%s%d", codeHTTPPrefix, resp.Status), Message: "上游余额或额度不足"}
+		return &provider.Error{Class: provider.ClassProviderBalance, Code: code, Message: "上游余额或额度不足", Upstream: upstream}
 	}
 	if resp.Status == http.StatusTooManyRequests || resp.Status >= 500 {
-		return retryableErr(fmt.Sprintf("%s%d", codeHTTPPrefix, resp.Status), "上游暂时不可用", nil)
+		e := retryableErr(code, "上游暂时不可用", nil)
+		e.Upstream = upstream
+		return e
 	}
-	return terminalErr(fmt.Sprintf("%s%d", codeHTTPPrefix, resp.Status), "上游拒绝请求", nil)
+	e := terminalErr(code, "上游拒绝请求", nil)
+	e.Upstream = upstream
+	return e
+}
+
+// maxUpstreamRunes 是给用户看的上游错误原文的字数上限（任务表 error_message 是 varchar(512)）。
+const maxUpstreamRunes = 500
+
+// upstreamText 从上游错误响应里取一句给用户看的原文：依次取 error.message、字符串 error、顶层 message / msg，
+// 都没有时用纯文本响应体；HTML 错误页和空响应体给“上游返回 HTTP xxx”。结果遮掉渠道 Key 并截断。
+func (o *operation) upstreamText(resp hookResponse) string {
+	msg := ""
+	if body, ok := resp.Body.(map[string]any); ok {
+		if e, ok := body["error"].(map[string]any); ok {
+			msg, _ = e["message"].(string)
+		}
+		if msg == "" {
+			msg, _ = body["error"].(string)
+		}
+		if msg == "" {
+			msg, _ = body["message"].(string)
+		}
+		if msg == "" {
+			msg, _ = body["msg"].(string)
+		}
+	} else if t := strings.TrimSpace(resp.Text); !strings.HasPrefix(t, "<") {
+		msg = t
+	}
+	if msg = clipUpstream(o.red.str(msg)); msg != "" {
+		return msg
+	}
+	return fmt.Sprintf("上游返回 HTTP %d", resp.Status)
+}
+
+// clipUpstream 去掉首尾空白，按字数截断到 maxUpstreamRunes。
+func clipUpstream(s string) string {
+	s = strings.TrimSpace(s)
+	if r := []rune(s); len(r) > maxUpstreamRunes {
+		return string(r[:maxUpstreamRunes]) + "…"
+	}
+	return s
 }
 
 func (o *operation) parseSubmitResult(raw json.RawMessage, mode string) (*provider.SubmitResult, error) {

@@ -234,7 +234,7 @@ func (w *Worker) retryTransfer(ctx context.Context, t *model.GenerationTask, err
 // failTransfer 转存彻底失败：置 failed（transfer_failed）并退款。
 func (w *Worker) failTransfer(ctx context.Context, t *model.GenerationTask) {
 	w.forgetTask(t.ID)
-	code, msg := failureFor(failTransfer, "")
+	code, msg := failureFor(failTransfer, "", "")
 	if _, err := w.store.Fail(ctx, t, code, msg); err != nil {
 		w.taskLog(t).Error("标记转存失败时出错，稍后重试", zap.Error(err))
 	}

@@ -125,8 +125,13 @@ func (s *MarketingService) callAdapt(ctx context.Context, userID uint64, textMod
 		}
 		res, err := s.caller.Complete(callCtx, snap, []llmgateway.Message{{Role: "user", Text: prompt}})
 		if err != nil {
+			// 上游返回了错误就带出原文；没有原文（网络断开、超时）用统一文案
 			logger.Warn("营销出片转写调用失败", zap.String("model", snap.Model.Key), zap.Error(err))
-			return "", 0, errcode.ErrMarketingAdaptFailed.WithMsg("转写提示词失败：文本模型没有返回结果，请稍后重试")
+			msg := "文本模型没有返回结果，请稍后重试"
+			if up := upstreamText(err); up != "" {
+				msg = up
+			}
+			return "", 0, errcode.ErrMarketingAdaptFailed.WithMsg("转写提示词失败：" + msg)
 		}
 		out, err := marketing.DecodeAdapt(res.Text)
 		if err == nil {

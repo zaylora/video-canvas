@@ -26,10 +26,14 @@ func TestStream_HTTPErrorsAreClassified(t *testing.T) {
 		retryable bool
 		wantMsg   string
 	}{
-		{"Key 无效", 401, `{"error":{"message":"Incorrect API key provided: sk-secret-key"}}`, false, "Key"},
-		{"没有权限", 403, `{"error":{"message":"forbidden"}}`, false, "权限"},
-		{"限流", 429, `{"error":{"message":"rate limit"}}`, true, "频繁"},
-		{"上游故障", 500, `bad gateway`, true, "上游"},
+		{"Key 无效显示上游原文并遮掉 Key", 401, `{"error":{"message":"Incorrect API key provided: sk-secret-key"}}`, false, "Incorrect API key provided: ***"},
+		{"Key 无效且没有原文", 401, ``, false, "Key"},
+		{"没有权限显示上游原文", 403, `{"error":{"message":"forbidden"}}`, false, "forbidden"},
+		{"没有权限且没有原文", 403, `nope`, false, "权限"},
+		{"限流显示上游原文", 429, `{"error":{"message":"rate limit"}}`, true, "rate limit"},
+		{"限流且没有原文", 429, ``, true, "频繁"},
+		{"上游故障显示上游原文", 503, `{"error":{"message":"model overloaded"}}`, true, "model overloaded"},
+		{"上游故障且没有原文", 500, `bad gateway`, true, "上游"},
 		{"网关超时", 504, ``, true, "上游"},
 		{"请求不合法", 400, `{"error":{"message":"max_tokens is too large","code":"invalid_request"}}`, false, "max_tokens is too large"},
 		{"模型不存在", 404, `{"error":{"message":"The model gpt-up does not exist"}}`, false, "does not exist"},

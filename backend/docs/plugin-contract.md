@@ -248,6 +248,8 @@ meta: {
 
 `classifyError` 返回的 `class` 只能是 `retryable / terminal / moderation / provider_balance`；不合规按默认规则处理并告警。
 
+**用户看到的失败原因是上游原文**：上游非 2xx 时，`classifyError` 返回的 `message` 就是给用户看的原文；没实现或返回 null 时，宿主依次取响应体的 `error.message`、字符串 `error`、顶层 `message` / `msg`，都没有时用纯文本响应体，HTML 错误页和空响应体给“上游返回 HTTP xxx”。`parseQueryResponse` 返回失败时，`error.message` 同样直接给用户看。宿主会遮掉渠道 Key、去掉上游的请求 / 追踪编号（如 `(request id: xxx)`，排查用平台自己的任务编号），并截断到 500 字。所以 `message` 里放上游的原话就行，不要拼插件内部信息。插件级失败（上表第一行）不给用户看，用户看到的是“平台繁忙，请稍后重试”。
+
 ## 9. 沙箱预算（提案值，压测后定）
 
 单次钩子 200ms；`ctx` 与返回值编码后各 ≤1MB；`state` ≤64KB；插件文件 ≤512KB；每个插件版本最多 8 个 Runtime；每次调用最多 50 条 `utils.log`。
