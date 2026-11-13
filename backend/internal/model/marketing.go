@@ -125,6 +125,7 @@ type MarketingScript struct {
 	TaskIDs     datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'"` // 出片任务 id，按时间正序
 	Error       string         `gorm:"type:text;not null;default:''"`    // 最近一次出片失败原因
 	Adaptations datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"` // 按提示词格式存的转写稿（如 h3），见 MarketingAdaptation
+	PromptEdits datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"` // 按提示词格式存的手改原稿，见 MarketingPromptEdit
 	Revision    int64          `gorm:"not null;default:1"`
 	CreatedAt   time.Time      `gorm:"index:idx_mkt_script_project_created,priority:2,sort:desc"`
 	UpdatedAt   time.Time
@@ -140,6 +141,14 @@ type MarketingAdaptation struct {
 	SourceHash string    `json:"source_hash"`
 	Edited     bool      `json:"edited"`
 	UpdatedAt  time.Time `json:"updated_at"`
+}
+
+// MarketingPromptEdit 是用户手改的原稿：出片（H3 是转写）用它代替按脚本拼出的提示词。
+// BaseHash 记手改时拼出的原稿指纹，脚本改了只标过期，手改稿照用，直到用户还原。
+type MarketingPromptEdit struct {
+	Prompt    string    `json:"prompt"`
+	BaseHash  string    `json:"base_hash"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // ---- 请求 ----
@@ -454,6 +463,8 @@ type MarketingQuote struct {
 type MarketingPrompt struct {
 	Format string `json:"format"` // seedance / h3 / generic
 	Prompt string `json:"prompt"` // 原稿：seedance、generic 就是出片用的提示词；h3 是转写的依据（Seedance 写法）
+	Edited bool   `json:"edited"` // 原稿是用户手改的
+	Stale  bool   `json:"stale"`  // 手改之后脚本又改了：出片仍用手改稿，还原才会按新脚本拼
 	// Adaptation 是 h3 的转写稿；还没转写为 nil。出片时没有或已过期会自动重新转写。
 	Adaptation *MarketingAdaptationView `json:"adaptation"`
 	// AdaptCredits 是转写一次的预估积分（只在需要转写时有意义）
@@ -477,6 +488,17 @@ type AdaptMarketingScriptReq struct {
 type EditMarketingAdaptationReq struct {
 	Format string `json:"format" binding:"required,oneof=h3" label:"格式"`
 	Prompt string `json:"prompt" binding:"required,max=20000" label:"转写稿"`
+}
+
+// EditMarketingPromptReq 手改原稿；格式要和预览返回的 format 一致。
+type EditMarketingPromptReq struct {
+	Format string `json:"format" binding:"required,oneof=seedance h3 generic" label:"格式"`
+	Prompt string `json:"prompt" binding:"required,max=20000" label:"提示词"`
+}
+
+// RestoreMarketingPromptReq 还原原稿：删掉手改稿，回到按脚本拼出的提示词。
+type RestoreMarketingPromptReq struct {
+	Format string `form:"format" json:"format" binding:"required,oneof=seedance h3 generic" label:"格式"`
 }
 
 // MarketingSkipped 是全部出片时被跳过的脚本。

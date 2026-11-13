@@ -531,6 +531,8 @@ export const getMarketingPrompt = async (
 export const mapPrompt = (raw: BackendScriptPrompt): ScriptPrompt => ({
   format: raw.format,
   prompt: raw.prompt,
+  edited: raw.edited ?? false,
+  stale: raw.stale ?? false,
   adaptation: raw.adaptation
     ? {
         prompt: raw.adaptation.prompt,
@@ -574,6 +576,41 @@ export const editMarketingAdaptation = async (
       format: "h3",
       prompt,
     }),
+  );
+
+/**
+ * 手改原稿：seedance、generic 出片直接用它，h3 以它为转写依据；脚本再改只标过期，还原前一直用手改稿。
+ * @param scriptId 脚本 ID
+ * @param format 原稿格式，取预览返回的 format
+ * @param prompt 改后的原稿
+ * @returns 最新的提示词预览
+ */
+export const editMarketingPrompt = async (
+  scriptId: string,
+  format: ScriptPrompt["format"],
+  prompt: string,
+): Promise<ScriptPrompt> =>
+  mapPrompt(
+    await service.put<BackendScriptPrompt>(`/marketing-scripts/${scriptId}/prompt`, {
+      format,
+      prompt,
+    }),
+  );
+
+/**
+ * 还原原稿：删掉手改稿，回到按脚本拼出的提示词。
+ * @param scriptId 脚本 ID
+ * @param format 原稿格式
+ * @returns 最新的提示词预览
+ */
+export const restoreMarketingPrompt = async (
+  scriptId: string,
+  format: ScriptPrompt["format"],
+): Promise<ScriptPrompt> =>
+  mapPrompt(
+    await service.delete<BackendScriptPrompt>(
+      `/marketing-scripts/${scriptId}/prompt?format=${format}`,
+    ),
   );
 
 /**

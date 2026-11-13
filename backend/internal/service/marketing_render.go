@@ -11,7 +11,6 @@ import (
 	"unicode/utf8"
 
 	"video-canvas/internal/marketing"
-	"video-canvas/internal/marketing/format"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/pkg/idcodec"
@@ -114,7 +113,7 @@ func (s *MarketingService) buildRenderInput(ctx context.Context, userID uint64, 
 	return s.renderInput(c, snap, mergeParams(st.Params, params), prompt)
 }
 
-// renderPrompt 返回出片用的提示词：需要转写的模型取转写稿（手改过的可能超长，超了报 68008），其余用格式化器直接拼。
+// renderPrompt 返回出片用的提示词：需要转写的模型取转写稿，其余取原稿（手改稿优先）；手改过的可能超长，超了报 68008。
 func (s *MarketingService) renderPrompt(ctx context.Context, userID uint64, c *scriptCtx, st model.MarketingSettings, snap *provider.Snapshot) (string, error) {
 	caps := snap.Model.Capabilities
 	if marketing.NeedsAdapt(caps.PromptFormat) {
@@ -132,15 +131,14 @@ func (s *MarketingService) renderPrompt(ctx context.Context, userID uint64, c *s
 		}
 		return prompt, nil
 	}
-	in, err := s.formatInput(c, st, caps)
+	_, src, err := s.resolveSource(c, st, caps)
 	if err != nil {
 		return "", err
 	}
-	prompt, err := format.For(caps.PromptFormat).Render(in)
-	if errors.Is(err, format.ErrTooLong) {
+	if limit := caps.Prompt.MaxLength; src.Edited && limit > 0 && utf8.RuneCountInString(src.Text) > limit {
 		return "", errcode.ErrMarketingPromptLong
 	}
-	return prompt, err
+	return src.Text, nil
 }
 
 // submitRender 用生成任务服务创建出片任务（节点 mkt:{脚本id}），把节点级错误还原成业务错误。

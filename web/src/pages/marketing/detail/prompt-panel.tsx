@@ -1,9 +1,15 @@
 import { motion } from "motion/react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Copy, Languages, Loader2, RefreshCw, TriangleAlert } from "lucide-react";
+import { Copy, Languages, Loader2, RefreshCw, RotateCcw, TriangleAlert } from "lucide-react";
 
-import { adaptMarketingScript, editMarketingAdaptation, getMarketingPrompt } from "@/api/marketing";
+import {
+  adaptMarketingScript,
+  editMarketingAdaptation,
+  editMarketingPrompt,
+  getMarketingPrompt,
+  restoreMarketingPrompt,
+} from "@/api/marketing";
 import type { Round, Script, ScriptPrompt } from "@/api/marketing/type";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -30,8 +36,8 @@ async function copyText(text: string) {
 }
 
 /**
- * 提示词页：Seedance / 通用模型直接显示出片用的提示词；
- * H3 多一个转写标签：原稿（Seedance 写法）由文本模型转写成 H3 写法，可以对照、手改、重新转写，
+ * 提示词页：Seedance / 通用模型直接显示出片用的提示词，可以手改；
+ * H3 多一个转写标签：原稿（Seedance 写法，同样可手改）由文本模型转写成 H3 写法，可以对照、手改、重新转写，
  * 出片时没有转写稿或原稿变了会自动转写。
  */
 export function PromptPanel({
@@ -74,16 +80,28 @@ export function PromptPanel({
       </div>
     );
   }
+  const onChange = (data: ScriptPrompt) => setState({ status: "ready", data });
   if (state.data.format !== "h3") {
     return (
       <div className="grid gap-2 p-4">
-        <div className="flex items-center justify-end">
+        <div className="flex items-center justify-end gap-1">
+          <RestoreSourceButton
+            projectId={projectId}
+            scriptId={script.id}
+            data={state.data}
+            onChange={onChange}
+          />
           <Button variant="ghost" size="sm" onClick={() => void copyText(state.data.prompt)}>
             <Copy />
             复制
           </Button>
         </div>
-        <PromptText text={state.data.prompt} />
+        <SourceEditor
+          projectId={projectId}
+          scriptId={script.id}
+          data={state.data}
+          onChange={onChange}
+        />
       </div>
     );
   }
@@ -94,21 +112,93 @@ export function PromptPanel({
       script={script}
       videoModel={videoModel}
       data={state.data}
-      onChange={(data) => setState({ status: "ready", data })}
+      onChange={onChange}
     />
   );
 }
 
-/** 只读的提示词全文 */
-function PromptText({ text }: { text: string }) {
+/** 原稿编辑器：手改后出片用手改稿；手改后脚本又变了，提示没同步 */
+function SourceEditor({
+  projectId,
+  scriptId,
+  data,
+  disabled = false,
+  onChange,
+}: {
+  projectId: string;
+  scriptId: string;
+  data: ScriptPrompt;
+  disabled?: boolean;
+  onChange: (data: ScriptPrompt) => void;
+}) {
+  const save = async (draft: string) => {
+    const next = await editMarketingPrompt(scriptId, data.format, draft);
+    // H3 的转写报价随原稿变
+    void reloadMarketingProject(projectId);
+    return next;
+  };
   return (
-    <pre className="bg-chrome-hover min-h-32 overflow-auto rounded-[18px] p-3 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap">
-      {text}
-    </pre>
+    <div className="grid gap-2">
+      {data.edited && data.stale && (
+        <div className="text-status-warning bg-status-warning/10 flex items-center gap-2 rounded-xl px-3 py-2 text-xs [&_svg]:size-3.5">
+          <TriangleAlert />
+          脚本已修改，提示词未同步
+        </div>
+      )}
+      <PromptEditor
+        key={data.prompt}
+        prompt={data.prompt}
+        disabled={disabled}
+        savedText="提示词已保存"
+        onSave={save}
+        onSaved={onChange}
+      />
+    </div>
   );
 }
 
-/** H3：原稿 / 转写两个标签、转写按钮、可编辑的转写稿 */
+/** 手改过原稿时出现：删掉手改稿，按脚本重新生成 */
+function RestoreSourceButton({
+  projectId,
+  scriptId,
+  data,
+  disabled = false,
+  onChange,
+}: {
+  projectId: string;
+  scriptId: string;
+  data: ScriptPrompt;
+  disabled?: boolean;
+  onChange: (data: ScriptPrompt) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  if (!data.edited) return null;
+  const restore = async () => {
+    setBusy(true);
+    try {
+      onChange(await restoreMarketingPrompt(scriptId, data.format));
+      void reloadMarketingProject(projectId);
+    } catch {
+      // 请求层已提示
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      className="rounded-full"
+      disabled={busy || disabled}
+      onClick={() => void restore()}
+    >
+      {busy ? <Loader2 className="animate-spin" /> : <RotateCcw />}
+      按脚本重新生成
+    </Button>
+  );
+}
+
+/** H3：原稿 / 转写两个标签、转写按钮、可编辑的原稿与转写稿 */
 function AdaptPanel({
   projectId,
   script,
@@ -181,6 +271,15 @@ function AdaptPanel({
           ))}
         </div>
         <span className="flex-1" />
+        {view === "source" && (
+          <RestoreSourceButton
+            projectId={projectId}
+            scriptId={script.id}
+            data={data}
+            disabled={busy}
+            onChange={onChange}
+          />
+        )}
         <Button
           variant="ghost"
           size="sm"
@@ -208,7 +307,13 @@ function AdaptPanel({
       </div>
 
       {view === "source" ? (
-        <PromptText text={data.prompt} />
+        <SourceEditor
+          projectId={projectId}
+          scriptId={script.id}
+          data={data}
+          disabled={busy}
+          onChange={onChange}
+        />
       ) : adaptation ? (
         <div className="grid gap-2">
           {adaptation.stale && !busy && (
@@ -217,11 +322,12 @@ function AdaptPanel({
               原稿已修改
             </div>
           )}
-          <AdaptEditor
+          <PromptEditor
             key={adaptation.updatedAt}
-            scriptId={script.id}
             prompt={adaptation.prompt}
             disabled={busy}
+            savedText="转写稿已保存"
+            onSave={(draft) => editMarketingAdaptation(script.id, draft)}
             onSaved={onChange}
           />
         </div>
@@ -247,16 +353,18 @@ function AdaptPanel({
   );
 }
 
-/** 可编辑的转写稿：改了才出现还原 / 保存；服务端换了新稿（转写完、出片时重新转写）按 key 重挂 */
-function AdaptEditor({
-  scriptId,
+/** 可编辑的提示词：改了才出现还原 / 保存；服务端换了新稿（保存、转写、还原）由调用方按 key 重挂 */
+function PromptEditor({
   prompt,
   disabled,
+  savedText,
+  onSave,
   onSaved,
 }: {
-  scriptId: string;
   prompt: string;
   disabled: boolean;
+  savedText: string;
+  onSave: (draft: string) => Promise<ScriptPrompt>;
   onSaved: (data: ScriptPrompt) => void;
 }) {
   const [draft, setDraft] = useState(prompt);
@@ -264,8 +372,8 @@ function AdaptEditor({
   const save = async () => {
     setSaving(true);
     try {
-      onSaved(await editMarketingAdaptation(scriptId, draft));
-      toast.success("转写稿已保存");
+      onSaved(await onSave(draft));
+      toast.success(savedText);
     } catch {
       // 请求层已提示
     } finally {

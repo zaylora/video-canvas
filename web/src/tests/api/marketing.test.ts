@@ -4,6 +4,7 @@ import {
   adaptMarketingScript,
   createMarketingProject,
   editMarketingAdaptation,
+  editMarketingPrompt,
   getMarketingOptions,
   getMarketingPrompt,
   listMarketingProjects,
@@ -14,6 +15,7 @@ import {
   quoteMarketing,
   renderMarketingRound,
   renderMarketingScript,
+  restoreMarketingPrompt,
   saveMarketingReverse,
   saveMarketingScript,
   sendMarketingScriptToCanvas,
@@ -294,15 +296,18 @@ describe("api/marketing：请求", () => {
   let get: Mock<typeof service.get>;
   let post: Mock<typeof service.post>;
   let put: Mock<typeof service.put>;
+  let del: Mock<typeof service.delete>;
   beforeEach(() => {
     get = spyOn(service, "get");
     post = spyOn(service, "post");
     put = spyOn(service, "put");
+    del = spyOn(service, "delete");
   });
   afterEach(() => {
     get.mockRestore();
     post.mockRestore();
     put.mockRestore();
+    del.mockRestore();
   });
 
   test("预设：snake→camel，数组 null 兜底", async () => {
@@ -415,11 +420,18 @@ describe("api/marketing：请求", () => {
     expect(await getMarketingPrompt("x1")).toEqual({
       format: "h3",
       prompt: "[分镜] …",
+      edited: false,
+      stale: false,
       adaptation: { prompt: "subject_definitions: …", stale: true, edited: false, updatedAt: "t1" },
       adaptCredits: 3,
     });
-    get.mockResolvedValue({ format: "seedance", prompt: "p" });
-    expect(await getMarketingPrompt("x1")).toMatchObject({ adaptation: null, adaptCredits: 0 });
+    get.mockResolvedValue({ format: "seedance", prompt: "p", edited: true, stale: true });
+    expect(await getMarketingPrompt("x1")).toMatchObject({
+      edited: true,
+      stale: true,
+      adaptation: null,
+      adaptCredits: 0,
+    });
 
     post.mockResolvedValue({ format: "h3", prompt: "p", adaptation: null, adapt_credits: 0 });
     await adaptMarketingScript("x1", "h3-model");
@@ -433,6 +445,27 @@ describe("api/marketing：请求", () => {
       "/marketing-scripts/x1/adaptation",
       { format: "h3", prompt: "手改" },
     ]);
+  });
+
+  test("手改原稿与还原：按格式提交，返回最新预览", async () => {
+    put.mockResolvedValue({ format: "seedance", prompt: "手改原稿", edited: true, stale: false });
+    expect(await editMarketingPrompt("x1", "seedance", "手改原稿")).toMatchObject({
+      prompt: "手改原稿",
+      edited: true,
+    });
+    expect(put.mock.calls[0]).toEqual([
+      "/marketing-scripts/x1/prompt",
+      { format: "seedance", prompt: "手改原稿" },
+    ]);
+
+    del.mockResolvedValue({
+      format: "seedance",
+      prompt: "拼出的原稿",
+      edited: false,
+      stale: false,
+    });
+    expect(await restoreMarketingPrompt("x1", "seedance")).toMatchObject({ edited: false });
+    expect(del.mock.calls[0][0]).toBe("/marketing-scripts/x1/prompt?format=seedance");
   });
 });
 

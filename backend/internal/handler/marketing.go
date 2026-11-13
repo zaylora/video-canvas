@@ -270,6 +270,34 @@ func (h *MarketingHandler) EditAdaptation(c *gin.Context) {
 	reply(c, v, err)
 }
 
+// EditPrompt 手改出片原稿（PUT /marketing-scripts/:id/prompt）。
+func (h *MarketingHandler) EditPrompt(c *gin.Context) {
+	id, ok := CanvasPathID(c)
+	if !ok {
+		return
+	}
+	var req model.EditMarketingPromptReq
+	if !BindJSON(c, &req) {
+		return
+	}
+	v, err := h.svc.EditPrompt(c.Request.Context(), currentUserID(c), id, &req)
+	reply(c, v, err)
+}
+
+// RestorePrompt 还原出片原稿，回到按脚本拼出的提示词（DELETE /marketing-scripts/:id/prompt?format=）。
+func (h *MarketingHandler) RestorePrompt(c *gin.Context) {
+	id, ok := CanvasPathID(c)
+	if !ok {
+		return
+	}
+	var req model.RestoreMarketingPromptReq
+	if !BindQuery(c, &req) {
+		return
+	}
+	v, err := h.svc.RestorePrompt(c.Request.Context(), currentUserID(c), id, &req)
+	reply(c, v, err)
+}
+
 // Render 单份出片（POST /marketing-scripts/:id/render）。
 func (h *MarketingHandler) Render(c *gin.Context) {
 	id, ok := CanvasPathID(c)

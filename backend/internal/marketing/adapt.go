@@ -49,7 +49,7 @@ type AdaptInput struct {
 	ProductImages   int         // 商品图张数：<Picture 1>…<Picture k>
 	HasModel        bool        // 有模特图：<Picture k+1>
 	HasRefVideo     bool        // 有参考视频：<Video 1>
-	Shots           []AdaptShot // 镜头表
+	Shots           []AdaptShot // 镜头表；原稿手改过时为空，镜头以原稿为准
 	MaxLen          int         // H3 提示词上限（字符），0 不限
 	ValidationError string      // 上次没通过校验的原因
 }
@@ -214,7 +214,7 @@ func refVideoCount(in AdaptInput) string {
 	return "零个"
 }
 
-// checkShots 只看 detailed_description 段（其他段会以 [Shot N] 引用镜头）：镜头编号从 1 连续、镜头数与原稿相同；
+// checkShots 只看 detailed_description 段（其他段会以 [Shot N] 引用镜头）：镜头编号从 1 连续、镜头数与镜头表相同（镜头表为空时不比）；
 // 第二镜起带切点时间，严格递增且小于成片时长。
 func checkShots(in AdaptInput, out string) error {
 	body := out[sectionIndex(out, "detailed_description"):sectionIndex(out, "overall_soundscape")]
@@ -244,7 +244,7 @@ func checkShots(in AdaptInput, out string) error {
 		}
 		prev = at
 	}
-	if len(seen) != len(in.Shots) {
+	if len(in.Shots) > 0 && len(seen) != len(in.Shots) {
 		return fmt.Errorf("写了 %d 个镜头，原稿是 %d 个，镜头数要相同", len(seen), len(in.Shots))
 	}
 	return nil

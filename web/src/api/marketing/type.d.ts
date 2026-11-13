@@ -688,6 +688,8 @@ export interface Quote {
 export interface BackendScriptPrompt {
   format: ScriptPrompt["format"];
   prompt: string;
+  edited?: boolean;
+  stale?: boolean;
   adaptation?: { prompt: string; stale: boolean; edited: boolean; updated_at: string } | null;
   adapt_credits?: number;
 }
@@ -709,6 +711,10 @@ export interface ScriptPrompt {
   format: "seedance" | "generic" | "h3";
   /** 原稿：seedance、generic 就是出片用的提示词；h3 是转写依据 */
   prompt: string;
+  /** 原稿是用户手改的 */
+  edited: boolean;
+  /** 手改之后脚本又改了：出片仍用手改稿，还原才按新脚本拼 */
+  stale: boolean;
   /** h3 的转写稿；还没转写为 null */
   adaptation: PromptAdaptation | null;
   /** 转写一次的预估积分（h3 才有意义） */

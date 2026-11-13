@@ -17,7 +17,6 @@ import (
 
 	"video-canvas/internal/llmgateway"
 	"video-canvas/internal/marketing"
-	"video-canvas/internal/marketing/format"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/pkg/logger"
@@ -26,29 +25,29 @@ import (
 	"video-canvas/internal/repository"
 )
 
-// adaptSource 返回脚本的转写输入：原稿是不删减的 Seedance 写法，上限取目标视频模型的提示词上限。
-func (s *MarketingService) adaptSource(c *scriptCtx, st model.MarketingSettings, video modelcfg.Capabilities) (marketing.AdaptInput, error) {
-	in, err := s.formatInput(c, st, modelcfg.Capabilities{})
+// adaptSource 返回脚本的转写输入和原稿：原稿是不删减的 Seedance 写法（手改稿优先），上限取目标视频模型的提示词上限。
+// 原稿手改过时镜头表以原稿为准，不再给脚本的镜头表。
+func (s *MarketingService) adaptSource(c *scriptCtx, st model.MarketingSettings, video modelcfg.Capabilities) (marketing.AdaptInput, sourcePrompt, error) {
+	in, src, err := s.resolveSource(c, st, video)
 	if err != nil {
-		return marketing.AdaptInput{}, err
+		return marketing.AdaptInput{}, src, err
 	}
-	source, err := format.For(format.KeySeedance).Render(in)
-	if err != nil {
-		return marketing.AdaptInput{}, err
-	}
-	shots := make([]marketing.AdaptShot, len(in.Script.Shots))
+	var shots []marketing.AdaptShot
 	seconds := float64(in.Duration)
 	for i, sh := range in.Script.Shots {
-		shots[i] = marketing.AdaptShot{No: i + 1, Narration: strings.TrimSpace(sh.Narration)}
-		if i > 0 {
-			shots[i].Cut = marketing.CutTime(sh.Start)
+		if !src.Edited {
+			shot := marketing.AdaptShot{No: i + 1, Narration: strings.TrimSpace(sh.Narration)}
+			if i > 0 {
+				shot.Cut = marketing.CutTime(sh.Start)
+			}
+			shots = append(shots, shot)
 		}
 		if in.Duration <= 0 {
 			seconds = sh.End
 		}
 	}
-	return marketing.AdaptInput{Source: source, Seconds: seconds, ProductImages: in.ProductImages, HasModel: in.HasModel,
-		HasRefVideo: in.HasRefVideo, Shots: shots, MaxLen: video.Prompt.MaxLength}, nil
+	return marketing.AdaptInput{Source: src.Text, Seconds: seconds, ProductImages: in.ProductImages, HasModel: in.HasModel,
+		HasRefVideo: in.HasRefVideo, Shots: shots, MaxLen: video.Prompt.MaxLength}, src, nil
 }
 
 // adaptationsOf 解出脚本上的全部转写稿；空列当作没有，返回非 nil 的空表。
@@ -84,7 +83,7 @@ func freshAdaptation(sc *model.MarketingScript, promptFormat, hash string) (stri
 func (s *MarketingService) ensureAdapted(ctx context.Context, userID uint64, c *scriptCtx, st model.MarketingSettings,
 	video *provider.Snapshot, reserve int, force bool) (string, error) {
 	f := video.Model.Capabilities.PromptFormat
-	in, err := s.adaptSource(c, st, video.Model.Capabilities)
+	in, _, err := s.adaptSource(c, st, video.Model.Capabilities)
 	if err != nil {
 		return "", err
 	}
@@ -223,14 +222,14 @@ func chargeMarketingAdapt(ctx context.Context, tx repository.MarketingTx, userID
 	return tx.AddCredit(ctx, userID, -charged, 0)
 }
 
-// adaptPromptView 组装需要转写的模型的提示词预览：原稿、转写稿（含是否过期）、转写一次的预估积分。
+// adaptPromptView 组装需要转写的模型的提示词预览：原稿（含是否手改）、转写稿（含是否过期）、转写一次的预估积分。
 func (s *MarketingService) adaptPromptView(ctx context.Context, c *scriptCtx, video *provider.Snapshot) (*model.MarketingPrompt, error) {
 	f := video.Model.Capabilities.PromptFormat
-	in, err := s.adaptSource(c, c.st, video.Model.Capabilities)
+	in, src, err := s.adaptSource(c, c.st, video.Model.Capabilities)
 	if err != nil {
 		return nil, err
 	}
-	v := &model.MarketingPrompt{Format: f, Prompt: in.Source}
+	v := &model.MarketingPrompt{Format: f, Prompt: in.Source, Edited: src.Edited, Stale: src.Stale}
 	all, err := adaptationsOf(c.sc)
 	if err != nil {
 		return nil, err
@@ -332,7 +331,7 @@ func (s *MarketingService) adaptExtra(q *adaptQuote, c *scriptCtx) int {
 	if q == nil {
 		return 0
 	}
-	in, err := s.adaptSource(c, c.st, q.video)
+	in, _, err := s.adaptSource(c, c.st, q.video)
 	if err != nil {
 		return 0
 	}
