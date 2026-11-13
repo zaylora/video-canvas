@@ -438,17 +438,7 @@ func (s *MarketingService) prepareApply(out *stepOutcome, round *model.Marketing
 		if err != nil {
 			return err
 		}
-		out.apply = func(ctx context.Context, tx repository.MarketingTx, _ *model.MarketingRound) error {
-			raw, err := json.Marshal(facts)
-			if err != nil {
-				return err
-			}
-			fields := map[string]any{"product": raw}
-			if p, err := tx.ProjectByID(ctx, project.ID); err == nil && (p.Title == "" || p.Title == marketingProjectPlaceholder) && facts.Name != "" {
-				fields["title"] = clipRunes(facts.Name, 120)
-			}
-			return tx.UpdateProject(ctx, project.ID, fields)
-		}
+		out.apply = applyFacts(facts, project.ID)
 	case marketing.StepReverse:
 		rev, err := marketing.DecodeReverse(res.Output)
 		if err != nil {
@@ -484,4 +474,28 @@ func factsOf(p *model.MarketingProject) marketing.ProductFacts {
 		_ = json.Unmarshal(p.Product, &f)
 	}
 	return f
+}
+
+// applyFacts 返回落库动作：写事实卡。项目已有事实卡说明是「按新图重新识别」，只换外观锚点、保留用户改过的其余内容；
+// 标题还是占位时用商品名。
+func applyFacts(facts marketing.ProductFacts, projectID uint64) func(context.Context, repository.MarketingTx, *model.MarketingRound) error {
+	return func(ctx context.Context, tx repository.MarketingTx, _ *model.MarketingRound) error {
+		p, err := tx.ProjectByID(ctx, projectID)
+		if err != nil {
+			return err
+		}
+		merged, err := mergeRefreshedFacts(p.Product, facts)
+		if err != nil {
+			return err
+		}
+		raw, err := json.Marshal(merged)
+		if err != nil {
+			return err
+		}
+		fields := map[string]any{"product": raw}
+		if (p.Title == "" || p.Title == marketingProjectPlaceholder) && facts.Name != "" {
+			fields["title"] = clipRunes(facts.Name, 120)
+		}
+		return tx.UpdateProject(ctx, projectID, fields)
+	}
 }

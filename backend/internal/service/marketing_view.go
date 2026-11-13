@@ -116,6 +116,9 @@ func (s *MarketingService) roundView(ctx context.Context, vd *viewData, r *model
 	if v.RefVideo, err = s.refVideoView(ctx, r); err != nil {
 		return nil, err
 	}
+	if v.ModelAsset, err = s.roundModelAsset(ctx, vd.project.UserID, r); err != nil {
+		return nil, err
+	}
 	latest := latestRuns(vd.runs[r.ID])
 	for _, k := range []string{marketing.StepFacts, marketing.StepReverse, marketing.StepFollow, marketing.StepCreate} {
 		for _, run := range latest {
@@ -476,4 +479,16 @@ func taskIDsJSON(tasks []model.GenerationTask) []byte {
 	}
 	raw, _ := json.Marshal(ids)
 	return raw
+}
+
+// roundModelAsset 返回轮次出片用的模特图；没有或素材已删为 nil。
+func (s *MarketingService) roundModelAsset(ctx context.Context, userID uint64, r *model.MarketingRound) (*model.MarketingAssetRef, error) {
+	if r.ModelAssetID == nil {
+		return nil, nil //nolint:nilnil // 没有模特图是正常的「没有」
+	}
+	a, err := s.assetViewOrNil(ctx, userID, *r.ModelAssetID)
+	if err != nil || a == nil {
+		return nil, err
+	}
+	return &model.MarketingAssetRef{ID: a.ID, URL: a.URL}, nil
 }

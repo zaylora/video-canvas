@@ -6,6 +6,11 @@ import type { MarketingSlot } from "@/store/marketing-composer";
 import { TAP } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
+import { ProductStack } from "./product-stack";
+
+/** 商品图最多几张 */
+const MAX_PRODUCTS = 4;
+
 /** 一个上传块的尺寸：64×80，和原型一致 */
 const TILE = "relative h-20 w-16 shrink-0";
 
@@ -149,7 +154,7 @@ export function ComposerSlots({
   refDisabledReason,
   refHint,
   onAddProducts,
-  onClearProducts,
+  onRemoveProduct,
   onPickModel,
   onClearModel,
   onPickRef,
@@ -164,7 +169,7 @@ export function ComposerSlots({
   refDisabledReason: string | null;
   refHint: string;
   onAddProducts: (files: File[]) => void;
-  onClearProducts: () => void;
+  onRemoveProduct: (id: string) => void;
   onPickModel: (file: File) => void;
   onClearModel: () => void;
   onPickRef: (file: File) => void;
@@ -213,17 +218,20 @@ export function ComposerSlots({
         onChange={(event) => take(event.currentTarget, (files) => onPickRef(files[0]))}
       />
 
-      {shownProducts.length > 0 ? (
+      {dock && shownProducts.length > 0 ? (
         <FilledTile
           slot={{ url: shownProducts[0].url, status: productStatus }}
           caption="商品"
           stacked={shownProducts.length > 1}
           count={shownProducts.length}
-          fixed={dock}
-          onClick={
-            dock || shownProducts.length >= 4 ? undefined : () => productInput.current?.click()
-          }
-          onRemove={onClearProducts}
+          fixed
+        />
+      ) : products.length > 0 ? (
+        <ProductStack
+          items={products.map((item) => ({ id: item.id, url: item.url, status: item.status }))}
+          max={MAX_PRODUCTS}
+          onAdd={onAddProducts}
+          onRemove={onRemoveProduct}
         />
       ) : (
         <AddTile

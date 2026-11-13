@@ -164,11 +164,19 @@ type CreateMarketingRoundReq struct {
 	Settings        MarketingSettings `json:"settings" binding:"required" label:"设置"`
 }
 
-// UpdateMarketingProjectReq 改标题或事实卡，带 revision。
+// UpdateMarketingProjectReq 改标题、事实卡或商品图，带 revision。
 type UpdateMarketingProjectReq struct {
-	Title    *string         `json:"title" binding:"omitempty,max=255" label:"标题"`
-	Product  *MarketingFacts `json:"product" label:"事实卡"`
-	Revision int64           `json:"revision" binding:"min=1" label:"版本"`
+	Title           *string         `json:"title" binding:"omitempty,max=255" label:"标题"`
+	Product         *MarketingFacts `json:"product" label:"事实卡"`
+	ProductAssetIDs []uint64        `json:"product_asset_ids" binding:"omitempty,min=1,max=4,dive,min=1" label:"商品图"`
+	Revision        int64           `json:"revision" binding:"min=1" label:"版本"`
+}
+
+// UpdateMarketingRoundSettingsReq 改一轮的出片设置：视频模型与参数（画幅、时长不能变）、换模特图（不能加也不能去掉）。
+type UpdateMarketingRoundSettingsReq struct {
+	VideoModel   string          `json:"video_model" binding:"required,max=128" label:"视频模型"`
+	Params       MarketingParams `json:"params"`
+	ModelAssetID *uint64         `json:"model_asset_id" binding:"omitempty,min=1" label:"模特图"`
 }
 
 // MarketingQuoteReq 写脚本预估。
@@ -350,6 +358,7 @@ type MarketingRoundView struct {
 	Warnings        []string               `json:"warnings"`
 	Settings        MarketingSettings      `json:"settings"`
 	RefVideo        *MarketingRefVideo     `json:"ref_video"`
+	ModelAsset      *MarketingAssetRef     `json:"model_asset"`
 	Steps           []MarketingStepRunView `json:"steps"`
 	PlanCount       int                    `json:"plan_count"`
 	Reverse         *MarketingReverse      `json:"reverse"`

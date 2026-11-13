@@ -36,6 +36,7 @@ import type {
   ScriptPrompt,
   StepRun,
   TaskLite,
+  UpdateRoundSettingsInput,
 } from "./type";
 
 /** 新建一次出片 / 一键出片的幂等键；同一次点击的重试要沿用同一个 */
@@ -239,6 +240,7 @@ export const mapRound = (raw: BackendRound): Round => ({
   refVideo: raw.ref_video
     ? { id: String(raw.ref_video.id), url: raw.ref_video.url, duration: raw.ref_video.duration }
     : null,
+  modelAsset: raw.model_asset ? mapAssetRef(raw.model_asset) : null,
   steps: (raw.steps ?? []).map(mapStepRun),
   planCount: raw.plan_count ?? 0,
   reverse: raw.reverse ? mapReverse(raw.reverse) : null,
@@ -366,20 +368,47 @@ export const getMarketingProject = async (id: string, silent = false): Promise<P
   mapProject(await service.get<BackendProject>(`/marketing-projects/${id}`, undefined, { silent }));
 
 /**
- * 改项目标题或事实卡；revision 冲突返回 68009。
+ * 改项目标题、事实卡或商品图；revision 冲突返回 68009，换商品图时有轮次在写脚本返回 68007。
  * @param id 项目 ID
  * @param body 要改的字段与当前 revision
  * @returns 最新项目详情
  */
 export const updateMarketingProject = async (
   id: string,
-  body: { title?: string; product?: ProductFacts; revision: number },
+  body: { title?: string; product?: ProductFacts; productAssetIds?: number[]; revision: number },
 ): Promise<Project> =>
   mapProject(
     await service.put<BackendProject>(`/marketing-projects/${id}`, {
       title: body.title,
       product: body.product ? toBackendProductFacts(body.product) : undefined,
+      product_asset_ids: body.productAssetIds,
       revision: body.revision,
+    }),
+  );
+
+/**
+ * 按项目当前商品图重新识别外观锚点：在最新一轮重跑事实卡环节，按文本模型计费，只替换外观锚点。
+ * @param id 项目 ID
+ * @returns 最新一轮（写脚本中）
+ */
+export const refreshMarketingFacts = async (id: string): Promise<Round> =>
+  mapRound(await service.post<BackendRound>(`/marketing-projects/${id}/refresh-facts`));
+
+/**
+ * 改一轮的出片设置（视频模型、分辨率、换模特图），只影响之后的出片。
+ * @param roundId 轮次 ID
+ * @param input 新模型与参数（画幅、时长不变）、换用的模特图
+ * @returns 最新轮次
+ */
+export const updateMarketingRoundSettings = async (
+  roundId: string,
+  input: UpdateRoundSettingsInput,
+): Promise<Round> =>
+  mapRound(
+    await service.put<BackendRound>(`/marketing-rounds/${roundId}/settings`, {
+      video_model: input.videoModel,
+      params: input.params,
+      model_asset_id: input.modelAssetId,
     }),
   );
 

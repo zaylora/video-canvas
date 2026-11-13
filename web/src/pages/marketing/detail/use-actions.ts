@@ -5,6 +5,7 @@ import {
   cancelMarketingRound,
   newIdempotencyKey,
   refollowMarketingRound,
+  refreshMarketingFacts,
   renderMarketingRound,
   renderMarketingScript,
   restoreMarketingReverse,
@@ -14,9 +15,17 @@ import {
   saveMarketingScript,
   sendMarketingScriptToCanvas,
   updateMarketingProject,
+  updateMarketingRoundSettings,
 } from "@/api/marketing";
 import { isMarketingConflict } from "@/api/marketing/errors";
-import type { ProductFacts, Project, Reverse, Round, Script } from "@/api/marketing/type";
+import type {
+  ProductFacts,
+  Project,
+  Reverse,
+  Round,
+  Script,
+  UpdateRoundSettingsInput,
+} from "@/api/marketing/type";
 import { useCreditsStore } from "@/store/credits";
 import { useMarketingStore } from "@/store/marketing";
 import { reloadMarketingProject } from "@/utils/marketing/events";
@@ -139,16 +148,47 @@ export function useMarketingActions(project: Project) {
       }
     });
 
-  /** 保存事实卡；成功返回 true */
-  const saveFacts = async (facts: ProductFacts): Promise<boolean> => {
+  /** 改本轮出片设置（视频模型、分辨率），只影响之后的出片 */
+  const updateSettings = (round: Round, input: UpdateRoundSettingsInput) =>
+    run(`settings:${round.id}`, async () => {
+      applyRound(await updateMarketingRoundSettings(round.id, input));
+    });
+
+  /**
+   * 保存商品信息：事实卡，以及换过的商品图（项目级）、模特图（当前这一轮）；成功返回 true。
+   * 只传变了的素材。
+   */
+  const saveFacts = async (input: FactsSave): Promise<boolean> => {
     const result = await run("facts", async () => {
       const next = await updateMarketingProject(project.id, {
-        title: facts.name,
-        product: facts,
+        title: input.facts.name,
+        product: input.facts,
+        productAssetIds: input.productAssetIds,
         revision: project.revision,
       });
       useMarketingStore.getState().setProject(next);
-      toast.success("已保存，下次出片按新的事实卡拼提示词");
+      if (input.modelAssetId !== undefined && input.round) {
+        const { settings } = input.round;
+        applyRound(
+          await updateMarketingRoundSettings(input.round.id, {
+            videoModel: settings.videoModel,
+            params: settings.params,
+            modelAssetId: input.modelAssetId,
+          }),
+        );
+      }
+      toast.success("已保存，之后出片按新的商品信息");
+      return true;
+    });
+    return result === true;
+  };
+
+  /** 按项目当前商品图重新识别外观锚点（在最新一轮重跑事实卡环节，扣积分）；成功返回 true */
+  const refreshFacts = async (): Promise<boolean> => {
+    const result = await run("refresh-facts", async () => {
+      applyRound(await refreshMarketingFacts(project.id));
+      refreshCredits();
+      toast.info("正在按商品图重新识别外观锚点");
       return true;
     });
     return result === true;
@@ -169,9 +209,23 @@ export function useMarketingActions(project: Project) {
     restoreScript,
     render,
     renderAll,
+    updateSettings,
     saveFacts,
+    refreshFacts,
     toCanvas,
   };
+}
+
+/** 保存商品信息的内容：素材只放变了的 */
+export interface FactsSave {
+  /** 事实卡 */
+  facts: ProductFacts;
+  /** 新的商品图素材 ID（1–4 张）；没换不传 */
+  productAssetIds?: number[];
+  /** 换用的模特图素材 ID；没换不传 */
+  modelAssetId?: number;
+  /** 模特图所在的轮次（当前看的这一轮） */
+  round?: Round;
 }
 
 /** 操作集合的类型，子组件的 props 用 */

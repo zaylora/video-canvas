@@ -69,7 +69,7 @@ func (h *MarketingHandler) Get(c *gin.Context) {
 	reply(c, v, err)
 }
 
-// Update 改标题或事实卡（PUT /marketing-projects/:id）。
+// Update 改标题、事实卡或商品图（PUT /marketing-projects/:id）。
 func (h *MarketingHandler) Update(c *gin.Context) {
 	id, ok := CanvasPathID(c)
 	if !ok {
@@ -141,6 +141,30 @@ func (h *MarketingHandler) RestoreReverse(c *gin.Context) {
 		return
 	}
 	v, err := h.svc.RestoreReverse(c.Request.Context(), currentUserID(c), id)
+	reply(c, v, err)
+}
+
+// UpdateRoundSettings 改一轮的出片设置：视频模型、分辨率、换模特图（PUT /marketing-rounds/:id/settings）。
+func (h *MarketingHandler) UpdateRoundSettings(c *gin.Context) {
+	id, ok := CanvasPathID(c)
+	if !ok {
+		return
+	}
+	var req model.UpdateMarketingRoundSettingsReq
+	if !BindJSON(c, &req) {
+		return
+	}
+	v, err := h.svc.UpdateRoundSettings(c.Request.Context(), currentUserID(c), id, &req)
+	reply(c, v, err)
+}
+
+// RefreshFacts 按当前商品图重新识别外观锚点（POST /marketing-projects/:id/refresh-facts）。
+func (h *MarketingHandler) RefreshFacts(c *gin.Context) {
+	id, ok := CanvasPathID(c)
+	if !ok {
+		return
+	}
+	v, err := h.svc.RefreshFacts(c.Request.Context(), currentUserID(c), id)
 	reply(c, v, err)
 }
 

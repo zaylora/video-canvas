@@ -1,7 +1,7 @@
 import { toast } from "sonner";
 
 import { getMarketingProject, mapRound, mapScript } from "@/api/marketing";
-import type { MarketingRoundEvent, MarketingScriptEvent } from "@/api/marketing/type";
+import type { MarketingRoundEvent, MarketingScriptEvent, Round } from "@/api/marketing/type";
 import { useMarketingStore } from "@/store/marketing";
 
 import { roundTransition, scriptTransition } from "./merge";
@@ -38,6 +38,14 @@ export async function reloadMarketingProject(projectId: string): Promise<boolean
   }
 }
 
+/** 这次推送里事实卡环节是不是刚变成成功（新的一次运行，或同一次从未完成变成成功） */
+export function factsJustSucceeded(prev: Round | undefined, next: Round): boolean {
+  const after = next.steps.find((item) => item.step === "facts");
+  if (after?.status !== "succeeded") return false;
+  const before = prev?.steps.find((item) => item.step === "facts");
+  return !before || before.id !== after.id || before.status !== "succeeded";
+}
+
 /**
  * 收到 marketing.round：并进项目；写脚本刚结束且用户不在这个项目的页面时，弹一条带「查看」的提醒。
  * 出片结果的提示由 marketing.script 负责，任务快照（task.updated）本身不弹通知。
@@ -48,6 +56,9 @@ export function handleMarketingRoundEvent(event: MarketingRoundEvent) {
   const prev = store.projects[event.project_id]?.rounds.find((item) => item.id === round.id);
   if (!store.applyRound(event.project_id, round)) {
     if (store.watching[event.project_id]) void reloadMarketingProject(event.project_id);
+  } else if (factsJustSucceeded(prev, round) && store.watching[event.project_id]) {
+    // 事实卡写在项目上，轮次推送里没有：事实卡环节刚成功（含重新识别外观锚点）就拉一次详情
+    void reloadMarketingProject(event.project_id);
   }
   if (viewing(event.project_id)) return;
   const title = store.titles[event.project_id] ?? "营销片";

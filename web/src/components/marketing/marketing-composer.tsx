@@ -129,7 +129,7 @@ export function MarketingComposer({ project }: { project?: Project }) {
         refDisabledReason={refDisabledReason}
         refHint={refHint}
         onAddProducts={composer.addProductFiles}
-        onClearProducts={composer.clearProducts}
+        onRemoveProduct={composer.removeProduct}
         onPickModel={composer.setModelFile}
         onClearModel={composer.clearModel}
         onPickRef={composer.setRefFile}

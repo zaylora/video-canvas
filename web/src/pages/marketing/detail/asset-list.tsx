@@ -22,6 +22,14 @@ import { FactsPanel } from "./facts";
 import { useRenderProgress } from "./hooks";
 import type { MarketingActions } from "./use-actions";
 
+/** 已有事实卡、最新一轮的事实卡环节又在跑：按新商品图重新识别外观锚点中 */
+function factsRefreshing(project: Project): boolean {
+  const latest = project.rounds[0];
+  if (!project.product || !latest) return false;
+  const step = stepRunOf(latest.steps, "facts");
+  return step?.status === "queued" || step?.status === "running";
+}
+
 /** 列表项外壳：选中时浅底 + 左侧紫色竖条 */
 function Item({
   selected,
@@ -263,7 +271,9 @@ export function AssetList({
 
         <FactsPanel
           project={project}
+          round={round}
           scripting={round?.status === "scripting"}
+          refreshing={factsRefreshing(project)}
           onEdit={onEditFacts}
         />
       </div>

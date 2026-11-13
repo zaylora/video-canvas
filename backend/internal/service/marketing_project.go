@@ -139,31 +139,24 @@ func (s *MarketingService) summaryAgg(ctx context.Context, userID uint64, rows [
 	return a, nil
 }
 
-// UpdateProject 改标题或事实卡，带 revision 乐观锁：冲突 68009，项目不存在 68001。
+// UpdateProject 改标题、事实卡或商品图，带 revision 乐观锁：冲突 68009，项目不存在 68001；
+// 换商品图时有轮次在写脚本 68007，某轮视频模型收不下新张数 68004。
 func (s *MarketingService) UpdateProject(ctx context.Context, userID, id uint64, req *model.UpdateMarketingProjectReq) (*model.MarketingProjectView, error) {
-	fields := map[string]any{}
-	if req.Title != nil {
-		title := strings.TrimSpace(*req.Title)
-		if title == "" {
-			return nil, errcode.ErrInvalidParams.WithMsg("标题不能为空")
-		}
-		fields["title"] = title
+	fields, err := s.projectFields(ctx, userID, req)
+	if err != nil {
+		return nil, err
 	}
-	if req.Product != nil {
-		facts := toFacts(req.Product)
-		if err := marketing.ValidateFacts(facts); err != nil {
-			return nil, errcode.ErrInvalidParams.WithMsg("事实卡不合法：" + strings.Join(stepkit.ErrorList(err), "；"))
+	err = s.repo.WithTx(ctx, func(tx repository.MarketingTx) error {
+		if req.ProductAssetIDs != nil {
+			if _, err := tx.Project(ctx, userID, id, true); err != nil {
+				return err
+			}
+			if err := s.checkProductSwap(ctx, tx, userID, id, len(req.ProductAssetIDs)); err != nil {
+				return err
+			}
 		}
-		raw, err := json.Marshal(facts)
-		if err != nil {
-			return nil, err
-		}
-		fields["product"] = raw
-	}
-	if len(fields) == 0 {
-		return nil, errcode.ErrInvalidParams.WithMsg("没有要修改的内容")
-	}
-	err := s.repo.WithTx(ctx, func(tx repository.MarketingTx) error { return tx.SaveProject(ctx, userID, id, req.Revision, fields) })
+		return tx.SaveProject(ctx, userID, id, req.Revision, fields)
+	})
 	switch {
 	case mktNotFound(err):
 		return nil, errcode.ErrMarketingNotFound
@@ -213,4 +206,38 @@ func (s *MarketingService) DeleteProject(ctx context.Context, userID, id uint64)
 		}
 		return tx.DeleteProject(ctx, userID, id)
 	})
+}
+
+// projectFields 校验改项目的请求并转成要写的列：标题不能为空、事实卡要过校验、商品图要有效；什么都没改返回参数错误。
+func (s *MarketingService) projectFields(ctx context.Context, userID uint64, req *model.UpdateMarketingProjectReq) (map[string]any, error) {
+	fields := map[string]any{}
+	if req.Title != nil {
+		title := strings.TrimSpace(*req.Title)
+		if title == "" {
+			return nil, errcode.ErrInvalidParams.WithMsg("标题不能为空")
+		}
+		fields["title"] = title
+	}
+	if req.Product != nil {
+		facts := toFacts(req.Product)
+		if err := marketing.ValidateFacts(facts); err != nil {
+			return nil, errcode.ErrInvalidParams.WithMsg("事实卡不合法：" + strings.Join(stepkit.ErrorList(err), "；"))
+		}
+		raw, err := json.Marshal(facts)
+		if err != nil {
+			return nil, err
+		}
+		fields["product"] = raw
+	}
+	if req.ProductAssetIDs != nil {
+		raw, err := s.productAssetsField(ctx, userID, req.ProductAssetIDs)
+		if err != nil {
+			return nil, err
+		}
+		fields["product_asset_ids"] = raw
+	}
+	if len(fields) == 0 {
+		return nil, errcode.ErrInvalidParams.WithMsg("没有要修改的内容")
+	}
+	return fields, nil
 }

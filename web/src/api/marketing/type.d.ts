@@ -487,6 +487,7 @@ export interface BackendRound {
   warnings: string[] | null;
   settings: BackendRoundSettings;
   ref_video?: { id: number; url: string; duration: number } | null;
+  model_asset?: BackendAssetRef | null;
   steps: BackendStepRun[] | null;
   plan_count: number;
   reverse?: BackendReverse | null;
@@ -527,6 +528,8 @@ export interface Round {
   settings: RoundSettings;
   /** 参考视频；没有为 null */
   refVideo: RefVideo | null;
+  /** 本轮出片用的模特图；没有为 null */
+  modelAsset: AssetRef | null;
   /** 每个环节最新一条运行记录 */
   steps: StepRun[];
   /** 计划出几份脚本，写脚本中前端画骨架卡 */
@@ -640,6 +643,16 @@ export interface CreateProjectInput {
   refVideoAssetId?: number;
   /** 第一轮设置 */
   settings: RoundSettings;
+}
+
+/** 改一轮出片设置的输入：画幅、时长须与原来一致，模特图只能换不能加减 */
+export interface UpdateRoundSettingsInput {
+  /** 视频模型 key */
+  videoModel: string;
+  /** 视频参数，键名按所选模型 */
+  params: Record<string, unknown>;
+  /** 换用的模特图素材 ID；不换不传 */
+  modelAssetId?: number;
 }
 
 /** 新开一轮的输入 */

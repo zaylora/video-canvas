@@ -254,10 +254,21 @@ function Workbench({ project }: { project: Project }) {
         <FactDialog
           key={project.revision}
           facts={project.product}
+          productAssets={project.productAssets}
+          modelAsset={round ? round.modelAsset : null}
+          imagesLocked={project.rounds.some((item) => item.status === "scripting")}
           open
-          busy={!!actions.busy.facts}
+          busy={!!actions.busy.facts || !!actions.busy["refresh-facts"]}
           onOpenChange={setFactsOpen}
-          onSave={(next) => void actions.saveFacts(next).then((ok) => ok && setFactsOpen(false))}
+          onSave={(next) =>
+            void actions.saveFacts({ ...next, round }).then((ok) => ok && setFactsOpen(false))
+          }
+          onRefresh={(next) =>
+            void (async () => {
+              if (!(await actions.saveFacts({ ...next, round }))) return;
+              if (await actions.refreshFacts()) setFactsOpen(false);
+            })()
+          }
         />
       )}
     </div>
