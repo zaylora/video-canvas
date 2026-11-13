@@ -90,7 +90,9 @@ export function PromptDialog({
             {angleName(script.angle, angles)} · 格式化器「
             {state.status === "ready" && state.format === "seedance"
               ? "seedance 分区块"
-              : "通用段落"}
+              : state.status === "ready" && state.format === "h3"
+                ? "seedance 原稿，出片前转写为 H3"
+                : "通用段落"}
             」按 {videoModelLabel} 拼装，与技能无关
           </DialogDescription>
         </DialogHeader>

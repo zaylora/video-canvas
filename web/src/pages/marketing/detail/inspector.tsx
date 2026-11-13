@@ -26,7 +26,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { getMarketingPrompt } from "@/api/marketing";
 import type { FlagType, ProductRole, Project, Round, Script } from "@/api/marketing/type";
 import { StatusPill } from "@/components/drama/status-pill";
 import { EditableText } from "@/components/marketing/editable-text";
@@ -62,6 +61,7 @@ import { formatSeconds } from "@/utils/marketing/workbench";
 
 import { useCurrentShot, useRefollowCost } from "./hooks";
 import { CanvasDialog, downloadUrl, takeFileName } from "./script-dialogs";
+import { PromptPanel } from "./prompt-panel";
 import type { MarketingActions } from "./use-actions";
 
 const FLAG_ICON: Record<FlagType, LucideIcon> = {
@@ -431,59 +431,6 @@ export function ReverseInspector({
   );
 }
 
-/** 提示词页：格式化后的视频提示词全文，可复制 */
-function PromptPanel({ script, round }: { script: Script; round: Round }) {
-  const [state, setState] = useState<
-    { status: "loading" } | { status: "error" } | { status: "ready"; prompt: string }
-  >({ status: "loading" });
-  useEffect(() => {
-    let alive = true;
-    setState({ status: "loading" });
-    getMarketingPrompt(script.id, round.settings.videoModel)
-      .then((res) => alive && setState({ status: "ready", prompt: res.prompt }))
-      .catch(() => alive && setState({ status: "error" }));
-    return () => {
-      alive = false;
-    };
-  }, [script.id, script.revision, round.settings.videoModel]);
-
-  const copy = async () => {
-    if (state.status !== "ready") return;
-    try {
-      await navigator.clipboard.writeText(state.prompt);
-      toast.success("已复制");
-    } catch {
-      toast.error("复制失败，请手动选中复制");
-    }
-  };
-
-  return (
-    <div className="grid gap-2 p-4">
-      <div className="flex items-center justify-end">
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={state.status !== "ready"}
-          onClick={() => void copy()}
-        >
-          <Copy />
-          复制
-        </Button>
-      </div>
-      <pre className="bg-chrome-hover min-h-32 overflow-auto rounded-[18px] p-3 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap">
-        {state.status === "loading" && (
-          <span className="text-muted-foreground inline-flex items-center gap-2">
-            <Loader2 className="size-3.5 animate-spin" />
-            拼装中
-          </span>
-        )}
-        {state.status === "error" && <span className="text-destructive">提示词加载失败</span>}
-        {state.status === "ready" && state.prompt}
-      </pre>
-    </div>
-  );
-}
-
 /** 选中脚本时的检查器：脚本 / 提示词，底部是配乐 · 音色、问题、方法、更多、出片 */
 export function ScriptInspector({
   project,
@@ -642,7 +589,9 @@ export function ScriptInspector({
             </div>
           </>
         )}
-        {activeTab === "prompt" && <PromptPanel script={script} round={round} />}
+        {activeTab === "prompt" && (
+          <PromptPanel projectId={project.id} script={script} round={round} />
+        )}
       </div>
       <div className="border-chrome-border flex flex-wrap items-center gap-1.5 border-t px-3 py-2.5">
         <span

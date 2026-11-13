@@ -252,13 +252,12 @@ func (s *MarketingService) Prompt(ctx context.Context, userID, id uint64, videoM
 	if err != nil {
 		return nil, err
 	}
-	key := videoModel
-	if key == "" {
-		key = c.st.VideoModel
-	}
-	snap, err := s.videoSnapshot(ctx, key)
+	snap, err := s.promptVideo(ctx, c, videoModel)
 	if err != nil {
 		return nil, err
+	}
+	if marketing.NeedsAdapt(snap.Model.Capabilities.PromptFormat) {
+		return s.adaptPromptView(ctx, c, snap)
 	}
 	f := format.For(snap.Model.Capabilities.PromptFormat)
 	in, err := s.formatInput(c, c.st, snap.Model.Capabilities)

@@ -684,11 +684,35 @@ export interface Quote {
 }
 
 /** 视频提示词 */
-export interface ScriptPrompt {
-  /** 格式化器：seedance 分区块或通用段落 */
-  format: "seedance" | "generic";
-  /** 提示词正文 */
+/** 后端提示词预览 */
+export interface BackendScriptPrompt {
+  format: ScriptPrompt["format"];
   prompt: string;
+  adaptation?: { prompt: string; stale: boolean; edited: boolean; updated_at: string } | null;
+  adapt_credits?: number;
+}
+
+/** 转写稿 */
+export interface PromptAdaptation {
+  /** 转写稿正文 */
+  prompt: string;
+  /** 原稿已变，出片时会重新转写 */
+  stale: boolean;
+  /** 手改过 */
+  edited: boolean;
+  /** 更新时间 */
+  updatedAt: string;
+}
+
+export interface ScriptPrompt {
+  /** 格式：seedance 分区块、通用段落；h3 要先转写（prompt 是原稿，出片用转写稿） */
+  format: "seedance" | "generic" | "h3";
+  /** 原稿：seedance、generic 就是出片用的提示词；h3 是转写依据 */
+  prompt: string;
+  /** h3 的转写稿；还没转写为 null */
+  adaptation: PromptAdaptation | null;
+  /** 转写一次的预估积分（h3 才有意义） */
+  adaptCredits: number;
 }
 
 /** 一键出片的结果 */

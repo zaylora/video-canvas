@@ -14,6 +14,7 @@ import type {
   BackendRound,
   BackendRoundSettings,
   BackendScript,
+  BackendScriptPrompt,
   BackendStepRun,
   BackendTaskLite,
   CreateProjectInput,
@@ -516,8 +517,64 @@ export const restoreMarketingScript = async (scriptId: string): Promise<Script> 
  * @param videoModel 视频模型 key；不传用本轮的
  * @returns 格式与提示词正文
  */
-export const getMarketingPrompt = (scriptId: string, videoModel?: string): Promise<ScriptPrompt> =>
-  service.get<ScriptPrompt>(`/marketing-scripts/${scriptId}/prompt`, { video_model: videoModel });
+export const getMarketingPrompt = async (
+  scriptId: string,
+  videoModel?: string,
+): Promise<ScriptPrompt> =>
+  mapPrompt(
+    await service.get<BackendScriptPrompt>(`/marketing-scripts/${scriptId}/prompt`, {
+      video_model: videoModel,
+    }),
+  );
+
+/** 后端提示词预览 -> 前端 */
+export const mapPrompt = (raw: BackendScriptPrompt): ScriptPrompt => ({
+  format: raw.format,
+  prompt: raw.prompt,
+  adaptation: raw.adaptation
+    ? {
+        prompt: raw.adaptation.prompt,
+        stale: raw.adaptation.stale,
+        edited: raw.adaptation.edited,
+        updatedAt: raw.adaptation.updated_at,
+      }
+    : null,
+  adaptCredits: raw.adapt_credits ?? 0,
+});
+
+/**
+ * 把脚本的出片提示词转写成视频模型的写法（目前只有 H3），已有转写稿也重新转写；扣文本模型积分。
+ * 积分不足 40001；转写失败 68018。
+ * @param scriptId 脚本 ID
+ * @param videoModel 视频模型 key；不传用本轮的
+ * @returns 最新的提示词预览
+ */
+export const adaptMarketingScript = async (
+  scriptId: string,
+  videoModel?: string,
+): Promise<ScriptPrompt> =>
+  mapPrompt(
+    await service.post<BackendScriptPrompt>(`/marketing-scripts/${scriptId}/adapt`, {
+      video_model: videoModel,
+    }),
+  );
+
+/**
+ * 手改转写稿（标记已修改；原稿变了仍会过期，出片时重新转写）。
+ * @param scriptId 脚本 ID
+ * @param prompt 改后的转写稿
+ * @returns 最新的提示词预览
+ */
+export const editMarketingAdaptation = async (
+  scriptId: string,
+  prompt: string,
+): Promise<ScriptPrompt> =>
+  mapPrompt(
+    await service.put<BackendScriptPrompt>(`/marketing-scripts/${scriptId}/adaptation`, {
+      format: "h3",
+      prompt,
+    }),
+  );
 
 /**
  * 单条出片。idempotencyKey 要在同一次点击的重试里沿用。

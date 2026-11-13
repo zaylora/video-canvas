@@ -105,32 +105,42 @@ func (MarketingStepRun) TableName() string { return "marketing_step_runs" }
 
 // MarketingScript 是一份脚本。Shots / Original 的结构见 marketing.ScriptShot / marketing.Script。
 type MarketingScript struct {
-	ID        uint64         `gorm:"primaryKey"`
-	UserID    uint64         `gorm:"not null;index"`
-	ProjectID uint64         `gorm:"not null;index;index:idx_mkt_script_project_created,priority:1"`
-	RoundID   uint64         `gorm:"not null;index"`
-	StepRunID uint64         `gorm:"not null"`
-	Kind      string         `gorm:"size:16;not null"` // follow / create
-	Angle     string         `gorm:"size:16;not null"`
-	Seq       int            `gorm:"not null;default:0"` // 轮次内的展示顺序，跟拍在前
-	Title     string         `gorm:"type:text;not null;default:''"`
-	Hook      string         `gorm:"type:text;not null;default:''"`
-	Shots     datatypes.JSON `gorm:"type:jsonb;not null"`
-	Music     string         `gorm:"type:text;not null;default:''"`
-	Voice     string         `gorm:"type:text;not null;default:''"`
-	Flags     datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'"`
-	FollowMap datatypes.JSON `gorm:"type:jsonb"`
-	Original  datatypes.JSON `gorm:"type:jsonb;not null"` // 模型原稿，恢复原稿用
-	Status    string         `gorm:"size:16;not null;default:draft"`
-	TaskIDs   datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'"` // 出片任务 id，按时间正序
-	Error     string         `gorm:"type:text;not null;default:''"`    // 最近一次出片失败原因
-	Revision  int64          `gorm:"not null;default:1"`
-	CreatedAt time.Time      `gorm:"index:idx_mkt_script_project_created,priority:2,sort:desc"`
-	UpdatedAt time.Time
+	ID          uint64         `gorm:"primaryKey"`
+	UserID      uint64         `gorm:"not null;index"`
+	ProjectID   uint64         `gorm:"not null;index;index:idx_mkt_script_project_created,priority:1"`
+	RoundID     uint64         `gorm:"not null;index"`
+	StepRunID   uint64         `gorm:"not null"`
+	Kind        string         `gorm:"size:16;not null"` // follow / create
+	Angle       string         `gorm:"size:16;not null"`
+	Seq         int            `gorm:"not null;default:0"` // 轮次内的展示顺序，跟拍在前
+	Title       string         `gorm:"type:text;not null;default:''"`
+	Hook        string         `gorm:"type:text;not null;default:''"`
+	Shots       datatypes.JSON `gorm:"type:jsonb;not null"`
+	Music       string         `gorm:"type:text;not null;default:''"`
+	Voice       string         `gorm:"type:text;not null;default:''"`
+	Flags       datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'"`
+	FollowMap   datatypes.JSON `gorm:"type:jsonb"`
+	Original    datatypes.JSON `gorm:"type:jsonb;not null"` // 模型原稿，恢复原稿用
+	Status      string         `gorm:"size:16;not null;default:draft"`
+	TaskIDs     datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'"` // 出片任务 id，按时间正序
+	Error       string         `gorm:"type:text;not null;default:''"`    // 最近一次出片失败原因
+	Adaptations datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"` // 按提示词格式存的转写稿（如 h3），见 MarketingAdaptation
+	Revision    int64          `gorm:"not null;default:1"`
+	CreatedAt   time.Time      `gorm:"index:idx_mkt_script_project_created,priority:2,sort:desc"`
+	UpdatedAt   time.Time
 }
 
 // TableName 返回表名。
 func (MarketingScript) TableName() string { return "marketing_scripts" }
+
+// MarketingAdaptation 是一份转写稿：出片前把原稿（Seedance 写法）转成目标模型的写法。
+// SourceHash 记转写时原稿的指纹，原稿变了即过期；Edited 表示用户手改过。
+type MarketingAdaptation struct {
+	Prompt     string    `json:"prompt"`
+	SourceHash string    `json:"source_hash"`
+	Edited     bool      `json:"edited"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
 
 // ---- 请求 ----
 
@@ -442,8 +452,31 @@ type MarketingQuote struct {
 
 // MarketingPrompt 是脚本提示词预览。
 type MarketingPrompt struct {
-	Format string `json:"format"`
-	Prompt string `json:"prompt"`
+	Format string `json:"format"` // seedance / h3 / generic
+	Prompt string `json:"prompt"` // 原稿：seedance、generic 就是出片用的提示词；h3 是转写的依据（Seedance 写法）
+	// Adaptation 是 h3 的转写稿；还没转写为 nil。出片时没有或已过期会自动重新转写。
+	Adaptation *MarketingAdaptationView `json:"adaptation"`
+	// AdaptCredits 是转写一次的预估积分（只在需要转写时有意义）
+	AdaptCredits int `json:"adapt_credits"`
+}
+
+// MarketingAdaptationView 是转写稿的视图。
+type MarketingAdaptationView struct {
+	Prompt    string    `json:"prompt"`
+	Stale     bool      `json:"stale"` // 原稿已变，出片时会重新转写
+	Edited    bool      `json:"edited"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// AdaptMarketingScriptReq 手动转写：不传视频模型用本轮的。
+type AdaptMarketingScriptReq struct {
+	VideoModel string `json:"video_model" binding:"max=128" label:"视频模型"`
+}
+
+// EditMarketingAdaptationReq 手改转写稿。
+type EditMarketingAdaptationReq struct {
+	Format string `json:"format" binding:"required,oneof=h3" label:"格式"`
+	Prompt string `json:"prompt" binding:"required,max=20000" label:"转写稿"`
 }
 
 // MarketingSkipped 是全部出片时被跳过的脚本。

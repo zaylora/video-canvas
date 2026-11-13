@@ -18,7 +18,7 @@ func genericLayout(in Input, o options) string {
 	paras = append(paras, genericProduct(in, o))
 	paras = append(paras, "分镜：\n"+strings.Join(shotLines(in, o), "\n"))
 	paras = append(paras, soundLine(in)+"。")
-	paras = append(paras, "硬性约束："+strings.Join(hardClauses(in, o), "；")+"。")
+	paras = append(paras, "硬性约束："+strings.Join(hardClauses(in), "；")+"。")
 	return strings.Join(paras, "\n")
 }
 

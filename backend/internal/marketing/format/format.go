@@ -4,7 +4,10 @@
 // 跟拍版和改编版共用。设计见 docs/design/营销工作室/营销工作室.md §6.6。
 //
 // 超长时按固定顺序删减，规则确定、可测试（见 fit）：先去掉平台写法要点，再把外观锚点只留前 3 条，
-// 再去掉关键颜色，最后把每镜画面描述逐步截短（保留开头的主体 + 动作）；旁白从不删减，仍超则返回 ErrTooLong。
+// 最后把每镜画面描述逐步截短（保留开头的主体 + 动作）；旁白从不删减，仍超则返回 ErrTooLong。
+//
+// 拆解里的关键颜色不进出片提示词：它们带着载体（「米白色针织衫」「紫黑色果汁」），跟拍时正是参考片人物的穿着和原商品，
+// 写进约束会把模型拉回原片；色调由参考视频本身带过去。
 package format
 
 import (
@@ -30,7 +33,7 @@ type Input struct {
 	ProductImages int                // 商品图张数（@图片1…@图片k）
 	HasModel      bool               // 有模特图（@图片k+1）
 	HasRefVideo   bool               // 有参考视频（@视频1）
-	Reverse       *marketing.Reverse // 跟拍或改编时的拆解，取 key_colors 与参考镜头时间；可为 nil
+	Reverse       *marketing.Reverse // 跟拍或改编时的拆解，取参考镜头时间；可为 nil
 	MaxLen        int                // 模型提示词上限（字符数，按 rune 计），0 表示不限
 }
 
@@ -59,17 +62,13 @@ const (
 type options struct {
 	dropStyle  bool // 去掉平台写法要点
 	maxAnchors int  // 外观锚点最多保留几条，0 不限
-	dropColors bool // 去掉关键颜色
 	sceneMax   int  // 每镜画面描述最多保留几个字符，0 不限
 	numberBase int  // 镜头编号的起点偏移（单镜头稿保持原编号），由 RenderShot 设置，不属于删减
 	ref        func(s marketing.ScriptShot) string
 }
 
-// 删减的阈值。
-const (
-	trimmedAnchors = 3 // 第二步外观锚点只留前几条
-	maxKeyColors   = 8 // 关键颜色最多列几个
-)
+// trimmedAnchors 是第二步外观锚点只留前几条。
+const trimmedAnchors = 3
 
 // sceneLimits 是第四步逐步截短画面描述的字符数序列。
 var sceneLimits = []int{80, 60, 40, 30, 20, 12}
@@ -81,8 +80,6 @@ func truncationSteps(base options) []options {
 	o.dropStyle = true
 	steps = append(steps, o)
 	o.maxAnchors = trimmedAnchors
-	steps = append(steps, o)
-	o.dropColors = true
 	steps = append(steps, o)
 	for _, n := range sceneLimits {
 		o.sceneMax = n
@@ -223,25 +220,6 @@ func anchors(in Input, o options) []string {
 	return list
 }
 
-// keyColors 返回拆解里 key_colors 的并集（按出现顺序去重，最多 maxKeyColors 个）；删减选项要求去掉时返回空。
-func keyColors(in Input, o options) []string {
-	if o.dropColors || in.Reverse == nil {
-		return nil
-	}
-	var out []string
-	seen := map[string]bool{}
-	for _, s := range in.Reverse.Shots {
-		for _, c := range s.KeyColors {
-			c = strings.TrimSpace(c)
-			if c != "" && !seen[c] && len(out) < maxKeyColors {
-				seen[c] = true
-				out = append(out, c)
-			}
-		}
-	}
-	return out
-}
-
 // hasRef 判断提示词里是否需要 @视频1：有参考视频，或本脚本是跟拍脚本。
 func hasRef(in Input) bool { return in.HasRefVideo || in.Script.Angle == marketing.AngleFollow }
 
@@ -289,12 +267,19 @@ func styleParts(in Input, o options) []string {
 	return out
 }
 
-// hardClauses 返回硬性约束的各条：固定三条 + 有模特图时的人物约束 + 平台禁令 + 关键颜色。
-func hardClauses(in Input, o options) []string {
+// hardClauses 返回硬性约束的各条：固定三条 + 画面里的商品全是我们的 + 有模特图时的人物约束 + 平台禁令。
+func hardClauses(in Input) []string {
 	out := []string{
 		"商品外观与参考图一致",
 		"商品不出画",
 		"不加字幕：旁白只配音，除商品本身印刷的文字外，画面不出现任何文字、字幕、花字或水印",
+	}
+	if refs := imageRefs(in.ProductImages); refs != "" {
+		goods := fmt.Sprintf("画面里出现的每一件商品都是 %s 的%s", refs, productName(in))
+		if hasRef(in) {
+			goods += "，@视频1 里的商品一件都不出现"
+		}
+		out = append(out, goods)
 	}
 	if in.HasModel {
 		person := fmt.Sprintf("出镜人物始终是 %s 的模特", modelRef(in))
@@ -303,11 +288,7 @@ func hardClauses(in Input, o options) []string {
 		}
 		out = append(out, person)
 	}
-	out = append(out, in.Platform.Bans...)
-	if colors := keyColors(in, o); len(colors) > 0 {
-		out = append(out, "关键颜色："+strings.Join(colors, "、"))
-	}
-	return out
+	return append(out, in.Platform.Bans...)
 }
 
 // soundLine 返回旁白与配乐的说明：「旁白：中文，音色；配乐：…」。

@@ -210,6 +210,8 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		mktScripts.PUT("/:id", h.Marketing.UpdateScript)
 		mktScripts.POST("/:id/restore", h.Marketing.RestoreScript)
 		mktScripts.GET("/:id/prompt", h.Marketing.Prompt)
+		mktScripts.POST("/:id/adapt", h.Marketing.Adapt)
+		mktScripts.PUT("/:id/adaptation", h.Marketing.EditAdaptation)
 		mktScripts.POST("/:id/render", h.Marketing.Render)
 		mktScripts.POST("/:id/to-canvas", h.Marketing.ToCanvas)
 

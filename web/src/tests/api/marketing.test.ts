@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test, type Mock } from "bun:test";
 
 import {
+  adaptMarketingScript,
   createMarketingProject,
+  editMarketingAdaptation,
   getMarketingOptions,
   getMarketingPrompt,
   listMarketingProjects,
@@ -396,6 +398,41 @@ describe("api/marketing：请求", () => {
     post.mockResolvedValue({ canvas_id: "c9" });
     expect(await sendMarketingScriptToCanvas("x1")).toBe("c9");
     expect(post.mock.calls[0][0]).toBe("/marketing-scripts/x1/to-canvas");
+  });
+
+  test("H3 提示词：转写稿 snake→camel，转写与手改的路径和请求体", async () => {
+    get.mockResolvedValue({
+      format: "h3",
+      prompt: "[分镜] …",
+      adaptation: {
+        prompt: "subject_definitions: …",
+        stale: true,
+        edited: false,
+        updated_at: "t1",
+      },
+      adapt_credits: 3,
+    });
+    expect(await getMarketingPrompt("x1")).toEqual({
+      format: "h3",
+      prompt: "[分镜] …",
+      adaptation: { prompt: "subject_definitions: …", stale: true, edited: false, updatedAt: "t1" },
+      adaptCredits: 3,
+    });
+    get.mockResolvedValue({ format: "seedance", prompt: "p" });
+    expect(await getMarketingPrompt("x1")).toMatchObject({ adaptation: null, adaptCredits: 0 });
+
+    post.mockResolvedValue({ format: "h3", prompt: "p", adaptation: null, adapt_credits: 0 });
+    await adaptMarketingScript("x1", "h3-model");
+    expect(post.mock.calls[0]).toEqual([
+      "/marketing-scripts/x1/adapt",
+      { video_model: "h3-model" },
+    ]);
+    put.mockResolvedValue({ format: "h3", prompt: "p", adaptation: null });
+    await editMarketingAdaptation("x1", "手改");
+    expect(put.mock.calls[0]).toEqual([
+      "/marketing-scripts/x1/adaptation",
+      { format: "h3", prompt: "手改" },
+    ]);
   });
 });
 

@@ -34,6 +34,8 @@ export const MARKETING_ERR = {
   reverseInvalid: 68015,
   /** 没有可用的拆解，不能重写跟拍 */
   noReverse: 68016,
+  /** 转写提示词失败 */
+  adaptFailed: 68018,
   /** 该环节已有试跑在进行 */
   trialRunning: 68017,
 } as const;

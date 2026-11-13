@@ -7,6 +7,8 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"sync"
+	"unicode/utf8"
 
 	"video-canvas/internal/marketing"
 	"video-canvas/internal/marketing/format"
@@ -83,7 +85,7 @@ func (s *MarketingService) Render(ctx context.Context, userID, id uint64, req *m
 	if err != nil {
 		return nil, err
 	}
-	input, err := s.buildRenderInput(c, st, snap, req.Params)
+	input, err := s.buildRenderInput(ctx, userID, c, st, snap, req.Params)
 	if err != nil {
 		return nil, err
 	}
@@ -97,24 +99,48 @@ func (s *MarketingService) Render(ctx context.Context, userID, id uint64, req *m
 	return s.scriptViewByRow(ctx, userID, sc)
 }
 
-// buildRenderInput 校验模型支持全能参考，用格式化器拼提示词（超长 68008），组装任务输入。
-func (s *MarketingService) buildRenderInput(c *scriptCtx, st model.MarketingSettings, snap *provider.Snapshot, params map[string]any) (map[string]any, error) {
+// buildRenderInput 校验模型支持全能参考，拼出片提示词（超长 68008），组装任务输入。
+// 需要转写的模型（H3）用转写稿：没有或过期时先转写（预检余额时把出片费一起算上）。
+func (s *MarketingService) buildRenderInput(ctx context.Context, userID uint64, c *scriptCtx, st model.MarketingSettings,
+	snap *provider.Snapshot, params map[string]any) (map[string]any, error) {
 	caps := snap.Model.Capabilities
 	if !caps.Refs.Image.On || !hasOp(caps, modelcfg.OpOmni) {
 		return nil, errcode.ErrMarketingVideoModel.WithMsg("所选视频模型不支持全能参考，不能用商品图出片")
 	}
-	in, err := s.formatInput(c, st, caps)
-	if err != nil {
-		return nil, err
-	}
-	prompt, err := format.For(caps.PromptFormat).Render(in)
-	if errors.Is(err, format.ErrTooLong) {
-		return nil, errcode.ErrMarketingPromptLong
-	}
+	prompt, err := s.renderPrompt(ctx, userID, c, st, snap)
 	if err != nil {
 		return nil, err
 	}
 	return s.renderInput(c, snap, mergeParams(st.Params, params), prompt)
+}
+
+// renderPrompt 返回出片用的提示词：需要转写的模型取转写稿（手改过的可能超长，超了报 68008），其余用格式化器直接拼。
+func (s *MarketingService) renderPrompt(ctx context.Context, userID uint64, c *scriptCtx, st model.MarketingSettings, snap *provider.Snapshot) (string, error) {
+	caps := snap.Model.Capabilities
+	if marketing.NeedsAdapt(caps.PromptFormat) {
+		images := productCount(c.project)
+		if c.round.ModelAssetID != nil {
+			images++
+		}
+		reserve := s.renderCredits(ctx, st, images, c.round.RefVideoAssetID != nil)
+		prompt, err := s.ensureAdapted(ctx, userID, c, st, snap, reserve, false)
+		if err != nil {
+			return "", err
+		}
+		if limit := caps.Prompt.MaxLength; limit > 0 && utf8.RuneCountInString(prompt) > limit {
+			return "", errcode.ErrMarketingPromptLong
+		}
+		return prompt, nil
+	}
+	in, err := s.formatInput(c, st, caps)
+	if err != nil {
+		return "", err
+	}
+	prompt, err := format.For(caps.PromptFormat).Render(in)
+	if errors.Is(err, format.ErrTooLong) {
+		return "", errcode.ErrMarketingPromptLong
+	}
+	return prompt, err
 }
 
 // submitRender 用生成任务服务创建出片任务（节点 mkt:{脚本id}），把节点级错误还原成业务错误。
@@ -175,6 +201,7 @@ func flagSummary(flags []model.MarketingFlagView) string {
 }
 
 // RenderRound 给轮次里能出片的脚本全部出片：旁白有问题、正在重写或出片、已出过片的跳过并说明原因。
+// 需要转写的模型先并发转写（见 preAdapt），转写失败的跳过。
 // 积分不足时已经出的保留，剩下的跳过；一份都没出成且是积分不足则返回 40001。
 func (s *MarketingService) RenderRound(ctx context.Context, userID, roundID uint64, req *model.RenderMarketingRoundReq) (*model.MarketingRenderAll, error) {
 	r, err := s.repo.Round(ctx, userID, roundID, false)
@@ -188,15 +215,16 @@ func (s *MarketingService) RenderRound(ctx context.Context, userID, roundID uint
 	if err != nil {
 		return nil, err
 	}
+	statuses, eligible := batchEligible(scripts, byNode)
+	failed := s.preAdapt(ctx, userID, r, eligible)
 	out := &model.MarketingRenderAll{Skipped: []model.MarketingSkipped{}}
 	created, noCredits := 0, false
 	for i := range scripts {
 		sc := &scripts[i]
-		status, _ := deriveScriptStatus(sc.Status, byNode[marketingNode(sc.ID)])
-		reason := batchSkipReason(sc, status, noCredits)
+		reason := batchSkipReason(sc, statuses[i], noCredits)
 		if reason == "" {
 			var short bool
-			if reason, short, err = s.renderOne(ctx, userID, sc.ID, req.IdempotencyKey); err != nil {
+			if reason, short, err = s.batchRender(ctx, userID, sc.ID, req.IdempotencyKey, failed[sc.ID]); err != nil {
 				return nil, err
 			}
 			noCredits = noCredits || short
@@ -215,6 +243,63 @@ func (s *MarketingService) RenderRound(ctx context.Context, userID, roundID uint
 		return nil, err
 	}
 	return out, nil
+}
+
+// batchEligible 按出片任务算出每份脚本的状态，并挑出本次能出片的脚本。
+func batchEligible(scripts []model.MarketingScript, byNode map[string][]model.GenerationTask) ([]string, []uint64) {
+	statuses := make([]string, len(scripts))
+	var eligible []uint64
+	for i := range scripts {
+		statuses[i], _ = deriveScriptStatus(scripts[i].Status, byNode[marketingNode(scripts[i].ID)])
+		if batchSkipReason(&scripts[i], statuses[i], false) == "" {
+			eligible = append(eligible, scripts[i].ID)
+		}
+	}
+	return statuses, eligible
+}
+
+// batchRender 出一份：转写已经失败的直接按失败原因跳过，否则出片。
+func (s *MarketingService) batchRender(ctx context.Context, userID, scriptID uint64, batchKey string, adaptErr error) (string, bool, error) {
+	if adaptErr != nil {
+		return skipOf(adaptErr)
+	}
+	return s.renderOne(ctx, userID, scriptID, batchKey)
+}
+
+// preAdapt 全部出片前并发转写（最多同时 4 份）：转写一份要十几到几十秒，挨个转会超过请求超时。
+// 本轮模型不需要转写时什么也不做；返回转写失败的脚本及原因。
+func (s *MarketingService) preAdapt(ctx context.Context, userID uint64, r *model.MarketingRound, ids []uint64) map[uint64]error {
+	st, err := settingsOf(r)
+	if err != nil || len(ids) == 0 {
+		return nil
+	}
+	video, err := s.videoSnapshot(ctx, st.VideoModel)
+	if err != nil || !marketing.NeedsAdapt(video.Model.Capabilities.PromptFormat) {
+		return nil
+	}
+	var (
+		mu  sync.Mutex
+		wg  sync.WaitGroup
+		out = map[uint64]error{}
+		sem = make(chan struct{}, 4)
+	)
+	for _, id := range ids {
+		wg.Go(func() {
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			c, err := s.loadScript(ctx, userID, id)
+			if err == nil {
+				_, err = s.ensureAdapted(ctx, userID, c, st, video, 0, false)
+			}
+			if err != nil {
+				mu.Lock()
+				out[id] = err
+				mu.Unlock()
+			}
+		})
+	}
+	wg.Wait()
+	return out
 }
 
 // roundTasks 返回轮次的脚本和它们的出片任务（按节点 id 分组，时间正序）。
@@ -259,11 +344,16 @@ func batchSkipReason(sc *model.MarketingScript, status string, noCredits bool) s
 func (s *MarketingService) renderOne(ctx context.Context, userID, scriptID uint64, batchKey string) (reason string, noCredits bool, err error) {
 	key := batchKey + ":" + idcodec.Encode(scriptID)
 	_, err = s.Render(ctx, userID, scriptID, &model.RenderMarketingScriptReq{IdempotencyKey: key})
-	var biz *errcode.Error
-	switch {
-	case err == nil:
+	if err == nil {
 		return "", false, nil
-	case errors.As(err, &biz):
+	}
+	return skipOf(err)
+}
+
+// skipOf 把批量出片里一份的错误转成跳过原因：业务错误作为原因（积分不足时 noCredits 为真），其他错误原样返回。
+func skipOf(err error) (reason string, noCredits bool, _ error) {
+	var biz *errcode.Error
+	if errors.As(err, &biz) {
 		return biz.Msg, biz.Code == errcode.ErrInsufficientCredits.Code, nil
 	}
 	return "", false, err

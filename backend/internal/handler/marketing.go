@@ -242,6 +242,34 @@ func (h *MarketingHandler) Prompt(c *gin.Context) {
 	reply(c, v, err)
 }
 
+// Adapt 手动转写出片提示词（POST /marketing-scripts/:id/adapt）。
+func (h *MarketingHandler) Adapt(c *gin.Context) {
+	id, ok := CanvasPathID(c)
+	if !ok {
+		return
+	}
+	var req model.AdaptMarketingScriptReq
+	if !BindJSON(c, &req) {
+		return
+	}
+	v, err := h.svc.Adapt(c.Request.Context(), currentUserID(c), id, &req)
+	reply(c, v, err)
+}
+
+// EditAdaptation 手改转写稿（PUT /marketing-scripts/:id/adaptation）。
+func (h *MarketingHandler) EditAdaptation(c *gin.Context) {
+	id, ok := CanvasPathID(c)
+	if !ok {
+		return
+	}
+	var req model.EditMarketingAdaptationReq
+	if !BindJSON(c, &req) {
+		return
+	}
+	v, err := h.svc.EditAdaptation(c.Request.Context(), currentUserID(c), id, &req)
+	reply(c, v, err)
+}
+
 // Render 单份出片（POST /marketing-scripts/:id/render）。
 func (h *MarketingHandler) Render(c *gin.Context) {
 	id, ok := CanvasPathID(c)
