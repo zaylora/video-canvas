@@ -1,6 +1,7 @@
 import type { AgentEventDto, CanvasPatchDto } from "@/api/agent/type";
 import type { BackendJobView, DramaEpisodeEvent, DramaSegmentEvent } from "@/api/drama/type";
 import type { ServerMessage, TaskView } from "@/api/generation-task/type";
+import type { MarketingRoundEvent, MarketingScriptEvent } from "@/api/marketing/type";
 import type { PaymentWsUpdate } from "@/store/payment";
 import type { ConnectionState } from "@/store/ws";
 
@@ -168,6 +169,37 @@ export function parseServerMessage(raw: unknown): ServerMessage | null {
       }
       return msg as ServerMessage;
     }
+    case "marketing.round": {
+      if (typeof data !== "object" || data === null) return null;
+      const event = data as { project_id?: unknown; round?: { id?: unknown } };
+      if (
+        typeof event.project_id !== "string" ||
+        typeof event.round !== "object" ||
+        event.round === null ||
+        typeof event.round.id !== "string"
+      ) {
+        return null;
+      }
+      return msg as ServerMessage;
+    }
+    case "marketing.script": {
+      if (typeof data !== "object" || data === null) return null;
+      const event = data as {
+        project_id?: unknown;
+        round_id?: unknown;
+        script?: { id?: unknown };
+      };
+      if (
+        typeof event.project_id !== "string" ||
+        typeof event.round_id !== "string" ||
+        typeof event.script !== "object" ||
+        event.script === null ||
+        typeof event.script.id !== "string"
+      ) {
+        return null;
+      }
+      return msg as ServerMessage;
+    }
     default:
       return null;
   }
@@ -211,6 +243,10 @@ export type SocketClientDeps = {
   onDramaEpisode?: (event: DramaEpisodeEvent) => void;
   /** 收到短剧片段的变化 */
   onDramaSegment?: (event: DramaSegmentEvent) => void;
+  /** 收到营销片轮次的变化 */
+  onMarketingRound?: (event: MarketingRoundEvent) => void;
+  /** 收到营销片脚本的变化 */
+  onMarketingScript?: (event: MarketingScriptEvent) => void;
   /** 每次连接成功（包括重连）后调用，用来对账 */
   onOpen: () => void;
   onState: (state: ConnectionState) => void;
@@ -368,6 +404,8 @@ export class TaskSocketClient {
       else if (msg.type === "drama.job") this.deps.onDramaJob?.(msg.data);
       else if (msg.type === "drama.episode") this.deps.onDramaEpisode?.(msg.data);
       else if (msg.type === "drama.segment") this.deps.onDramaSegment?.(msg.data);
+      else if (msg.type === "marketing.round") this.deps.onMarketingRound?.(msg.data);
+      else if (msg.type === "marketing.script") this.deps.onMarketingScript?.(msg.data);
     };
     socket.onclose = () => {
       if (generation !== this.generation) return;

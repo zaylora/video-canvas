@@ -18,6 +18,9 @@ const (
 	TypeDramaJob       = "drama.job"       // 短剧流水线状态、进度和结算结果
 	TypeDramaSegment   = "drama.segment"   // 短剧片段编辑、生成结果和首帧变化
 
+	TypeMarketingRound  = "marketing.round"  // 营销轮次或环节状态、拆解、脚本列表变化：{project_id, round}
+	TypeMarketingScript = "marketing.script" // 营销脚本保存、出片开始 / 结束、软问题变化：{project_id, round_id, script}
+
 	// 以下是连接控制类消息（订阅协议与心跳）。
 	TypePing         = "ping"         // 客户端 → 服务端：应用层心跳
 	TypePong         = "pong"         // 服务端 → 客户端：心跳应答

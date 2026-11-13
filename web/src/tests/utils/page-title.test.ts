@@ -31,5 +31,6 @@ describe("浏览器标签页标题", () => {
     expect(homePageTitle("/assets")).toBe("资产 - 连镜");
     expect(homePageTitle("/profile")).toBe("个人资料 - 连镜");
     expect(homePageTitle("/conversations/12")).toBe("对话 - 连镜");
+    expect(homePageTitle("/marketing/a1b2")).toBe("营销工作室 - 连镜");
   });
 });

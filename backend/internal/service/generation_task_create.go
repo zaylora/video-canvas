@@ -343,6 +343,15 @@ func (s *GenerationTaskService) insertAndFreeze(ctx context.Context, task *model
 				return err
 			}
 		}
+		// 0b. 营销脚本出片：先看幂等，再锁营销项目与脚本行（校验归属、没有在出片或重写、旁白无问题），顺序同删除项目与改脚本。
+		if strings.HasPrefix(task.NodeID, model.MarketingNodePrefix) {
+			if existing, err = s.findIdempotent(ctx, tx, userID, key); err != nil || existing != nil {
+				return err
+			}
+			if err := GuardMarketingGeneration(ctx, tx, task); err != nil {
+				return err
+			}
+		}
 		// 1. 惰性创建积分账户（初始积分来自系统设置，缺省 config；真正建出新账户时仓储会在同一事务补写 initial 流水），
 		//    再对账户行加锁：同一个用户的并发提交在这里被串行化，余额与并发数的检查因此不会被并发穿透
 		if err := tx.EnsureCredit(ctx, userID, initial); err != nil {

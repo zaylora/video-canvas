@@ -42,6 +42,9 @@ type Handlers struct {
 	AdminPlugin    *handler.AdminPluginHandler         // 协议插件管理
 	AdminChannel   *handler.AdminChannelHandler        // 渠道管理
 	AdminStats     *handler.AdminStatsHandler          // 总览页任务统计
+	AdminStep      *handler.AdminStepHandler           // 后台「环节技能」页：环节协议、方法绑定、试跑
+	AdminFormatter *handler.AdminFormatterHandler      // 后台「视频提示词格式化器」只读列表
+	Marketing      *handler.MarketingHandler           // 营销工作室
 	AdminQueue     *handler.AdminQueueHandler          // 后台「任务队列」页：队列、渠道名额、吞吐、实例，调并发与暂停
 	RiverUI        *handler.RiverUIHandler             // 嵌入的 River UI（任务级监控）：一次性 ticket 换会话 cookie，仅 super_admin
 	AdminStorage   *handler.AdminStorageHandler        // 存储配置管理
@@ -184,6 +187,30 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		auth.PATCH("/asset-library/items/:id", h.AssetLibrary.MoveItem)
 		auth.DELETE("/asset-library/items/:id", h.AssetLibrary.RemoveItem)
 
+		// 营销工作室：项目、轮次、环节运行、脚本的 id 都是十六进制串；别人的资源一律按「不存在」处理。
+		auth.GET("/marketing/options", h.Marketing.Options)
+		auth.POST("/marketing/quote", h.Marketing.Quote)
+		mktProjects := auth.Group("/marketing-projects")
+		mktProjects.GET("", h.Marketing.List)
+		mktProjects.POST("", h.Marketing.Create) // 201，同时开第一轮
+		mktProjects.GET("/:id", h.Marketing.Get)
+		mktProjects.PUT("/:id", h.Marketing.Update)
+		mktProjects.DELETE("/:id", h.Marketing.Delete)
+		mktProjects.POST("/:id/rounds", h.Marketing.NewRound) // 201
+		mktRounds := auth.Group("/marketing-rounds")
+		mktRounds.POST("/:id/cancel", h.Marketing.CancelRound)
+		mktRounds.PUT("/:id/reverse", h.Marketing.UpdateReverse)
+		mktRounds.POST("/:id/reverse/restore", h.Marketing.RestoreReverse)
+		mktRounds.POST("/:id/refollow", h.Marketing.Refollow)
+		mktRounds.POST("/:id/render", h.Marketing.RenderRound)
+		auth.POST("/marketing-step-runs/:id/retry", h.Marketing.RetryStep)
+		mktScripts := auth.Group("/marketing-scripts")
+		mktScripts.PUT("/:id", h.Marketing.UpdateScript)
+		mktScripts.POST("/:id/restore", h.Marketing.RestoreScript)
+		mktScripts.GET("/:id/prompt", h.Marketing.Prompt)
+		mktScripts.POST("/:id/render", h.Marketing.Render)
+		mktScripts.POST("/:id/to-canvas", h.Marketing.ToCanvas)
+
 		// 短剧工作室：项目与任务 ID 沿用十六进制编码，分集按从 1 起的集号定位。
 		auth.GET("/drama-styles", h.Drama.Styles)
 		auth.POST("/drama-sources/preflight", h.Drama.Preflight)
@@ -306,6 +333,15 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		skillsAdmin.GET("/:name/versions/:v/download", h.AgentSkill.Download)
 		skillsAdmin.DELETE("/:name/versions/:v", h.AgentSkill.DeleteVersion)
 		skillsAdmin.DELETE("/:name", h.AgentSkill.Delete)
+
+		// 环节技能（环节协议层）：admin 与 super_admin 都能试跑和设为生效，同技能管理；写操作进审计。
+		stepsAdmin := auth.Group("/admin", middleware.RequireAdmin(h.AdminRole))
+		stepsAdmin.GET("/steps", h.AdminStep.List)
+		stepsAdmin.GET("/steps/:key", h.AdminStep.Get)
+		stepsAdmin.POST("/steps/:key/trials", h.AdminStep.CreateTrials)
+		stepsAdmin.PUT("/steps/:key/binding", h.AdminStep.SetBinding)
+		stepsAdmin.GET("/step-trials/:id", h.AdminStep.GetTrial)
+		stepsAdmin.GET("/formatters", h.AdminFormatter.List)
 
 		// Agent 运行观测：运行记录是只读接口，管理员 JWT 和后台签发的分析令牌（本地 agent-trace 用）都能访问；
 		// 令牌只挂在这一组只读接口上。令牌管理本身只接受管理员 JWT，不能用令牌签发或吊销令牌

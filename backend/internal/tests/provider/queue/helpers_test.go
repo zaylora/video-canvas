@@ -57,7 +57,7 @@ func queueDB(t *testing.T) *gorm.DB {
 		}
 	})
 	if err := db.AutoMigrate(&model.GenerationTask{}, &model.GenerationTaskEvent{}, &model.UserCredit{}, &model.CreditLedger{},
-		&model.AIChannel{}, &model.User{}, &model.WorkerInstance{}); err != nil {
+		&model.AIChannel{}, &model.User{}, &model.WorkerInstance{}, &model.StepTrial{}); err != nil {
 		t.Fatalf("迁移业务表失败：%v", err)
 	}
 	if err := queue.Migrate(context.Background(), sqlDB, ""); err != nil {
@@ -223,6 +223,8 @@ type rigOpts struct {
 	noStart     bool                   // 只建不跑（测试回滚、暂停前的准备）
 	notifier    provider.AgentNotifier // 非空时注册门铃 worker
 	agentNotify bool                   // 终态事务里是否入队门铃（Agent 已启用）
+	stepTrial   queue.StepTrialHandler // 非空时注册环节试跑 worker
+	marketing   queue.MarketingHandler // 非空时注册营销写脚本 worker
 }
 
 func newRig(t *testing.T, db *gorm.DB, o rigOpts) *rig {
@@ -242,7 +244,9 @@ func newRig(t *testing.T, db *gorm.DB, o rigOpts) *rig {
 	rt, err := queue.New(queue.Config{
 		DB: sqlDB, Store: &dbStore{repo: repo, userLimit: o.userLimit}, Handler: h, Settings: settings, Repo: qrepo,
 		Enabled: true, HardCap: 16,
-		Notifier: o.notifier, AgentNotify: o.agentNotify, NotifyBackoff: 200 * time.Millisecond,
+		StepTrial: o.stepTrial,
+		Marketing: o.marketing,
+		Notifier:  o.notifier, AgentNotify: o.agentNotify, NotifyBackoff: 200 * time.Millisecond,
 		Version: "test", Hostname: "testhost", StopTimeout: 5 * time.Second,
 		HeartbeatEvery: 200 * time.Millisecond, SweepEvery: 300 * time.Millisecond, SettingsEvery: 100 * time.Millisecond,
 		FetchPollInterval: 200 * time.Millisecond,

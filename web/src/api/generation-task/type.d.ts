@@ -1,6 +1,7 @@
 import type { PaymentWsUpdate } from "@/store/payment";
 import type { AgentEventDto, CanvasPatchDto } from "@/api/agent/type";
 import type { BackendJobView, DramaEpisodeEvent, DramaSegmentEvent } from "@/api/drama/type";
+import type { MarketingRoundEvent, MarketingScriptEvent } from "@/api/marketing/type";
 /** 生成任务状态 */
 export type TaskStatus =
   /** 已创建，待入队 */
@@ -137,6 +138,10 @@ export type ServerMessage =
   | { type: "drama.job"; channel?: string; data: { drama_id: string; job: BackendJobView } }
   /** 短剧片段被改 / take 状态变化 / 首帧写入：前端并进该集的片段列表 */
   | { type: "drama.segment"; channel?: string; data: DramaSegmentEvent }
+  /** 营销片轮次或环节状态变化、stage 变化、拆解改动、脚本列表变化：前端并进该项目的轮次 */
+  | { type: "marketing.round"; channel?: string; data: MarketingRoundEvent }
+  /** 营销片单个脚本保存、出片开始 / 结束、问题旁白变化：前端并进所在轮次 */
+  | { type: "marketing.script"; channel?: string; data: MarketingScriptEvent }
   /** 心跳应答 */
   | { type: "pong" }
   /** 服务端错误 */

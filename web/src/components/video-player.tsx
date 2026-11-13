@@ -133,6 +133,8 @@ type FacadeVideoProps = {
   onError: () => void;
   /** 名额池要回名额 */
   onRevoke: () => void;
+  /** video 元素挂上 / 卸下时通知外部（见 VideoPlayer 的 onVideo） */
+  onVideo?: (video: HTMLVideoElement | null) => void;
 };
 
 /**
@@ -140,7 +142,7 @@ type FacadeVideoProps = {
  * 退回封面时由 AnimatePresence 留到淡出结束才卸载，所以清 src 放在卸载时，
  * 否则淡出过程中会看到黑屏。声音和名额则在开始退出的那一刻就停掉、让出。
  */
-function FacadeVideo({ src, phase, onFrame, onError, onRevoke }: FacadeVideoProps) {
+function FacadeVideo({ src, phase, onFrame, onError, onRevoke, onVideo }: FacadeVideoProps) {
   const id = useId();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const isPresent = useIsPresent();
@@ -175,6 +177,17 @@ function FacadeVideo({ src, phase, onFrame, onError, onRevoke }: FacadeVideoProp
       el.load();
     };
   }, [id, src, crossOrigin]);
+
+  // 把 video 元素交给外部：挂上时给元素，开始退出或卸载时给 null
+  const onVideoRef = useRef(onVideo);
+  useEffect(() => {
+    onVideoRef.current = onVideo;
+  });
+  useEffect(() => {
+    if (!isPresent) return;
+    onVideoRef.current?.(videoRef.current);
+    return () => onVideoRef.current?.(null);
+  }, [isPresent]);
 
   // 开始退出：立刻停声音、让出名额
   useEffect(() => {
@@ -216,6 +229,13 @@ type VideoPlayerProps = {
   durationMs?: number | null;
   /** 是否处于激活状态（如所在节点被选中）；变成 false 会停止播放并退回封面，默认 true（不受约束） */
   active?: boolean;
+  /**
+   * 正在播放的 video 元素挂上 / 卸下时通知外部（营销创作台用它读播放时间、跳转、联动时间轴）；
+   * 停在封面时没有 video，回调 null。
+   */
+  onVideo?: (video: HTMLVideoElement | null) => void;
+  /** 外部要求开始播放：数值变化且还停在封面时，等同点了播放键（点时间轴、点镜头时用） */
+  playSignal?: number;
 };
 
 /**
@@ -225,7 +245,13 @@ type VideoPlayerProps = {
  * 失去激活、加载失败、被名额池回收时，视频停止并淡出，露出封面。
  * 填满父级盒子，画幅由父级决定。
  */
-export function VideoPlayer({ src, durationMs, active = true }: VideoPlayerProps) {
+export function VideoPlayer({
+  src,
+  durationMs,
+  active = true,
+  onVideo,
+  playSignal,
+}: VideoPlayerProps) {
   const reduce = useReducedMotion();
   const [phase, setPhase] = useState<FacadePhase>("idle");
   const [frameReady, setFrameReady] = useState(false);
@@ -271,6 +297,22 @@ export function VideoPlayer({ src, durationMs, active = true }: VideoPlayerProps
     return () => clearTimeout(timer);
   }, [phase, fail]);
 
+  /** 从封面开始播放：挂载新一轮 video，封面压暗转圈，首帧出来后淡入 */
+  const start = useCallback(() => {
+    startedAt.current = performance.now();
+    setFrameReady(false);
+    setSession((n) => n + 1);
+    dispatch("play");
+  }, [dispatch]);
+
+  // 外部要求播放：只在停在封面时生效，已经在播的不打断
+  const lastSignal = useRef(playSignal);
+  useEffect(() => {
+    if (playSignal === lastSignal.current) return;
+    lastSignal.current = playSignal;
+    if (phase === "idle") start();
+  }, [playSignal, phase, start]);
+
   const loading = phase === "loading";
   const playing = phase === "playing";
   const transition = playing ? LEAVE : ENTER;
@@ -287,6 +329,7 @@ export function VideoPlayer({ src, durationMs, active = true }: VideoPlayerProps
             onFrame={() => setFrameReady(true)}
             onError={fail}
             onRevoke={() => dispatch("revoke")}
+            onVideo={onVideo}
           />
         )}
       </AnimatePresence>
@@ -309,12 +352,7 @@ export function VideoPlayer({ src, durationMs, active = true }: VideoPlayerProps
         whileHover={phase === "idle" && !reduce ? { scale: 1.06 } : undefined}
         whileTap={phase === "idle" ? TAP : undefined}
         transition={transition}
-        onClick={() => {
-          startedAt.current = performance.now();
-          setFrameReady(false);
-          setSession((n) => n + 1);
-          dispatch("play");
-        }}
+        onClick={start}
         className="nodrag absolute inset-0 m-auto grid size-12 place-items-center rounded-full text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
         style={{ pointerEvents: playing ? "none" : undefined }}
       >

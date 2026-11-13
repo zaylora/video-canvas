@@ -1234,3 +1234,37 @@ html:has([data-shell="home"]) {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/*
+ * 营销创作台：苹果式连续曲率圆角（squircle）。只作用在创作台里，胶囊（rounded-full）不动；
+ * 不支持 corner-shape 的浏览器照常显示普通圆角。squircle 看起来比同半径的普通圆角更方，
+ * 所以创作台里的半径整体放大并按嵌套递减：外层三栏 28px、顶栏与视频 22px、里面的块 18–20px。
+ */
+[data-slot="marketing-workbench"] :is([class*="rounded-"]:not([class*="rounded-full"]), video) {
+  corner-shape: squircle;
+}
+
+/* 营销创作台「出片中」画框：一道光从左往右慢慢扫过；系统减少动效时不动 */
+@keyframes marketing-shimmer {
+  from {
+    background-position: 150% 0;
+  }
+  to {
+    background-position: -50% 0;
+  }
+}
+.marketing-shimmer {
+  background: linear-gradient(
+    105deg,
+    transparent 35%,
+    color-mix(in oklch, var(--foreground) 7%, transparent) 50%,
+    transparent 65%
+  );
+  background-size: 250% 100%;
+  animation: marketing-shimmer 2.4s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .marketing-shimmer {
+    animation: none;
+  }
+}

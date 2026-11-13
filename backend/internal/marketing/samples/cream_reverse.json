@@ -1,0 +1,65 @@
+{
+  "overall": {
+    "style": "明亮自然光的生活化口播式展示，真人出镜，微笑亲和",
+    "narrative_arc": "0–5 秒从两个机位连续拍挤出乳霜到手背；5–7.5 秒双手搓开涂抹；7.5–10 秒举起软管正对镜头展示",
+    "why_viral": "前 3 秒就是挤乳霜这个直观的使用动作，不需要解释；亮橙色软管在米白、奶油色的背景里很跳；人物笑容自然，结尾举管正对镜头完成商品露出",
+    "transcript": "",
+    "category": "护手霜"
+  },
+  "shots": [
+    {
+      "id": 1, "start": 0, "end": 2.5, "is_opening_3s": true,
+      "shot_size": "中近景", "camera": "固定机位，轻微手持晃动",
+      "subject": "年轻女性与橙色护手霜软管",
+      "action": "女性左手握住橙色软管、管口朝下倾斜，用力挤压软管，把乳霜挤到右手手背上，同时微笑看向手背",
+      "scene": "明亮的客厅窗边，白色纱帘，背后是虚化的绿植",
+      "lighting": "柔和的自然窗光，偏暖",
+      "person": "二十多岁亚洲女性，黑色低马尾，米白色针织衫，微笑",
+      "product_in_frame": "软管斜握在画面左上，约占画面五分之一，管身印有 HERALIFE 字样",
+      "product_role": "dynamic",
+      "dialogue": "", "onscreen_text": "",
+      "key_colors": ["亮橙色软管", "米白色针织衫", "奶油色背景"]
+    },
+    {
+      "id": 2, "start": 2.5, "end": 5, "is_opening_3s": true,
+      "shot_size": "中景", "camera": "固定机位，画面比上一镜更近",
+      "subject": "年轻女性与橙色护手霜软管",
+      "action": "女性继续挤压软管，乳霜从管口落到手背上，另一只手稳住手背，低头微笑看着乳霜",
+      "scene": "同一个客厅窗边，绿植与纱帘虚化",
+      "lighting": "柔和的自然窗光，偏暖",
+      "person": "同一位女性，黑色低马尾，米白色针织衫",
+      "product_in_frame": "软管在画面左侧，约占画面四分之一，管身字样朝向镜头",
+      "product_role": "dynamic",
+      "dialogue": "", "onscreen_text": "",
+      "key_colors": ["亮橙色软管", "米白色针织衫", "奶油色背景"]
+    },
+    {
+      "id": 3, "start": 5, "end": 7.5, "is_opening_3s": false,
+      "shot_size": "中景", "camera": "固定机位",
+      "subject": "女性的双手",
+      "action": "女性双手相互搓开手背上的乳霜，手掌手背来回涂抹，另一侧手仍举着软管停在画面左上方，微笑看向双手",
+      "scene": "同一个客厅窗边，绿植与纱帘虚化",
+      "lighting": "柔和的自然窗光，偏暖",
+      "person": "同一位女性，双手入画，戴细戒指",
+      "product_in_frame": "软管缩小在画面左上角，约占画面十分之一，仅作陪衬",
+      "product_role": "dynamic",
+      "dialogue": "", "onscreen_text": "",
+      "key_colors": ["亮橙色软管", "奶油色背景", "肤色双手"]
+    },
+    {
+      "id": 4, "start": 7.5, "end": 10, "is_opening_3s": false,
+      "shot_size": "中近景", "camera": "固定机位，人物正对镜头",
+      "subject": "女性与橙色护手霜软管",
+      "action": "女性单手竖直举起软管正对镜头，另一只手收回，微笑直视镜头",
+      "scene": "同一个客厅，背景是虚化的绿植",
+      "lighting": "柔和的自然窗光，偏暖",
+      "person": "同一位女性，黑色低马尾，米白色针织衫，笑容明显",
+      "product_in_frame": "软管竖直在画面左侧，约占画面高度三分之二，正面品牌字样与「护手霜」清晰可读",
+      "product_role": "package_text",
+      "dialogue": "", "onscreen_text": "",
+      "key_colors": ["亮橙色软管", "米白色针织衫", "绿色植物"]
+    }
+  ],
+  "brands": ["HERALIFE"],
+  "claims": []
+}

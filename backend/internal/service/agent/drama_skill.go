@@ -115,15 +115,20 @@ func (s *SkillService) DramaSkill(ctx context.Context, name, step string) (*mode
 	return setting, nil
 }
 
-// dramaSkillText 读取引用链，循环引用只附加一次，脚本和二进制永远不读取。
+// dramaSkillText 读取引用链，循环引用只附加一次，脚本和二进制永远不读取；最多一万六千字。
 func (s *SkillService) dramaSkillText(ctx context.Context, v *model.AgentSkillVersion) (string, error) {
-	text := drama.Clip(v.BodyText, 16000)
+	return s.skillText(ctx, v, 16000)
+}
+
+// skillText 是 dramaSkillText 的通用版本，正文和引用文本合计最多 limit 个字符（环节协议层按各环节的 MethodMax 取）。
+func (s *SkillService) skillText(ctx context.Context, v *model.AgentSkillVersion, limit int) (string, error) {
+	text := drama.Clip(v.BodyText, limit)
 	var files []SkillFileView
 	if err := json.Unmarshal(v.FilesJSON, &files); err != nil {
 		return "", err
 	}
 	seen := map[string]bool{"SKILL.md": true}
-	for utf8.RuneCountInString(text) < 16000 {
+	for utf8.RuneCountInString(text) < limit {
 		refs := []SkillFileView{}
 		for _, f := range files {
 			if f.Text && f.Kind != "script" && !strings.HasPrefix(f.Path, "scripts/") && !seen[f.Path] && strings.Contains(text, f.Path) {

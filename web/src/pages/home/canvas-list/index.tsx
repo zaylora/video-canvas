@@ -3,6 +3,7 @@ import { Plus } from "lucide-react";
 
 import type { CanvasListItemDto } from "@/api/canvas/type";
 import type { DramaSummary } from "@/api/drama/type";
+import type { ProjectSummary } from "@/api/marketing/type";
 import { AssetSearch } from "@/components/assets/asset-search";
 import { AssetsToolbar } from "@/components/assets/assets-toolbar";
 import { TransferProgressDialog } from "@/components/canvas/transfer-progress-dialog";
@@ -20,30 +21,34 @@ import { RECENT_CANVAS_LIMIT } from "@/constants/creation";
 import { useCanvasImport } from "@/hooks/use-canvas-import";
 import { useCanvasList } from "@/hooks/use-canvas-list";
 import { useDramaList } from "@/hooks/use-drama-list";
+import { useMarketingList } from "@/hooks/use-marketing-list";
 import { DramaCard } from "@/pages/drama/drama-grid";
+import { ProjectCard } from "@/pages/marketing/project-grid";
 import { mixWorks, parseWorksScope, type WorksScope } from "@/utils/home/works";
 
 /** 画布还没有分页控件，先一次拉够 */
 const PAGE_SIZE = 60;
 /** 短剧每次加载的条数 */
 const DRAMA_PAGE_SIZE = 24;
+/** 营销片每次加载的条数 */
+const MARKETING_PAGE_SIZE = 24;
 
 /** 作品网格：和短剧工作室首页的短剧网格同一套列数和间距 */
 const GRID = "grid grid-cols-2 gap-x-4 gap-y-7 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5";
 
-/** 「＋ 新建短剧」卡：和画布的新建卡同一个样子，点了去短剧工作室首页新建 */
-function NewDramaCard() {
+/** 「＋ 新建短剧 / 营销片」卡：和画布的新建卡同一个样子，点了去对应工作室首页新建 */
+function NewStudioCard({ to, label }: { to: string; label: string }) {
   return (
     <Link
-      to="/drama"
-      data-slot="new-drama-card"
+      to={to}
+      data-slot="new-studio-card"
       className="group/new text-muted-foreground hover:text-foreground focus-visible:ring-ring/60 relative block min-w-0 rounded-[18px] transition-colors duration-150 outline-none focus-visible:ring-3"
     >
       <span className="group-hover/new:bg-chrome-hover flex aspect-16/10 flex-col items-center justify-center gap-2.5 rounded-[18px] border border-dashed border-[color-mix(in_oklch,var(--foreground)_18%,transparent)] transition-colors duration-150">
         <span className="bg-chrome-hover ring-chrome-border grid size-12 place-items-center rounded-full ring-1">
           <Plus className="size-5" />
         </span>
-        <span className="text-sm">新建短剧</span>
+        <span className="text-sm">{label}</span>
       </span>
     </Link>
   );
@@ -51,14 +56,15 @@ function NewDramaCard() {
 
 /**
  * 我的作品（原「所有画布」，设计稿 docs/design/首页 4.2）：大标题 + 半透明工具条（范围、导入画布、搜索）+ 作品网格。
- * 范围写在地址栏 ?scope=：全部（画布和短剧按更新时间混排）、个人画布（默认）、个人短剧；
- * 短剧工作室首页的「更多」进来就是 ?scope=drama。搜索同时作用于画布和短剧。
+ * 范围写在地址栏 ?scope=：全部（画布、短剧和营销片按更新时间混排）、个人画布（默认）、个人短剧、个人营销片；
+ * 短剧 / 营销工作室首页的「更多」进来就是 ?scope=drama / ?scope=marketing。搜索同时作用于三类作品。
  */
 export default function CanvasList() {
   const [params, setParams] = useSearchParams();
   const scope = parseWorksScope(params.get("scope"));
   const list = useCanvasList(PAGE_SIZE);
   const dramas = useDramaList(DRAMA_PAGE_SIZE, list.keyword);
+  const projects = useMarketingList(MARKETING_PAGE_SIZE, list.keyword);
   const canvasImport = useCanvasImport(list.reload);
 
   const setScope = (next: WorksScope) =>
@@ -85,14 +91,34 @@ export default function CanvasList() {
     />
   );
 
-  const showCanvases = scope !== "drama";
-  const showDramas = scope !== "mine";
+  const projectCard = (project: ProjectSummary, index: number) => (
+    <ProjectCard
+      key={`marketing-${project.id}`}
+      project={project}
+      index={index}
+      instant
+      deleting={projects.deletingId === project.id}
+      onDelete={() => projects.remove(project.id)}
+    />
+  );
+
+  const showCanvases = scope === "all" || scope === "mine";
+  const showDramas = scope === "all" || scope === "drama";
+  const showProjects = scope === "all" || scope === "marketing";
   const loading =
-    (showCanvases && list.loading) || (showDramas && dramas.loading && dramas.items.length === 0);
+    (showCanvases && list.loading) ||
+    (showDramas && dramas.loading && dramas.items.length === 0) ||
+    (showProjects && projects.loading && projects.items.length === 0);
   const failed =
-    (showCanvases && list.error) || (showDramas && dramas.failed && dramas.items.length === 0);
+    (showCanvases && list.error) ||
+    (showDramas && dramas.failed && dramas.items.length === 0) ||
+    (showProjects && projects.failed && projects.items.length === 0);
+  const dramasMore = showDramas && dramas.hasMore;
+  const projectsMore = showProjects && projects.hasMore;
   const empty =
-    (!showCanvases || list.items.length === 0) && (!showDramas || dramas.items.length === 0);
+    (!showCanvases || list.items.length === 0) &&
+    (!showDramas || dramas.items.length === 0) &&
+    (!showProjects || projects.items.length === 0);
 
   let body;
   if (loading) {
@@ -107,6 +133,7 @@ export default function CanvasList() {
           onClick={() => {
             if (showCanvases) list.reload();
             if (showDramas) dramas.reload();
+            if (showProjects) projects.reload();
           }}
         >
           重试
@@ -125,6 +152,8 @@ export default function CanvasList() {
           </>
         ) : scope === "drama" ? (
           "还没有短剧"
+        ) : scope === "marketing" ? (
+          "还没有营销片"
         ) : (
           "还没有作品，从这里开始"
         )}
@@ -134,9 +163,15 @@ export default function CanvasList() {
     body = list.items.map(canvasCard);
   } else if (scope === "drama") {
     body = dramas.items.map(dramaCard);
+  } else if (scope === "marketing") {
+    body = projects.items.map(projectCard);
   } else {
-    body = mixWorks(list.items, dramas.items).map((work, index) =>
-      work.kind === "canvas" ? canvasCard(work.item, index) : dramaCard(work.item, index),
+    body = mixWorks(list.items, dramas.items, projects.items).map((work, index) =>
+      work.kind === "canvas"
+        ? canvasCard(work.item, index)
+        : work.kind === "drama"
+          ? dramaCard(work.item, index)
+          : projectCard(work.item, index),
     );
   }
 
@@ -156,6 +191,7 @@ export default function CanvasList() {
             { value: "all", label: "全部" },
             { value: "mine", label: "个人画布" },
             { value: "drama", label: "个人短剧" },
+            { value: "marketing", label: "个人营销片" },
           ]}
         />
         <div className="ml-auto flex items-center gap-1">
@@ -168,7 +204,9 @@ export default function CanvasList() {
 
       <div className={GRID}>
         {scope === "drama" ? (
-          <NewDramaCard />
+          <NewStudioCard to="/drama" label="新建短剧" />
+        ) : scope === "marketing" ? (
+          <NewStudioCard to="/marketing" label="新建营销片" />
         ) : (
           <NewCanvasCard
             variant="panel"
@@ -180,16 +218,28 @@ export default function CanvasList() {
         {body}
       </div>
 
-      {showDramas && dramas.hasMore && !loading && (
-        <div className="mt-8 flex justify-center">
-          <Button
-            variant="outline"
-            className="rounded-full"
-            disabled={dramas.loading}
-            onClick={dramas.loadMore}
-          >
-            {dramas.loading ? "加载中…" : "加载更多短剧"}
-          </Button>
+      {(dramasMore || projectsMore) && !loading && (
+        <div className="mt-8 flex justify-center gap-3">
+          {dramasMore && (
+            <Button
+              variant="outline"
+              className="rounded-full"
+              disabled={dramas.loading}
+              onClick={dramas.loadMore}
+            >
+              {dramas.loading ? "加载中…" : "加载更多短剧"}
+            </Button>
+          )}
+          {projectsMore && (
+            <Button
+              variant="outline"
+              className="rounded-full"
+              disabled={projects.loading}
+              onClick={projects.loadMore}
+            >
+              {projects.loading ? "加载中…" : "加载更多营销片"}
+            </Button>
+          )}
         </div>
       )}
 

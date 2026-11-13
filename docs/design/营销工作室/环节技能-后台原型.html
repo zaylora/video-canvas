@@ -1,0 +1,493 @@
+<!doctype html>
+<html lang="zh-CN" class="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>环节技能后台原型</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+    <style>
+      /* 令牌照抄 web/src/index.css（:root / .dark / 后台浅色与首页外壳同一套米色）；布局照 pages/admin/layout.tsx。对应设计文档 §6.9 / §6.11 */
+      :root {
+        --background: oklch(0.95 0.007 85); --foreground: oklch(0.145 0 0);
+        --card: oklch(0.985 0.004 85); --popover: oklch(0.985 0.004 85); --popover-foreground: oklch(0.145 0 0);
+        --muted: oklch(0.92 0.008 85); --muted-foreground: oklch(0.5 0.015 85);
+        --destructive: oklch(0.577 0.245 27.325);
+        --border: oklch(0.22 0.02 85 / 0.1); --input: oklch(0.22 0.02 85 / 0.16); --ring: oklch(0.708 0 0);
+        --sidebar: oklch(0.925 0.009 85);
+        --chrome: oklch(0.97 0.006 85 / 0.8); --chrome-border: oklch(0.22 0.02 85 / 0.1); --chrome-hover: oklch(0.22 0.02 85 / 0.06);
+        --credit: oklch(0.72 0.15 75);
+        --status-running: oklch(0.58 0.15 250); --status-success: oklch(0.6 0.15 155); --status-warning: oklch(0.7 0.16 70);
+        --beam: oklch(0.62 0.16 55); --preset: oklch(0.55 0.2 295);
+        --font-sans: "Geist", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+        --font-mono: "Geist Mono", "SF Mono", Consolas, monospace;
+        color-scheme: light;
+      }
+      .dark {
+        --background: oklch(0.145 0 0); --foreground: oklch(0.985 0 0);
+        --card: oklch(0.205 0 0); --popover: oklch(0.205 0 0); --popover-foreground: oklch(0.985 0 0);
+        --muted: oklch(0.269 0 0); --muted-foreground: oklch(0.708 0 0);
+        --destructive: oklch(0.704 0.191 22.216);
+        --border: oklch(1 0 0 / 10%); --input: oklch(1 0 0 / 15%); --ring: oklch(0.556 0 0);
+        --sidebar: oklch(0.205 0 0);
+        --chrome: oklch(0.2 0 0 / 0.78); --chrome-border: oklch(1 0 0 / 0.08); --chrome-hover: oklch(1 0 0 / 0.07);
+        --credit: oklch(0.82 0.15 85);
+        --status-running: oklch(0.75 0.12 240); --status-success: oklch(0.75 0.15 155); --status-warning: oklch(0.8 0.15 75);
+        --beam: oklch(0.78 0.15 70); --preset: oklch(0.6 0.19 295);
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; margin: 0; }
+      body { font-family: var(--font-sans); font-size: 14px; line-height: 1.5; color: var(--foreground); background: var(--sidebar); -webkit-font-smoothing: antialiased; overflow: hidden; }
+      button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+      button:disabled { cursor: not-allowed; }
+      input, select { font: inherit; color: inherit; }
+      [data-lucide] { width: 16px; height: 16px; flex: none; stroke-width: 2; }
+      .mono { font-family: var(--font-mono); }
+      .tnum { font-variant-numeric: tabular-nums; }
+      .muted { color: var(--muted-foreground); }
+      .row { display: flex; align-items: center; }
+      .grow { flex: 1; min-width: 0; }
+      .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .spin { animation: spin 0.9s linear infinite; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      @keyframes pop { from { opacity: 0; transform: scale(0.97); } }
+      @keyframes slide { from { transform: translateX(24px); opacity: 0; } }
+      @keyframes fade { from { opacity: 0; } }
+
+      .chrome { background: var(--chrome); box-shadow: 0 10px 15px -3px oklch(0 0 0 / 0.1), 0 0 0 1px var(--chrome-border); backdrop-filter: blur(24px) saturate(1.5); }
+      .pill-bar { display: flex; align-items: center; gap: 2px; border-radius: 999px; height: 40px; padding: 0 4px; }
+      .icon-btn { width: 32px; height: 32px; border-radius: 999px; display: inline-grid; place-items: center; }
+      .icon-btn:hover { background: var(--chrome-hover); }
+      .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 999px; font-size: 13px; font-weight: 500; white-space: nowrap; transition: opacity 0.15s, background 0.15s; }
+      .btn-xs { height: 28px; padding: 0 10px; font-size: 12.5px; }
+      .btn-primary { background: var(--foreground); color: var(--background); }
+      .btn-primary:hover:not(:disabled) { opacity: 0.88; }
+      .btn-primary:disabled { background: var(--chrome-hover); color: var(--muted-foreground); }
+      .btn-outline { box-shadow: inset 0 0 0 1px var(--border); }
+      .btn-outline:hover:not(:disabled) { background: var(--chrome-hover); }
+      .btn-outline:disabled, .btn-ghost:disabled { opacity: 0.5; }
+      .btn-ghost:hover:not(:disabled) { background: var(--chrome-hover); }
+      .status { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 8px; border-radius: 999px; font-size: 11px; font-weight: 500; line-height: 1; white-space: nowrap; flex: none; }
+      .status [data-lucide] { width: 12px; height: 12px; }
+      .s-success { background: color-mix(in oklch, var(--status-success) 15%, transparent); color: var(--status-success); }
+      .s-running { background: color-mix(in oklch, var(--status-running) 15%, transparent); color: var(--status-running); }
+      .s-warning { background: color-mix(in oklch, var(--status-warning) 15%, transparent); color: var(--status-warning); }
+      .s-bad { background: color-mix(in oklch, var(--destructive) 12%, transparent); color: var(--destructive); }
+      .s-muted { background: var(--muted); color: var(--muted-foreground); }
+      .s-preset { background: color-mix(in oklch, var(--preset) 14%, transparent); color: var(--preset); }
+      .s-beam { background: color-mix(in oklch, var(--beam) 16%, transparent); color: var(--beam); }
+
+      /* ---- 后台外壳 ---- */
+      .shell { display: flex; height: 100vh; }
+      .sidebar { width: 256px; flex: none; padding: 8px; display: flex; flex-direction: column; gap: 2px; overflow-y: auto; }
+      .brand { display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 10px; margin: 4px 0 6px; font-weight: 600; }
+      .brand-mark { width: 26px; height: 26px; border-radius: 8px; background: linear-gradient(135deg, oklch(0.78 0.15 70), var(--beam)); display: grid; place-items: center; color: #1a1205; }
+      .grp { font-size: 12px; color: var(--muted-foreground); padding: 14px 12px 4px; }
+      .nav { position: relative; display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 12px; border-radius: 10px; font-size: 13.5px; color: var(--muted-foreground); width: 100%; text-align: left; }
+      .nav:hover { background: var(--chrome-hover); color: var(--foreground); }
+      .nav.on { background: var(--chrome-hover); color: var(--foreground); font-weight: 600; box-shadow: 0 0 0 1px var(--chrome-border); }
+      .nav .new { margin-left: auto; font-size: 10px; padding: 0 6px; border-radius: 999px; background: color-mix(in oklch, var(--beam) 15%, transparent); color: var(--beam); font-weight: 500; }
+      .inset { flex: 1; min-width: 0; margin: 8px 8px 8px 0; border-radius: 22px; background: var(--background); box-shadow: 0 12px 40px -18px oklch(0 0 0 / 0.35), 0 0 0 1px var(--border); display: flex; flex-direction: column; overflow: hidden; position: relative; }
+      .hdr { height: 56px; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 20px; }
+      .crumb { display: flex; align-items: center; gap: 6px; font-size: 13.5px; color: var(--muted-foreground); }
+      .crumb b { color: var(--foreground); font-weight: 500; }
+      .crumb [data-lucide] { width: 14px; height: 14px; }
+      .main { flex: 1; overflow-y: auto; padding: 4px 24px 40px; }
+      .page-title { display: flex; align-items: center; gap: 10px; margin: 6px 0 16px; }
+      .page-title h1 { margin: 0; font-size: 20px; font-weight: 600; }
+
+      .banner { display: flex; align-items: center; gap: 10px; border-radius: 14px; padding: 10px 14px; margin-bottom: 14px; font-size: 13.5px; background: color-mix(in oklch, var(--status-warning) 12%, transparent); }
+      .banner [data-lucide] { color: var(--status-warning); }
+      .panel { border-radius: 18px; background: var(--card); box-shadow: 0 0 0 1px var(--border); overflow: hidden; margin-bottom: 16px; }
+      .panel-h { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--border); font-weight: 600; font-size: 14px; }
+      table { border-collapse: collapse; width: 100%; }
+      th { text-align: left; font-weight: 500; font-size: 12px; color: var(--muted-foreground); padding: 8px 16px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+      td { padding: 11px 16px; border-bottom: 1px solid var(--border); font-size: 13.5px; vertical-align: middle; }
+      tr:last-child td { border-bottom: 0; }
+      tbody tr.click { cursor: pointer; }
+      tbody tr.click:hover td { background: var(--chrome-hover); }
+      tbody tr.dim td { color: var(--muted-foreground); }
+      .key { font-family: var(--font-mono); font-size: 11.5px; color: var(--muted-foreground); }
+      .meth { display: inline-flex; align-items: center; gap: 6px; }
+      .meth [data-lucide] { width: 14px; height: 14px; color: var(--muted-foreground); }
+      .tbl-wrap { overflow-x: auto; }
+
+      /* ---- 抽屉 ---- */
+      .sheet-bg { position: fixed; inset: 0; z-index: 40; background: oklch(0 0 0 / 0.4); animation: fade 0.15s; }
+      .sheet { position: fixed; top: 8px; right: 8px; bottom: 8px; z-index: 41; width: min(880px, calc(100vw - 16px)); border-radius: 20px; background: var(--popover); box-shadow: 0 25px 60px -12px oklch(0 0 0 / 0.5), 0 0 0 1px var(--border); display: flex; flex-direction: column; animation: slide 0.2s ease-out; }
+      .sheet-h { padding: 16px 18px 0; }
+      .sheet-h h2 { margin: 0; font-size: 17px; font-weight: 600; }
+      .tabs { display: flex; gap: 2px; margin-top: 12px; border-bottom: 1px solid var(--border); }
+      .tab { height: 36px; padding: 0 14px; font-size: 13.5px; color: var(--muted-foreground); border-bottom: 2px solid transparent; margin-bottom: -1px; display: inline-flex; align-items: center; gap: 6px; }
+      .tab.on { color: var(--foreground); border-bottom-color: var(--foreground); font-weight: 500; }
+      .tab [data-lucide] { width: 14px; height: 14px; }
+      .sheet-b { flex: 1; overflow-y: auto; padding: 16px 18px 24px; display: grid; gap: 16px; align-content: start; }
+      .sec h3 { margin: 0 0 8px; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+      .sec h3 .status { font-weight: 500; }
+      .box { border-radius: 14px; box-shadow: inset 0 0 0 1px var(--border); padding: 12px 14px; font-size: 13.5px; }
+      .code { font-family: var(--font-mono); font-size: 12px; line-height: 1.65; white-space: pre-wrap; word-break: break-word; background: var(--muted); border-radius: 12px; padding: 12px 14px; max-height: 300px; overflow: auto; margin: 0; }
+      ul.rules { margin: 0; padding-left: 18px; font-size: 13px; display: grid; gap: 4px; }
+      .layers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+      .layer { border-radius: 12px; padding: 10px 12px; font-size: 12.5px; box-shadow: inset 0 0 0 1px var(--border); }
+      .layer b { display: flex; align-items: center; gap: 6px; font-size: 13px; margin-bottom: 4px; }
+      .layer.swap { box-shadow: inset 0 0 0 1.5px color-mix(in oklch, var(--beam) 60%, transparent); background: color-mix(in oklch, var(--beam) 6%, transparent); }
+      .cand { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; box-shadow: inset 0 0 0 1px var(--border); width: 100%; text-align: left; }
+      .cand:hover:not(:disabled) { background: var(--chrome-hover); }
+      .cand.on { box-shadow: inset 0 0 0 1.5px var(--foreground); }
+      .cand:disabled { opacity: 0.5; }
+      .radio { width: 16px; height: 16px; border-radius: 999px; box-shadow: inset 0 0 0 1.5px color-mix(in oklch, var(--foreground) 40%, transparent); flex: none; display: grid; place-items: center; }
+      .cand.on .radio::after { content: ""; width: 8px; height: 8px; border-radius: 999px; background: var(--foreground); }
+      .sel { height: 30px; border-radius: 8px; border: 0; box-shadow: inset 0 0 0 1px var(--input); background: transparent; padding: 0 8px; font-size: 12.5px; }
+      .sel option { background: var(--popover); color: var(--popover-foreground); }
+      .hist { display: grid; gap: 0; }
+      .hist > div { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--border); font-size: 13px; }
+      .hist > div:first-child { border-top: 0; }
+      .form { display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 10px 12px; align-items: center; font-size: 13px; }
+      .form > label { color: var(--muted-foreground); font-size: 12.5px; }
+      .seg { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+      .seg button { height: 30px; padding: 0 12px; border-radius: 999px; font-size: 12.5px; box-shadow: inset 0 0 0 1px var(--border); color: var(--muted-foreground); }
+      .seg button.on { box-shadow: inset 0 0 0 1.5px var(--foreground); color: var(--foreground); font-weight: 500; }
+      .seg button:disabled { opacity: 0.4; }
+      .cmp { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+      .col { border-radius: 14px; box-shadow: inset 0 0 0 1px var(--border); padding: 12px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+      .col.cand-col { box-shadow: inset 0 0 0 1.5px color-mix(in oklch, var(--beam) 55%, transparent); }
+      .metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+      .metric { border-radius: 10px; background: var(--muted); padding: 6px 8px; font-size: 11.5px; color: var(--muted-foreground); }
+      .metric b { display: block; font-size: 14px; color: var(--foreground); font-weight: 600; font-variant-numeric: tabular-nums; }
+      .err { font-size: 12.5px; color: var(--destructive); display: grid; gap: 3px; }
+      .flagl { font-size: 12.5px; color: var(--status-warning); display: grid; gap: 3px; }
+      .sheet-f { padding: 12px 18px; border-top: 1px solid var(--border); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+      .overlay { position: fixed; inset: 0; z-index: 60; background: oklch(0 0 0 / 0.5); backdrop-filter: blur(4px); display: grid; place-items: center; padding: 16px; animation: fade 0.15s; }
+      .dialog { width: 100%; max-width: 560px; border-radius: 16px; background: var(--popover); box-shadow: 0 25px 50px -12px oklch(0 0 0 / 0.45), 0 0 0 1px var(--border); padding: 18px; display: grid; gap: 14px; animation: pop 0.16s ease-out; max-height: calc(100vh - 48px); overflow-y: auto; }
+      .dialog h3 { margin: 0; font-size: 16px; font-weight: 600; }
+      .foot { display: flex; justify-content: flex-end; gap: 8px; }
+      .toast { position: fixed; bottom: 24px; right: 24px; z-index: 99; display: grid; gap: 8px; }
+      .toast > div { display: flex; align-items: center; gap: 10px; border-radius: 12px; padding: 11px 14px; background: var(--popover); box-shadow: 0 10px 30px oklch(0 0 0 / 0.25), 0 0 0 1px var(--border); font-size: 13.5px; animation: pop 0.2s ease-out; max-width: 420px; }
+      .toast .ok { color: var(--status-success); } .toast .bad { color: var(--destructive); } .toast .warn { color: var(--status-warning); }
+      .demo { position: fixed; left: 50%; top: 14px; transform: translateX(-50%); z-index: 30; border-radius: 16px; padding: 7px 10px; font-size: 12px; display: flex; align-items: center; gap: 10px; }
+      .demo label { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
+      .demo b { font-weight: 600; color: rgb(167 139 250); }
+      @media (max-width: 900px) { .sidebar { display: none; } .inset { margin: 0; border-radius: 0; } .layers, .cmp, .metrics { grid-template-columns: 1fr; } .demo { top: auto; bottom: 12px; } }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar" id="sidebar"></aside>
+      <div class="inset">
+        <header class="hdr">
+          <button class="icon-btn" title="收起侧栏"><i data-lucide="panel-left"></i></button>
+          <div class="crumb"><span>AI 配置</span><i data-lucide="chevron-right"></i><b>环节技能</b></div>
+          <div class="grow"></div>
+          <div class="chrome pill-bar"><button class="icon-btn" id="themeBtn" title="切换明暗"><i data-lucide="sun-moon"></i></button></div>
+        </header>
+        <main class="main" id="main"></main>
+      </div>
+    </div>
+    <div id="layer"></div>
+    <div class="toast" id="toastBox"></div>
+    <div class="demo chrome"><b>演示</b><label><input type="checkbox" id="dDisable" /> 停用 daihuo-fanpai 技能</label><button class="btn btn-ghost btn-xs" id="dReset"><i data-lucide="rotate-ccw"></i>重置</button></div>
+
+    <script>
+      const $ = (s, r = document) => r.querySelector(s);
+      const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const ic = (n, cls = "") => `<i data-lucide="${n}" class="${cls}"></i>`;
+      const icons = () => { if (window.lucide) lucide.createIcons(); };
+      const clone = (o) => JSON.parse(JSON.stringify(o));
+      function toast(msg, kind = "ok") {
+        const el = document.createElement("div");
+        el.innerHTML = `${ic({ ok: "circle-check", bad: "circle-x", warn: "triangle-alert" }[kind], kind)}<span>${esc(msg)}</span>`;
+        $("#toastBox").appendChild(el); icons(); setTimeout(() => el.remove(), 2800);
+      }
+
+      /* ================= 数据（示意） ================= */
+      const SKILLS = {
+        "daihuo-fanpai": { title: "带货翻拍", versions: [1, 2, 3], active: 3, scripts: true, chars: 38000, enabled: true },
+        "tvc-director": { title: "TVC 导演", versions: [1], active: 1, scripts: false, chars: 9200, enabled: true },
+        "creatify-ad-prompt-guide": { title: "广告提示词指南", versions: [1], active: 1, scripts: false, chars: 7600, enabled: true },
+        "creatify-ad-reverse": { title: "竞品广告拆解", versions: [1], active: 1, scripts: false, chars: 5400, enabled: true },
+        "old-ad-writer": { title: "老版广告文案", versions: [1], active: 1, scripts: false, chars: 3100, enabled: true },
+        hypit: { title: "Hypit", versions: [1], active: 1, scripts: true, chars: 21000, enabled: true },
+      };
+      const SAMPLES = {
+        perfume: { name: "晨雾香水 · 抖音 · 无参考", ref: false },
+        blender: { name: "便携榨汁杯 · TikTok · 英文", ref: false },
+        cream: { name: "护手霜 · 抖音 · 带 10 秒参考片", ref: true },
+      };
+      const TMS = { gemini: { name: "Gemini 3 Pro", vision: true, video: true }, claude: { name: "Claude Sonnet 5.5", vision: true, video: false }, ds: { name: "DeepSeek V4", vision: false, video: false } };
+      const STEPS = [
+        { key: "marketing.facts", title: "商品事实卡", studio: "营销工作室", media: "看图", needVision: true, refSample: false,
+          duty: "从商品图和用户描述里提取商品事实：外观锚点、已证实卖点、禁用说法、目标人群与引导下单。只写图里看得见、描述里说过的。",
+          inputs: [["product_images", "图片 1–4", "商品图（多模态附件）"], ["description", "文本 ≤1000", "用户描述，可空"], ["platform", "枚举", "投放平台"], ["language", "zh | en", "旁白语言"]],
+          schema: `{\n  "name": "string",\n  "category": "string",\n  "anchors": ["string, 1–8 条"],\n  "selling_points": [{ "text": "string", "proof": "string", "source": "description | image" }],\n  "prohibited": ["string"],\n  "audience": "string",\n  "cta": "string"\n}`,
+          hard: ["必须是合法 JSON 且字段齐全", "anchors 1–8 条，selling_points 1–5 条", "source 只能是 description 或 image"], soft: ["卖点含广告法极限词（国内平台）"],
+          binding: { source: "builtin" }, fail7d: "0.4%", lastTrial: { ok: true, at: "11-09 10:12" } },
+        { key: "marketing.reverse", title: "拆解参考片", studio: "营销工作室", media: "看视频（退回看图 + 截帧）", needVision: true, refSample: true,
+          duty: "把参考视频拆成逐镜头的分镜表：每镜的景别、运镜、主体 + 动作（写到发力过程）、商品怎么出现、台词、关键颜色、是否前 3 秒，以及整条为什么火、出现的第三方品牌与背书话术。",
+          inputs: [["video", "视频 ≤15s", "参考视频（原生视频输入；不支持时为截帧图片）"], ["duration", "秒", "参考片时长"], ["cuts", "秒[]", "ffmpeg 检测到的镜头切点"]],
+          schema: `{\n  "overall": { "style", "narrative_arc", "why_viral", "transcript", "category" },\n  "shots": [{\n    "id", "start", "end", "is_opening_3s",\n    "shot_size", "camera", "subject", "action",\n    "scene", "lighting", "person", "product_in_frame",\n    "product_role": "none | dynamic | hero_real | package_text",\n    "dialogue", "onscreen_text", "key_colors": []\n  }],\n  "brands": [], "claims": []\n}`,
+          hard: ["镜头首尾相接、覆盖时长（容差 0.5 秒）", "前 3 秒的镜头必须标 is_opening_3s", "action 非空且不只是名词", "平均每镜 ≥ 0.4 秒", "product_role 取值合法"], soft: ["动作偏概括（只写结果）", "未标关键颜色"],
+          binding: { source: "skill", skill: "daihuo-fanpai", version: 2 }, fail7d: "1.8%", lastTrial: { ok: true, at: "11-10 16:40" } },
+        { key: "marketing.follow", title: "跟拍改写", studio: "营销工作室", media: "无（纯文本）", needVision: false, refSample: true,
+          duty: "按参考拆解写一份跟拍脚本：镜头结构、节奏、钩子不动，只换成我们的商品、卖点与数字；动作原样带入；去掉第三方品牌；人物不沿用原片外貌。",
+          inputs: [["reverse", "拆解 JSON", "可能被用户修改过"], ["facts", "事实卡 JSON", ""], ["platform / language / duration", "", ""], ["assets", "清单", "商品图张数、有无模特图"]],
+          schema: `{\n  "title": "string",\n  "shots": [{ "start", "end", "shot", "camera", "scene", "narration" }],\n  "music": "string", "voice": "string",\n  "follow_map": [{ "ref_shot": 1, "shot": 1 }]\n}`,
+          hard: ["脚本结构合法", "follow_map 覆盖全部参考镜头", "镜头首尾相接、等于成片时长"], soft: ["出现拆解里的第三方品牌", "出现事实卡没有依据的背书", "广告法极限词（国内平台）"],
+          binding: { source: "skill", skill: "daihuo-fanpai", version: 2 }, fail7d: "2.1%", lastTrial: { ok: true, at: "11-10 16:52" } },
+        { key: "marketing.create", title: "创意脚本", studio: "营销工作室", media: "无（纯文本）", needVision: false, refSample: false,
+          duty: "按给定的创意角度各写一份带货脚本：钩子、镜头表、旁白、配乐与音色。有参考拆解时只借节奏与前 3 秒手法。",
+          inputs: [["facts", "事实卡 JSON", ""], ["angles", "枚举[] 1–4", "痛点-解决 / 卖点拆解 / 生活方式 / 前后对比 / 开箱 / 质感大片"], ["platform / language / duration", "", ""], ["reverse", "拆解 JSON", "可选"]],
+          schema: `{\n  "scripts": [{\n    "angle": "pain | feature | lifestyle | compare | unbox | mood",\n    "title", "hook",\n    "shots": [{ "start", "end", "purpose", "shot", "camera", "scene", "action", "narration" }],\n    "music", "voice"\n  }]\n}`,
+          hard: ["份数 = 角度数、角度不重复", "每份 2–6 个镜头且首尾相接", "旁白长度（中文 ≤ 时长 × 4.5 字）", "旁白语言与设置一致"], soft: ["广告法极限词（国内平台）"],
+          binding: { source: "skill", skill: "tvc-director", version: 1 }, fail7d: "0.9%", lastTrial: { ok: true, at: "11-08 09:30" } },
+      ];
+      const DRAMA = [["drama.plan", "剧本改编"], ["drama.breakdown", "资产拆解"], ["drama.asset_prompts", "资产提示词"], ["drama.storyboard", "分镜脚本"]];
+      const FORMATTERS = [["seedance", "Seedance 分区块", "[基本参数] [参考素材] [整体视觉] [商品] [分镜] [音乐与配音] [硬性约束]"], ["h3", "海螺 H3", "暂用通用段落写法"], ["generic", "通用段落", "连续段落，内容同上"]];
+
+      /* 试跑结果规则（示意）：old-ad-writer 只会输出 Markdown；hypit 在事实卡上缺字段；其他通过，部分有软问题 */
+      function simulate(step, cand) {
+        const id = cand.source === "builtin" ? "builtin" : cand.skill;
+        const seed = [...(step.key + id + (cand.version || ""))].reduce((n, ch) => n + ch.charCodeAt(0), 0);
+        const m = { dur: 6 + (seed % 9) + (step.key.includes("reverse") ? 9 : 0), tin: 2400 + (seed % 7) * 310 + (step.key.includes("reverse") ? 5200 : 0), tout: 600 + (seed % 5) * 140, credits: 2 + (seed % 4) + (step.key.includes("reverse") ? 4 : 0) };
+        if (id === "old-ad-writer") return { ...m, passed: false, attempts: 2, errors: ["输出不是 JSON：以「# 广告脚本」开头", "重写一次后仍缺少字段 scripts"], flags: [], preview: "# 广告脚本\n\n## 第一幕\n镜头缓缓推近……" };
+        if (id === "hypit" && step.key === "marketing.facts") return { ...m, passed: false, attempts: 2, errors: ["缺少字段 anchors", "selling_points[0].source 取值不合法：script"], flags: [], preview: "{ \"name\": \"晨雾香水\", \"selling_points\": [...] }" };
+        const flags = [];
+        if (id === "creatify-ad-prompt-guide" && step.key === "marketing.create") flags.push("1 处广告法极限词「最」");
+        if (id === "creatify-ad-reverse" && step.key === "marketing.reverse") flags.push("2 个镜头未标关键颜色");
+        if (id === "hypit" && step.key === "marketing.reverse") flags.push("3 个镜头的动作只写了结果");
+        const previews = {
+          "marketing.facts": "name: 晨雾香水 50ml\nanchors: 方形磨砂玻璃瓶身 / 金色金属瓶盖 / 正面 logo「BRUME」\nselling_points: 木质调留香约 8 小时（description）…\ncta: 点击下方链接，把清晨带在身上",
+          "marketing.reverse": "4 个镜头 · 10s\nwhy_viral: 前 2 秒手背干纹特写制造不适感；挤膏体慢动作让质地看得见…\n镜头1 0–2s 特写 手持推近：左手手背朝上，右手食指沿干纹从指节划到手腕…\nbrands: 某品牌 · claims: 全网销量第一、限时第二支半价",
+          "marketing.follow": "跟拍 · 早上喷的香，中午就散了？\n镜头1 ← 参考1：左手手腕朝上，右手食指在腕内侧轻点两下后凑近鼻尖…\nfollow_map: 1→1 2→2 3→3 4→4",
+          "marketing.create": "2 份脚本\n· 痛点-解决「早上喷的香，中午就没了？」4 个镜头\n· 生活方式种草「我的通勤香只有这一瓶」4 个镜头",
+        };
+        return { ...m, passed: true, attempts: 1, errors: [], flags, preview: previews[step.key] };
+      }
+
+      /* ================= 状态 ================= */
+      let S;
+      function init() {
+        S = { steps: clone(STEPS), skills: clone(SKILLS), open: null, tab: "contract", cand: null, sample: null, tm: "gemini", compare: true, trial: null, history: {}, confirm: null, fmt: null };
+        S.steps.forEach((s) => (S.history[s.key] = [{ at: "11-08 09:30", who: "admin", from: "内置方法", to: label(s.binding) }]));
+      }
+      const label = (b) => (b.source === "builtin" ? "内置方法" : `${b.skill} v${b.version}`);
+      const sameCand = (a, b) => a && b && a.source === b.source && (a.source === "builtin" || (a.skill === b.skill && a.version === b.version));
+      const effective = (st) => (st.binding.source === "skill" && !S.skills[st.binding.skill].enabled ? { source: "builtin", fallback: true } : st.binding);
+      const stepByKey = (k) => S.steps.find((s) => s.key === k);
+
+      /* ================= 外壳 ================= */
+      function renderSidebar() {
+        const groups = [["AI 配置", [["总览", "layout-dashboard"], ["任务队列", "list-ordered"], ["模型渠道", "radio-tower"], ["插件", "puzzle"], ["技能", "lightbulb"], ["环节技能", "workflow", true], ["运行记录", "history"], ["分析令牌", "key-round"]]], ["用户", [["用户管理", "users"], ["支付管理", "wallet"], ["使用记录", "activity"]]], ["日志管理", [["操作审计", "scroll-text"]]], ["系统设置", [["存储配置", "hard-drive"], ["定价设置", "coins"], ["公告", "megaphone"], ["版本与升级", "arrow-up-circle"]]]];
+        $("#sidebar").innerHTML = `<div class="brand"><span class="brand-mark">${ic("aperture")}</span>连镜 · 管理后台</div>` + groups.map(([g, items]) => `<div class="grp">${g}</div>` + items.map(([l, i, on]) => `<button class="nav ${on ? "on" : ""}">${ic(i)}<span>${l}</span>${on ? `<span class="new">New</span>` : ""}</button>`).join("")).join("");
+      }
+
+      function renderMain() {
+        const fallback = S.steps.filter((s) => effective(s).fallback);
+        $("#main").innerHTML = `
+          <div class="page-title"><h1>环节技能</h1></div>
+          ${fallback.length ? `<div class="banner">${ic("triangle-alert")}<span class="grow">${fallback.map((s) => `「${s.title}」`).join("")}绑定的技能 ${esc(fallback[0].binding.skill)} 已停用，已自动退回内置方法</span><button class="btn btn-outline btn-xs" data-act="open" data-k="${fallback[0].key}">去处理</button></div>` : ""}
+          <div class="panel">
+            <div class="panel-h">${ic("shopping-bag")}营销工作室</div>
+            <div class="tbl-wrap"><table><thead><tr><th>环节</th><th>当前方法</th><th>输入媒体</th><th>最近试跑</th><th>近 7 天失败率</th><th></th></tr></thead><tbody>
+            ${S.steps.map((s) => { const e = effective(s); const sk = s.binding.source === "skill" ? S.skills[s.binding.skill] : null; const newer = sk && sk.active > s.binding.version;
+              return `<tr class="click" data-act="open" data-k="${s.key}">
+                <td><div style="font-weight:500">${esc(s.title)}</div><div class="key">${s.key}</div></td>
+                <td><span class="meth">${ic(e.source === "builtin" ? "box" : "book-open")}${esc(e.fallback ? "内置方法" : label(s.binding))}</span>
+                  ${e.fallback ? ` <span class="status s-warning">已退回内置</span>` : ""}${newer && !e.fallback ? ` <span class="status s-beam" title="技能已发布 v${sk.active}">有新版本 v${sk.active}</span>` : ""}</td>
+                <td class="muted">${esc(s.media)}</td>
+                <td>${s.lastTrial ? `<span class="status ${s.lastTrial.ok ? "s-success" : "s-bad"}">${s.lastTrial.ok ? "通过" : "未通过"}</span> <span class="muted tnum" style="font-size:12.5px">${s.lastTrial.at}</span>` : `<span class="muted">—</span>`}</td>
+                <td class="tnum">${s.fail7d}</td>
+                <td style="text-align:right">${ic("chevron-right")}</td></tr>`; }).join("")}
+            </tbody></table></div>
+          </div>
+          <div class="panel">
+            <div class="panel-h">${ic("film")}短剧工作室<span class="status s-muted" style="margin-left:4px">待迁移</span></div>
+            <div class="tbl-wrap"><table><tbody>${DRAMA.map(([k, t]) => `<tr class="dim"><td><div>${t}</div><div class="key">${k}</div></td><td>沿用开拍设置里的「内置 / 我的 / 技能」</td><td style="text-align:right">—</td></tr>`).join("")}</tbody></table></div>
+          </div>
+          <div class="panel">
+            <div class="panel-h">${ic("code-xml")}视频提示词格式化器<span class="status s-muted" style="margin-left:4px">代码维护</span></div>
+            <div class="tbl-wrap"><table><thead><tr><th>写法</th><th>名称</th><th>结构</th><th></th></tr></thead><tbody>${FORMATTERS.map(([k, n, d]) => `<tr><td class="key">${k}</td><td>${n}</td><td class="muted" style="font-size:12.5px">${d}</td><td style="text-align:right"><button class="btn btn-ghost btn-xs" data-act="fmt" data-k="${k}">${ic("eye")}预览</button></td></tr>`).join("")}</tbody></table></div>
+          </div>`;
+        icons();
+      }
+
+      /* ================= 抽屉 ================= */
+      function openSheet(key) {
+        const st = stepByKey(key);
+        S.open = key; S.tab = "contract"; S.trial = null;
+        S.cand = clone(effective(st).fallback ? { source: "builtin" } : st.binding);
+        S.sample = st.refSample ? "cream" : "perfume";
+        renderSheet();
+      }
+      function renderSheet() {
+        const st = stepByKey(S.open);
+        if (!st) { $("#layer").innerHTML = ""; return; }
+        const e = effective(st);
+        const tabs = [["contract", "协议", "lock"], ["method", "方法", "book-open"], ["trial", "试跑", "flask-conical"]];
+        let body = "";
+        if (S.tab === "contract") {
+          body = `
+            <div class="layers">
+              <div class="layer"><b>${ic("lock")}协议层</b>职责、输入、输出 Schema、校验——固定，代码维护</div>
+              <div class="layer swap"><b>${ic("book-open")}方法层</b>当前：${esc(e.fallback ? "内置方法（已退回）" : label(st.binding))}——可替换</div>
+              <div class="layer"><b>${ic("code-xml")}格式化层</b>脚本 → 视频提示词，按模型写法拼装——固定，代码维护</div>
+            </div>
+            <div class="sec"><h3>本步职责</h3><div class="box">${esc(st.duty)}</div></div>
+            <div class="sec"><h3>输入 <span class="status s-muted">${esc(st.media)}</span></h3><div class="box" style="padding:0"><table><thead><tr><th>变量</th><th>类型</th><th>说明</th></tr></thead><tbody>${st.inputs.map(([a, b, c]) => `<tr><td class="key">${esc(a)}</td><td class="muted">${esc(b)}</td><td>${esc(c)}</td></tr>`).join("")}</tbody></table></div></div>
+            <div class="sec"><h3>输出 JSON Schema</h3><pre class="code">${esc(st.schema)}</pre></div>
+            <div class="sec"><h3>校验规则</h3><div class="box"><div class="muted" style="font-size:12px;margin-bottom:4px">硬错误（带原因重写一次，仍不过则该环节失败）</div><ul class="rules">${st.hard.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>
+              <div class="muted" style="font-size:12px;margin:10px 0 4px">软问题（通过，但在用户界面标红，改掉才能出片）</div><ul class="rules">${st.soft.map((r) => `<li>${esc(r)}</li>`).join("")}</ul></div></div>
+            <div class="sec"><h3>提示词拼接顺序</h3><pre class="code">## 本步职责        ← 协议
+## 输入            ← 协议（变量 JSON + 多模态附件）
+## 方法            ← 方法层（内置正文，或【写作方法：技能 vN】&lt;skill&gt;…&lt;/skill&gt;）
+## 输出格式        ← 协议（由 Schema 生成）
+## 校验规则        ← 协议</pre></div>`;
+        } else if (S.tab === "method") {
+          const cands = [{ source: "builtin" }, ...Object.entries(S.skills).map(([k, v]) => ({ source: "skill", skill: k, version: v.active }))];
+          body = `
+            <div class="sec"><h3>当前生效</h3><div class="box row" style="gap:10px">${ic(e.source === "builtin" ? "box" : "book-open")}<div class="grow"><div style="font-weight:500">${esc(e.fallback ? "内置方法" : label(st.binding))}</div><div class="muted" style="font-size:12.5px">${e.fallback ? `原绑定 ${esc(label(st.binding))} 的技能已停用，自动退回` : st.binding.source === "builtin" ? "随版本发布，改写自 daihuo-fanpai / HiAPIAI 等（见 NOTICE.md）" : `已钉死版本 v${st.binding.version}`}</div></div>${e.fallback ? `<span class="status s-warning">已退回内置</span>` : `<span class="status s-success">生效中</span>`}</div></div>
+            <div class="sec"><h3>换一个方法</h3><div style="display:grid;gap:6px">
+              ${cands.map((c) => { const sk = c.source === "skill" ? S.skills[c.skill] : null; const on = S.cand && S.cand.source === c.source && (c.source === "builtin" || S.cand.skill === c.skill); const cur = sameCand(c, st.binding) && !e.fallback;
+                return `<button class="cand ${on ? "on" : ""}" data-act="cand" data-s="${c.source}" data-skill="${c.skill || ""}" ${sk && !sk.enabled ? `disabled title="技能已停用"` : ""}>
+                  <span class="radio"></span>
+                  <span class="grow"><span class="row" style="gap:6px;flex-wrap:wrap"><b style="font-weight:500">${c.source === "builtin" ? "内置方法" : esc(c.skill)}</b>${sk ? `<span class="muted" style="font-size:12.5px">${esc(sk.title)}</span>` : ""}
+                    ${sk && sk.scripts ? `<span class="status s-muted" title="技能里的脚本不执行">仅用正文</span>` : ""}${sk && sk.chars > 16000 ? `<span class="status s-warning" title="正文 ${sk.chars} 字，超出 16,000 字的部分会截断">会截断</span>` : ""}${sk && !sk.enabled ? `<span class="status s-muted">已停用</span>` : ""}${cur ? `<span class="status s-success">当前</span>` : ""}</span></span>
+                  ${sk && on ? `<select class="sel" data-act="ver" onclick="event.stopPropagation()">${sk.versions.map((v) => `<option value="${v}" ${S.cand.version === v ? "selected" : ""}>v${v}${v === sk.active ? "（最新）" : ""}</option>`).join("")}</select>` : ""}
+                </button>`; }).join("")}
+            </div></div>
+            <div class="sec"><h3>绑定历史</h3><div class="box hist">${S.history[st.key].slice().reverse().map((h) => `<div><span class="muted tnum" style="width:84px">${h.at}</span><span class="grow">${esc(h.from)} → <b style="font-weight:500">${esc(h.to)}</b></span><span class="muted">${esc(h.who)}</span>${h.from !== h.to ? `<button class="btn btn-ghost btn-xs" data-act="restore" data-to="${esc(h.from)}">${ic("undo-2")}恢复</button>` : ""}</div>`).join("")}</div></div>`;
+        } else {
+          const t = S.trial;
+          const sampleOk = (k) => !st.refSample || SAMPLES[k].ref;
+          const tmOk = (k) => !st.needVision || TMS[k].vision;
+          const candIsCurrent = sameCand(S.cand, st.binding) && !e.fallback;
+          body = `
+            <div class="box form">
+              <label>候选</label><div class="row" style="gap:8px">${ic(S.cand.source === "builtin" ? "box" : "book-open")}<b style="font-weight:500">${esc(label(S.cand))}</b>${candIsCurrent ? `<span class="status s-muted">即当前绑定</span>` : ""}<button class="btn btn-ghost btn-xs" data-act="tab" data-t="method">更换</button></div>
+              <label>样例</label><div class="seg">${Object.entries(SAMPLES).map(([k, v]) => `<button class="${S.sample === k ? "on" : ""}" data-act="sample" data-k="${k}" ${sampleOk(k) ? "" : `disabled title="这个环节需要带参考片的样例"`}>${esc(v.name)}</button>`).join("")}</div>
+              <label>文本模型</label><div class="seg">${Object.entries(TMS).map(([k, v]) => `<button class="${S.tm === k ? "on" : ""}" data-act="tm" data-k="${k}" ${tmOk(k) ? "" : `disabled title="这个环节要看图"`}>${esc(v.name)}${st.key === "marketing.reverse" && v.vision && !v.video ? "（退回截帧）" : ""}</button>`).join("")}</div>
+              <label>对比</label><label class="row" style="gap:6px;color:var(--foreground);font-size:13px"><input type="checkbox" data-act="compare" ${S.compare && !candIsCurrent ? "checked" : ""} ${candIsCurrent ? "disabled" : ""}/> 同时跑当前绑定（${esc(e.fallback ? "内置方法" : label(st.binding))}）</label>
+            </div>
+            ${t ? `<div class="cmp">${trialCol(t.cand, true)}${t.base ? trialCol(t.base, false) : ""}</div>` : `<div class="box muted" style="text-align:center;padding:28px">${ic("flask-conical")}<div style="margin-top:6px">还没有试跑结果</div></div>`}`;
+        }
+        const t = S.trial;
+        const canActivate = t && !t.cand.running && t.cand.res.passed && sameCand(t.cand.c, S.cand) && !(sameCand(S.cand, st.binding) && !e.fallback);
+        const why = !t ? "先试跑这个候选" : t.cand.running ? "试跑进行中" : !t.cand.res.passed ? "候选没有通过格式校验" : sameCand(S.cand, st.binding) && !e.fallback ? "候选就是当前绑定" : "";
+        const running = t && (t.cand.running || (t.base && t.base.running));
+        $("#layer").innerHTML = `<div class="sheet-bg" data-act="close"></div>
+          <div class="sheet">
+            <div class="sheet-h"><div class="row" style="gap:8px"><h2>${esc(st.title)}</h2><span class="key">${st.key}</span><span class="grow"></span><button class="icon-btn" data-act="close">${ic("x")}</button></div>
+              <div class="tabs">${tabs.map(([k, l, i]) => `<button class="tab ${S.tab === k ? "on" : ""}" data-act="tab" data-t="${k}">${ic(i)}${l}</button>`).join("")}</div></div>
+            <div class="sheet-b">${body}</div>
+            <div class="sheet-f">
+              ${S.tab !== "trial" ? `<span class="muted" style="font-size:12.5px">候选：${esc(label(S.cand))}</span><span class="grow"></span><button class="btn btn-primary" data-act="tab" data-t="trial">${ic("flask-conical")}去试跑</button>`
+                : `<span class="muted" style="font-size:12.5px">${t && !running ? `本次试跑 ✦${t.cand.res.credits + (t.base ? t.base.res.credits : 0)}，记在你的账户` : "试跑费用记在操作人账户"}</span><span class="grow"></span>
+                   <button class="btn btn-outline" data-act="run" ${running ? "disabled" : ""}>${running ? ic("loader-2", "spin") : ic("play")}${t ? "再跑一次" : "开始试跑"}</button>
+                   <button class="btn btn-primary" data-act="activate" ${canActivate ? "" : "disabled"} title="${esc(why)}">${ic("check")}设为生效</button>`}
+            </div>
+          </div>
+          ${S.confirm ? confirmHTML(st) : ""}${S.fmt ? fmtHTML() : ""}`;
+        icons();
+      }
+      function trialCol(x, isCand) {
+        if (x.running) return `<div class="col ${isCand ? "cand-col" : ""}"><div class="row" style="gap:6px"><b style="font-weight:500">${isCand ? "候选" : "当前"} · ${esc(label(x.c))}</b></div><div class="muted row" style="gap:6px">${ic("loader-2", "spin")}试跑中…</div></div>`;
+        const r = x.res;
+        return `<div class="col ${isCand ? "cand-col" : ""}">
+          <div class="row" style="gap:6px;flex-wrap:wrap"><b style="font-weight:500">${isCand ? "候选" : "当前"} · ${esc(label(x.c))}</b><span class="grow"></span><span class="status ${r.passed ? "s-success" : "s-bad"}">${ic(r.passed ? "check" : "x")}${r.passed ? "格式校验通过" : "格式校验失败"}</span></div>
+          <div class="metrics"><div class="metric">耗时<b>${r.dur}s</b></div><div class="metric">输入<b>${r.tin.toLocaleString()}</b></div><div class="metric">输出<b>${r.tout.toLocaleString()}</b></div><div class="metric">积分<b>✦${r.credits}</b></div></div>
+          ${r.errors.length ? `<div class="err">${r.errors.map((e) => `<span class="row" style="gap:6px;align-items:flex-start">${ic("circle-x")}${esc(e)}</span>`).join("")}</div>` : ""}
+          ${r.flags.length ? `<div class="flagl">${r.flags.map((e) => `<span class="row" style="gap:6px">${ic("triangle-alert")}软问题：${esc(e)}</span>`).join("")}</div>` : ""}
+          <div class="muted" style="font-size:12px">${r.attempts > 1 ? "重写 1 次" : "一次通过"} · 输出预览</div>
+          <pre class="code" style="max-height:180px">${esc(r.preview)}</pre>
+        </div>`;
+      }
+      function confirmHTML(st) {
+        return `<div class="overlay"><div class="dialog"><h3>把「${esc(st.title)}」换成 ${esc(label(S.cand))}？</h3>
+          <div class="muted" style="font-size:13.5px">立即生效：之后新开始的环节都用它，进行中的不受影响。输出格式不变，下游不需要任何调整。</div>
+          <div class="box row" style="gap:8px;font-size:13px">${esc(effective(st).fallback ? "内置方法" : label(st.binding))} ${ic("arrow-right")} <b style="font-weight:500">${esc(label(S.cand))}</b></div>
+          <div class="foot"><button class="btn btn-ghost" data-act="confirm-no">取消</button><button class="btn btn-primary" data-act="confirm-yes">设为生效</button></div></div></div>`;
+      }
+      function fmtHTML() {
+        const k = S.fmt;
+        const seed = `[基本参数] 9:16，15 秒，有声\n[参考素材] @图片1：晨雾香水 50ml，外观的唯一依据，禁止重新设计、改色、改形、改 logo。\n[整体视觉] 前 3 秒强钩子，节奏快；痛点-解决\n[商品] 方形磨砂玻璃瓶身；金色金属瓶盖；正面 logo「BRUME」\n[分镜] 镜头1（0–3s）特写，固定：地铁车厢里女生低头闻袖口，微微皱眉。旁白：「早上喷的香，中午就没了？」\n       …\n[音乐与配音] 旁白：中文，年轻女声；配乐：轻快电子节拍\n[硬性约束] 商品外观与参考图一致；商品不出画；除商品本身印刷的文字外画面不出现任何文字…`;
+        const gen = `一条 15 秒、9:16 的有声商品广告。@图片1：晨雾香水 50ml，外观的唯一依据……\n\n整体风格：前 3 秒强钩子，节奏快；痛点-解决。商品外观：方形磨砂玻璃瓶身、金色金属瓶盖……\n\n镜头1（0–3s）特写，固定：地铁车厢里女生低头闻袖口……\n\n要求：商品外观与参考图一致；商品不出画……`;
+        return `<div class="overlay" data-act="fmt-close"><div class="dialog" style="max-width:640px"><h3>格式化器预览 · ${esc(k)}</h3>
+          <div class="muted" style="font-size:13px">同一份脚本，经代码拼装成视频模型的提示词。它不读技能，换技能不影响这里；改写法需要改代码发版。</div>
+          <pre class="code">${esc(k === "seedance" ? seed : gen)}</pre><div class="foot"><button class="btn btn-primary" data-act="fmt-close">好的</button></div></div></div>`;
+      }
+
+      function runTrial() {
+        const st = stepByKey(S.open);
+        const e = effective(st);
+        const base = S.compare && !(sameCand(S.cand, st.binding) && !e.fallback) ? (e.fallback ? { source: "builtin" } : clone(st.binding)) : null;
+        S.trial = { cand: { c: clone(S.cand), running: true }, base: base ? { c: base, running: true } : null };
+        renderSheet();
+        setTimeout(() => {
+          if (!S.trial) return;
+          S.trial.cand = { c: S.trial.cand.c, running: false, res: simulate(st, S.trial.cand.c) };
+          if (S.trial.base) S.trial.base = { c: S.trial.base.c, running: false, res: simulate(st, S.trial.base.c) };
+          st.lastTrial = { ok: S.trial.cand.res.passed, at: "刚刚" };
+          renderSheet(); renderMain();
+          toast(S.trial.cand.res.passed ? "候选通过格式校验" : "候选没有通过格式校验", S.trial.cand.res.passed ? "ok" : "bad");
+        }, 1600);
+      }
+
+      /* ================= 事件 ================= */
+      document.addEventListener("click", (ev) => {
+        const el = ev.target.closest("[data-act]");
+        if (!el || el.disabled) return;
+        const a = el.dataset.act;
+        const st = S.open && stepByKey(S.open);
+        switch (a) {
+          case "open": openSheet(el.dataset.k); break;
+          case "close": S.open = null; S.trial = null; $("#layer").innerHTML = ""; break;
+          case "tab": S.tab = el.dataset.t; renderSheet(); break;
+          case "cand": {
+            const src = el.dataset.s;
+            const c = src === "builtin" ? { source: "builtin" } : { source: "skill", skill: el.dataset.skill, version: S.skills[el.dataset.skill].active };
+            if (!sameCand(c, S.cand)) { S.cand = c; S.trial = null; }
+            renderSheet(); break;
+          }
+          case "sample": S.sample = el.dataset.k; S.trial = null; renderSheet(); break;
+          case "tm": S.tm = el.dataset.k; S.trial = null; renderSheet(); break;
+          case "run": runTrial(); break;
+          case "activate": S.confirm = true; renderSheet(); break;
+          case "confirm-no": S.confirm = null; renderSheet(); break;
+          case "confirm-yes": {
+            const from = effective(st).fallback ? "内置方法" : label(st.binding);
+            st.binding = clone(S.cand);
+            S.history[st.key].push({ at: "刚刚", who: "你", from, to: label(st.binding) });
+            S.confirm = null; S.trial = null; S.tab = "method";
+            renderSheet(); renderMain();
+            toast(`「${st.title}」已换成 ${label(st.binding)}`);
+            break;
+          }
+          case "restore": {
+            const to = el.dataset.to;
+            if (to === "内置方法") S.cand = { source: "builtin" };
+            else { const [skill, v] = to.split(" v"); S.cand = { source: "skill", skill, version: Number(v) }; }
+            S.trial = null; S.tab = "trial"; renderSheet();
+            toast("恢复也需要先试跑通过", "warn");
+            break;
+          }
+          case "fmt": S.fmt = el.dataset.k; if (!S.open) { $("#layer").innerHTML = fmtHTML(); icons(); } else renderSheet(); break;
+          case "fmt-close": if (ev.target !== el && !ev.target.closest("button")) return; S.fmt = null; if (S.open) renderSheet(); else $("#layer").innerHTML = ""; break;
+        }
+      });
+      document.addEventListener("change", (ev) => {
+        const t = ev.target;
+        if (t.dataset.act === "ver") { S.cand.version = Number(t.value); S.trial = null; renderSheet(); }
+        if (t.dataset.act === "compare") { S.compare = t.checked; S.trial = null; renderSheet(); }
+      });
+      document.addEventListener("keydown", (ev) => { if (ev.key === "Escape") { if (S.fmt) { S.fmt = null; S.open ? renderSheet() : ($("#layer").innerHTML = ""); } else if (S.confirm) { S.confirm = null; renderSheet(); } else if (S.open) { S.open = null; $("#layer").innerHTML = ""; } } });
+      $("#themeBtn").addEventListener("click", () => document.documentElement.classList.toggle("dark"));
+      $("#dDisable").addEventListener("change", (ev) => { S.skills["daihuo-fanpai"].enabled = !ev.target.checked; renderMain(); if (S.open) renderSheet(); });
+      $("#dReset").addEventListener("click", () => { $("#dDisable").checked = false; $("#layer").innerHTML = ""; init(); renderMain(); });
+
+      init();
+      renderSidebar();
+      renderMain();
+    </script>
+  </body>
+</html>
