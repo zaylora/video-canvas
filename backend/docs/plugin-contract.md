@@ -100,7 +100,7 @@ meta: {
   "json": { ... },                       // 与 form / multipart 三选一，都没有表示无请求体
   "form": { "k": "v" },                  // application/x-www-form-urlencoded
   "multipart": { "fields": { "k": "v" }, "parts": [ { "name": "file", "fileRef": "input:images.0", "filename": "a.png" } ] },
-  "responseType": "json",                // json（默认）/ text / binary
+  "responseType": "json",                // json（默认）/ text / binary / image_json
   "timeout": 30,                         // 秒，默认 30，上限 120；同步接口（mode: "sync"）的提交请求例外，时限取模型配置的任务超时
   "auth": { "type": "query", "name": "apiKey" }   // 可选：只为这一次请求换一种注入方式（bearer / header(需 name) / query(需 name) / none），Key 仍由宿主注入
 }
@@ -139,6 +139,8 @@ meta: {
 ```
 
 - `responseType: "binary"`：宿主不把响应体交给插件，而是流式写入素材存储，响应对象是 `{ status, headers, asset: { id, mime, size } }`；产物在 `outputs` 里写 `{ "type": "asset" }`（宿主用最近一次 binary 响应落库的素材）。
+- `responseType: "image_json"` 仅用于图片模型的 OpenAI 风格响应。宿主识别 `data[].b64_json`，解码并校验 PNG、JPEG 或 WebP；之后删除原始 base64，将该成员替换为 `asset_index`（从 0 开始的本次响应图片索引）。插件用 `{ "type": "asset", "asset_index": 0 }` 引用该图片；宿主只接受本次响应解码出的索引，不能指定任意素材 ID。图片在插件返回 `succeeded` 且产物通过校验后才保存为当前任务用户的素材，只保存被引用的，同一索引引用多次只保存一份。若同一成员含有效 URL，优先使用 URL。URL 与素材可混合并按原顺序返回。
+- `image_json` 响应总上限 64 MiB，最多 10 张内联图片，每张解码后最多 12 MiB；遇到非法数据、超限或保存失败按 `terminal` 处理，避免自动重复调用已计费的生图请求。`b64_json` 字段会从交给插件及跟踪的响应中移除；非 2xx 的错误体不是 JSON 时原样交给 `classifyError`，被截断且含 `b64_json` 的整段丢弃。提交请求完整发出后连接中断、超时，或解析钩子失败，按结果未知处理，请核对上游是否已计费；请求没发出去（拨号、DNS 失败、内网拦截）照常可重试。
 - 宿主的响应体读取上限 5MB（json/text），超出按 `terminal`。
 - **非 2xx 状态码不会进入 `parse*` 钩子**：宿主先调 `classifyError(ctx, resp)`（如果实现了），没有实现或返回 null 时用默认规则（见 §8）。所以 `parse*` 里可以放心假设 2xx。上游用 200 + 错误码表达失败的，由 `parseSubmitResponse` / `parseQueryResponse` 返回 `failed`。
 

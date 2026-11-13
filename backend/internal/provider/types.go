@@ -154,6 +154,7 @@ type Output struct {
 	Usage *modelcfg.Usage `json:"usage,omitempty"`
 
 	// 以下只在 type=asset 时由宿主填写：二进制响应已经写入素材存储，worker 不必再下载转存，直接据此生成 TaskOutput。
+	AssetIndex *int   `json:"asset_index,omitempty"` // image_json 响应中的受控素材索引
 	AssetID    uint64 `json:"asset_id,omitempty"`    // 宿主已写入的素材
 	AssetURL   string `json:"asset_url,omitempty"`   // 素材的访问地址
 	DurationMs int64  `json:"duration_ms,omitempty"` // 时长（毫秒）

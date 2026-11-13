@@ -12,9 +12,11 @@ import (
 	"mime/multipart"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"video-canvas/internal/provider"
@@ -189,9 +191,22 @@ func (e *Executor) Submit(ctx context.Context, snap *provider.Snapshot, in provi
 	}
 	parsed, err := o.require(ctx, pluginproto.HookParseSubmitResponse, hc, resp)
 	if err != nil {
+		if req.responseType == responseImageJSON {
+			// 上游已出图计费，不能按 runner 崩溃等原分类自动重试；插件级失败的标记要保留，worker 据此发告警
+			var pe *provider.Error
+			fault := errors.As(err, &pe) && pe.PluginFault
+			return nil, &provider.Error{Class: provider.ClassSubmitUnknown, Code: string(provider.ClassSubmitUnknown), Message: "上游已响应，解析图片结果失败，请核对上游计费", Cause: redactError(err, o.red.str), PluginFault: fault}
+		}
 		return nil, err
 	}
-	return o.parseSubmitResult(parsed, ep.Mode)
+	result, err := o.parseSubmitResult(parsed, ep.Mode)
+	if err != nil {
+		return nil, err
+	}
+	if err := o.saveInlineImages(ctx, result.Immediate); err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 // Query 查询一次异步任务并解析统一结果。
@@ -228,7 +243,14 @@ func (e *Executor) Query(ctx context.Context, snap *provider.Snapshot, task prov
 	if err != nil {
 		return nil, err
 	}
-	return o.parseQueryResult(parsed)
+	result, err := o.parseQueryResult(parsed)
+	if err != nil {
+		return nil, err
+	}
+	if err := o.saveInlineImages(ctx, result); err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 // Cancel 尽力调用插件取消钩子；没有实现时交给任务服务软取消。
@@ -542,6 +564,18 @@ func (o *operation) execute(ctx context.Context, b *builtRequest, phase string) 
 		return hookResponse{}, retryableErr("", "渠道限流等待被取消", err)
 	}
 	defer release()
+	// image_json 提交：请求完整发出后再出错，上游可能已出图计费，按结果未知处理；
+	// 没发出去（拨号失败、DNS 失败、内网拦截）不会计费，照常走 requestError 重试
+	var sent atomic.Bool
+	if phase == "submit" && b.responseType == responseImageJSON {
+		requestCtx = httptrace.WithClientTrace(requestCtx, &httptrace.ClientTrace{
+			WroteRequest: func(info httptrace.WroteRequestInfo) {
+				if info.Err == nil {
+					sent.Store(true)
+				}
+			},
+		})
+	}
 	req, cleanup, err := o.httpRequest(requestCtx, b)
 	if err != nil {
 		return hookResponse{}, err
@@ -549,6 +583,9 @@ func (o *operation) execute(ctx context.Context, b *builtRequest, phase string) 
 	defer cleanup()
 	resp, err := o.e.client().Do(req)
 	if err != nil {
+		if sent.Load() {
+			return hookResponse{}, &provider.Error{Class: provider.ClassSubmitUnknown, Code: string(provider.ClassSubmitUnknown), Message: "图片提交结果未知，请核对上游计费", Cause: redactError(err, o.red.str)}
+		}
 		return hookResponse{}, o.requestError(phase, err)
 	}
 	defer resp.Body.Close()
@@ -557,8 +594,14 @@ func (o *operation) execute(ctx context.Context, b *builtRequest, phase string) 
 		if readErr != nil {
 			return hookResponse{}, o.requestError(phase, readErr)
 		}
+		if b.responseType == responseImageJSON {
+			raw = scrubImageError(raw)
+		}
 		h := responseFromBytes(resp, raw, responseJSON)
 		return hookResponse{}, o.classifyHTTPError(ctx, h)
+	}
+	if b.responseType == responseImageJSON {
+		return o.imageJSONResponse(resp)
 	}
 	if b.responseType == responseBinary {
 		if o.e.opts.Saver == nil {
@@ -747,6 +790,13 @@ func (o *operation) validateOutputs(outputs []provider.Output) error {
 				return &provider.Error{Class: provider.ClassTerminal, Code: provider.CodeSSRFBlocked, Message: "产物地址不允许", Cause: redactError(err, o.red.str), PluginFault: true}
 			}
 		case provider.OutputAsset:
+			// 带 asset_index 的引用 image_json 响应里的内联图片，素材信息在全部产物通过校验后由 saveInlineImages 补全
+			if out.AssetIndex != nil {
+				if *out.AssetIndex < 0 || *out.AssetIndex >= len(o.inlineImages) {
+					return pluginFault("asset 索引没有对应的图片响应")
+				}
+				continue
+			}
 			// 插件只写 {type:"asset"}，素材 id 与地址由宿主用最近一次 binary 响应补全（契约 §6）
 			if o.asset == nil {
 				return pluginFault("asset 产物没有对应的二进制响应")

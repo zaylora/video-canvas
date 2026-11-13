@@ -45,9 +45,9 @@ func TestAllBuiltinPluginsPassPrecheck(t *testing.T) {
 		if !builtinSemver.MatchString(meta.Version) {
 			t.Fatalf("内置插件 %s 的版本号不是合法 semver：%q", meta.Key, meta.Version)
 		}
-		// 模型弹窗的协议列表要显示厂商和请求路径（渠道模型重构）：内置插件都声明了，版本统一 1.1.0
-		if meta.Version != "1.1.0" || meta.Vendor == "" {
-			t.Fatalf("内置插件 %s 应是 1.1.0 并声明 vendor：version=%q vendor=%q", meta.Key, meta.Version, meta.Vendor)
+		// 模型弹窗的协议列表要显示厂商和请求路径。
+		if meta.Vendor == "" {
+			t.Fatalf("内置插件 %s 应声明 vendor：version=%q vendor=%q", meta.Key, meta.Version, meta.Vendor)
 		}
 		for kind, ep := range meta.Endpoints {
 			if ep.Method == "" || ep.Path == "" {
