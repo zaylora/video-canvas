@@ -238,13 +238,15 @@ export function FactDialog({
 
   const inputClass =
     "bg-chrome-hover border-chrome-border focus-visible:ring-ring/50 w-full rounded-2xl border px-3.5 py-2 text-sm outline-none focus-visible:ring-2";
+  // 多行框随内容长高，封顶后框内滚动，免得把弹窗撑出屏幕
+  const textareaClass = "max-h-36 overflow-y-auto";
   return (
     <Dialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
-      <DialogContent className="sm:max-w-xl">
+      <DialogContent className="flex max-h-[min(88svh,820px)] flex-col sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>商品信息</DialogTitle>
         </DialogHeader>
-        <div className="grid gap-3.5">
+        <div className="-mx-4 grid min-h-0 flex-1 gap-3.5 overflow-y-auto px-4 py-0.5">
           <div className="grid gap-1.5 text-xs">
             <span className="text-muted-foreground">商品图与模特</span>
             <div className="flex flex-wrap items-center gap-2 pt-1.5">
@@ -303,17 +305,17 @@ export function FactDialog({
             <Textarea
               id="marketing-facts-anchors"
               rows={3}
-              className={inputClass}
+              className={cn(inputClass, textareaClass)}
               {...field("anchors")}
             />
           </div>
           <label className="grid gap-1.5 text-xs">
             <span className="text-muted-foreground">卖点（每行一条）</span>
-            <Textarea rows={3} className={inputClass} {...field("selling")} />
+            <Textarea rows={3} className={cn(inputClass, textareaClass)} {...field("selling")} />
           </label>
           <label className="grid gap-1.5 text-xs">
             <span className="text-muted-foreground">禁用说法（每行一条）</span>
-            <Textarea rows={2} className={inputClass} {...field("prohibited")} />
+            <Textarea rows={2} className={cn(inputClass, textareaClass)} {...field("prohibited")} />
           </label>
           <label className="grid gap-1.5 text-xs">
             <span className="text-muted-foreground">引导下单</span>
