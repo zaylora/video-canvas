@@ -23,12 +23,16 @@ type inlineImage struct {
 	mime string
 }
 
-// imageJSONResponse 在进入插件和追踪之前将内联图片保存为当前任务的素材。
-func (o *operation) imageJSONResponse(ctx context.Context, resp *http.Response) (hookResponse, error) {
-	o.imageAssets = nil
+// imageJSONResponse 在进入插件和追踪之前解码并校验内联图片、去掉 base64。
+// 图片先暂存在内存里，等插件解析成功后只保存被产物引用的（见 saveInlineImages），解析或校验失败不留素材。
+func (o *operation) imageJSONResponse(resp *http.Response) (hookResponse, error) {
+	o.inlineImages, o.savedImages = nil, nil
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxImageJSONBytes+1))
-	if err != nil || len(raw) > maxImageJSONBytes {
-		return hookResponse{}, terminalErr("", "读取图片响应失败或响应超过大小上限", nil)
+	if err != nil {
+		return hookResponse{}, terminalErr("", "读取图片响应失败", redactError(err, o.red.str))
+	}
+	if len(raw) > maxImageJSONBytes {
+		return hookResponse{}, terminalErr("", "图片响应超过大小上限", nil)
 	}
 	var body map[string]any
 	if json.Unmarshal(raw, &body) != nil || body == nil {
@@ -54,17 +58,47 @@ func (o *operation) imageJSONResponse(ctx context.Context, resp *http.Response) 
 	if len(images) > 0 && o.e.opts.Saver == nil {
 		return hookResponse{}, terminalErr(codeHostMisconfigured, "宿主未配置生成素材存储", nil)
 	}
-	for _, image := range images {
-		asset, url, err := o.e.opts.Saver.SaveGenerated(ctx, provider.SaveGeneratedInput{
-			UserID: o.task.UserID, TaskID: o.task.ID, Kind: o.modelKind(), MimeType: image.mime,
-			Body: bytes.NewReader(image.data),
-		})
-		if err != nil {
-			return hookResponse{}, terminalErr("", "保存生成图片失败", redactError(err, o.red.str))
-		}
-		o.imageAssets = append(o.imageAssets, provider.Output{Type: provider.OutputAsset, AssetID: asset.ID, AssetURL: url, MediaType: o.modelKind(), Mime: asset.MimeType, DurationMs: asset.DurationMs, Width: asset.Width, Height: asset.Height})
-	}
+	o.inlineImages = images
 	return response, nil
+}
+
+// saveInlineImages 在统一结果通过校验后，保存 succeeded 产物引用的内联图片并补全素材信息；同一索引只保存一次。
+// 用调用方的 ctx 而不是单次请求的时限：同步出图时请求时限可能已被生成耗尽。
+func (o *operation) saveInlineImages(ctx context.Context, q *provider.QueryResult) error {
+	if q == nil || q.Status != provider.StatusSucceeded {
+		return nil
+	}
+	for i := range q.Outputs {
+		out := &q.Outputs[i]
+		if out.Type != provider.OutputAsset || out.AssetIndex == nil {
+			continue
+		}
+		index := *out.AssetIndex
+		if index < 0 || index >= len(o.inlineImages) {
+			return pluginFault("asset 索引没有对应的图片响应")
+		}
+		saved, ok := o.savedImages[index]
+		if !ok {
+			image := o.inlineImages[index]
+			asset, url, err := o.e.opts.Saver.SaveGenerated(ctx, provider.SaveGeneratedInput{
+				UserID: o.task.UserID, TaskID: o.task.ID, Kind: o.modelKind(), MimeType: image.mime,
+				Body: bytes.NewReader(image.data),
+			})
+			if err != nil {
+				return terminalErr("", "保存生成图片失败", redactError(err, o.red.str))
+			}
+			saved = provider.Output{AssetID: asset.ID, AssetURL: url, MediaType: o.modelKind(), Mime: asset.MimeType, DurationMs: asset.DurationMs, Width: asset.Width, Height: asset.Height}
+			if o.savedImages == nil {
+				o.savedImages = map[int]provider.Output{}
+			}
+			o.savedImages[index] = saved
+		}
+		out.AssetIndex = nil
+		out.AssetID, out.AssetURL = saved.AssetID, saved.AssetURL
+		out.Mime, out.MediaType = saved.Mime, saved.MediaType
+		out.DurationMs, out.Width, out.Height = saved.DurationMs, saved.Width, saved.Height
+	}
+	return nil
 }
 
 func extractInlineImages(body map[string]any) ([]inlineImage, error) {
@@ -120,7 +154,12 @@ func scrubImageData(value any) {
 func scrubImageError(raw []byte) []byte {
 	var body any
 	if json.Unmarshal(raw, &body) != nil {
-		return nil
+		// 纯文本、HTML 原样保留，classifyError 和默认规则要靠正文识别余额不足等；
+		// 超过读取上限被截断的 JSON 解析不了，可能夹带图片数据，整段丢弃
+		if bytes.Contains(raw, []byte("b64_json")) {
+			return nil
+		}
+		return raw
 	}
 	scrubImageData(body)
 	sanitized, err := json.Marshal(body)

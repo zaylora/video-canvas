@@ -659,6 +659,12 @@ func TestOpenAIImageParseRunnerFailureDoesNotRetry(t *testing.T) {
 	if !errors.As(err, &pe) || pe.Class != provider.ClassSubmitUnknown || pe.Code == provider.CodeRunnerCrashed || up.count() != 1 {
 		t.Fatalf("上游已生成，runner 失败不得自动重试：%v", err)
 	}
+	if !pe.PluginFault {
+		t.Fatalf("解析钩子失败仍属插件级失败，需要告警：%+v", pe)
+	}
+	if len(env.saver.inputs) != 0 {
+		t.Fatalf("解析失败不应留下素材：%d", len(env.saver.inputs))
+	}
 }
 
 func TestOpenAIImageOversizedMetadataBeforeSave(t *testing.T) {
@@ -690,27 +696,99 @@ func TestOpenAIImageBase64ResponseOverFiveMB(t *testing.T) {
 	}
 }
 
-type spoofImageAssetRunner struct{ plugin.RunnerClient }
+// fixedParseRunner 让 parseSubmitResponse 返回固定结果，其余钩子交给真实 runner。
+type fixedParseRunner struct {
+	plugin.RunnerClient
+	result string
+}
 
-func (r spoofImageAssetRunner) Call(ctx context.Context, sha, hook string, args []json.RawMessage, timeout time.Duration) (*pluginproto.CallResponse, error) {
+func (r fixedParseRunner) Call(ctx context.Context, sha, hook string, args []json.RawMessage, timeout time.Duration) (*pluginproto.CallResponse, error) {
 	if hook == pluginproto.HookParseSubmitResponse {
-		return &pluginproto.CallResponse{Result: json.RawMessage(`{"immediate":{"status":"succeeded","outputs":[{"type":"asset","asset_index":9,"asset_id":12345}]}}`)}, nil
+		return &pluginproto.CallResponse{Result: json.RawMessage(r.result)}, nil
 	}
 	return r.RunnerClient.Call(ctx, sha, hook, args, timeout)
 }
-func TestOpenAIImageRejectsUnownedAssetIndex(t *testing.T) {
-	encoded := base64.StdEncoding.EncodeToString(realImage(t, "png"))
-	srv, _ := openaiimageServer(t, 0, `{"data":[{"b64_json":"`+encoded+`"}]}`)
-	env := newOpenAIImageEnv(t)
+
+// useParseResult 换成解析结果固定的执行器，保存器沿用 env.saver。
+func (e *openaiimageEnv) useParseResult(t *testing.T, result string) {
+	t.Helper()
 	source, err := plugins.Source("openai-image")
 	if err != nil {
 		t.Fatal(err)
 	}
 	runner := plugin.NewInProcessRunnerClient(pluginrunner.NewServer(pluginrunner.Options{}).Handler())
-	env.exec = plugin.New(plugin.Options{Runner: spoofImageAssetRunner{RunnerClient: runner}, Codes: codeStore{"code": string(source)}, Secrets: secretResolver{value: "sk-img"}, Saver: env.saver, IPAllowed: allowLoopback})
-	_, err = env.submit(t, srv.URL, "gpt-image-1", map[string]any{"prompt": "p"})
+	e.exec = plugin.New(plugin.Options{Runner: fixedParseRunner{RunnerClient: runner, result: result}, Codes: codeStore{"code": string(source)}, Secrets: secretResolver{value: "sk-img"}, Saver: e.saver, IPAllowed: allowLoopback})
+}
+
+func TestOpenAIImageRejectsUnownedAssetIndex(t *testing.T) {
+	encoded := base64.StdEncoding.EncodeToString(realImage(t, "png"))
+	srv, _ := openaiimageServer(t, 0, `{"data":[{"b64_json":"`+encoded+`"}]}`)
+	env := newOpenAIImageEnv(t)
+	env.useParseResult(t, `{"immediate":{"status":"succeeded","outputs":[{"type":"asset","asset_index":9,"asset_id":12345}]}}`)
+	_, err := env.submit(t, srv.URL, "gpt-image-1", map[string]any{"prompt": "p"})
 	if err == nil || !strings.Contains(err.Error(), "索引") {
 		t.Fatalf("必须拒绝任意素材索引：%v", err)
+	}
+	if len(env.saver.inputs) != 0 {
+		t.Fatalf("产物校验失败不应留下素材：%d", len(env.saver.inputs))
+	}
+}
+
+// 插件只引用部分内联图片时，只保存被引用的；同一索引引用两次只保存一份。
+func TestOpenAIImageSavesOnlyReferencedImages(t *testing.T) {
+	first, second := realImage(t, "png"), realImage(t, "jpeg")
+	srv, _ := openaiimageServer(t, 0, `{"data":[{"b64_json":"`+base64.StdEncoding.EncodeToString(first)+`"},{"b64_json":"`+base64.StdEncoding.EncodeToString(second)+`"}]}`)
+	env := newOpenAIImageEnv(t)
+	env.useParseResult(t, `{"immediate":{"status":"succeeded","outputs":[{"type":"asset","asset_index":1},{"type":"asset","asset_index":1}]}}`)
+	sub, err := env.submit(t, srv.URL, "gpt-image-1", map[string]any{"prompt": "p", "n": float64(2)})
+	if err != nil || sub.Immediate == nil || len(sub.Immediate.Outputs) != 2 {
+		t.Fatalf("生成失败：%+v %v", sub, err)
+	}
+	outs := sub.Immediate.Outputs
+	if outs[0].AssetID != 101 || outs[1].AssetID != 101 || outs[0].Mime != "image/jpeg" || outs[0].AssetIndex != nil {
+		t.Fatalf("产物不符：%+v", outs)
+	}
+	if len(env.saver.bodies) != 1 || !bytes.Equal(env.saver.bodies[0], second) {
+		t.Fatalf("只应保存被引用的第二张：%d", len(env.saver.bodies))
+	}
+}
+
+// 连接没建立时请求没有到达上游，不存在重复计费，按普通网络错误重试。
+func TestOpenAIImageConnectFailureIsRetryable(t *testing.T) {
+	srv := httptest.NewServer(http.NotFoundHandler())
+	closedURL := srv.URL
+	srv.Close()
+	env := newOpenAIImageEnv(t)
+	_, err := env.submit(t, closedURL, "gpt-image-1", map[string]any{"prompt": "p"})
+	var pe *provider.Error
+	if !errors.As(err, &pe) || pe.Class != provider.ClassRetryable {
+		t.Fatalf("请求没有发出，应可重试：%v", err)
+	}
+}
+
+// 非 JSON 的错误正文照常交给 classifyError，额度不足仍能识别。
+func TestOpenAIImagePlainTextErrorKeepsText(t *testing.T) {
+	srv, _ := openaiimageServer(t, 403, "You exceeded your current quota")
+	env := newOpenAIImageEnv(t)
+	_, err := env.submit(t, srv.URL, "gpt-image-1", map[string]any{"prompt": "p"})
+	var pe *provider.Error
+	if !errors.As(err, &pe) || pe.Class != provider.ClassProviderBalance {
+		t.Fatalf("纯文本额度错误应识别为余额不足：%v", err)
+	}
+}
+
+// 超过读取上限被截断的错误正文可能夹带图片数据，不得进入插件和跟踪。
+func TestOpenAIImageTruncatedErrorOmitsBase64(t *testing.T) {
+	srv, _ := openaiimageServer(t, 400, `{"data":[{"b64_json":"`+strings.Repeat("A", 6<<20)+`"}]}`)
+	env := newOpenAIImageEnv(t)
+	ctx, trace := provider.WithTrace(context.Background())
+	_, _ = env.exec.Submit(ctx, env.snapshot(srv.URL, "gpt-image-1"), provider.SubmitInput{Task: provider.TaskRef{ID: 2, UserID: 9}, Input: map[string]any{"prompt": "p"}})
+	raw, err := json.Marshal(trace.Steps())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "b64_json") || strings.Contains(string(raw), strings.Repeat("A", 1024)) {
+		t.Fatalf("跟踪中出现图片数据：%d 字节", len(raw))
 	}
 }
 

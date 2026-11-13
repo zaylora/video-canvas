@@ -35,8 +35,9 @@ type operation struct {
 	dryRun       bool
 	secret       string
 	secretLoaded bool
-	imageAssets  []provider.Output // 当前 image_json 响应由宿主保存的素材
-	asset        *provider.Output  // 最近一次 binary 响应落库的素材，产物 {type:"asset"} 用它补全
+	inlineImages []inlineImage           // 最近一次 image_json 响应解码出的图片，按 asset_index 排列，解析成功后才保存
+	savedImages  map[int]provider.Output // 已保存的内联图片，按 asset_index 索引
+	asset        *provider.Output        // 最近一次 binary 响应落库的素材，产物 {type:"asset"} 用它补全
 }
 
 // newOperation 校验渠道 base_url 并组装执行上下文。
