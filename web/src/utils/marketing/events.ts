@@ -4,7 +4,7 @@ import { getMarketingProject, mapRound, mapScript } from "@/api/marketing";
 import type { MarketingRoundEvent, MarketingScriptEvent, Round } from "@/api/marketing/type";
 import { useMarketingStore } from "@/store/marketing";
 
-import { roundTransition, scriptTransition } from "./merge";
+import { roundTransition, scriptNotice } from "./merge";
 
 /** 当前是不是正看着这个项目的详情页 */
 const viewing = (projectId: string): boolean =>
@@ -74,7 +74,7 @@ export function handleMarketingRoundEvent(event: MarketingRoundEvent) {
 }
 
 /**
- * 收到 marketing.script：并进所在轮次；出片失败总是提醒（带原因），出片成功只在用户不在该项目页面时提醒。
+ * 收到 marketing.script：并进所在轮次；出片成功且用户不在该项目页面时提醒，出片失败不提醒（原因在舞台上看）。
  * 本地缺轮次时重新拉详情。
  */
 export function handleMarketingScriptEvent(event: MarketingScriptEvent) {
@@ -86,18 +86,10 @@ export function handleMarketingScriptEvent(event: MarketingScriptEvent) {
   if (!store.applyScript(event.project_id, event.round_id, script)) {
     if (store.watching[event.project_id]) void reloadMarketingProject(event.project_id);
   }
-  const title = store.titles[event.project_id] ?? "营销片";
-  const action = { label: "查看", onClick: () => openProject(event.project_id) };
-  switch (scriptTransition(prev, script)) {
-    case "failed":
-      toast.error(
-        `「${title}」有一条出片失败${script.error ? `：${script.error}` : ""}`,
-        viewing(event.project_id) ? undefined : { action },
-      );
-      break;
-    case "done":
-      if (!viewing(event.project_id)) toast.success(`「${title}」有一条成片已出好`, { action });
-      break;
+  if (scriptNotice(prev, script, viewing(event.project_id)) === "done") {
+    const title = store.titles[event.project_id] ?? "营销片";
+    const action = { label: "查看", onClick: () => openProject(event.project_id) };
+    toast.success(`「${title}」有一条成片已出好`, { action });
   }
 }
 

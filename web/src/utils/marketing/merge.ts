@@ -58,3 +58,17 @@ export function scriptTransition(prev: Script | undefined, next: Script): "done"
   if (next.status === "done" || next.status === "failed") return next.status;
   return null;
 }
+
+/**
+ * 出片结束要不要弹提醒：只在用户不在该项目页面时提醒成片出好；出片失败不弹，失败原因在项目页的舞台上看。
+ * @param prev 之前本地的脚本
+ * @param next 最新脚本
+ * @param viewing 用户是否正看着这个项目
+ */
+export function scriptNotice(
+  prev: Script | undefined,
+  next: Script,
+  viewing: boolean,
+): "done" | null {
+  return scriptTransition(prev, next) === "done" && !viewing ? "done" : null;
+}
