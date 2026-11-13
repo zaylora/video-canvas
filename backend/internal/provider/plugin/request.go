@@ -21,9 +21,10 @@ import (
 
 // 响应类型。
 const (
-	responseJSON   = "json"
-	responseText   = "text"
-	responseBinary = "binary"
+	responseJSON      = "json"
+	responseText      = "text"
+	responseBinary    = "binary"
+	responseImageJSON = "image_json"
 )
 
 // 请求体类型。
@@ -294,8 +295,13 @@ func (o *operation) buildOptions(d *requestDesc, b *builtRequest) error {
 		b.responseType = responseJSON
 	case responseText, responseBinary:
 		b.responseType = d.ResponseType
+	case responseImageJSON:
+		if o.modelKind() != modelcfg.KindImage {
+			return pluginFault("image_json 只支持图片模型")
+		}
+		b.responseType = d.ResponseType
 	default:
-		return pluginFaultf("请求描述的 responseType %q 不合法，只能是 json / text / binary", d.ResponseType)
+		return pluginFaultf("请求描述的 responseType %q 不合法，只能是 json / text / binary / image_json", d.ResponseType)
 	}
 	b.timeout = o.e.opts.DefaultTimeout
 	if d.Timeout != nil && *d.Timeout > 0 && !math.IsInf(*d.Timeout, 0) {

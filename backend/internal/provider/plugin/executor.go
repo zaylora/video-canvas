@@ -189,6 +189,9 @@ func (e *Executor) Submit(ctx context.Context, snap *provider.Snapshot, in provi
 	}
 	parsed, err := o.require(ctx, pluginproto.HookParseSubmitResponse, hc, resp)
 	if err != nil {
+		if req.responseType == responseImageJSON {
+			return nil, &provider.Error{Class: provider.ClassSubmitUnknown, Code: string(provider.ClassSubmitUnknown), Message: "上游已响应，解析图片结果失败，请核对上游计费", Cause: redactError(err, o.red.str)}
+		}
 		return nil, err
 	}
 	return o.parseSubmitResult(parsed, ep.Mode)
@@ -549,6 +552,9 @@ func (o *operation) execute(ctx context.Context, b *builtRequest, phase string) 
 	defer cleanup()
 	resp, err := o.e.client().Do(req)
 	if err != nil {
+		if phase == "submit" && b.responseType == responseImageJSON {
+			return hookResponse{}, &provider.Error{Class: provider.ClassSubmitUnknown, Code: string(provider.ClassSubmitUnknown), Message: "图片提交结果未知，请核对上游计费", Cause: redactError(err, o.red.str)}
+		}
 		return hookResponse{}, o.requestError(phase, err)
 	}
 	defer resp.Body.Close()
@@ -557,8 +563,14 @@ func (o *operation) execute(ctx context.Context, b *builtRequest, phase string) 
 		if readErr != nil {
 			return hookResponse{}, o.requestError(phase, readErr)
 		}
+		if b.responseType == responseImageJSON {
+			raw = scrubImageError(raw)
+		}
 		h := responseFromBytes(resp, raw, responseJSON)
 		return hookResponse{}, o.classifyHTTPError(ctx, h)
+	}
+	if b.responseType == responseImageJSON {
+		return o.imageJSONResponse(requestCtx, resp)
 	}
 	if b.responseType == responseBinary {
 		if o.e.opts.Saver == nil {
@@ -747,13 +759,20 @@ func (o *operation) validateOutputs(outputs []provider.Output) error {
 				return &provider.Error{Class: provider.ClassTerminal, Code: provider.CodeSSRFBlocked, Message: "产物地址不允许", Cause: redactError(err, o.red.str), PluginFault: true}
 			}
 		case provider.OutputAsset:
-			// 插件只写 {type:"asset"}，素材 id 与地址由宿主用最近一次 binary 响应补全（契约 §6）
-			if o.asset == nil {
+			asset := o.asset
+			if out.AssetIndex != nil {
+				if *out.AssetIndex < 0 || *out.AssetIndex >= len(o.imageAssets) {
+					return pluginFault("asset 索引没有对应的图片响应")
+				}
+				asset = &o.imageAssets[*out.AssetIndex]
+			}
+			if asset == nil {
 				return pluginFault("asset 产物没有对应的二进制响应")
 			}
-			out.AssetID, out.AssetURL = o.asset.AssetID, o.asset.AssetURL
-			out.Mime, out.MediaType = o.asset.Mime, o.asset.MediaType
-			out.DurationMs, out.Width, out.Height = o.asset.DurationMs, o.asset.Width, o.asset.Height
+			out.AssetIndex = nil
+			out.AssetID, out.AssetURL = asset.AssetID, asset.AssetURL
+			out.Mime, out.MediaType = asset.Mime, asset.MediaType
+			out.DurationMs, out.Width, out.Height = asset.DurationMs, asset.Width, asset.Height
 		default:
 			return pluginFault("产物 type 不合法")
 		}
