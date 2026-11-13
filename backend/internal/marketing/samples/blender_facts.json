@@ -1,0 +1,19 @@
+{
+  "name": "FRESHJUICE Portable Blender",
+  "category": "Portable blender",
+  "anchors": [
+    "Mint-green rounded base with a round power button ringed in silver",
+    "The word FRESHJUICE printed in small grey capitals on the front of the base",
+    "Clear cylindrical cup with ml graduation marks up to MAX",
+    "Mint-green screw-on lid with a loop carry handle",
+    "Small USB-C charging port with a flap on the right side of the base"
+  ],
+  "selling_points": [
+    {"text": "Rechargeable over USB-C", "proof": "Close-up of the USB-C port on the base, then a cable plugging in", "source": "description"},
+    {"text": "Easy to carry on the go", "proof": "Hand grabbing the loop handle and carrying the blender out the door", "source": "image"},
+    {"text": "Clear cup with ml markings", "proof": "Slow pan along the cup showing the graduation marks and the juice level", "source": "image"}
+  ],
+  "prohibited": ["Do not invent prices, sales numbers, reviews, certifications or health claims", "No competitor comparisons"],
+  "audience": "Smoothie lovers who are always on the move",
+  "cta": "Tap the link to grab yours"
+}

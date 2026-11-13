@@ -72,6 +72,10 @@ type Config struct {
 	Settings SettingsSource
 	Repo     Repo
 	Drama    DramaHandler // 短剧固定流水线步骤执行器
+	// StepTrial 是后台环节试跑的执行器（环节协议层）；为 nil 时不注册试跑 worker、入队也会报错。
+	StepTrial StepTrialHandler
+	// Marketing 是营销写脚本的执行器；为 nil 时不注册 worker、入队也会报错。
+	Marketing MarketingHandler
 
 	Enabled bool // 本实例是否执行任务；为 false 时只能入队（API-only 实例）
 
@@ -165,6 +169,14 @@ func New(cfg Config) (*Runtime, error) {
 			river.AddWorker(workers, &dramaWorker{rt: rt})
 			rc.Queues["drama"] = river.QueueConfig{MaxWorkers: hardCap}
 			registerDramaCleanup(rc, workers, cfg.Drama)
+		}
+		if cfg.StepTrial != nil {
+			river.AddWorker(workers, &stepTrialWorker{rt: rt})
+			rc.Queues[stepTrialQueue] = river.QueueConfig{MaxWorkers: hardCap}
+		}
+		if cfg.Marketing != nil {
+			river.AddWorker(workers, &marketingWorker{rt: rt})
+			rc.Queues[marketingQueue] = river.QueueConfig{MaxWorkers: hardCap}
 		}
 		if cfg.Notifier != nil {
 			river.AddWorker(workers, &notifyWorker{rt: rt})

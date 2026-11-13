@@ -1,0 +1,1277 @@
+<!doctype html>
+<html lang="zh-CN" class="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>营销工作室原型</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&family=Noto+Serif+SC:wght@700;900&display=swap" rel="stylesheet" />
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+    <style>
+      /* 令牌照抄 web/src/index.css（:root / .dark / .home-theme）；组件尺寸照 composer.tsx、drama-grid.tsx、layout.tsx。对应设计文档 §6.8 / §6.10 */
+      :root {
+        --background: oklch(1 0 0); --foreground: oklch(0.145 0 0);
+        --card: oklch(1 0 0); --popover: oklch(1 0 0); --popover-foreground: oklch(0.145 0 0);
+        --primary: oklch(0.205 0 0); --primary-foreground: oklch(0.985 0 0);
+        --muted: oklch(0.97 0 0); --muted-foreground: oklch(0.556 0 0);
+        --destructive: oklch(0.577 0.245 27.325);
+        --border: oklch(0.922 0 0); --input: oklch(0.922 0 0); --ring: oklch(0.708 0 0);
+        --sidebar: oklch(0.985 0 0); --sidebar-border: oklch(0.922 0 0);
+        --chrome: oklch(1 0 0 / 0.82); --chrome-border: oklch(0 0 0 / 0.08); --chrome-hover: oklch(0 0 0 / 0.05);
+        --credit: oklch(0.72 0.15 75);
+        --status-running: oklch(0.58 0.15 250); --status-success: oklch(0.6 0.15 155); --status-warning: oklch(0.7 0.16 70);
+        --beam: oklch(0.62 0.16 55); --beam-bright: oklch(0.78 0.15 70);
+        --cover-scrim: oklch(0 0 0 / 0.62); --cover-foreground: oklch(0.985 0 0);
+        --canvas-bg: oklch(0.975 0 0); --canvas-dot: oklch(0 0 0 / 0.16); --edge: oklch(0 0 0 / 0.28);
+        --preset: oklch(0.55 0.2 295);
+        --font-sans: "Geist", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+        --font-mono: "Geist Mono", "SF Mono", Consolas, monospace;
+        --font-display: "Songti SC", "Noto Serif SC", "Source Han Serif SC", "STSong", serif;
+        color-scheme: light;
+      }
+      .dark {
+        --background: oklch(0.145 0 0); --foreground: oklch(0.985 0 0);
+        --card: oklch(0.205 0 0); --popover: oklch(0.205 0 0); --popover-foreground: oklch(0.985 0 0);
+        --primary: oklch(0.922 0 0); --primary-foreground: oklch(0.205 0 0);
+        --muted: oklch(0.269 0 0); --muted-foreground: oklch(0.708 0 0);
+        --destructive: oklch(0.704 0.191 22.216);
+        --border: oklch(1 0 0 / 10%); --input: oklch(1 0 0 / 15%); --ring: oklch(0.556 0 0);
+        --sidebar: oklch(0.205 0 0); --sidebar-border: oklch(1 0 0 / 10%);
+        --chrome: oklch(0.2 0 0 / 0.78); --chrome-border: oklch(1 0 0 / 0.08); --chrome-hover: oklch(1 0 0 / 0.07);
+        --credit: oklch(0.82 0.15 85);
+        --status-running: oklch(0.75 0.12 240); --status-success: oklch(0.75 0.15 155); --status-warning: oklch(0.8 0.15 75);
+        --beam: oklch(0.78 0.15 70); --beam-bright: oklch(0.78 0.15 70);
+        --cover-scrim: oklch(0 0 0 / 0.7);
+        --canvas-bg: oklch(0.13 0 0); --canvas-dot: oklch(1 0 0 / 0.14); --edge: oklch(1 0 0 / 0.28);
+        --preset: oklch(0.6 0.19 295);
+        color-scheme: dark;
+      }
+      :root:not(.dark) .home-theme {
+        --background: oklch(0.95 0.007 85); --card: oklch(0.985 0.004 85); --popover: oklch(0.985 0.004 85);
+        --muted: oklch(0.92 0.008 85); --muted-foreground: oklch(0.5 0.015 85);
+        --border: oklch(0.22 0.02 85 / 0.1); --input: oklch(0.22 0.02 85 / 0.16);
+        --sidebar: oklch(0.925 0.009 85); --sidebar-border: oklch(0.22 0.02 85 / 0.1);
+        --chrome: oklch(0.97 0.006 85 / 0.8); --chrome-border: oklch(0.22 0.02 85 / 0.1); --chrome-hover: oklch(0.22 0.02 85 / 0.06);
+      }
+
+      * { box-sizing: border-box; }
+      html, body { height: 100%; margin: 0; }
+      body { font-family: var(--font-sans); font-size: 14px; line-height: 1.5; color: var(--foreground); -webkit-font-smoothing: antialiased; overflow: hidden; }
+      button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+      button:disabled { cursor: not-allowed; }
+      input, textarea, select { font: inherit; color: inherit; }
+      [data-lucide] { width: 16px; height: 16px; flex: none; stroke-width: 2; }
+      [hidden] { display: none !important; }
+      .mono { font-family: var(--font-mono); }
+      .tnum { font-variant-numeric: tabular-nums; }
+      .muted { color: var(--muted-foreground); }
+      .display { font-family: var(--font-display); font-weight: 900; letter-spacing: 0.025em; }
+      .row { display: flex; align-items: center; }
+      .grow { flex: 1; min-width: 0; }
+      .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .spin { animation: spin 0.9s linear infinite; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      @keyframes pop { from { opacity: 0; transform: scale(0.96); } }
+      @keyframes fade { from { opacity: 0; } }
+      @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
+      @keyframes shimmer { to { background-position: -200% 0; } }
+
+      .chrome { background: var(--chrome); box-shadow: 0 10px 15px -3px oklch(0 0 0 / 0.1), 0 0 0 1px var(--chrome-border); backdrop-filter: blur(24px) saturate(1.5); }
+      .pill-bar { display: flex; align-items: center; gap: 2px; border-radius: 999px; height: 40px; padding: 0 4px; }
+      .sep { width: 1px; height: 18px; background: var(--chrome-border); margin: 0 4px; flex: none; }
+      .icon-btn { width: 32px; height: 32px; border-radius: 999px; display: inline-grid; place-items: center; transition: background 0.15s; }
+      .icon-btn:hover:not(:disabled) { background: var(--chrome-hover); }
+      .icon-btn:disabled { opacity: 0.4; }
+      .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 36px; padding: 0 16px; border-radius: 999px; font-size: 14px; font-weight: 500; white-space: nowrap; transition: background 0.15s, opacity 0.15s; }
+      .btn-sm { height: 32px; padding: 0 12px; font-size: 13px; }
+      .btn-xs { height: 28px; padding: 0 10px; font-size: 12.5px; }
+      .btn-primary { background: var(--foreground); color: var(--background); }
+      .btn-primary:hover:not(:disabled) { opacity: 0.88; }
+      .btn-primary:disabled { background: var(--chrome-hover); color: var(--muted-foreground); }
+      .btn-ghost:hover:not(:disabled) { background: var(--chrome-hover); }
+      .btn-ghost:disabled { opacity: 0.5; }
+      .btn-outline { box-shadow: inset 0 0 0 1px var(--border); }
+      .btn-outline:hover:not(:disabled) { background: var(--chrome-hover); }
+      .btn-outline:disabled { opacity: 0.5; }
+      .btn-danger { background: var(--destructive); color: #fff; }
+      .credit-n { display: inline-flex; align-items: center; gap: 3px; font-variant-numeric: tabular-nums; }
+      .credit-n [data-lucide] { width: 13px; height: 13px; }
+      .status { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 8px; border-radius: 999px; font-size: 11px; font-weight: 500; line-height: 1; white-space: nowrap; flex: none; }
+      .status [data-lucide] { width: 12px; height: 12px; }
+      .s-success { background: color-mix(in oklch, var(--status-success) 15%, transparent); color: var(--status-success); }
+      .s-running { background: color-mix(in oklch, var(--status-running) 15%, transparent); color: var(--status-running); }
+      .s-warning { background: color-mix(in oklch, var(--status-warning) 15%, transparent); color: var(--status-warning); }
+      .s-bad { background: color-mix(in oklch, var(--destructive) 12%, transparent); color: var(--destructive); }
+      .s-muted { background: var(--muted); color: var(--muted-foreground); }
+      .s-preset { background: color-mix(in oklch, var(--preset) 14%, transparent); color: var(--preset); }
+      .s-beam { background: color-mix(in oklch, var(--beam) 16%, transparent); color: var(--beam); }
+      .skeleton { background: linear-gradient(90deg, var(--chrome-hover), color-mix(in oklch, var(--foreground) 9%, transparent), var(--chrome-hover)); background-size: 200% 100%; animation: shimmer 1.3s linear infinite; }
+
+      .popover { position: fixed; z-index: 80; min-width: 220px; max-height: 440px; overflow-y: auto; border-radius: 14px; background: var(--popover); color: var(--popover-foreground); padding: 6px; box-shadow: 0 8px 24px oklch(0 0 0 / 0.22), 0 0 0 1px var(--border); display: flex; flex-direction: column; gap: 1px; animation: pop 0.12s ease-out; }
+      .mi { display: flex; align-items: flex-start; gap: 10px; width: 100%; min-height: 34px; padding: 8px 10px; border-radius: 10px; font-size: 13.5px; text-align: left; }
+      .mi:hover:not(:disabled) { background: var(--muted); }
+      .mi:disabled { opacity: 0.45; }
+      .mi .t { font-weight: 500; }
+      .mi .d { font-size: 12px; color: var(--muted-foreground); line-height: 1.4; }
+      .mi .check { margin-left: auto; align-self: center; }
+      .mi-group { font-size: 11.5px; color: var(--muted-foreground); padding: 8px 10px 2px; }
+      .mi-sep { height: 1px; background: var(--border); margin: 4px 6px; }
+      .cb { width: 16px; height: 16px; border-radius: 5px; box-shadow: inset 0 0 0 1.5px color-mix(in oklch, var(--foreground) 35%, transparent); display: grid; place-items: center; flex: none; margin-top: 2px; }
+      .cb.on { background: var(--foreground); color: var(--background); box-shadow: none; }
+      .cb.lock { background: var(--muted-foreground); color: var(--background); box-shadow: none; }
+      .cb [data-lucide] { width: 12px; height: 12px; stroke-width: 3; }
+      .avatar-m { width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center; font-size: 11px; font-weight: 600; color: #fff; flex: none; }
+      .overlay { position: fixed; inset: 0; z-index: 60; background: oklch(0 0 0 / 0.5); backdrop-filter: blur(4px); display: grid; place-items: center; padding: 16px; animation: fade 0.15s; }
+      .dialog { width: 100%; max-width: 520px; max-height: calc(100vh - 48px); overflow-y: auto; border-radius: 16px; background: var(--popover); color: var(--popover-foreground); box-shadow: 0 25px 50px -12px oklch(0 0 0 / 0.45), 0 0 0 1px color-mix(in oklch, var(--foreground) 10%, transparent); padding: 18px; display: grid; gap: 14px; position: relative; animation: pop 0.16s ease-out; }
+      .dialog-title { font-size: 16px; font-weight: 600; }
+      .dialog-close { position: absolute; top: 10px; right: 10px; }
+      .dialog-foot { display: flex; justify-content: flex-end; gap: 8px; }
+      .seg { display: inline-flex; align-items: center; padding: 3px; border-radius: 999px; background: var(--chrome-hover); box-shadow: 0 0 0 1px var(--chrome-border); }
+      .seg button { height: 28px; padding: 0 12px; border-radius: 999px; font-size: 12.5px; color: var(--muted-foreground); }
+      .seg button.on { color: var(--foreground); font-weight: 500; background: var(--background); box-shadow: 0 1px 2px oklch(0 0 0 / 0.1), 0 0 0 1px var(--chrome-border); }
+      .dark .seg button.on { background: oklch(1 0 0 / 0.1); }
+      .seg button:disabled { opacity: 0.4; }
+      .field-l { font-size: 12.5px; color: var(--muted-foreground); margin-bottom: 6px; }
+      .ta { width: 100%; resize: vertical; border-radius: 10px; border: 0; box-shadow: inset 0 0 0 1px var(--input); background: transparent; padding: 8px 12px; font-size: 13.5px; line-height: 1.65; outline: none; }
+      .ta:focus, .inp:focus { box-shadow: inset 0 0 0 1.5px var(--ring); }
+      .inp { height: 36px; width: 100%; border-radius: 10px; border: 0; box-shadow: inset 0 0 0 1px var(--input); background: transparent; padding: 0 12px; font-size: 14px; outline: none; }
+      .ratio { display: grid; place-items: center; gap: 4px; width: 56px; height: 56px; border-radius: 12px; box-shadow: inset 0 0 0 1px var(--border); font-size: 11.5px; }
+      .ratio:hover:not(:disabled) { background: var(--chrome-hover); }
+      .ratio.on { box-shadow: inset 0 0 0 1.5px var(--foreground); background: var(--chrome-hover); }
+      .ratio i { display: block; border: 1.5px solid currentColor; border-radius: 3px; opacity: 0.8; }
+      .ratio:disabled { opacity: 0.35; }
+      .toast { position: fixed; bottom: 24px; right: 24px; z-index: 99; display: grid; gap: 8px; }
+      .toast > div { display: flex; align-items: center; gap: 10px; border-radius: 12px; padding: 11px 14px; background: var(--popover); color: var(--popover-foreground); box-shadow: 0 10px 30px oklch(0 0 0 / 0.25), 0 0 0 1px var(--border); font-size: 13.5px; animation: pop 0.2s ease-out; max-width: 400px; }
+      .toast .ok { color: var(--status-success); } .toast .bad { color: var(--destructive); } .toast .warn { color: var(--status-warning); } .toast .info { color: var(--status-running); }
+
+      /* ---- 首页外壳 ---- */
+      .shell { display: flex; height: 100vh; background: var(--sidebar); }
+      .sidebar { width: 240px; flex: none; display: flex; flex-direction: column; padding: 8px; gap: 2px; overflow: hidden; }
+      .brand { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 8px; margin: 4px 0 10px; font-size: 17px; font-weight: 600; }
+      .brand-mark { width: 26px; height: 26px; border-radius: 8px; background: linear-gradient(135deg, var(--beam-bright), var(--beam)); display: grid; place-items: center; color: #1a1205; }
+      .nav-item { position: relative; isolation: isolate; display: flex; align-items: center; gap: 12px; height: 40px; padding: 0 12px 0 14px; border-radius: 999px; color: var(--muted-foreground); transition: background 0.15s, color 0.15s; white-space: nowrap; width: 100%; }
+      .nav-item:hover { background: var(--chrome-hover); color: var(--foreground); }
+      .nav-item [data-lucide] { width: 18px; height: 18px; }
+      .nav-item.active { color: var(--foreground); font-weight: 600; }
+      .nav-item.active::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: 999px; background: var(--chrome-hover); box-shadow: 0 0 0 1px var(--chrome-border); }
+      .nav-item.soon { opacity: 0.5; cursor: not-allowed; }
+      .badge-new { margin-left: auto; border-radius: 999px; padding: 1px 6px; font-size: 10px; line-height: 16px; font-weight: 500; background: color-mix(in oklch, var(--beam) 15%, transparent); color: var(--beam); }
+      .group-label { display: flex; align-items: center; justify-content: space-between; padding: 16px 14px 6px; font-size: 12.5px; color: var(--muted-foreground); }
+      .group-item { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 14px; border-radius: 999px; font-size: 13.5px; opacity: 0.86; width: 100%; text-align: left; }
+      .group-item:hover { background: var(--chrome-hover); }
+      .thumb { width: 20px; height: 20px; border-radius: 5px; flex: none; overflow: hidden; }
+      .account { margin-top: auto; display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 14px; }
+      .account:hover { background: var(--chrome-hover); }
+      .avatar { width: 32px; height: 32px; border-radius: 999px; display: grid; place-items: center; background: var(--muted); font-size: 13px; font-weight: 600; }
+      .inset { flex: 1; min-width: 0; margin: 8px 8px 8px 0; border-radius: 22px; background: var(--background); box-shadow: 0 12px 40px -18px oklch(0 0 0 / 0.35), 0 0 0 1px var(--border); display: flex; flex-direction: column; overflow: hidden; position: relative; }
+      .site-header { height: 56px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 20px; position: relative; z-index: 5; }
+      .page { flex: 1; overflow-y: auto; }
+      .page-in { animation: rise 0.28s cubic-bezier(0.2, 0.8, 0.2, 1); }
+      .wrap { max-width: 1280px; margin: 0 auto; padding: 8px 40px 96px; }
+
+      .hero { text-align: center; font-size: 34px; line-height: 1.25; padding-top: 16px; }
+      .hero span { color: var(--beam); }
+      .section-head { display: flex; align-items: center; gap: 8px; margin: 56px 0 20px; }
+      .section-head h2 { font-size: 17px; font-weight: 600; margin: 0; }
+      .cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 28px 16px; }
+      .pcard { position: relative; min-width: 0; text-align: left; }
+      .pcard .cover { aspect-ratio: 16 / 10; border-radius: 18px; box-shadow: 0 0 0 1px var(--chrome-border); overflow: hidden; position: relative; transition: box-shadow 0.15s; }
+      .pcard:hover .cover { box-shadow: 0 0 0 1px color-mix(in oklch, var(--foreground) 20%, transparent); }
+      .pcard .more { position: absolute; top: 8px; right: 8px; z-index: 2; width: 28px; height: 28px; border-radius: 999px; background: var(--cover-scrim); color: var(--cover-foreground); display: grid; place-items: center; opacity: 0; transition: opacity 0.15s; }
+      .pcard:hover .more { opacity: 1; }
+      .bars { display: flex; gap: 3px; margin-top: 10px; }
+      .bars i { height: 3px; flex: 1; border-radius: 999px; background: var(--chrome-hover); }
+      .bars i.done { background: var(--status-success); } .bars i.run { background: var(--status-running); } .bars i.bad { background: var(--destructive); } .bars i.draft { background: color-mix(in oklch, var(--foreground) 28%, transparent); }
+      .empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 48px 0; color: var(--muted-foreground); font-size: 14px; }
+      .empty [data-lucide] { width: 32px; height: 32px; opacity: 0.5; }
+
+      /* ---- 营销生成框（照 Composer） ---- */
+      .composer { position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px 16px; padding: 18px 12px 12px 18px; border-radius: 24px; background: var(--card); border: 1px solid var(--border); box-shadow: 0 1px 2px oklch(0 0 0 / 0.04), 0 18px 40px -28px oklch(0 0 0 / 0.35); transition: border-color 0.18s; max-width: 1000px; margin: 28px auto 0; }
+      .composer:focus-within { border-color: color-mix(in oklch, var(--foreground) 25%, transparent); }
+      .composer.dock { margin: 0; max-width: none; }
+      .ring { position: absolute; inset: -1px; padding: 1px; border-radius: inherit; overflow: hidden; pointer-events: none; -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); transition: opacity 0.24s; }
+      .ring::before { content: ""; position: absolute; left: 50%; top: 50%; width: 150%; aspect-ratio: 1; translate: -50% -50%; background: conic-gradient(from 0deg, transparent 0 80%, color-mix(in oklch, var(--beam) 70%, transparent) 90%, transparent 100%); animation: spin 8s linear infinite; }
+      .composer:focus-within .ring { opacity: 0; }
+      .slots { display: flex; gap: 8px; }
+      .slot { position: relative; width: 64px; height: 80px; border-radius: 12px; flex: none; }
+      .slot-add { width: 100%; height: 100%; border-radius: 12px; border: 1px dashed color-mix(in oklch, var(--foreground) 20%, transparent); background: var(--muted); color: var(--muted-foreground); display: grid; place-items: center; align-content: center; gap: 4px; font-size: 11.5px; transition: color 0.15s; }
+      .slot-add:hover:not(:disabled) { color: var(--foreground); }
+      .slot-add:disabled { opacity: 0.45; }
+      .slot-add [data-lucide] { width: 18px; height: 18px; }
+      .slot-img { position: absolute; inset: 0; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 2px oklch(0 0 0 / 0.2), 0 0 0 1px oklch(0 0 0 / 0.1); background: var(--muted); }
+      .slot-img.stack2 { transform: rotate(-5deg) translate(-3px, 1px); }
+      .slot-img .cap { position: absolute; left: 0; right: 0; bottom: 0; padding: 10px 4px 3px; font-size: 10.5px; color: #fff; text-align: center; background: linear-gradient(transparent, oklch(0 0 0 / 0.6)); }
+      .slot-x { position: absolute; top: -6px; left: -6px; z-index: 3; width: 20px; height: 20px; border-radius: 999px; background: var(--foreground); color: var(--background); display: grid; place-items: center; opacity: 0; transition: opacity 0.12s; }
+      .slot:hover .slot-x { opacity: 1; }
+      .slot-x [data-lucide] { width: 12px; height: 12px; }
+      .slot-n { position: absolute; right: -6px; bottom: -6px; z-index: 3; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 999px; background: var(--foreground); color: var(--background); font-size: 11px; font-weight: 600; display: grid; place-items: center; }
+      .slot-busy { position: absolute; inset: 0; border-radius: 10px; background: oklch(0 0 0 / 0.4); color: #fff; display: grid; place-items: center; z-index: 2; }
+      .comp-text { position: relative; min-width: 0; }
+      .comp-text textarea { display: block; width: 100%; min-height: 84px; resize: none; border: 0; background: transparent; outline: none; font-size: 15px; line-height: 1.65; padding: 0; }
+      .composer.dock .comp-text textarea { min-height: 56px; }
+      .comp-text textarea::placeholder { color: var(--muted-foreground); }
+      .bar { grid-column: 1 / -1; display: flex; align-items: center; gap: 2px; flex-wrap: wrap; }
+      .bb { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border-radius: 10px; font-size: 13px; color: var(--foreground); white-space: nowrap; }
+      .bb:hover { background: var(--muted); }
+      .bb.beam { color: var(--beam); font-weight: 500; }
+      .bb [data-lucide] { width: 16px; height: 16px; }
+      .bb .chev { width: 14px; height: 14px; opacity: 0.7; }
+      .send { width: 36px; height: 36px; border-radius: 999px; display: grid; place-items: center; background: var(--foreground); color: var(--background); flex: none; transition: background 0.12s; }
+      .send:disabled { background: var(--muted); color: var(--muted-foreground); }
+      .send [data-lucide] { width: 18px; height: 18px; }
+      .hint { grid-column: 1 / -1; margin-top: -4px; min-height: 16px; padding: 0 4px; font-size: 12px; }
+      .hint.bad { color: var(--destructive); } .hint.warn { color: oklch(0.7 0.16 70); }
+
+      /* ---- 详情页 ---- */
+      .detail { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 24px; max-width: 1280px; margin: 0 auto; padding: 4px 32px 40px; }
+      .side-card { position: sticky; top: 4px; align-self: start; border-radius: 22px; padding: 14px; display: grid; gap: 12px; }
+      .pimgs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+      .pimgs > div { aspect-ratio: 4/5; border-radius: 10px; overflow: hidden; box-shadow: 0 0 0 1px var(--chrome-border); position: relative; }
+      .pimgs .lbl { position: absolute; left: 4px; bottom: 4px; font-size: 10px; padding: 0 5px; border-radius: 999px; background: var(--cover-scrim); color: #fff; }
+      .fact h4 { margin: 0 0 6px; font-size: 12px; font-weight: 500; color: var(--muted-foreground); display: flex; align-items: center; gap: 6px; }
+      .fact ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 13px; }
+      .fact li { display: flex; gap: 6px; }
+      .fact li::before { content: ""; width: 4px; height: 4px; border-radius: 999px; background: var(--muted-foreground); margin-top: 9px; flex: none; }
+      .rounds { display: grid; gap: 30px; min-width: 0; }
+      .round-h { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+      .round-h .no { font-weight: 600; font-size: 15px; }
+      .meta-chip { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 9px; border-radius: 999px; font-size: 12px; color: var(--muted-foreground); box-shadow: inset 0 0 0 1px var(--border); }
+      .meta-chip [data-lucide] { width: 13px; height: 13px; }
+      .jobline { display: flex; align-items: center; gap: 10px; border-radius: 14px; padding: 10px 14px; margin-bottom: 12px; font-size: 13px; flex-wrap: wrap; }
+      .steps { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+      .step { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; border-radius: 999px; font-size: 12px; box-shadow: inset 0 0 0 1px var(--border); color: var(--muted-foreground); }
+      .step [data-lucide] { width: 13px; height: 13px; }
+      .step.running { color: var(--status-running); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--status-running) 45%, transparent); }
+      .step.succeeded { color: var(--status-success); }
+      .step.failed { color: var(--destructive); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--destructive) 45%, transparent); }
+      .step.skipped { opacity: 0.55; }
+      .step-arrow { color: var(--muted-foreground); opacity: 0.6; }
+      .step-arrow [data-lucide] { width: 13px; height: 13px; }
+      .sgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(460px, 1fr)); gap: 14px; }
+      .scard { border-radius: 20px; background: var(--card); box-shadow: 0 0 0 1px var(--border); padding: 14px; display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 14px; animation: rise 0.3s ease-out both; }
+      .scard.follow { box-shadow: 0 0 0 1px color-mix(in oklch, var(--beam) 40%, var(--border)); }
+      .scard.skel { min-height: 300px; display: block; }
+      .scard.fail { display: flex; align-items: center; gap: 10px; min-height: 0; }
+      .vbox { border-radius: 14px; overflow: hidden; position: relative; background: var(--muted); align-self: start; }
+      .vbox .scrim { position: absolute; inset: 0; display: grid; place-items: center; align-content: center; gap: 8px; color: #fff; text-align: center; font-size: 12px; padding: 10px; width: 100%; }
+      .vbox .play { width: 44px; height: 44px; border-radius: 999px; background: oklch(0 0 0 / 0.45); backdrop-filter: blur(8px); display: grid; place-items: center; box-shadow: 0 0 0 1px oklch(1 0 0 / 0.25); }
+      .vbox .play [data-lucide] { width: 18px; height: 18px; margin-left: 2px; }
+      .vbox .dur { position: absolute; right: 6px; bottom: 6px; font-size: 11px; padding: 1px 6px; border-radius: 999px; background: var(--cover-scrim); color: #fff; }
+      .vbox .takes { position: absolute; left: 6px; top: 6px; display: flex; gap: 3px; }
+      .vbox .takes button { width: 20px; height: 20px; border-radius: 999px; background: var(--cover-scrim); color: #fff; font-size: 11px; }
+      .vbox .takes button.on { background: #fff; color: #111; }
+      .ringprog { width: 48px; height: 48px; }
+      .shead { display: flex; align-items: center; gap: 6px; min-width: 0; flex-wrap: wrap; }
+      .shots { display: grid; margin-top: 8px; }
+      .shot { display: grid; grid-template-columns: 62px minmax(0, 1fr); gap: 8px; padding: 8px 0; border-top: 1px solid var(--border); }
+      .shot .tm { font-family: var(--font-mono); font-size: 11.5px; color: var(--muted-foreground); line-height: 1.5; }
+      .shot .tm b { display: block; font-family: var(--font-sans); font-weight: 500; color: var(--foreground); font-size: 12px; }
+      .shot .tm .ref { display: inline-block; margin-top: 3px; font-family: var(--font-sans); font-size: 10.5px; padding: 0 6px; border-radius: 999px; background: color-mix(in oklch, var(--beam) 14%, transparent); color: var(--beam); }
+      .shot .scene { font-size: 12.5px; color: var(--muted-foreground); line-height: 1.5; }
+      .narr { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+      .narr [data-lucide] { width: 13px; height: 13px; color: var(--muted-foreground); }
+      .narr input { flex: 1; min-width: 0; height: 28px; border: 0; border-radius: 8px; background: transparent; box-shadow: inset 0 0 0 1px transparent; padding: 0 8px; font-size: 13px; outline: none; transition: box-shadow 0.12s, background 0.12s; }
+      .narr input:hover:not(:disabled) { background: var(--chrome-hover); }
+      .narr input:focus { box-shadow: inset 0 0 0 1.5px var(--ring); background: transparent; }
+      .narr input.flag { box-shadow: inset 0 0 0 1.5px var(--destructive); background: color-mix(in oklch, var(--destructive) 8%, transparent); }
+      .narr input:disabled { opacity: 0.75; }
+      .sfoot { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding-top: 10px; border-top: 1px solid var(--border); }
+      .sound { font-size: 12px; color: var(--muted-foreground); display: flex; align-items: center; gap: 5px; min-width: 0; }
+      .sound [data-lucide] { width: 13px; height: 13px; }
+      .method { font-size: 11.5px; color: var(--muted-foreground); display: inline-flex; align-items: center; gap: 4px; }
+      .method [data-lucide] { width: 12px; height: 12px; }
+      .dock-wrap { position: sticky; bottom: 0; padding: 12px 0 16px; background: linear-gradient(transparent, var(--background) 30%); margin-top: 16px; }
+      .back { display: inline-flex; align-items: center; gap: 2px; height: 32px; padding: 0 12px 0 6px; border-radius: 999px; font-size: 13px; color: var(--muted-foreground); }
+      .back:hover { background: var(--chrome-hover); color: var(--foreground); }
+      .codebox { font-family: var(--font-mono); font-size: 12px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; background: var(--muted); border-radius: 12px; padding: 12px 14px; max-height: 52vh; overflow: auto; }
+
+      /* ---- 参考拆解卡 ---- */
+      .rev { border-radius: 18px; background: var(--card); box-shadow: 0 0 0 1px var(--border); margin-bottom: 14px; overflow: hidden; }
+      .rev-h { display: flex; align-items: center; gap: 10px; padding: 12px 14px; width: 100%; text-align: left; flex-wrap: wrap; }
+      .rev-h .thumbv { width: 40px; height: 52px; border-radius: 8px; overflow: hidden; position: relative; flex: none; }
+      .rev-why { font-size: 12.5px; color: var(--muted-foreground); }
+      .rev-warn { display: flex; gap: 6px; flex-wrap: wrap; }
+      .rev-body { border-top: 1px solid var(--border); padding: 4px 14px 14px; }
+      .rshot { display: grid; grid-template-columns: 70px minmax(0, 1fr) 150px; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); align-items: start; }
+      .rshot:last-of-type { border-bottom: 0; }
+      .rshot .tm { font-family: var(--font-mono); font-size: 11.5px; color: var(--muted-foreground); }
+      .rshot .tm b { display: block; font-family: var(--font-sans); font-weight: 500; color: var(--foreground); font-size: 12px; }
+      .rshot textarea, .rshot input { width: 100%; border: 0; border-radius: 8px; background: transparent; box-shadow: inset 0 0 0 1px transparent; padding: 4px 8px; font-size: 12.5px; line-height: 1.55; outline: none; resize: none; }
+      .rshot textarea:hover, .rshot input:hover { background: var(--chrome-hover); }
+      .rshot textarea:focus, .rshot input:focus { box-shadow: inset 0 0 0 1.5px var(--ring); background: transparent; }
+      .rshot .lbl { font-size: 11px; color: var(--muted-foreground); padding-left: 8px; }
+      .rshot select { width: 100%; height: 28px; border-radius: 8px; border: 0; box-shadow: inset 0 0 0 1px var(--border); background: transparent; padding: 0 6px; font-size: 12px; }
+      .rshot select option { background: var(--popover); color: var(--popover-foreground); }
+      .chip-c { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted-foreground); margin: 4px 4px 0 0; }
+      .chip-c i { width: 9px; height: 9px; border-radius: 3px; display: inline-block; box-shadow: 0 0 0 1px var(--border); }
+      .rev-foot { display: flex; align-items: center; gap: 8px; padding-top: 10px; flex-wrap: wrap; }
+
+      /* ---- 播放器 / 画布预览 ---- */
+      .player { position: relative; border-radius: 18px; overflow: hidden; background: #000; box-shadow: 0 25px 60px -12px oklch(0 0 0 / 0.6); animation: pop 0.18s ease-out; }
+      .player .stage { position: absolute; inset: 0; transition: transform 3s linear; }
+      .player .cap { position: absolute; left: 12px; right: 12px; bottom: 34px; color: #fff; font-size: 12px; line-height: 1.5; text-shadow: 0 1px 3px #000; }
+      .player .pbar { position: absolute; left: 12px; right: 12px; bottom: 14px; height: 3px; border-radius: 999px; background: oklch(1 0 0 / 0.25); }
+      .player .pbar i { display: block; height: 100%; background: #fff; border-radius: 999px; }
+      .player .tag { position: absolute; top: 10px; left: 10px; font-size: 11px; padding: 1px 8px; border-radius: 999px; background: oklch(0 0 0 / 0.5); color: #fff; }
+      .canvas-view { position: fixed; inset: 0; z-index: 70; background-color: var(--canvas-bg); background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px); background-size: 20px 20px; animation: fade 0.2s; overflow: auto; }
+      .canvas-top { position: fixed; top: 12px; left: 12px; right: 12px; display: flex; gap: 8px; z-index: 2; }
+      .cnode { position: absolute; width: 200px; border-radius: 14px; background: var(--card); box-shadow: 0 0 0 1px var(--border), 0 6px 18px -8px oklch(0 0 0 / 0.3); padding: 8px; font-size: 12px; }
+      .cnode .ch { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--muted-foreground); margin-bottom: 6px; }
+      .cnode .ch [data-lucide] { width: 13px; height: 13px; }
+      .cnode .cm { border-radius: 10px; overflow: hidden; aspect-ratio: 16/10; background: var(--muted); display: grid; place-items: center; color: var(--muted-foreground); }
+      .cnode .cp { margin-top: 6px; font-size: 11.5px; color: var(--muted-foreground); line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+
+      .demo { position: fixed; left: 50%; top: 14px; transform: translateX(-50%); z-index: 50; border-radius: 16px; padding: 7px 10px; font-size: 12px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; max-width: min(760px, calc(100vw - 32px)); }
+      .demo label { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
+      .demo b { font-weight: 600; color: rgb(167 139 250); }
+
+      @media (max-width: 1100px) { .cards { grid-template-columns: repeat(3, minmax(0, 1fr)); } .sgrid { grid-template-columns: 1fr; } }
+      @media (max-width: 860px) {
+        .sidebar { display: none; }
+        .inset { margin: 0; border-radius: 0; }
+        .wrap { padding: 8px 16px 96px; }
+        .hero { font-size: 26px; }
+        .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .detail { grid-template-columns: 1fr; padding: 4px 16px 40px; }
+        .side-card { position: static; }
+        .composer { grid-template-columns: 1fr; }
+        .scard { grid-template-columns: 1fr; }
+        .vbox { max-width: 200px; }
+        .rshot { grid-template-columns: 1fr; }
+        .demo { top: auto; bottom: 12px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell home-theme" id="shell">
+      <aside class="sidebar" id="sidebar"></aside>
+      <div class="inset">
+        <header class="site-header" id="header"></header>
+        <main class="page" id="page"></main>
+      </div>
+    </div>
+    <div id="layer"></div>
+    <div class="toast" id="toastBox"></div>
+    <div class="demo chrome" id="demo">
+      <b>演示</b>
+      <label><input type="checkbox" id="dLow" /> 余额不足</label>
+      <label><input type="checkbox" id="dConflict" /> 下次保存冲突</label>
+      <label><input type="checkbox" id="dRevFail" /> 拆解失败</label>
+      <label title="模型不能看视频且服务器没有 ffmpeg 时，只能按画面推断"><input type="checkbox" id="dNoAudio" /> 拆解无声音</label>
+      <label><input type="checkbox" id="dEmpty" /> 清空列表</label>
+      <button class="btn btn-ghost btn-xs" id="dReset"><i data-lucide="rotate-ccw"></i>重置</button>
+    </div>
+
+    <script>
+      /* ================= 工具 ================= */
+      const $ = (s, r = document) => r.querySelector(s);
+      const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const ic = (n, cls = "") => `<i data-lucide="${n}" class="${cls}"></i>`;
+      const icons = () => { if (window.lucide) lucide.createIcons(); };
+      const half = (x) => Math.round(x * 2) / 2;
+      const clone = (o) => JSON.parse(JSON.stringify(o));
+      let uid = 100;
+      const nid = () => ++uid;
+
+      function toast(msg, kind = "ok", action) {
+        const el = document.createElement("div");
+        const icon = { ok: "circle-check", bad: "circle-x", warn: "triangle-alert", info: "info" }[kind];
+        el.innerHTML = `<i data-lucide="${icon}" class="${kind}"></i><span class="grow">${esc(msg)}</span>${action ? `<button class="btn btn-outline btn-xs">${esc(action.label)}</button>` : ""}`;
+        if (action) el.querySelector("button").onclick = () => { el.remove(); action.run(); };
+        $("#toastBox").appendChild(el);
+        icons();
+        setTimeout(() => el.remove(), action ? 5000 : 2800);
+      }
+
+      /* ================= 素材图（SVG 示意） ================= */
+      function bottleSVG() {
+        return `<svg viewBox="0 0 120 150" width="100%" height="100%" preserveAspectRatio="xMidYMid slice"><defs>
+          <radialGradient id="bgp" cx="50%" cy="35%" r="80%"><stop offset="0" stop-color="#f1e4cf"/><stop offset="1" stop-color="#a98a63"/></radialGradient>
+          <linearGradient id="gl" x1="0" x2="1"><stop offset="0" stop-color="#fdf8f0" stop-opacity=".85"/><stop offset=".5" stop-color="#e9ddca" stop-opacity=".7"/><stop offset="1" stop-color="#cbb79b" stop-opacity=".85"/></linearGradient>
+          <linearGradient id="gd" x1="0" x2="1"><stop offset="0" stop-color="#8a6a2b"/><stop offset=".45" stop-color="#e9c877"/><stop offset="1" stop-color="#8a6a2b"/></linearGradient></defs>
+          <rect width="120" height="150" fill="url(#bgp)"/><ellipse cx="60" cy="128" rx="34" ry="6" fill="#000" opacity=".18"/>
+          <rect x="52" y="36" width="16" height="10" fill="#cdb48a"/><rect x="47" y="20" width="26" height="18" rx="3" fill="url(#gd)"/>
+          <rect x="30" y="46" width="60" height="80" rx="9" fill="url(#gl)" stroke="#fff" stroke-opacity=".6"/>
+          <rect x="34" y="52" width="10" height="68" rx="5" fill="#fff" opacity=".35"/>
+          <text x="60" y="88" text-anchor="middle" font-size="9" font-family="Georgia,serif" letter-spacing="2" fill="#2b2118">BRUME</text>
+          <text x="60" y="98" text-anchor="middle" font-size="4.5" font-family="Georgia,serif" letter-spacing="1" fill="#2b2118" opacity=".7">EAU DE PARFUM</text></svg>`;
+      }
+      function blenderSVG() {
+        return `<svg viewBox="0 0 120 150" width="100%" height="100%" preserveAspectRatio="xMidYMid slice"><defs>
+          <linearGradient id="bgb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e6f4ef"/><stop offset="1" stop-color="#9fcfc0"/></linearGradient>
+          <linearGradient id="cup" x1="0" x2="1"><stop offset="0" stop-color="#ffffff" stop-opacity=".5"/><stop offset=".5" stop-color="#ffffff" stop-opacity=".2"/><stop offset="1" stop-color="#ffffff" stop-opacity=".55"/></linearGradient></defs>
+          <rect width="120" height="150" fill="url(#bgb)"/><ellipse cx="60" cy="134" rx="30" ry="5" fill="#000" opacity=".15"/>
+          <rect x="40" y="18" width="40" height="12" rx="4" fill="#5fb59c"/>
+          <rect x="38" y="30" width="44" height="72" rx="6" fill="url(#cup)" stroke="#fff" stroke-opacity=".8"/>
+          <path d="M40 70 Q60 62 80 70 L80 100 Q60 104 40 100Z" fill="#f08a5d" opacity=".75"/>
+          <rect x="36" y="100" width="48" height="32" rx="7" fill="#5fb59c"/><circle cx="60" cy="116" r="5" fill="#e8fff7"/></svg>`;
+      }
+      function modelSVG() {
+        return `<svg viewBox="0 0 120 150" width="100%" height="100%" preserveAspectRatio="xMidYMid slice"><defs>
+          <linearGradient id="bgm" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#d9c7bd"/><stop offset="1" stop-color="#7a5f55"/></linearGradient></defs>
+          <rect width="120" height="150" fill="url(#bgm)"/><path d="M28 150 Q30 104 60 100 Q90 104 92 150Z" fill="#f4efe9"/>
+          <rect x="53" y="82" width="14" height="20" rx="6" fill="#e7b9a0"/><ellipse cx="60" cy="62" rx="20" ry="25" fill="#efc4aa"/>
+          <path d="M38 64 Q36 30 62 34 Q86 36 82 70 Q80 50 70 46 Q52 48 42 58Z" fill="#2c1d18"/><path d="M38 62 Q34 96 44 104 L46 70Z" fill="#2c1d18"/></svg>`;
+      }
+      function tubeSVG() {
+        return `<svg viewBox="0 0 120 150" width="100%" height="100%" preserveAspectRatio="xMidYMid slice"><defs>
+          <linearGradient id="bgt" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3a2a22"/><stop offset="1" stop-color="#140f0c"/></linearGradient></defs>
+          <rect width="120" height="150" fill="url(#bgt)"/><path d="M30 120 Q40 70 70 60 Q100 52 104 80 Q96 118 30 120Z" fill="#e7b9a0" opacity=".9"/>
+          <rect x="52" y="30" width="22" height="62" rx="5" fill="#f08a3c" transform="rotate(20 63 61)"/><rect x="56" y="22" width="14" height="10" rx="2" fill="#fff" transform="rotate(20 63 61)"/>
+          <path d="M44 34 Q40 30 46 26" stroke="#fff8ee" stroke-width="4" fill="none" stroke-linecap="round"/></svg>`;
+      }
+      const IMG = { bottle: bottleSVG, blender: blenderSVG, model: modelSVG, tube: tubeSVG };
+      const refThumb = () => `<div style="position:absolute;inset:0">${tubeSVG()}</div><div style="position:absolute;inset:0;display:grid;place-items:center;color:#fff">${ic("play")}</div>`;
+
+      /* ================= 配置（示意） ================= */
+      const PLAT = {
+        douyin: { name: "抖音", ar: "9:16", lang: "zh", zh: true, style: "前 3 秒强钩子，节奏快，口语化", rules: [] },
+        xhs: { name: "小红书", ar: "3:4", lang: "zh", zh: true, style: "种草口吻、生活方式、质感", rules: [] },
+        tmall: { name: "淘宝天猫", ar: "3:4", lang: "zh", zh: true, style: "卖点直给，商品始终在画面中心", rules: [] },
+        tiktok: { name: "TikTok", ar: "9:16", lang: "en", zh: false, style: "原生 UGC 感，手持、自然光", rules: [] },
+        amazon: { name: "亚马逊", ar: "16:9", lang: "en", zh: false, style: "产品演示为主", rules: ["不提价格、促销、竞品与「best seller」等排名用语"] },
+        reels: { name: "Instagram Reels", ar: "9:16", lang: "en", zh: false, style: "质感、氛围，旁白少", rules: [] },
+        generic: { name: "通用", ar: "9:16", lang: "zh", zh: false, style: "", rules: [] },
+      };
+      const PLAT_ICON = { douyin: "music-2", xhs: "book-heart", tmall: "shopping-cart", tiktok: "music-2", amazon: "package", reels: "instagram", generic: "globe" };
+      const ZH_FORBIDDEN = ["最", "第一", "顶级", "国家级", "100%", "绝对"];
+      const VM = {
+        sd25: { name: "即梦 Seedance 2.5", short: "Seedance 2.5", letter: "S", color: "#3b82f6", omni: true, refVideoMax: 15, refImages: 9, res: ["480P", "720P", "1080P"], durs: [5, 10, 15], ars: ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"], rate: 8, fmt: "seedance", desc: "全能参考 · 有声 · 参考视频 ≤15s" },
+        sd20f: { name: "Seedance 2.0 fast", short: "Seedance 2.0 fast", letter: "S", color: "#6366f1", omni: true, refVideoMax: 15, refImages: 9, res: ["480P", "720P"], durs: [5, 10], ars: ["16:9", "4:3", "1:1", "3:4", "9:16"], rate: 4, fmt: "seedance", desc: "全能参考 · 有声 · 更快更省" },
+        hailuo: { name: "海螺 H3", short: "海螺 H3", letter: "H", color: "#f97316", omni: true, refVideoMax: 0, refImages: 3, res: ["720P", "1080P"], durs: [6, 10], ars: ["16:9", "9:16", "1:1"], rate: 7, fmt: "generic", desc: "全能参考 · 有声 · 不收参考视频" },
+        kling: { name: "Kling 2.6", short: "Kling 2.6", letter: "K", color: "#10b981", omni: false, why: "不支持全能参考，不能同时用商品图和模特图", res: ["720P"], durs: [5, 10], ars: ["16:9", "9:16", "1:1"], rate: 6 },
+      };
+      const RES_X = { "480P": 0.5, "720P": 1, "1080P": 2 };
+      const TM = { gemini: { name: "Gemini 3 Pro", vision: true, video: true }, claude: { name: "Claude Sonnet 5.5", vision: true, video: false }, ds: { name: "DeepSeek V4", vision: false, video: false } };
+      /* 各环节当前绑定的方法（来自后台「环节技能」页，见 环节技能-后台原型.html） */
+      const METHOD = { facts: "内置方法", reverse: "daihuo-fanpai v2", follow: "daihuo-fanpai v2", create: "tvc-director v1" };
+      const STEP_NAME = { facts: "事实卡", reverse: "拆解", follow: "跟拍", create: "创意" };
+      const STEP_COST = { facts: 3, reverse: 6, follow: 3, create: 2 };
+      const roundCost = (c) => (c.ref ? STEP_COST.facts + STEP_COST.reverse + STEP_COST.follow + STEP_COST.create * c.adaptN : STEP_COST.facts + STEP_COST.create * anglesOf(c).length);
+      const videoCost = (vm, dur, res) => Math.round(VM[vm].rate * dur * (RES_X[res] || 1));
+
+      const PERFUME = { name: "晨雾香水 50ml", anchors: ["方形磨砂玻璃瓶身", "金色金属瓶盖", "瓶身正面黑色衬线 logo「BRUME」"], selling: ["木质调，留香约 8 小时", "50ml 方瓶，放得进手包", "磨砂瓶身质感"], prohibited: ["不编造价格、销量、评价、认证与功效"], cta: "点击下方链接，把清晨带在身上" };
+      const ANGLES = {
+        pain: { name: "痛点-解决", desc: "痛点钩子 → 商品解决 → 效果证明 → 促单", title: "早上喷的香，中午就没了？", music: "轻快电子节拍，结尾上扬", voice: "年轻女声，亲切",
+          shots: [[0, 0.2, "特写", "固定", "地铁车厢里女生低头闻袖口，微微皱眉", "早上喷的香，中午就没了？", "Your perfume gone by noon?"], [0.2, 0.4, "中景", "缓推", "她从手包里拿出晨雾香水，方瓶在手心", "试试这瓶晨雾。", "Try Morning Mist."], [0.4, 0.73, "微距", "环绕", "侧光下磨砂瓶身与金色瓶盖，按压喷雾散开", "木质调，从早上留到下班。", "Woody notes from morning to night."], [0.73, 1, "中景", "固定", "傍晚聚会她转身微笑，香水瓶放在桌角", "把清晨带在身上。", "Carry the morning with you."]] },
+        feature: { name: "卖点拆解", desc: "特写逐个展示主卖点 + 2 个辅助卖点", title: "一瓶好香，先看质感", music: "极简钢琴，干净", voice: "沉稳女声",
+          shots: [[0, 0.2, "微距", "推", "金色瓶盖旋开的瞬间", "一瓶好香，先看质感。", "Great scent starts with the details."], [0.2, 0.47, "特写", "环绕", "磨砂方瓶在侧光里缓慢转动", "磨砂玻璃方瓶，握感温润。", "Frosted glass, smooth in your hand."], [0.47, 0.73, "特写", "固定", "手把香水放进小手包", "50ml，刚好放进手包。", "50ml, made for your bag."], [0.73, 1, "中景", "缓拉", "喷雾在逆光中散开", "木质调晨雾，淡而持久。", "Soft woody mist that stays."]] },
+        lifestyle: { name: "生活方式种草", desc: "真实使用场景，口吻像朋友推荐", title: "我的通勤香只有这一瓶", music: "温暖原声吉他", voice: "自然女声，像朋友推荐",
+          shots: [[0, 0.2, "中景", "跟拍", "清晨窗边女生整理衬衫领口", "我的通勤香，只有这一瓶。", "My only commute scent."], [0.2, 0.4, "特写", "固定", "手腕喷一下，低头轻嗅", "出门前喷两下。", "Two sprays before I head out."], [0.4, 0.73, "全景", "跟拍", "她走在晨光里的街道，步伐轻快", "淡淡的木质香，同事都问是什么味道。", "Soft and woody, everyone asks what it is."], [0.73, 1, "特写", "缓推", "办公桌上香水与一杯咖啡", "晨雾香水，链接在下面。", "Morning Mist, link below."]] },
+        compare: { name: "前后对比", desc: "用之前 / 用之后对照，不点名竞品", title: "同一个下午，两种状态", music: "前段低沉，后段明亮", voice: "清爽女声",
+          shots: [[0, 0.27, "中景", "固定", "午后女生疲惫靠在工位", "没喷香的下午……", "An afternoon without it..."], [0.27, 0.53, "特写", "缓推", "同一时间她手腕补喷晨雾", "喷了晨雾的下午。", "An afternoon with Morning Mist."], [0.53, 0.8, "微距", "环绕", "瓶身在阳光下，喷雾细密", "木质调，留香约 8 小时。", "Woody notes, about 8 hours."], [0.8, 1, "中景", "固定", "她合上电脑，神清气爽地离开", "把清晨带在身上。", "Carry the morning with you."]] },
+        unbox: { name: "开箱体验", desc: "手持第一视角拆包、看细节、上手", title: "开箱一瓶晨雾", music: "轻快 lo-fi", voice: "随性女声",
+          shots: [[0, 0.2, "特写", "手持", "第一视角撕开包装封条", "到了到了，开箱！", "It's here, let's unbox!"], [0.2, 0.47, "特写", "手持", "从盒中取出磨砂方瓶，转一圈看细节", "瓶子比想象的还好看。", "Even prettier in person."], [0.47, 0.73, "微距", "固定", "第一次按压，喷雾在窗光里", "第一下是清新的木质调。", "First spray: fresh and woody."], [0.73, 1, "中景", "手持", "她把香水放进手包，对镜头点头", "通勤包里就放它了。", "It lives in my bag now."]] },
+        mood: { name: "质感大片", desc: "光影、材质、慢动作，旁白极少", title: "晨雾", music: "空灵氛围音乐", voice: "低语旁白，极少",
+          shots: [[0, 0.27, "全景", "缓推", "清晨薄雾中的湖面，光线穿透", "", ""], [0.27, 0.53, "微距", "环绕", "香水瓶立在湿润的石头上，水珠滑落", "晨雾。", "Morning Mist."], [0.53, 0.8, "特写", "慢动作", "喷雾与晨雾交融", "", ""], [0.8, 1, "特写", "固定", "瓶身正面，光线停在 logo 上", "把清晨带在身上。", "Carry the morning with you."]] },
+      };
+      const AUTO_ORDER = ["pain", "lifestyle", "feature", "unbox"];
+      const angleName = (k) => (k === "follow" ? "跟拍" : (ANGLES[k] || {}).name || k);
+
+      /* 参考片「爆款参考.mp4」的拆解（字段照 daihuo-fanpai shotlist，示意） */
+      const REF_REVERSE = {
+        overall: { style: "手持 UGC + 商品特写", narrative_arc: "痛点钩子 → 质地演示 → 效果 → 背书促单", why_viral: "前 2 秒手背干纹特写制造不适感；挤膏体的慢动作让质地看得见；结尾「销量第一」制造从众感", transcript: "冬天手干到起皮？这支我用了三年。一抹就吸收，不黏手。全网销量第一，链接在下面。" },
+        shots: [
+          { id: 1, start: 0, end: 2, is_opening_3s: true, shot_size: "特写", camera: "手持推近", action: "左手手背朝上，右手食指沿干纹从指节划到手腕，指尖带起白色皮屑", product_role: "none", product_in_frame: "不出现", dialogue: "冬天手干到起皮？", key_colors: ["白色皮屑"] },
+          { id: 2, start: 2, end: 4.5, is_opening_3s: true, shot_size: "微距", camera: "固定", action: "右手拇指按压软管尾部，乳白膏体缓慢挤出一段，在管口拉出细丝", product_role: "hero_real", product_in_frame: "软管占画面约 60%", dialogue: "这支我用了三年。", key_colors: ["乳白膏体", "橙色管身"] },
+          { id: 3, start: 4.5, end: 7, is_opening_3s: false, shot_size: "中景", camera: "缓推", action: "双手掌心对搓三圈后翻转，手背互相按压，皮肤由暗沉变得有光泽", product_role: "dynamic", product_in_frame: "放在桌角，占约 10%", dialogue: "一抹就吸收，不黏手。", key_colors: [] },
+          { id: 4, start: 7, end: 10, is_opening_3s: false, shot_size: "特写", camera: "固定", action: "女生把软管举到镜头前，拇指遮住一半 logo，点头微笑", product_role: "package_text", product_in_frame: "包装正面占约 50%", dialogue: "全网销量第一，链接在下面。", key_colors: ["橙色管身"] },
+        ],
+        brands: ["某品牌（软管正面 logo）"],
+        claims: ["全网销量第一", "限时第二支半价"],
+      };
+      /* 跟拍改写：结构不动，只换商品 / 卖点 / 数字（示意输出） */
+      const FOLLOW_TPL = [
+        { action: "左手手腕朝上，右手食指在腕内侧轻点两下后凑近鼻尖，微微皱眉", narr: "早上喷的香，中午就散了？" },
+        { action: "右手拇指按下晨雾香水的金色喷头，细雾从瓶口喷出，在逆光里慢慢散开", narr: "这瓶我用了三年。" },
+        { action: "双手腕内侧轻碰两下后自然垂下，转身时发丝扬起，表情放松", narr: "木质调，淡淡地留到傍晚。" },
+        { action: "女生把香水举到镜头前，瓶身 logo 完整朝向镜头，点头微笑", narr: "全网销量第一，链接在下面。" },
+      ];
+      const ROLE_NAME = { none: "不出现", dynamic: "动态出镜", hero_real: "真实质感特写", package_text: "包装文字清晰" };
+      const swapProduct = (t) => t.replace(/护手霜|软管/g, "香水瓶").replace(/乳白膏体|膏体/g, "香雾").replace(/挤出/g, "喷出").replace(/手背/g, "手腕").replace(/某品牌/g, "");
+
+      function buildCreate(key, dur, lang) {
+        const a = ANGLES[key];
+        return { id: nid(), kind: "create", angle: key, title: a.title, music: a.music, voice: a.voice, method: METHOD.create,
+          shots: a.shots.map((s) => ({ start: half(s[0] * dur), end: half(s[1] * dur), shot: s[2], camera: s[3], scene: s[4], narr: lang === "en" ? s[6] : s[5] })) };
+      }
+      function buildFollow(rev, dur) {
+        const k = dur / rev.shots[rev.shots.length - 1].end;
+        return { id: nid(), kind: "follow", angle: "follow", title: "跟拍 · 冬天手干到起皮？", music: "原片节奏：轻快鼓点", voice: "年轻女声，亲切（同原片口吻）", method: METHOD.follow,
+          shots: rev.shots.map((s, i) => ({ ref: s.id, start: half(s.start * k), end: half(s.end * k), shot: s.shot_size, camera: s.camera, scene: FOLLOW_TPL[i] ? FOLLOW_TPL[i].action : swapProduct(s.action), narr: FOLLOW_TPL[i] ? FOLLOW_TPL[i].narr : swapProduct(s.dialogue) })) };
+      }
+
+      /* 格式化层（代码）：与设计文档 §6.6 一致；跟拍版与改编版共用 */
+      function compile(sc, p, st) {
+        const plat = PLAT[st.platform];
+        const k = p.images.length;
+        const ref = [`@图片1${k > 1 ? "…@图片" + k : ""}：${p.product.name}，外观的唯一依据，禁止重新设计、改色、改形、改 logo。`];
+        if (p.model) ref.push(`@图片${k + 1}：模特形象参考。`);
+        if (st.ref) ref.push("@视频1：参考节奏与运镜，不照搬其中的商品、人物与品牌。");
+        const forbid = [...p.product.prohibited, ...plat.rules];
+        if (plat.zh) forbid.push("不使用广告法极限词（最、第一、顶级、国家级、100%、绝对等）");
+        const lang = st.lang === "en" ? "English" : "中文";
+        const shots = sc.shots.map((s, i) => `镜头${i + 1}（${s.start}–${s.end}s）${s.shot}，${s.camera}：${s.scene}。${s.narr ? "旁白：「" + s.narr + "」" : "无旁白"}`);
+        const hard = ["商品外观与参考图一致", "商品不出画", "除商品本身印刷的文字外，画面不出现任何文字、字幕或水印", ...forbid];
+        const visual = [plat.style, sc.kind === "follow" ? "跟拍参考片的节奏、景别与运镜" : angleName(sc.angle)].filter(Boolean).join("；");
+        if ((VM[st.vm] || {}).fmt === "seedance") {
+          return [`[基本参数] ${st.ar}，${st.dur} 秒，有声`, `[参考素材] ${ref.join("\n           ")}`, `[整体视觉] ${visual}`, `[商品] ${p.product.anchors.join("；")}`, `[分镜] ${shots.join("\n       ")}`, `[音乐与配音] 旁白：${lang}，${sc.voice}；配乐：${sc.music}`, `[硬性约束] ${hard.join("；")}`].join("\n");
+        }
+        return [`一条 ${st.dur} 秒、${st.ar} 的有声商品广告。${ref.join("")}`, `整体风格：${visual}。商品外观：${p.product.anchors.join("、")}。`, shots.join(" "), `旁白使用${lang}，${sc.voice}；配乐为${sc.music}。`, `要求：${hard.join("；")}。`].join("\n\n");
+      }
+
+      /* 软问题：禁用说法（国内平台）、背书无依据、第三方品牌（跟拍时对照拆解） */
+      function scan(s, r) {
+        const out = [];
+        const zh = PLAT[r.settings.platform].zh;
+        const rev = r.reverse;
+        s.shots.forEach((sh, i) => {
+          const t = sh.narr + " " + (s.kind === "follow" ? sh.scene : "");
+          if (zh) ZH_FORBIDDEN.forEach((w) => { if (sh.narr.includes(w)) out.push({ shot: i, type: "forbidden", text: w }); });
+          if (rev) {
+            rev.claims.forEach((c) => { const core = c.replace(/全网|限时/g, ""); if (sh.narr.includes(core)) out.push({ shot: i, type: "claim", text: c }); });
+            if (t.includes("某品牌")) out.push({ shot: i, type: "brand", text: "某品牌" });
+          }
+        });
+        return out;
+      }
+      const FLAG_NAME = { forbidden: "禁用说法", claim: "背书无依据", brand: "第三方品牌" };
+
+      /* ================= 状态 ================= */
+      const TIMERS = {};
+      let S;
+      function seedProjects() {
+        const p = { id: nid(), title: "便携榨汁杯 350ml", img: "blender", images: ["blender", "blender"], model: true, updated: "11-10 18:42",
+          product: { name: "便携榨汁杯 350ml", anchors: ["薄荷绿杯盖与底座", "透明杯体，侧面白色刻度", "底座正面圆形一键按钮"], selling: ["USB-C 充电，一次充满约榨 15 杯", "6 叶刀头，30 秒打碎冰块", "350ml，放得进通勤包"], prohibited: ["不编造价格、销量、评价、认证与功效"], cta: "Tap the link to grab yours" }, rounds: [] };
+        const r = { id: nid(), no: 1, status: "ready", warnings: [], reverse: null, steps: [{ key: "facts", status: "succeeded" }, { key: "create", status: "succeeded" }],
+          settings: { platform: "tiktok", vm: "sd25", ar: "9:16", res: "720P", dur: 15, lang: "en", ref: null, tm: "gemini", angles: ["unbox", "feature"], adaptN: 0, desc: "便携榨汁杯，USB-C 充电，6 叶刀头" }, scripts: [] };
+        const mk = (angle, title, music, voice, shots) => ({ id: nid(), kind: "create", angle, title, music, voice, method: METHOD.create, shots, status: "done", takes: [{ id: nid() }], cur: 0, flags: [], original: clone(shots) });
+        r.scripts = [
+          mk("unbox", "Unboxing my new gym buddy", "Upbeat lo-fi", "Casual female, Gen-Z", [{ start: 0, end: 3, shot: "特写", camera: "手持", scene: "第一视角撕开快递盒，薄荷绿杯盖露出", narr: "It finally came!" }, { start: 3, end: 7, shot: "特写", camera: "手持", scene: "取出榨汁杯转一圈，展示刻度和按钮", narr: "It's so tiny, fits in my gym bag." }, { start: 7, end: 11.5, shot: "中景", camera: "固定", scene: "丢进冰块和芒果，按一下按钮开始搅打", narr: "Ice and mango, one press..." }, { start: 11.5, end: 15, shot: "中景", camera: "手持", scene: "她直接对着杯口喝一口，对镜头点头", narr: "Smoothie in 30 seconds. Link below!" }]),
+          mk("feature", "Six blades, thirty seconds", "Clean electronic beat", "Confident female", [{ start: 0, end: 3, shot: "微距", camera: "推", scene: "6 叶刀头在侧光下旋转", narr: "Six steel blades." }, { start: 3, end: 7, shot: "特写", camera: "固定", scene: "冰块在杯中被瞬间打碎", narr: "Crushes ice in thirty seconds." }, { start: 7, end: 11, shot: "特写", camera: "环绕", scene: "USB-C 线插入底座，指示灯亮起", narr: "USB-C, about 15 blends per charge." }, { start: 11, end: 15, shot: "中景", camera: "缓拉", scene: "榨汁杯放进通勤包侧袋", narr: "Your smoothie bar, anywhere." }]),
+        ];
+        p.rounds = [r];
+        return [p];
+      }
+      function init() {
+        Object.keys(TIMERS).forEach((k) => { clearTimeout(TIMERS[k]); clearInterval(TIMERS[k]); });
+        S = { route: { name: "list", id: null }, credits: 860, low: false, conflictNext: false, empty: false, revFail: false, noAudio: false,
+          comp: { products: [], uploading: false, model: false, ref: null, desc: "", platform: "douyin", angles: ["auto"], autoN: 2, adaptN: 1, vm: "sd25", ar: "9:16", res: "720P", dur: 15, lang: "zh", tm: "gemini" },
+          projects: seedProjects(), pop: null, dlg: null };
+      }
+      const cur = () => S.projects.find((p) => p.id === S.route.id);
+      const anglesOf = (c) => (c.angles.includes("auto") ? AUTO_ORDER.slice(0, c.ref ? c.adaptN : c.autoN) : c.angles.slice(0, c.ref ? c.adaptN : 4));
+      const balance = () => (S.low ? 3 : S.credits);
+      const findScript = (sid) => { for (const p of S.projects) for (const r of p.rounds) for (const s of r.scripts) if (s.id === sid) return { p, r, s }; return null; };
+      const findRound = (rid) => { for (const p of S.projects) for (const r of p.rounds) if (r.id === rid) return { p, r }; return null; };
+      const inFlight = (p) => p.rounds.some((r) => r.status === "scripting" || r.refollowing || r.scripts.some((s) => s.status === "rendering"));
+      const stepOf = (r, k) => r.steps.find((x) => x.key === k);
+
+      /* ================= 外壳 ================= */
+      function renderSidebar() {
+        const nav = [["创作", "clapperboard"], ["探索", "compass", "soon"], ["资产", "folder-open"], ["短剧工作室", "film", "", "New"], ["营销工作室", "shopping-bag", "active", "New"]];
+        $("#sidebar").innerHTML = `
+          <div class="brand"><span class="brand-mark">${ic("aperture")}</span>连镜</div>
+          ${nav.map(([l, i, st, b]) => `<button class="nav-item ${st || ""}" ${l === "营销工作室" ? 'data-act="go-list"' : ""}>${ic(i)}<span>${l}</span>${b ? `<span class="badge-new">${b}</span>` : ""}</button>`).join("")}
+          <div class="group-label">对话</div>
+          <div class="group-item">${ic("message-square")}<span class="truncate">默认创作</span></div>
+          <div class="group-label"><span>画布</span><span>全部</span></div>
+          ${["夏日新品发布", "晨雾香水 · 痛点-解决"].map((t, k) => `<div class="group-item"><span class="thumb" style="background:linear-gradient(135deg,${k ? "#a98a63,#4b3520" : "oklch(0.55 0.08 60),oklch(0.35 0.05 280)"})"></span><span class="truncate">${t}</span></div>`).join("")}
+          <div class="account"><span class="avatar">张</span><div class="grow"><div style="font-size:13.5px;font-weight:500">zhanghuizhong</div><div class="muted" style="font-size:12px">个人版</div></div>${ic("chevrons-up-down")}</div>`;
+      }
+      function renderHeader() {
+        $("#header").innerHTML = `<button class="icon-btn" title="收起侧栏">${ic("panel-left")}</button><div class="grow"></div>
+          <div class="chrome pill-bar"><button class="icon-btn" data-act="theme" title="切换明暗">${ic(document.documentElement.classList.contains("dark") ? "moon" : "sun")}</button><span class="sep"></span>
+          <span class="btn btn-ghost btn-sm" style="padding:0 10px;cursor:default"><span class="credit-n credit">${ic("sparkle")}${balance()}</span></span></div>`;
+      }
+
+      /* ================= 生成框 ================= */
+      function compState(c, dock) {
+        const vm = VM[c.vm];
+        const cost = roundCost(c);
+        let hint = "", tone = "bad";
+        if (!TM[c.tm].vision) hint = "当前文本模型不能看图，换一个能看图的模型";
+        else if (c.uploading) { hint = "商品图还在上传"; tone = "warn"; }
+        else if ((dock || c.products.length) && balance() < cost) hint = `余额不足，还差 ${cost - balance()} 积分`;
+        const imgs = (dock ? cur().images.length : c.products.length) + (c.model ? 1 : 0);
+        if (!hint && imgs > (vm.refImages || 0)) hint = `${vm.short} 最多收 ${vm.refImages} 张参考图`;
+        return { cost, hint, tone, can: !hint && (dock || c.products.length > 0) && !c.uploading };
+      }
+      function composerHTML(dock) {
+        const c = S.comp;
+        const vm = VM[c.vm];
+        const st = compState(c, dock);
+        const refOK = vm.refVideoMax > 0;
+        const p = dock ? cur() : null;
+        const prodTile = dock
+          ? `<div class="slot" title="商品图跟随项目">${p.images.length > 1 ? `<div class="slot-img stack2">${IMG[p.img]()}</div>` : ""}<div class="slot-img">${IMG[p.img]()}<div class="cap">商品</div></div>${p.images.length > 1 ? `<span class="slot-n">${p.images.length}</span>` : ""}</div>`
+          : c.products.length
+            ? `<div class="slot">${c.products.length > 1 ? `<div class="slot-img stack2">${bottleSVG()}</div>` : ""}<div class="slot-img" data-act="prod-add" style="cursor:pointer" title="${c.products.length < 4 ? "再加一张同一商品的其他角度" : "最多 4 张"}">${bottleSVG()}<div class="cap">商品</div></div>${c.uploading ? `<div class="slot-busy">${ic("loader-2", "spin")}</div>` : ""}<button class="slot-x" data-act="prod-clear" aria-label="移除商品图">${ic("x")}</button>${c.products.length > 1 ? `<span class="slot-n">${c.products.length}</span>` : ""}</div>`
+            : `<div class="slot"><button class="slot-add" data-act="prod-add" title="上传商品图（必填，1–4 张同一商品）">${c.uploading ? ic("loader-2", "spin") : ic("package-plus")}商品</button></div>`;
+        const modelTile = c.model
+          ? `<div class="slot"><div class="slot-img">${modelSVG()}<div class="cap">模特</div></div><button class="slot-x" data-act="model-clear" aria-label="移除模特图">${ic("x")}</button></div>`
+          : `<div class="slot"><button class="slot-add" data-act="model-add" title="上传模特图（可选）">${ic("user-round-plus")}模特</button></div>`;
+        const refTile = c.ref
+          ? `<div class="slot"><div class="slot-img">${refThumb()}<div class="cap">参考 ${c.ref}s</div></div><button class="slot-x" data-act="ref-clear" aria-label="移除参考视频">${ic("x")}</button></div>`
+          : `<div class="slot"><button class="slot-add" data-act="pop-ref" ${refOK ? "" : "disabled"} title="${refOK ? `上传爆款参考视频（可选，≤${vm.refVideoMax} 秒）` : `${vm.short} 不支持参考视频`}">${ic("clapperboard")}参考</button></div>`;
+        const angleLabel = c.ref ? `跟拍 + 改编 ×${c.adaptN}` : c.angles.includes("auto") ? `自动 ×${c.autoN}` : c.angles.length === 1 ? angleName(c.angles[0]) : `${c.angles.length} 个角度`;
+        const bad = st.hint.startsWith("余额");
+        return `
+          <form class="composer ${dock ? "dock" : ""}" onsubmit="return false">
+            ${dock ? "" : `<div class="ring"></div>`}
+            <div class="slots">${prodTile}${modelTile}${refTile}</div>
+            <div class="comp-text"><textarea id="desc" maxlength="1000" placeholder="${dock ? "换个说法、补充卖点，再写一轮" : "商品名、卖点、想要的感觉，也可以不写"}">${esc(c.desc)}</textarea></div>
+            <div class="bar">
+              <button type="button" class="bb beam" data-act="pop-plat">${ic(PLAT_ICON[c.platform])}<span>${esc(PLAT[c.platform].name)}</span>${ic("chevron-down", "chev")}</button>
+              <button type="button" class="bb" data-act="pop-angle">${ic(c.ref ? "copy" : "lightbulb")}<span>${esc(angleLabel)}</span>${ic("chevron-down", "chev")}</button>
+              <button type="button" class="bb" data-act="pop-model"><span class="avatar-m" style="width:20px;height:20px;border-radius:6px;font-size:10px;background:${vm.color}">${vm.letter}</span><span>${esc(vm.short)}</span>${ic("chevron-down", "chev")}</button>
+              <button type="button" class="bb" data-act="pop-params">${ic("ratio")}<span class="tnum">${c.ar} · ${c.res} · ${c.dur}s · ${c.lang === "en" ? "EN" : "中"}</span>${ic("chevron-down", "chev")}</button>
+              <div class="grow"></div>
+              <span class="credit-n ${bad ? "" : "muted"}" style="margin-right:6px;font-size:13px;${bad ? "color:var(--destructive);font-weight:500" : ""}" title="写脚本预估积分（各环节之和），出片另计">${ic("sparkle")}${st.cost}</span>
+              <button type="button" class="send" data-act="${dock ? "write-more" : "write"}" ${st.can ? "" : "disabled"} title="${esc(st.hint || "写脚本")}" aria-label="写脚本">${ic("arrow-up")}</button>
+            </div>
+            <div class="hint ${st.tone}">${esc(st.hint)}</div>
+          </form>`;
+      }
+
+      /* ================= 列表页 ================= */
+      function coverHTML(p) {
+        const done = p.rounds[0] && p.rounds[0].scripts.find((s) => s.status === "done");
+        return `<div class="cover">${IMG[p.img]()}${done ? `<div style="position:absolute;inset:0;display:grid;place-items:center"><span style="width:38px;height:38px;border-radius:999px;background:oklch(0 0 0 / .45);display:grid;place-items:center;color:#fff">${ic("play")}</span></div>` : ""}</div>`;
+      }
+      function barsHTML(p) {
+        const ss = p.rounds.flatMap((r) => (r.status === "scripting" ? r.plan.map(() => ({ status: "rendering" })) : r.scripts)).slice(0, 8);
+        return `<div class="bars">${ss.length ? ss.map((s) => `<i class="${{ done: "done", rendering: "run", failed: "bad", draft: "draft" }[s.status]}"></i>`).join("") : "<i></i>"}</div>`;
+      }
+      function projStatus(p) {
+        if (p.rounds.some((r) => r.status === "scripting")) return `<span class="row" style="gap:5px">${ic("loader-2", "spin")}<span>写脚本中</span></span>`;
+        const ss = p.rounds.flatMap((r) => r.scripts);
+        if (ss.some((s) => s.status === "rendering")) return `<span class="row" style="gap:5px;color:var(--status-running)">${ic("loader-2", "spin")}<span>出片中</span></span>`;
+        if (p.rounds[0] && p.rounds[0].status === "failed") return `<span style="color:var(--destructive)">写脚本失败</span>`;
+        const done = ss.filter((s) => s.status === "done").length;
+        return `<span>${done ? `${done} 条成片` : `${ss.length} 份脚本待出片`}</span>`;
+      }
+      function listPage() {
+        const list = S.empty ? [] : S.projects;
+        return `<div class="wrap page-in">
+          <h1 class="hero display">把商品交给 <span>营销工作室</span></h1>
+          ${composerHTML(false)}
+          <div class="section-head"><h2>我的营销片</h2>${list.length ? `<span class="muted tnum" style="font-size:14px">${list.length}</span>` : ""}</div>
+          ${list.length ? `<div class="cards">${list.map((p) => `
+            <div class="pcard"><button class="more" data-act="pop-card" data-p="${p.id}" aria-label="更多">${ic("ellipsis")}</button>
+              <button data-act="open" data-p="${p.id}" style="display:block;width:100%;text-align:left">${coverHTML(p)}
+                <div style="padding:12px 4px 0"><div class="truncate" style="font-size:15px;font-weight:500">${esc(p.title)}</div>
+                  <div class="row muted" style="gap:6px;font-size:13px;margin-top:4px"><span class="truncate">${projStatus(p)}</span><span style="margin-left:auto" class="tnum">${esc(p.updated)}</span></div>${barsHTML(p)}</div>
+              </button></div>`).join("")}</div>` : `<div class="empty">${ic("shopping-bag")}还没有营销片</div>`}
+        </div>`;
+      }
+
+      /* ================= 详情页 ================= */
+      function detailPage() {
+        const p = cur();
+        const pr = p.product;
+        return `<div class="page-in"><div class="detail">
+          <aside class="side-card chrome">
+            <div class="row" style="margin:-4px 0 0 -6px"><button class="back" data-act="go-list">${ic("chevron-left")}营销工作室</button></div>
+            <div class="pimgs">${p.images.map((im, k) => `<div>${IMG[im]()}${k === 0 ? `<span class="lbl">商品</span>` : ""}</div>`).join("")}${p.model ? `<div>${modelSVG()}<span class="lbl">模特</span></div>` : ""}</div>
+            <div class="row" style="gap:6px"><div class="grow" style="font-size:16px;font-weight:600">${esc(p.title)}</div><button class="icon-btn" data-act="edit-fact" title="编辑商品事实卡" ${pr ? "" : "disabled"}>${ic("pencil")}</button></div>
+            ${pr ? `<div class="fact"><h4>${ic("scan-eye")}外观锚点</h4><ul>${pr.anchors.map((a) => `<li>${esc(a)}</li>`).join("")}</ul></div>
+              <div class="fact"><h4>${ic("sparkles")}卖点</h4><ul>${pr.selling.map((a) => `<li>${esc(a)}</li>`).join("")}</ul></div>
+              <div class="fact"><h4>${ic("shield-ban")}禁用说法</h4><ul>${pr.prohibited.map((a) => `<li>${esc(a)}</li>`).join("")}</ul></div>
+              <div class="fact"><h4>${ic("mouse-pointer-click")}引导下单</h4><ul><li>${esc(pr.cta)}</li></ul></div>`
+              : `<div class="muted" style="font-size:12.5px;display:flex;gap:6px">${ic("loader-2", "spin")}正在生成商品事实卡</div>`}
+          </aside>
+          <div style="min-width:0">
+            <div class="rounds">${p.rounds.map((r) => roundHTML(p, r)).join("")}</div>
+            <div class="dock-wrap">${composerHTML(true)}</div>
+          </div>
+        </div></div>`;
+      }
+
+      function stepsHTML(r) {
+        const icon = { queued: "circle-dashed", running: "loader-2", succeeded: "check", failed: "circle-x", skipped: "minus", reused: "check" };
+        const label = (s) => ({ queued: "等待", running: "进行中", succeeded: "完成", failed: "失败", skipped: "跳过", reused: "沿用" })[s.status];
+        const chip = (k) => { const s = stepOf(r, k); if (!s) return ""; return `<span class="step ${s.status === "reused" ? "succeeded" : s.status}" title="${STEP_NAME[k]}：${label(s)} · 方法：${METHOD[k]}">${ic(icon[s.status], s.status === "running" ? "spin" : "")}${STEP_NAME[k]}</span>`; };
+        const arrow = `<span class="step-arrow">${ic("chevron-right")}</span>`;
+        const lvl1 = ["facts", "reverse"].filter((k) => stepOf(r, k)).map(chip).join("");
+        const lvl2 = ["follow", "create"].filter((k) => stepOf(r, k)).map(chip).join("");
+        return `<span class="steps">${lvl1}${arrow}${lvl2}</span>`;
+      }
+
+      function roundHTML(p, r) {
+        const st = r.settings;
+        const chips = [`${ic(PLAT_ICON[st.platform])}${esc(PLAT[st.platform].name)}`, esc(VM[st.vm].short), `${st.ar} · ${st.res} · ${st.dur}s`, st.lang === "en" ? "English 旁白" : "中文旁白"];
+        if (st.ref) chips.push(`${ic("clapperboard")}参考 ${st.ref}s`);
+        const renderable = r.scripts.filter((s) => s.status !== "rendering" && !s.flags.length && s.status !== "scripting");
+        const allCost = renderable.length * videoCost(st.vm, st.dur, st.res);
+        const head = `<div class="round-h"><span class="no">第 ${r.no} 轮</span>${chips.map((c) => `<span class="meta-chip">${c}</span>`).join("")}
+          ${r.status === "ready" && renderable.length > 1 ? `<button class="btn btn-primary btn-sm" style="margin-left:auto" data-act="render-all" data-r="${r.id}" ${balance() < allCost ? `disabled title="余额不足"` : ""}>${ic("play")}全部出片 <span class="credit-n" style="opacity:.75">${ic("sparkle")}${allCost}</span></button>` : ""}</div>`;
+        if (r.status === "scripting") {
+          return `<section>${head}<div class="jobline chrome">${stepsHTML(r)}<span class="grow muted">${esc(r.stage)}</span><button class="btn btn-ghost btn-xs" data-act="cancel" data-r="${r.id}">取消</button></div>
+            ${st.ref ? `<div class="rev skeleton" style="height:78px"></div>` : ""}
+            <div class="sgrid">${r.plan.map(() => `<div class="scard skel skeleton"></div>`).join("")}</div></section>`;
+        }
+        if (r.status === "failed") {
+          return `<section>${head}<div class="jobline" style="background:color-mix(in oklch,var(--destructive) 9%,transparent)">${stepsHTML(r)}<span class="grow">${esc(r.error)}<span class="muted"> · 积分已退回</span></span><button class="btn btn-outline btn-xs" data-act="retry-round" data-r="${r.id}">${ic("rotate-ccw")}重试</button></div></section>`;
+        }
+        if (r.status === "canceled") return `<section>${head}<div class="jobline" style="background:var(--chrome-hover)"><span class="muted">已取消，积分已退回</span></div></section>`;
+        const warn = r.warnings.length ? `<div class="jobline" style="background:color-mix(in oklch,var(--status-warning) 10%,transparent)"><span class="row" style="color:var(--status-warning)">${ic("triangle-alert")}</span>${esc(r.warnings.join("；"))}</div>` : "";
+        const showSteps = st.ref || r.steps.some((s) => s.status === "failed");
+        return `<section>${head}${showSteps ? `<div class="row" style="gap:8px;margin:-4px 0 12px;flex-wrap:wrap">${stepsHTML(r)}</div>` : ""}${warn}${st.ref ? reverseHTML(p, r) : ""}
+          <div class="sgrid">${r.scripts.map((s) => scriptHTML(p, r, s)).join("")}${failedCards(r)}</div></section>`;
+      }
+
+      function failedCards(r) {
+        const out = [];
+        const f = stepOf(r, "follow");
+        if (f && f.status === "failed") out.push(`<div class="scard fail"><span style="color:var(--destructive)" class="row">${ic("circle-x")}</span><span class="grow">跟拍版生成失败：${esc(f.error)}</span><button class="btn btn-outline btn-xs" data-act="retry-step" data-r="${r.id}" data-k="follow">${ic("rotate-ccw")}重试</button></div>`);
+        return out.join("");
+      }
+
+      /* 参考拆解卡（§6.10.1）：默认折叠，可改动作 / 商品出现方式 / 台词，改后可重写跟拍版 */
+      function reverseHTML(p, r) {
+        const s = stepOf(r, "reverse");
+        if (s.status === "running" || s.status === "queued" || !r.reverse && s.status !== "failed") {
+          return `<div class="rev"><div class="rev-h">${ic("loader-2", "spin")}<span class="grow muted">正在拆解参考片</span></div></div>`;
+        }
+        if (s.status === "failed") {
+          return `<div class="rev"><div class="rev-h"><span style="color:var(--destructive)" class="row">${ic("circle-x")}</span><span class="grow">参考片拆解失败：${esc(s.error)}<span class="muted"> · 跟拍版未生成，改编版照常</span></span><button class="btn btn-outline btn-xs" data-act="retry-step" data-r="${r.id}" data-k="reverse">${ic("rotate-ccw")}重试拆解</button></div></div>`;
+        }
+        const rev = r.reverse;
+        const dirty = JSON.stringify(rev.shots) !== JSON.stringify(r.reverseFollowed);
+        const followCard = r.scripts.find((x) => x.kind === "follow");
+        const busy = r.refollowing || (followCard && followCard.status === "rendering");
+        return `<div class="rev">
+          <button class="rev-h" data-act="rev-toggle" data-r="${r.id}">
+            <span class="thumbv">${refThumb()}</span>
+            <span class="grow" style="min-width:200px"><span class="row" style="gap:6px;flex-wrap:wrap"><b style="font-size:14px">参考拆解</b><span class="muted tnum" style="font-size:12.5px">${rev.shots.length} 个镜头 · ${r.settings.ref}s</span>${dirty ? `<span class="status s-warning">已修改</span>` : ""}<span class="method">${ic("book-open")}方法：${METHOD.reverse}</span></span>
+              <span class="rev-why" style="display:block;margin-top:2px">${ic("flame", "")} ${esc(rev.overall.why_viral)}</span></span>
+            <span class="rev-warn">${rev.brands.length ? `<span class="status s-bad" title="${esc(rev.brands.join("、"))}">${ic("copyright")}第三方品牌 ${rev.brands.length}</span>` : ""}${rev.claims.length ? `<span class="status s-warning" title="${esc(rev.claims.join("、"))}">${ic("megaphone")}原片背书 ${rev.claims.length}</span>` : ""}</span>
+            ${ic(r.revOpen ? "chevron-up" : "chevron-down")}
+          </button>
+          ${r.revOpen ? `<div class="rev-body">
+            <div class="muted" style="font-size:12.5px;padding:8px 0 4px">${esc(rev.overall.style)} · ${esc(rev.overall.narrative_arc)}</div>
+            ${rev.shots.map((sh, i) => `<div class="rshot">
+              <div class="tm">${sh.start}–${sh.end}s<b>${esc(sh.shot_size)} · ${esc(sh.camera)}</b>${sh.is_opening_3s ? `<span class="status s-beam" style="margin-top:4px">前 3 秒</span>` : ""}</div>
+              <div><div class="lbl">主体 + 动作</div><textarea rows="2" data-rev="${r.id}" data-i="${i}" data-f="action" ${busy ? "disabled" : ""}>${esc(sh.action)}</textarea>
+                <div class="lbl" style="margin-top:2px">台词</div><input data-rev="${r.id}" data-i="${i}" data-f="dialogue" value="${esc(sh.dialogue)}" ${busy ? "disabled" : ""}/>
+                ${sh.key_colors.length ? `<div style="padding-left:8px">${sh.key_colors.map((c) => `<span class="chip-c"><i style="background:${/橙/.test(c) ? "#f08a3c" : /白/.test(c) ? "#f6f1e7" : "#888"}"></i>${esc(c)}</span>`).join("")}</div>` : ""}</div>
+              <div><div class="lbl">商品怎么出现</div><select data-rev="${r.id}" data-i="${i}" data-f="product_role" ${busy ? "disabled" : ""}>${Object.entries(ROLE_NAME).map(([k, v]) => `<option value="${k}" ${sh.product_role === k ? "selected" : ""}>${v}</option>`).join("")}</select>
+                <div class="muted" style="font-size:11.5px;padding:4px 8px 0">${esc(sh.product_in_frame)}</div></div>
+            </div>`).join("")}
+            <div class="rev-foot">
+              ${rev.claims.length ? `<span class="muted" style="font-size:12px">原片背书：${rev.claims.map(esc).join("、")}</span>` : ""}
+              <span class="grow"></span>
+              <button class="btn btn-ghost btn-xs" data-act="rev-restore" data-r="${r.id}" ${JSON.stringify(rev.shots) === JSON.stringify(r.reverseOriginal.shots) || busy ? "disabled" : ""}>${ic("undo-2")}恢复原稿</button>
+              <button class="btn btn-primary btn-xs" data-act="refollow" data-r="${r.id}" ${!dirty || busy || balance() < STEP_COST.follow ? "disabled" : ""} title="${busy ? "跟拍版正在生成或出片" : !dirty ? "拆解没有改动" : "只重跑跟拍改写"}">${r.refollowing ? ic("loader-2", "spin") : ic("refresh-cw")}按拆解重写跟拍版 <span class="credit-n" style="opacity:.7">${ic("sparkle")}${STEP_COST.follow}</span></button>
+            </div>
+          </div>` : ""}
+        </div>`;
+      }
+
+      function vboxHTML(p, r, s) {
+        const ar = r.settings.ar.split(":").map(Number);
+        const style = `aspect-ratio:${ar[0]}/${ar[1]};${ar[0] > ar[1] ? "" : "max-height:270px"}`;
+        const poster = `<div style="position:absolute;inset:0;filter:${s.status === "done" ? "none" : "blur(6px) saturate(.6)"};transform:scale(${s.status === "done" ? 1.15 : 1.25})">${IMG[p.img]()}</div>`;
+        if (s.status === "rendering") {
+          const C = 2 * Math.PI * 20;
+          return `<div class="vbox" style="${style}">${poster}<div class="scrim" style="background:oklch(0 0 0 / .35)"><svg class="ringprog" viewBox="0 0 48 48"><circle cx="24" cy="24" r="20" fill="none" stroke="oklch(1 0 0 / .25)" stroke-width="3"/><circle cx="24" cy="24" r="20" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - s.prog / 100)}" transform="rotate(-90 24 24)"/></svg><span class="tnum">出片中 ${Math.round(s.prog)}%</span></div></div>`;
+        }
+        if (s.status === "scripting") return `<div class="vbox" style="${style}">${poster}<div class="scrim" style="background:oklch(0 0 0 / .35)">${ic("loader-2", "spin")}<span>重写中</span></div></div>`;
+        if (s.status === "done") {
+          return `<div class="vbox" style="${style}">${poster}<button class="scrim" data-act="play" data-s="${s.id}" aria-label="播放"><span class="play">${ic("play")}</span></button>
+            ${s.takes.length > 1 ? `<div class="takes">${s.takes.map((t, k) => `<button class="${k === s.cur ? "on" : ""}" data-act="take" data-s="${s.id}" data-k="${k}" title="第 ${k + 1} 条">${k + 1}</button>`).join("")}</div>` : ""}
+            <span class="dur tnum">0:${String(r.settings.dur).padStart(2, "0")}</span></div>`;
+        }
+        if (s.status === "failed") return `<div class="vbox" style="${style}">${poster}<div class="scrim" style="background:oklch(0 0 0 / .55)">${ic("circle-x")}<span>${esc(s.error)}</span></div></div>`;
+        return `<div class="vbox" style="${style}">${poster}<div class="scrim" style="background:oklch(0 0 0 / .25)">${ic("film")}<span>还没出片</span></div></div>`;
+      }
+
+      function scriptHTML(p, r, s) {
+        const st = r.settings;
+        const ro = s.status === "rendering" || s.status === "scripting";
+        const cost = videoCost(st.vm, st.dur, st.res);
+        const types = [...new Set(s.flags.map((f) => f.type))];
+        const block = s.flags.length ? `旁白有问题：${[...new Set(s.flags.map((f) => `${FLAG_NAME[f.type]}「${f.text}」`))].join("、")}` : balance() < cost ? "余额不足" : "";
+        const again = s.status === "done" || s.status === "failed";
+        const badge = { draft: `<span class="status s-muted">待出片</span>`, rendering: `<span class="status s-running">${ic("loader-2", "spin")}出片中</span>`, scripting: `<span class="status s-running">${ic("loader-2", "spin")}重写中</span>`, done: `<span class="status s-success">${ic("check")}已出片</span>`, failed: `<span class="status s-bad">出片失败</span>` }[s.status];
+        const edited = JSON.stringify(s.shots) !== JSON.stringify(s.original);
+        const flagged = new Set(s.flags.map((f) => f.shot));
+        return `<article class="scard ${s.kind === "follow" ? "follow" : ""}" data-card="${s.id}">
+          ${vboxHTML(p, r, s)}
+          <div style="min-width:0">
+            <div class="shead"><span class="status ${s.kind === "follow" ? "s-beam" : "s-preset"}">${s.kind === "follow" ? ic("copy") : ""}${esc(angleName(s.angle))}</span>${badge}${edited ? `<span class="status s-muted">已修改</span>` : ""}</div>
+            <div style="font-weight:600;font-size:14.5px;margin-top:8px">${esc(s.title)}</div>
+            <div class="shots">${s.shots.map((sh, i) => `
+              <div class="shot"><div class="tm">${sh.start}–${sh.end}s<b>${esc(sh.shot)} · ${esc(sh.camera)}</b>${sh.ref ? `<span class="ref" title="对应参考片镜头 ${sh.ref}">参考 ${sh.ref}</span>` : ""}</div>
+                <div style="min-width:0"><div class="scene">${esc(sh.scene)}</div>
+                  <div class="narr">${ic("mic")}<input value="${esc(sh.narr)}" placeholder="无旁白" data-narr="${s.id}" data-i="${i}" ${ro ? "disabled" : ""} class="${flagged.has(i) ? "flag" : ""}" aria-label="镜头 ${i + 1} 旁白"/></div></div></div>`).join("")}</div>
+          </div>
+          <div class="sfoot">
+            <span class="sound grow truncate" title="配乐：${esc(s.music)}；旁白音色：${esc(s.voice)}">${ic("music")}<span class="truncate">${esc(s.music)} · ${esc(s.voice)}</span></span>
+            ${types.map((t) => `<span class="status ${t === "claim" ? "s-warning" : "s-bad"}" title="${esc(block)}">${ic(t === "brand" ? "copyright" : t === "claim" ? "megaphone" : "shield-ban")}${FLAG_NAME[t]}</span>`).join("")}
+            <span class="method" title="这份脚本由哪个方法写出（后台按环节绑定）">${ic("book-open")}${esc(s.method)}</span>
+            <button class="btn btn-ghost btn-xs" data-act="prompt" data-s="${s.id}" title="查看格式化后的视频提示词">${ic("code-xml")}提示词</button>
+            <button class="icon-btn" data-act="pop-script" data-s="${s.id}" aria-label="更多">${ic("ellipsis")}</button>
+            <button class="btn btn-primary btn-xs" data-act="render" data-s="${s.id}" ${ro || block ? "disabled" : ""} title="${esc(block || (again ? "按当前脚本再出一条" : "按当前脚本出片"))}">${ic(again ? "rotate-ccw" : "play")}${again ? "重出" : "出片"}<span class="credit-n" style="opacity:.7">${ic("sparkle")}${cost}</span></button>
+          </div>
+        </article>`;
+      }
+
+      /* ================= 弹层 ================= */
+      function placePop(html, anchor, opts = {}) {
+        const rect = anchor.getBoundingClientRect();
+        $("#layer").innerHTML = `<div class="popover" id="pop" style="min-width:${opts.w || 240}px">${html}</div>`;
+        const pop = $("#pop");
+        const ph = pop.offsetHeight, pw = pop.offsetWidth;
+        let top = rect.bottom + 6;
+        if (top + ph > window.innerHeight - 8) top = Math.max(8, rect.top - ph - 6);
+        let left = opts.alignRight ? rect.right - pw : rect.left;
+        left = Math.max(8, Math.min(left, window.innerWidth - pw - 8));
+        pop.style.top = top + "px";
+        pop.style.left = left + "px";
+        icons();
+      }
+      function closePop() { if (S.pop) { S.pop = null; if (!S.dlg) $("#layer").innerHTML = ""; } }
+      function openPop(type, anchor, data) {
+        S.pop = { type, data };
+        const c = S.comp;
+        if (type === "plat") {
+          placePop(Object.entries(PLAT).map(([k, pl]) => `<button class="mi" data-pick="plat" data-v="${k}">${ic(PLAT_ICON[k])}<span class="grow"><div class="t">${pl.name}</div><div class="d">${pl.ar} · ${pl.lang === "en" ? "English" : "中文"}旁白${pl.style ? " · " + pl.style : ""}</div></span>${c.platform === k ? ic("check", "check") : ""}</button>`).join(""), anchor, { w: 320 });
+        } else if (type === "angle") {
+          const auto = c.angles.includes("auto");
+          const max = c.ref ? c.adaptN : 4;
+          const full = !auto && c.angles.length >= max;
+          const head = c.ref
+            ? `<div class="mi" style="cursor:default"><span class="cb lock">${ic("check")}</span><span class="grow"><div class="t">跟拍 1 份</div><div class="d">结构、节奏、钩子照参考片，只换成你的商品和卖点</div></span></div>
+               <div style="padding:2px 10px 8px 36px"><div class="field-l" style="margin:0 0 6px">改编份数</div><div class="seg">${[0, 1, 2, 3].map((n) => `<button class="${c.adaptN === n ? "on" : ""}" data-pick="adaptN" data-v="${n}">${n}</button>`).join("")}</div></div>`
+            : "";
+          const angleList = (c.ref && c.adaptN === 0) ? "" : `<button class="mi" data-pick="angle" data-v="auto"><span class="cb ${auto ? "on" : ""}">${auto ? ic("check") : ""}</span><span class="grow"><div class="t">自动</div><div class="d">按商品挑${c.ref ? "改编" : ""}角度</div></span></button>
+            ${auto && !c.ref ? `<div style="padding:2px 10px 8px 36px"><div class="seg">${[1, 2, 3, 4].map((n) => `<button class="${c.autoN === n ? "on" : ""}" data-pick="autoN" data-v="${n}">${n} 个</button>`).join("")}</div></div>` : ""}
+            <div class="mi-sep"></div><div class="mi-group">${c.ref ? "改编角度" : "内置角度"}</div>
+            ${Object.entries(ANGLES).map(([k, a]) => { const on = c.angles.includes(k); const dis = !on && full; return `<button class="mi" data-pick="angle" data-v="${k}" ${dis ? `disabled title="最多 ${max} 个"` : ""}><span class="cb ${on ? "on" : ""}">${on ? ic("check") : ""}</span><span class="grow"><div class="t">${a.name}</div><div class="d">${a.desc}</div></span></button>`; }).join("")}`;
+          placePop(head + angleList, anchor, { w: 340 });
+        } else if (type === "model") {
+          placePop(`<div class="mi-group">视频模型</div>` + Object.entries(VM).map(([k, m]) => `<button class="mi" data-pick="vm" data-v="${k}" ${m.omni ? "" : "disabled"} title="${esc(m.why || "")}"><span class="avatar-m" style="background:${m.color}">${m.letter}</span><span class="grow"><div class="t">${m.name}</div><div class="d">${m.omni ? m.desc : m.why}</div></span>${c.vm === k ? ic("check", "check") : ""}</button>`).join(""), anchor, { w: 320 });
+        } else if (type === "params") {
+          const vm = VM[c.vm];
+          placePop(`<div style="padding:8px 8px 4px;display:grid;gap:14px;width:340px">
+              <div><div class="field-l">画幅</div><div class="row" style="gap:6px;flex-wrap:wrap">${["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"].map((a) => { const [w, h] = a.split(":").map(Number); const sc = 18 / Math.max(w, h); return `<button class="ratio ${c.ar === a ? "on" : ""}" data-pick="ar" data-v="${a}" ${vm.ars.includes(a) ? "" : `disabled title="${vm.short} 不支持 ${a}"`}><i style="width:${w * sc}px;height:${h * sc}px"></i>${a}</button>`; }).join("")}</div></div>
+              <div><div class="field-l">分辨率</div><div class="seg">${["480P", "720P", "1080P"].map((x) => `<button class="${c.res === x ? "on" : ""}" data-pick="res" data-v="${x}" ${vm.res.includes(x) ? "" : "disabled"}>${x}</button>`).join("")}</div></div>
+              <div><div class="field-l">时长</div><div class="seg">${vm.durs.map((d) => `<button class="${c.dur === d ? "on" : ""}" data-pick="dur" data-v="${d}">${d}s</button>`).join("")}</div></div>
+              <div><div class="field-l">旁白语言</div><div class="seg"><button class="${c.lang === "zh" ? "on" : ""}" data-pick="lang" data-v="zh">中文</button><button class="${c.lang === "en" ? "on" : ""}" data-pick="lang" data-v="en">English</button></div></div>
+              <div><div class="field-l">写脚本的文本模型</div><div style="display:grid;gap:2px">${Object.entries(TM).map(([k, t]) => `<button class="mi" data-pick="tm" data-v="${k}" ${t.vision ? "" : `disabled title="不能看图"`} style="min-height:30px;padding:6px 8px"><span class="grow"><div class="t" style="font-weight:400">${t.name}</div><div class="d">${t.vision ? (t.video ? "能看图 · 能看视频" : "能看图；拆参考片时改用能看视频的模型") : "不能看图"}</div></span>${c.tm === k ? ic("check", "check") : ""}</button>`).join("")}</div></div>
+            </div>`, anchor, { w: 340 });
+        } else if (type === "ref") {
+          placePop(`<button class="mi" data-pick="ref" data-v="10">${ic("file-video")}<span class="grow"><div class="t">爆款参考.mp4</div><div class="d">0:10 · 9:16 · 护手霜带货</div></span></button>
+            <button class="mi" data-pick="ref" data-v="40">${ic("file-video")}<span class="grow"><div class="t">直播切片.mp4</div><div class="d">0:40 · 9:16</div></span></button>`, anchor, { w: 250 });
+        } else if (type === "card") {
+          placePop(`<button class="mi" data-pick="open" data-v="${data}">${ic("folder-open")}<span class="t" style="font-weight:400">打开</span></button>
+            <button class="mi" data-pick="delete" data-v="${data}" style="color:var(--destructive)">${ic("trash-2")}<span class="t" style="font-weight:400">删除</span></button>`, anchor, { w: 160, alignRight: true });
+        } else if (type === "script") {
+          const f = findScript(data);
+          const ro = f.s.status === "rendering" || f.s.status === "scripting";
+          placePop(`<button class="mi" data-pick="download" data-v="${data}" ${f.s.status === "done" ? "" : "disabled"}>${ic("download")}<span class="t" style="font-weight:400">下载成片</span></button>
+            <button class="mi" data-pick="canvas" data-v="${data}" ${ro ? "disabled" : ""}>${ic("workflow")}<span class="t" style="font-weight:400">发到画布精修</span></button>
+            <button class="mi" data-pick="restore" data-v="${data}" ${ro || JSON.stringify(f.s.shots) === JSON.stringify(f.s.original) ? "disabled" : ""}>${ic("undo-2")}<span class="t" style="font-weight:400">恢复原稿</span></button>`, anchor, { w: 190, alignRight: true });
+        }
+      }
+
+      /* ================= 对话框 ================= */
+      function openDlg(d) { S.dlg = d; S.pop = null; renderDlg(); }
+      function closeDlg() { clearInterval(TIMERS.player); S.dlg = null; $("#layer").innerHTML = ""; }
+      function renderDlg() {
+        const d = S.dlg;
+        if (!d) return;
+        let html = "";
+        if (d.type === "prompt") {
+          const f = findScript(d.sid);
+          const st = f.r.settings;
+          html = `<div class="overlay" data-act="dlg-bg"><div class="dialog" style="max-width:640px"><button class="icon-btn dialog-close" data-act="dlg-close">${ic("x")}</button>
+            <div><div class="dialog-title">视频提示词</div><div class="muted" style="font-size:13px;margin-top:2px">${esc(angleName(f.s.angle))} · 格式化器「${VM[st.vm].fmt === "seedance" ? "seedance 分区块" : "通用段落"}」按 ${esc(VM[st.vm].short)} 拼装，与技能无关</div></div>
+            <div class="codebox">${esc(compile(f.s, f.p, st))}</div>
+            <div class="dialog-foot"><button class="btn btn-outline btn-sm" data-act="copy">${ic("copy")}复制</button><button class="btn btn-primary btn-sm" data-act="dlg-close">好的</button></div></div></div>`;
+        } else if (d.type === "canvas") {
+          const f = findScript(d.sid);
+          const nodes = f.p.images.length + (f.p.model ? 1 : 0) + (f.r.settings.ref ? 1 : 0);
+          html = `<div class="overlay" data-act="dlg-bg"><div class="dialog"><button class="icon-btn dialog-close" data-act="dlg-close">${ic("x")}</button>
+            <div class="dialog-title">发到画布</div><div>新建画布「${esc(f.p.title)} · ${esc(angleName(f.s.angle))}」</div>
+            <div class="row" style="gap:8px;flex-wrap:wrap"><span class="meta-chip">${ic("image")}素材 ${nodes}</span><span class="meta-chip">${ic("video")}镜头 ${f.s.shots.length}</span>${f.s.status === "done" ? `<span class="meta-chip">${ic("film")}成片 1</span>` : ""}</div>
+            <div class="dialog-foot"><button class="btn btn-ghost btn-sm" data-act="dlg-close">取消</button><button class="btn btn-primary btn-sm" data-act="canvas-go" ${d.busy ? "disabled" : ""}>${d.busy ? ic("loader-2", "spin") : ""}新建并打开</button></div></div></div>`;
+        } else if (d.type === "fact") {
+          const pr = cur().product;
+          html = `<div class="overlay" data-act="dlg-bg"><div class="dialog" style="max-width:560px"><button class="icon-btn dialog-close" data-act="dlg-close">${ic("x")}</button>
+            <div class="dialog-title">商品事实卡</div>
+            <div><div class="field-l">商品名</div><input class="inp" id="fName" value="${esc(pr.name)}"/></div>
+            <div><div class="field-l">外观锚点（每行一条）</div><textarea class="ta" id="fAnchors" rows="3">${esc(pr.anchors.join("\n"))}</textarea></div>
+            <div><div class="field-l">卖点（每行一条）</div><textarea class="ta" id="fSelling" rows="3">${esc(pr.selling.join("\n"))}</textarea></div>
+            <div><div class="field-l">禁用说法（每行一条）</div><textarea class="ta" id="fProhib" rows="2">${esc(pr.prohibited.join("\n"))}</textarea></div>
+            <div><div class="field-l">引导下单</div><input class="inp" id="fCta" value="${esc(pr.cta)}"/></div>
+            <div class="dialog-foot"><button class="btn btn-ghost btn-sm" data-act="dlg-close">取消</button><button class="btn btn-primary btn-sm" data-act="fact-save">保存</button></div></div></div>`;
+        } else if (d.type === "delete") {
+          const p = S.projects.find((x) => x.id === d.pid);
+          html = `<div class="overlay" data-act="dlg-bg"><div class="dialog" style="max-width:420px"><div class="dialog-title">删除「${esc(p.title)}」？</div>
+            <div class="muted" style="font-size:13.5px">脚本和轮次会删除，已出的成片保留在资产里。</div>
+            <div class="dialog-foot"><button class="btn btn-ghost btn-sm" data-act="dlg-close">取消</button><button class="btn btn-danger btn-sm" data-act="delete-go">删除</button></div></div></div>`;
+        } else if (d.type === "player") {
+          const f = findScript(d.sid);
+          const st = f.r.settings;
+          const [w, h] = st.ar.split(":").map(Number);
+          const H = Math.min(window.innerHeight - 120, 640);
+          const W = Math.min((H * w) / h, window.innerWidth - 48);
+          const shot = f.s.shots.find((s) => d.t >= s.start && d.t < s.end) || f.s.shots[f.s.shots.length - 1];
+          const idx = f.s.shots.indexOf(shot);
+          html = `<div class="overlay" data-act="dlg-bg" style="background:oklch(0 0 0 / .78)"><div style="display:grid;gap:12px;justify-items:center">
+            <div class="player" style="width:${W}px;height:${(W * h) / w}px"><div class="stage" style="transform:scale(${1.1 + idx * 0.06}) translate(${(idx % 2 ? -1 : 1) * 3}%, 0)">${IMG[f.p.img]()}</div>
+              <span class="tag">画面示意 · 第 ${f.s.cur + 1} 条</span>
+              <div class="cap">镜头 ${idx + 1} · ${esc(shot.shot)} · ${esc(shot.camera)}<br/><span style="opacity:.8">${esc(shot.scene)}</span>${shot.narr ? `<br/>${ic("mic")} ${esc(shot.narr)}` : ""}</div>
+              <div class="pbar"><i id="pbar" style="width:${(d.t / st.dur) * 100}%"></i></div></div>
+            <div class="row" style="gap:8px;color:#fff"><button class="btn btn-sm" style="background:oklch(1 0 0 / .12)" data-act="download-cur">${ic("download")}下载</button><button class="btn btn-sm" style="background:oklch(1 0 0 / .12)" data-act="dlg-close">${ic("x")}关闭</button></div></div></div>`;
+        }
+        $("#layer").innerHTML = html;
+        icons();
+      }
+      function startPlayer(sid) {
+        openDlg({ type: "player", sid, t: 0 });
+        const f = findScript(sid);
+        let last = -1;
+        TIMERS.player = setInterval(() => {
+          if (!S.dlg || S.dlg.type !== "player") return clearInterval(TIMERS.player);
+          S.dlg.t += 0.1;
+          if (S.dlg.t >= f.r.settings.dur) S.dlg.t = 0;
+          const idx = f.s.shots.findIndex((s) => S.dlg.t >= s.start && S.dlg.t < s.end);
+          if (idx !== last) { last = idx; renderDlg(); } else { const b = $("#pbar"); if (b) b.style.width = (S.dlg.t / f.r.settings.dur) * 100 + "%"; }
+        }, 100);
+      }
+      function openCanvasView(sid) {
+        const f = findScript(sid);
+        const mats = [...f.p.images.map((im) => ({ kind: "图片", label: "商品图", im })), ...(f.p.model ? [{ kind: "图片", label: "模特图", im: "model" }] : []), ...(f.r.settings.ref ? [{ kind: "视频", label: "参考视频", im: "ref" }] : [])];
+        const X0 = 60, X1 = 340, Y0 = 90, matH = 170, shotW = 220;
+        const nodes = [];
+        mats.forEach((m, i) => nodes.push({ x: X0, y: Y0 + i * matH, html: `<div class="ch">${ic(m.kind === "视频" ? "video" : "image")}${m.label}</div><div class="cm">${m.im === "ref" ? `<div style="position:relative;width:100%;height:100%">${refThumb()}</div>` : IMG[m.im]()}</div>` }));
+        f.s.shots.forEach((s, i) => nodes.push({ x: X1 + i * shotW, y: Y0 + 40, html: `<div class="ch">${ic("video")}镜头 ${i + 1} · ${s.end - s.start}s<span class="status s-muted" style="margin-left:auto">未生成</span></div><div class="cm">${ic("clapperboard")}</div><div class="cp">${esc(s.shot)}，${esc(s.camera)}：${esc(s.scene)}${s.narr ? "。旁白：「" + esc(s.narr) + "」" : ""}</div>` }));
+        const fx = Math.max(X1 + f.s.shots.length * shotW + 40, 1120);
+        if (f.s.status === "done") nodes.push({ x: fx, y: Y0 + 40, html: `<div class="ch">${ic("film")}成片 · ${esc(angleName(f.s.angle))}</div><div class="cm" style="position:relative">${IMG[f.p.img]()}<span style="position:absolute;inset:0;display:grid;place-items:center;color:#fff">${ic("play")}</span></div>` });
+        const lines = [];
+        mats.forEach((m, i) => { if (m.im !== "ref") f.s.shots.forEach((s, j) => { const x1 = X0 + 200, y1 = Y0 + i * matH + 70, x2 = X1 + j * shotW, y2 = Y0 + 110; lines.push(`<path d="M${x1} ${y1} C ${x1 + 60} ${y1}, ${x2 - 60} ${y2}, ${x2} ${y2}" fill="none" stroke="var(--edge)" stroke-width="1.5"/>`); }); });
+        $("#layer").innerHTML = `<div class="canvas-view"><div class="canvas-top"><div class="chrome pill-bar"><button class="btn btn-ghost btn-sm" data-act="canvas-close">${ic("chevron-left")}返回营销工作室</button><span class="sep"></span><span style="font-size:13.5px;font-weight:500;padding:0 10px">${esc(f.p.title)} · ${esc(angleName(f.s.angle))}</span></div><span class="status s-preset" style="align-self:center">画布示意</span></div>
+          <div style="position:relative;width:${fx + 260}px;height:${Y0 + Math.max(mats.length * matH, 360) + 60}px"><svg style="position:absolute;inset:0;width:100%;height:100%;overflow:visible">${lines.join("")}</svg>${nodes.map((n) => `<div class="cnode" style="left:${n.x}px;top:${n.y}px">${n.html}</div>`).join("")}</div></div>`;
+        icons();
+      }
+
+      /* ================= 渲染（保持输入焦点） ================= */
+      function render() {
+        const a = document.activeElement;
+        let key = null, sel = null;
+        if (a && a.id === "desc") key = "#desc";
+        else if (a && a.dataset && a.dataset.narr) key = `[data-narr="${a.dataset.narr}"][data-i="${a.dataset.i}"]`;
+        else if (a && a.dataset && a.dataset.rev) key = `[data-rev="${a.dataset.rev}"][data-i="${a.dataset.i}"][data-f="${a.dataset.f}"]`;
+        if (key && a.setSelectionRange) sel = [a.selectionStart, a.selectionEnd];
+        const top = $("#page").scrollTop;
+        renderHeader();
+        $("#page").innerHTML = S.route.name === "list" ? listPage() : detailPage();
+        $("#page").scrollTop = top;
+        icons();
+        const b = key && $(key);
+        if (b && !b.disabled) { b.focus(); if (sel) try { b.setSelectionRange(sel[0], sel[1]); } catch (_) {} }
+      }
+
+      /* ================= 业务：四环节写脚本（setTimeout 模拟，非真实调用） ================= */
+      function startRound(p, c) {
+        const angles = anglesOf(c);
+        const hasRef = !!c.ref;
+        const cost = roundCost(c);
+        const steps = [{ key: "facts", status: p.product ? "reused" : "queued" }];
+        if (hasRef) steps.push({ key: "reverse", status: "queued" }, { key: "follow", status: "queued" });
+        if (angles.length) steps.push({ key: "create", status: "queued" });
+        const r = { id: nid(), no: p.rounds.length + 1, status: "scripting", stage: "", steps, plan: [...(hasRef ? ["follow"] : []), ...angles], warnings: [], scripts: [], reverse: null, revOpen: false, cost,
+          settings: { platform: c.platform, vm: c.vm, ar: c.ar, res: c.res, dur: c.dur, lang: c.lang, ref: c.ref, tm: c.tm, angles: c.angles.slice(), autoN: c.autoN, adaptN: c.adaptN, desc: c.desc } };
+        p.rounds.unshift(r);
+        p.updated = "刚刚";
+        S.credits -= cost;
+        const set = (k, status, extra) => { const s = stepOf(r, k); if (s) Object.assign(s, { status }, extra || {}); };
+        /* 第一层：事实卡 ∥ 拆解 */
+        if (!p.product) set("facts", "running");
+        if (hasRef) set("reverse", "running");
+        r.stage = hasRef ? "正在看商品图，同时拆解参考片" : p.product ? "沿用商品事实卡" : "正在看商品图";
+        render();
+        TIMERS["r1" + r.id] = setTimeout(() => {
+          if (r.status !== "scripting") return;
+          if (r.settings.desc.includes("失败")) {
+            set("facts", "failed", { error: "文本模型两次输出都不合格" });
+            ["reverse", "follow", "create"].forEach((k) => stepOf(r, k) && set(k, stepOf(r, k).status === "running" ? "canceled" : "skipped"));
+            r.status = "failed"; r.error = "商品事实卡生成失败：文本模型两次输出都不合格"; S.credits += cost;
+            toast("写脚本失败，积分已退回", "bad"); return render();
+          }
+          if (!p.product) { p.product = clone(PERFUME); p.title = p.product.name; set("facts", "succeeded"); }
+          if (hasRef) {
+            if (S.revFail) { set("reverse", "failed", { error: "看视频模型返回的分镜没有覆盖完整时长" }); set("follow", "skipped"); S.credits += STEP_COST.reverse + STEP_COST.follow; }
+            else { set("reverse", "succeeded"); r.reverse = clone(REF_REVERSE); r.reverseOriginal = clone(REF_REVERSE); r.reverseFollowed = clone(REF_REVERSE.shots); if (S.noAudio) r.warnings.push("拆解未包含声音，台词按画面推断"); }
+          }
+          /* 第二层：跟拍 ∥ 创意 */
+          if (stepOf(r, "follow") && stepOf(r, "follow").status === "queued") set("follow", "running");
+          if (stepOf(r, "create")) set("create", "running");
+          r.stage = `正在写 ${r.steps.filter((s) => s.status === "running").length > 1 ? "跟拍版和改编版" : stepOf(r, "follow") && stepOf(r, "follow").status === "running" ? "跟拍版" : angles.length + " 个角度的脚本"}`;
+          render();
+          TIMERS["r2" + r.id] = setTimeout(() => {
+            if (r.status !== "scripting") return;
+            const list = [];
+            if (stepOf(r, "follow") && stepOf(r, "follow").status === "running") { set("follow", "succeeded"); list.push(buildFollow(r.reverse, r.settings.dur)); }
+            if (stepOf(r, "create")) { set("create", "succeeded"); angles.forEach((k) => list.push(buildCreate(k, r.settings.dur, r.settings.lang))); }
+            r.scripts = list.map((s) => Object.assign(s, { status: "draft", takes: [], cur: 0, original: clone(s.shots), flags: [] }));
+            r.scripts.forEach((s) => (s.flags = scan(s, r)));
+            r.status = r.scripts.length ? "ready" : "failed";
+            if (!r.scripts.length) { r.error = "没有可用的脚本"; }
+            r.revOpen = false;
+            const n = r.scripts.length;
+            if (S.route.id !== p.id) toast(`「${p.title}」${n} 份脚本已写好`, "ok", { label: "查看", run: () => go("detail", p.id) });
+            else toast(r.scripts.some((s) => s.flags.length) ? `${n} 份脚本已写好，有旁白需要修改` : `${n} 份脚本已写好`, r.scripts.some((s) => s.flags.length) ? "warn" : "ok");
+            render();
+          }, 1800);
+        }, 1800);
+      }
+
+      function retryStep(r, key) {
+        if (key === "reverse") {
+          if (balance() < STEP_COST.reverse + STEP_COST.follow) return toast("余额不足", "bad");
+          S.credits -= STEP_COST.reverse + STEP_COST.follow;
+          Object.assign(stepOf(r, "reverse"), { status: "running", error: "" });
+          Object.assign(stepOf(r, "follow"), { status: "queued" });
+          render();
+          setTimeout(() => {
+            if (S.revFail) { Object.assign(stepOf(r, "reverse"), { status: "failed", error: "看视频模型返回的分镜没有覆盖完整时长" }); stepOf(r, "follow").status = "skipped"; S.credits += STEP_COST.reverse + STEP_COST.follow; toast("拆解仍然失败，积分已退回", "bad"); return render(); }
+            stepOf(r, "reverse").status = "succeeded"; r.reverse = clone(REF_REVERSE); r.reverseOriginal = clone(REF_REVERSE); r.reverseFollowed = clone(REF_REVERSE.shots);
+            stepOf(r, "follow").status = "running"; render();
+            setTimeout(() => { stepOf(r, "follow").status = "succeeded"; const s = buildFollow(r.reverse, r.settings.dur); Object.assign(s, { status: "draft", takes: [], cur: 0, original: clone(s.shots) }); s.flags = scan(s, r); r.scripts.unshift(s); toast("跟拍版已写好"); render(); }, 1500);
+          }, 1500);
+        }
+      }
+
+      function refollow(r) {
+        const old = r.scripts.find((x) => x.kind === "follow");
+        S.credits -= STEP_COST.follow;
+        r.refollowing = true;
+        if (old) old.status = "scripting";
+        render();
+        setTimeout(() => {
+          r.refollowing = false;
+          const s = buildFollow(r.reverse, r.settings.dur);
+          /* 只把改过动作 / 台词的镜头按新拆解重写（示意：换商品词） */
+          r.reverse.shots.forEach((sh, i) => {
+            const was = r.reverseFollowed[i];
+            if (sh.action !== was.action) s.shots[i].scene = swapProduct(sh.action);
+            if (sh.dialogue !== was.dialogue) s.shots[i].narr = swapProduct(sh.dialogue);
+          });
+          Object.assign(s, { status: "draft", takes: old ? old.takes : [], cur: old ? old.cur : 0, original: clone(s.shots) });
+          if (s.takes.length) s.status = "draft";
+          s.flags = scan(s, r);
+          r.reverseFollowed = clone(r.reverse.shots);
+          const i = r.scripts.indexOf(old);
+          if (i >= 0) r.scripts[i] = s; else r.scripts.unshift(s);
+          toast("跟拍版已按新拆解重写");
+          render();
+        }, 1600);
+      }
+
+      function startRender(f) {
+        const st = f.r.settings;
+        const cost = videoCost(st.vm, st.dur, st.res);
+        if (f.s.status === "rendering" || f.s.status === "scripting" || f.s.flags.length || balance() < cost) return false;
+        S.credits -= cost;
+        f.s.status = "rendering"; f.s.prog = 0; f.p.updated = "刚刚";
+        TIMERS["s" + f.s.id] = setInterval(() => {
+          f.s.prog = Math.min(100, f.s.prog + 6 + Math.random() * 8);
+          if (f.s.prog >= 100) {
+            clearInterval(TIMERS["s" + f.s.id]);
+            if (f.s.shots.some((sh) => sh.narr.includes("审核"))) { f.s.status = "failed"; f.s.error = "内容审核未通过，改一下旁白再重出"; S.credits += cost; toast("有一条出片失败，积分已退回", "bad"); }
+            else { f.s.status = "done"; f.s.takes.push({ id: nid() }); f.s.cur = f.s.takes.length - 1; }
+          }
+          const card = document.querySelector(`[data-card="${f.s.id}"]`);
+          if (card && f.s.status === "rendering") { card.querySelector(".vbox").outerHTML = vboxHTML(f.p, f.r, f.s); icons(); }
+          else render();
+        }, 450);
+        return true;
+      }
+
+      function go(name, id) { closePop(); S.route = { name, id: id ?? null }; render(); $("#page").scrollTop = 0; }
+
+      /* ================= 事件 ================= */
+      document.addEventListener("click", (e) => {
+        const pick = e.target.closest("[data-pick]");
+        if (pick && !pick.disabled) return onPick(pick.dataset.pick, pick.dataset.v);
+        const el = e.target.closest("[data-act]");
+        if (S.pop && !e.target.closest("#pop") && !(el && el.dataset.act.startsWith("pop-"))) closePop();
+        if (!el || el.disabled) return;
+        const act = el.dataset.act;
+        const c = S.comp;
+        if (act === "dlg-bg") { if (e.target === el) closeDlg(); return; }
+        if (act === "dlg-close") return closeDlg();
+        if (act.startsWith("pop-")) {
+          const type = act.slice(4);
+          if (S.pop && S.pop.type === type) return closePop();
+          return openPop(type, el, Number(el.dataset.p || el.dataset.s) || undefined);
+        }
+        const R = () => findRound(Number(el.dataset.r)).r;
+        switch (act) {
+          case "theme": document.documentElement.classList.toggle("dark"); render(); break;
+          case "go-list": go("list"); break;
+          case "open": go("detail", Number(el.dataset.p)); break;
+          case "prod-add":
+            if (c.products.length >= 4 || c.uploading) break;
+            c.uploading = true; render();
+            setTimeout(() => { c.uploading = false; c.products.push("bottle"); render(); }, 700);
+            break;
+          case "prod-clear": c.products = []; render(); break;
+          case "model-add": c.model = true; render(); break;
+          case "model-clear": c.model = false; render(); break;
+          case "ref-clear": c.ref = null; render(); break;
+          case "write": {
+            const p = { id: nid(), title: "新商品", img: "bottle", images: c.products.slice(), model: c.model, updated: "刚刚", product: null, rounds: [] };
+            S.projects.unshift(p);
+            S.empty = false; $("#dEmpty").checked = false;
+            const snap = clone(c);
+            c.products = []; c.model = false; c.ref = null; c.desc = "";
+            go("detail", p.id);
+            startRound(p, snap);
+            break;
+          }
+          case "write-more": {
+            const p = cur();
+            if (p.rounds.some((r) => r.status === "scripting")) { toast("这个项目正在写脚本，等它写完再来一轮", "warn"); break; }
+            p.model = p.model || c.model;
+            startRound(p, clone(c));
+            c.desc = ""; c.ref = null;
+            render(); $("#page").scrollTop = 0;
+            break;
+          }
+          case "cancel": { const r = R(); r.status = "canceled"; S.credits += r.cost; clearTimeout(TIMERS["r1" + r.id]); clearTimeout(TIMERS["r2" + r.id]); toast("已取消，积分已退回", "info"); render(); break; }
+          case "retry-round": { const p = cur(); const r = R(); if (p.rounds.some((x) => x.status === "scripting")) break; startRound(p, Object.assign(clone(c), r.settings, { desc: r.settings.desc.replace("失败", "") })); break; }
+          case "retry-step": retryStep(R(), el.dataset.k); break;
+          case "rev-toggle": { const r = R(); r.revOpen = !r.revOpen; render(); break; }
+          case "rev-restore": { const r = R(); r.reverse = clone(r.reverseOriginal); render(); toast("拆解已恢复原稿"); break; }
+          case "refollow": refollow(R()); break;
+          case "render": { const f = findScript(Number(el.dataset.s)); if (startRender(f)) render(); break; }
+          case "render-all": {
+            const r = R();
+            let n = 0, skip = 0;
+            r.scripts.forEach((s) => { if (startRender(findScript(s.id))) n++; else skip++; });
+            render();
+            toast(skip ? `已开始 ${n} 条；${skip} 条在出片中、旁白有问题或积分不足，已跳过` : `已开始 ${n} 条`, skip ? "warn" : "ok");
+            break;
+          }
+          case "take": { const f = findScript(Number(el.dataset.s)); f.s.cur = Number(el.dataset.k); render(); break; }
+          case "play": startPlayer(Number(el.dataset.s)); break;
+          case "prompt": openDlg({ type: "prompt", sid: Number(el.dataset.s) }); break;
+          case "copy": toast("已复制"); break;
+          case "edit-fact": openDlg({ type: "fact" }); break;
+          case "fact-save": {
+            const p = cur();
+            const lines = (id) => $(id).value.split("\n").map((x) => x.trim()).filter(Boolean);
+            p.product = { name: $("#fName").value.trim() || p.product.name, anchors: lines("#fAnchors"), selling: lines("#fSelling"), prohibited: lines("#fProhib"), cta: $("#fCta").value.trim() };
+            p.title = p.product.name;
+            closeDlg(); render(); toast("已保存，下次出片按新的事实卡拼提示词");
+            break;
+          }
+          case "canvas-go": { S.dlg.busy = true; renderDlg(); const sid = S.dlg.sid; setTimeout(() => { closeDlg(); openCanvasView(sid); toast("已新建画布"); }, 800); break; }
+          case "canvas-close": $("#layer").innerHTML = ""; break;
+          case "delete-go": {
+            const p = S.projects.find((x) => x.id === S.dlg.pid);
+            closeDlg();
+            if (inFlight(p)) { toast("有进行中的任务，不能删除", "bad"); break; }
+            S.projects = S.projects.filter((x) => x !== p);
+            if (S.route.id === p.id) go("list"); else render();
+            toast("已删除");
+            break;
+          }
+          case "download-cur": toast("已开始下载（示意）"); break;
+        }
+      });
+
+      function onPick(kind, v) {
+        const c = S.comp;
+        const keepOpen = ["angle", "autoN", "adaptN", "ar", "res", "dur", "lang", "tm"].includes(kind);
+        switch (kind) {
+          case "plat": c.platform = v; c.lang = PLAT[v].lang; c.ar = VM[c.vm].ars.includes(PLAT[v].ar) ? PLAT[v].ar : "9:16"; break;
+          case "angle": {
+            const max = c.ref ? c.adaptN : 4;
+            if (v === "auto") c.angles = c.angles.includes("auto") ? ["pain"] : ["auto"];
+            else { c.angles = c.angles.filter((a) => a !== "auto"); c.angles = c.angles.includes(v) ? c.angles.filter((a) => a !== v) : [...c.angles, v].slice(0, max); if (!c.angles.length) c.angles = ["auto"]; }
+            break;
+          }
+          case "autoN": c.autoN = Number(v); break;
+          case "adaptN": c.adaptN = Number(v); if (!c.angles.includes("auto")) c.angles = c.angles.slice(0, Math.max(1, c.adaptN)); break;
+          case "vm": {
+            c.vm = v; const vm = VM[v];
+            if (!vm.ars.includes(c.ar)) c.ar = "9:16";
+            if (!vm.res.includes(c.res)) c.res = vm.res.includes("720P") ? "720P" : vm.res[0];
+            const ds = vm.durs.filter((d) => d <= 15); c.dur = ds[ds.length - 1];
+            if (c.ref && c.ref > vm.refVideoMax) { c.ref = null; toast(`${vm.short} 不收参考视频，已移除`, "warn"); }
+            break;
+          }
+          case "ar": c.ar = v; break;
+          case "res": c.res = v; break;
+          case "dur": c.dur = Number(v); break;
+          case "lang": c.lang = v; break;
+          case "tm": c.tm = v; break;
+          case "ref": { const len = Number(v); if (len > VM[c.vm].refVideoMax) toast(`参考视频 ${len} 秒，超过 ${VM[c.vm].short} 的上限 ${VM[c.vm].refVideoMax} 秒`, "bad"); else c.ref = len; break; }
+          case "open": closePop(); return go("detail", Number(v));
+          case "delete": closePop(); return openDlg({ type: "delete", pid: Number(v) });
+          case "download": closePop(); return toast("已开始下载（示意）");
+          case "canvas": closePop(); return openDlg({ type: "canvas", sid: Number(v) });
+          case "restore": { closePop(); const f = findScript(Number(v)); f.s.shots = clone(f.s.original); f.s.flags = scan(f.s, f.r); render(); return toast("已恢复原稿"); }
+        }
+        if (keepOpen && S.pop) { const type = S.pop.type; render(); const anchor = document.querySelector(`[data-act="pop-${type}"]`); if (anchor) openPop(type, anchor); }
+        else { closePop(); render(); }
+      }
+
+      let narrBackup = null;
+      document.addEventListener("focusin", (e) => { if (e.target.dataset && e.target.dataset.narr) narrBackup = e.target.value; });
+      document.addEventListener("input", (e) => {
+        const t = e.target;
+        if (t.id === "desc") S.comp.desc = t.value;
+        else if (t.dataset && t.dataset.narr) findScript(Number(t.dataset.narr)).s.shots[Number(t.dataset.i)].narr = t.value;
+        else if (t.dataset && t.dataset.rev && t.tagName !== "SELECT") findRound(Number(t.dataset.rev)).r.reverse.shots[Number(t.dataset.i)][t.dataset.f] = t.value;
+      });
+      /* 失焦即保存（PUT 带 revision）；后端重扫问题旁白 / 校验拆解 */
+      document.addEventListener("change", (e) => {
+        const t = e.target;
+        if (t.dataset && t.dataset.rev) {
+          const { r } = findRound(Number(t.dataset.rev));
+          const sh = r.reverse.shots[Number(t.dataset.i)];
+          if (t.dataset.f === "action" && t.value.trim().length < 4) { toast("动作写得太短，拆解没保存（主体 + 动作，写到发力过程）", "bad"); t.value = sh.action = r.reverseFollowed[Number(t.dataset.i)].action; }
+          else sh[t.dataset.f] = t.value.trim();
+          return setTimeout(render, 0); // 等焦点落到下一个输入框再重绘，render 会把焦点放回去
+        }
+        if (!t.dataset.narr) return;
+        const f = findScript(Number(t.dataset.narr));
+        if (S.conflictNext) {
+          S.conflictNext = false; $("#dConflict").checked = false;
+          f.s.shots[Number(t.dataset.i)].narr = narrBackup ?? t.value;
+          render();
+          return toast("脚本已在别处修改，已载入最新版本", "warn");
+        }
+        f.s.shots[Number(t.dataset.i)].narr = t.value.trim();
+        f.s.flags = scan(f.s, f.r);
+        setTimeout(render, 0);
+      });
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") { if (S.dlg) closeDlg(); else if (S.pop) closePop(); else if ($(".canvas-view")) $("#layer").innerHTML = ""; }
+        if (e.key === "Enter" && !e.shiftKey && e.target.id === "desc" && !e.isComposing) { e.preventDefault(); const btn = document.querySelector(".send"); if (btn && !btn.disabled) btn.click(); }
+        if (e.key === "Enter" && e.target.dataset && e.target.dataset.narr) e.target.blur();
+      });
+      window.addEventListener("resize", () => closePop());
+      $("#page").addEventListener("scroll", () => closePop(), { passive: true });
+
+      $("#dLow").addEventListener("change", (e) => { S.low = e.target.checked; render(); });
+      $("#dConflict").addEventListener("change", (e) => { S.conflictNext = e.target.checked; });
+      $("#dRevFail").addEventListener("change", (e) => { S.revFail = e.target.checked; });
+      $("#dNoAudio").addEventListener("change", (e) => { S.noAudio = e.target.checked; });
+      $("#dEmpty").addEventListener("change", (e) => { S.empty = e.target.checked; render(); });
+      $("#dReset").addEventListener("click", () => { ["dLow", "dConflict", "dRevFail", "dNoAudio", "dEmpty"].forEach((id) => (document.getElementById(id).checked = false)); $("#layer").innerHTML = ""; init(); render(); });
+
+      init();
+      renderSidebar();
+      render();
+    </script>
+  </body>
+</html>

@@ -1,6 +1,14 @@
 import type { ComponentType, SVGProps } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
-import { Clapperboard, Compass, Film, FolderOpen, ShieldCheck, Workflow } from "lucide-react";
+import {
+  Clapperboard,
+  Compass,
+  Film,
+  FolderOpen,
+  ShieldCheck,
+  ShoppingBag,
+  Workflow,
+} from "lucide-react";
 
 import { CanvasCover } from "@/components/home/canvas-cover";
 import { ConversationList } from "@/components/home/conversation-list";
@@ -26,7 +34,9 @@ import {
   SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { useMarketingBusy } from "@/hooks/use-marketing-busy";
 import { useRecentCanvases } from "@/hooks/use-recent-canvases";
+import { cn } from "@/lib/utils";
 import { useCanEnterAdmin } from "@/pages/canvas/chrome/top-right-bar";
 
 /** 侧栏里的一项导航 */
@@ -44,7 +54,8 @@ const NAV: NavItem[] = [
   { label: "创作", icon: Clapperboard, to: "/" },
   { label: "探索", icon: Compass },
   { label: "资产", icon: FolderOpen, to: "/assets" },
-  { label: "短剧工作室", icon: Film, to: "/drama", badge: "New" },
+  { label: "短剧工作室", icon: Film, to: "/drama" },
+  { label: "营销工作室", icon: ShoppingBag, to: "/marketing", badge: "New" },
 ];
 
 /** 每个分组最多列几项 */
@@ -53,6 +64,8 @@ const LIST_LIMIT = 6;
 /** 一项导航：能用的是链接，没上线的禁用并提示「即将上线」 */
 function NavButton({ item, active }: { item: NavItem; active: boolean }) {
   const { setOpenMobile } = useSidebar();
+  const marketingBusy = useMarketingBusy();
+  const busy = item.to === "/marketing" && marketingBusy;
   const content = (
     <>
       <item.icon />
@@ -79,8 +92,21 @@ function NavButton({ item, active }: { item: NavItem; active: boolean }) {
     >
       {active && <NavActiveHighlight layoutId="home-nav-active" />}
       {content}
+      {busy && (
+        <span
+          role="img"
+          aria-label="有生成进行中"
+          title="有生成进行中"
+          className="bg-beam ml-auto size-1.5 animate-pulse rounded-full group-data-[collapsible=icon]:hidden"
+        />
+      )}
       {item.badge && (
-        <span className="bg-beam/15 text-beam ml-auto rounded-full px-1.5 py-px text-[10px] leading-4 font-medium group-data-[collapsible=icon]:hidden">
+        <span
+          className={cn(
+            "bg-beam/15 text-beam rounded-full px-1.5 py-px text-[10px] leading-4 font-medium group-data-[collapsible=icon]:hidden",
+            busy ? "ml-1.5" : "ml-auto",
+          )}
+        >
           {item.badge}
         </span>
       )}

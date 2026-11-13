@@ -17,6 +17,11 @@ describe("后台导航", () => {
     ]);
   });
 
+  test("侧栏不再有环节技能入口", () => {
+    const items = ADMIN_NAV.flatMap((group) => group.items);
+    expect(items.some((item) => item.to === "agent/steps")).toBe(false);
+  });
+
   test("findNav 能认出公告页，图标不与其他菜单项重复", () => {
     const found = findNav("/admin/settings/announcements");
     expect(found?.group.label).toBe("系统设置");
