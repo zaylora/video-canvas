@@ -29,9 +29,7 @@ export function MediaSkeleton({ pending }: MediaSkeletonProps) {
           }}
           exit={{ opacity: 0, transition: { duration: DURATION.exit, ease: EASE_OUT } }}
         >
-          {!reduce && (
-            <div className="absolute inset-0 animate-[node-sheen_1.6s_ease-in-out_infinite] bg-[linear-gradient(120deg,transparent_30%,var(--sheen)_50%,transparent_70%)]" />
-          )}
+          {!reduce && <div className="sheen-sweep" />}
         </motion.div>
       )}
     </AnimatePresence>
