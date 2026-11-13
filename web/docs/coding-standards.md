@@ -79,6 +79,12 @@
 - 空状态只留：图标 + 一句标题 + 操作按钮（需要时加进度）。
 - 照常保留：按钮的 `title` 悬停提示、禁用原因、错误和失败原因等必要反馈。
 
+### 6.3 弹窗：常驻挂载、限高滚动
+
+- 不要写 `{open && <XxxDialog open />}`：关闭时组件被直接卸载，退出动画放不出来，弹窗「一下就没了」。弹窗常驻挂载，用 `open={open}` 控制开关。
+- 表单类弹窗要在每次打开时重新取数据：在打开的事件里递增一个计数当 `key`（见 `pages/marketing/detail/index.tsx` 的 `factsSession`）。不要把会在保存后变化的值（如 `revision`）当 `key`，否则关闭动画途中会被重挂打断。
+- 内容可能变长的弹窗（多个文本框、列表）必须限高：`DialogContent` 加 `flex max-h-[min(88svh,…px)] flex-col`，标题和底部按钮之间的内容区加 `min-h-0 flex-1 overflow-y-auto`。`Textarea` 默认随内容长高，弹窗里的要加 `max-h-36 overflow-y-auto` 之类的上限，免得把弹窗撑出屏幕、挡住标题和按钮。
+
 ## 7. 生成任务：统一入口
 
 所有入口（画布节点、首页对话、以后新增的任何地方）提交和取消生成任务，**只经过 `utils/tasks/gateway.ts`**，共用同一套逻辑：
