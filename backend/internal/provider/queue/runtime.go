@@ -158,28 +158,30 @@ func New(cfg Config) (*Runtime, error) {
 		RescueStuckJobsAfter: rescueStuckJobsAfter,
 		FetchPollInterval:    cfg.FetchPollInterval,
 		RetryPolicy:          &retryPolicy{base: cmpOr(cfg.NotifyBackoff, defaultNotifyBackoff)},
+		// 每次任务执行挂上运行日志上下文，业务没管到的重试、失败、panic 由它补日志
+		Middleware: []rivertype.Middleware{NewRunLogMiddleware()},
 	}
 	if cfg.Enabled {
 		workers := river.NewWorkers()
-		river.AddWorker(workers, &taskWorker{rt: rt})
+		AddWorker(workers, &taskWorker{rt: rt})
 		rc.Workers = workers
 		// River 队列的 MaxWorkers 启动后改不了，所以取硬上限；实际并发由 gate 控制（后台调整立即生效）
 		rc.Queues = map[string]river.QueueConfig{riverQueue: {MaxWorkers: hardCap}}
 		if cfg.Drama != nil {
-			river.AddWorker(workers, &dramaWorker{rt: rt})
+			AddWorker(workers, &dramaWorker{rt: rt})
 			rc.Queues["drama"] = river.QueueConfig{MaxWorkers: hardCap}
 			registerDramaCleanup(rc, workers, cfg.Drama)
 		}
 		if cfg.StepTrial != nil {
-			river.AddWorker(workers, &stepTrialWorker{rt: rt})
+			AddWorker(workers, &stepTrialWorker{rt: rt})
 			rc.Queues[stepTrialQueue] = river.QueueConfig{MaxWorkers: hardCap}
 		}
 		if cfg.Marketing != nil {
-			river.AddWorker(workers, &marketingWorker{rt: rt})
+			AddWorker(workers, &marketingWorker{rt: rt})
 			rc.Queues[marketingQueue] = river.QueueConfig{MaxWorkers: hardCap}
 		}
 		if cfg.Notifier != nil {
-			river.AddWorker(workers, &notifyWorker{rt: rt})
+			AddWorker(workers, &notifyWorker{rt: rt})
 			rc.Queues[notifyQueue] = river.QueueConfig{MaxWorkers: notifyWorkers}
 		}
 	}
@@ -227,7 +229,7 @@ func (rt *Runtime) insertOptsAt(runAt time.Time) *river.InsertOpts {
 
 // insert 为任务入队（不在事务里）。同一任务已有活着的 job 时什么都不做（唯一约束）。
 func (rt *Runtime) insert(ctx context.Context, taskID uint64, runAt time.Time) error {
-	_, err := rt.client.Insert(ctx, TaskArgs{TaskID: taskID}, rt.insertOptsAt(runAt))
+	_, err := rt.client.Insert(ctx, TaskArgs{TaskID: taskID}, withRequestMeta(ctx, rt.insertOptsAt(runAt)))
 	return err
 }
 
@@ -236,7 +238,7 @@ func (rt *Runtime) EnqueueTx(ctx context.Context, sqlTx *sql.Tx, taskID uint64, 
 	if model.IsTerminalStatus(status) {
 		return nil
 	}
-	_, err := rt.client.InsertTx(ctx, sqlTx, TaskArgs{TaskID: taskID}, rt.insertOptsAt(runAt))
+	_, err := rt.client.InsertTx(ctx, sqlTx, TaskArgs{TaskID: taskID}, withRequestMeta(ctx, rt.insertOptsAt(runAt)))
 	return err
 }
 
@@ -261,7 +263,7 @@ func (rt *Runtime) Run(ctx context.Context) error {
 		}
 		return fmt.Errorf("启动 River 失败：%w", err)
 	}
-	rt.log.Info("任务队列已启动", zap.String("instance", rt.id))
+	rt.log.Info("任务队列已启动", zap.String("worker_id", rt.id))
 
 	// 2. 后台循环：设置刷新、实例心跳、对账救回
 	loopCtx, stopLoops := context.WithCancel(ctx)
@@ -312,7 +314,7 @@ func (rt *Runtime) shutdown() {
 	if err := rt.repo.DeleteInstance(delCtx, rt.id); err != nil {
 		rt.log.Warn("删除实例心跳记录失败", zap.Error(err))
 	}
-	rt.log.Info("任务队列已停止", zap.String("instance", rt.id))
+	rt.log.Info("任务队列已停止", zap.String("worker_id", rt.id))
 }
 
 func orDur(d, def time.Duration) time.Duration {

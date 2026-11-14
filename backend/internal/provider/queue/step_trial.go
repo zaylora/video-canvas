@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"time"
 
+	"video-canvas/internal/pkg/idcodec"
+	"video-canvas/internal/pkg/logger"
+
 	"github.com/riverqueue/river"
 	"go.uber.org/zap"
 )
@@ -32,6 +35,11 @@ type StepTrialArgs struct {
 
 // Kind 实现 river.JobArgs。
 func (StepTrialArgs) Kind() string { return kindStepTrial }
+
+// RunRef 实现 RunArgs：后台环节试跑。
+func (a StepTrialArgs) RunRef() logger.RunRef {
+	return logger.RunRef{Kind: "step_trial", ID: idcodec.Encode(a.TrialID)}
+}
 
 // InsertOpts 实现 river.JobArgsWithInsertOpts：同一试跑同时只存在一个存活 job。
 func (StepTrialArgs) InsertOpts() river.InsertOpts {
@@ -65,7 +73,7 @@ func (rt *Runtime) EnqueueStepTrialTx(ctx context.Context, tx *sql.Tx, trialID u
 	if rt.cfg.StepTrial == nil {
 		return fmt.Errorf("环节试跑执行器未配置")
 	}
-	if _, err := rt.client.InsertTx(ctx, tx, StepTrialArgs{TrialID: trialID}, nil); err != nil {
+	if _, err := rt.client.InsertTx(ctx, tx, StepTrialArgs{TrialID: trialID}, withRequestMeta(ctx, nil)); err != nil {
 		return fmt.Errorf("入队环节试跑失败：%w", err)
 	}
 	return nil

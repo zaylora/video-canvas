@@ -28,7 +28,8 @@ RUN apk add --no-cache ffmpeg && addgroup -S app && adduser -S -G app app
 COPY --from=build /out/server /app/server
 COPY --from=build /src/configs/config.yaml /app/configs/config.yaml
 # /run/plugin-runner 是 backend 与 plugin-runner 容器共享 Unix socket 的卷挂载点，首次挂载时命名卷继承这里的属主
-RUN mkdir -p /app/data/assets /run/plugin-runner && chown -R app:app /app /run/plugin-runner
+# /app/logs 预先建好并交给 app 用户：命名卷首次挂载时继承这个属主，否则日志写不进去
+RUN mkdir -p /app/data/assets /app/logs /run/plugin-runner && chown -R app:app /app /run/plugin-runner
 
 USER app:app
 EXPOSE 8080

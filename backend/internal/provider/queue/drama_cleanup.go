@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	"video-canvas/internal/pkg/logger"
+
 	"github.com/riverqueue/river"
 )
 
@@ -14,6 +16,9 @@ type dramaCleanupArgs struct{}
 
 // Kind 是周期回收任务的持久类型。
 func (dramaCleanupArgs) Kind() string { return "drama_source_cleanup" }
+
+// RunRef 实现 RunArgs：系统任务。
+func (dramaCleanupArgs) RunRef() logger.RunRef { return logger.RunRef{Kind: RunKindSystem} }
 
 // InsertOpts 保证多次启动不会堆积清理任务。
 func (dramaCleanupArgs) InsertOpts() river.InsertOpts {
@@ -36,6 +41,6 @@ func registerDramaCleanup(cfg *river.Config, workers *river.Workers, handler Dra
 	if !ok {
 		return
 	}
-	river.AddWorker(workers, &dramaCleanupWorker{cleaner: cleaner})
+	AddWorker(workers, &dramaCleanupWorker{cleaner: cleaner})
 	cfg.PeriodicJobs = append(cfg.PeriodicJobs, river.NewPeriodicJob(river.PeriodicInterval(time.Hour), func() (river.JobArgs, *river.InsertOpts) { return dramaCleanupArgs{}, nil }, &river.PeriodicJobOpts{ID: "drama_source_cleanup", RunOnStart: true}))
 }

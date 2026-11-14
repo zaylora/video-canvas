@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"time"
 
+	"video-canvas/internal/pkg/idcodec"
+	"video-canvas/internal/pkg/logger"
+
 	"github.com/riverqueue/river"
 	"go.uber.org/zap"
 )
@@ -24,6 +27,11 @@ type DramaArgs struct {
 
 // Kind 实现River短剧任务类型。
 func (DramaArgs) Kind() string { return "drama_step" }
+
+// RunRef 实现 RunArgs：短剧任务，编号是界面上的任务 ID。
+func (a DramaArgs) RunRef() logger.RunRef {
+	return logger.RunRef{Kind: "drama", ID: idcodec.Encode(a.JobID), UserID: a.UserID}
+}
 
 // InsertOpts 同一业务任务同时只存在一个存活job。
 func (DramaArgs) InsertOpts() river.InsertOpts {
@@ -54,7 +62,7 @@ func (rt *Runtime) EnqueueDramaTx(ctx context.Context, tx *sql.Tx, userID, drama
 	if rt.cfg.Drama == nil {
 		return fmt.Errorf("短剧任务执行器未配置")
 	}
-	_, err := rt.client.InsertTx(ctx, tx, DramaArgs{UserID: userID, DramaID: dramaID, JobID: jobID}, nil)
+	_, err := rt.client.InsertTx(ctx, tx, DramaArgs{UserID: userID, DramaID: dramaID, JobID: jobID}, withRequestMeta(ctx, nil))
 	if err != nil {
 		return fmt.Errorf("入队短剧任务失败：%w", err)
 	}

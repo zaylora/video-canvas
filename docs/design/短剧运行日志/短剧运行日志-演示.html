@@ -1,0 +1,921 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>短剧运行日志</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+    <style>
+      :root {
+        --radius: 0.625rem;
+        --background: 0 0% 100%;
+        --foreground: 240 10% 3.9%;
+        --card: 0 0% 100%;
+        --muted: 240 4.8% 95.9%;
+        --muted-foreground: 240 3.8% 46.1%;
+        --primary: 240 5.9% 10%;
+        --primary-foreground: 0 0% 98%;
+        --accent: 240 4.8% 95.9%;
+        --border: 240 5.9% 90%;
+        --ok: 5 150 105;
+        --bad: 220 38 38;
+        --warn: 180 83 9;
+        --info: 2 132 199;
+        --violet: 124 58 237;
+        color-scheme: light;
+      }
+      .dark {
+        --background: 240 10% 3.9%;
+        --foreground: 0 0% 98%;
+        --card: 240 10% 5.5%;
+        --muted: 240 3.7% 15.9%;
+        --muted-foreground: 240 5% 64.9%;
+        --primary: 0 0% 98%;
+        --primary-foreground: 240 5.9% 10%;
+        --accent: 240 3.7% 15.9%;
+        --border: 240 3.7% 17%;
+        --ok: 52 211 153;
+        --bad: 248 113 113;
+        --warn: 251 191 36;
+        --info: 56 189 248;
+        --violet: 167 139 250;
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        font-family: Geist, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        background: hsl(var(--background));
+        color: hsl(var(--foreground));
+        -webkit-font-smoothing: antialiased;
+        line-height: 1.55;
+      }
+      code, .mono { font-family: "Geist Mono", "SF Mono", Consolas, monospace; }
+      code { font-size: 0.92em; background: hsl(var(--muted)); padding: 1px 5px; border-radius: 5px; }
+      [data-lucide] { width: 1em; height: 1em; flex: none; }
+      h1, h2, h3, h4, p { margin: 0; }
+      button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+      input { font: inherit; color: inherit; }
+      table { border-collapse: collapse; width: 100%; }
+      th { font-weight: 500; text-align: left; }
+      [hidden] { display: none !important; }
+      .muted { color: hsl(var(--muted-foreground)); }
+      .row { display: flex; align-items: center; gap: 8px; }
+      .wrapflex { flex-wrap: wrap; }
+      .spacer { margin-left: auto; }
+
+      .top {
+        position: sticky; top: 0; z-index: 30;
+        background: hsl(var(--background) / 0.92);
+        backdrop-filter: blur(8px);
+        border-bottom: 1px solid hsl(var(--border));
+      }
+      .top-in { max-width: 1160px; margin: 0 auto; padding: 0 20px; display: flex; align-items: center; gap: 16px; height: 56px; }
+      .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; white-space: nowrap; }
+      .logo { width: 28px; height: 28px; border-radius: 8px; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; }
+      .tabs { display: flex; gap: 2px; margin-left: 8px; overflow-x: auto; }
+      .tab {
+        height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13px; font-weight: 500;
+        color: hsl(var(--muted-foreground)); white-space: nowrap; display: inline-flex; align-items: center; gap: 6px;
+        transition: background 0.15s, color 0.15s;
+      }
+      .tab:hover { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+      .tab[aria-selected="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn { height: 32px; padding: 0 10px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; }
+      .btn:hover { background: hsl(var(--accent)); }
+      .btn-primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn-primary:hover { background: hsl(var(--primary) / 0.9); }
+      .btn-outline { border: 1px solid hsl(var(--border)); }
+      .btn-xs { height: 26px; padding: 0 8px; font-size: 12px; }
+      .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+      .switch { width: 34px; height: 20px; border-radius: 999px; background: hsl(var(--border)); position: relative; transition: background 0.15s; }
+      .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+      .switch[aria-checked="true"] { background: rgb(var(--violet)); }
+      .switch[aria-checked="true"]::after { transform: translateX(14px); }
+
+      .wrap { max-width: 1160px; margin: 0 auto; padding: 32px 20px 80px; }
+      .h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+      .lead { margin-top: 10px; max-width: 820px; font-size: 15px; color: hsl(var(--muted-foreground)); }
+      .lead b { color: hsl(var(--foreground)); }
+      .sec { margin-top: 36px; }
+      .sec > h2 { font-size: 18px; font-weight: 600; }
+      .sec > .sub { margin: 4px 0 14px; max-width: 820px; font-size: 13.5px; color: hsl(var(--muted-foreground)); }
+      .card { border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: var(--radius); padding: 16px; }
+      .grid { display: grid; gap: 12px; }
+      .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .demo-grid { grid-template-columns: 250px minmax(0, 1fr); }
+      @media (max-width: 820px) {
+        .g2, .g3, .demo-grid { grid-template-columns: 1fr; }
+        .top-in { padding: 0 12px; }
+        .wrap { padding: 24px 16px 64px; }
+        .brand span.name { display: none; }
+      }
+      ul.list { margin: 0; padding-left: 18px; font-size: 13.5px; }
+
+      .tag { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 999px; font-size: 11.5px; font-weight: 500; white-space: nowrap; }
+      .t-ok { background: rgb(var(--ok) / 0.12); color: rgb(var(--ok)); }
+      .t-bad { background: rgb(var(--bad) / 0.12); color: rgb(var(--bad)); }
+      .t-warn { background: rgb(var(--warn) / 0.12); color: rgb(var(--warn)); }
+      .t-info { background: rgb(var(--info) / 0.12); color: rgb(var(--info)); }
+      .t-violet { background: rgb(var(--violet) / 0.12); color: rgb(var(--violet)); }
+      .t-mute { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
+
+      .callout { display: flex; gap: 10px; padding: 12px 14px; border-radius: var(--radius); font-size: 13.5px; border: 1px solid; }
+      .callout > i { margin-top: 3px; }
+      .c-info { background: rgb(var(--info) / 0.07); border-color: rgb(var(--info) / 0.3); }
+      .c-info > i { color: rgb(var(--info)); }
+      .c-warn { background: rgb(var(--warn) / 0.07); border-color: rgb(var(--warn) / 0.3); }
+      .c-warn > i { color: rgb(var(--warn)); }
+      .c-bad { background: rgb(var(--bad) / 0.07); border-color: rgb(var(--bad) / 0.3); }
+      .c-bad > i { color: rgb(var(--bad)); }
+      .c-ok { background: rgb(var(--ok) / 0.07); border-color: rgb(var(--ok) / 0.3); }
+      .c-ok > i { color: rgb(var(--ok)); }
+
+      .flow { display: flex; align-items: stretch; gap: 6px; flex-wrap: wrap; padding: 14px; border-radius: var(--radius); }
+      .flow .node { flex: 1 1 140px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 12px; font-size: 12.5px; }
+      .flow .node b { display: block; font-size: 13px; margin-bottom: 2px; }
+      .flow .node.hl { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+      .flow .arrow { display: grid; place-items: center; color: hsl(var(--muted-foreground)); }
+
+      .cmp-wrap { overflow-x: auto; border: 1px solid hsl(var(--border)); border-radius: var(--radius); }
+      .cmp th, .cmp td { padding: 9px 12px; font-size: 13px; vertical-align: top; border-bottom: 1px solid hsl(var(--border)); }
+      .cmp tr:last-child th, .cmp tr:last-child td { border-bottom: 0; }
+      .cmp thead th { background: hsl(var(--muted)); font-size: 12.5px; white-space: nowrap; }
+      .cmp tbody th { width: 150px; color: hsl(var(--muted-foreground)); font-weight: 500; }
+      .cmp .y { color: rgb(var(--ok)); }
+      .cmp .m { color: rgb(var(--warn)); font-weight: 500; }
+      .cmp .n { color: rgb(var(--bad)); }
+
+      .steps { list-style: none; counter-reset: s; display: grid; gap: 12px; }
+      .steps li { counter-increment: s; position: relative; padding-left: 32px; font-size: 13.5px; }
+      .steps li::before {
+        content: counter(s); position: absolute; left: 0; top: 0; width: 22px; height: 22px; border-radius: 50%;
+        background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; font-size: 12px; font-weight: 600;
+      }
+      .steps li small { display: block; color: hsl(var(--muted-foreground)); font-size: 12.5px; }
+
+      .codeblock { background: hsl(var(--muted)); border-radius: var(--radius); padding: 14px; font-family: "Geist Mono", "SF Mono", Consolas, monospace; font-size: 12.5px; overflow-x: auto; }
+
+      /* 终端 */
+      .term { border-radius: 12px; overflow: hidden; border: 1px solid hsl(var(--border)); background: #0d0f14; color: #d4d7de; }
+      .term-bar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #1a1d24; font-size: 12px; color: #9aa0ab; }
+      .term-bar input[type="text"] { flex: 1; min-width: 0; background: #0d0f14; border: 1px solid #2b2f38; border-radius: 6px; padding: 4px 8px; color: #e6e8ec; font-family: "Geist Mono", monospace; font-size: 12px; outline: none; }
+      .term-bar input[type="text"]:focus { border-color: rgb(var(--violet)); }
+      .term-body { padding: 12px; font-family: "Geist Mono", "SF Mono", Consolas, monospace; font-size: 12px; line-height: 1.6; max-height: 560px; overflow: auto; }
+      .ln { white-space: pre-wrap; word-break: break-all; padding: 3px 6px; border-radius: 4px; }
+      .ln + .ln { margin-top: 2px; }
+      .ln .ts { color: #6b7280; }
+      .ln .lv { font-weight: 600; }
+      .lv-INFO { color: #60a5fa; }
+      .lv-WARN { color: #fbbf24; }
+      .lv-ERROR { color: #f87171; }
+      .ln .cl { color: #6b7280; }
+      .ln .msg { color: #f3f4f6; font-weight: 500; }
+      .ln .k { color: #a78bfa; }
+      .ln .full { color: #34d399; }
+      .ln.warn { background: rgb(251 191 36 / 0.06); }
+      .ln.error { background: rgb(248 113 113 / 0.08); }
+      .ln mark { background: rgb(167 139 250 / 0.35); color: inherit; border-radius: 2px; }
+      .scen { text-align: left; border: 1px solid hsl(var(--border)); border-radius: 10px; padding: 9px 11px; font-size: 13px; background: hsl(var(--card)); }
+      .scen:hover { background: hsl(var(--accent)); }
+      .scen[aria-pressed="true"] { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+      .scen small { display: block; color: hsl(var(--muted-foreground)); font-size: 11.5px; margin-top: 2px; }
+
+      .frame { border: 1px solid hsl(var(--border)); border-radius: 12px; overflow: hidden; background: hsl(var(--background)); }
+      .frame-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: hsl(var(--muted)); font-size: 12px; color: hsl(var(--muted-foreground)); }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: hsl(var(--border)); }
+      .proto { min-height: 300px; position: relative; padding: 18px; background: linear-gradient(160deg, hsl(var(--muted)), hsl(var(--background))); }
+      /* 清透胶囊风格的任务条（示意） */
+      .jobbar { display: flex; align-items: center; gap: 10px; padding: 8px 10px 8px 14px; border-radius: 999px; background: hsl(var(--card) / 0.75); border: 1px solid hsl(var(--border)); backdrop-filter: blur(10px); box-shadow: 0 6px 20px rgb(0 0 0 / 0.06); font-size: 13px; max-width: 760px; }
+      .jobbar .txt { min-width: 0; flex: 1; }
+      .jobbar .bad { color: rgb(var(--bad)); }
+      .idtag { display: block; font-size: 10px; line-height: 1.3; color: hsl(var(--muted-foreground) / 0.85); cursor: pointer; text-align: left; word-break: break-all; margin-top: 1px; }
+      .idtag:hover { color: hsl(var(--foreground)); }
+      .bar-progress { height: 4px; border-radius: 999px; background: hsl(var(--border)); overflow: hidden; width: 120px; }
+      .bar-progress > i { display: block; height: 100%; background: hsl(var(--primary)); width: 40%; }
+
+      .note { outline: 1.5px dashed rgb(var(--violet)); outline-offset: 3px; position: relative; }
+      .note-txt { display: none; margin-top: 6px; font-size: 11.5px; line-height: 1.5; color: rgb(var(--violet)); }
+      .show-notes .note-txt { display: block; }
+      body:not(.show-notes) .note { outline: none; }
+
+      .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 60; pointer-events: none; }
+      .toast > div { display: flex; align-items: center; gap: 8px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 14px; font-size: 13px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); }
+    </style>
+  </head>
+
+  <body class="show-notes">
+    <header class="top">
+      <div class="top-in">
+        <div class="brand">
+          <span class="logo"><i data-lucide="scroll-text"></i></span><span class="name">短剧运行日志</span>
+        </div>
+        <div class="tabs" role="tablist">
+          <button class="tab" role="tab" data-tab="overview" aria-selected="true"><i data-lucide="map"></i>总览</button>
+          <button class="tab" role="tab" data-tab="demo" aria-selected="false"><i data-lucide="terminal"></i>日志长什么样</button>
+          <button class="tab" role="tab" data-tab="proto" aria-selected="false"><i data-lucide="mouse-pointer-click"></i>任务条原型</button>
+          <button class="tab" role="tab" data-tab="impl" aria-selected="false"><i data-lucide="file-code"></i>字段与改动</button>
+        </div>
+        <div class="spacer row">
+          <label class="row muted" style="font-size: 12px">
+            设计标注
+            <button class="switch" id="notesSw" role="switch" aria-checked="true" onclick="toggleNotes()"></button>
+          </label>
+          <button class="btn" onclick="document.documentElement.classList.toggle('dark')" aria-label="切换明暗主题">
+            <i data-lucide="sun-moon"></i>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <!-- ============ 1. 总览 ============ -->
+      <section id="tab-overview">
+        <h1 class="h1">用户给一个编号，运维 grep 一次就能看清整次短剧运行</h1>
+        <p class="lead">
+          现在短剧工作室跑失败了，服务器日志里几乎什么都没有：原始错误被吞掉，输出不合格时模型写了什么也没留下。这份设计给每次运行补齐<b>服务器结构化日志</b>：从创建到终态每个节点一行，<b>失败时打出完整原因、提示词全文和不合格输出全文</b>。任务条失败时显示编号，运维拿编号直接 grep。
+          <b>不做后台页面，不建表，不引入新依赖。</b>
+        </p>
+
+        <div class="callout c-info" style="margin-top: 16px">
+          <i data-lucide="info"></i>
+          <div>
+            <b>阅读说明。</b>现状来自读代码核对，见 Markdown 第 2 节。日志示例里的编号、时间、耗时、字数都是<b>示意</b>；整套设计<b>尚未实现</b>。完整依据和来源见同目录的 <code>短剧运行日志.md</code>。<br />
+            <span class="muted">核实度图例：</span>
+            <span class="tag t-ok">已核对代码 / 官方页面</span>
+            <span class="tag t-info">调研检索，未逐条复核</span>
+            <span class="tag t-warn">未验证 · 需实测</span>
+            <span class="tag t-violet">提案</span>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>今天缺在哪</h2>
+          <p class="sub">读代码确认的四个缺口 <span class="tag t-ok">已核对代码</span></p>
+          <div class="grid g2">
+            <div class="card">
+              <div class="row"><i data-lucide="eye-off" style="color: rgb(var(--bad))"></i><b>失败原因被吞</b></div>
+              <p class="muted" style="font-size: 13px; margin-top: 6px"><code>failDrama</code> 把错误转成用户文案落库后返回 nil，不打日志。不是业务错误的，库里只剩<b>「服务内部错误」</b>；合成的下载、ffmpeg、存储错误也都换成了固定文案。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="file-x" style="color: rgb(var(--bad))"></i><b>不合格输出被丢掉</b></div>
+              <p class="muted" style="font-size: 13px; margin-top: 6px"><code>callDrama</code> 校验不过会重写一次，但两次的<b>校验原因和模型输出</b>都没留下。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="activity" style="color: rgb(var(--warn))"></i><b>成功的运行也没有过程</b></div>
+              <p class="muted" style="font-size: 13px; margin-top: 6px">整条短剧链路只有 <b>5 处 Warn</b>，看不到调了几次模型、哪次慢、用了多少 token。网关还把<b>上游错误体原文</b>丢了，只留 300 字说明。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="hash" style="color: rgb(var(--warn))"></i><b>编号对不上</b></div>
+              <p class="muted" style="font-size: 13px; margin-top: 6px">任务条失败时<b>不显示编号</b>；仅有的一行队列日志用的是十进制主键，和前端的十六进制编号对不上。</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>主线：一次排查怎么走</h2>
+          <p class="sub">从用户看到失败，到运维读到原因。</p>
+          <div class="flow note">
+            <div class="node"><b>任务条失败</b>原因 + <b>任务 ID</b>，点一下复制</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>用户发给运维</b>附上编号</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>grep 编号</b>所有行都带同一个 <code>drama_job_id</code></div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>读时间线</b>创建 → 开始 → 每次模型调用 → 终态</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>读失败行</b>错误类型、完整错误链、提示词全文</div>
+          </div>
+          <div class="note-txt">设计：所有失败详情由 <code>failDrama</code> 这一个出口统一打印，下层只把上下文带在 error 里往上传，符合规范 E7「只在边界记一次」。每次模型调用的那一行是过程事件，不是错误日志。</div>
+          <div class="callout c-warn" style="margin-top: 10px">
+            <i data-lucide="corner-down-right"></i>
+            <div><b>用户没有编号时（兜底）：</b>每行都带 <code>user_id</code>，运维按用户 ID + 大致时间 grep <code>短剧任务失败</code>，先找到候选运行，再按编号展开。同步接口（片段转写）带不上 <code>request_id</code>，这是已知限制，本期不改。</div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>三类运行，日志各打多少</h2>
+          <p class="sub">全文只在失败时打，日志量才可控。</p>
+          <div class="grid g3">
+            <div class="card">
+              <div class="row"><i data-lucide="circle-check" style="color: rgb(var(--ok))"></i><b>成功的运行</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-mute">只打元数据</span><span class="tag t-warn">示意：一部 60 集 &lt;100KB</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>创建、开始、每次模型调用、完成</b>各一行：模型、渠道、耗时、首字耗时、token、积分。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="circle-x" style="color: rgb(var(--bad))"></i><b>失败的运行</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-bad">打全文</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px">另外多出：不合格那次的<b>模型输出全文</b>（最多 2 份）、失败行里的<b>提示词全文</b>（1 份）、上游错误体原文、完整错误链。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="unlink"></i><b>不挂任务的调用</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-mute">预检判断体裁 · 片段转写</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px">每次尝试一行，字段和任务里的模型调用一致；用 <code>user_id</code>、<code>drama_id</code>、<code>segment_id</code> 关联。</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>为什么选这个方案</h2>
+          <p class="sub">三个候选按「运维能不能 grep 一次定位」来比。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th></th><th>A 全流程 + 失败打全文（推荐，已确认）</th><th>B 每次调用都打全文</th><th>C 建表 + 后台时间线</th></tr></thead>
+              <tbody>
+                <tr><th>grep 一次定位</th><td class="y">能</td><td class="y">能</td><td><span class="m">要进后台看</span></td></tr>
+                <tr><th>失败原因完整度</th><td class="y">错误链、上游原文、提示词、不合格输出</td><td class="y">完整，成功调用也有全文</td><td class="y">完整</td></tr>
+                <tr><th>日志量</th><td class="y">成功运行很小</td><td class="n">一部小说可能几十 MB，淹没其他日志</td><td><span class="m">要表和清理任务</span></td></tr>
+                <tr><th>实现成本</th><td class="y">集中在 <code>callDrama</code>、<code>failDrama</code> 两个出口</td><td class="y">小</td><td class="n">迁移 + 接口 + 页面</td></tr>
+                <tr><th>结论</th><td class="y"><b>采用</b></td><td class="n">放弃</td><td class="n">用户撤回（不加后台）</td></tr>
+                <tr><th>核实度</th><td><span class="tag t-violet">提案</span> 日志量为 <span class="tag t-warn">未验证</span></td><td><span class="tag t-warn">未验证</span></td><td><span class="tag t-info">调研检索</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="muted" style="font-size: 12.5px; margin-top: 8px">外部参考：OpenTelemetry GenAI 约定默认不记录提示词和输出内容、错误类型用低基数枚举；Inngest、Trigger.dev 把每次重试单独记一条。<span class="tag t-info">调研检索，未逐条复核</span></p>
+        </div>
+
+        <div class="sec">
+          <h2>用户说「剧本一直写不出来」时，会发生什么</h2>
+          <p class="sub">以「写剧本」第 3 集两次输出都不合格为例。</p>
+          <div class="grid g2">
+            <div class="card">
+              <ol class="steps" style="margin: 0; padding: 0">
+                <li><b>第 1、2 集正常写完并保存</b><small>两行 <code>短剧模型调用</code>，<code>call=episode=1/2</code>，<code>result=ok</code>。</small></li>
+                <li><b>第 3 集第 1 次输出不合格</b><small>一行 Warn：<code>attempt=1</code>，带 <code>validation_error</code> 和<b>输出全文</b>，然后带着原因重写。</small></li>
+                <li><b>第 3 集第 2 次还是不合格</b><small>又一行 Warn：<code>attempt=2</code>，带原因和输出全文。</small></li>
+                <li><b>任务失败、退款</b><small><code>短剧任务失败</code>（Warn）：<code>error_type=invalid_output</code>、<code>call=episode=3</code>、<b>提示词全文</b>、退回积分。</small></li>
+                <li><b>用户在任务条看到失败和任务 ID</b><small>文案不变；新增的只是编号。</small></li>
+              </ol>
+            </div>
+            <div class="card">
+              <div class="callout c-warn">
+                <i data-lucide="triangle-alert"></i>
+                <div>
+                  <b>边界：日志里会出现用户的小说原文和模型输出</b>
+                  <ul class="list" style="margin-top: 6px">
+                    <li>失败时的提示词全文含用户原文，最多到模型上下文上限（几百 KB 级，<span class="tag t-warn">未验证</span>）。</li>
+                    <li>服务器日志文件的访问权限要按数据库同级管理。</li>
+                    <li><b>渠道 Key 在任何字段里都不出现</b>：上游错误体先遮 Key 再打。</li>
+                    <li>默认配置只写标准输出，容器重建日志就没了；生产建议配 <code>log.filename</code>。</li>
+                  </ul>
+                </div>
+              </div>
+              <p class="muted" style="font-size: 12.5px; margin-top: 10px">交付时要告知：部署方需配日志文件并控制访问权限；这是用户为排查明确选择的取舍。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 2. 日志长什么样 ============ -->
+      <section id="tab-demo" hidden>
+        <h1 class="h1">日志长什么样</h1>
+        <p class="lead">
+          左边选一个场景，右边是这次运行打出的服务器日志（zap <code>console</code> 格式）。在顶部输入框里输入任意文字就是在 <b>grep</b>，比如 <code>短剧任务失败</code>、<code>attempt</code>、<code>error_type</code>。
+          <b>编号、时间、耗时、全文内容都是示意</b>，全文用一段开头加「全文 N 字」表示。
+        </p>
+        <div class="grid demo-grid" style="margin-top: 20px">
+          <div id="scenList" class="grid" style="align-content: start"></div>
+          <div>
+            <div class="term note">
+              <div class="term-bar">
+                <i data-lucide="terminal"></i>
+                <span class="mono">grep</span>
+                <input type="text" id="grepInput" placeholder="输入关键字过滤，留空显示全部" oninput="onGrep(this.value)" />
+                <label class="row" style="gap: 6px; white-space: nowrap"><input type="checkbox" id="onlyWarn" onchange="renderLog()" />只看 Warn 以上</label>
+              </div>
+              <div class="term-body" id="termBody"></div>
+            </div>
+            <div class="note-txt">设计：message 是固定的中文短句，变量全部放进字段，所以 grep 消息名能数出某类事件，grep 编号能拉出一整次运行。绿色的是只在失败时出现的全文字段。</div>
+            <div id="scenNote" style="margin-top: 12px"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 3. 任务条原型 ============ -->
+      <section id="tab-proto" hidden>
+        <h1 class="h1">任务条：失败时显示任务 ID</h1>
+        <p class="lead">
+          这是前端唯一的改动：短剧工作室任务条失败时，在原因下方显示可复制的<b>任务 ID</b>，复用画布和营销工作室已有的 <code>TaskIdTag</code>。数据在内存里，刷新复原。用下方按钮切换任务状态；想看剪贴板不可用时的表现，勾选「模拟剪贴板不可用」。
+        </p>
+        <div class="row wrapflex" style="margin-top: 16px" id="protoCtl"></div>
+        <div class="frame" style="margin-top: 14px">
+          <div class="frame-bar">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            <span style="margin-left: 8px">video-canvas / 短剧工作室 / 霸总的替身新娘</span>
+          </div>
+          <div class="proto" id="proto"></div>
+        </div>
+        <div class="grid g2" style="margin-top: 14px">
+          <div class="card">
+            <b style="font-size: 13.5px">各状态的表现</b>
+            <ul class="list" style="margin-top: 6px">
+              <li><b>运行中</b>：不显示编号，和现在一样。</li>
+              <li><b>成功</b>：任务条按现有逻辑收起，不显示编号。</li>
+              <li><b>失败</b>：原因下方显示「任务 ID：xxxx」，点击复制，1.5 秒内显示「已复制任务 ID」。</li>
+              <li><b>剪贴板不可用</b>：静默不复制，文字本身可选中（<code>TaskIdTag</code> 现有行为）。</li>
+            </ul>
+          </div>
+          <div class="card">
+            <b style="font-size: 13.5px">不做的</b>
+            <ul class="list" style="margin-top: 6px">
+              <li>不改失败文案、不加说明小字（前端规范 6.2）。</li>
+              <li>不改接口：<code>DramaJob.id</code> 已经是十六进制编号。<span class="tag t-ok">已核对代码</span></li>
+              <li>片段出视频的失败走的是生成任务，已经显示任务 ID，不动。</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 4. 字段与改动（提案） ============ -->
+      <section id="tab-impl" hidden>
+        <h1 class="h1">字段与改动（提案）</h1>
+        <p class="lead">下面都是设计提案，尚未实现。没有数据表和接口，「数据模型」就是日志字段。对应 Markdown 第 6、8 节。</p>
+
+        <div class="sec">
+          <h2>日志事件清单</h2>
+          <p class="sub">每次运行按时间顺序产生这些行。message 固定不变。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>#</th><th>message</th><th>级别</th><th>什么时候打</th><th>专有字段</th></tr></thead>
+              <tbody id="eventRows"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>公共字段</h2>
+          <p class="sub">挂任务的行都带这一组，由 <code>dramaJobFields(j)</code> 统一生成。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <tbody>
+                <tr><th><code>drama_job_id</code></th><td>32 位十六进制，<code>idcodec.Encode(j.ID)</code>，<b>和任务条上的编号相同</b>。不用 <code>task_id</code>：短剧任务和生成任务是两张表，同一个编号可能两边都有，用字段名区分来源</td></tr>
+                <tr><th><code>drama_id</code></th><td>短剧项目编号（十六进制，与前端地址一致）</td></tr>
+                <tr><th><code>user_id</code></th><td>用户主键（uint64）</td></tr>
+                <tr><th><code>step</code></th><td>analyze / plan / outline / scripts / breakdown / asset_prompts / storyboard / compose</td></tr>
+                <tr><th><code>lane</code></th><td><code>user</code> 用户手动发起 / <code>pipeline</code> 自动规划</td></tr>
+                <tr><th><code>episodes</code></th><td>本次涉及的集数 []int</td></tr>
+                <tr><th><code>batch</code></th><td>自动规划的批次，如 <code>"11-20"</code>；没有批次时不带</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>模型调用行字段（E4 / E10 / E11）</h2>
+          <p class="sub">每次尝试一行。级别：ok 为 Info；invalid、failed 为 Warn；canceled 为 Info。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <tbody>
+                <tr><th><code>call</code></th><td>本次调用在运行里的位置：<code>episode=3</code>（scripts 每集）、<code>batch=1-5</code>（breakdown 每批）、空串（单次步骤）。由调用方传给 <code>callDrama</code></td></tr>
+                <tr><th><code>attempt</code></th><td>1 或 2（校验失败重写的那次是 2）</td></tr>
+                <tr><th><code>prompt_step</code> / <code>prompt_source</code></th><td>用的哪套模板；builtin / 用户自写 / 技能</td></tr>
+                <tr><th><code>model_key</code> / <code>channel</code> / <code>upstream_model</code></th><td>模型、渠道、实际上游模型</td></tr>
+                <tr><th><code>prompt_chars</code> / <code>output_chars</code></th><td>提示词字数、输出字数</td></tr>
+                <tr><th><code>input_tokens</code> / <code>output_tokens</code> / <code>usage_missing</code></th><td>上游用量；上游没给用量时 <code>usage_missing=true</code></td></tr>
+                <tr><th><code>finish_reason</code></th><td>stop / length 等；<code>length</code> 说明输出被截断</td></tr>
+                <tr><th><code>latency_ms</code> / <code>ttft_ms</code></th><td>总耗时、首字耗时（首字耗时 <span class="tag t-warn">未验证</span>：Gemini 格式是否逐段回调需实测）</td></tr>
+                <tr><th><code>result</code> / <code>error_type</code></th><td>ok / invalid / failed / canceled；不是 ok 时带错误类型</td></tr>
+                <tr><th><code>error</code></th><td>failed 时带完整错误链（已遮 Key）</td></tr>
+                <tr><th><code>upstream_status</code> / <code>upstream_body</code></th><td>上游非 2xx 时带 HTTP 状态和<b>错误体原文</b>（遮 Key，最多 8KB）</td></tr>
+                <tr><th><code>validation_error</code></th><td>invalid 时带：解码或校验原因原文</td></tr>
+                <tr><th><code>output</code></th><td><b>仅 invalid 时带模型输出全文</b></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>失败行字段（E6）与失败分类</h2>
+          <p class="sub">内部错误和合成失败用 Error（自动带堆栈）；其余用 Warn。</p>
+          <div class="grid g2">
+            <div class="cmp-wrap">
+              <table class="cmp">
+                <tbody>
+                  <tr><th><code>error_code</code> / <code>error_message</code></th><td>写进库、给用户看的错误码和文案（对照用户截图）</td></tr>
+                  <tr><th><code>error_type</code></th><td>见右表</td></tr>
+                  <tr><th><code>error</code></th><td><b>完整错误链</b>，不再只剩「服务内部错误」</td></tr>
+                  <tr><th><code>call</code> / <code>attempt</code></th><td>失败在哪次调用；非模型调用失败时不带</td></tr>
+                  <tr><th><code>prompt</code></th><td><b>那次调用的提示词全文</b>；非模型调用失败时不带</td></tr>
+                  <tr><th><code>duration_ms</code></th><td>从开始执行到失败</td></tr>
+                  <tr><th><code>refunded</code></th><td>退回的积分</td></tr>
+                  <tr><th><code>paused</code></th><td>自动规划因此暂停</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="cmp-wrap">
+              <table class="cmp">
+                <thead><tr><th>error_type</th><th>含义</th><th>级别</th></tr></thead>
+                <tbody>
+                  <tr><td><code>upstream</code></td><td>上游非 2xx 或流内 error</td><td>Warn</td></tr>
+                  <tr><td><code>timeout</code></td><td>超过模型 deadline 或空闲超时</td><td>Warn</td></tr>
+                  <tr><td><code>network</code></td><td>连接失败、读流中断</td><td>Warn</td></tr>
+                  <tr><td><code>invalid_output</code></td><td>两次都解码或校验不过</td><td>Warn</td></tr>
+                  <tr><td><code>custom_prompt</code></td><td>自定义提示词或技能导致不合格</td><td>Warn</td></tr>
+                  <tr><td><code>context_too_long</code></td><td>提示词超过模型上下文</td><td>Warn</td></tr>
+                  <tr><td><code>no_model</code></td><td>渠道 Key 读取失败或没有文本模型</td><td>Warn</td></tr>
+                  <tr><td><code>canceled</code></td><td>用户取消导致上游中断</td><td>Info（不打 E6）</td></tr>
+                  <tr><td><code>compose_download</code> / <code>_transcode</code> / <code>_store</code></td><td>合成三个阶段</td><td>Error</td></tr>
+                  <tr><td><code>business</code></td><td>其他业务错误</td><td>Warn</td></tr>
+                  <tr><td><code>internal</code></td><td>兜底</td><td>Error</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>代码改动</h2>
+          <p class="sub">复用现有 zap 和 <code>idcodec</code>，不加表、不加依赖、不加配置项。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>文件</th><th>改动</th></tr></thead>
+              <tbody>
+                <tr><th><code>service/drama_log.go</code>（新增）</th><td><code>dramaJobFields</code>、<code>dramaCallFields</code>、<code>dramaErrorType</code>、<code>dramaCallError</code>、<code>dramaCause</code></td></tr>
+                <tr><th><code>service/drama_text.go</code></th><td><code>callDrama</code> 加参数 <code>call</code>；每次尝试后打 E4；失败时用 <code>dramaCallError</code> 带上提示词往上传；<code>streamText</code> 记录耗时和首字耗时</td></tr>
+                <tr><th><code>service/drama_result.go</code></th><td><code>failDrama</code> 打 E6；<code>dramaFailure</code> 通过 <code>Unwrap</code> 穿过包装取到 errcode / 上游错误</td></tr>
+                <tr><th><code>service/drama_pipeline.go</code> / <code>drama_job.go</code> / <code>drama_planning.go</code></th><td>E1、E2、E3、E5、E7、E8</td></tr>
+                <tr><th><code>service/drama_compose.go</code></th><td>每个失败分支用 <code>dramaCause</code> 保留底层原因，用户文案不变</td></tr>
+                <tr><th>scripts / breakdown / source / storyboard</th><td>调 <code>callDrama</code> 时传 <code>call</code></td></tr>
+                <tr><th><code>drama_adapt_text.go</code> / <code>drama_preflight.go</code></th><td>用 E10 / E11 替换现有那行 Warn</td></tr>
+                <tr><th><code>provider/queue/drama.go</code></th><td>E9 的编号改十六进制，补 <code>attempt</code>、<code>max_attempts</code></td></tr>
+                <tr><th><code>llmgateway/types.go</code>、<code>gateway.go</code>、<code>stream.go</code></th><td><code>UpstreamError</code> 加 <code>Body</code>（遮 Key、≤8KB，只进日志）；<code>Error()</code> 不变。<b>Agent 等其他调用方也会拿到这个字段，但不会自动打印</b></td></tr>
+                <tr><th><code>web/.../job-bar.tsx</code></th><td>失败分支加 <code>&lt;TaskIdTag id={job.id} /&gt;</code></td></tr>
+                <tr><th><code>backend/docs/standards/02-错误处理与日志.md</code></th><td>补 E7 例外（长流程过程事件）和 E9 补充（失败时打用户内容）</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>核心代码（提案）</h2>
+          <div class="codeblock"><pre style="margin: 0; font: inherit; white-space: pre-wrap">// dramaCallError 把失败那次模型调用的上下文带到 failDrama，由边界统一打印（规范 E7）。
+type dramaCallError struct {
+	Call    string // episode=3 / batch=1-5 / 空
+	Attempt int
+	Prompt  string // 那次调用的提示词全文
+	Err     error
+}
+func (e *dramaCallError) Error() string { return e.Err.Error() }
+func (e *dramaCallError) Unwrap() error { return e.Err }
+
+// callDrama（节选）
+for attempt := 1; attempt &lt;= 2; attempt++ {
+	...
+	start := time.Now()
+	result, ttft, e := s.streamDramaText(ctx, j, snap, prompt)
+	fields := append(dramaJobFields(j), dramaCallFields(call, attempt, step, snap, prompt, result, start, ttft)...)
+	if e != nil {
+		logger.Warn("短剧模型调用", append(fields, callFailure(e)...)...)   // result=failed, error_type, error, upstream_*
+		return nil, 0, &amp;dramaCallError{Call: call, Attempt: attempt, Prompt: prompt, Err: e}
+	}
+	decoded, e := drama.DecodeOutput(step, []byte(result.Text))
+	if e == nil &amp;&amp; validate != nil { e = validate(decoded) }
+	if e != nil {
+		logger.Warn("短剧模型调用", append(fields, zap.String("result", "invalid"),
+			zap.String("validation_error", e.Error()), zap.String("output", result.Text))...)
+		invalid, lastPrompt = e, prompt
+		continue
+	}
+	logger.Info("短剧模型调用", append(fields, zap.String("result", "ok"))...)
+	return decoded, cost, nil
+}
+return nil, 0, &amp;dramaCallError{Call: call, Attempt: 2, Prompt: lastPrompt, Err: errcode.ErrDramaOutputInvalid}
+
+// failDrama（节选）：写库成功后打一次
+var ce *dramaCallError
+fields := append(dramaJobFields(j), zap.Int("error_code", code), zap.String("error_message", message),
+	zap.String("error_type", dramaErrorType(cause)), zap.String("error", cause.Error()), ...)
+if errors.As(cause, &amp;ce) {
+	fields = append(fields, zap.String("call", ce.Call), zap.Int("attempt", ce.Attempt), zap.String("prompt", ce.Prompt))
+}
+if isInternal(cause) { logger.Error("短剧任务失败", fields...) } else { logger.Warn("短剧任务失败", fields...) }</pre></div>
+        </div>
+
+        <div class="sec">
+          <h2>测试与验收</h2>
+          <p class="sub">后端用 <code>zaptest/observer</code> 断言打出的行和字段，放 <code>backend/internal/tests/</code>。</p>
+          <div class="card">
+            <ol class="list" style="padding-left: 18px">
+              <li>成功：E1、E2、E4（ok）、E5 齐全，<code>drama_job_id == idcodec.Encode(job.ID)</code>，E4 不带 <code>output</code>、<code>prompt</code>。</li>
+              <li>第 1 次不合格、第 2 次成功：attempt=1 为 Warn 且带 <code>validation_error</code>、<code>output</code>；attempt=2 为 Info。</li>
+              <li>两次都不合格：E6 为 Warn，<code>error_type=invalid_output</code>，带 <code>prompt</code>；库里 <code>error_message</code> 不变。</li>
+              <li>上游 400：E4 带 <code>upstream_status</code>、<code>upstream_body</code>，Key 被替换成 <code>***</code>。</li>
+              <li>内部错误：E6 为 Error，<code>error</code> 是原始错误文本。</li>
+              <li>用户取消：有 E7，没有 E6。</li>
+              <li>scripts 第 3 集失败：E6 的 <code>call=episode=3</code>。</li>
+              <li>合成 ffmpeg 失败：E6 为 Error，<code>compose_transcode</code>，用户文案不变。</li>
+              <li>网关：<code>UpstreamError.Body</code> 遮 Key、≤8KB，<code>Error()</code> 不含 Body。</li>
+              <li>前端：失败任务显示「任务 ID：…」，运行中不显示。</li>
+            </ol>
+            <p class="muted" style="font-size: 12.5px; margin-top: 10px">人工验收：渠道指向只回 <code>hello</code> 的假服务，拿任务条编号 grep，能看到两行不合格调用（各带输出全文）和失败行（带提示词全文）；把渠道 Key 改错，能看到 401 和上游错误体原文，原文里没有 Key。最后 <code>bash scripts/check.sh</code> 通过。</p>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>已确认的决定</h2>
+          <div class="card">
+            <ol class="list" style="padding-left: 18px">
+              <li><b>主要用途是运营 / 运维排查用户反馈</b>：服务器日志一起补齐，不以调优提示词为主要目标。</li>
+              <li><b>不加后台页面，只在服务器日志里打完整</b>：运维查日志排查。推翻了此前「并入使用记录、加来源筛选」的回答，那个决定已搁置，将来做后台时可复用。</li>
+              <li><b>全流程都打，失败时打全文</b>：失败行带完整错误、上游原文、校验原因和提示词全文，不合格那次带输出全文；成功的调用不打全文。</li>
+              <li><b>任务条失败时显示任务编号</b>：可复制，和画布生成任务一致。</li>
+              <li><b>默认值</b>（不需要用户决定）：字段命名、级别、<code>error_type</code> 取值；预检判断体裁和片段转写也纳入；不新增日志开关配置。</li>
+            </ol>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+      const $ = (s, r = document) => r.querySelector(s);
+      const esc = (s) =>
+        String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const icons = () => {
+        if (window.lucide) lucide.createIcons();
+      };
+
+      function toggleNotes() {
+        const on = document.body.classList.toggle("show-notes");
+        $("#notesSw").setAttribute("aria-checked", String(on));
+      }
+
+      let toastTimer;
+      function toast(msg, kind = "ok") {
+        const icon = { ok: "circle-check", bad: "circle-x", warn: "triangle-alert" }[kind] || "info";
+        $("#toast").innerHTML = `<div><i data-lucide="${icon}" style="color: rgb(var(--${kind}))"></i>${esc(msg)}</div>`;
+        icons();
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => ($("#toast").innerHTML = ""), 2200);
+      }
+
+      function showTab(id) {
+        document.querySelectorAll("main > section").forEach((s) => (s.hidden = s.id !== "tab-" + id));
+        document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === id)));
+        window.scrollTo(0, 0);
+      }
+      document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab)));
+
+      /* ---------- 示意数据 ---------- */
+      const JOB = "9f3c1a7e5b2d4c6f8a0e1b3d5f7a9c2e";
+      const DRAMA = "4b8e2f6a1c3d5e7f9a0b2c4d6e8f1a3b";
+      const base = { drama_job_id: JOB, drama_id: DRAMA, user_id: 42 };
+      const FULL = (head, n) => ({ __full: true, head, n });
+      const callBase = { model_key: "deepseek-v3", channel: "ds-main", upstream_model: "deepseek-chat", prompt_step: "scripts", prompt_source: "builtin" };
+
+      // 每行：[时间, 级别, 调用位置, message, 字段]
+      const SCENARIOS = [
+        {
+          key: "ok",
+          title: "正常成功",
+          desc: "写剧本第 1–2 集，一次通过",
+          note: ["ok", "成功的运行只有元数据：创建、开始、每集一行模型调用、完成。没有任何全文字段。"],
+          lines: [
+            ["15:02:10.880", "INFO", "service/drama_job.go:108", "短剧任务已创建", { ...base, step: "scripts", lane: "user", episodes: [1, 2], frozen_credits: 40 }],
+            ["15:02:11.204", "INFO", "service/drama_pipeline.go:52", "短剧任务开始执行", { ...base, step: "scripts", lane: "user", episodes: [1, 2], resumed: false, queue_wait_ms: 324 }],
+            ["15:02:39.512", "INFO", "service/drama_text.go:71", "短剧模型调用", { ...base, step: "scripts", lane: "user", call: "episode=1", attempt: 1, ...callBase, prompt_chars: 9214, output_chars: 3860, input_tokens: 6102, output_tokens: 2711, finish_reason: "stop", latency_ms: 28290, ttft_ms: 1840, result: "ok" }],
+            ["15:03:05.077", "INFO", "service/drama_text.go:71", "短剧模型调用", { ...base, step: "scripts", lane: "user", call: "episode=2", attempt: 1, ...callBase, prompt_chars: 9871, output_chars: 4012, input_tokens: 6540, output_tokens: 2835, finish_reason: "stop", latency_ms: 25551, ttft_ms: 1622, result: "ok" }],
+            ["15:03:05.140", "INFO", "service/drama_pipeline.go:73", "短剧任务完成", { ...base, step: "scripts", lane: "user", duration_ms: 53936, credits: 31, frozen_credits: 40, model_calls: 2, input_tokens: 12642, output_tokens: 5546 }],
+          ],
+        },
+        {
+          key: "retry",
+          title: "第 1 次不合格，重写后成功",
+          desc: "拆解第 1–5 集，一批",
+          note: ["warn", "第 1 次不合格那行是 Warn，带校验原因和输出全文；重写成功后任务正常完成。运维能看到「重写过」，开发能看到哪里不合格。"],
+          lines: [
+            ["16:10:02.011", "INFO", "service/drama_pipeline.go:52", "短剧任务开始执行", { ...base, step: "breakdown", lane: "user", episodes: [1, 2, 3, 4, 5], resumed: false, queue_wait_ms: 210 }],
+            ["16:10:41.390", "WARN", "service/drama_text.go:66", "短剧模型调用", { ...base, step: "breakdown", lane: "user", call: "batch=1-5", attempt: 1, ...callBase, prompt_step: "breakdown", prompt_chars: 21480, output_chars: 5120, input_tokens: 14210, output_tokens: 4096, finish_reason: "length", latency_ms: 39102, ttft_ms: 2210, result: "invalid", error_type: "invalid_output", validation_error: "输出不是合法 JSON：unexpected end of JSON input", output: FULL('{"assets":[{"type":"character","name":"林晚","appearance":"二十四岁，黑长直……', 5120) }],
+            ["16:11:20.774", "INFO", "service/drama_text.go:71", "短剧模型调用", { ...base, step: "breakdown", lane: "user", call: "batch=1-5", attempt: 2, ...callBase, prompt_step: "breakdown", prompt_chars: 21566, output_chars: 4380, input_tokens: 14260, output_tokens: 3502, finish_reason: "stop", latency_ms: 39380, ttft_ms: 2054, result: "ok" }],
+            ["16:11:20.902", "INFO", "service/drama_pipeline.go:73", "短剧任务完成", { ...base, step: "breakdown", lane: "user", duration_ms: 78891, credits: 22, frozen_credits: 60, model_calls: 2, input_tokens: 28470, output_tokens: 7598 }],
+          ],
+        },
+        {
+          key: "invalid",
+          title: "两次都不合格",
+          desc: "写剧本第 3 集失败（前 2 集已保存）",
+          note: ["bad", "两行不合格调用各带输出全文；失败行带提示词全文和 call=episode=3。一次失败最多 1 份提示词 + 2 份输出，不重复打印。"],
+          lines: [
+            ["17:20:05.300", "INFO", "service/drama_pipeline.go:52", "短剧任务开始执行", { ...base, step: "scripts", lane: "user", episodes: [1, 2, 3], resumed: false, queue_wait_ms: 180 }],
+            ["17:20:31.118", "INFO", "service/drama_text.go:71", "短剧模型调用", { ...base, step: "scripts", lane: "user", call: "episode=1", attempt: 1, ...callBase, prompt_chars: 9214, output_chars: 3860, latency_ms: 25818, result: "ok" }],
+            ["17:20:58.402", "INFO", "service/drama_text.go:71", "短剧模型调用", { ...base, step: "scripts", lane: "user", call: "episode=2", attempt: 1, ...callBase, prompt_chars: 9871, output_chars: 4012, latency_ms: 27284, result: "ok" }],
+            ["17:21:22.950", "WARN", "service/drama_text.go:66", "短剧模型调用", { ...base, step: "scripts", lane: "user", call: "episode=3", attempt: 1, ...callBase, prompt_chars: 10230, output_chars: 812, finish_reason: "stop", latency_ms: 24548, result: "invalid", error_type: "invalid_output", validation_error: "script_md 为空", output: FULL("抱歉，根据平台规范，我无法继续创作包含以下情节的内容……", 812) }],
+            ["17:21:49.601", "WARN", "service/drama_text.go:66", "短剧模型调用", { ...base, step: "scripts", lane: "user", call: "episode=3", attempt: 2, ...callBase, prompt_chars: 10262, output_chars: 790, finish_reason: "stop", latency_ms: 26651, result: "invalid", error_type: "invalid_output", validation_error: "script_md 为空", output: FULL("很抱歉，我不能按要求生成这一集剧本……", 790) }],
+            ["17:21:49.688", "WARN", "service/drama_result.go:224", "短剧任务失败", { ...base, step: "scripts", lane: "user", error_code: 67008, error_message: "模型输出无法解析", error_type: "invalid_output", error: "模型输出无法解析", call: "episode=3", attempt: 2, prompt: FULL("你是专业短剧编剧。请根据以下分集梗概写出第 3 集完整剧本……【原文】第五章 雨夜……", 10262), duration_ms: 104388, refunded: 60, paused: false }],
+          ],
+        },
+        {
+          key: "upstream",
+          title: "上游报错",
+          desc: "规划时渠道余额不足（HTTP 402）",
+          note: ["bad", "模型调用行带 upstream_status 和错误体原文（Key 已遮成 ***）；失败行带提示词全文。用户看到的仍是上游 error.message 那句话。"],
+          lines: [
+            ["09:05:12.010", "INFO", "service/drama_pipeline.go:52", "短剧任务开始执行", { ...base, step: "plan", lane: "pipeline", batch: "11-20", episodes: [], resumed: false, queue_wait_ms: 95 }],
+            ["09:05:13.442", "WARN", "service/drama_text.go:60", "短剧模型调用", { ...base, step: "plan", lane: "pipeline", batch: "11-20", call: "", attempt: 1, ...callBase, prompt_step: "plan", prompt_chars: 48210, output_chars: 0, latency_ms: 1432, ttft_ms: 0, result: "failed", error_type: "upstream", error: "上游错误 402: Insufficient Balance", upstream_status: 402, upstream_body: '{"error":{"message":"Insufficient Balance","type":"unknown_error","param":null,"code":"invalid_request_error"},"key":"sk-***"}' }],
+            ["09:05:13.520", "WARN", "service/drama_result.go:224", "短剧任务失败", { ...base, step: "plan", lane: "pipeline", batch: "11-20", error_code: 67028, error_message: "Insufficient Balance", error_type: "upstream", error: "上游错误 402: Insufficient Balance", call: "", attempt: 1, prompt: FULL("你是短剧总策划。请把以下第 11–20 单元原文规划为分集大纲……", 48210), duration_ms: 1510, refunded: 18, paused: true }],
+            ["09:05:13.521", "INFO", "service/drama_result.go:226", "短剧规划已暂停", { ...base, step: "plan", lane: "pipeline", batch: "11-20", reason: "failure", pause_code: "failed" }],
+          ],
+        },
+        {
+          key: "internal",
+          title: "内部错误",
+          desc: "输入数据解析失败",
+          note: ["bad", "以前库里只剩「服务内部错误」、日志里什么都没有；现在失败行是 Error，带原始错误文本和堆栈。没有模型调用，所以没有 prompt。"],
+          lines: [
+            ["11:40:00.101", "INFO", "service/drama_pipeline.go:52", "短剧任务开始执行", { ...base, step: "outline", lane: "pipeline", batch: "1-10", resumed: false, queue_wait_ms: 120 }],
+            ["11:40:00.115", "ERROR", "service/drama_result.go:222", "短剧任务失败", { ...base, step: "outline", lane: "pipeline", batch: "1-10", error_code: 10000, error_message: "服务内部错误", error_type: "internal", error: "json: cannot unmarshal string into Go value of type map[string]interface {}", duration_ms: 14, refunded: 12, paused: true, stacktrace: "video-canvas/internal/service.(*DramaService).failDrama\n\t.../drama_result.go:222\n…" }],
+          ],
+        },
+        {
+          key: "cancel",
+          title: "用户取消",
+          desc: "分镜运行中被取消",
+          note: ["ok", "取消导致上游中断，那次调用记为 canceled（Info）；取消接口打一行「已取消」。failDrama 发现任务已非活跃，不打失败行。"],
+          lines: [
+            ["14:00:01.000", "INFO", "service/drama_pipeline.go:52", "短剧任务开始执行", { ...base, step: "storyboard", lane: "user", episodes: [4], resumed: false, queue_wait_ms: 300 }],
+            ["14:00:09.420", "INFO", "service/drama_job.go:231", "短剧任务已取消", { ...base, step: "storyboard", lane: "user", episodes: [4], by: "user" }],
+            ["14:00:10.012", "INFO", "service/drama_text.go:58", "短剧模型调用", { ...base, step: "storyboard", lane: "user", call: "", attempt: 1, ...callBase, prompt_step: "storyboard", prompt_chars: 12040, output_chars: 640, latency_ms: 9012, result: "canceled", error_type: "canceled" }],
+          ],
+        },
+        {
+          key: "compose",
+          title: "合成失败",
+          desc: "ffmpeg 转码失败",
+          note: ["bad", "用户看到的仍是「转码失败：无法合成视频」；日志里是 Error，带 ffmpeg 的真实报错。"],
+          lines: [
+            ["20:15:30.500", "INFO", "service/drama_pipeline.go:52", "短剧任务开始执行", { ...base, step: "compose", lane: "user", episodes: [2], resumed: false, queue_wait_ms: 88 }],
+            ["20:15:52.981", "ERROR", "service/drama_result.go:222", "短剧任务失败", { ...base, step: "compose", lane: "user", episodes: [2], error_code: 10000, error_message: "转码失败：无法合成视频", error_type: "compose_transcode", error: "转码失败：无法合成视频：ffmpeg exit status 1: [concat @ 0x55d] Unsafe file name 'input-3.mp4'", duration_ms: 22481, refunded: 0, paused: false }],
+          ],
+        },
+        {
+          key: "recover",
+          title: "数据库错误后恢复",
+          desc: "River 重试 + 检查点恢复",
+          note: ["warn", "画布已提交但结算时数据库断开：队列打 E9 并重试；重新执行时 resumed=true、从检查点恢复，不再重复调用模型。"],
+          lines: [
+            ["22:30:10.000", "INFO", "service/drama_pipeline.go:52", "短剧任务开始执行", { ...base, step: "asset_prompts", lane: "user", resumed: false, queue_wait_ms: 140 }],
+            ["22:30:38.200", "INFO", "service/drama_text.go:71", "短剧模型调用", { ...base, step: "asset_prompts", lane: "user", call: "", attempt: 1, ...callBase, prompt_step: "asset_prompts", prompt_chars: 15320, output_chars: 6020, latency_ms: 28190, result: "ok" }],
+            ["22:30:38.950", "WARN", "queue/drama.go:46", "执行短剧流水线失败，等待队列恢复", { drama_job_id: JOB, attempt: 1, max_attempts: 25, error: "提交短剧结果失败：driver: bad connection" }],
+            ["22:30:40.010", "INFO", "service/drama_pipeline.go:52", "短剧任务开始执行", { ...base, step: "asset_prompts", lane: "user", resumed: true }],
+            ["22:30:40.020", "INFO", "service/drama_pipeline.go:118", "短剧任务从检查点恢复", { ...base, step: "asset_prompts", lane: "user", canvas_committed: true }],
+            ["22:30:40.180", "INFO", "service/drama_pipeline.go:73", "短剧任务完成", { ...base, step: "asset_prompts", lane: "user", duration_ms: 30180, credits: 15, frozen_credits: 20, model_calls: 1 }],
+          ],
+        },
+      ];
+
+      const state = { scen: "invalid", grep: "", copied: false, protoStatus: "failed", noClip: false };
+
+      function fieldsHtml(f, hl) {
+        const parts = Object.entries(f).map(([k, v]) => {
+          let val;
+          if (v && v.__full) {
+            val = `<span class="full">"${hl(v.head)}…"</span> <span class="full">[全文 ${v.n.toLocaleString()} 字，示意]</span>`;
+          } else if (k === "stacktrace") {
+            val = `"${hl(v)}"`;
+          } else {
+            val = hl(JSON.stringify(v));
+          }
+          return `<span class="k">"${hl(k)}"</span>: ${val}`;
+        });
+        return "{" + parts.join(", ") + "}";
+      }
+
+      function renderScenList() {
+        $("#scenList").innerHTML = SCENARIOS.map(
+          (s) => `<button class="scen" aria-pressed="${s.key === state.scen}" onclick="pickScen('${s.key}')"><b>${esc(s.title)}</b><small>${esc(s.desc)}</small></button>`,
+        ).join("");
+      }
+
+      function renderLog() {
+        const s = SCENARIOS.find((x) => x.key === state.scen);
+        const q = state.grep.trim();
+        const onlyWarn = $("#onlyWarn").checked;
+        const hl = (text) => {
+          const e = esc(text);
+          if (!q) return e;
+          const eq = esc(q).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          return e.replace(new RegExp(eq, "g"), (m) => `<mark>${m}</mark>`);
+        };
+        const rows = s.lines.filter(([ts, lv, cl, msg, f]) => {
+          if (onlyWarn && lv === "INFO") return false;
+          if (!q) return true;
+          const flat = `${ts} ${lv} ${cl} ${msg} ${JSON.stringify(f)}`;
+          return flat.includes(q);
+        });
+        $("#termBody").innerHTML = rows.length
+          ? rows
+              .map(
+                ([ts, lv, cl, msg, f]) =>
+                  `<div class="ln ${lv === "WARN" ? "warn" : lv === "ERROR" ? "error" : ""}"><span class="ts">2026-11-14T${ts}+0800</span>\t<span class="lv lv-${lv}">${lv}</span>\t<span class="cl">${esc(cl)}</span>\t<span class="msg">${hl(msg)}</span>\t${fieldsHtml(f, hl)}</div>`,
+              )
+              .join("")
+          : `<div class="ln" style="color:#9aa0ab">没有匹配的行（grep 无输出）</div>`;
+        const [kind, text] = s.note;
+        const icon = { ok: "circle-check", warn: "triangle-alert", bad: "circle-x" }[kind];
+        $("#scenNote").innerHTML = `<div class="callout c-${kind}"><i data-lucide="${icon}"></i><div>${esc(text)}<br/><span class="muted" style="font-size:12px">共 ${s.lines.length} 行，当前显示 ${rows.length} 行。</span></div></div>`;
+        icons();
+      }
+
+      function pickScen(k) {
+        state.scen = k;
+        renderScenList();
+        renderLog();
+      }
+      let grepTimer;
+      function onGrep(v) {
+        state.grep = v;
+        clearTimeout(grepTimer);
+        grepTimer = setTimeout(renderLog, 80);
+      }
+
+      /* ---------- 任务条原型 ---------- */
+      let copyTimer;
+      function renderProtoCtl() {
+        const opts = [
+          ["running", "运行中"],
+          ["succeeded", "成功"],
+          ["failed", "失败"],
+        ];
+        $("#protoCtl").innerHTML =
+          opts
+            .map(([k, l]) => `<button class="btn btn-outline ${state.protoStatus === k ? "btn-primary" : ""}" onclick="setProto('${k}')">${l}</button>`)
+            .join("") +
+          `<label class="row muted" style="font-size:13px; margin-left: 8px"><input type="checkbox" ${state.noClip ? "checked" : ""} onchange="state.noClip=this.checked" />模拟剪贴板不可用</label>`;
+      }
+      function setProto(k) {
+        state.protoStatus = k;
+        state.copied = false;
+        renderProtoCtl();
+        renderProto();
+      }
+      function copyId() {
+        if (state.noClip) {
+          toast("剪贴板不可用：静默不复制，文字仍可选中（示意）", "warn");
+          return;
+        }
+        state.copied = true;
+        renderProto();
+        clearTimeout(copyTimer);
+        copyTimer = setTimeout(() => {
+          state.copied = false;
+          renderProto();
+        }, 1500);
+      }
+      function renderProto() {
+        let bar;
+        if (state.protoStatus === "running") {
+          bar = `<div class="jobbar"><i data-lucide="loader" style="color: hsl(var(--muted-foreground))"></i><span class="txt"><b style="font-weight:500">写剧本中</b> <span class="muted" style="font-size:12px">第 1–3 集 · 已用 1 分 12 秒</span></span><div class="bar-progress"><i></i></div><button class="btn btn-xs btn-outline">取消</button></div>`;
+        } else if (state.protoStatus === "succeeded") {
+          bar = `<div class="jobbar"><i data-lucide="circle-check" style="color: rgb(var(--ok))"></i><span class="txt"><b style="font-weight:500">写剧本完成</b> <span class="muted" style="font-size:12px">第 1–3 集 · 实扣 31 积分</span></span></div>`;
+        } else {
+          const label = state.copied ? "已复制任务 ID" : `任务 ID：${JOB}`;
+          bar = `<div class="note"><div class="jobbar"><i data-lucide="circle-x" style="color: rgb(var(--bad))"></i>
+            <span class="txt bad"><b style="font-weight:500">写剧本失败</b><span style="margin-left:8px; font-size:12px">模型输出无法解析 · 失败不扣积分</span>
+            <button class="idtag" title="点击复制任务 ID" onclick="copyId()">${esc(label)}</button></span>
+            <button class="btn btn-xs btn-outline"><i data-lucide="rotate-cw"></i>重试</button>
+            <button class="btn btn-xs" aria-label="关闭"><i data-lucide="x"></i></button></div></div>
+            <div class="note-txt">设计：复用 <code>TaskIdTag</code>，编号就是接口返回的 <code>DramaJob.id</code>，和日志里的 <code>drama_job_id</code> 是同一个值。只在失败时出现，不加任何说明小字。</div>`;
+        }
+        $("#proto").innerHTML = `<div class="muted" style="font-size:12px; margin-bottom:10px">示意：工作区顶部的任务条（清透胶囊风格）</div>${bar}
+          <div class="card" style="margin-top:22px; max-width:760px; font-size:13px">
+            <div class="row"><i data-lucide="terminal"></i><b>运维这边</b><span class="tag t-mute">示意</span></div>
+            <div class="codeblock" style="margin-top:8px">$ grep '${JOB}' logs/app.log | wc -l<br/>6<br/>$ grep '${JOB}' logs/app.log | grep '短剧任务失败'<br/>… WARN … 短剧任务失败 {"drama_job_id": "${JOB}", … "error_type": "invalid_output", "call": "episode=3", "prompt": "…"}</div>
+            <p class="muted" style="font-size:12.5px; margin-top:8px">想看完整的日志行，去「日志长什么样」页选「两次都不合格」。</p>
+          </div>`;
+        icons();
+      }
+
+      /* ---------- 事件清单 ---------- */
+      const EVENTS = [
+        ["E1", "短剧任务已创建", "Info", "任务入库、入队提交后（含自动续步）", "frozen_credits、parent_job_id"],
+        ["E2", "短剧任务开始执行", "Info", "startDrama 置为 running 后", "resumed、queue_wait_ms"],
+        ["E3", "短剧任务从检查点恢复", "Info", "检查点命中，跳过模型调用", "canvas_committed"],
+        ["E4", "短剧模型调用", "Info / Warn", "callDrama 每次尝试之后", "见下方「模型调用行字段」"],
+        ["E5", "短剧任务完成", "Info", "成功终态提交后", "duration_ms、credits、frozen_credits、model_calls、input_tokens、output_tokens、next_job_id"],
+        ["E6", "短剧任务失败", "Warn / Error", "failDrama 写入失败终态后", "见下方「失败行字段」"],
+        ["E7", "短剧任务已取消", "Info", "CancelJob 提交后", "by"],
+        ["E8", "短剧规划已暂停", "Info", "自动规划失败暂停或用户暂停 / 继续", "reason、pause_code"],
+        ["E9", "执行短剧流水线失败，等待队列恢复", "Warn", "HandleDrama 返回 error（已有，改字段）", "attempt、max_attempts、error"],
+        ["E10", "短剧片段转写调用", "Info / Warn", "片段转写每次尝试后（替换现有 Warn）", "模型调用字段 + segment_id、format"],
+        ["E11", "预检判断体裁调用", "Info / Warn", "预检判断体裁返回后（替换现有 Warn）", "模型调用字段 + degraded"],
+      ];
+      $("#eventRows").innerHTML = EVENTS.map(
+        ([id, msg, lv, when, f]) => `<tr><td class="mono">${id}</td><td><code>${esc(msg)}</code></td><td style="white-space:nowrap">${esc(lv)}</td><td>${esc(when)}</td><td>${esc(f)}</td></tr>`,
+      ).join("");
+
+      renderScenList();
+      renderLog();
+      renderProtoCtl();
+      renderProto();
+      icons();
+    </script>
+  </body>
+</html>

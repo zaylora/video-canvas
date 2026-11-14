@@ -16,7 +16,11 @@
 package queue
 
 import (
+	"strconv"
 	"time"
+
+	"video-canvas/internal/pkg/idcodec"
+	"video-canvas/internal/pkg/logger"
 
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/rivertype"
@@ -68,6 +72,11 @@ type TaskArgs struct {
 // Kind 实现 river.JobArgs。
 func (TaskArgs) Kind() string { return kindTask }
 
+// RunRef 实现 RunArgs：生成任务，编号是界面上的任务 ID。用户在执行时由 worker 补上。
+func (a TaskArgs) RunRef() logger.RunRef {
+	return logger.RunRef{Kind: "gen", ID: idcodec.Encode(a.TaskID)}
+}
+
 // InsertOpts 实现 river.JobArgsWithInsertOpts：同一任务同时只存在一个活着的 job。
 func (TaskArgs) InsertOpts() river.InsertOpts {
 	return river.InsertOpts{
@@ -85,6 +94,11 @@ type NotifyArgs struct {
 
 // Kind 实现 river.JobArgs。
 func (NotifyArgs) Kind() string { return kindNotify }
+
+// RunRef 实现 RunArgs：系统任务，指向发起生成任务的那次 Agent 运行。
+func (a NotifyArgs) RunRef() logger.RunRef {
+	return logger.RunRef{Kind: RunKindSystem, ParentKind: "agent", ParentID: strconv.FormatUint(a.AgentRunID, 10)}
+}
 
 // InsertOpts 实现 river.JobArgsWithInsertOpts：同一任务同时只存在一个活着的通知。
 func (NotifyArgs) InsertOpts() river.InsertOpts {

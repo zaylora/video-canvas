@@ -3,10 +3,12 @@ package middleware
 import (
 	"github.com/gin-gonic/gin"
 
+	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/pkg/utils"
 )
 
-// RequestID 沿用上游传入的 X-Request-ID，没有则生成一个，并回写到响应头。
+// RequestID 沿用上游传入的 X-Request-ID，没有则生成一个，并回写到响应头；同时挂到请求 context 上，
+// service 和日志从 c.Request.Context() 拿得到（logger.Ctx 自动带 request_id）。
 func RequestID() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id := c.GetHeader(utils.RequestIDHeader)
@@ -15,6 +17,7 @@ func RequestID() gin.HandlerFunc {
 		}
 		c.Set(utils.RequestIDKey, id)
 		c.Header(utils.RequestIDHeader, id)
+		c.Request = c.Request.WithContext(logger.WithRequest(c.Request.Context(), id))
 		c.Next()
 	}
 }

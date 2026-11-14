@@ -54,11 +54,24 @@ func (s Server) Addr() string {
 
 type Log struct {
 	Level      string `mapstructure:"level"`
-	Format     string `mapstructure:"format"`
+	Format     string `mapstructure:"format"` // 只影响标准输出；写文件固定 JSON 行
 	Filename   string `mapstructure:"filename"`
 	MaxSize    int    `mapstructure:"max_size"`
 	MaxBackups int    `mapstructure:"max_backups"`
 	MaxAge     int    `mapstructure:"max_age"`
+	// Instance 写进每行日志的 instance 字段，多实例部署时区分来源；空串取主机名
+	Instance string     `mapstructure:"instance"`
+	Payload  LogPayload `mapstructure:"payload"`
+}
+
+// LogPayload 是 payload.log：每次上游调用的请求和响应全文，只写文件、不进标准输出。
+type LogPayload struct {
+	Enabled    bool   `mapstructure:"enabled"`
+	Filename   string `mapstructure:"filename"`
+	MaxSize    int    `mapstructure:"max_size"`
+	MaxBackups int    `mapstructure:"max_backups"`
+	MaxAge     int    `mapstructure:"max_age"`
+	Compress   bool   `mapstructure:"compress"`
 }
 
 type Database struct {
@@ -243,6 +256,11 @@ func Load(path string) (*Config, error) {
 	v.SetDefault("update.check_enabled", true)
 	v.SetDefault("update.repo", DefaultUpdateRepo)
 	v.SetDefault("update.updater_socket", "/run/updater/updater.sock")
+	v.SetDefault("log.payload.enabled", true)
+	v.SetDefault("log.payload.filename", "logs/payload.log")
+	v.SetDefault("log.payload.max_size", 200)
+	v.SetDefault("log.payload.max_age", 7)
+	v.SetDefault("log.payload.compress", true)
 
 	if err := v.ReadInConfig(); err != nil {
 		return nil, fmt.Errorf("read config %s: %w", path, err)
@@ -252,7 +270,7 @@ func Load(path string) (*Config, error) {
 	// 其中 storage.driver 与 storage.s3.* 是旧版对象存储的环境变量，YAML 里已经没有这些项，仍需要绑定才能读到，
 	// 否则升级时无法把它们导入为后台存储
 	for _, key := range []string{
-		"server.id_key", "database.allow_newer_schema", "update.updater_token", "ai.secret_key", "ai.allow_fake_ip", "storage.driver",
+		"server.id_key", "log.instance", "database.allow_newer_schema", "update.updater_token", "ai.secret_key", "ai.allow_fake_ip", "storage.driver",
 		"agent.enabled", "agent.url", "agent.bridge_url", "agent.bridge_addr", "agent.service_token", "agent.web_enabled", "agent.searxng_url", "agent.disabled_tools",
 		"storage.s3.endpoint", "storage.s3.region", "storage.s3.bucket", "storage.s3.access_key", "storage.s3.secret_key",
 		"storage.s3.use_ssl", "storage.s3.public_base_url", "storage.s3.path_prefix",

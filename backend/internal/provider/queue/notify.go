@@ -44,7 +44,7 @@ func (rt *Runtime) EnqueueAgentNotifyTx(ctx context.Context, sqlTx *sql.Tx, task
 	if !rt.cfg.AgentNotify {
 		return nil
 	}
-	if _, err := rt.client.InsertTx(ctx, sqlTx, NotifyArgs{TaskID: taskID, AgentRunID: agentRunID}, nil); err != nil {
+	if _, err := rt.client.InsertTx(ctx, sqlTx, NotifyArgs{TaskID: taskID, AgentRunID: agentRunID}, withRequestMeta(ctx, nil)); err != nil {
 		return fmt.Errorf("入队 Agent 通知失败：%w", err)
 	}
 	return nil

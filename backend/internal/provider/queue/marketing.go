@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"time"
 
+	"video-canvas/internal/pkg/idcodec"
+	"video-canvas/internal/pkg/logger"
+
 	"github.com/riverqueue/river"
 	"go.uber.org/zap"
 )
@@ -32,6 +35,11 @@ type MarketingRoundArgs struct {
 
 // Kind 实现 river.JobArgs。
 func (MarketingRoundArgs) Kind() string { return kindMarketing }
+
+// RunRef 实现 RunArgs：营销写脚本的一个轮次；轮次里的每个环节运行由业务另开 mkt 运行。
+func (a MarketingRoundArgs) RunRef() logger.RunRef {
+	return logger.RunRef{Kind: "mkt_round", ID: idcodec.Encode(a.RoundID)}
+}
 
 // InsertOpts 实现 river.JobArgsWithInsertOpts：同一轮次同时只存在一个存活 job。
 func (MarketingRoundArgs) InsertOpts() river.InsertOpts {
@@ -67,7 +75,7 @@ func (rt *Runtime) EnqueueMarketingRoundTx(ctx context.Context, tx *sql.Tx, roun
 	if rt.cfg.Marketing == nil {
 		return fmt.Errorf("营销写脚本执行器未配置")
 	}
-	if _, err := rt.client.InsertTx(ctx, tx, MarketingRoundArgs{RoundID: roundID}, nil); err != nil {
+	if _, err := rt.client.InsertTx(ctx, tx, MarketingRoundArgs{RoundID: roundID}, withRequestMeta(ctx, nil)); err != nil {
 		return fmt.Errorf("入队营销写脚本失败：%w", err)
 	}
 	return nil

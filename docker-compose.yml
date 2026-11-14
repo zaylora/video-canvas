@@ -59,8 +59,17 @@ services:
       APP_UPDATE_UPDATER_TOKEN: ${UPDATER_TOKEN:-}
     volumes:
       - backend_assets:/app/data/assets
+      # 日志：app.log（过程和结果，保留 30 天）、payload.log（每次上游调用的请求和响应全文，保留 7 天）
+      # 查看：docker compose exec backend grep '<编号>' /app/logs/app.log
+      - backend_logs:/app/logs
       - plugin_runner_sock:/run/plugin-runner
       - updater_sock:/run/updater
+    # 标准输出里也有 app.log 的内容，限制 docker 自己保存的大小
+    logging: &default-logging
+      driver: json-file
+      options:
+        max-size: 100m
+        max-file: "5"
     expose:
       - "8080"
     healthcheck:
@@ -79,6 +88,7 @@ services:
 
   plugin-runner:
     image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_OWNER:-zaylora}/video-canvas-backend:${IMAGE_TAG:-latest}
+    logging: *default-logging
     restart: always
     network_mode: none
     mem_limit: ${PLUGIN_RUNNER_MEM_LIMIT:-512m}
@@ -128,6 +138,7 @@ services:
   # 改过 backend 的密钥才需要在 .env 里设 AGENT_ID_KEY）。不一致时 agent 启动后自检会发现，/health 报不健康。
   agent:
     image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_OWNER:-zaylora}/video-canvas-agent:${IMAGE_TAG:-latest}
+    logging: *default-logging
     restart: unless-stopped
     environment:
       AGENT_SERVICE_TOKEN: ${AGENT_SERVICE_TOKEN:-}
@@ -207,6 +218,7 @@ volumes:
   postgres_data:
   redis_data:
   backend_assets:
+  backend_logs:
   agent_data:
   plugin_runner_sock:
   updater_sock:

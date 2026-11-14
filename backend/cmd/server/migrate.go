@@ -38,7 +38,7 @@ func runMigrate(args []string, configPath string, out io.Writer) error {
 	if err := logger.Init(cfg.Log); err != nil {
 		return fmt.Errorf("初始化日志: %w", err)
 	}
-	defer logger.Sync()
+	defer logger.Close() // 刷盘：payload.log 是缓冲写入
 
 	db, err := initialize.OpenDB(cfg.Database)
 	if err != nil {

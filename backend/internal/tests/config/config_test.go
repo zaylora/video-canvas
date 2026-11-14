@@ -261,3 +261,46 @@ func TestLoad_RemovedAgentSettingsAreIgnored(t *testing.T) {
 		}
 	}
 }
+
+// 统一日志：默认写 logs/app.log 和 logs/payload.log；没写进 YAML 的配置（如只给了旧配置文件）也有 payload 默认值，环境变量可覆盖。
+func TestLoad_LogDefaultsAndEnvOverride(t *testing.T) {
+	cfg, err := Load("../../../configs/config.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Log.Filename != "logs/app.log" || cfg.Log.MaxAge != 30 {
+		t.Errorf("主日志默认写 logs/app.log、保留 30 天：%+v", cfg.Log)
+	}
+	p := cfg.Log.Payload
+	if !p.Enabled || p.Filename != "logs/payload.log" || p.MaxAge != 7 || !p.Compress {
+		t.Errorf("payload 默认开启、写 logs/payload.log、保留 7 天、压缩：%+v", p)
+	}
+
+	old := writeTemp(t, "log:\n  level: info\n")
+	cfg, err = Load(old)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Log.Payload.Enabled || cfg.Log.Payload.Filename != "logs/payload.log" || cfg.Log.Payload.MaxSize != 200 {
+		t.Errorf("旧配置文件里没有 payload 段时应取默认值：%+v", cfg.Log.Payload)
+	}
+
+	t.Setenv("APP_LOG_PAYLOAD_ENABLED", "false")
+	t.Setenv("APP_LOG_INSTANCE", "vc-1")
+	cfg, err = Load(old)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Log.Payload.Enabled || cfg.Log.Instance != "vc-1" {
+		t.Errorf("环境变量应能关掉 payload、设置 instance：%+v", cfg.Log)
+	}
+}
+
+func writeTemp(t *testing.T, body string) string {
+	t.Helper()
+	path := t.TempDir() + "/config.yaml"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}

@@ -8,6 +8,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 
 	"video-canvas/internal/pkg/errcode"
+	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/pkg/response"
 	"video-canvas/internal/pkg/utils"
 )
@@ -51,6 +52,7 @@ func JWTAuth(secret string) gin.HandlerFunc {
 		c.Set(CtxUserIDKey, claims.UserID)
 		c.Set(CtxUsernameKey, claims.Username)
 		c.Set(CtxTokenVersionKey, claims.TokenVersion)
+		c.Request = c.Request.WithContext(logger.WithUser(c.Request.Context(), uint64(claims.UserID)))
 		c.Next()
 	}
 }

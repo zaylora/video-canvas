@@ -1,0 +1,841 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>统一服务器日志</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+    <style>
+      :root {
+        --radius: 0.625rem;
+        --background: 0 0% 100%;
+        --foreground: 240 10% 3.9%;
+        --card: 0 0% 100%;
+        --muted: 240 4.8% 95.9%;
+        --muted-foreground: 240 3.8% 46.1%;
+        --primary: 240 5.9% 10%;
+        --primary-foreground: 0 0% 98%;
+        --accent: 240 4.8% 95.9%;
+        --border: 240 5.9% 90%;
+        --ok: 5 150 105;
+        --bad: 220 38 38;
+        --warn: 180 83 9;
+        --info: 2 132 199;
+        --violet: 124 58 237;
+        color-scheme: light;
+      }
+      .dark {
+        --background: 240 10% 3.9%;
+        --foreground: 0 0% 98%;
+        --card: 240 10% 5.5%;
+        --muted: 240 3.7% 15.9%;
+        --muted-foreground: 240 5% 64.9%;
+        --primary: 0 0% 98%;
+        --primary-foreground: 240 5.9% 10%;
+        --accent: 240 3.7% 15.9%;
+        --border: 240 3.7% 17%;
+        --ok: 52 211 153;
+        --bad: 248 113 113;
+        --warn: 251 191 36;
+        --info: 56 189 248;
+        --violet: 167 139 250;
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        font-family: Geist, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        background: hsl(var(--background));
+        color: hsl(var(--foreground));
+        -webkit-font-smoothing: antialiased;
+        line-height: 1.55;
+      }
+      code, .mono { font-family: "Geist Mono", "SF Mono", Consolas, monospace; }
+      code { font-size: 0.92em; background: hsl(var(--muted)); padding: 1px 5px; border-radius: 5px; }
+      [data-lucide] { width: 1em; height: 1em; flex: none; }
+      h1, h2, h3, h4, p { margin: 0; }
+      button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+      input { font: inherit; color: inherit; }
+      table { border-collapse: collapse; width: 100%; }
+      th { font-weight: 500; text-align: left; }
+      [hidden] { display: none !important; }
+      .muted { color: hsl(var(--muted-foreground)); }
+      .row { display: flex; align-items: center; gap: 8px; }
+      .wrapflex { flex-wrap: wrap; }
+      .spacer { margin-left: auto; }
+
+      .top {
+        position: sticky; top: 0; z-index: 30;
+        background: hsl(var(--background) / 0.92);
+        backdrop-filter: blur(8px);
+        border-bottom: 1px solid hsl(var(--border));
+      }
+      .top-in { max-width: 1160px; margin: 0 auto; padding: 0 20px; display: flex; align-items: center; gap: 16px; height: 56px; }
+      .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; white-space: nowrap; }
+      .logo { width: 28px; height: 28px; border-radius: 8px; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; }
+      .tabs { display: flex; gap: 2px; margin-left: 8px; overflow-x: auto; }
+      .tab {
+        height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13px; font-weight: 500;
+        color: hsl(var(--muted-foreground)); white-space: nowrap; display: inline-flex; align-items: center; gap: 6px;
+        transition: background 0.15s, color 0.15s;
+      }
+      .tab:hover { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+      .tab[aria-selected="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn { height: 32px; padding: 0 10px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; }
+      .btn:hover { background: hsl(var(--accent)); }
+      .btn-primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn-primary:hover { background: hsl(var(--primary) / 0.9); }
+      .btn-outline { border: 1px solid hsl(var(--border)); }
+      .btn-xs { height: 26px; padding: 0 8px; font-size: 12px; }
+      .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+      .switch { width: 34px; height: 20px; border-radius: 999px; background: hsl(var(--border)); position: relative; transition: background 0.15s; }
+      .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+      .switch[aria-checked="true"] { background: rgb(var(--violet)); }
+      .switch[aria-checked="true"]::after { transform: translateX(14px); }
+
+      .wrap { max-width: 1160px; margin: 0 auto; padding: 32px 20px 80px; }
+      .h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+      .lead { margin-top: 10px; max-width: 820px; font-size: 15px; color: hsl(var(--muted-foreground)); }
+      .lead b { color: hsl(var(--foreground)); }
+      .sec { margin-top: 36px; }
+      .sec > h2 { font-size: 18px; font-weight: 600; }
+      .sec > .sub { margin: 4px 0 14px; max-width: 820px; font-size: 13.5px; color: hsl(var(--muted-foreground)); }
+      .card { border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: var(--radius); padding: 16px; }
+      .grid { display: grid; gap: 12px; }
+      .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .demo-grid { grid-template-columns: 250px minmax(0, 1fr); }
+      @media (max-width: 820px) {
+        .g2, .g3, .demo-grid { grid-template-columns: 1fr; }
+        .top-in { padding: 0 12px; }
+        .wrap { padding: 24px 16px 64px; }
+        .brand span.name { display: none; }
+      }
+      ul.list { margin: 0; padding-left: 18px; font-size: 13.5px; }
+
+      .tag { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 999px; font-size: 11.5px; font-weight: 500; white-space: nowrap; }
+      .t-ok { background: rgb(var(--ok) / 0.12); color: rgb(var(--ok)); }
+      .t-bad { background: rgb(var(--bad) / 0.12); color: rgb(var(--bad)); }
+      .t-warn { background: rgb(var(--warn) / 0.12); color: rgb(var(--warn)); }
+      .t-info { background: rgb(var(--info) / 0.12); color: rgb(var(--info)); }
+      .t-violet { background: rgb(var(--violet) / 0.12); color: rgb(var(--violet)); }
+      .t-mute { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
+
+      .callout { display: flex; gap: 10px; padding: 12px 14px; border-radius: var(--radius); font-size: 13.5px; border: 1px solid; }
+      .callout > i { margin-top: 3px; }
+      .c-info { background: rgb(var(--info) / 0.07); border-color: rgb(var(--info) / 0.3); }
+      .c-info > i { color: rgb(var(--info)); }
+      .c-warn { background: rgb(var(--warn) / 0.07); border-color: rgb(var(--warn) / 0.3); }
+      .c-warn > i { color: rgb(var(--warn)); }
+      .c-bad { background: rgb(var(--bad) / 0.07); border-color: rgb(var(--bad) / 0.3); }
+      .c-bad > i { color: rgb(var(--bad)); }
+      .c-ok { background: rgb(var(--ok) / 0.07); border-color: rgb(var(--ok) / 0.3); }
+      .c-ok > i { color: rgb(var(--ok)); }
+
+      .flow { display: flex; align-items: stretch; gap: 6px; flex-wrap: wrap; padding: 14px; border-radius: var(--radius); }
+      .flow .node { flex: 1 1 140px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 12px; font-size: 12.5px; }
+      .flow .node b { display: block; font-size: 13px; margin-bottom: 2px; }
+      .flow .node.hl { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+      .flow .arrow { display: grid; place-items: center; color: hsl(var(--muted-foreground)); }
+
+      .cmp-wrap { overflow-x: auto; border: 1px solid hsl(var(--border)); border-radius: var(--radius); }
+      .cmp th, .cmp td { padding: 9px 12px; font-size: 13px; vertical-align: top; border-bottom: 1px solid hsl(var(--border)); }
+      .cmp tr:last-child th, .cmp tr:last-child td { border-bottom: 0; }
+      .cmp thead th { background: hsl(var(--muted)); font-size: 12.5px; white-space: nowrap; }
+      .cmp tbody th { width: 150px; color: hsl(var(--muted-foreground)); font-weight: 500; }
+      .cmp .y { color: rgb(var(--ok)); }
+      .cmp .m { color: rgb(var(--warn)); font-weight: 500; }
+      .cmp .n { color: rgb(var(--bad)); }
+
+      .steps { list-style: none; counter-reset: s; display: grid; gap: 12px; }
+      .steps li { counter-increment: s; position: relative; padding-left: 32px; font-size: 13.5px; }
+      .steps li::before {
+        content: counter(s); position: absolute; left: 0; top: 0; width: 22px; height: 22px; border-radius: 50%;
+        background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; font-size: 12px; font-weight: 600;
+      }
+      .steps li small { display: block; color: hsl(var(--muted-foreground)); font-size: 12.5px; }
+
+      .codeblock { background: hsl(var(--muted)); border-radius: var(--radius); padding: 14px; font-family: "Geist Mono", "SF Mono", Consolas, monospace; font-size: 12.5px; overflow-x: auto; }
+
+      /* 终端 */
+      .term { border-radius: 12px; overflow: hidden; border: 1px solid hsl(var(--border)); background: #0d0f14; color: #d4d7de; }
+      .term-bar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #1a1d24; font-size: 12px; color: #9aa0ab; }
+      .term-bar input[type="text"] { flex: 1; min-width: 0; background: #0d0f14; border: 1px solid #2b2f38; border-radius: 6px; padding: 4px 8px; color: #e6e8ec; font-family: "Geist Mono", monospace; font-size: 12px; outline: none; }
+      .term-bar input[type="text"]:focus { border-color: rgb(var(--violet)); }
+      .term-body { padding: 12px; font-family: "Geist Mono", "SF Mono", Consolas, monospace; font-size: 12px; line-height: 1.6; max-height: 560px; overflow: auto; }
+      .ln { white-space: pre-wrap; word-break: break-all; padding: 3px 6px; border-radius: 4px; }
+      .ln + .ln { margin-top: 2px; }
+      .ln .ts { color: #6b7280; }
+      .ln .lv { font-weight: 600; }
+      .lv-INFO { color: #60a5fa; }
+      .lv-WARN { color: #fbbf24; }
+      .lv-ERROR { color: #f87171; }
+      .ln .cl { color: #6b7280; }
+      .ln .msg { color: #f3f4f6; font-weight: 500; }
+      .ln .k { color: #a78bfa; }
+      .ln .full { color: #34d399; }
+      .ln.warn { background: rgb(251 191 36 / 0.06); }
+      .ln.error { background: rgb(248 113 113 / 0.08); }
+      .ln mark { background: rgb(167 139 250 / 0.35); color: inherit; border-radius: 2px; }
+      .scen { text-align: left; border: 1px solid hsl(var(--border)); border-radius: 10px; padding: 9px 11px; font-size: 13px; background: hsl(var(--card)); }
+      .scen:hover { background: hsl(var(--accent)); }
+      .scen[aria-pressed="true"] { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+      .scen small { display: block; color: hsl(var(--muted-foreground)); font-size: 11.5px; margin-top: 2px; }
+
+      .frame { border: 1px solid hsl(var(--border)); border-radius: 12px; overflow: hidden; background: hsl(var(--background)); }
+      .frame-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: hsl(var(--muted)); font-size: 12px; color: hsl(var(--muted-foreground)); }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: hsl(var(--border)); }
+      .proto { min-height: 300px; position: relative; padding: 18px; background: linear-gradient(160deg, hsl(var(--muted)), hsl(var(--background))); }
+      /* 清透胶囊风格的任务条（示意） */
+      .jobbar { display: flex; align-items: center; gap: 10px; padding: 8px 10px 8px 14px; border-radius: 999px; background: hsl(var(--card) / 0.75); border: 1px solid hsl(var(--border)); backdrop-filter: blur(10px); box-shadow: 0 6px 20px rgb(0 0 0 / 0.06); font-size: 13px; max-width: 760px; }
+      .jobbar .txt { min-width: 0; flex: 1; }
+      .jobbar .bad { color: rgb(var(--bad)); }
+      .idtag { display: block; font-size: 10px; line-height: 1.3; color: hsl(var(--muted-foreground) / 0.85); cursor: pointer; text-align: left; word-break: break-all; margin-top: 1px; }
+      .idtag:hover { color: hsl(var(--foreground)); }
+      .bar-progress { height: 4px; border-radius: 999px; background: hsl(var(--border)); overflow: hidden; width: 120px; }
+      .bar-progress > i { display: block; height: 100%; background: hsl(var(--primary)); width: 40%; }
+
+      .note { outline: 1.5px dashed rgb(var(--violet)); outline-offset: 3px; position: relative; }
+      .note-txt { display: none; margin-top: 6px; font-size: 11.5px; line-height: 1.5; color: rgb(var(--violet)); }
+      .show-notes .note-txt { display: block; }
+      body:not(.show-notes) .note { outline: none; }
+
+      .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 60; pointer-events: none; }
+      .toast > div { display: flex; align-items: center; gap: 8px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 14px; font-size: 13px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); }
+      .term-sub { padding: 6px 12px; font-size: 11.5px; color: #9aa0ab; background: #15181f; border-top: 1px solid #2b2f38; font-family: "Geist Mono", monospace; }
+      .cid { font: inherit; color: #34d399; text-decoration: underline dotted; cursor: pointer; }
+      .cid:hover { color: #6ee7b7; }
+    </style>
+  </head>
+
+  <body class="show-notes">
+    <header class="top">
+      <div class="top-in">
+        <div class="brand">
+          <span class="logo"><i data-lucide="scroll-text"></i></span><span class="name">统一服务器日志</span>
+        </div>
+        <div class="tabs" role="tablist">
+          <button class="tab" role="tab" data-tab="overview" aria-selected="true"><i data-lucide="map"></i>总览</button>
+          <button class="tab" role="tab" data-tab="demo" aria-selected="false"><i data-lucide="terminal"></i>日志长什么样</button>
+          <button class="tab" role="tab" data-tab="impl" aria-selected="false"><i data-lucide="file-code"></i>字段与改动</button>
+        </div>
+        <div class="spacer row">
+          <label class="row muted" style="font-size: 12px">
+            设计标注
+            <button class="switch" id="notesSw" role="switch" aria-checked="true" onclick="toggleNotes()"></button>
+          </label>
+          <button class="btn" onclick="document.documentElement.classList.toggle('dark')" aria-label="切换明暗主题">
+            <i data-lucide="sun-moon"></i>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <!-- ============ 1. 总览 ============ -->
+      <section id="tab-overview">
+        <h1 class="h1">所有用户运行走同一套日志：一个编号查过程，一个 call_id 查全文</h1>
+        <p class="lead">
+          画布生成、短剧、营销、Agent 和同步模型调用，统一打到两个文件：<b><code>app.log</code> 记过程和结果</b>，每次运行以一行汇总结束；<b><code>payload.log</code> 记每一次上游调用的请求和响应全文</b>，成功的调用也记。两边用 <code>call_id</code> 对应。
+          <b>日志不入库、不做后台页面</b>，给运维用 grep / jq 排查。
+        </p>
+
+        <div class="callout c-info" style="margin-top: 16px">
+          <i data-lucide="info"></i>
+          <div>
+            <b>阅读说明。</b>现状来自读代码核对（Markdown 第 2 节）。日志示例里的编号、时间、耗时、内容都是<b>示意</b>；整套设计<b>尚未实现</b>。完整依据见同目录的 <code>统一服务器日志.md</code>；短剧部分的细节见 <code>../短剧运行日志/</code>，已并入本方案。<br />
+            <span class="muted">核实度图例：</span>
+            <span class="tag t-ok">已核对代码 / 官方页面</span>
+            <span class="tag t-info">调研检索，未逐条复核</span>
+            <span class="tag t-warn">未验证 · 需实测</span>
+            <span class="tag t-violet">提案</span>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>今天缺在哪</h2>
+          <p class="sub">读代码确认的五个缺口 <span class="tag t-ok">已核对代码</span></p>
+          <div class="grid g3">
+            <div class="card">
+              <div class="row"><i data-lucide="file-x" style="color: rgb(var(--bad))"></i><b>上游往来几乎没留下</b></div>
+              <p class="muted" style="font-size: 13px; margin-top: 6px">文本模型网关<b>一行日志都没有</b>；插件追踪只在后台试跑时开，还截到 8KB；上游错误体原文被丢掉，只留 300 字说明。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="shuffle" style="color: rgb(var(--bad))"></i><b>字段名打架</b></div>
+              <p class="muted" style="font-size: 13px; margin-top: 6px"><code>run_id</code> 既指 Agent 运行又指营销环节运行，都是十进制；任务编号有的十六进制、有的十进制。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="unlink" style="color: rgb(var(--warn))"></i><b>请求和任务串不起来</b></div>
+              <p class="muted" style="font-size: 13px; margin-top: 6px"><code>request_id</code> 只在 gin 上下文里，service 拿不到；访问日志<b>不带用户</b>。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="hard-drive" style="color: rgb(var(--warn))"></i><b>生产日志不持久</b></div>
+              <p class="muted" style="font-size: 13px; margin-top: 6px">生产 compose 没配日志文件，<b>只写标准输出</b>，容器重建就没了。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="eye-off" style="color: rgb(var(--warn))"></i><b>有的业务几乎不打</b></div>
+              <p class="muted" style="font-size: 13px; margin-top: 6px">短剧整条链路只有 5 处 Warn，失败原因被吞掉。网关 0 处、插件宿主 0 处。</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>主线：一行日志怎么产生、怎么被找到</h2>
+          <p class="sub">关联字段在入口挂到上下文上，后面每一行自动带上；上游调用在两个统一切点记录。</p>
+          <div class="flow note">
+            <div class="node"><b>入口</b>HTTP 中间件 / River 任务中间件把 <code>request_id</code>、<code>user_id</code>、<code>run_kind</code>、<code>run_id</code> 挂到 ctx，自动打开始和重试</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>业务过程</b><code>logger.Ctx(ctx)</code> 打 <code>run.*</code> 事件</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>三个外部调用切点</b>网关（文本模型）、插件宿主（供应商）、统一出站客户端（其他 HTTP）：每次调用生成 <code>call_id</code></div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>两个文件</b><code>app.log</code> 元数据 · <code>payload.log</code> 全文</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>运行汇总</b>终态时一行 <code>run.finish</code>：状态、耗时、调用数、token、积分、失败原因</div>
+          </div>
+          <div class="note-txt">设计：全文只在两个切点记录，所有业务自动获得，不需要逐个业务改；业务代码只负责「过程」和「汇总」。汇总行借鉴 Stripe 的 canonical log line：一行回答谁、什么、多久、成没成、为什么。</div>
+          <div class="callout c-warn" style="margin-top: 10px">
+            <i data-lucide="corner-down-right"></i>
+            <div><b>兜底：</b><code>payload.log</code> 关闭或写失败时，<code>app.log</code> 照常，只是按 <code>call_id</code> 找不到全文；任何写日志的失败都不影响业务。进程崩溃最多丢失 <code>payload.log</code> 约 1 秒或 1MB 的缓冲 <span class="tag t-violet">提案默认值</span>。</div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>以后新增工作室或功能，会不会被记录？</h2>
+          <p class="sub">会。五个挂载点自动记录，绕过它们的写法 CI 会拦住；业务只需要补「成没成、扣了多少」和关键过程节点。<span class="tag t-violet">提案</span></p>
+          <div class="cmp-wrap note">
+            <table class="cmp">
+              <thead><tr><th>内容</th><th>新功能要做什么</th><th>由谁保证</th></tr></thead>
+              <tbody>
+                <tr><td>HTTP 访问汇总行</td><td class="y">什么都不用做</td><td>① HTTP 中间件</td></tr>
+                <tr><td>后台任务的编号、开始、重试</td><td>任务参数实现 <code>RunArgs</code>，用 <code>queue.AddWorker</code> 注册</td><td>② River 任务中间件；<b>没实现编译不过</b>，直接 <code>river.AddWorker</code> 被架构测试拦住</td></tr>
+                <tr><td>文本模型调用 + 全文</td><td>通过 <code>llmgateway</code> 调用</td><td>③ 网关观察者</td></tr>
+                <tr><td>供应商调用 + 全文</td><td>通过生成任务和插件</td><td>④ 插件宿主</td></tr>
+                <tr><td>其他外部 HTTP + 全文</td><td>用 <code>outbound.Client(purpose)</code></td><td>⑤ 统一出站客户端；<b>自己 new <code>http.Client</code> 被架构测试拦住</b></td></tr>
+                <tr><td>运行汇总行</td><td>终态调用 <code>run.End(...)</code> 补状态、积分、错误码</td><td><span class="m">忘了调时中间件兜底打一行，带 <code>finish_fallback=true</code></span></td></tr>
+                <tr><td>过程节点</td><td>自己打 <code>run.step</code></td><td><span class="m">规范接入清单 + 代码评审</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="note-txt">设计：「必须由业务提供的信息」用泛型类型约束强制（编译期），「绕开挂载点」用 go/parser 架构测试拦截（CI），只有业务语义（过程节点）靠评审。River v0.49 的 Workers 没有公开方法列出已注册类型，所以不做运行时比对。</div>
+          <div class="callout c-info" style="margin-top: 10px">
+            <i data-lucide="list-checks"></i>
+            <div><b>现有 10 处自己构造 <code>http.Client</code> 的代码</b> <span class="tag t-ok">已核对代码</span>：Agent 联网工具 <code>webaccess</code>、腾讯数据万象 <code>imageproc/tencent</code> 属于用户运行，<b>迁移</b>到统一出站客户端；plugin-runner、Agent 服务、updater 的内部调用，SSRF 传输层本身，以及查新版本、存储探测、图片服务检测这些运维功能，进<b>白名单并写明原因</b>。</div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>两个文件和其他进程</h2>
+          <p class="sub">全文和过程分开，主日志才读得下去。</p>
+          <div class="grid g3">
+            <div class="card">
+              <div class="row"><i data-lucide="file-text"></i><b>app.log</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-mute">标准输出 + 文件</span><span class="tag t-mute">保留 30 天</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>过程事件、运行汇总、访问日志、错误原因。</b>文件里一行一条 JSON；本地开发的终端仍可用彩色 console 格式。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="file-json"></i><b>payload.log</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-bad">只写文件</span><span class="tag t-mute">保留 7 天 · 压缩</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>每次上游调用的请求和响应全文</b>（文本模型、供应商插件的每个 HTTP），成功的也记。Key 遮成 <code>***</code>，图片 base64 换成摘要占位。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="boxes"></i><b>Agent 服务 · plugin-runner</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-mute">只对齐字段</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px">改成输出 JSON 行，带同样的 <code>request_id</code> / <code>run_id</code> / <code>call_id</code>，<b>同一个编号能在三个进程里 grep 到</b>；Docker 日志驱动加大小上限。</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>为什么选这个方案</h2>
+          <p class="sub">三个候选按「排查完整度」和「主日志可读性」来比。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th></th><th>A 两文件 + 统一切点（推荐，已确认）</th><th>B 全部进一个文件</th><th>C 只在失败时记全文</th></tr></thead>
+              <tbody>
+                <tr><th>排查完整度</th><td class="y">成功、失败的调用都有全文</td><td class="y">同 A</td><td class="n">结果不好但没报错时看不到输入输出</td></tr>
+                <tr><th>主日志可读性</th><td class="y">只有元数据</td><td class="n">全文淹没错误，滚动快</td><td class="y">好</td></tr>
+                <tr><th>磁盘</th><td><span class="m">全文单独保留 7 天</span></td><td class="n">全部保留 30 天，量最大</td><td class="y">最小</td></tr>
+                <tr><th>实现成本</th><td><span class="m">中：两个切点 + 上下文 + 各业务事件</span></td><td><span class="m">同 A</span></td><td><span class="m">中：各业务自己判断何时打</span></td></tr>
+                <tr><th>结论</th><td class="y"><b>采用</b></td><td class="n">放弃</td><td class="n">放弃（用户选每次都记）</td></tr>
+                <tr><th>核实度</th><td><span class="tag t-violet">提案</span> 日志量 <span class="tag t-warn">未验证</span></td><td><span class="tag t-warn">未验证</span></td><td><span class="tag t-violet">提案</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="muted" style="font-size: 12.5px; margin-top: 8px">外部参考：Stripe canonical log line（每请求一行汇总）、OpenTelemetry 日志模型（关联字段放顶层）、OTel GenAI 约定（内容放外部、span 只留引用）、zap <code>NewTee</code> / <code>BufferedWriteSyncer</code>。<span class="tag t-ok">已核对官方页面</span></p>
+        </div>
+
+        <div class="sec">
+          <h2>用户说「Agent 把画布改错了」时，会发生什么</h2>
+          <p class="sub">只有用户名，没有编号。</p>
+          <div class="grid g2">
+            <div class="card">
+              <ol class="steps" style="margin: 0; padding: 0">
+                <li><b>后台用户管理里查到用户 ID</b><small>例如 42。</small></li>
+                <li><b>在 app.log 里找他今天的运行汇总</b><small><code>jq 'select(.user_id==42 and .event=="run.finish")'</code>，看到一条 <code>run_kind=agent</code> 的运行。</small></li>
+                <li><b>按 run_id 展开这次运行</b><small>每次模型调用一行 <code>llm.call</code>，带 <code>call_id</code>、耗时、token、<code>finish_reason</code>。</small></li>
+                <li><b>拿 call_id 去 payload.log</b><small>看到模型当时收到的完整上下文（含工具结果）和它的完整回复（含工具调用参数）。</small></li>
+                <li><b>判断是模型理解错还是工具执行错</b><small>需要更细的 Agent 内部过程时，再用同一个 <code>run_id</code> grep Agent 服务的日志。</small></li>
+              </ol>
+            </div>
+            <div class="card">
+              <div class="callout c-warn">
+                <i data-lucide="triangle-alert"></i>
+                <div>
+                  <b>边界：payload.log 里有用户原文和模型输入输出</b>
+                  <ul class="list" style="margin-top: 6px">
+                    <li>日志目录的访问权限要按数据库同级管理。</li>
+                    <li><b>凭证永不落盘</b>：渠道 Key（三种转义）和 <code>Authorization</code> 等请求头一律 <code>***</code>。</li>
+                    <li>只保留 7 天：一周前的「结果不好」问题看不到全文。</li>
+                    <li>用户访问平台的 HTTP 请求体不记全文，只记访问汇总行。</li>
+                    <li>日志量估算未实测：Agent 和短剧用量大时 <code>payload.log</code> 增长最快，上线一周后按实际调整。</li>
+                  </ul>
+                </div>
+              </div>
+              <p class="muted" style="font-size: 12.5px; margin-top: 10px">交付时要告知部署方：新增 <code>./logs</code> 挂载目录，需要预留磁盘并控制访问权限。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 2. 日志长什么样 ============ -->
+      <section id="tab-demo" hidden>
+        <h1 class="h1">日志长什么样</h1>
+        <p class="lead">
+          左边选一种运行，右边上下两个终端分别是 <code>app.log</code> 和 <code>payload.log</code>。输入框同时 grep 两个文件；<b>点 app.log 里任意一个 <code>call_id</code></b>，就会用它去 grep，看到它在 payload.log 里对应的全文。
+          <b>编号、时间、内容都是示意</b>，长全文用开头加「全文 N 字」表示。
+        </p>
+        <div class="grid demo-grid" style="margin-top: 20px">
+          <div id="scenList" class="grid" style="align-content: start"></div>
+          <div>
+            <div class="note">
+              <div class="term">
+                <div class="term-bar">
+                  <i data-lucide="search"></i>
+                  <span class="mono">grep</span>
+                  <input type="text" id="grepInput" placeholder="编号、call_id、event、关键字… 留空显示全部" oninput="onGrep(this.value)" />
+                  <label class="row" style="gap: 6px; white-space: nowrap"><input type="checkbox" id="onlySum" onchange="renderLog()" />只看汇总行</label>
+                </div>
+                <div class="term-sub">app.log</div>
+                <div class="term-body" id="appBody"></div>
+                <div class="term-sub">payload.log</div>
+                <div class="term-body" id="payBody" style="max-height: 380px"></div>
+              </div>
+            </div>
+            <div class="note-txt">设计：app.log 每行只有元数据，带 <code>call_id</code> 的行能一键跳到全文；汇总行（<code>run.finish</code>、<code>http.request</code>）一行就能回答「这次怎么了」。</div>
+            <div id="scenNote" style="margin-top: 12px"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 3. 字段与改动（提案） ============ -->
+      <section id="tab-impl" hidden>
+        <h1 class="h1">字段与改动（提案）</h1>
+        <p class="lead">下面都是设计提案，尚未实现。没有数据表和接口，「数据模型」就是日志字段。对应 Markdown 第 6、8、10 节。</p>
+
+        <div class="sec">
+          <h2>关联字段（每行自动带）</h2>
+          <p class="sub">由 <code>logger.Ctx(ctx)</code> 从上下文带入，没有的字段不输出。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>字段</th><th>类型</th><th>来源</th><th>说明</th></tr></thead>
+              <tbody>
+                <tr><td><code>request_id</code></td><td>string</td><td>HTTP 中间件</td><td>同步请求；由请求入队的后台任务在参数里带着，执行时还原</td></tr>
+                <tr><td><code>user_id</code></td><td>uint64</td><td>鉴权 / 任务参数</td><td>用户主键</td></tr>
+                <tr><td><code>run_kind</code></td><td>string</td><td>运行入口</td><td>gen / drama / mkt / agent / adapt / preflight / step_trial</td></tr>
+                <tr><td><code>run_id</code></td><td>string</td><td>运行入口</td><td><b>和界面上显示的编号相同</b>：gen / drama / mkt 为十六进制，agent 为十进制</td></tr>
+                <tr><td><code>parent_kind</code> / <code>parent_id</code></td><td>string</td><td>运行入口</td><td>派生运行才有：短剧片段视频、营销出片、Agent 生成的任务指向发起者</td></tr>
+                <tr><td><code>attempt</code></td><td>int</td><td>River</td><td>后台任务第几次执行</td></tr>
+                <tr><td><code>call_id</code></td><td>string</td><td>网关 / 插件宿主</td><td>12 位十六进制，app.log ↔ payload.log</td></tr>
+                <tr><td><code>event</code></td><td>string</td><td>打点处</td><td>见下表</td></tr>
+                <tr><td><code>instance</code></td><td>string</td><td>启动时</td><td>主机名</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>事件</h2>
+          <p class="sub"><code>message</code> 仍是中文短句；<code>event</code> 是稳定的英文取值，给 jq 过滤和计数。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>event</th><th>级别</th><th>在哪打</th><th>专有字段</th></tr></thead>
+              <tbody>
+                <tr><td><code>http.request</code></td><td>Info / Warn / Error</td><td>访问日志中间件（请求汇总）</td><td>method、path、status、latency_ms、ip、user_id、创建的运行</td></tr>
+                <tr><td><code>run.create</code></td><td>Info</td><td>运行入队后</td><td>业务字段、frozen_credits</td></tr>
+                <tr><td><code>run.start</code></td><td>Info</td><td>worker 领取后</td><td>resumed、queue_wait_ms</td></tr>
+                <tr><td><code>run.step</code></td><td>Info / Warn</td><td>业务过程节点</td><td>业务自定义；校验失败带 call_id 和原因</td></tr>
+                <tr><td><code>llm.call</code></td><td>Info / Warn</td><td><b>网关</b>，每次尝试</td><td>purpose、model_key、channel、upstream_model、tokens、finish_reason、latency_ms、ttft_ms、result、upstream_status、error</td></tr>
+                <tr><td><code>provider.call</code></td><td>Info / Warn</td><td><b>插件宿主</b>，每次 handle</td><td>phase、plugin、plugin_version、http_count、latency_ms、result、upstream_status、error</td></tr>
+                <tr><td><code>ext.call</code></td><td>Info / Warn</td><td><b>统一出站客户端</b>，每个请求</td><td>purpose、method、host、path、status、request_bytes、response_bytes、latency_ms、result、error</td></tr>
+                <tr><td><code>run.retry</code></td><td>Warn</td><td><b>River 任务中间件</b></td><td>max_attempts、error</td></tr>
+                <tr><td><code>run.finish</code></td><td>Info / Warn / Error</td><td>运行终态（运行汇总）；业务没打时中间件兜底</td><td>status、duration_ms、llm_calls、provider_calls、tokens、积分、error_code、error_message、error_type、error、last_call_id、finish_fallback</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>payload.log 的处理规则</h2>
+          <p class="sub">全文原样，只有这几项会被改写。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <tbody>
+                <tr><th>凭证</th><td>沿用插件宿主的 <code>redactor</code>：渠道 Key 明文、URL 转义、JSON 转义都换成 <code>***</code>；<code>Authorization</code>、<code>x-api-key</code>、<code>api-key</code>、<code>x-goog-api-key</code> 请求头整个值换成 <code>***</code></td></tr>
+                <tr><th>二进制</th><td><code>data:</code> URI 和超过 1KB 的 base64 换成 <code>&lt;base64 image/png 1.2MB sha256:ab12…&gt;</code>，只为控制体积</td></tr>
+                <tr><th>上限</th><td>单字段 4MB，超出截断并标 <code>truncated=true</code>（试跑落库的追踪仍是 8KB，二者分开）</td></tr>
+                <tr><th>轮询折叠</th><td>连续多轮请求和响应完全相同，只记首尾，中间一条 <code>{"folded": N}</code></td></tr>
+                <tr><th>文本模型响应</th><td>记拼装后的正文、思考、工具调用；不记 SSE 原始分片；非 2xx 记错误体原文（≤8KB）</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>logger 包的新接口</h2>
+          <div class="codeblock"><pre style="margin: 0; font: inherit; white-space: pre-wrap">// 提案：pkg/logger
+func Ctx(ctx context.Context) *zap.Logger                       // 自动带 request_id、user_id、run_kind、run_id、attempt、parent_*
+func WithRun(ctx context.Context, kind, id string) context.Context
+func WithParent(ctx context.Context, kind, id string) context.Context
+func WithUser(ctx context.Context, userID uint64) context.Context
+func WithRequest(ctx context.Context, requestID string) context.Context
+func WithAttempt(ctx context.Context, n int) context.Context
+func NewCallID() string                                         // 12 位十六进制
+func Payload(ctx context.Context, rec PayloadRecord)            // 写 payload.log；未开启时空操作
+func GenRunID(id uint64) string                                 // 替代 logger.TaskID
+
+// 提案：llmgateway
+type Observer interface {
+	OnCall(ctx context.Context, rec CallRecord) // run 每次尝试结束后回调；实现放在 logger 适配层，网关不依赖 logger
+}
+type Options struct {
+	...
+	Observer Observer
+}
+
+// 业务里的用法（短剧 worker 入口）
+ctx = logger.WithRun(ctx, "drama", idcodec.Encode(jobID))
+ctx = logger.WithUser(ctx, userID)
+ctx = logger.WithAttempt(ctx, job.Attempt)
+logger.Ctx(ctx).Info("短剧任务开始执行", zap.String("event", "run.start"), zap.Bool("resumed", resumed))</pre></div>
+        </div>
+
+        <div class="sec">
+          <h2>River 任务中间件与统一出站客户端</h2>
+          <p class="sub">让新功能「不写也会被记录」的两个新挂载点。</p>
+          <div class="codeblock"><pre style="margin: 0; font: inherit; white-space: pre-wrap">// 提案：provider/queue
+type RunArgs interface {
+	river.JobArgs
+	RunRef() logger.RunRef // {Kind, ID, UserID, RequestID, ParentKind, ParentID}；系统任务 Kind="system"
+}
+
+// 替代 river.AddWorker：没实现 RunRef 编译不过；同时登记从原始参数取运行信息的函数
+func AddWorker[T RunArgs](workers *river.Workers, w river.Worker[T])
+
+// 挂到 river.Config.WorkerMiddleware（River v0.49 已支持）
+func (m *runLogMiddleware) Work(ctx context.Context, job *rivertype.JobRow, doInner func(context.Context) error) (err error) {
+	ref, _ := runRefs[job.Kind](job.EncodedArgs)
+	ctx, run := logger.BeginRun(ctx, ref, logger.Attempt(job.Attempt), logger.JobKind(job.Kind)) // 自动 run.start
+	defer func() {
+		// panic → Error 级兜底行后重新抛出；出错且会重试 → run.retry；
+		// 业务没调 run.End → 兜底 run.finish（finish_fallback=true）
+	}()
+	return doInner(ctx)
+}
+
+// 同步运行（片段转写、预检、Agent 平台 API）
+ctx, run := logger.BeginRun(ctx, logger.RunRef{Kind: "adapt", ID: segRef, UserID: uid})
+defer run.End(status, fields...)
+
+// 提案：pkg/outbound —— 其他外部 HTTP 只能从这里拿客户端
+func Client(purpose string, opts ...Option) *http.Client                  // ext.call + payload kind=http
+func Transport(purpose string, base http.RoundTripper) http.RoundTripper   // 给 SDK 用（腾讯 COS 等）</pre></div>
+        </div>
+
+        <div class="sec">
+          <h2>CI 护栏</h2>
+          <p class="sub">放在 <code>backend/internal/tests/arch/</code>，随 <code>bash scripts/check.sh</code> 一起跑。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>护栏</th><th>拦什么</th><th>怎么拦</th></tr></thead>
+              <tbody>
+                <tr><td>任务登记</td><td>新队列任务没登记运行信息</td><td>编译期：<code>AddWorker[T RunArgs]</code> 类型约束；架构测试：<code>river.AddWorker</code> 只能出现在 <code>queue.AddWorker</code> 里</td></tr>
+                <tr><td>出站 HTTP</td><td>自己构造客户端绕过记录</td><td>架构测试（<code>go/parser</code>）：<code>http.Client{}</code>、<code>http.Transport{}</code>、<code>http.DefaultClient</code>、<code>http.Get/Post/PostForm/Head</code>、<code>netguard.New*</code> 只允许在白名单文件，白名单逐项写原因</td></tr>
+                <tr><td>forbidigo</td><td>同上，编辑器里即时提示</td><td><code>.golangci.yml</code> 加 <code>net/http.(Get|Post|PostForm|Head|DefaultClient)</code></td></tr>
+                <tr><td>旧字段</td><td>手写 <code>task_id</code> / <code>run_id</code> / <code>drama_job_id</code></td><td>架构测试扫描旧写法，关联字段只能由 <code>logger.Ctx</code> 带入</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="card" style="margin-top: 12px">
+            <b style="font-size: 13.5px">新功能接入清单（规范 E10，评审检查项）</b>
+            <ol class="list" style="padding-left: 18px; margin-top: 6px">
+              <li>新后台任务：参数实现 <code>RunArgs</code>，用 <code>queue.AddWorker</code> 注册；<code>run_id</code> 和界面编号相同。</li>
+              <li>新同步运行：<code>logger.BeginRun</code> + <code>defer run.End</code>。</li>
+              <li>外部调用：模型走网关、供应商走插件、其他走 <code>outbound.Client</code>。</li>
+              <li>终态 <code>run.End</code> 补状态、积分、错误码、错误类型。</li>
+              <li>关键过程节点打 <code>run.step</code>；失败原因不要吞。</li>
+              <li>新的 <code>run_kind</code> / <code>error_type</code> 先加进规范命名表。</li>
+            </ol>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>配置与部署</h2>
+          <div class="grid g2">
+            <div class="codeblock"><pre style="margin: 0; font: inherit; white-space: pre-wrap"># configs/config.yaml（提案）
+log:
+  level: info
+  format: console        # 只影响标准输出；文件固定 JSON
+  filename: logs/app.log
+  max_size: 100
+  max_backups: 0
+  max_age: 30
+  instance: ""           # 空则取主机名
+  payload:
+    enabled: true
+    filename: logs/payload.log
+    max_size: 200
+    max_age: 7
+    compress: true</pre></div>
+            <div class="codeblock"><pre style="margin: 0; font: inherit; white-space: pre-wrap"># docker-compose.yml（提案）
+backend:
+  volumes:
+    - ./logs:/app/logs
+
+agent:
+  logging:
+    driver: json-file
+    options: { max-size: 100m, max-file: "5" }
+
+plugin-runner:
+  logging:
+    driver: json-file
+    options: { max-size: 100m, max-file: "5" }</pre></div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>分期与验收</h2>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>阶段</th><th>内容</th><th>验收</th></tr></thead>
+              <tbody>
+                <tr><th>一期 基础设施</th><td>logger 双输出、上下文字段、call_id、运行对象（BeginRun / End / 兜底）、配置、compose 挂卷、HTTP 中间件、<b>River 任务中间件 + queue.AddWorker + 现有 6 处注册迁移</b>、规范更新</td><td>两个文件都是合法 JSON 行（<code>jq . &gt;/dev/null</code> 无报错）；访问日志带 user_id；任意队列任务都有 run.start 和 run.finish（可能是兜底）</td></tr>
+                <tr><th>二期 外部调用切点</th><td>网关观察者 + 错误体原文；插件宿主全量追踪 + 折叠 + 占位 + 截断；<b>pkg/outbound + 迁移 webaccess、imageproc/tencent；架构测试 + forbidigo</b></td><td>跑一次画布生图，用编号在两个文件里对上；Key 三种形式都被遮；check.sh 含架构测试且通过</td></tr>
+                <tr><th>三期 业务接入</th><td>短剧（含失败原因修复、任务条编号）、生成任务、营销、Agent 平台 API、同步调用、环节试跑；替换旧字段</td><td><code>grep -rn 'logger.TaskID\|zap.Uint64("run_id"\|zap.Uint64("task_id"' internal</code> 无结果；汇总行的调用数和 token 等于明细之和</td></tr>
+                <tr><th>四期 其他进程</th><td>Agent 服务、plugin-runner 输出 JSON 行并带关联字段；compose 日志限额</td><td>一次 Agent 运行，同一个 run_id 能在三个进程里 grep 到</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="muted" style="font-size: 12.5px; margin-top: 8px">每期结束都跑 <code>bash scripts/check.sh</code>；16 条后端测试见 Markdown 8.5 节。</p>
+        </div>
+
+        <div class="sec">
+          <h2>已确认的决定</h2>
+          <div class="card">
+            <ol class="list" style="padding-left: 18px">
+              <li><b>运行日志入库和后台先不做，先搭服务器统一日志</b>：给运维排查，需要完整记录。访谈中曾定的「PostgreSQL 分区表」「后台只做查看」「与使用记录 / Agent 运行记录并存互跳」都已搁置，将来做时可复用。</li>
+              <li><b>系统日志不入库</b>。</li>
+              <li><b>每次上游调用都记全文，放在单独的 payload.log</b>；app.log 只记元数据和失败原因。</li>
+              <li><b>Go 后端为主，Agent 服务和 plugin-runner 只对齐字段和 JSON 格式</b>。</li>
+              <li><b>compose 默认挂卷写文件</b>：app.log 保留 30 天，payload.log 保留 7 天并压缩。</li>
+              <li><b>新功能自动纳入</b>：补上 River 任务中间件和统一出站 HTTP 客户端，用编译期类型约束、架构测试和 forbidigo 拦住绕过记录的写法；业务汇总字段和过程事件写进接入清单。主文档 6.12 已回写。</li>
+              <li><b>短剧运行日志并入本方案</b>：主文档已回写（两份 Markdown 都写明了），字段改为 <code>run_kind</code> + <code>run_id</code>，全文改进 payload.log。</li>
+            </ol>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+      const $ = (s, r = document) => r.querySelector(s);
+      const esc = (s) =>
+        String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const icons = () => {
+        if (window.lucide) lucide.createIcons();
+      };
+      function toggleNotes() {
+        const on = document.body.classList.toggle("show-notes");
+        $("#notesSw").setAttribute("aria-checked", String(on));
+      }
+      function showTab(id) {
+        document.querySelectorAll("main > section").forEach((s) => (s.hidden = s.id !== "tab-" + id));
+        document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === id)));
+        window.scrollTo(0, 0);
+      }
+      document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab)));
+
+      /* ---------- 示意数据：每条 app 记录 [时间, 级别, 消息, 字段]；payload 记录 [时间, 字段] ---------- */
+      const FULL = (head, n) => ({ __full: true, head, n });
+      const T = (s) => "2026-11-14T" + s + "+0800";
+
+      const GEN = "a81b02c4d6e8f0a1b3c5d7e9f1a2b4c6";
+      const DRAMA = "9f3c1a7e5b2d4c6f8a0e1b3d5f7a9c2e";
+      const SEG = "3d5f7a9c2e4b6d8f0a1c3e5a7b9d1f2c";
+      const REQ1 = "req-7f21c0de", REQ2 = "req-0b9e44aa";
+      const inst = { instance: "vc-backend-1" };
+
+      const SCENARIOS = [
+        {
+          key: "gen",
+          title: "画布生图，上游 400",
+          desc: "生成任务 · 供应商插件",
+          note: ["bad", "provider.call 只有元数据和上游状态；点它的 call_id，payload.log 里能看到插件发出的完整请求体（参考图已换成摘要占位）和上游的完整报错。"],
+          app: [
+            [T("10:02:11.004"), "INFO", "创建生成任务", { event: "run.create", request_id: REQ1, user_id: 42, run_kind: "gen", run_id: GEN, model_key: "seedream-4", frozen_credits: 8, ...inst }],
+            [T("10:02:11.031"), "INFO", "http request", { event: "http.request", request_id: REQ1, user_id: 42, method: "POST", path: "/api/v1/tasks", status: 200, latency_ms: 31, ip: "10.0.0.5", run_kind: "gen", run_id: GEN, ...inst }],
+            [T("10:02:11.320"), "INFO", "生成任务开始执行", { event: "run.start", request_id: REQ1, user_id: 42, run_kind: "gen", run_id: GEN, attempt: 1, queue_wait_ms: 289, ...inst }],
+            [T("10:02:12.118"), "WARN", "供应商调用", { event: "provider.call", request_id: REQ1, user_id: 42, run_kind: "gen", run_id: GEN, attempt: 1, call_id: "5a0c3e91b7d2", phase: "submit", plugin: "volc-seedream", plugin_version: "1.4.2", http_count: 1, latency_ms: 790, result: "failed", upstream_status: 400, error: "上游错误 400: InvalidParameter.ImageSize", ...inst }],
+            [T("10:02:12.140"), "WARN", "生成任务结束", { event: "run.finish", request_id: REQ1, user_id: 42, run_kind: "gen", run_id: GEN, status: "failed", duration_ms: 820, queue_wait_ms: 289, provider_calls: 1, frozen_credits: 8, charged_credits: 0, error_code: 50002, error_message: "InvalidParameter.ImageSize: image size must be at least 1024x1024", error_type: "upstream", last_call_id: "5a0c3e91b7d2", ...inst }],
+          ],
+          pay: [
+            [T("10:02:12.118"), { call_id: "5a0c3e91b7d2", kind: "provider", run_kind: "gen", run_id: GEN, user_id: 42, request_id: REQ1, phase: "submit", plugin: "volc-seedream",
+              steps: [
+                { kind: "hook", name: "submit", input: FULL('{"prompt":"雨夜街头，霓虹灯下的少女回眸……","size":"512x512","refs":[', 640), output: '{"error":"上游 400"}', logs: ["[seedream] submit size=512x512"] },
+                { kind: "http", request: { method: "POST", url: "https://ark.example.com/api/v3/images/generations", headers: { Authorization: "***", "Content-Type": "application/json" }, body: FULL('{"model":"doubao-seedream-4","prompt":"雨夜街头……","size":"512x512","image":["<base64 image/png 1.2MB sha256:ab12f0…>"]}', 1420) }, response: { status: 400, body: '{"error":{"code":"InvalidParameter.ImageSize","message":"image size must be at least 1024x1024"}}' }, duration_ms: 774 },
+              ] }],
+          ],
+        },
+        {
+          key: "drama",
+          title: "短剧剧本，输出不合格",
+          desc: "短剧任务 · 文本模型",
+          note: ["bad", "网关的 llm.call 是 ok（上游正常返回），业务校验没过，所以业务打一行 run.step（Warn）并带同一个 call_id。两次的完整提示词和模型回复都在 payload.log。"],
+          app: [
+            [T("17:20:05.300"), "INFO", "短剧任务开始执行", { event: "run.start", user_id: 42, run_kind: "drama", run_id: DRAMA, attempt: 1, step: "scripts", episodes: [3], resumed: false, queue_wait_ms: 180, ...inst }],
+            [T("17:21:22.950"), "INFO", "模型调用", { event: "llm.call", user_id: 42, run_kind: "drama", run_id: DRAMA, attempt: 1, call_id: "c7e2a91f04b3", purpose: "drama.scripts", call: "episode=3", try: 1, net_attempt: 1, model_key: "deepseek-v3", channel: "ds-main", upstream_model: "deepseek-chat", request_bytes: 31240, response_chars: 812, input_tokens: 6820, output_tokens: 540, finish_reason: "stop", latency_ms: 24548, ttft_ms: 1720, result: "ok", ...inst }],
+            [T("17:21:22.952"), "WARN", "短剧模型输出不合格，重写", { event: "run.step", user_id: 42, run_kind: "drama", run_id: DRAMA, attempt: 1, call_id: "c7e2a91f04b3", call: "episode=3", try: 1, error_type: "invalid_output", validation_error: "script_md 为空", ...inst }],
+            [T("17:21:49.601"), "INFO", "模型调用", { event: "llm.call", user_id: 42, run_kind: "drama", run_id: DRAMA, attempt: 1, call_id: "e19b07d3a6c8", purpose: "drama.scripts", call: "episode=3", try: 2, net_attempt: 1, model_key: "deepseek-v3", channel: "ds-main", request_bytes: 31402, response_chars: 790, input_tokens: 6870, output_tokens: 520, finish_reason: "stop", latency_ms: 26651, ttft_ms: 1655, result: "ok", ...inst }],
+            [T("17:21:49.603"), "WARN", "短剧模型输出不合格", { event: "run.step", user_id: 42, run_kind: "drama", run_id: DRAMA, attempt: 1, call_id: "e19b07d3a6c8", call: "episode=3", try: 2, error_type: "invalid_output", validation_error: "script_md 为空", ...inst }],
+            [T("17:21:49.688"), "WARN", "短剧任务结束", { event: "run.finish", user_id: 42, run_kind: "drama", run_id: DRAMA, status: "failed", duration_ms: 104388, queue_wait_ms: 180, llm_calls: 2, input_tokens: 13690, output_tokens: 1060, frozen_credits: 60, charged_credits: 0, error_code: 67008, error_message: "模型输出无法解析", error_type: "invalid_output", error: "模型输出无法解析", last_call_id: "e19b07d3a6c8", ...inst }],
+          ],
+          pay: [
+            [T("17:21:22.950"), { call_id: "c7e2a91f04b3", kind: "llm", run_kind: "drama", run_id: DRAMA, user_id: 42, purpose: "drama.scripts", request: { method: "POST", url: "https://api.deepseek.example/v1/chat/completions", headers: { Authorization: "***" }, body: FULL('{"model":"deepseek-chat","stream":true,"messages":[{"role":"user","content":"你是专业短剧编剧。请根据以下分集梗概写出第 3 集完整剧本……【原文】第五章 雨夜……', 31240) }, response: { status: 200, text: FULL("抱歉，根据平台规范，我无法继续创作包含以下情节的内容……", 812), thinking: "", truncated: false }, latency_ms: 24548 }],
+            [T("17:21:49.601"), { call_id: "e19b07d3a6c8", kind: "llm", run_kind: "drama", run_id: DRAMA, user_id: 42, purpose: "drama.scripts", request: { method: "POST", url: "https://api.deepseek.example/v1/chat/completions", headers: { Authorization: "***" }, body: FULL('{"model":"deepseek-chat","stream":true,"messages":[{"role":"user","content":"……上次输出不合格：script_md 为空。请修正……', 31402) }, response: { status: 200, text: FULL("很抱歉，我不能按要求生成这一集剧本……", 790), thinking: "", truncated: false }, latency_ms: 26651 }],
+          ],
+        },
+        {
+          key: "agent",
+          title: "Agent 运行",
+          desc: "平台 API · 多次模型调用",
+          note: ["ok", "Agent 服务经 Go 的平台 API 调模型，每次调用都在网关记一行 llm.call，全文（包括完整上下文和工具调用参数）在 payload.log。同一个 run_id 也能在 Agent 服务的 JSON 日志里 grep 到。"],
+          app: [
+            [T("14:30:00.120"), "INFO", "Agent 运行开始", { event: "run.start", request_id: REQ2, user_id: 42, run_kind: "agent", run_id: "88213", ...inst }],
+            [T("14:30:04.880"), "INFO", "模型调用", { event: "llm.call", request_id: REQ2, user_id: 42, run_kind: "agent", run_id: "88213", call_id: "0f4d8b2a9c61", purpose: "agent.main", net_attempt: 1, model_key: "claude-agent", channel: "anthropic-main", request_bytes: 48210, response_chars: 320, input_tokens: 15200, cached_tokens: 12800, output_tokens: 410, finish_reason: "tool_calls", latency_ms: 4710, ttft_ms: 980, result: "ok", ...inst }],
+            [T("14:30:05.300"), "INFO", "Agent 平台调用", { event: "run.step", request_id: REQ2, user_id: 42, run_kind: "agent", run_id: "88213", tool: "canvas_apply_ops", ops: 3, result: "ok", latency_ms: 380, ...inst }],
+            [T("14:30:09.040"), "INFO", "模型调用", { event: "llm.call", request_id: REQ2, user_id: 42, run_kind: "agent", run_id: "88213", call_id: "3b7a10e5d2f9", purpose: "agent.main", net_attempt: 1, model_key: "claude-agent", channel: "anthropic-main", request_bytes: 50122, response_chars: 260, input_tokens: 15720, cached_tokens: 15100, output_tokens: 120, finish_reason: "stop", latency_ms: 3700, ttft_ms: 860, result: "ok", ...inst }],
+            [T("14:30:09.100"), "INFO", "Agent 运行结束", { event: "run.finish", request_id: REQ2, user_id: 42, run_kind: "agent", run_id: "88213", status: "succeeded", duration_ms: 8980, llm_calls: 2, input_tokens: 30920, output_tokens: 530, charged_credits: 4, ...inst }],
+          ],
+          pay: [
+            [T("14:30:04.880"), { call_id: "0f4d8b2a9c61", kind: "llm", run_kind: "agent", run_id: "88213", user_id: 42, request_id: REQ2, purpose: "agent.main", request: { method: "POST", url: "https://api.anthropic.example/v1/messages", headers: { "x-api-key": "***" }, body: FULL('{"model":"…","system":"你是画布助手……","messages":[{"role":"user","content":"把第二排三张图换成竖版……"},{"role":"assistant","content":[{"type":"tool_use","name":"canvas_get_state"…', 48210) }, response: { status: 200, text: "好的，我先把这三张图的比例改成 9:16。", tool_calls: [{ name: "canvas_apply_ops", args: '{"ops":[{"op":"update","id":"n12","ratio":"9:16"},…]}' }], truncated: false }, latency_ms: 4710 }],
+            [T("14:30:09.040"), { call_id: "3b7a10e5d2f9", kind: "llm", run_kind: "agent", run_id: "88213", user_id: 42, request_id: REQ2, purpose: "agent.main", request: { method: "POST", url: "https://api.anthropic.example/v1/messages", headers: { "x-api-key": "***" }, body: FULL('{"model":"…","messages":[…,{"role":"user","content":[{"type":"tool_result","content":"已更新 3 个节点"}]}]}', 50122) }, response: { status: 200, text: "已把第二排三张图改为竖版 9:16。", tool_calls: [], truncated: false }, latency_ms: 3700 }],
+          ],
+        },
+        {
+          key: "adapt",
+          title: "片段转写，网关超时重试",
+          desc: "同步请求 · 空闲超时",
+          note: ["warn", "同步请求的 request_id 进了 ctx，所以模型调用行和最后的访问汇总行用同一个 request_id 串起来；网关空闲超时自动重试了一次，两次各有一行和一条全文。"],
+          app: [
+            [T("11:11:00.010"), "WARN", "模型调用", { event: "llm.call", request_id: "req-5c3e81f0", user_id: 7, run_kind: "adapt", run_id: SEG, call_id: "a2c49e0b7f13", purpose: "drama.adapt", try: 1, net_attempt: 1, model_key: "qwen-max", channel: "qwen", request_bytes: 6200, response_chars: 0, latency_ms: 30002, ttft_ms: 0, result: "timeout", error: "上游空闲超时", ...inst }],
+            [T("11:11:14.420"), "INFO", "模型调用", { event: "llm.call", request_id: "req-5c3e81f0", user_id: 7, run_kind: "adapt", run_id: SEG, call_id: "d81f6c35a094", purpose: "drama.adapt", try: 1, net_attempt: 2, model_key: "qwen-max", channel: "qwen", request_bytes: 6200, response_chars: 410, input_tokens: 2100, output_tokens: 300, finish_reason: "stop", latency_ms: 14400, ttft_ms: 2100, result: "ok", ...inst }],
+            [T("11:11:14.430"), "INFO", "片段转写结束", { event: "run.finish", request_id: "req-5c3e81f0", user_id: 7, run_kind: "adapt", run_id: SEG, status: "succeeded", duration_ms: 44420, llm_calls: 2, charged_credits: 1, ...inst }],
+            [T("11:11:14.431"), "INFO", "http request", { event: "http.request", request_id: "req-5c3e81f0", user_id: 7, method: "POST", path: "/api/v1/dramas/…/segments/…/adapt", status: 200, latency_ms: 44431, ip: "10.0.0.9", run_kind: "adapt", run_id: SEG, ...inst }],
+          ],
+          pay: [
+            [T("11:11:00.010"), { call_id: "a2c49e0b7f13", kind: "llm", run_kind: "adapt", run_id: SEG, user_id: 7, request_id: "req-5c3e81f0", purpose: "drama.adapt", request: { method: "POST", url: "https://dashscope.example/compatible-mode/v1/chat/completions", headers: { Authorization: "***" }, body: FULL('{"model":"qwen-max","messages":[{"role":"user","content":"把下面的片段原稿改写成 Seedance 分镜写法……', 6200) }, response: { status: 0, text: "", truncated: false }, error: "上游空闲超时", latency_ms: 30002 }],
+            [T("11:11:14.420"), { call_id: "d81f6c35a094", kind: "llm", run_kind: "adapt", run_id: SEG, user_id: 7, request_id: "req-5c3e81f0", purpose: "drama.adapt", request: { method: "POST", url: "https://dashscope.example/compatible-mode/v1/chat/completions", headers: { Authorization: "***" }, body: FULL('{"model":"qwen-max","messages":[{"role":"user","content":"把下面的片段原稿改写成 Seedance 分镜写法……', 6200) }, response: { status: 200, text: FULL('{"prompt":"镜头 1：近景，雨水顺着伞沿滴落……', 410), truncated: false }, latency_ms: 14400 }],
+          ],
+        },
+      ];
+
+      const state = { scen: "gen", grep: "" };
+
+      const reEsc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      function hlFn(q) {
+        return (text) => {
+          const e = esc(text);
+          if (!q) return e;
+          return e.replace(new RegExp(reEsc(esc(q)), "g"), (m) => `<mark>${m}</mark>`);
+        };
+      }
+      /* JSON 着色：键紫色，全文占位绿色，call_id 可点 */
+      function jsonHtml(v, hl, key) {
+        if (v && v.__full) return `<span class="full">"${hl(v.head)}…"</span> <span class="full">[全文 ${v.n.toLocaleString()} 字，示意]</span>`;
+        if (Array.isArray(v)) return "[" + v.map((x) => jsonHtml(x, hl)).join(",") + "]";
+        if (v && typeof v === "object")
+          return "{" + Object.entries(v).map(([k, x]) => `<span class="k">"${hl(k)}"</span>:${jsonHtml(x, hl, k)}`).join(",") + "}";
+        const s = JSON.stringify(v);
+        if ((key === "call_id" || key === "last_call_id") && typeof v === "string")
+          return `<button class="cid" onclick="grepFor('${esc(v)}')">${hl(s)}</button>`;
+        return hl(s);
+      }
+      const flat = (o) => JSON.stringify(o, (k, v) => (v && v.__full ? v.head + " 全文" : v));
+
+      function renderScenList() {
+        $("#scenList").innerHTML = SCENARIOS.map(
+          (s) => `<button class="scen" aria-pressed="${s.key === state.scen}" onclick="pickScen('${s.key}')"><b>${esc(s.title)}</b><small>${esc(s.desc)}</small></button>`,
+        ).join("");
+      }
+
+      function renderLog() {
+        const s = SCENARIOS.find((x) => x.key === state.scen);
+        const q = state.grep.trim();
+        const hl = hlFn(q);
+        const onlySum = $("#onlySum").checked;
+        const appRows = s.app.filter(([ts, lv, msg, f]) => {
+          if (onlySum && !["run.finish", "http.request"].includes(f.event)) return false;
+          return !q || `${ts} ${lv} ${msg} ${flat(f)}`.includes(q);
+        });
+        const payRows = s.pay.filter(([ts, f]) => !q || `${ts} ${flat(f)}`.includes(q));
+        $("#appBody").innerHTML = appRows.length
+          ? appRows
+              .map(([ts, lv, msg, f]) => {
+                const line = { time: ts, level: lv.toLowerCase(), msg, ...f };
+                const cls = lv === "WARN" ? "warn" : lv === "ERROR" ? "error" : "";
+                return `<div class="ln ${cls}"><span class="lv lv-${lv}">●</span> ${jsonHtml(line, hl)}</div>`;
+              })
+              .join("")
+          : `<div class="ln" style="color:#9aa0ab">没有匹配的行</div>`;
+        $("#payBody").innerHTML = payRows.length
+          ? payRows.map(([ts, f]) => `<div class="ln">${jsonHtml({ time: ts, ...f }, hl)}</div>`).join("")
+          : `<div class="ln" style="color:#9aa0ab">没有匹配的行</div>`;
+        const [kind, text] = s.note;
+        const icon = { ok: "circle-check", warn: "triangle-alert", bad: "circle-x" }[kind];
+        $("#scenNote").innerHTML = `<div class="callout c-${kind}"><i data-lucide="${icon}"></i><div>${esc(text)}<br/><span class="muted" style="font-size:12px">app.log 显示 ${appRows.length}/${s.app.length} 行，payload.log 显示 ${payRows.length}/${s.pay.length} 条。</span></div></div>`;
+        icons();
+      }
+
+      function pickScen(k) {
+        state.scen = k;
+        state.grep = "";
+        $("#grepInput").value = "";
+        renderScenList();
+        renderLog();
+      }
+      let grepTimer;
+      function onGrep(v) {
+        state.grep = v;
+        clearTimeout(grepTimer);
+        grepTimer = setTimeout(renderLog, 80);
+      }
+      function grepFor(v) {
+        state.grep = v;
+        $("#grepInput").value = v;
+        renderLog();
+      }
+
+      renderScenList();
+      renderLog();
+      icons();
+    </script>
+  </body>
+</html>

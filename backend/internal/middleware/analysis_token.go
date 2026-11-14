@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"video-canvas/internal/model"
+	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/pkg/response"
 )
 
@@ -15,9 +16,6 @@ const CtxAnalysisTokenIDKey = "analysis_token_id"
 
 // TokenAuthenticator 校验分析令牌明文，返回令牌 ID 和签发人；失败时返回的 error 直接交给 response.Fail。
 type TokenAuthenticator func(ctx context.Context, plain string) (tokenID, userID uint64, err error)
-
-// CtxAgentRunIDKey 是 gin.Context 里存放「这个桥请求属于哪次 Agent 运行」的键：桥 handler 从令牌解析出来，访问日志据此带上 run_id。
-const CtxAgentRunIDKey = "agent_run_id"
 
 // GetAnalysisTokenID 返回当前请求用的分析令牌 ID，不是用令牌访问的为 0。
 func GetAnalysisTokenID(c *gin.Context) uint64 {
@@ -38,6 +36,7 @@ func AdminOrAnalysisToken(auth TokenAuthenticator, jwtChain ...gin.HandlerFunc) 
 			}
 			c.Set(CtxUserIDKey, uint(userID))
 			c.Set(CtxAnalysisTokenIDKey, tokenID)
+			c.Request = c.Request.WithContext(logger.WithUser(c.Request.Context(), userID))
 			c.Next()
 			return
 		}
