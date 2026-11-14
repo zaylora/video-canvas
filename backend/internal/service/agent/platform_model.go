@@ -91,7 +91,7 @@ func (b *AgentBridge) ProxyModelPlatform(ctx context.Context, rc RunContext, bod
 	}
 	if _, berr := b.d.Billing.SettleExternal(context.WithoutCancel(ctx), call, snap.Model.Pricing, CallOutcome{Result: res, InputChars: inputChars, Err: serr, Meta: meta}); berr != nil {
 		// 结算失败意味着这次调用没收到钱，只能留下线索供对账补扣；不能因此让用户的对话失败
-		logger.Error("Agent 对话结算失败", zap.Error(berr), zap.Uint64("call_id", call.ID), zap.Uint64("run_id", rc.RunID))
+		logger.Error("Agent 对话结算失败", zap.Error(berr), zap.Uint64("model_call_id", call.ID), logger.AgentRun(rc.RunID))
 	}
 	return serr
 }

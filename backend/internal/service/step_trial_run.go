@@ -9,6 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	"video-canvas/internal/model"
+	"video-canvas/internal/pkg/idcodec"
 	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/provider"
 	"video-canvas/internal/repository"
@@ -42,13 +43,27 @@ func (s *StepAdminService) HandleStepTrial(ctx context.Context, trialID uint64) 
 	if err != nil {
 		return err
 	}
+	ctx, logRun := logger.EnsureRun(ctx, logger.RunRef{Kind: "step_trial", ID: idcodec.Encode(t.ID), UserID: t.CreatedBy})
+	logRun.Start(zap.String("step", t.StepKey), zap.String("sample", t.SampleKey), zap.String("model", t.TextModelID))
+	ctx = logger.WithPurpose(ctx, "step_trial."+t.StepKey)
 	// 2. 执行，得到结果；基础设施错误交给队列重试。
 	out, err := s.executeTrial(ctx, t)
 	if err != nil {
 		return err
 	}
 	// 3. 落库并结算。
-	return s.finishTrial(ctx, t, out)
+	if err := s.finishTrial(ctx, t, out); err != nil {
+		return err
+	}
+	fields := []zap.Field{zap.String("step", t.StepKey), zap.Bool("passed", out.passed), zap.Bool("charged", out.charge)}
+	if out.errMsg != "" {
+		fields = append(fields, zap.String("error_message", out.errMsg))
+	}
+	if len(out.errors) > 0 {
+		fields = append(fields, zap.Strings("validation_errors", out.errors))
+	}
+	logRun.End(out.status, fields...)
+	return nil
 }
 
 // executeTrial 准备输入、方法和模型并运行环节，把各种结局归一成 trialOutcome。

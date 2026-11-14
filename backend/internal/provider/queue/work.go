@@ -116,7 +116,7 @@ func (rt *Runtime) waitForSlot(ctx context.Context, t *model.GenerationTask) (*m
 	case provider.SlotGone:
 		return nil, nil
 	default:
-		rt.log.Debug("任务排队等名额", logger.TaskID(t.ID), zap.String("reason", string(out)))
+		rt.log.Debug("任务排队等名额", logger.GenRun(t.ID), zap.String("reason", string(out)))
 		return nil, river.JobSnooze(rt.jitter(slotWaitBase, slotWaitJitter))
 	}
 }

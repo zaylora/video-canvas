@@ -21,54 +21,79 @@ import (
 )
 
 // callDrama JSON校验失败只重试一次，失败请求不计入扣费。
-func (s *DramaService) callDrama(ctx context.Context, j *model.DramaJob, snap *provider.Snapshot, step string, vars map[string]any, validate func(any) error) (any, int, error) {
+// call 是这次调用在运行里的位置（如 episode=3、batch=1-5），单次步骤传空串；写进日志的调用行。
+func (s *DramaService) callDrama(ctx context.Context, j *model.DramaJob, snap *provider.Snapshot, step, call string, vars map[string]any, validate func(any) error) (any, int, error) {
 	var invalid error
-	for range 2 {
+	for try := 1; try <= 2; try++ {
 		if e := s.ensureDramaActive(ctx, j); e != nil {
 			return nil, 0, e
 		}
 		if invalid != nil {
 			vars["validation_error"] = invalid.Error()
 		}
-		cfg := jobConfig(j)
-		if step == "breakdown" {
-			vars["assets"] = cfg.KnownCast
-			delete(vars, "known_cast")
-		} else {
-			vars["known_cast"] = cfg.KnownCast
-		}
-		template, body := dramaTemplate(step, cfg.Prompt)
-		prompt, e := drama.PromptWithBody(template, vars, body)
+		decoded, cost, bad, e := s.dramaAttempt(ctx, j, snap, step, call, try, vars, validate)
 		if e != nil {
 			return nil, 0, e
 		}
-		chars := utf8.RuneCountInString(prompt)
-		if chars > dramaContextLimit(snap) {
-			return nil, 0, errcode.ErrDramaContext
+		if bad == nil {
+			return decoded, cost, nil
 		}
-		result, e := s.streamDramaText(ctx, j, snap, prompt)
-		if e != nil {
-			return nil, 0, e
-		}
-		decoded, e := drama.DecodeOutput(step, []byte(result.Text))
-		if e == nil && validate != nil {
-			e = validate(decoded)
-		}
-		if e != nil {
-			invalid = e
-			continue
-		}
-		var usage *modelcfg.Usage
-		if !result.UsageMissing {
-			usage = &modelcfg.Usage{InputTokens: max(0, result.Usage.InputTokens), OutputTokens: max(0, result.Usage.OutputTokens)}
-		}
-		quoted := modelcfg.Quote(snap.Model.Pricing, snap.Model.Capabilities, modelcfg.Spec{PromptChars: chars, Params: map[string]any{}})
-		return decoded, modelcfg.Settle(snap.Model.Pricing, quoted, usage), nil
+		invalid = bad
 	}
 	if cfg := jobConfig(j); cfg.Prompt.Source != "" && cfg.Prompt.Source != "builtin" {
 		return nil, 0, errcode.ErrDramaCustomPrompt.WithMsg("自定义提示词或技能导致输出不合格（" + dramaStepGroup(step) + "）")
 	}
 	return nil, 0, errcode.ErrDramaOutputInvalid
+}
+
+// dramaAttempt 是 callDrama 的一次尝试：拼提示词、调模型、解码并校验。输出不合格时返回 invalid（调用方带着原因重写），
+// 其他失败返回 err。每次尝试声明一次调用：网关的 llm.call 和 payload.log 的全文用同一个 call_id，不合格时 run.step 指向它。
+func (s *DramaService) dramaAttempt(ctx context.Context, j *model.DramaJob, snap *provider.Snapshot, step, call string, try int, vars map[string]any, validate func(any) error) (decoded any, cost int, invalid, err error) {
+	cfg := jobConfig(j)
+	if step == "breakdown" {
+		vars["assets"] = cfg.KnownCast
+		delete(vars, "known_cast")
+	} else {
+		vars["known_cast"] = cfg.KnownCast
+	}
+	template, body := dramaTemplate(step, cfg.Prompt)
+	prompt, err := drama.PromptWithBody(template, vars, body)
+	if err != nil {
+		return nil, 0, nil, err
+	}
+	chars := utf8.RuneCountInString(prompt)
+	if chars > dramaContextLimit(snap) {
+		return nil, 0, nil, errcode.ErrDramaContext
+	}
+	callFields := []zap.Field{zap.Int("try", try), zap.String("model_key", snap.Model.Key)}
+	if call != "" {
+		callFields = append(callFields, zap.String("call", call))
+	}
+	callCtx, callID := logger.WithCall(ctx, "drama."+step, callFields...)
+	logger.RunOf(ctx).NoteCall(callID)
+	result, err := s.streamDramaText(callCtx, j, snap, prompt)
+	if err != nil {
+		var business *errcode.Error
+		if !errors.As(err, &business) {
+			err = &dramaCallFailure{err: err} // 上游、网络、超时：保留原始错误给日志，给用户的文案仍由 dramaFailure 决定
+		}
+		return nil, 0, nil, err
+	}
+	decoded, invalid = drama.DecodeOutput(step, []byte(result.Text))
+	if invalid == nil && validate != nil {
+		invalid = validate(decoded)
+	}
+	if invalid != nil {
+		logger.Ctx(ctx).Warn("短剧模型输出不合格", append([]zap.Field{logger.Event(logger.EventRunStep), zap.String("call_id", callID),
+			zap.String("error_type", "invalid_output"), zap.String("validation_error", invalid.Error()), zap.String("finish_reason", result.FinishReason)}, callFields...)...)
+		return nil, 0, invalid, nil
+	}
+	var usage *modelcfg.Usage
+	if !result.UsageMissing {
+		usage = &modelcfg.Usage{InputTokens: max(0, result.Usage.InputTokens), OutputTokens: max(0, result.Usage.OutputTokens)}
+	}
+	quoted := modelcfg.Quote(snap.Model.Pricing, snap.Model.Capabilities, modelcfg.Spec{PromptChars: chars, Params: map[string]any{}})
+	return decoded, modelcfg.Settle(snap.Model.Pricing, quoted, usage), nil, nil
 }
 
 // dramaTemplate 选择本次调用的模板与正文：用户自写或技能提示词是「替换正文、Schema 固定」，始终用用户正文；

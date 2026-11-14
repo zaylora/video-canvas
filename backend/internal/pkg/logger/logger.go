@@ -2,6 +2,7 @@ package logger
 
 import (
 	"os"
+	"strconv"
 	"time"
 
 	"go.uber.org/zap"
@@ -104,9 +105,21 @@ func Close() {
 
 func L() *zap.Logger { return l }
 
-// TaskID 是任务日志的统一 task_id 字段：值是界面上展示的十六进制任务编号（idcodec 编码），
-// 用户把编号报过来就能原样搜到；不要再写 zap.Uint64("task_id", id)。
-func TaskID(id uint64) zap.Field { return zap.String("task_id", idcodec.Encode(id)) }
+// RunField 是一个运行的关联字段（一个 Field 同时输出 run_kind 和 run_id），用在拿不到运行上下文的地方。
+func RunField(kind, id string) zap.Field {
+	return zap.Inline(zapcore.ObjectMarshalerFunc(func(enc zapcore.ObjectEncoder) error {
+		enc.AddString("run_kind", kind)
+		enc.AddString("run_id", id)
+		return nil
+	}))
+}
+
+// AgentRun 是 Agent 运行的关联字段：run_id 是后台「运行记录」里显示的十进制编号。
+func AgentRun(id uint64) zap.Field { return RunField("agent", strconv.FormatUint(id, 10)) }
+
+// GenRun 是生成任务的运行字段（一个 Field 同时输出 run_kind=gen 和 run_id）：用在拿不到运行上下文的地方
+// （如对账、批量取消）。有 ctx 时用 Ctx(ctx)，不要手写 task_id。
+func GenRun(id uint64) zap.Field { return RunField("gen", idcodec.Encode(id)) }
 
 // GenRunID 返回生成任务在界面上的编号（idcodec 十六进制），即 run_kind=gen 的 run_id。
 func GenRunID(id uint64) string { return idcodec.Encode(id) }

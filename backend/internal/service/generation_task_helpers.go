@@ -22,7 +22,7 @@ func taskView(t *model.GenerationTask) *model.GenerationTaskView {
 	if len(t.OutputJSON) > 0 {
 		var decoded []model.TaskOutput
 		if err := json.Unmarshal(t.OutputJSON, &decoded); err != nil {
-			logger.Warn("解析任务 output_json 失败", logger.TaskID(t.ID), zap.Error(err))
+			logger.Warn("解析任务 output_json 失败", logger.GenRun(t.ID), zap.Error(err))
 		} else if decoded != nil {
 			outputs = decoded
 		}

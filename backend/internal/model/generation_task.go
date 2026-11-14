@@ -1,6 +1,8 @@
 package model
 
 import (
+	"strconv"
+	"strings"
 	"time"
 
 	"gorm.io/datatypes"
@@ -154,4 +156,17 @@ type ListGenerationTaskReq struct {
 	Status          string `form:"status" binding:"omitempty,oneof=active" label:"状态"` // 状态过滤，目前仅支持 active（非终态）
 	NodeID          string `form:"node_id" binding:"max=64" label:"节点"`                // 前端节点 id（与 generation_tasks.node_id 列宽一致）
 	CanvasProjectID string `form:"canvas_project_id" binding:"max=64" label:"画布"`      // 所属画布，十进制或编码画布 ID
+}
+
+// RunParent 返回发起这个任务的运行（写进日志的 parent_kind / parent_id）：Agent 运行、营销脚本或短剧片段；画布里直接生成的没有。
+func (t *GenerationTask) RunParent() (kind, id string) {
+	switch {
+	case t.AgentRunID != 0:
+		return "agent", strconv.FormatUint(t.AgentRunID, 10)
+	case strings.HasPrefix(t.NodeID, MarketingNodePrefix):
+		return "mkt_script", strings.TrimPrefix(t.NodeID, MarketingNodePrefix)
+	case strings.HasPrefix(t.NodeID, "seg:"):
+		return "drama_segment", strings.TrimPrefix(t.NodeID, "seg:")
+	}
+	return "", ""
 }

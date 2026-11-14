@@ -30,11 +30,15 @@ const (
 	StatusCanceled  = "canceled"
 	StatusExpired   = "expired"
 	StatusPaused    = "paused"
+	StatusSkipped   = "skipped" // 依赖没满足，本次没有执行（不算失败）
 	StatusUnknown   = "unknown" // 兜底收尾：业务开始了运行却没有收尾
 )
 
 // ErrorTypeInternal 是需要人处理的失败类型，run.finish 用 Error 级输出。
 const ErrorTypeInternal = "internal"
+
+// FieldNeedsAttention 是 run.finish 的可选字段：业务认为这次失败需要人处理（如合成时 ffmpeg 出错）时带上 true，收尾行用 Error 级。
+const FieldNeedsAttention = "needs_attention"
 
 // Event 返回 event 字段。
 func Event(name string) zap.Field { return zap.String("event", name) }
@@ -74,6 +78,18 @@ func BeginRun(ctx context.Context, ref RunRef) (context.Context, *Run) {
 	r.ctx = ctx
 	NoteRun(ctx, ref.Kind, ref.ID)
 	return ctx, r
+}
+
+// EnsureRun 返回 ctx 上已有的同一个运行（队列中间件挂上的）；没有或不是同一个时新开一个。
+// 业务入口用它，这样不经过队列直接调用（测试、同步路径）时也有运行上下文。
+func EnsureRun(ctx context.Context, ref RunRef) (context.Context, *Run) {
+	if r := RunOf(ctx); r != nil && r.ref.Kind == ref.Kind && r.ref.ID == ref.ID {
+		if ref.UserID != 0 {
+			r.SetUser(ref.UserID)
+		}
+		return ctx, r
+	}
+	return BeginRun(ctx, ref)
 }
 
 // RunOf 返回 ctx 上的运行；没有时返回 nil（方法都可以安全调用）。
@@ -201,11 +217,11 @@ func (r *Run) finish(msg, status string, fields []zap.Field) {
 // finishLevel 按终态和错误类型选收尾行的级别。
 func finishLevel(status string, fields []zap.Field) zapcore.Level {
 	switch status {
-	case StatusSucceeded, StatusPaused:
+	case StatusSucceeded, StatusPaused, StatusSkipped:
 		return zapcore.InfoLevel
 	}
 	for _, f := range fields {
-		if f.Key == "error_type" && f.String == ErrorTypeInternal {
+		if (f.Key == "error_type" && f.String == ErrorTypeInternal) || (f.Key == FieldNeedsAttention && f.Integer == 1) {
 			return zapcore.ErrorLevel
 		}
 	}

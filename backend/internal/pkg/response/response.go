@@ -44,11 +44,8 @@ func NoContent(c *gin.Context) {
 func Fail(c *gin.Context, err error) {
 	var e *errcode.Error
 	if !errors.As(err, &e) {
-		logger.Error("internal error",
-			zap.Error(err),
-			zap.String("request_id", utils.GetRequestID(c)),
-			zap.String("path", c.Request.URL.Path),
-		)
+		// 带上请求的关联字段（request_id、user_id、请求里的运行），和访问日志、业务日志能用同一个编号串起来
+		logger.Ctx(c.Request.Context()).Error("internal error", zap.Error(err), zap.String("path", c.Request.URL.Path))
 		e = errcode.ErrInternal
 	}
 	c.AbortWithStatusJSON(e.HTTPStatus(), Body{Code: e.Code, Msg: e.Msg, RequestID: utils.GetRequestID(c)})

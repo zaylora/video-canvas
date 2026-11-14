@@ -12,8 +12,11 @@ import (
 
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
+	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/provider"
 	"video-canvas/internal/repository"
+
+	"go.uber.org/zap"
 )
 
 // dramaComposeTimeout 同时限制下载、全部转码和对象写入，避免整集任务无限占用 worker。
@@ -143,10 +146,13 @@ func (s *DramaService) handleCompose(ctx context.Context, run *dramaRun) error {
 		}
 	}()
 	committed, err = s.commitCompose(ctx, run.job, asset, input)
+	if committed {
+		logger.RunOf(ctx).End(logger.StatusSucceeded, zap.Int("segments", len(input.AssetIDs)), zap.Ints("skipped_seqs", input.SkippedSeqs))
+	}
 	return err
 }
 
-// renderCompose 下载和转码阶段只返回固定原因文案，避免暴露存储地址或 ffmpeg 本地路径。
+// renderCompose 下载和转码阶段给用户只返回固定原因文案，避免暴露存储地址或 ffmpeg 本地路径；底层原因经 withCause 留给日志。
 func (s *DramaService) renderCompose(ctx context.Context, job *model.DramaJob) (*model.Asset, *dramaComposeInput, error) {
 	if s.compose == nil || s.assets == nil {
 		return nil, nil, errcode.ErrInternal.WithMsg("转码失败：合成服务未配置")
@@ -157,14 +163,14 @@ func (s *DramaService) renderCompose(ctx context.Context, job *model.DramaJob) (
 	}
 	dir, err := os.MkdirTemp("", "vc-drama-compose-*")
 	if err != nil {
-		return nil, nil, errcode.ErrInternal.WithMsg("转码失败：无法创建临时目录")
+		return nil, nil, withCause(errcode.ErrInternal.WithMsg("转码失败：无法创建临时目录"), err, "compose_transcode")
 	}
 	defer func() { _ = os.RemoveAll(dir) }() // 临时文件没有外部引用，所有退出路径均清理。
 	paths := make([]string, 0, len(input.AssetIDs))
 	for i, id := range input.AssetIDs {
 		path := filepath.Join(dir, fmt.Sprintf("input-%d.mp4", i))
 		if err := s.downloadCompose(ctx, job.UserID, id, path); err != nil {
-			return nil, nil, errcode.ErrInternal.WithMsg("下载失败：无法读取采用视频")
+			return nil, nil, withCause(errcode.ErrInternal.WithMsg("下载失败：无法读取采用视频"), fmt.Errorf("素材 %d：%w", id, err), "compose_download")
 		}
 		paths = append(paths, path)
 		if err := s.dramaProgress(ctx, job, (i+1)*40/len(input.AssetIDs)); err != nil {
@@ -173,14 +179,14 @@ func (s *DramaService) renderCompose(ctx context.Context, job *model.DramaJob) (
 	}
 	dst := filepath.Join(dir, "final.mp4")
 	if err := s.compose.Compose(ctx, paths, dst); err != nil {
-		return nil, nil, errcode.ErrInternal.WithMsg("转码失败：无法合成视频")
+		return nil, nil, withCause(errcode.ErrInternal.WithMsg("转码失败：无法合成视频"), err, "compose_transcode")
 	}
 	if err := s.dramaProgress(ctx, job, 80); err != nil {
 		return nil, nil, err
 	}
 	asset, err := s.assets.PrepareDramaVideo(ctx, job.UserID, dst)
 	if err != nil {
-		return nil, nil, errcode.ErrInternal.WithMsg("转码失败：成片存储失败")
+		return nil, nil, withCause(errcode.ErrInternal.WithMsg("转码失败：成片存储失败"), err, "compose_store")
 	}
 	return asset, &input, nil
 }

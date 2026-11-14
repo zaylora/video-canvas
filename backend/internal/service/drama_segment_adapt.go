@@ -12,7 +12,11 @@ import (
 	"video-canvas/internal/drama"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
+	"video-canvas/internal/pkg/idcodec"
+	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/repository"
+
+	"go.uber.org/zap"
 )
 
 // DramaSegmentAdapter 用项目文本模型把片段原稿转写成目标平台写法。
@@ -60,9 +64,13 @@ func (s *DramaSegmentService) Adapt(ctx context.Context, userID, sid uint64, req
 		return nil, errcode.ErrDramaAdaptBusy
 	}
 	defer s.adapting.Delete(key)
+	// 转写是一次同步运行：开始、每次模型调用、结束都进日志，run_id 是片段编号
+	ctx, run := logger.BeginRun(ctx, logger.RunRef{Kind: "adapt", ID: idcodec.Encode(sid), UserID: userID})
+	run.Start(zap.String("format", req.Format), zap.Int("seconds", row.Seconds), zap.String("drama_id", idcodec.Encode(p.ID)))
 	source := row.Prompt
 	out, credits, err := s.adapter.AdaptSegment(ctx, p, req.Format, drama.AdaptInput{Source: source, Seconds: row.Seconds, Ratio: p.Ratio})
 	if err != nil {
+		endAdapt(run, err)
 		return nil, err
 	}
 	// 4. 写回时重新按项目→片段加锁；不再比较 revision：转写期间用户可能又改了原稿（自动保存会推高 revision），
@@ -88,8 +96,10 @@ func (s *DramaSegmentService) Adapt(ctx context.Context, userID, sid uint64, req
 		return chargeAdapt(ctx, tx, userID, sid, credits, note)
 	})
 	if err != nil {
+		endAdapt(run, err)
 		return nil, segmentError(err)
 	}
+	run.End(logger.StatusSucceeded, zap.Int("credits", credits))
 	// 5. 推送完整视图：转写可能耗时几十秒，用户离开片段再回来也能看到结果
 	return s.changedView(ctx, userID, sid)
 }
@@ -162,4 +172,11 @@ func adaptFormatLabel(format string) string {
 		return "H3"
 	}
 	return "通用"
+}
+
+// endAdapt 记转写失败的收尾行：给用户的文案、完整原因和分类。
+func endAdapt(run *logger.Run, err error) {
+	code, message := dramaFailure(err)
+	run.End(logger.StatusFailed, zap.Int("error_code", code), zap.String("error_message", message),
+		zap.String("error_type", dramaErrorType(err)), zap.String("error", err.Error()))
 }

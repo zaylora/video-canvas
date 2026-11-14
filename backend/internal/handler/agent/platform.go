@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"cmp"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -15,6 +16,7 @@ import (
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/pkg/idcodec"
+	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/pkg/response"
 	agentsvc "video-canvas/internal/service/agent"
 )
@@ -118,6 +120,9 @@ func runContextFrom(c *gin.Context) (agentsvc.RunContext, error) {
 	if err != nil || json.Unmarshal(b, &rc) != nil {
 		return rc, errors.New(RunContextHeader + " 必须是运行上下文 JSON 的 base64url")
 	}
+	// 平台 API 的每个请求都代表某次 Agent 运行：挂到请求 context 上，之后的模型调用、工具调用、外部请求日志都带上它
+	ctx, _ := logger.EnsureRun(c.Request.Context(), logger.RunRef{Kind: "agent", ID: strconv.FormatUint(rc.RunID, 10), UserID: rc.UserID})
+	c.Request = c.Request.WithContext(ctx)
 	return rc, nil
 }
 
@@ -146,9 +151,11 @@ func (h *PlatformHandler) ChatCompletions(c *gin.Context) {
 		return
 	}
 	serveModelStream(c, func(ctx context.Context, body []byte, headers http.Header, write func([]byte)) error {
-		if purpose := agentsvc.ModelPurposeOf(c.GetHeader("X-Agent-Purpose")); purpose != "" { // 只认已知的用途：别的值一律当普通对话
+		purpose := agentsvc.ModelPurposeOf(c.GetHeader("X-Agent-Purpose"))
+		if purpose != "" { // 只认已知的用途：别的值一律当普通对话
 			ctx = agentsvc.WithModelPurpose(ctx, purpose)
 		}
+		ctx = logger.WithPurpose(ctx, "agent."+cmp.Or(purpose, "main"))
 		return h.svc.ProxyModelPlatform(ctx, rc, body, func(id uint64) { headers.Set(CallIDHeader, strconv.FormatUint(id, 10)) }, write)
 	})
 }

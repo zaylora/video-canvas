@@ -179,4 +179,26 @@ describe("JobBar：自动规划行", () => {
     expect(rows[1].textContent).toContain("分集剧本");
     await m.unmount();
   });
+
+  test("用户任务失败：原因下方显示可复制的任务 ID（运维按它查服务器日志）；进行中不显示", async () => {
+    const userJob = {
+      id: "9f3c1a7e5b2d4c6f8a0e1b3d5f7a9c2e",
+      step: "scripts",
+      lane: "user",
+      episodes: [3],
+      batchFrom: null,
+      batchTo: null,
+    } as const;
+    const failed = await mountBar(drama({ phase: "done" }), [
+      job({ ...userJob, status: "failed", errorCode: 67008, errorMessage: "模型输出无法解析" }),
+    ]);
+    expect(failed.container.textContent).toContain("任务 ID：9f3c1a7e5b2d4c6f8a0e1b3d5f7a9c2e");
+    await failed.unmount();
+
+    const running = await mountBar(drama({ phase: "done" }), [
+      job({ ...userJob, status: "running" }),
+    ]);
+    expect(running.container.textContent).not.toContain("任务 ID");
+    await running.unmount();
+  });
 });

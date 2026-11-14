@@ -4,12 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"video-canvas/internal/drama"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
+	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/repository"
+
+	"go.uber.org/zap"
 )
 
 // applyDramaOutput 写回已经通过结构校验的项目和集数据。
@@ -189,6 +193,7 @@ func (s *DramaService) failDrama(ctx context.Context, j *model.DramaJob, cause e
 		return ctx.Err()
 	}
 	code, message := dramaFailure(cause)
+	failed, paused := false, false
 	err := s.repo.WithTx(ctx, func(tx repository.DramaTx) error {
 		p, e := tx.Project(ctx, j.UserID, j.DramaID, true)
 		if e != nil {
@@ -209,7 +214,9 @@ func (s *DramaService) failDrama(ctx context.Context, j *model.DramaJob, cause e
 			return e
 		}
 		j = current
+		failed = true
 		if pipelineJob(*j) {
+			paused = true
 			return setPlanningState(ctx, tx, p, "paused", planningPauseCode(code), message)
 		}
 		return tx.UpdateProject(ctx, p.UserID, p.ID, p.Revision, map[string]any{"status": "failed"})
@@ -222,6 +229,13 @@ func (s *DramaService) failDrama(ctx context.Context, j *model.DramaJob, cause e
 	}
 	s.publish(ctx, j)
 	s.publishDrama(ctx, j.UserID, j.DramaID)
+	if failed {
+		// 失败只在这里记一次（E7）：给用户的文案、完整原因、分类；提示词和模型回复在 payload.log，按 last_call_id 找
+		_, run := dramaJobRun(ctx, j)
+		run.End(logger.StatusFailed, zap.Int("error_code", code), zap.String("error_message", message), zap.String("error_type", dramaErrorType(cause)),
+			zap.String("error", cause.Error()), zap.Int("refunded", j.FrozenCredits), zap.Bool("paused", paused),
+			zap.Bool(logger.FieldNeedsAttention, strings.HasPrefix(dramaErrorType(cause), "compose_")))
+	}
 	return nil
 }
 

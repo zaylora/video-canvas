@@ -67,7 +67,7 @@ func (b *AgentBridge) runSetup(ctx context.Context, run *model.AgentRun, modelKe
 	if mode == model.AgentModeAdmin {
 		catalog = nil
 	} else if brief, err := b.skillLib().Enabled(ctx); err != nil {
-		logger.Warn("读取技能目录失败，本次运行的提示词不带技能目录", zap.Error(err), zap.Uint64("run_id", run.ID))
+		logger.Warn("读取技能目录失败，本次运行的提示词不带技能目录", zap.Error(err), logger.AgentRun(run.ID))
 	} else {
 		for _, sk := range brief {
 			catalog = append(catalog, prompts.SkillItem{Name: sk.Name, Description: sk.Description})

@@ -392,7 +392,7 @@ func (s *ObserveService) syncOne(ctx context.Context, ref RemoteRunRef, t *syncT
 	case errors.Is(err, repository.ErrNotFound):
 		t.maxOK = max(t.maxOK, ref.UpdatedAt) // 刚列出来就没了（不该发生），没必要反复重试
 	default:
-		logger.Warn("汇总 Agent 服务里的运行摘要失败", zap.Error(err), zap.String("run_id", ref.ID))
+		logger.Warn("汇总 Agent 服务里的运行摘要失败", zap.Error(err), logger.RunField("agent", ref.ID))
 		if t.firstFail == 0 || ref.UpdatedAt < t.firstFail {
 			t.firstFail = ref.UpdatedAt
 		}

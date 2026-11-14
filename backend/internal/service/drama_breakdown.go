@@ -25,7 +25,7 @@ func (s *DramaService) breakdownBatches(ctx context.Context, run *dramaRun, vars
 		}
 		vars["episodes"] = dramaScriptInputs(eps)
 		scope := dramaEpisodeNumbers(eps)
-		out, c, err := s.callDrama(ctx, run.job, &run.snapshot, "breakdown", vars, func(v any) error { return validateBreakdownScope(v.(drama.BreakdownOutput), scope) })
+		out, c, err := s.callDrama(ctx, run.job, &run.snapshot, "breakdown", "batch="+episodeRange(scope), vars, func(v any) error { return validateBreakdownScope(v.(drama.BreakdownOutput), scope) })
 		if err != nil {
 			return drama.BreakdownOutput{}, 0, err
 		}

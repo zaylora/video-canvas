@@ -103,9 +103,11 @@ func (s *DramaService) guessKindByAI(ctx context.Context, modelKey, text string)
 	}
 	callCtx, cancel := context.WithTimeout(ctx, kindGuessTimeout)
 	defer cancel()
+	callCtx, callID := logger.WithCall(callCtx, "drama.preflight", zap.String("model_key", snap.Model.Key))
 	res, err := s.streamText(callCtx, snap, drama.KindPrompt(drama.KindSample(text)), func(c context.Context) error { return c.Err() })
 	if err != nil {
-		logger.Warn("预检 AI 判断体裁失败", zap.Error(err))
+		// 降级：按「认不出」处理，让用户手选体裁；调用详情在同一 call_id 的 llm.call 和 payload.log 里
+		logger.Ctx(ctx).Warn("预检 AI 判断体裁失败，按认不出处理", zap.String("call_id", callID), zap.String("error", err.Error()))
 		return "", "", false
 	}
 	return drama.ParseKindGuess(res.Text)

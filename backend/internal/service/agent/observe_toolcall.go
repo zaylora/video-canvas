@@ -82,7 +82,7 @@ func (b *AgentBridge) recordToolStart(ctx context.Context, run *model.AgentRun, 
 	}
 	c := &model.AgentToolCall{RunID: run.ID, SessionID: run.SessionID, ToolCallID: id, ParentID: parentID, Name: name, ArgsJSON: ToolArgsForRecord(args), StartedAt: at}
 	if err := b.toolRec.StartToolCall(ctx, c); err != nil {
-		logger.Warn("记录工具调用失败", zap.Error(err), zap.Uint64("run_id", run.ID), zap.String("tool", name))
+		logger.Warn("记录工具调用失败", zap.Error(err), logger.AgentRun(run.ID), zap.String("tool", name))
 	}
 }
 
@@ -96,7 +96,7 @@ func (b *AgentBridge) recordToolEnd(ctx context.Context, run *model.AgentRun, id
 	summary := truncateRunes(firstNonEmpty(res.summary, summarizeError(res)), maxToolSummaryRunes)
 	r := ToolCallResult{ResultText: text, Truncated: cut, IsError: res.IsError, Summary: summary, EndedAt: now, DurationMs: int(now.Sub(started).Milliseconds())}
 	if err := b.toolRec.FinishToolCall(context.WithoutCancel(ctx), run.ID, id, r); err != nil {
-		logger.Warn("补记工具调用结果失败", zap.Error(err), zap.Uint64("run_id", run.ID), zap.String("call_id", id))
+		logger.Warn("补记工具调用结果失败", zap.Error(err), logger.AgentRun(run.ID), zap.String("tool_call_id", id))
 	}
 }
 

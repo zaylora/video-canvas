@@ -18,7 +18,7 @@ func (s *DramaService) runAnalyze(ctx context.Context, p *model.DramaProject, j 
 	if err := json.Unmarshal(j.InputJSON, &vars); err != nil {
 		return nil, 0, err
 	}
-	return s.callDrama(ctx, j, snap, "analyze", vars, nil)
+	return s.callDrama(ctx, j, snap, "analyze", "", vars, nil)
 }
 
 // dramaContextLimit 保守按1字1Token限制原文块为上下文窗口的60%。

@@ -9,8 +9,12 @@ import (
 	"video-canvas/internal/drama"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
+	"video-canvas/internal/pkg/idcodec"
+	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/provider"
 	"video-canvas/internal/repository"
+
+	"go.uber.org/zap"
 )
 
 // dramaRun 汇集一个步骤的持久化输入，不持有数据库事务跨网络请求。
@@ -19,6 +23,7 @@ type dramaRun struct {
 	job      *model.DramaJob
 	snapshot provider.Snapshot
 	episodes []model.DramaEpisode
+	resumed  bool // 之前开始过（崩溃或队列重投后再次执行）
 }
 
 // dramaResult 保存步骤输出与实际费用，画布提交后可从checkpoint恢复。
@@ -50,6 +55,12 @@ func (s *DramaService) HandleDrama(ctx context.Context, userID, dramaID, jobID u
 	if run == nil {
 		return nil
 	}
+	ctx, logRun := dramaJobRun(ctx, run.job)
+	startFields := append(dramaFields(run.job), zap.Bool("resumed", run.resumed))
+	if !run.resumed && run.job.StartedAt != nil {
+		startFields = append(startFields, zap.Int64("queue_wait_ms", run.job.StartedAt.Sub(run.job.CreatedAt).Milliseconds()))
+	}
+	logRun.Start(startFields...)
 	s.publish(ctx, run.job)
 	if run.job.Step == "compose" {
 		return s.handleCompose(ctx, run)
@@ -96,6 +107,7 @@ func (s *DramaService) startDrama(ctx context.Context, userID, dramaID, jobID ui
 		if e != nil {
 			return e
 		}
+		run.resumed = run.job.StartedAt != nil
 		if run.job.StartedAt == nil {
 			now := time.Now()
 			run.job.StartedAt = &now
@@ -115,6 +127,9 @@ func (s *DramaService) startDrama(ctx context.Context, userID, dramaID, jobID ui
 // executeDrama 按步骤运行固定流水线；画布已提交时只恢复结算数据。
 func (s *DramaService) executeDrama(ctx context.Context, run *dramaRun) (*dramaResult, error) {
 	if saved, ok, err := restoreDramaCheckpoint(run.job); ok || err != nil {
+		if ok {
+			logger.Ctx(ctx).Info("短剧任务从检查点恢复", logger.Event(logger.EventRunStep), zap.Bool("canvas_committed", dramaCanvasCommitted(run.job)))
+		}
 		return saved, err
 	}
 	vars := s.dramaVariables(run.project)
@@ -129,7 +144,7 @@ func (s *DramaService) executeDrama(ctx context.Context, run *dramaRun) (*dramaR
 		if err = json.Unmarshal(run.job.InputJSON, &vars); err != nil {
 			return nil, err
 		}
-		result.output, result.cost, err = s.callDrama(ctx, run.job, &run.snapshot, "plan", vars, func(v any) error { return v.(drama.PlanOutput).ValidateCoverage(run.job.BatchFrom, run.job.BatchTo) })
+		result.output, result.cost, err = s.callDrama(ctx, run.job, &run.snapshot, "plan", "", vars, func(v any) error { return v.(drama.PlanOutput).ValidateCoverage(run.job.BatchFrom, run.job.BatchTo) })
 	case "scripts":
 		result.output, result.cost, err = s.runScripts(ctx, run.project, run.job, &run.snapshot, run.episodes, selected)
 	case "breakdown":
@@ -174,7 +189,7 @@ func (s *DramaService) runAssetPrompts(ctx context.Context, run *dramaRun, vars 
 		return nil, errcode.ErrDramaStepNotReady.WithMsg("没有待生成提示词的新资产")
 	}
 	vars["assets"] = assets
-	out, cost, err := s.callDrama(ctx, run.job, &run.snapshot, "asset_prompts", vars, func(v any) error { return validatePromptCoverage(v.(drama.AssetPromptsOutput), assets) })
+	out, cost, err := s.callDrama(ctx, run.job, &run.snapshot, "asset_prompts", "", vars, func(v any) error { return validatePromptCoverage(v.(drama.AssetPromptsOutput), assets) })
 	if err != nil {
 		return nil, err
 	}
@@ -242,6 +257,7 @@ func dramaCanvasCommitted(j *model.DramaJob) bool {
 // commitDrama 输出、结算和自动后继任务在同一事务提交。
 func (s *DramaService) commitDrama(ctx context.Context, run *dramaRun, result *dramaResult) error {
 	var completed, following *model.DramaJob
+	finished := false
 	nextSnap := &run.snapshot
 	var nextModelError error
 	if pipelineJob(*run.job) {
@@ -283,6 +299,7 @@ func (s *DramaService) commitDrama(ctx context.Context, run *dramaRun, result *d
 		if e = s.finishTx(ctx, tx, current, "succeeded", 0, "", result.cost, audit); e != nil {
 			return e
 		}
+		finished = true
 		if nextModelError != nil && p.Phase == "running" && p.SourceKind != "script" && p.PlanCursor < p.RangeEnd {
 			code, msg := dramaFailure(nextModelError)
 			return setPlanningState(ctx, tx, p, "paused", planningPauseCode(code), msg)
@@ -296,6 +313,14 @@ func (s *DramaService) commitDrama(ctx context.Context, run *dramaRun, result *d
 	s.publish(ctx, completed)
 	s.publish(ctx, following)
 	s.publishDrama(ctx, run.job.UserID, run.job.DramaID)
+	if finished {
+		fields := []zap.Field{zap.Int("credits", completed.Credits), zap.Int("frozen_credits", completed.FrozenCredits)}
+		if following != nil {
+			fields = append(fields, zap.String("next_job_id", idcodec.Encode(following.ID)))
+		}
+		logger.RunOf(ctx).End(logger.StatusSucceeded, fields...)
+		logDramaCreated(ctx, following, completed)
+	}
 	if pipelineJob(*run.job) {
 		eps, e := s.repo.Episodes(ctx, run.job.UserID, run.job.DramaID)
 		if e != nil {

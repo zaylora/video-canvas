@@ -217,7 +217,7 @@ func (s *GenerationTaskService) publish(ctx context.Context, t *model.Generation
 	if s.observer != nil {
 		if err := s.observer.OnTaskChanged(ctx, t); err != nil {
 			// 任务与积分已提交，不能回滚或重标为失败；关联业务读取时按任务表重新对账。
-			logger.Warn("更新任务关联业务失败，读取时重新对账", logger.TaskID(t.ID), zap.Error(err))
+			logger.Warn("更新任务关联业务失败，读取时重新对账", logger.GenRun(t.ID), zap.Error(err))
 		}
 	}
 }

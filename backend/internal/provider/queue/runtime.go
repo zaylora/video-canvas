@@ -399,10 +399,10 @@ func (rt *Runtime) sweep(ctx context.Context) {
 	}
 	for _, t := range tasks {
 		if err := rt.insert(ctx, t.ID, t.NextPollAt); err != nil {
-			rt.log.Warn("对账：补入队失败", logger.TaskID(t.ID), zap.Error(err))
+			rt.log.Warn("对账：补入队失败", logger.GenRun(t.ID), zap.Error(err))
 			continue
 		}
-		rt.log.Info("对账：已为没有 job 的任务补入队", logger.TaskID(t.ID))
+		rt.log.Info("对账：已为没有 job 的任务补入队", logger.GenRun(t.ID))
 	}
 }
 

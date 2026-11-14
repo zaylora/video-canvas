@@ -10,9 +10,12 @@ import (
 	"video-canvas/internal/drama"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
+	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/provider"
 	"video-canvas/internal/provider/modelcfg"
 	"video-canvas/internal/repository"
+
+	"go.uber.org/zap"
 )
 
 // Estimate 使用现有模型定价及相同请求范围估价，不冻结积分。
@@ -103,6 +106,7 @@ func (s *DramaService) createDramaJob(ctx context.Context, userID, id uint64, ap
 		return nil, dramaError(err)
 	}
 	s.publish(ctx, job)
+	logDramaCreated(ctx, job, nil)
 	v := jobView(*job)
 	return &v, nil
 }
@@ -202,6 +206,7 @@ func (s *DramaService) ListJobs(ctx context.Context, userID, id uint64, active b
 func (s *DramaService) CancelJob(ctx context.Context, userID, dramaID, jobID uint64) (*model.DramaJobView, error) {
 	// 1. 按project→job→credit顺序加锁，取消和完成只有一个能结算。
 	var job *model.DramaJob
+	canceled := false
 	err := s.repo.WithTx(ctx, func(tx repository.DramaTx) error {
 		if _, e := tx.Project(ctx, userID, dramaID, true); e != nil {
 			return e
@@ -220,12 +225,20 @@ func (s *DramaService) CancelJob(ctx context.Context, userID, dramaID, jobID uin
 		if dramaCanvasCommitted(job) {
 			return errcode.ErrTaskNotCancelable.WithMsg("画布已写入，任务正在完成结算")
 		}
-		return s.finishTx(ctx, tx, job, "canceled", 0, "", 0, nil)
+		if e := s.finishTx(ctx, tx, job, "canceled", 0, "", 0, nil); e != nil {
+			return e
+		}
+		canceled = true
+		return nil
 	})
 	if err != nil {
 		return nil, dramaError(err)
 	}
 	s.publish(ctx, job)
+	if canceled {
+		_, run := dramaJobRun(ctx, job)
+		run.End(logger.StatusCanceled, append(dramaFields(job), zap.String("by", "user"), zap.Int("refunded", job.FrozenCredits))...)
+	}
 	v := jobView(*job)
 	return &v, nil
 }

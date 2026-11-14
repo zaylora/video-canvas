@@ -219,8 +219,8 @@ func TestWorker_Submit_Failures(t *testing.T) {
 	}
 }
 
-// 任务相关日志的 task_id 就是界面上展示的十六进制任务编号，用户把它报过来就能直接搜到。
-func TestWorker_Fail_LogTaskIDIsHex(t *testing.T) {
+// 任务相关日志带 run_kind=gen 和 run_id：run_id 就是界面上展示的十六进制任务编号，用户把它报过来就能直接搜到。
+func TestWorker_Fail_LogRunIDIsHex(t *testing.T) {
 	env := newWkEnv(nil)
 	env.task(1, model.TaskPending, nil)
 	env.exec.submitFn = func(int, provider.SubmitInput) (*provider.SubmitResult, error) {
@@ -232,8 +232,8 @@ func TestWorker_Fail_LogTaskIDIsHex(t *testing.T) {
 	if len(entries) != 1 {
 		t.Fatalf("应记一条任务失败日志：%d", len(entries))
 	}
-	if got := entries[0]["task_id"]; got != idcodec.Encode(1) {
-		t.Fatalf("日志的 task_id 应是十六进制编号 %s：%v", idcodec.Encode(1), entries[0])
+	if entries[0]["run_kind"] != "gen" || entries[0]["run_id"] != idcodec.Encode(1) {
+		t.Fatalf("日志的 run_id 应是十六进制编号 %s：%v", idcodec.Encode(1), entries[0])
 	}
 }
 

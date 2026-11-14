@@ -19,6 +19,7 @@ import (
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/pkg/idcodec"
+	"video-canvas/internal/pkg/logger"
 	agentsvc "video-canvas/internal/service/agent"
 )
 
@@ -41,6 +42,8 @@ type fakePlatform struct {
 	// 模型代理
 	body        string
 	purpose     string
+	logRef      logger.RunRef // 模型代理收到的 ctx 上挂着的运行
+	logPurpose  string        // 模型代理收到的 ctx 上声明的调用用途
 	modelCallID uint64
 	lines       []string
 	// 用量
@@ -168,6 +171,7 @@ func (f *fakePlatform) EndPlatformRun(runID uint64) { f.ended = append(f.ended, 
 
 func (f *fakePlatform) ProxyModelPlatform(ctx context.Context, rc agentsvc.RunContext, body []byte, onCall func(uint64), write func([]byte)) error {
 	f.rc, f.body, f.purpose = rc, string(body), agentsvc.ModelPurposeFrom(ctx)
+	f.logRef, f.logPurpose = logger.RunOf(ctx).Ref(), logger.CallOf(ctx).Purpose
 	if f.err != nil {
 		return f.err
 	}
@@ -910,5 +914,19 @@ func TestPlatformHandler_TaskStatus(t *testing.T) {
 				t.Errorf("应 400 参数错误: %d %s", w.Code, w.Body)
 			}
 		})
+	}
+}
+
+// 平台 API 的请求都属于某次 Agent 运行：模型代理收到的 ctx 上挂着这次运行（日志里 run_kind=agent、run_id 是十进制运行编号），
+// 并声明了调用用途，网关记的 llm.call 和 payload.log 据此归到这次运行。
+func TestPlatformHandler_ChatCompletions_AttachesAgentRunForLogs(t *testing.T) {
+	api := &fakePlatform{}
+	platformCall(newPlatformRouter(api), http.MethodPost, "/internal/platform/v1/model/chat/completions", `{"messages":[]}`,
+		map[string]string{RunContextHeader: ctxHeader(goodCtx), "X-Agent-Purpose": agentsvc.ModelPurposeSummary})
+	if api.logRef.Kind != "agent" || api.logRef.ID != "1152921504606846977" || api.logRef.UserID != 1 {
+		t.Errorf("ctx 上应挂着这次 Agent 运行：%+v", api.logRef)
+	}
+	if api.logPurpose != "agent."+agentsvc.ModelPurposeSummary {
+		t.Errorf("应声明调用用途：%q", api.logPurpose)
 	}
 }

@@ -120,7 +120,7 @@ func (w *Worker) log() *zap.Logger {
 
 // taskLog 返回带任务标识的日志：task_id（界面上展示的十六进制编号）、渠道 key（t.Provider 存的是渠道 key）、模型。
 func (w *Worker) taskLog(t *model.GenerationTask) *zap.Logger {
-	return w.log().With(logger.TaskID(t.ID), zap.String("channel", t.Provider), zap.String("model", t.ModelKey))
+	return w.log().With(logger.GenRun(t.ID), zap.String("channel", t.Provider), zap.String("model", t.ModelKey))
 }
 
 // Handle 处理一个任务的“这一步”：先做超时判断，再按状态分发（提交 / 轮询 / 转存）。任何 panic 只影响这一个任务，不会向上传播。
@@ -165,7 +165,15 @@ func (w *Worker) Handle(ctx context.Context, t model.GenerationTask) {
 		return
 	}
 
-	// 3. 按状态处理
+	// 3. 按状态处理；提交是这个运行真正开始干活的时候（之后每轮轮询都是新的队列执行，不再打开始行）
+	if t.Status == model.TaskPending {
+		startFields := []zap.Field{zap.String("kind", t.Kind), zap.String("model", t.ModelKey), zap.String("channel", t.Provider),
+			zap.String("plugin", snap.Plugin.Key), zap.String("plugin_version", snap.Plugin.Version), zap.Int64("queue_wait_ms", now.Sub(t.CreatedAt).Milliseconds())}
+		if kind, id := t.RunParent(); kind != "" {
+			startFields = append(startFields, zap.String("parent_kind", kind), zap.String("parent_id", id))
+		}
+		logger.RunOf(ctx).Start(startFields...)
+	}
 	switch t.Status {
 	case model.TaskPending:
 		w.submit(ctx, &t, snap)

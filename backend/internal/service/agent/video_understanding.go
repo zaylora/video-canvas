@@ -126,7 +126,7 @@ func (b *AgentBridge) understandVideo(ctx context.Context, tc *toolCall, ref can
 	// 4. 成功、失败及取消都结算已产生的用量；用户取消不能让这笔费用漏记。
 	if _, err := b.d.Billing.SettleExternal(context.WithoutCancel(ctx), call, snap.Model.Pricing,
 		CallOutcome{Result: res, InputChars: inputChars, Err: serr, Meta: meta}); err != nil {
-		logger.Error("视频理解结算失败", zap.Error(err), zap.Uint64("call_id", call.ID), zap.Uint64("run_id", run.ID))
+		logger.Error("视频理解结算失败", zap.Error(err), zap.Uint64("model_call_id", call.ID), logger.AgentRun(run.ID))
 	}
 	if ctx.Err() != nil {
 		return nil, ctx.Err()

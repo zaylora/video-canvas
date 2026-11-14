@@ -31,7 +31,7 @@ func Logger() gin.HandlerFunc {
 			fields = append(fields, zap.Uint64("user_id", uint64(uid)))
 		}
 		if kind, id := logger.RequestRun(ctx); kind != "" {
-			fields = append(fields, zap.String("run_kind", kind), zap.String("run_id", id))
+			fields = append(fields, logger.RunField(kind, id))
 		}
 		if len(c.Errors) > 0 {
 			fields = append(fields, zap.String("errors", c.Errors.String()))

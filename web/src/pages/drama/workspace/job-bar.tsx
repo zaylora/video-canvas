@@ -7,6 +7,7 @@ import { cancelJob, pausePlanning, resumePlanning, retryBuiltin, submitJob } fro
 import { dramaErrorMessage, jobFailureMessage } from "@/api/drama/errors";
 import type { DramaJob } from "@/api/drama/type";
 import { Button } from "@/components/ui/button";
+import { TaskIdTag } from "@/components/task-id-tag";
 import { DURATION, EASE_OUT, SPRING } from "@/lib/motion";
 import { useDramaJobsStore } from "@/store/drama";
 import { cn } from "@/lib/utils";
@@ -115,9 +116,13 @@ function JobRow({ job }: { job: DramaJob }) {
           </>
         ) : (
           <>
-            <span className="text-destructive min-w-0 flex-1 truncate">
-              <b className="font-medium">{jobTitle(job)}失败</b>
-              <span className="ml-2 text-xs">{jobFailureMessage(job)} · 失败不扣积分</span>
+            <span className="text-destructive min-w-0 flex-1">
+              <span className="block truncate">
+                <b className="font-medium">{jobTitle(job)}失败</b>
+                <span className="ml-2 text-xs">{jobFailureMessage(job)} · 失败不扣积分</span>
+              </span>
+              {/* 用户把任务 ID 发给运维，运维按它在服务器日志里查到这次运行（run_id 与它相同） */}
+              <TaskIdTag id={job.id} />
             </span>
             <Button variant="outline" size="xs" disabled={busy} onClick={() => void retry()}>
               <RotateCw />

@@ -105,7 +105,7 @@ func (w *Worker) flushFold(taskID uint64) {
 	}
 	if f.n > 1 {
 		logger.Payload(context.Background(), logger.PayloadRecord{Kind: "provider", Extra: []zap.Field{
-			zap.String("run_kind", "gen"), zap.String("run_id", logger.GenRunID(taskID)), zap.Int("folded", f.n-1)}})
+			logger.GenRun(taskID), zap.Int("folded", f.n-1)}})
 	}
 	f.held()
 }

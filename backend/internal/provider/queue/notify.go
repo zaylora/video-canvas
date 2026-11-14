@@ -12,6 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	"video-canvas/internal/model"
+	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/provider"
 )
 
@@ -32,7 +33,7 @@ func (w *notifyWorker) Work(ctx context.Context, job *river.Job[NotifyArgs]) err
 		return nil // 任务没了，或还没真的结束（不应发生）：没什么可通知的
 	}
 	if err := w.rt.cfg.Notifier.TaskSettled(ctx, provider.TaskSettledNotice{TaskID: t.ID, AgentRunID: job.Args.AgentRunID, Status: t.Status}); err != nil {
-		w.rt.log.Warn("通知 Agent 任务结束失败，稍后重试", zap.Uint64("task_id", t.ID), zap.Int("attempt", job.Attempt), zap.Error(err))
+		w.rt.log.Warn("通知 Agent 任务结束失败，稍后重试", logger.GenRun(t.ID), zap.Int("attempt", job.Attempt), zap.Error(err))
 		return err
 	}
 	return nil

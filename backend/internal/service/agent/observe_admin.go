@@ -232,7 +232,7 @@ func (s *ObserveService) RunRequests(ctx context.Context, who ObserveActor, runI
 		if len(rows[i].Body) > 0 {
 			body, err := gunzipBody(rows[i].Body)
 			if err != nil {
-				logger.Warn("解压模型请求体失败", zap.Error(err), zap.Uint64("call_id", rows[i].CallID))
+				logger.Warn("解压模型请求体失败", zap.Error(err), zap.Uint64("model_call_id", rows[i].CallID))
 			} else {
 				item.Body, item.Kept = body, true
 			}

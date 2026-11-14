@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -14,6 +15,7 @@ import (
 
 	"video-canvas/internal/marketing"
 	"video-canvas/internal/model"
+	"video-canvas/internal/pkg/idcodec"
 	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/provider"
 	"video-canvas/internal/repository"
@@ -35,12 +37,14 @@ type stepOutcome struct {
 	basis    []byte // follow 据以写成的拆解（JSON）
 	runID    uint64 // 产出脚本所属的环节运行
 	apply    func(ctx context.Context, tx repository.MarketingTx, round *model.MarketingRound) error
-	charge   bool // 上游确实被调用并产生了费用
+	charge   bool  // 上游确实被调用并产生了费用
+	err      error // 原始错误，只进日志（运行收尾行），用户看 errMsg
 }
 
 // HandleMarketingRound 是 River job 的入口：按依赖分两层执行轮次里排队中的环节（第一层 facts、reverse，第二层 follow、create），
 // 环节失败互不拖累；全部结束后定轮次终态。业务失败都落成环节运行的失败，只有基础设施错误才返回 error（队列重试）。
 func (s *MarketingService) HandleMarketingRound(ctx context.Context, roundID uint64) error {
+	ctx, logRun := logger.EnsureRun(ctx, logger.RunRef{Kind: "mkt_round", ID: idcodec.Encode(roundID)})
 	for {
 		round, err := s.repo.RoundByID(ctx, roundID, false)
 		if mktNotFound(err) {
@@ -49,9 +53,15 @@ func (s *MarketingService) HandleMarketingRound(ctx context.Context, roundID uin
 		if err != nil {
 			return err
 		}
+		logRun.SetUser(round.UserID)
 		if round.Status != model.MarketingRoundScripting {
+			// 本次执行跑过环节才收尾；醒来发现轮次早已结束的执行什么都不打
+			if logRun.Started() {
+				logRun.End(roundRunStatus(round.Status), zap.String("round_status", round.Status))
+			}
 			return nil
 		}
+		logRun.Start()
 		runs, err := s.repo.RoundRuns(ctx, roundID)
 		if err != nil {
 			return err
@@ -98,7 +108,7 @@ func (s *MarketingService) runLayer(ctx context.Context, round *model.MarketingR
 			defer wg.Done()
 			defer func() {
 				if r := recover(); r != nil {
-					logger.Error("营销环节运行 panic", zap.Uint64("run_id", run.ID), zap.Any("panic", r), zap.ByteString("stack", debug.Stack()))
+					logger.Ctx(ctx).Error("营销环节运行 panic", zap.String("step_run_id", idcodec.Encode(run.ID)), zap.Any("panic", r), zap.ByteString("stack", debug.Stack()))
 					s.failAfterPanic(ctx, round, &run)
 				}
 			}()
@@ -112,27 +122,34 @@ func (s *MarketingService) runLayer(ctx context.Context, round *model.MarketingR
 func (s *MarketingService) failAfterPanic(ctx context.Context, round *model.MarketingRound, run *model.MarketingStepRun) {
 	out := &stepOutcome{status: model.MarketingRunFailed, errMsg: "写脚本时出现内部错误，请重试"}
 	if err := s.finishRun(context.WithoutCancel(ctx), round, run, out); err != nil {
-		logger.Error("营销环节运行失败落库失败", zap.Uint64("run_id", run.ID), zap.Error(err))
+		logger.Ctx(ctx).Error("营销环节运行失败落库失败", zap.String("step_run_id", idcodec.Encode(run.ID)), zap.Error(err))
 	}
 }
 
 // execStep 执行一个环节运行：置为 running → 准备输入并调模型 → 落库、写脚本、结算。
 func (s *MarketingService) execStep(ctx context.Context, round *model.MarketingRound, run *model.MarketingStepRun) {
+	// 每个环节运行是一个 mkt 运行，父运行是轮次（队列任务）；模型调用经网关自动带上它
+	ctx, logRun := logger.BeginRun(ctx, logger.RunRef{Kind: "mkt", ID: idcodec.Encode(run.ID), UserID: round.UserID,
+		ParentKind: "mkt_round", ParentID: idcodec.Encode(round.ID)})
+	ctx = logger.WithPurpose(ctx, "mkt."+run.StepKey)
 	err := s.repo.WithTx(ctx, func(tx repository.MarketingTx) error {
 		return tx.UpdateRunIf(ctx, run.ID, []string{model.MarketingRunQueued, model.MarketingRunRunning},
 			map[string]any{"status": model.MarketingRunRunning, "started_at": s.now()})
 	})
 	if err != nil {
 		if !errorsIsConflict(err) {
-			logger.Warn("营销环节置为进行中失败", zap.Uint64("run_id", run.ID), zap.Error(err))
+			logger.Ctx(ctx).Warn("营销环节置为进行中失败", zap.Error(err))
 		}
 		return
 	}
+	logRun.Start(zap.String("step", run.StepKey))
 	s.pushRound(ctx, round.UserID, round.ID)
 	out := s.produce(ctx, round, run)
 	if err := s.finishRun(context.WithoutCancel(ctx), round, run, out); err != nil {
-		logger.Error("营销环节运行落库失败", zap.Uint64("run_id", run.ID), zap.Error(err))
+		logger.Ctx(ctx).Error("营销环节运行落库失败", zap.Error(err))
+		out.status, out.err = model.MarketingRunFailed, err
 	}
+	endStepRun(logRun, run.StepKey, out)
 }
 
 // produce 跑一个环节，把各种结局归一成 stepOutcome。
@@ -143,8 +160,9 @@ func (s *MarketingService) produce(ctx context.Context, round *model.MarketingRo
 	}
 	settings, err := settingsOf(round)
 	if err != nil {
-		logger.Error("解码轮次设置失败", zap.Uint64("round_id", round.ID), zap.Error(err))
-		return failedOutcome("写脚本失败，请重试")
+		out := failedOutcome("写脚本失败，请重试")
+		out.err = fmt.Errorf("解码轮次设置失败：%w", err)
+		return out
 	}
 	project, err := s.repo.ProjectByID(ctx, round.ProjectID)
 	if err != nil {
@@ -156,8 +174,9 @@ func (s *MarketingService) produce(ctx context.Context, round *model.MarketingRo
 	}
 	method, err := s.resolver.Method(ctx, step)
 	if err != nil {
-		logger.Error("读取环节方法失败", zap.String("step", run.StepKey), zap.Error(err))
-		return failedOutcome("读取环节方法失败，请重试")
+		out := failedOutcome("读取环节方法失败，请重试")
+		out.err = fmt.Errorf("读取环节方法失败：%w", err)
+		return out
 	}
 	snap, err := s.pickTextModel(ctx, settings.TextModel, needOf(run.StepKey))
 	if err != nil {
@@ -165,7 +184,7 @@ func (s *MarketingService) produce(ctx context.Context, round *model.MarketingRo
 	}
 	prep, err := s.prepareInput(ctx, round, project, settings, run.StepKey, snap)
 	if err != nil {
-		return &stepOutcome{status: model.MarketingRunFailed, errMsg: userMessage(err), model: snap.Model.Key, method: method.Snapshot()}
+		return &stepOutcome{status: model.MarketingRunFailed, errMsg: userMessage(err), model: snap.Model.Key, method: method.Snapshot(), err: err}
 	}
 	runCtx, cancel := context.WithTimeout(ctx, marketingStepTimeout)
 	defer cancel()
@@ -240,13 +259,12 @@ func (s *MarketingService) watchCancel(ctx context.Context, cancel context.Cance
 // classify 把 Runner 的结局转成环节结局：成功时解码输出并准备落库动作。
 func (s *MarketingService) classify(ctx context.Context, round *model.MarketingRound, project *model.MarketingProject, st model.MarketingSettings,
 	stepKey string, snap *provider.Snapshot, res *stepkit.Result, err error) *stepOutcome {
-	out := &stepOutcome{res: res, snap: snap}
+	out := &stepOutcome{res: res, snap: snap, err: err}
 	switch {
 	case err == nil:
 		out.charge = true
 		if applyErr := s.prepareApply(out, round, project, st, stepKey, res); applyErr != nil {
-			logger.Error("解码环节输出失败", zap.String("step", stepKey), zap.Error(applyErr))
-			out.status, out.errMsg = model.MarketingRunFailed, "模型输出无法解析，请重试"
+			out.status, out.errMsg, out.err = model.MarketingRunFailed, "模型输出无法解析，请重试", fmt.Errorf("解码环节输出失败：%w", applyErr)
 			return out
 		}
 		out.status = model.MarketingRunSucceeded
@@ -263,15 +281,13 @@ func (s *MarketingService) classify(ctx context.Context, round *model.MarketingR
 	case errors.Is(err, stepkit.ErrModelCapability):
 		out.status, out.errMsg = model.MarketingRunFailed, "所选文本模型不能处理这个环节，请换一个模型"
 	case errors.Is(err, stepkit.ErrCallFailed):
-		// 上游返回了错误就给用户看原文；网络断开、超时这类没有原文的用统一文案
-		logger.Warn("营销环节模型调用失败", zap.String("step", stepKey), zap.Error(err))
+		// 上游返回了错误就给用户看原文；网络断开、超时这类没有原文的用统一文案。原始错误进运行收尾行
 		out.status, out.errMsg = model.MarketingRunFailed, "文本模型暂时不可用，请稍后重试"
 		if msg := upstreamText(err); msg != "" {
 			out.errMsg = clipRunes(msg, marketingErrRunes)
 		}
 		out.charge = res != nil && res.Usage.InputTokens+res.Usage.OutputTokens > 0
 	default:
-		logger.Error("营销环节运行出错", zap.String("step", stepKey), zap.Error(err))
 		out.status, out.errMsg = model.MarketingRunFailed, "写脚本失败，请重试"
 	}
 	return out
@@ -291,8 +307,7 @@ func userMessage(err error) string {
 	if errors.As(err, &pe) {
 		return pe.msg
 	}
-	logger.Warn("准备环节输入失败", zap.Error(err))
-	return "读取素材失败，请重试"
+	return "读取素材失败，请重试" // 原始错误随结局进运行收尾行
 }
 
 // finishRun 在一个事务里落下环节结局：更新运行记录、写结果（事实卡 / 拆解 / 脚本）、结算积分。

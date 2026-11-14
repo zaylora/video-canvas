@@ -97,7 +97,7 @@ func (s *GenerationTaskService) SaveTrace(ctx context.Context, t *model.Generati
 func (s *GenerationTaskService) restartDeadline(t *model.GenerationTask, now time.Time, fields map[string]any) {
 	var snap provider.Snapshot
 	if err := json.Unmarshal(t.ConfigSnapshot, &snap); err != nil {
-		logger.Warn("解析任务快照失败，保持原有截止时间", logger.TaskID(t.ID), zap.Error(err))
+		logger.Warn("解析任务快照失败，保持原有截止时间", logger.GenRun(t.ID), zap.Error(err))
 		return
 	}
 	fields["deadline_at"] = now.Add(taskDeadline(&snap))
@@ -264,7 +264,7 @@ func (s *GenerationTaskService) writeCanvasCover(ctx context.Context, t *model.G
 			continue
 		}
 		if err := s.covers.SetCoverIfEmpty(ctx, t.UserID, *t.CanvasProjectID, o.AssetID); err != nil {
-			logger.Warn("写入画布封面失败", logger.TaskID(t.ID), zap.Error(err))
+			logger.Warn("写入画布封面失败", logger.GenRun(t.ID), zap.Error(err))
 		}
 		return
 	}
@@ -274,11 +274,11 @@ func (s *GenerationTaskService) writeCanvasCover(ctx context.Context, t *model.G
 func (s *GenerationTaskService) settleAmount(t *model.GenerationTask, usage *modelcfg.Usage) int {
 	var snap provider.Snapshot
 	if err := json.Unmarshal(t.ConfigSnapshot, &snap); err != nil {
-		logger.Warn("解析任务快照失败，按冻结额结算", logger.TaskID(t.ID), zap.Error(err))
+		logger.Warn("解析任务快照失败，按冻结额结算", logger.GenRun(t.ID), zap.Error(err))
 		return t.Credits
 	}
 	if snap.Model.Pricing.Billing == modelcfg.BillingToken && usage == nil {
-		logger.Warn("Token 计费的任务没有回传用量，按冻结额结算", logger.TaskID(t.ID), zap.String("model", t.ModelKey))
+		logger.Warn("Token 计费的任务没有回传用量，按冻结额结算", logger.GenRun(t.ID), zap.String("model", t.ModelKey))
 	}
 	return max(modelcfg.Settle(snap.Model.Pricing, t.Credits, usage), 0)
 }
@@ -425,7 +425,7 @@ func (s *GenerationTaskService) CancelActiveByUser(ctx context.Context, userID u
 			res.Canceled++
 		case errors.As(err, &ec) && ec.Code == errcode.ErrTaskNotCancelable.Code:
 		default:
-			logger.Warn("取消进行中任务失败", zap.Error(err), logger.TaskID(tasks[i].ID), zap.Uint64("user_id", userID))
+			logger.Warn("取消进行中任务失败", zap.Error(err), logger.GenRun(tasks[i].ID), zap.Uint64("user_id", userID))
 			res.Failed = append(res.Failed, tasks[i].ID)
 		}
 	}
@@ -438,7 +438,7 @@ func (s *GenerationTaskService) cancelProvider(ctx context.Context, t *model.Gen
 	}
 	var snap provider.Snapshot
 	if err := json.Unmarshal(t.ConfigSnapshot, &snap); err != nil {
-		logger.Warn("解析任务快照失败，跳过上游取消", logger.TaskID(t.ID), zap.Error(err))
+		logger.Warn("解析任务快照失败，跳过上游取消", logger.GenRun(t.ID), zap.Error(err))
 		return
 	}
 	cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), executorCancelTimeout)
@@ -447,7 +447,7 @@ func (s *GenerationTaskService) cancelProvider(ctx context.Context, t *model.Gen
 		ID: t.ID, UserID: t.UserID, ProviderTaskID: t.ProviderTaskID,
 	})
 	if err != nil && !errors.Is(err, provider.ErrCancelUnsupported) {
-		logger.Warn("通知上游取消任务失败", logger.TaskID(t.ID), zap.String("channel", t.Provider), zap.Error(err))
+		logger.Warn("通知上游取消任务失败", logger.GenRun(t.ID), zap.String("channel", t.Provider), zap.Error(err))
 	}
 }
 
@@ -492,20 +492,27 @@ func (s *GenerationTaskService) finish(ctx context.Context, id uint64, from []st
 	if err != nil {
 		return nil, false, err
 	}
+	logGenFinished(ctx, updated, target, extra)
 	return updated, true, nil
+}
+
+// chargeOf 是任务到终态时实扣的积分：成功扣 charged_credits（没有则扣冻结额）；已进入生成的用户取消按 charged_credits 扣；其余为 0。
+func chargeOf(t *model.GenerationTask, target string) int {
+	charge := 0
+	if target == model.TaskSucceeded {
+		charge = t.Credits
+	}
+	if t.ChargedCredits != nil && (target == model.TaskSucceeded || target == model.TaskCanceled) {
+		charge = min(max(*t.ChargedCredits, 0), t.Credits)
+	}
+	return charge
 }
 
 // settleLedger 写结算 / 退款流水并解冻：成功时扣 charged_credits（没有则扣冻结额），多冻结的部分再写一笔 refund；
 // 失败 / 超时全额退回；取消默认全额退回，只有已进入生成的用户取消会带上 charged_credits，按它扣费、不退。
 // 流水 UNIQUE(task_id, type) 保证重复结算只生效一次。
 func settleLedger(ctx context.Context, tx repository.GenerationTaskTx, t *model.GenerationTask, target string) error {
-	frozen, charge := t.Credits, 0
-	if target == model.TaskSucceeded {
-		charge = frozen
-	}
-	if t.ChargedCredits != nil && (target == model.TaskSucceeded || target == model.TaskCanceled) {
-		charge = min(max(*t.ChargedCredits, 0), frozen)
-	}
+	frozen, charge := t.Credits, chargeOf(t, target)
 	entries := []model.CreditLedger{}
 	if charge > 0 || target == model.TaskSucceeded {
 		entries = append(entries, model.CreditLedger{UserID: t.UserID, TaskID: model.TaskIDPtr(t.ID), Type: model.LedgerSettle, Amount: charge})
@@ -519,7 +526,7 @@ func settleLedger(ctx context.Context, tx repository.GenerationTaskTx, t *model.
 			return err
 		}
 		if !inserted {
-			logger.Warn("积分流水已存在，跳过重复结算", logger.TaskID(t.ID), zap.String("type", entries[i].Type))
+			logger.Warn("积分流水已存在，跳过重复结算", logger.GenRun(t.ID), zap.String("type", entries[i].Type))
 			return nil
 		}
 	}

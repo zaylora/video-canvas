@@ -137,6 +137,7 @@ func (s *GenerationTaskService) createOne(ctx context.Context, task *model.Gener
 	}
 	// 任务与队列里的 job 已在同一个事务里提交；事务提交之后才推送，避免对方读到还没提交的数据
 	s.publish(ctx, task)
+	logGenCreated(ctx, task)
 	return task, nil
 }
 

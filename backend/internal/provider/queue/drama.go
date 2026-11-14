@@ -10,7 +10,6 @@ import (
 	"video-canvas/internal/pkg/logger"
 
 	"github.com/riverqueue/river"
-	"go.uber.org/zap"
 )
 
 // DramaHandler 执行一个完整短剧步骤，业务终态由服务持久化。
@@ -50,11 +49,8 @@ func (w *dramaWorker) Work(ctx context.Context, j *river.Job[DramaArgs]) error {
 		return river.JobSnooze(time.Second)
 	}
 	defer w.rt.gate.release()
-	if err := w.rt.cfg.Drama.HandleDrama(ctx, j.Args.UserID, j.Args.DramaID, j.Args.JobID); err != nil {
-		w.rt.log.Warn("执行短剧流水线失败，等待队列恢复", zap.Uint64("drama_job_id", j.Args.JobID), zap.Error(err))
-		return err
-	}
-	return nil
+	// 出错由运行日志中间件记一次（run.retry / 兜底收尾，带十六进制运行编号），这里不再重复记
+	return w.rt.cfg.Drama.HandleDrama(ctx, j.Args.UserID, j.Args.DramaID, j.Args.JobID)
 }
 
 // EnqueueDramaTx 将短剧业务行与River任务放在同一数据库事务提交。

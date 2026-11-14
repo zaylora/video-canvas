@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"video-canvas/internal/drama"
@@ -41,7 +42,7 @@ func (s *DramaService) runScripts(ctx context.Context, p *model.DramaProject, j 
 				return nil, 0, errcode.ErrDramaEpisodeSourceTooLong
 			}
 		}
-		v, c, e := s.callDrama(ctx, j, snap, "scripts", vars, nil)
+		v, c, e := s.callDrama(ctx, j, snap, "scripts", fmt.Sprintf("episode=%d", ep.No), vars, nil)
 		if e != nil {
 			if markErr := s.markScriptFailed(ctx, j, ep.No); markErr != nil {
 				return nil, 0, markErr

@@ -46,6 +46,13 @@ var netguardAllowed = []string{"llmgateway/", "provider/plugin/", "pkg/outbound/
 // riverAllowed 是可以直接调用 river.AddWorker 的文件：只有 queue.AddWorker 的实现。
 var riverAllowed = map[string]bool{"provider/queue/runlog.go": true}
 
+// correlationKeys 是只能由 logger 包输出的关联字段：业务代码用 logger.Ctx(ctx) / logger.RunField / logger.GenRun，不要手写，
+// 否则同一个编号会出现十进制、十六进制两种写法，或同名字段指不同的东西。
+var correlationKeys = map[string]bool{"task_id": true, "run_id": true, "run_kind": true, "drama_job_id": true}
+
+// numericZap 是数字类型的 zap 构造函数：call_id 是 12 位十六进制串，写成数字的一定是别的东西（如 agent_model_calls 的主键）。
+var numericZap = []string{"Uint64", "Uint", "Int", "Int64", "Uint32", "Int32"}
+
 // violation 是一处不允许的写法。
 type violation struct {
 	file string
@@ -94,6 +101,8 @@ func scanFile(fset *token.FileSet, f *ast.File, rel string) []violation {
 	names := importNames(f)
 	httpName, netguardName, riverName, outboundName := names["net/http"], names["video-canvas/internal/provider/netguard"],
 		names["github.com/riverqueue/river"], names["video-canvas/internal/pkg/outbound"]
+	zapName := names["go.uber.org/zap"]
+	inLogger := strings.HasPrefix(rel, "pkg/logger/")
 
 	// 1. 直接交给 outbound.Client / outbound.Transport 的参数范围不算绕过
 	type span struct{ from, to token.Pos }
@@ -139,10 +148,40 @@ func scanFile(fset *token.FileSet, f *ast.File, rel string) []violation {
 			if len(riverName) > 0 && isSel(x.Fun, riverName, "AddWorker", "AddWorkerSafely") && !riverAllowed[rel] {
 				add(x, "直接调用了 river.AddWorker：请实现 queue.RunArgs 并用 queue.AddWorker 注册（E10）")
 			}
+			if len(zapName) > 0 && !inLogger && len(x.Args) > 0 {
+				if key, ok := stringLit(x.Args[0]); ok {
+					if correlationKeys[key] && isZapCtor(x.Fun, zapName) {
+						add(x, fmt.Sprintf("手写了关联字段 %q：用 logger.Ctx(ctx) 自动带，或 logger.RunField / logger.GenRun（E10）", key))
+					}
+					if key == "call_id" && isSel(x.Fun, zapName, numericZap...) {
+						add(x, `数字型的 "call_id"：call_id 专指 12 位十六进制的上游调用编号，数据库主键请换个字段名（E10）`)
+					}
+				}
+			}
 		}
 		return true
 	})
 	return out
+}
+
+// stringLit 取字符串字面量的值。
+func stringLit(e ast.Expr) (string, bool) {
+	lit, ok := e.(*ast.BasicLit)
+	if !ok || lit.Kind != token.STRING {
+		return "", false
+	}
+	v, err := strconv.Unquote(lit.Value)
+	return v, err == nil
+}
+
+// isZapCtor 判断是不是 zap 的字段构造函数（zap.String、zap.Uint64 等，首字母大写的任意函数）。
+func isZapCtor(e ast.Expr, zapNames []string) bool {
+	sel, ok := e.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+	id, ok := sel.X.(*ast.Ident)
+	return ok && slices.Contains(zapNames, id.Name) && sel.Sel.IsExported()
 }
 
 // importNames 返回导入路径到文件里使用的包名（含别名；同一个包可能被导入多次）。
@@ -206,6 +245,7 @@ import (
 	h2 "net/http"
 
 	"github.com/riverqueue/river"
+	"go.uber.org/zap"
 	"video-canvas/internal/pkg/outbound"
 	"video-canvas/internal/provider/netguard"
 )
@@ -217,6 +257,9 @@ func bad(w *river.Workers) {
 	_ = http.DefaultClient
 	_ = netguard.NewClient(nil, nil, 0)
 	river.AddWorker(w, nil)
+	_ = zap.Uint64("task_id", 1)
+	_ = zap.String("run_id", "x")
+	_ = zap.Uint64("call_id", 1)
 }
 
 func ok() {
@@ -224,6 +267,8 @@ func ok() {
 	_ = outbound.Client("x", netguard.NewClient(nil, nil, 0))
 	_ = outbound.Transport("x", &http.Transport{})
 	var _ *http.Client
+	_ = zap.String("call_id", "c7e2a91f04b3")
+	_ = zap.Uint64("model_call_id", 1)
 }
 `
 	if err := os.MkdirAll(filepath.Join(dir, "sample"), 0o755); err != nil {
@@ -233,7 +278,7 @@ func ok() {
 		t.Fatal(err)
 	}
 	got := scan(t, dir)
-	wantLines := []int{13, 14, 15, 16, 17, 18}
+	wantLines := []int{14, 15, 16, 17, 18, 19, 20, 21, 22}
 	if len(got) != len(wantLines) {
 		t.Fatalf("应报 %d 处，实际 %d：%v", len(wantLines), len(got), got)
 	}

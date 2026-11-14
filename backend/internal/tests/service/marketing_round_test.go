@@ -12,6 +12,7 @@ import (
 	"video-canvas/internal/marketing"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
+	"video-canvas/internal/pkg/logger"
 	. "video-canvas/internal/service"
 )
 
@@ -538,4 +539,33 @@ func TestMarketing_Options_HidesRetiredPlatforms(t *testing.T) {
 			t.Fatalf("选项里不应再有已下线的亚马逊：%+v", p)
 		}
 	}
+}
+
+// 环节运行日志：每个环节一行 run.finish（mkt），失败的带原始错误和分类；轮次一行 run.finish（mkt_round）。
+// 用户看到的仍是统一文案，原始错误（如 connection refused）只进日志。
+func TestMarketing_Round_LogsStepRunsWithRawError(t *testing.T) {
+	read := serviceLog(t)
+	env := newMktEnv(t, 200)
+	env.caller.on(marketing.StepFacts, func(int) (string, error) { return "", errors.New("dial tcp: connection refused") })
+	v := env.createRefProject()
+	env.runRound(&v.Rounds[0])
+
+	byStep := map[string]map[string]any{}
+	var round map[string]any
+	for _, m := range logEvents(read(), logger.EventRunFinish) {
+		switch m["run_kind"] {
+		case "mkt":
+			byStep[m["step"].(string)] = m
+		case "mkt_round":
+			round = m
+		}
+	}
+	facts := byStep[marketing.StepFacts]
+	wantFields(t, "facts", facts, map[string]any{"status": "failed", "error_type": "network", "error_message": "文本模型暂时不可用，请稍后重试",
+		"parent_kind": "mkt_round", "level": "warn"})
+	if e, _ := facts["error"].(string); !strings.Contains(e, "connection refused") {
+		t.Errorf("环节收尾应带原始错误：%v", facts)
+	}
+	wantFields(t, "follow", byStep[marketing.StepFollow], map[string]any{"status": "skipped", "level": "info"})
+	wantFields(t, "轮次", round, map[string]any{"status": "failed", "round_status": "failed"})
 }
