@@ -193,6 +193,19 @@ curl -fsSL https://raw.githubusercontent.com/zaylora/video-canvas/master/scripts
 
 - [LINUX DO](https://linux.do) — 新的理想型社区
 
+## 联系我们
+
+<table>
+  <tr>
+    <th>联系作者</th>
+    <th>加入交流群</th>
+  </tr>
+  <tr>
+    <td><img src="docs/assets/community/wechat-author.jpg" alt="连镜作者微信二维码" width="240" /></td>
+    <td><img src="docs/assets/community/wechat-group.jpg" alt="连镜微信交流群二维码" width="240" /></td>
+  </tr>
+</table>
+
 ## 许可证
 
 [MIT](LICENSE)

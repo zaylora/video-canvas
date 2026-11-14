@@ -197,6 +197,19 @@ If 连镜 is useful to you, a ⭐ Star helps more creators find it.
 
 - [LINUX DO](https://linux.do)
 
+## Contact
+
+<table>
+  <tr>
+    <th>Contact the author</th>
+    <th>WeChat group</th>
+  </tr>
+  <tr>
+    <td><img src="docs/assets/community/wechat-author.jpg" alt="连镜 author WeChat QR code" width="240" /></td>
+    <td><img src="docs/assets/community/wechat-group.jpg" alt="连镜 WeChat group QR code" width="240" /></td>
+  </tr>
+</table>
+
 ## License
 
 [MIT](LICENSE)
