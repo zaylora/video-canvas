@@ -21,6 +21,7 @@ import (
 	"video-canvas/internal/handler"
 	agenthandler "video-canvas/internal/handler/agent"
 	"video-canvas/internal/llmgateway"
+	"video-canvas/internal/llmgateway/llmlog"
 	"video-canvas/internal/mailer"
 	"video-canvas/internal/middleware"
 	"video-canvas/internal/model"
@@ -182,7 +183,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 	dramaCanvasSvc := service.NewDramaCanvasService(repository.NewDramaCanvasRepository(db), hub)
 	dramaSegments := service.NewDramaSegmentService(service.DramaSegmentDeps{Repo: dramaRepo, Tasks: taskSvc, Assets: assetSvc, Broadcaster: hub})
 	// 短剧和环节协议层共用同一个 LLM 网关实例，渠道限流（RPS / 并发）才是对两者合计生效。
-	textGateway := llmgateway.New(llmgateway.Options{IPAllowed: outboundIPPolicy(cfg)})
+	textGateway := llmgateway.New(llmgateway.Options{IPAllowed: outboundIPPolicy(cfg), Observer: llmlog.Observer{}})
 	dramaSvc := service.NewDramaService(service.DramaDeps{
 		Repo: dramaRepo, Settings: dramaRepo, Skills: skillSvc, Registry: aiCfgSvc, Streamer: textGateway, Secrets: aiCfgSvc, Canvas: dramaCanvasSvc, Broadcaster: hub, Credits: settingsSvc,
 		Segments: dramaSegments, CanvasAssets: canvasProjectRepo,

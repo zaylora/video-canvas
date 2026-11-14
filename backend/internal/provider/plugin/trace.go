@@ -38,16 +38,16 @@ func (r *redactor) str(s string) string {
 	return out
 }
 
-// traceJSON 把一段 JSON 脱敏、截断成可放进追踪的 JSON：超过 TraceBodyLimit 或脱敏后不再合法时，改为 JSON 字符串。
-func (r *redactor) traceJSON(raw []byte) json.RawMessage {
+// traceJSON 把一段 JSON 脱敏、截断成可放进追踪的 JSON：超过 limit 或脱敏后不再合法时，改为 JSON 字符串。
+func (r *redactor) traceJSON(raw []byte, limit int) json.RawMessage {
 	if len(raw) == 0 {
 		return nil
 	}
 	s := r.str(string(raw))
-	if len(s) <= provider.TraceBodyLimit && json.Valid([]byte(s)) {
+	if len(s) <= limit && json.Valid([]byte(s)) {
 		return json.RawMessage(s)
 	}
-	b, err := json.Marshal(truncate(s, provider.TraceBodyLimit))
+	b, err := json.Marshal(truncate(s, limit))
 	if err != nil {
 		return nil
 	}
@@ -77,7 +77,8 @@ func recordHook(trace *provider.Trace, red *redactor, hook string, args []json.R
 	} else if b, err := json.Marshal(args); err == nil {
 		input = b
 	}
-	h := &provider.TraceHook{Name: hook, Input: red.traceJSON(input), Output: red.traceJSON(out.result)}
+	limit := trace.BodyLimit()
+	h := &provider.TraceHook{Name: hook, Input: red.traceJSON(input, limit), Output: red.traceJSON(out.result, limit)}
 	for _, l := range out.logs {
 		h.Logs = append(h.Logs, red.str(l))
 	}

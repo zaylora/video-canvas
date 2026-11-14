@@ -88,6 +88,8 @@ linters:
           msg: 用 logger.L()（E7）
         - pattern: ^gin\.Context\.(JSON|AbortWithStatusJSON|IndentedJSON|PureJSON|String)$
           msg: 统一走 response 包，保证带上 request_id（A6）
+        - pattern: ^(net/)?http\.(Get|Post|PostForm|Head|DefaultClient)$
+          msg: 外部调用用 outbound.Client，才会记进统一日志（E10）；自己构造的客户端由架构测试拦截
 
     revive:
       rules:

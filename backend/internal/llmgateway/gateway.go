@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -35,6 +36,30 @@ type Options struct {
 	// IPAllowed 用于测试里放行回环等内网地址（假上游是本机 httptest 服务）；生产不设，默认拒绝全部内网地址。
 	// 渠道上没有“允许访问内网”开关：任何渠道都不能让服务器访问内网。
 	IPAllowed func(net.IP) bool
+	// Observer 在每次请求尝试结束后收到一条记录（含空闲超时自动重试的那次），用来写运行日志和请求全文；为 nil 时不回调。
+	Observer Observer
+}
+
+// Observer 观察每次发给上游的请求。实现方负责记日志，网关本身不依赖日志包。
+type Observer interface {
+	// OnCall 在一次尝试结束后调用（成功、上游报错、超时、取消都会调用）；没有发出请求的失败（目标或请求不合法）不调用。
+	OnCall(ctx context.Context, rec CallRecord)
+}
+
+// CallRecord 是一次请求尝试的记录。Body、ErrorBody、Endpoint 里的渠道 Key 已遮成 ***；不含请求头（渠道自定义头可能带凭证）。
+type CallRecord struct {
+	ChannelKey    string
+	UpstreamModel string
+	Format        string // openai / gemini
+	Endpoint      string // 实际请求的地址
+	Attempt       int    // 网关内第几次尝试，从 1 开始；空闲超时自动重试的那次是 2
+	Body          []byte // 实际发出的请求体
+	Result        *Result
+	Err           error
+	Status        int    // 上游 HTTP 状态码；没收到响应为 0
+	ErrorBody     string // 上游错误体原文（非 2xx 或流里的 error），最多 maxErrBodyBytes
+	Latency       time.Duration
+	TTFT          time.Duration // 首字耗时：第一次把内容交给调用方的时间；没交过为 0
 }
 
 // Gateway 向渠道的 OpenAI 兼容接口发流式对话请求。可以并发使用。
@@ -117,7 +142,10 @@ func (g *Gateway) run(ctx context.Context, tg Target, base *url.URL, body []byte
 		timeout = tg.IdleTimeout
 	}
 	for attempt := 0; ; attempt++ {
-		res, delivered, err := g.attempt(ctx, tg, base, body, timeout, emit, raw)
+		start := time.Now()
+		var first time.Time
+		res, delivered, status, err := g.attempt(ctx, tg, base, body, timeout, emit, raw, &first)
+		g.observe(ctx, tg, base, body, attempt+1, start, first, res, status, err)
 		if errors.Is(err, ErrIdleTimeout) && !delivered && attempt < maxIdleRetries && ctx.Err() == nil {
 			continue
 		}
@@ -125,9 +153,52 @@ func (g *Gateway) run(ctx context.Context, tg Target, base *url.URL, body []byte
 	}
 }
 
+// observe 把一次尝试交给观察者；Key 在这里统一遮掉（明文、URL 转义、JSON 转义三种形式）。
+func (g *Gateway) observe(ctx context.Context, tg Target, base *url.URL, body []byte, attempt int, start, first time.Time, res *Result, status int, err error) {
+	if g.opts.Observer == nil {
+		return
+	}
+	rec := CallRecord{ChannelKey: tg.ChannelKey, UpstreamModel: tg.UpstreamModel, Format: tg.Format, Attempt: attempt,
+		Endpoint: redactKey(endpointOf(tg, base), tg.APIKey), Body: []byte(redactKey(string(body), tg.APIKey)),
+		Result: res, Err: err, Status: status, Latency: time.Since(start)}
+	if !first.IsZero() {
+		rec.TTFT = first.Sub(start)
+	}
+	var ue *UpstreamError
+	if errors.As(err, &ue) {
+		ue.Body = redactKey(ue.Body, tg.APIKey)
+		rec.ErrorBody = ue.Body
+		if rec.Status == 0 {
+			rec.Status = ue.Status
+		}
+	}
+	g.opts.Observer.OnCall(ctx, rec)
+}
+
+// redactKey 把渠道 Key 的明文、URL 转义和 JSON 转义形式都换成 ***。
+func redactKey(s, key string) string {
+	if key == "" || s == "" {
+		return s
+	}
+	quoted := strconv.Quote(key)
+	for _, form := range []string{key, url.QueryEscape(key), quoted[1 : len(quoted)-1]} {
+		s = strings.ReplaceAll(s, form, "***")
+	}
+	return s
+}
+
+// endpointOf 返回实际请求的地址。
+func endpointOf(tg Target, base *url.URL) string {
+	if tg.Format == FormatGemini {
+		return geminiEndpoint(base, tg.UpstreamModel)
+	}
+	return strings.TrimRight(base.String(), "/") + chatEndpoint
+}
+
 // attempt 发一次请求：空闲看门狗每收到数据重置计时，超时就取消请求，并区分「空闲超时」与「调用方取消」。
 // delivered 表示是否已经把内容交给了调用方（emit 或 raw 被调用过）；没交过就还没有对外可见的副作用，可以放心重试。
-func (g *Gateway) attempt(ctx context.Context, tg Target, base *url.URL, body []byte, timeout time.Duration, emit func(Event), raw func([]byte)) (res *Result, delivered bool, err error) {
+// status 是上游的 HTTP 状态码（没收到响应为 0）；first 记下第一次把内容交给调用方的时间（首字耗时）。
+func (g *Gateway) attempt(ctx context.Context, tg Target, base *url.URL, body []byte, timeout time.Duration, emit func(Event), raw func([]byte), first *time.Time) (res *Result, delivered bool, status int, err error) {
 	ctx2, cancel := context.WithCancel(ctx)
 	defer cancel()
 	var idle atomic.Bool
@@ -135,34 +206,34 @@ func (g *Gateway) attempt(ctx context.Context, tg Target, base *url.URL, body []
 	defer timer.Stop()
 	touch := func() { timer.Reset(timeout) }
 
-	emitW := func(e Event) { delivered = true; emit(e) }
+	mark := func() {
+		if !delivered {
+			*first = time.Now()
+		}
+		delivered = true
+	}
+	emitW := func(e Event) { mark(); emit(e) }
 	var rawW func([]byte)
 	if raw != nil {
-		rawW = func(b []byte) { delivered = true; raw(b) }
+		rawW = func(b []byte) { mark(); raw(b) }
 	}
-	res, err = g.do(ctx2, tg, base, body, emitW, touch, rawW)
+	res, status, err = g.do(ctx2, tg, base, body, emitW, touch, rawW)
 	switch {
 	case err == nil:
-		return res, delivered, nil
+		return res, delivered, status, nil
 	case idle.Load():
-		return res, delivered, ErrIdleTimeout
+		return res, delivered, status, ErrIdleTimeout
 	case ctx.Err() != nil:
-		return res, delivered, ctx.Err()
+		return res, delivered, status, ctx.Err()
 	}
-	return res, delivered, err
+	return res, delivered, status, err
 }
 
 // do 发请求并读响应。
-func (g *Gateway) do(ctx context.Context, tg Target, base *url.URL, body []byte, emit func(Event), touch func(), raw func([]byte)) (*Result, error) {
-	var endpoint string
-	if tg.Format == FormatGemini {
-		endpoint = geminiEndpoint(base, tg.UpstreamModel)
-	} else {
-		endpoint = strings.TrimRight(base.String(), "/") + chatEndpoint
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+func (g *Gateway) do(ctx context.Context, tg Target, base *url.URL, body []byte, emit func(Event), touch func(), raw func([]byte)) (*Result, int, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpointOf(tg, base), bytes.NewReader(body))
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrInvalidTarget, err)
+		return nil, 0, fmt.Errorf("%w: %w", ErrInvalidTarget, err)
 	}
 	// 渠道自定义头（过 WAF 的 UA、业务头等）先写，网关自己的协议头与鉴权头后写，覆盖不了
 	for k, v := range tg.Headers {
@@ -179,23 +250,27 @@ func (g *Gateway) do(ctx context.Context, tg Target, base *url.URL, body []byte,
 	client := netguard.NewClient(g.transport(), []string{strings.ToLower(base.Hostname())}, 0)
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, redactErr(err, tg.APIKey)
+		return nil, 0, redactErr(err, tg.APIKey)
 	}
 	defer resp.Body.Close()
 	touch()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+	status := resp.StatusCode
+	if status < 200 || status >= 300 {
 		if tg.Format == FormatGemini {
-			return nil, geminiHTTPError(resp, tg.APIKey, body)
+			return nil, status, geminiHTTPError(resp, tg.APIKey, body)
 		}
-		return nil, classifyHTTPError(resp, tg.APIKey)
+		return nil, status, classifyHTTPError(resp, tg.APIKey)
 	}
-	if tg.Format == FormatGemini {
-		return readGeminiResponse(resp, emit, touch, raw)
+	var res *Result
+	switch {
+	case tg.Format == FormatGemini:
+		res, err = readGeminiResponse(resp, emit, touch, raw)
+	case strings.Contains(resp.Header.Get("Content-Type"), "application/json"):
+		res, err = readWhole(resp.Body, emit, raw)
+	default:
+		res, err = readSSE(resp.Body, emit, touch, raw)
 	}
-	if strings.Contains(resp.Header.Get("Content-Type"), "application/json") {
-		return readWhole(resp.Body, emit, raw)
-	}
-	return readSSE(resp.Body, emit, touch, raw)
+	return res, status, err
 }
 
 // transport 懒创建并缓存带 SSRF 拨号校验的传输层，所有渠道共用。
@@ -230,7 +305,7 @@ func validateTarget(tg Target) (*url.URL, error) {
 // 取不到时按状态码给通用说明；限流和上游故障可重试。
 func classifyHTTPError(resp *http.Response, key string) error {
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrBodyBytes)) // 读不全也没关系，只用来提取一句说明
-	e := &UpstreamError{Status: resp.StatusCode}
+	e := &UpstreamError{Status: resp.StatusCode, Body: redactKey(string(raw), key)}
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized:
 		e.Message = "渠道 Key 无效或已失效，请联系管理员"

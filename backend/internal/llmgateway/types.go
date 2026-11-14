@@ -36,6 +36,8 @@ type UpstreamError struct {
 	Status    int    // HTTP 状态码
 	Message   string // 给用户看的说明
 	Retryable bool   // 稍后重试可能成功：限流和上游故障
+	// Body 是上游错误体原文（已遮渠道 Key，最多 maxErrBodyBytes），只给日志用：不进 Error()、接口响应和数据库
+	Body string
 }
 
 // Error 实现 error。

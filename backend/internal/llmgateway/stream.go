@@ -186,7 +186,12 @@ func (a *accumulator) handleLine(line []byte) (done bool, err error) {
 	if json.Unmarshal(payload, &c) != nil {
 		return false, nil
 	}
-	return false, a.apply(&c)
+	err = a.apply(&c)
+	var ue *UpstreamError
+	if errors.As(err, &ue) {
+		ue.Body = string(payload[:min(len(payload), maxErrBodyBytes)]) // 流里的 error 块原文，Key 由 run 统一遮掉
+	}
+	return false, err
 }
 
 // readWhole 读整段（非流式）JSON 响应，转成同样的事件和结果：上游忽略了 stream 参数时用。

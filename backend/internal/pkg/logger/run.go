@@ -51,14 +51,15 @@ type RunRef struct {
 
 // Run 是一次运行在本进程里的日志状态：开始 / 收尾各打一次，调用计数累加到收尾行。nil 接收者的方法都是空操作。
 type Run struct {
-	ref     RunRef
-	userID  atomic.Uint64
-	begun   time.Time
-	started atomic.Bool
-	ended   atomic.Bool
-	mu      sync.Mutex
-	startAt time.Time
-	ctx     context.Context // 打开始 / 收尾行时取关联字段用
+	ref      RunRef
+	userID   atomic.Uint64
+	begun    time.Time
+	started  atomic.Bool
+	ended    atomic.Bool
+	mu       sync.Mutex
+	startAt  time.Time
+	lastCall string          // 最后一次上游调用的 call_id，失败收尾时带上
+	ctx      context.Context // 打开始 / 收尾行时取关联字段用
 
 	llmCalls, providerCalls, extCalls atomic.Int64
 	inputTokens, outputTokens         atomic.Int64
@@ -128,6 +129,16 @@ func (r *Run) AddLLM(inputTokens, outputTokens int) {
 	r.outputTokens.Add(int64(outputTokens))
 }
 
+// NoteCall 记下最后一次上游调用的 call_id；运行没有成功收尾时，收尾行带 last_call_id 指向它。
+func (r *Run) NoteCall(callID string) {
+	if r == nil || callID == "" {
+		return
+	}
+	r.mu.Lock()
+	r.lastCall = callID
+	r.mu.Unlock()
+}
+
 // AddProvider 记一次供应商插件调用。由插件宿主调用。
 func (r *Run) AddProvider() {
 	if r != nil {
@@ -163,7 +174,7 @@ func (r *Run) Fallback(status string, fields ...zap.Field) {
 func (r *Run) finish(msg, status string, fields []zap.Field) {
 	out := []zap.Field{Event(EventRunFinish), zap.String("status", status)}
 	r.mu.Lock()
-	startAt := r.startAt
+	startAt, lastCall := r.startAt, r.lastCall
 	r.mu.Unlock()
 	if !startAt.IsZero() {
 		out = append(out, zap.Int64("duration_ms", time.Since(startAt).Milliseconds()))
@@ -176,6 +187,9 @@ func (r *Run) finish(msg, status string, fields []zap.Field) {
 	}
 	if n := r.extCalls.Load(); n > 0 {
 		out = append(out, zap.Int64("ext_calls", n))
+	}
+	if lastCall != "" && status != StatusSucceeded {
+		out = append(out, zap.String("last_call_id", lastCall))
 	}
 	out = append(out, fields...)
 	log := Ctx(r.ctx).WithOptions(zap.AddCallerSkip(2))

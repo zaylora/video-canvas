@@ -14,6 +14,7 @@ const TraceBodyLimit = 8 * 1024
 type Trace struct {
 	mu    sync.Mutex
 	steps []TraceStep
+	limit int // 请求 / 响应体 / 钩子输入输出保留的最大字节数；0 取 TraceBodyLimit
 }
 
 // TraceStep 是一个步骤：一次钩子调用（kind=hook）或一次 HTTP 请求（kind=http）。
@@ -53,9 +54,23 @@ type TraceResponse struct {
 type traceKey struct{}
 
 // WithTrace 返回带 Trace 的 ctx：把它交给 Executor 的调用，宿主会把执行过程记录到返回的 Trace 里。
+// 正文按 TraceBodyLimit 截断（试跑追踪要落库）。
 func WithTrace(ctx context.Context) (context.Context, *Trace) {
-	t := &Trace{}
+	return WithTraceLimit(ctx, TraceBodyLimit)
+}
+
+// WithTraceLimit 同 WithTrace，但正文按 limit 截断：正式任务的追踪只写进 payload.log，上限放宽到日志的单字段上限。
+func WithTraceLimit(ctx context.Context, limit int) (context.Context, *Trace) {
+	t := &Trace{limit: limit}
 	return context.WithValue(ctx, traceKey{}, t), t
+}
+
+// BodyLimit 返回正文截断上限；nil 或未设置时为 TraceBodyLimit。
+func (t *Trace) BodyLimit() int {
+	if t == nil || t.limit <= 0 {
+		return TraceBodyLimit
+	}
+	return t.limit
 }
 
 // TraceFrom 取 ctx 里的 Trace；没有返回 nil（此时宿主不记录）。

@@ -21,6 +21,7 @@ import (
 	"golang.org/x/net/html/charset"
 
 	"video-canvas/internal/pkg/logger"
+	"video-canvas/internal/pkg/outbound"
 	"video-canvas/internal/provider"
 	"video-canvas/internal/provider/netguard"
 )
@@ -87,12 +88,13 @@ func New(cfg Config) *Client {
 	}
 	ng := &netguard.Config{IPAllowed: cfg.IPAllowed, Resolver: cfg.Resolver, Dial: cfg.Dial, MaxRedirects: cfg.MaxRedirects}
 	ng.ApplyDefaults()
-	c := &Client{cfg: cfg, guarded: netguard.NewClient(netguard.NewTransport(ng), nil, ng.MaxRedirects), sem: make(chan struct{}, cfg.MaxConcurrent)}
+	// 出站请求都经 outbound 记日志：app.log 一行 ext.call，payload.log 记请求和网页 / 搜索结果全文
+	c := &Client{cfg: cfg, guarded: outbound.Client("agent.web", netguard.NewClient(netguard.NewTransport(ng), nil, ng.MaxRedirects)), sem: make(chan struct{}, cfg.MaxConcurrent)}
 	c.searchers = cfg.Searchers
 	if len(c.searchers) == 0 {
 		if cfg.SearXNGURL != "" {
 			// SearXNG 在内网，地址是私网 IP，过不了 netguard；它的地址只来自管理员配置，所以用不拦内网的普通客户端
-			c.searchers = append(c.searchers, NewSearXNG(cfg.SearXNGURL, &http.Client{Transport: &http.Transport{Proxy: nil, DialContext: (&net.Dialer{Timeout: 5 * time.Second}).DialContext}}))
+			c.searchers = append(c.searchers, NewSearXNG(cfg.SearXNGURL, outbound.Client("agent.web_search", &http.Client{Transport: &http.Transport{Proxy: nil, DialContext: (&net.Dialer{Timeout: 5 * time.Second}).DialContext}})))
 		}
 		// Exa 的结果最切题排前面；Bing、DuckDuckGo 是抓网页的兜底（对自动化请求常给降级的结果，或直接要求人机验证）
 		c.searchers = append(c.searchers, NewExa(cfg.ExaURL, c.guarded), NewBing(cfg.BingURL, c.guarded), NewDuckDuckGo(cfg.DuckDuckGoURL, c.guarded))

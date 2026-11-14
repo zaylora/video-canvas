@@ -93,6 +93,9 @@ type Worker struct {
 	// 不能复用 poll_attempts：轮询阶段它是查询次数，不是重试次数。
 	crashes map[uint64]int
 
+	// folds 是各任务轮询结果的折叠状态，见 worker_log.go
+	folds folds
+
 	// lastRunnerWarn 是上次记 runner 不可用 Warn 的时间（UnixNano），用于全局限频，避免每个任务每轮都刷一条
 	lastRunnerWarn atomic.Int64
 }
@@ -124,11 +127,13 @@ func (w *Worker) taskLog(t *model.GenerationTask) *zap.Logger {
 // 处理结果都写在任务行里：状态是否变了、下一次什么时候再处理（next_poll_at），由调用方（队列）在返回后读取。
 // 任务在途中被取消 / 超时、迁移没有命中（applied=false）都不算错误，下一次读到终态就结束。
 func (w *Worker) Handle(ctx context.Context, t model.GenerationTask) {
-	// 试跑任务记录本次执行的钩子与 HTTP 追踪。保存放在 defer 里并先于 recover 注册（所以最后执行）：
-	// 即使本次处理 panic，已经发生的步骤也会被保存，方便运营排查
+	// 每次处理都记录钩子与 HTTP 追踪：写进 payload.log（供应商调用全文），试跑任务另外落库给管理端看。
+	// 写日志和保存放在 defer 里并先于 recover 注册（所以最后执行）：即使本次处理 panic，已经发生的步骤也会留下
+	logger.RunOf(ctx).SetUser(t.UserID)
+	var snap *provider.Snapshot
+	ctx, tr := traceFor(ctx, &t)
+	defer w.logProvider(ctx, &t, phaseOf(t.Status), &snap, tr, time.Now()) // 耗时用真实时钟，不用可注入的 opts.Now
 	if t.IsTest {
-		var tr *provider.Trace
-		ctx, tr = provider.WithTrace(ctx)
 		defer w.saveTrace(ctx, &t, tr)
 	}
 	log := w.taskLog(&t).With(zap.String("status", t.Status))

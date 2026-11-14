@@ -108,6 +108,9 @@ func L() *zap.Logger { return l }
 // 用户把编号报过来就能原样搜到；不要再写 zap.Uint64("task_id", id)。
 func TaskID(id uint64) zap.Field { return zap.String("task_id", idcodec.Encode(id)) }
 
+// GenRunID 返回生成任务在界面上的编号（idcodec 十六进制），即 run_kind=gen 的 run_id。
+func GenRunID(id uint64) string { return idcodec.Encode(id) }
+
 // Sync 把主日志和 payload.log 的缓冲刷到磁盘，不关闭文件。
 func Sync() {
 	_ = l.Sync()
