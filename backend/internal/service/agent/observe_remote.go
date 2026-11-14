@@ -444,6 +444,7 @@ func (h *HTTPRemoteRuns) get(ctx context.Context, path string, out any) error {
 		return err
 	}
 	req.Header.Set("X-Agent-Service-Token", h.ServiceToken)
+	logger.InjectHeaders(ctx, req.Header) // Agent 服务的请求日志用同一个 request_id
 	resp, err := c.Do(req)
 	if err != nil {
 		return fmt.Errorf("连接 Agent 服务失败：%w", err)

@@ -87,7 +87,7 @@ func TestCtxCarriesCorrelationFields(t *testing.T) {
 	lines := readApp()
 	full := find(t, lines, "带全部字段")
 	want := map[string]any{"request_id": "req-1", "user_id": float64(42), "attempt": float64(2), "parent_kind": "agent",
-		"parent_id": "88213", "run_kind": "drama", "run_id": "9f3c", "instance": "test-host"}
+		"parent_id": "88213", "run_kind": "drama", "run_id": "9f3c", "instance": "test-host", "service": "backend"}
 	for k, v := range want {
 		if full[k] != v {
 			t.Errorf("字段 %s = %v，想要 %v", k, full[k], v)
@@ -308,5 +308,33 @@ func TestNilRunIsSafe(t *testing.T) {
 	run.End(logger.StatusSucceeded)
 	if run.Ended() || run.Started() {
 		t.Error("nil 运行的方法应是空操作")
+	}
+}
+
+// 跨进程传递关联字段：写进请求头，再在对方进程里还原（plugin-runner、Agent 服务）。
+func TestHeadersRoundTrip(t *testing.T) {
+	readApp, _ := setup(t, false)
+	ctx := logger.WithRequest(context.Background(), "req-1")
+	ctx, _ = logger.BeginRun(ctx, logger.RunRef{Kind: "gen", ID: "a1"})
+	ctx, callID := logger.WithCall(ctx, "gen.query")
+	h := http.Header{}
+	logger.InjectHeaders(ctx, h)
+	if h.Get("X-Request-ID") != "req-1" || h.Get("X-Run-Kind") != "gen" || h.Get("X-Run-Id") != "a1" || h.Get("X-Call-Id") != callID {
+		t.Fatalf("请求头不对：%v", h)
+	}
+	empty := http.Header{}
+	logger.InjectHeaders(context.Background(), empty)
+	if len(empty) != 0 {
+		t.Errorf("没有关联字段时不写请求头：%v", empty)
+	}
+
+	restored := logger.FromHeaders(context.Background(), h)
+	logger.Ctx(restored).Info("对方进程")
+	if logger.CallOf(restored).ID != callID {
+		t.Errorf("应还原 call_id")
+	}
+	m := find(t, readApp(), "对方进程")
+	if m["request_id"] != "req-1" || m["run_kind"] != "gen" || m["run_id"] != "a1" || m["call_id"] != callID {
+		t.Errorf("还原后的日志应带关联字段：%v", m)
 	}
 }

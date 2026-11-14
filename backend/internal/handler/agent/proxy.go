@@ -73,6 +73,8 @@ func NewAgentProxy(target, token string) (*AgentProxyHandler, error) {
 			// 用户的登录凭据到此为止（身份头由 Forward 覆盖成可信的值）
 			pr.Out.Header.Del("Authorization")
 			pr.Out.Header.Del("Cookie")
+			// 请求编号带给 Agent 服务：它的 http.request 日志和 Go 的访问日志用同一个 request_id（客户端没带时用 Go 生成的）
+			logger.InjectHeaders(pr.In.Context(), pr.Out.Header)
 		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 			// 连不上、超时、被对端断开：只记日志，不把内部地址和错误细节给前端

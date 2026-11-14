@@ -11,6 +11,7 @@ import { timingSafeEqual } from "node:crypto";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { AgentError, Err } from "../engine/errors.ts";
 import type { IdCodec } from "../ids.ts";
+import { asLogger, installRequestLog } from "../log.ts";
 import type { AgentApiService } from "./service.ts";
 import { ValidationError, queryInt, validateBody, type FieldSpec } from "./validate.ts";
 
@@ -122,6 +123,7 @@ export function createApiApp(o: ApiOptions): FastifyInstance {
   const log =
     o.log ?? ((msg, extra) => void process.stderr.write(JSON.stringify({ msg, ...extra }) + "\n"));
   const root = Fastify({ bodyLimit: o.maxBody ?? DEFAULT_MAX_BODY, logger: false });
+  installRequestLog(root, asLogger(log)); // 每个请求一行 http.request，request_id 沿用 Go 转发的 X-Request-ID
   const want = Buffer.from(o.serviceToken);
 
   root.setErrorHandler((e, _req, reply) => {

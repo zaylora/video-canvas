@@ -125,7 +125,10 @@ func (w *Worker) pruneFolds() {
 
 // providerWriter 返回写一次供应商调用记录的函数（折叠时先攒着，之后再写）。
 func (w *Worker) providerWriter(ctx context.Context, t *model.GenerationTask, phase string, snap *provider.Snapshot, steps []provider.TraceStep, latency time.Duration) func() {
-	callID := logger.NewCallID()
+	callID := logger.CallOf(ctx).ID // Handle 开头声明的，和发给 plugin-runner 的请求头一致
+	if callID == "" {
+		callID = logger.NewCallID()
+	}
 	result, lastErr := "ok", ""
 	for _, s := range steps {
 		if s.Error != "" {

@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/provider/pluginproto"
 )
 
@@ -155,6 +156,7 @@ func (c *httpRunnerClient) post(ctx context.Context, path string, in, out any, t
 		return fmt.Errorf("构造 runner 请求失败：%w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	logger.InjectHeaders(ctx, req.Header) // runner 记日志时用和宿主同一组编号
 	resp, err := c.hc.Do(req)
 	if err != nil {
 		return classifyRunnerErr(ctx, err, connected.Load())

@@ -13,6 +13,7 @@ import (
 
 	agenthandler "video-canvas/internal/handler/agent"
 	"video-canvas/internal/middleware"
+	"video-canvas/internal/pkg/logger"
 )
 
 func TestAgentProxy_AdminRoutesAndRealtimeRole(t *testing.T) {
@@ -164,5 +165,17 @@ func TestNewAgentProxy_ValidatesTarget(t *testing.T) {
 	}
 	if _, err := agenthandler.NewAgentProxy("http://agent:8090", ""); err == nil {
 		t.Error("没有服务令牌应报错")
+	}
+}
+
+// 客户端没带 X-Request-ID 时 Go 自己生成一个（挂在请求 context 上），转发时也要带给 Agent 服务，两边日志用同一个编号。
+func TestAgentProxy_ForwardsGeneratedRequestID(t *testing.T) {
+	srv, seen := upstreamStub(t, http.StatusOK, `{"code":0,"msg":"success","data":{}}`)
+	r := proxyRouter(t, srv.URL, 42)
+	req := httptest.NewRequest("GET", "/api/v1/agent/sessions", nil)
+	req = req.WithContext(logger.WithRequest(req.Context(), "req-generated"))
+	r.ServeHTTP(httptest.NewRecorder(), req)
+	if got := seen().header.Get("X-Request-ID"); got != "req-generated" {
+		t.Errorf("应把请求编号带给 Agent 服务：%q", got)
 	}
 }

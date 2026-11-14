@@ -240,10 +240,11 @@ test("服务入口（真起进程）：启动、/health、收到 SIGTERM 正常�
         ...signalShim,
         fileURLToPath(new URL("../src/serve.ts", import.meta.url)),
       ],
-      { env, stdio: ["ignore", "ignore", "pipe", "ipc"] },
+      { env, stdio: ["ignore", "pipe", "ignore", "ipc"] },
     );
+    // 日志写标准输出（JSON 行，见 src/log.ts）
     let err = "";
-    child.stderr!.on("data", (c) => (err += c));
+    child.stdout!.on("data", (c) => (err += c));
     const exited = new Promise<number | null>((r) => child.on("close", r));
     let addr = "";
     for (let i = 0; i < 500 && !addr; i++) {
@@ -253,6 +254,11 @@ test("服务入口（真起进程）：启动、/health、收到 SIGTERM 正常�
     if (!addr) child.kill("SIGKILL"); // 断言失败也不能留下进程
     assert.ok(addr, "没有启动：" + err);
     assert.match(err, /Agent 服务已启动/);
+    for (const line of err.trim().split("\n")) {
+      const rec = JSON.parse(line); // 每一行都是合法 JSON，带统一的时间、级别和服务名
+      assert.equal(rec.service, "agent");
+      assert.ok(rec.time && rec.level, "缺时间或级别：" + line);
+    }
     assert.equal((await fetch(`http://${addr}/health`)).status, 200);
     if (process.platform === "win32") child.send("SIGTERM");
     else child.kill("SIGTERM");
@@ -277,11 +283,11 @@ test("服务入口：durable 模式缺配置时直接退出并说清楚", async 
         AGENT_SERVICE_TOKEN: TOKEN,
         AGENT_DB_PATH: "/tmp/x.sqlite",
       },
-      stdio: ["ignore", "ignore", "pipe"],
+      stdio: ["ignore", "pipe", "ignore"],
     },
   );
   let err = "";
-  child.stderr!.on("data", (c) => (err += c));
+  child.stdout!.on("data", (c) => (err += c));
   assert.equal(await new Promise((r) => child.on("close", r)), 1);
   assert.match(err, /AGENT_BRIDGE_URL/);
 });

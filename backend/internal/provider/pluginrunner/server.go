@@ -2,6 +2,7 @@
 package pluginrunner
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -13,7 +14,9 @@ import (
 	"time"
 
 	"github.com/dop251/goja"
+	"go.uber.org/zap"
 
+	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/provider/pluginmeta"
 	"video-canvas/internal/provider/pluginproto"
 )
@@ -77,7 +80,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc(pluginproto.PathLoad, s.load)
 	mux.HandleFunc(pluginproto.PathCall, s.call)
 	mux.HandleFunc(pluginproto.PathPrecheck, s.precheck)
-	return mux
+	// 宿主在请求头里带上请求编号、运行和上游调用编号（logger.InjectHeaders），这里还原，钩子失败的日志和宿主用同一组编号
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mux.ServeHTTP(w, r.WithContext(logger.FromHeaders(r.Context(), r.Header)))
+	})
 }
 
 func readRequest(w http.ResponseWriter, r *http.Request, out any) bool {
@@ -142,11 +148,13 @@ func (s *Server) load(w http.ResponseWriter, r *http.Request) {
 	}
 	program, err := compile(in.Code)
 	if err != nil {
+		logger.Ctx(r.Context()).Warn("插件装载失败", zap.String("sha256", in.SHA256), zap.String("stage", "compile"), zap.Error(err))
 		respond(w, pluginproto.LoadResponse{Error: issue(pluginproto.CodeException, err.Error())})
 		return
 	}
 	rt, err := newRuntime(program, s.opts.LoadTimeout)
 	if err != nil {
+		logger.Ctx(r.Context()).Warn("插件装载失败", zap.String("sha256", in.SHA256), zap.String("stage", "init"), zap.Error(err))
 		respond(w, pluginproto.LoadResponse{Error: callError(err)})
 		return
 	}
@@ -165,6 +173,7 @@ func (s *Server) call(w http.ResponseWriter, r *http.Request) {
 	out := pluginproto.CallResponse{}
 	defer func() {
 		out.DurationMs = time.Since(start).Milliseconds()
+		logCall(r.Context(), in, &out)
 		respond(w, out)
 	}()
 	v := s.lookup(in.SHA256)
@@ -323,4 +332,15 @@ func safeError(err error) string {
 		return ""
 	}
 	return fmt.Sprint(err)
+}
+
+// logCall 记一次钩子调用：失败（超时、脚本异常、运行时崩溃、参数不合法）打 Warn，成功只打 Debug。
+// 钩子的入参、返回值和 utils.log 由宿主写进 payload.log，这里只记 runner 自己看到的结果。
+func logCall(ctx context.Context, in pluginproto.CallRequest, out *pluginproto.CallResponse) {
+	fields := []zap.Field{zap.String("hook", in.Hook), zap.String("sha256", in.SHA256), zap.Int64("duration_ms", out.DurationMs)}
+	if out.Error == nil {
+		logger.Ctx(ctx).Debug("钩子执行完成", fields...)
+		return
+	}
+	logger.Ctx(ctx).Warn("钩子执行失败", append(fields, zap.String("code", out.Error.Code), zap.String("message", out.Error.Message))...)
 }

@@ -42,7 +42,15 @@ func Init(cfg config.Log) error {
 	if instance == "" {
 		instance, _ = os.Hostname()
 	}
-	base := zap.String("instance", instance)
+	service := cfg.Service
+	if service == "" {
+		service = "backend"
+	}
+	base := zap.Inline(zapcore.ObjectMarshalerFunc(func(enc zapcore.ObjectEncoder) error {
+		enc.AddString("service", service)
+		enc.AddString("instance", instance)
+		return nil
+	}))
 
 	// 1. 主日志：标准输出 + app.log
 	cores := []zapcore.Core{zapcore.NewCore(stdoutEncoder(cfg), zapcore.AddSync(os.Stdout), level)}

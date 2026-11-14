@@ -60,8 +60,10 @@ type Log struct {
 	MaxBackups int    `mapstructure:"max_backups"`
 	MaxAge     int    `mapstructure:"max_age"`
 	// Instance 写进每行日志的 instance 字段，多实例部署时区分来源；空串取主机名
-	Instance string     `mapstructure:"instance"`
-	Payload  LogPayload `mapstructure:"payload"`
+	Instance string `mapstructure:"instance"`
+	// Service 写进每行日志的 service 字段：backend（默认）/ plugin-runner，和 Agent 服务的 agent 一起区分是哪个进程打的
+	Service string     `mapstructure:"service"`
+	Payload LogPayload `mapstructure:"payload"`
 }
 
 // LogPayload 是 payload.log：每次上游调用的请求和响应全文，只写文件、不进标准输出。

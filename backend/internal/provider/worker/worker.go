@@ -131,6 +131,8 @@ func (w *Worker) Handle(ctx context.Context, t model.GenerationTask) {
 	// 写日志和保存放在 defer 里并先于 recover 注册（所以最后执行）：即使本次处理 panic，已经发生的步骤也会留下
 	logger.RunOf(ctx).SetUser(t.UserID)
 	var snap *provider.Snapshot
+	// 先声明这次供应商调用：发给 plugin-runner 的请求头和之后的 provider.call / payload 记录用同一个 call_id
+	ctx, _ = logger.WithCall(ctx, "gen."+phaseOf(t.Status))
 	ctx, tr := traceFor(ctx, &t)
 	defer w.logProvider(ctx, &t, phaseOf(t.Status), &snap, tr, time.Now()) // 耗时用真实时钟，不用可注入的 opts.Now
 	if t.IsTest {

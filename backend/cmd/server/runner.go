@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"flag"
@@ -12,6 +13,8 @@ import (
 	"syscall"
 	"time"
 
+	"video-canvas/internal/config"
+	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/provider/plugin"
 	"video-canvas/internal/provider/pluginrunner"
 )
@@ -45,6 +48,11 @@ func runPluginRunner(args []string) error {
 		}
 		return nil
 	}
+	// 日志写标准输出（JSON 行），字段和主服务一致：钩子失败带宿主传来的请求编号、运行和 call_id
+	if err := logger.Init(config.Log{Level: cmp.Or(os.Getenv("APP_LOG_LEVEL"), "info"), Format: "json", Service: "plugin-runner"}); err != nil {
+		return fmt.Errorf("初始化日志: %w", err)
+	}
+	defer logger.Close()
 	if *network == "unix" {
 		_ = os.Remove(*address)
 	}

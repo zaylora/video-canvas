@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/provider"
 )
 
@@ -49,6 +50,7 @@ func (n *TaskNotifier) TaskSettled(ctx context.Context, notice provider.TaskSett
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Agent-Service-Token", n.ServiceToken)
+	logger.InjectHeaders(ctx, req.Header) // Agent 服务的请求日志用同一个 request_id
 	resp, err := c.Do(req)
 	if err != nil {
 		return fmt.Errorf("连接 Agent 服务失败：%w", err)

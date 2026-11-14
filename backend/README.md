@@ -47,6 +47,47 @@ make run
 - 登录记录保留天数固定为 180 天（`service.DefaultLoginLogRetentionDays`，不再可配置）：后台任务在启动后 1~5 分钟内先清理一次，之后每 24 小时一次，每批最多删 1000 行；失败只记日志，不影响服务
 - 并发上限与新用户初始积分不在配置文件里：由后台「注册设置」的库值决定，库里没有值时回落到代码常量 `service.DefaultMaxActiveTasks`（4）与 `service.DefaultInitialCredits`（50）
 
+## 日志与排查
+
+所有用户运行（画布生成、短剧、营销、Agent、环节试跑）走同一套日志，设计见 [统一服务器日志](../docs/design/统一服务器日志/统一服务器日志.md)，写法规范见 [02-错误处理与日志.md](docs/standards/02-错误处理与日志.md) E10。
+
+| 文件 | 内容 | 位置 | 保留 |
+| --- | --- | --- | --- |
+| `app.log` | 过程事件、每次运行一行汇总（`run.finish`）、每个请求一行访问日志（`http.request`）、失败原因；也写标准输出 | 本地 `backend/logs/`；Docker 在 `backend_logs` 卷的 `/app/logs/` | 30 天 |
+| `payload.log` | 每次上游调用（文本模型、供应商插件、其他外部 HTTP）的请求和响应全文，成功的也记；只写文件 | 同上 | 7 天，压缩 |
+
+`payload.log` 里有用户原文、提示词和模型输出，日志目录的访问权限要按数据库同级管理；渠道 Key 和鉴权头一律遮成 `***`。
+
+每行都是一条 JSON，带 `service`（backend / plugin-runner / agent）、`instance`，运行相关的带 `run_kind` + `run_id`（**和界面上显示的编号相同**：生成任务、短剧、营销是十六进制，Agent 是后台「运行记录」里的十进制编号）、`user_id`、`request_id`，上游调用带 `call_id`。
+
+```bash
+# 镜像里有 grep，没有 jq：在容器里过滤，在宿主机上用 jq
+L='docker compose exec -T backend'
+
+# 1. 用户给了编号：这次运行的全过程（最后一行是 run.finish 汇总）
+$L grep '<编号>' /app/logs/app.log | jq -c '{time, level, event, msg, status, error_type, error, call_id, last_call_id}'
+
+# 2. 拿 call_id（或汇总行的 last_call_id）看当时发给上游的完整请求和响应
+$L grep '<call_id>' /app/logs/payload.log | jq .
+
+# 3. 只有用户 ID：他今天的所有运行汇总
+$L grep '"event":"run.finish"' /app/logs/app.log | jq -c 'select(.user_id==42)'
+
+# 4. 巡检：按运行类型和失败类型计数
+$L grep '"event":"run.finish"' /app/logs/app.log | jq -r 'select(.status=="failed") | "\(.run_kind) \(.error_type)"' | sort | uniq -c
+
+# 5. 业务开始了运行却没收尾（中间件兜底的汇总行，看到就要补 run.End）
+$L grep '"finish_fallback":true' /app/logs/app.log
+
+# 6. 已滚动压缩的旧文件
+$L sh -c 'zcat /app/logs/payload-*.log.gz' | grep '<call_id>'
+
+# 7. Agent 服务和 plugin-runner 的日志在各自的标准输出（同样是 JSON 行，同一个编号能 grep 到）
+docker compose logs agent plugin-runner | grep '<编号>'
+```
+
+相关配置（`configs/config.yaml` 的 `log`，环境变量 `APP_LOG_*` 覆盖）：`filename`（主日志文件）、`max_age`、`instance`（默认主机名）、`payload.enabled` / `payload.filename` / `payload.max_age`。Agent 服务的级别用 `AGENT_LOG_LEVEL`。
+
 ## 接口
 
 所有登录后的接口都经过 `JWTAuth` → `RequireActive`：账号被停用返回 403 / 53004，token 的 `token_version` 与用户当前值不符返回 401。用户状态走 Redis 缓存（`user:<id>`，无 Redis 直接查库），`RequireAdmin` / `RequireSuperAdmin` 的角色查询与它共用同一套。原先的 `GET /users`、`GET /users/:id` 已删除。

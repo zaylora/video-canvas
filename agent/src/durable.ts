@@ -11,6 +11,7 @@ import { AgentEngine } from "./engine/engine.ts";
 import { EventPusher } from "./event-pusher.ts";
 import { startIdCheck, type IdCheck } from "./id-check.ts";
 import { createIdCodec } from "./ids.ts";
+import { asLogger, logRunEvent } from "./log.ts";
 import { createPlatform } from "./platform-client.ts";
 import { openStore } from "./store/store.ts";
 import { WebAccess } from "./web-access.ts";
@@ -94,6 +95,7 @@ export async function startDurable(
   opts: DurableOptions = {},
 ): Promise<DurableService> {
   mkdirSync(dirname(cfg.dbPath), { recursive: true });
+  const runLog = asLogger(log);
   const codec = createIdCodec(cfg.idKey);
   const store = openStore(cfg.dbPath, { workerId: cfg.workerId });
   let engine: AgentEngine | undefined;
@@ -127,7 +129,10 @@ export async function startDurable(
       web,
       storage: await openNodeSqliteStorage(cfg.dbPath, { prefix: "pi_" }),
       resumeWindowMs: cfg.resumeWindowMs,
-      onEvent: (ev) => p.publish(ev),
+      onEvent: (ev) => {
+        logRunEvent(runLog, ev); // 运行状态变化进日志（run_kind=agent），和 Go 那边的日志用同一个运行编号
+        p.publish(ev);
+      },
     });
     const app = createApiApp({
       service: new AgentApiService({ store, engine, platform, codec }),

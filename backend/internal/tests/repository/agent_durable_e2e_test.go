@@ -105,7 +105,8 @@ func startDurableAgent(t *testing.T, node, dir, bridgeURL, dbPath string, idKey 
 		"PATH=" + os.Getenv("PATH"), "AGENT_SERVICE_TOKEN=" + e2eServiceToken, "AGENT_LISTEN=127.0.0.1:0",
 		"AGENT_DB_PATH=" + dbPath, "AGENT_BRIDGE_URL=" + bridgeURL, "AGENT_ID_KEY=" + append(idKey, "video-canvas-dev-id-key")[0], // 默认和 idcodec 没调用 Init 时的密钥一致
 	}
-	stderr, err := cmd.StderrPipe()
+	// Agent 服务的日志是标准输出上的 JSON 行（agent/src/log.ts），启动地址在「Agent 服务已启动」那一行
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,14 +118,14 @@ func startDurableAgent(t *testing.T, node, dir, bridgeURL, dbPath string, idKey 
 	addr := make(chan string, 1)
 	go func() {
 		re := regexp.MustCompile(`"addr":"([^"]+)"`)
-		sc := bufio.NewScanner(stderr)
+		sc := bufio.NewScanner(stdout)
 		for sc.Scan() {
 			if m := re.FindStringSubmatch(sc.Text()); m != nil {
 				addr <- m[1]
 				break
 			}
 		}
-		_, _ = io.Copy(io.Discard, stderr)
+		_, _ = io.Copy(io.Discard, stdout)
 	}()
 	select {
 	case a := <-addr:

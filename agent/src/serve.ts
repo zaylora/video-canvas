@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { configFromEnv, startDurable } from "./durable.ts";
+import { createLogger } from "./log.ts";
 
 /**
  * Agent 服务的入口：Pi Durable 引擎 + 前端用的 REST 接口，会话、运行、审批、事件都在这里，数据在 SQLite（含 Pi 自己的表）。
@@ -13,10 +14,11 @@ import { configFromEnv, startDurable } from "./durable.ts";
  *   AGENT_RESUME_WINDOW_SECONDS  重启后自动续跑的窗口，默认 300
  *   AGENT_WEB_ALLOW_FAKE_IP      开发代理 Fake-IP 放行，生产默认关闭
  *   EXA_API_KEY / BRAVE_API_KEY / TAVILY_API_KEY / FIRECRAWL_API_KEY  可选，传给联网 MCP；缺省使用免 Key 搜索
- * 日志写 stderr（JSON 行）。收到 SIGTERM / SIGINT 只关闭服务和存储，不中止运行：运行留在原状态，下次启动按窗口续跑或标为中断。
+ *   AGENT_LOG_LEVEL              日志级别 debug / info / warn / error，默认 info
+ * 日志写标准输出（JSON 行，字段和 Go 后端的统一服务器日志对齐，见 log.ts）。
+ * 收到 SIGTERM / SIGINT 只关闭服务和存储，不中止运行：运行留在原状态，下次启动按窗口续跑或标为中断。
  */
-const log = (msg: string, extra: Record<string, unknown> = {}) =>
-  process.stderr.write(JSON.stringify({ msg, ...extra }) + "\n");
+const log = createLogger({ level: process.env.AGENT_LOG_LEVEL });
 
 /** 启动前自检失败：说清楚原因就退出，不要等到第一次请求才发现 */
 function die(msg: string): never {
