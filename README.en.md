@@ -69,7 +69,26 @@ Turn a long script or novel into episodes and storyboard video, step by step.
   </tr>
 </table>
 
-### 2. Infinite canvas
+### 2. Marketing Studio
+
+Hand it a product image and get a batch of short promo videos for the platform you sell on.
+
+- Upload a product image, a model image and a reference video, then pick the platform, video model, aspect ratio and duration.
+- AI first builds a product fact card (visual anchors and selling points), breaks the reference video into shots, then writes a follow-the-reference script and original creative scripts.
+- Each script lists the time range, visuals and voiceover for every shot, and the generation prompt can be edited by hand. Generate everything at once, or regenerate a single video.
+
+<table>
+  <tr>
+    <th width="50%">Marketing Studio home</th>
+    <th width="50%">Script and video workspace</th>
+  </tr>
+  <tr>
+    <td><a href="docs/assets/screenshots/营销工作室首页.png"><img src="docs/assets/screenshots/营销工作室首页.png" alt="Marketing Studio - Home" /></a></td>
+    <td><a href="docs/assets/screenshots/营销工作室.png"><img src="docs/assets/screenshots/营销工作室.png" alt="Marketing Studio - Script and video workspace" /></a></td>
+  </tr>
+</table>
+
+### 3. Infinite canvas
 
 Connect text, image, video and audio nodes. The output of an upstream node is used directly as a reference for downstream generation.
 
@@ -79,25 +98,25 @@ Connect text, image, video and audio nodes. The output of an upstream node is us
 
 <a href="docs/assets/screenshots/%E7%94%BB%E5%B8%83.png"><img src="docs/assets/screenshots/%E7%94%BB%E5%B8%83.png" alt="Infinite canvas" /></a>
 
-### 3. 3D director's desk
+### 4. 3D director's desk
 
 Compose shots with mannequins, props and multiple cameras, then export camera views as videos and first-frame images back to the canvas.
 
 <a href="docs/assets/screenshots/%E5%AF%BC%E6%BC%94%E5%8F%B0.png"><img src="docs/assets/screenshots/%E5%AF%BC%E6%BC%94%E5%8F%B0.png" alt="3D director's desk" /></a>
 
-### 4. Home conversations and asset library
+### 5. Home conversations and asset library
 
 - **Home conversations**: Pick a model and parameters on the home page and generate right away. Results are kept as a conversation and can be retried, edited, or used as references for the next generation.
 - **Personal asset library**: Upload media and organize it in folders. Generated results can be added in one click and placed back onto any canvas.
 
 <a href="docs/assets/screenshots/%E9%A6%96%E9%A1%B5.png"><img src="docs/assets/screenshots/%E9%A6%96%E9%A1%B5.png" alt="Home" /></a>
 
-### 5. Generation and credits
+### 6. Generation and credits
 
 - **Asynchronous tasks**: Submitting returns immediately. Progress is pushed over WebSocket and reconciled automatically after a reconnect. Tasks can be cancelled.
 - **Credit settlement**: Credits are frozen on submission, charged on success and refunded on failure or cancellation. Online top-up is supported.
 
-### 6. Admin console
+### 7. Admin console
 
 - **Channels and models**: Connectivity is checked before saving, and a model can only be enabled after validation.
 - **Operations**: Credit pricing, users, payments, usage records, audit logs and a runtime overview.

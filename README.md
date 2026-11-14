@@ -69,7 +69,26 @@
   </tr>
 </table>
 
-### 2. 无限画布
+### 2. 营销工作室
+
+把商品图交给它，按投放平台批量做出带货短视频。
+
+- 上传商品图、模特图和参考视频，选好投放平台、出片模型和画幅时长即可开工。
+- AI 先整理商品事实卡（外观锚点、卖点），拆解参考视频的镜头，再写出跟拍脚本和创意脚本。
+- 脚本按镜头列出时间段、画面和旁白，出片提示词可以手改；可一键全部出片，也可以单条重出。
+
+<table>
+  <tr>
+    <th width="50%">营销工作室首页</th>
+    <th width="50%">脚本与成片创作台</th>
+  </tr>
+  <tr>
+    <td><a href="docs/assets/screenshots/营销工作室首页.png"><img src="docs/assets/screenshots/营销工作室首页.png" alt="营销工作室-首页" /></a></td>
+    <td><a href="docs/assets/screenshots/营销工作室.png"><img src="docs/assets/screenshots/营销工作室.png" alt="营销工作室-脚本与成片创作台" /></a></td>
+  </tr>
+</table>
+
+### 3. 无限画布
 
 文本、图片、视频、音频节点可以互相连线，上游节点的结果直接作为下游生成的参考。
 
@@ -79,25 +98,25 @@
 
 <a href="docs/assets/screenshots/%E7%94%BB%E5%B8%83.png"><img src="docs/assets/screenshots/%E7%94%BB%E5%B8%83.png" alt="无限画布" /></a>
 
-### 3. 3D 导演台
+### 4. 3D 导演台
 
 用人台、道具和多机位摆出构图，把机位画面导出为视频和首帧图片，再放回画布。
 
 <a href="docs/assets/screenshots/%E5%AF%BC%E6%BC%94%E5%8F%B0.png"><img src="docs/assets/screenshots/%E5%AF%BC%E6%BC%94%E5%8F%B0.png" alt="3D 导演台" /></a>
 
-### 4. 首页对话与资产库
+### 5. 首页对话与资产库
 
 - **首页对话**：在首页选择模型和参数直接发起生成，结果按对话记录保存，可重试、再编辑，或作为下一次生成的参考素材。
 - **个人资产库**：上传素材、按文件夹整理，生成结果可一键入库，也可以从资产库添加到画布。
 
 <a href="docs/assets/screenshots/%E9%A6%96%E9%A1%B5.png"><img src="docs/assets/screenshots/%E9%A6%96%E9%A1%B5.png" alt="首页" /></a>
 
-### 5. 生成与积分
+### 6. 生成与积分
 
 - **异步任务**：提交后立即返回，进度通过 WebSocket 推送，断线重连后自动对账；任务可取消。
 - **积分结算**：提交时冻结积分，成功后扣除，失败或取消时退回；支持在线充值。
 
-### 6. 管理后台
+### 7. 管理后台
 
 - **渠道与模型**：保存前做连通性检查，校验通过后才能启用。
 - **运营管理**：积分定价、用户、支付、使用记录、操作审计和运行总览。
