@@ -226,7 +226,8 @@ func validateTarget(tg Target) (*url.URL, error) {
 	return u, nil
 }
 
-// classifyHTTPError 把上游的非 2xx 响应转成 *UpstreamError：给用户的文案不含 Key，限流和上游故障可重试。
+// classifyHTTPError 把上游的非 2xx 响应转成 *UpstreamError：上游错误体里有 error.message 就给用户看这句原文（遮掉 Key），
+// 取不到时按状态码给通用说明；限流和上游故障可重试。
 func classifyHTTPError(resp *http.Response, key string) error {
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrBodyBytes)) // 读不全也没关系，只用来提取一句说明
 	e := &UpstreamError{Status: resp.StatusCode}
@@ -240,22 +241,28 @@ func classifyHTTPError(resp *http.Response, key string) error {
 	case resp.StatusCode >= 500:
 		e.Message, e.Retryable = fmt.Sprintf("上游服务暂时不可用（HTTP %d）", resp.StatusCode), true
 	default:
-		e.Message = upstreamMessage(raw, key, resp.StatusCode)
+		e.Message = fmt.Sprintf("上游拒绝了请求（HTTP %d）", resp.StatusCode)
+	}
+	if msg := upstreamMessage(raw, key); msg != "" {
+		e.Message = msg
 	}
 	return e
 }
 
-// upstreamMessage 从上游的错误体里取 error.message，脱敏并截断；取不到给通用说明。
-func upstreamMessage(raw []byte, key string, status int) string {
+// upstreamMessage 从上游的错误体里取 error.message，脱敏并截断；取不到返回空串。
+func upstreamMessage(raw []byte, key string) string {
 	var b struct {
 		Error struct {
 			Message string `json:"message"`
 		} `json:"error"`
 	}
-	if json.Unmarshal(raw, &b) == nil && b.Error.Message != "" {
-		return truncate(strings.ReplaceAll(b.Error.Message, key, "***"), maxErrRunes)
+	if json.Unmarshal(raw, &b) != nil || strings.TrimSpace(b.Error.Message) == "" {
+		return ""
 	}
-	return fmt.Sprintf("上游拒绝了请求（HTTP %d）", status)
+	if key != "" {
+		b.Error.Message = strings.ReplaceAll(b.Error.Message, key, "***")
+	}
+	return truncate(strings.TrimSpace(b.Error.Message), maxErrRunes)
 }
 
 // redactErr 去掉错误里可能带出的 Key。

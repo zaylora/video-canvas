@@ -19,13 +19,13 @@ import { PLATFORM_ICON } from "@/components/marketing/composer-menus";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { useMarketingOptions } from "@/hooks/use-marketing-options";
-import { useRemoteModels } from "@/hooks/use-models";
 import { cn } from "@/lib/utils";
 import { CreditsPill } from "@/pages/canvas/chrome/top-right-bar";
 import { platformName, STEP_NAME } from "@/utils/marketing/options";
 import { methodLabel, renderAllState } from "@/utils/marketing/script";
 import { splitStepLevels, STEP_STATUS_LABEL } from "@/utils/marketing/status";
 
+import { RoundSettingsMenus } from "./round-settings";
 import type { MarketingActions } from "./use-actions";
 
 const STEP_ICON: Record<StepRunStatus, LucideIcon> = {
@@ -84,14 +84,14 @@ function StepsBar({ steps }: { steps: StepRun[] }) {
 /** 细描边的小胶囊（本轮参数） */
 function Chip({ children }: { children: React.ReactNode }) {
   return (
-    <span className="ring-chrome-border text-foreground/85 inline-flex h-6 shrink-0 items-center gap-1 rounded-full px-2.5 text-xs whitespace-nowrap tabular-nums ring-1 [&_svg]:size-3.5">
+    <span className="ring-chrome-border text-foreground/85 inline-flex h-8 shrink-0 items-center gap-1 rounded-full px-3 text-[13px] whitespace-nowrap tabular-nums ring-1 [&_svg]:size-3.5">
       {children}
     </span>
   );
 }
 
 /**
- * 创作台顶栏：返回、商品名（点开编辑事实卡）、轮次切换（最新在左）、本轮参数、环节进度
+ * 创作台顶栏：返回、商品名（点开编辑事实卡）、轮次切换（最新在左）、本轮参数（模型与分辨率可改）、环节进度
  * （写脚本中带阶段文字和取消）、全部出片、再写一轮、积分与主题。
  */
 export function TopBar({
@@ -114,22 +114,11 @@ export function TopBar({
   onComposer: () => void;
 }) {
   const { platforms } = useMarketingOptions();
-  const video = useRemoteModels("video");
   const all = round ? renderAllState(round, available) : null;
   const settings = round?.settings;
   const PlatformIcon = settings
     ? (PLATFORM_ICON[settings.platform] ?? PLATFORM_ICON.generic)
     : null;
-  const params = settings?.params ?? {};
-  const ratio = (params.aspect_ratio ?? params.ratio) as string | undefined;
-  const resolution = params.resolution as string | undefined;
-  const duration = params.duration as number | undefined;
-  const spec = [ratio, resolution?.toUpperCase(), duration ? `${duration}s` : undefined]
-    .filter(Boolean)
-    .join(" · ");
-  const modelLabel = settings
-    ? (video.models.find((item) => item.key === settings.videoModel)?.label ?? settings.videoModel)
-    : "";
 
   return (
     <header
@@ -188,7 +177,7 @@ export function TopBar({
         </>
       )}
 
-      {settings && PlatformIcon && (
+      {round && settings && PlatformIcon && (
         <>
           <ChromeSeparator className="max-xl:hidden" />
           <span className="flex flex-wrap items-center gap-1.5 max-xl:hidden">
@@ -196,8 +185,12 @@ export function TopBar({
               <PlatformIcon />
               {platformName(settings.platform, platforms)}
             </Chip>
-            {modelLabel && <Chip>{modelLabel}</Chip>}
-            {spec && <Chip>{spec}</Chip>}
+            <RoundSettingsMenus
+              project={project}
+              round={round}
+              actions={actions}
+              onComposer={onComposer}
+            />
             <Chip>{settings.language === "en" ? "English 旁白" : "中文旁白"}</Chip>
             {round?.refVideo && (
               <Chip>

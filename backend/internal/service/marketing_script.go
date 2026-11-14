@@ -246,35 +246,22 @@ func (s *MarketingService) videoSnapshot(ctx context.Context, key string) (*prov
 }
 
 // Prompt 返回脚本按某个视频模型格式化出的提示词预览（默认用本轮的视频模型）。
-// 视频模型不可用 68004；提示词超出模型上限 68008。
+// 手改过原稿时返回手改稿。视频模型不可用 68004；提示词超出模型上限 68008。
 func (s *MarketingService) Prompt(ctx context.Context, userID, id uint64, videoModel string) (*model.MarketingPrompt, error) {
 	c, err := s.loadScript(ctx, userID, id)
 	if err != nil {
 		return nil, err
 	}
-	key := videoModel
-	if key == "" {
-		key = c.st.VideoModel
-	}
-	snap, err := s.videoSnapshot(ctx, key)
+	snap, err := s.promptVideo(ctx, c, videoModel)
 	if err != nil {
 		return nil, err
 	}
-	f := format.For(snap.Model.Capabilities.PromptFormat)
-	in, err := s.formatInput(c, c.st, snap.Model.Capabilities)
+	if marketing.NeedsAdapt(snap.Model.Capabilities.PromptFormat) {
+		return s.adaptPromptView(ctx, c, snap)
+	}
+	_, src, err := s.resolveSource(c, c.st, snap.Model.Capabilities)
 	if err != nil {
 		return nil, err
 	}
-	prompt, err := f.Render(in)
-	if errors.Is(err, format.ErrTooLong) {
-		return nil, errcode.ErrMarketingPromptLong
-	}
-	if err != nil {
-		return nil, err
-	}
-	kind := "generic"
-	if f.Key() == "seedance" {
-		kind = "seedance"
-	}
-	return &model.MarketingPrompt{Format: kind, Prompt: prompt}, nil
+	return &model.MarketingPrompt{Format: promptKey(snap.Model.Capabilities), Prompt: src.Text, Edited: src.Edited, Stale: src.Stale}, nil
 }

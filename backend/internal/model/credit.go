@@ -29,20 +29,21 @@ func TaskIDPtr(id uint64) *uint64 { return &id }
 // CreditLedger 积分流水。(task_id, type) 在 task_id 非空时唯一（部分唯一索引），保证同一任务每种流水最多一条，天然幂等；
 // 管理员调整与初始积分流水没有 task_id，不受该索引约束。
 type CreditLedger struct {
-	ID             uint64    `gorm:"primaryKey" json:"id"`                                                                             // 流水 ID
-	UserID         uint64    `gorm:"not null;index" json:"user_id"`                                                                    // 用户 ID
-	TaskID         *uint64   `gorm:"uniqueIndex:uk_ledger_task_type,priority:1,where:task_id IS NOT NULL" json:"task_id"`              // 关联的生成任务 ID；管理员调整 / 初始积分为空
-	AgentCallID    *uint64   `gorm:"uniqueIndex:uk_ledger_agent_type,priority:1,where:agent_call_id IS NOT NULL" json:"agent_call_id"` // 关联的 Agent 对话调用 ID；其余流水为空，和 task_id 互斥
-	DramaJobID     *uint64   `gorm:"uniqueIndex:uk_ledger_drama_type,priority:1,where:drama_job_id IS NOT NULL" json:"drama_job_id"`
-	DramaSegmentID *uint64   `gorm:"index:idx_ledger_drama_segment,where:drama_segment_id IS NOT NULL" json:"drama_segment_id"`                                                             // 片场转写扣费关联的片段；同一片段可多次转写，所以不唯一
-	StepTrialID    *uint64   `gorm:"uniqueIndex:uk_ledger_step_trial_type,priority:1,where:step_trial_id IS NOT NULL" json:"step_trial_id"`                                                 // 后台环节试跑扣费关联的试跑；一次试跑每种流水最多一条
-	MarketingRunID *uint64   `gorm:"column:marketing_step_run_id;uniqueIndex:uk_ledger_marketing_run_type,priority:1,where:marketing_step_run_id IS NOT NULL" json:"marketing_step_run_id"` // 营销写脚本环节运行扣费关联的运行；一次运行每种流水最多一条
-	Type           string    `gorm:"size:16;not null;uniqueIndex:uk_ledger_task_type,priority:2,where:task_id IS NOT NULL;uniqueIndex:uk_ledger_agent_type,priority:2,where:agent_call_id IS NOT NULL;uniqueIndex:uk_ledger_payment_type,priority:2,where:payment_order_id IS NOT NULL;uniqueIndex:uk_ledger_drama_type,priority:2,where:drama_job_id IS NOT NULL;uniqueIndex:uk_ledger_step_trial_type,priority:2,where:step_trial_id IS NOT NULL;uniqueIndex:uk_ledger_marketing_run_type,priority:2,where:marketing_step_run_id IS NOT NULL" json:"type"`
-	Amount         int       `gorm:"not null" json:"amount"`                                                                                   // 积分数量
-	PaymentOrderID *uint64   `gorm:"uniqueIndex:uk_ledger_payment_type,priority:1,where:payment_order_id IS NOT NULL" json:"payment_order_id"` // 关联的支付订单 ID，只有 recharge 流水有；(payment_order_id, type) 唯一是防重复入账的最后一道防线
-	OperatorID     *uint64   `json:"operator_id"`                                                                                              // 操作人（仅管理员调整）
-	Note           string    `gorm:"type:text;not null;default:''" json:"note"`                                                                // 备注（仅管理员调整）
-	CreatedAt      time.Time `json:"created_at"`                                                                                               // 创建时间
+	ID                uint64    `gorm:"primaryKey" json:"id"`                                                                             // 流水 ID
+	UserID            uint64    `gorm:"not null;index" json:"user_id"`                                                                    // 用户 ID
+	TaskID            *uint64   `gorm:"uniqueIndex:uk_ledger_task_type,priority:1,where:task_id IS NOT NULL" json:"task_id"`              // 关联的生成任务 ID；管理员调整 / 初始积分为空
+	AgentCallID       *uint64   `gorm:"uniqueIndex:uk_ledger_agent_type,priority:1,where:agent_call_id IS NOT NULL" json:"agent_call_id"` // 关联的 Agent 对话调用 ID；其余流水为空，和 task_id 互斥
+	DramaJobID        *uint64   `gorm:"uniqueIndex:uk_ledger_drama_type,priority:1,where:drama_job_id IS NOT NULL" json:"drama_job_id"`
+	DramaSegmentID    *uint64   `gorm:"index:idx_ledger_drama_segment,where:drama_segment_id IS NOT NULL" json:"drama_segment_id"`                                                             // 片场转写扣费关联的片段；同一片段可多次转写，所以不唯一
+	StepTrialID       *uint64   `gorm:"uniqueIndex:uk_ledger_step_trial_type,priority:1,where:step_trial_id IS NOT NULL" json:"step_trial_id"`                                                 // 后台环节试跑扣费关联的试跑；一次试跑每种流水最多一条
+	MarketingRunID    *uint64   `gorm:"column:marketing_step_run_id;uniqueIndex:uk_ledger_marketing_run_type,priority:1,where:marketing_step_run_id IS NOT NULL" json:"marketing_step_run_id"` // 营销写脚本环节运行扣费关联的运行；一次运行每种流水最多一条
+	MarketingScriptID *uint64   `gorm:"column:marketing_script_id;index:idx_ledger_marketing_script,where:marketing_script_id IS NOT NULL" json:"marketing_script_id"`                         // 营销出片前转写提示词扣费关联的脚本；同一脚本可多次转写，所以不唯一
+	Type              string    `gorm:"size:16;not null;uniqueIndex:uk_ledger_task_type,priority:2,where:task_id IS NOT NULL;uniqueIndex:uk_ledger_agent_type,priority:2,where:agent_call_id IS NOT NULL;uniqueIndex:uk_ledger_payment_type,priority:2,where:payment_order_id IS NOT NULL;uniqueIndex:uk_ledger_drama_type,priority:2,where:drama_job_id IS NOT NULL;uniqueIndex:uk_ledger_step_trial_type,priority:2,where:step_trial_id IS NOT NULL;uniqueIndex:uk_ledger_marketing_run_type,priority:2,where:marketing_step_run_id IS NOT NULL" json:"type"`
+	Amount            int       `gorm:"not null" json:"amount"`                                                                                   // 积分数量
+	PaymentOrderID    *uint64   `gorm:"uniqueIndex:uk_ledger_payment_type,priority:1,where:payment_order_id IS NOT NULL" json:"payment_order_id"` // 关联的支付订单 ID，只有 recharge 流水有；(payment_order_id, type) 唯一是防重复入账的最后一道防线
+	OperatorID        *uint64   `json:"operator_id"`                                                                                              // 操作人（仅管理员调整）
+	Note              string    `gorm:"type:text;not null;default:''" json:"note"`                                                                // 备注（仅管理员调整）
+	CreatedAt         time.Time `json:"created_at"`                                                                                               // 创建时间
 }
 
 func (CreditLedger) TableName() string { return "credit_ledger" }

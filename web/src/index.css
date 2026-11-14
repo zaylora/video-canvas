@@ -693,14 +693,25 @@ html:has([data-shell="home"]) {
     transform: scale(4, 1.4);
   }
 }
-/* 节点内容加载占位的扫光：只动 transform，合成线程跑 */
+/* 加载占位的扫光：只动 transform，合成线程跑。
+   扫光层是父级 3 倍宽（左右各伸出一倍），位移 ±1/3 自身宽度：层的边缘始终在父级外面。
+   若层和父级一样宽，竖长的框（9:16 视频、瀑布流竖卡）里斜向渐变会铺到层的左边缘，扫到一半露出一条硬竖线。
+   父级需 overflow-hidden、relative；周期用 --sheen-duration 调。 */
 @keyframes node-sheen {
   from {
-    transform: translateX(-100%);
+    transform: translateX(-33.333%);
   }
   to {
-    transform: translateX(100%);
+    transform: translateX(33.333%);
   }
+}
+@utility sheen-sweep {
+  position: absolute;
+  inset-block: 0;
+  left: -100%;
+  width: 300%;
+  background: linear-gradient(120deg, transparent 40%, var(--sheen) 50%, transparent 60%);
+  animation: node-sheen var(--sheen-duration, 1.6s) ease-in-out infinite;
 }
 @keyframes canvas-focus-in {
   from {

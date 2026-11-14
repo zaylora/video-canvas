@@ -15,7 +15,7 @@ import (
 //	[商品]     外观锚点逐条
 //	[分镜]     每镜一行，主体 + 动作放在开头
 //	[音乐与配音] 旁白语言与音色；配乐
-//	[硬性约束] 外观一致、商品不出画、不加字幕、人物以模特图为准、平台禁令、关键颜色
+//	[硬性约束] 外观一致、商品不出画、不加字幕、画面商品全是我们的、人物以模特图为准、平台禁令
 //
 // 区块标题永远是中文；镜头内容与旁白的语言跟脚本一致。
 func seedanceLayout(in Input, o options) string {
@@ -28,7 +28,7 @@ func seedanceLayout(in Input, o options) string {
 	blocks = append(blocks, seedanceProduct(in, o))
 	blocks = append(blocks, "[分镜]\n"+strings.Join(shotLines(in, o), "\n"))
 	blocks = append(blocks, "[音乐与配音] "+soundLine(in))
-	blocks = append(blocks, "[硬性约束] "+strings.Join(hardClauses(in, o), "；"))
+	blocks = append(blocks, "[硬性约束] "+strings.Join(hardClauses(in), "；"))
 	return strings.Join(blocks, "\n")
 }
 

@@ -26,38 +26,45 @@ const (
 	dbRetryBase  = 200 * time.Millisecond
 )
 
-// failure 是一次要落成 failed 的失败：分类决定给用户的文案，其余只进日志。
+// failure 是一次要落成 failed 的失败：有上游原文时给用户看原文，否则按分类给固定文案；raw 只进日志。
 type failure struct {
 	class       provider.ErrorClass
 	code        string // 上游或宿主的错误码（如 plugin_error、invalid_param）
-	raw         string // 原始信息，只进日志，不给用户看
+	upstream    string // 上游返回的错误原文（已遮掉渠道 Key），给用户看；宿主自己产生的失败为空
+	raw         string // 完整错误串（含宿主信息），只进日志和失败事件，不给用户看
 	pluginFault bool   // 插件级失败：记 Error 告警
 }
 
 // failureOf 从 Executor 返回的错误里取失败信息；不是 *provider.Error 的按 terminal 处理。
+// 插件级失败不带上游原文：那是插件或运维问题，用户只看到“平台繁忙”。
 func failureOf(err error) failure {
 	f := failure{class: provider.ClassOf(err), code: provider.CodeOf(err), raw: err.Error()}
 	var pe *provider.Error
 	if errors.As(err, &pe) {
 		f.pluginFault = pe.PluginFault
+		if !pe.PluginFault {
+			f.upstream = pe.Upstream
+		}
 	}
 	return f
 }
 
 // failureOfResult 从统一结果（status=failed）里取失败信息；插件没给分类时按 terminal 处理。
+// 结果里的 errorMessage 是插件从上游任务结果里取出的失败原因，直接给用户看。
 func failureOfResult(res *provider.QueryResult) failure {
 	class := res.ErrorClass
 	if class == "" {
 		class = provider.ClassTerminal
 	}
-	return failure{class: class, code: res.ErrorCode, raw: res.ErrorMessage}
+	return failure{class: class, code: res.ErrorCode, upstream: res.ErrorMessage, raw: res.ErrorMessage}
 }
 
-// fail 把任务置为 failed 并退款。给用户看的文案与错误码走 failureFor 的统一映射，原始信息只进日志。
+// fail 把任务置为 failed 并退款。给用户看的文案与错误码走 failureFor：有上游原文给原文，否则给固定文案；
+// 完整错误串只进日志和失败事件。
 // snap 为 nil 表示快照本身损坏，日志里就没有渠道与插件信息。
 func (w *Worker) fail(ctx context.Context, t *model.GenerationTask, snap *provider.Snapshot, f failure) {
 	w.forgetTask(t.ID)
-	code, msg := failureFor(f.class, f.code)
+	code, msg := failureFor(f.class, f.code, f.upstream)
 
 	log := w.taskLog(t)
 	fields := []zap.Field{
@@ -68,7 +75,7 @@ func (w *Worker) fail(ctx context.Context, t *model.GenerationTask, snap *provid
 		// 插件抛异常、超时、返回值不合规、runner 崩溃：是插件或运维问题，用户只看到“平台繁忙”，必须告警
 		log.Error("【告警】插件级失败，任务已失败并退积分", append(fields, pluginFields(snap)...)...)
 	case f.class == provider.ClassProviderBalance:
-		// 上游账户余额不足是运维问题，用户只看到“服务繁忙”，必须告警
+		// 上游账户余额不足是运维问题，必须告警
 		log.Error("【告警】上游账户余额不足，请尽快充值", append(fields, pluginFields(snap)...)...)
 	case f.class == provider.ClassSubmitUnknown:
 		// 提交读超时，上游可能已经创建了任务并计费，需要人工核对

@@ -1,10 +1,10 @@
 import { toast } from "sonner";
 
 import { getMarketingProject, mapRound, mapScript } from "@/api/marketing";
-import type { MarketingRoundEvent, MarketingScriptEvent } from "@/api/marketing/type";
+import type { MarketingRoundEvent, MarketingScriptEvent, Round } from "@/api/marketing/type";
 import { useMarketingStore } from "@/store/marketing";
 
-import { roundTransition, scriptTransition } from "./merge";
+import { roundTransition, scriptNotice } from "./merge";
 
 /** 当前是不是正看着这个项目的详情页 */
 const viewing = (projectId: string): boolean =>
@@ -38,6 +38,14 @@ export async function reloadMarketingProject(projectId: string): Promise<boolean
   }
 }
 
+/** 这次推送里事实卡环节是不是刚变成成功（新的一次运行，或同一次从未完成变成成功） */
+export function factsJustSucceeded(prev: Round | undefined, next: Round): boolean {
+  const after = next.steps.find((item) => item.step === "facts");
+  if (after?.status !== "succeeded") return false;
+  const before = prev?.steps.find((item) => item.step === "facts");
+  return !before || before.id !== after.id || before.status !== "succeeded";
+}
+
 /**
  * 收到 marketing.round：并进项目；写脚本刚结束且用户不在这个项目的页面时，弹一条带「查看」的提醒。
  * 出片结果的提示由 marketing.script 负责，任务快照（task.updated）本身不弹通知。
@@ -48,6 +56,9 @@ export function handleMarketingRoundEvent(event: MarketingRoundEvent) {
   const prev = store.projects[event.project_id]?.rounds.find((item) => item.id === round.id);
   if (!store.applyRound(event.project_id, round)) {
     if (store.watching[event.project_id]) void reloadMarketingProject(event.project_id);
+  } else if (factsJustSucceeded(prev, round) && store.watching[event.project_id]) {
+    // 事实卡写在项目上，轮次推送里没有：事实卡环节刚成功（含重新识别外观锚点）就拉一次详情
+    void reloadMarketingProject(event.project_id);
   }
   if (viewing(event.project_id)) return;
   const title = store.titles[event.project_id] ?? "营销片";
@@ -63,7 +74,7 @@ export function handleMarketingRoundEvent(event: MarketingRoundEvent) {
 }
 
 /**
- * 收到 marketing.script：并进所在轮次；出片失败总是提醒（带原因），出片成功只在用户不在该项目页面时提醒。
+ * 收到 marketing.script：并进所在轮次；出片成功且用户不在该项目页面时提醒，出片失败不提醒（原因在舞台上看）。
  * 本地缺轮次时重新拉详情。
  */
 export function handleMarketingScriptEvent(event: MarketingScriptEvent) {
@@ -75,18 +86,10 @@ export function handleMarketingScriptEvent(event: MarketingScriptEvent) {
   if (!store.applyScript(event.project_id, event.round_id, script)) {
     if (store.watching[event.project_id]) void reloadMarketingProject(event.project_id);
   }
-  const title = store.titles[event.project_id] ?? "营销片";
-  const action = { label: "查看", onClick: () => openProject(event.project_id) };
-  switch (scriptTransition(prev, script)) {
-    case "failed":
-      toast.error(
-        `「${title}」有一条出片失败${script.error ? `：${script.error}` : ""}`,
-        viewing(event.project_id) ? undefined : { action },
-      );
-      break;
-    case "done":
-      if (!viewing(event.project_id)) toast.success(`「${title}」有一条成片已出好`, { action });
-      break;
+  if (scriptNotice(prev, script, viewing(event.project_id)) === "done") {
+    const title = store.titles[event.project_id] ?? "营销片";
+    const action = { label: "查看", onClick: () => openProject(event.project_id) };
+    toast.success(`「${title}」有一条成片已出好`, { action });
   }
 }
 

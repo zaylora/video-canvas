@@ -14,6 +14,7 @@ import type {
   BackendRound,
   BackendRoundSettings,
   BackendScript,
+  BackendScriptPrompt,
   BackendStepRun,
   BackendTaskLite,
   CreateProjectInput,
@@ -36,6 +37,7 @@ import type {
   ScriptPrompt,
   StepRun,
   TaskLite,
+  UpdateRoundSettingsInput,
 } from "./type";
 
 /** 新建一次出片 / 一键出片的幂等键；同一次点击的重试要沿用同一个 */
@@ -239,6 +241,7 @@ export const mapRound = (raw: BackendRound): Round => ({
   refVideo: raw.ref_video
     ? { id: String(raw.ref_video.id), url: raw.ref_video.url, duration: raw.ref_video.duration }
     : null,
+  modelAsset: raw.model_asset ? mapAssetRef(raw.model_asset) : null,
   steps: (raw.steps ?? []).map(mapStepRun),
   planCount: raw.plan_count ?? 0,
   reverse: raw.reverse ? mapReverse(raw.reverse) : null,
@@ -366,20 +369,47 @@ export const getMarketingProject = async (id: string, silent = false): Promise<P
   mapProject(await service.get<BackendProject>(`/marketing-projects/${id}`, undefined, { silent }));
 
 /**
- * 改项目标题或事实卡；revision 冲突返回 68009。
+ * 改项目标题、事实卡或商品图；revision 冲突返回 68009，换商品图时有轮次在写脚本返回 68007。
  * @param id 项目 ID
  * @param body 要改的字段与当前 revision
  * @returns 最新项目详情
  */
 export const updateMarketingProject = async (
   id: string,
-  body: { title?: string; product?: ProductFacts; revision: number },
+  body: { title?: string; product?: ProductFacts; productAssetIds?: number[]; revision: number },
 ): Promise<Project> =>
   mapProject(
     await service.put<BackendProject>(`/marketing-projects/${id}`, {
       title: body.title,
       product: body.product ? toBackendProductFacts(body.product) : undefined,
+      product_asset_ids: body.productAssetIds,
       revision: body.revision,
+    }),
+  );
+
+/**
+ * 按项目当前商品图重新识别外观锚点：在最新一轮重跑事实卡环节，按文本模型计费，只替换外观锚点。
+ * @param id 项目 ID
+ * @returns 最新一轮（写脚本中）
+ */
+export const refreshMarketingFacts = async (id: string): Promise<Round> =>
+  mapRound(await service.post<BackendRound>(`/marketing-projects/${id}/refresh-facts`));
+
+/**
+ * 改一轮的出片设置（视频模型、分辨率、换模特图），只影响之后的出片。
+ * @param roundId 轮次 ID
+ * @param input 新模型与参数（画幅、时长不变）、换用的模特图
+ * @returns 最新轮次
+ */
+export const updateMarketingRoundSettings = async (
+  roundId: string,
+  input: UpdateRoundSettingsInput,
+): Promise<Round> =>
+  mapRound(
+    await service.put<BackendRound>(`/marketing-rounds/${roundId}/settings`, {
+      video_model: input.videoModel,
+      params: input.params,
+      model_asset_id: input.modelAssetId,
     }),
   );
 
@@ -487,8 +517,101 @@ export const restoreMarketingScript = async (scriptId: string): Promise<Script> 
  * @param videoModel 视频模型 key；不传用本轮的
  * @returns 格式与提示词正文
  */
-export const getMarketingPrompt = (scriptId: string, videoModel?: string): Promise<ScriptPrompt> =>
-  service.get<ScriptPrompt>(`/marketing-scripts/${scriptId}/prompt`, { video_model: videoModel });
+export const getMarketingPrompt = async (
+  scriptId: string,
+  videoModel?: string,
+): Promise<ScriptPrompt> =>
+  mapPrompt(
+    await service.get<BackendScriptPrompt>(`/marketing-scripts/${scriptId}/prompt`, {
+      video_model: videoModel,
+    }),
+  );
+
+/** 后端提示词预览 -> 前端 */
+export const mapPrompt = (raw: BackendScriptPrompt): ScriptPrompt => ({
+  format: raw.format,
+  prompt: raw.prompt,
+  edited: raw.edited ?? false,
+  stale: raw.stale ?? false,
+  adaptation: raw.adaptation
+    ? {
+        prompt: raw.adaptation.prompt,
+        stale: raw.adaptation.stale,
+        edited: raw.adaptation.edited,
+        updatedAt: raw.adaptation.updated_at,
+      }
+    : null,
+  adaptCredits: raw.adapt_credits ?? 0,
+});
+
+/**
+ * 把脚本的出片提示词转写成视频模型的写法（目前只有 H3），已有转写稿也重新转写；扣文本模型积分。
+ * 积分不足 40001；转写失败 68018。
+ * @param scriptId 脚本 ID
+ * @param videoModel 视频模型 key；不传用本轮的
+ * @returns 最新的提示词预览
+ */
+export const adaptMarketingScript = async (
+  scriptId: string,
+  videoModel?: string,
+): Promise<ScriptPrompt> =>
+  mapPrompt(
+    await service.post<BackendScriptPrompt>(`/marketing-scripts/${scriptId}/adapt`, {
+      video_model: videoModel,
+    }),
+  );
+
+/**
+ * 手改转写稿（标记已修改；原稿变了仍会过期，出片时重新转写）。
+ * @param scriptId 脚本 ID
+ * @param prompt 改后的转写稿
+ * @returns 最新的提示词预览
+ */
+export const editMarketingAdaptation = async (
+  scriptId: string,
+  prompt: string,
+): Promise<ScriptPrompt> =>
+  mapPrompt(
+    await service.put<BackendScriptPrompt>(`/marketing-scripts/${scriptId}/adaptation`, {
+      format: "h3",
+      prompt,
+    }),
+  );
+
+/**
+ * 手改原稿：seedance、generic 出片直接用它，h3 以它为转写依据；脚本再改只标过期，还原前一直用手改稿。
+ * @param scriptId 脚本 ID
+ * @param format 原稿格式，取预览返回的 format
+ * @param prompt 改后的原稿
+ * @returns 最新的提示词预览
+ */
+export const editMarketingPrompt = async (
+  scriptId: string,
+  format: ScriptPrompt["format"],
+  prompt: string,
+): Promise<ScriptPrompt> =>
+  mapPrompt(
+    await service.put<BackendScriptPrompt>(`/marketing-scripts/${scriptId}/prompt`, {
+      format,
+      prompt,
+    }),
+  );
+
+/**
+ * 还原原稿：删掉手改稿，回到按脚本拼出的提示词。
+ * @param scriptId 脚本 ID
+ * @param format 原稿格式
+ * @returns 最新的提示词预览
+ */
+export const restoreMarketingPrompt = async (
+  scriptId: string,
+  format: ScriptPrompt["format"],
+): Promise<ScriptPrompt> =>
+  mapPrompt(
+    await service.delete<BackendScriptPrompt>(
+      `/marketing-scripts/${scriptId}/prompt?format=${format}`,
+    ),
+  );
 
 /**
  * 单条出片。idempotencyKey 要在同一次点击的重试里沿用。

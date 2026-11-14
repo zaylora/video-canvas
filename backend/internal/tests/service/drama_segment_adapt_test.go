@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"video-canvas/internal/drama"
+	"video-canvas/internal/llmgateway"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/service"
@@ -217,6 +218,16 @@ func TestDramaServiceAdaptSegment(t *testing.T) {
 		s, _ := dramaTestService(r, &dramaTextStreamer{failAt: 1}, nil)
 		_, _, err := s.AdaptSegment(ctx, &r.project, "generic", in)
 		segmentCode(t, err, errcode.ErrDramaAdaptFailed.Code)
+	})
+	t.Run("上游返回错误时带出原文", func(t *testing.T) {
+		r := newDramaMemory()
+		up := &llmgateway.UpstreamError{Status: 400, Message: "context length exceeded"}
+		s, _ := dramaTestService(r, &dramaTextStreamer{failAt: 1, failErr: up}, nil)
+		_, _, err := s.AdaptSegment(ctx, &r.project, "generic", in)
+		segmentCode(t, err, errcode.ErrDramaAdaptFailed.Code)
+		if !strings.Contains(err.Error(), "context length exceeded") {
+			t.Fatalf("应带出上游原文：%v", err)
+		}
 	})
 	t.Run("没有文本模型", func(t *testing.T) {
 		r := newDramaMemory()

@@ -193,7 +193,9 @@ func renderDraftRequest(raw json.RawMessage, sample map[string]any, meta *plugin
 	}
 	opts := Options{}
 	opts.applyDefaults()
-	o := &operation{e: &Executor{opts: opts}, base: base, model: &provider.ModelSnapshot{}, rt: &provider.ChannelRuntime{Plugin: provider.PluginSnapshot{Meta: *meta}}}
+	sampleModel, _ := sample["model"].(map[string]any)
+	kind, _ := sampleModel["kind"].(string)
+	o := &operation{e: &Executor{opts: opts}, base: base, model: &provider.ModelSnapshot{Kind: kind}, rt: &provider.ChannelRuntime{Plugin: provider.PluginSnapshot{Meta: *meta}}}
 	input, _ := sample["input"].(map[string]any)
 	normalized, _, _, err := draftMediaInput(input)
 	if err != nil {

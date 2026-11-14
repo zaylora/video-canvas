@@ -49,9 +49,13 @@ func (s *DramaService) AdaptSegment(ctx context.Context, p *model.DramaProject, 
 		}
 		res, err := s.streamText(callCtx, snap, prompt, func(c context.Context) error { return c.Err() })
 		if err != nil {
-			// 上游失败和超时不把内部错误透给前端，记一条日志后按转写失败返回
+			// 上游返回了错误就带出原文；网络断开、超时这类不把内部错误透给前端，用统一文案
 			logger.Warn("短剧片段转写调用失败", zap.String("format", format), zap.Error(err))
-			return "", 0, errcode.ErrDramaAdaptFailed.WithMsg("转写失败：文本模型没有返回结果，请稍后重试")
+			msg := "文本模型没有返回结果，请稍后重试"
+			if up := upstreamText(err); up != "" {
+				msg = up
+			}
+			return "", 0, errcode.ErrDramaAdaptFailed.WithMsg("转写失败：" + msg)
 		}
 		decoded, err := drama.DecodeOutput("adapt", []byte(res.Text))
 		if err == nil {

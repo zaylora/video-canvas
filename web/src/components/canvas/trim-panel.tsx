@@ -47,7 +47,7 @@ export function Filmstrip({ thumbs }: { thumbs: (string | null)[] }) {
       ))}
       {loading && (
         <div className="pointer-events-none absolute inset-0 overflow-hidden motion-reduce:hidden">
-          <div className="absolute inset-0 animate-[node-sheen_1.4s_ease-in-out_infinite] bg-[linear-gradient(120deg,transparent_30%,var(--sheen)_50%,transparent_70%)]" />
+          <div className="sheen-sweep [--sheen-duration:1.4s]" />
         </div>
       )}
     </div>

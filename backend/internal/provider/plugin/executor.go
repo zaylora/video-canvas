@@ -12,9 +12,11 @@ import (
 	"mime/multipart"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"video-canvas/internal/provider"
@@ -189,9 +191,22 @@ func (e *Executor) Submit(ctx context.Context, snap *provider.Snapshot, in provi
 	}
 	parsed, err := o.require(ctx, pluginproto.HookParseSubmitResponse, hc, resp)
 	if err != nil {
+		if req.responseType == responseImageJSON {
+			// 上游已出图计费，不能按 runner 崩溃等原分类自动重试；插件级失败的标记要保留，worker 据此发告警
+			var pe *provider.Error
+			fault := errors.As(err, &pe) && pe.PluginFault
+			return nil, &provider.Error{Class: provider.ClassSubmitUnknown, Code: string(provider.ClassSubmitUnknown), Message: "上游已响应，解析图片结果失败，请核对上游计费", Cause: redactError(err, o.red.str), PluginFault: fault}
+		}
 		return nil, err
 	}
-	return o.parseSubmitResult(parsed, ep.Mode)
+	result, err := o.parseSubmitResult(parsed, ep.Mode)
+	if err != nil {
+		return nil, err
+	}
+	if err := o.saveInlineImages(ctx, result.Immediate); err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 // Query 查询一次异步任务并解析统一结果。
@@ -228,7 +243,14 @@ func (e *Executor) Query(ctx context.Context, snap *provider.Snapshot, task prov
 	if err != nil {
 		return nil, err
 	}
-	return o.parseQueryResult(parsed)
+	result, err := o.parseQueryResult(parsed)
+	if err != nil {
+		return nil, err
+	}
+	if err := o.saveInlineImages(ctx, result); err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 // Cancel 尽力调用插件取消钩子；没有实现时交给任务服务软取消。
@@ -542,6 +564,18 @@ func (o *operation) execute(ctx context.Context, b *builtRequest, phase string) 
 		return hookResponse{}, retryableErr("", "渠道限流等待被取消", err)
 	}
 	defer release()
+	// image_json 提交：请求完整发出后再出错，上游可能已出图计费，按结果未知处理；
+	// 没发出去（拨号失败、DNS 失败、内网拦截）不会计费，照常走 requestError 重试
+	var sent atomic.Bool
+	if phase == "submit" && b.responseType == responseImageJSON {
+		requestCtx = httptrace.WithClientTrace(requestCtx, &httptrace.ClientTrace{
+			WroteRequest: func(info httptrace.WroteRequestInfo) {
+				if info.Err == nil {
+					sent.Store(true)
+				}
+			},
+		})
+	}
 	req, cleanup, err := o.httpRequest(requestCtx, b)
 	if err != nil {
 		return hookResponse{}, err
@@ -549,6 +583,9 @@ func (o *operation) execute(ctx context.Context, b *builtRequest, phase string) 
 	defer cleanup()
 	resp, err := o.e.client().Do(req)
 	if err != nil {
+		if sent.Load() {
+			return hookResponse{}, &provider.Error{Class: provider.ClassSubmitUnknown, Code: string(provider.ClassSubmitUnknown), Message: "图片提交结果未知，请核对上游计费", Cause: redactError(err, o.red.str)}
+		}
 		return hookResponse{}, o.requestError(phase, err)
 	}
 	defer resp.Body.Close()
@@ -557,8 +594,14 @@ func (o *operation) execute(ctx context.Context, b *builtRequest, phase string) 
 		if readErr != nil {
 			return hookResponse{}, o.requestError(phase, readErr)
 		}
+		if b.responseType == responseImageJSON {
+			raw = scrubImageError(raw)
+		}
 		h := responseFromBytes(resp, raw, responseJSON)
 		return hookResponse{}, o.classifyHTTPError(ctx, h)
+	}
+	if b.responseType == responseImageJSON {
+		return o.imageJSONResponse(resp)
 	}
 	if b.responseType == responseBinary {
 		if o.e.opts.Saver == nil {
@@ -592,11 +635,14 @@ func (o *operation) requestError(phase string, err error) error {
 	return retryableErr("", "上游请求失败", redactError(err, o.red.str))
 }
 
+// classifyHTTPError 把上游的非 2xx 响应转成分类错误：插件写了 classifyError 用它的分类与原文，否则按默认规则分类。
+// 无论哪种，都把上游原文（遮掉渠道 Key）放进 Upstream，任务失败时给用户看。
 func (o *operation) classifyHTTPError(ctx context.Context, resp hookResponse) error {
 	hc, err := o.buildCtx(ctx)
 	if err != nil {
 		return err
 	}
+	upstream := o.upstreamText(resp)
 	if o.e.loader.mayHave(o.rt.Plugin.SHA256, pluginproto.HookClassifyError) {
 		raw, callErr := o.call(ctx, pluginproto.HookClassifyError, hc, resp)
 		if callErr == nil && !isNull(raw) {
@@ -606,20 +652,66 @@ func (o *operation) classifyHTTPError(ctx context.Context, resp hookResponse) er
 				Message string              `json:"message"`
 			}
 			if json.Unmarshal(raw, &c) == nil && validErrorClass(c.Class) {
-				return &provider.Error{Class: c.Class, Code: c.Code, Message: c.Message}
+				if msg := clipUpstream(o.red.str(c.Message)); msg != "" {
+					upstream = msg
+				}
+				return &provider.Error{Class: c.Class, Code: c.Code, Message: c.Message, Upstream: upstream}
 			}
 		}
 	}
+	code := fmt.Sprintf("%s%d", codeHTTPPrefix, resp.Status)
 	text := strings.ToLower(resp.Text)
 	if strings.Contains(text, "balance") || strings.Contains(text, "insufficient") ||
 		strings.Contains(text, "quota") || strings.Contains(text, "credit") ||
 		strings.Contains(text, "余额") || strings.Contains(text, "额度") {
-		return &provider.Error{Class: provider.ClassProviderBalance, Code: fmt.Sprintf("%s%d", codeHTTPPrefix, resp.Status), Message: "上游余额或额度不足"}
+		return &provider.Error{Class: provider.ClassProviderBalance, Code: code, Message: "上游余额或额度不足", Upstream: upstream}
 	}
 	if resp.Status == http.StatusTooManyRequests || resp.Status >= 500 {
-		return retryableErr(fmt.Sprintf("%s%d", codeHTTPPrefix, resp.Status), "上游暂时不可用", nil)
+		e := retryableErr(code, "上游暂时不可用", nil)
+		e.Upstream = upstream
+		return e
 	}
-	return terminalErr(fmt.Sprintf("%s%d", codeHTTPPrefix, resp.Status), "上游拒绝请求", nil)
+	e := terminalErr(code, "上游拒绝请求", nil)
+	e.Upstream = upstream
+	return e
+}
+
+// maxUpstreamRunes 是给用户看的上游错误原文的字数上限（任务表 error_message 是 varchar(512)）。
+const maxUpstreamRunes = 500
+
+// upstreamText 从上游错误响应里取一句给用户看的原文：依次取 error.message、字符串 error、顶层 message / msg，
+// 都没有时用纯文本响应体；HTML 错误页和空响应体给“上游返回 HTTP xxx”。结果遮掉渠道 Key 并截断。
+func (o *operation) upstreamText(resp hookResponse) string {
+	msg := ""
+	if body, ok := resp.Body.(map[string]any); ok {
+		if e, ok := body["error"].(map[string]any); ok {
+			msg, _ = e["message"].(string)
+		}
+		if msg == "" {
+			msg, _ = body["error"].(string)
+		}
+		if msg == "" {
+			msg, _ = body["message"].(string)
+		}
+		if msg == "" {
+			msg, _ = body["msg"].(string)
+		}
+	} else if t := strings.TrimSpace(resp.Text); !strings.HasPrefix(t, "<") {
+		msg = t
+	}
+	if msg = clipUpstream(o.red.str(msg)); msg != "" {
+		return msg
+	}
+	return fmt.Sprintf("上游返回 HTTP %d", resp.Status)
+}
+
+// clipUpstream 去掉首尾空白，按字数截断到 maxUpstreamRunes。
+func clipUpstream(s string) string {
+	s = strings.TrimSpace(s)
+	if r := []rune(s); len(r) > maxUpstreamRunes {
+		return string(r[:maxUpstreamRunes]) + "…"
+	}
+	return s
 }
 
 func (o *operation) parseSubmitResult(raw json.RawMessage, mode string) (*provider.SubmitResult, error) {
@@ -747,6 +839,13 @@ func (o *operation) validateOutputs(outputs []provider.Output) error {
 				return &provider.Error{Class: provider.ClassTerminal, Code: provider.CodeSSRFBlocked, Message: "产物地址不允许", Cause: redactError(err, o.red.str), PluginFault: true}
 			}
 		case provider.OutputAsset:
+			// 带 asset_index 的引用 image_json 响应里的内联图片，素材信息在全部产物通过校验后由 saveInlineImages 补全
+			if out.AssetIndex != nil {
+				if *out.AssetIndex < 0 || *out.AssetIndex >= len(o.inlineImages) {
+					return pluginFault("asset 索引没有对应的图片响应")
+				}
+				continue
+			}
 			// 插件只写 {type:"asset"}，素材 id 与地址由宿主用最近一次 binary 响应补全（契约 §6）
 			if o.asset == nil {
 				return pluginFault("asset 产物没有对应的二进制响应")

@@ -6,10 +6,7 @@
  *   - 图生图 / 编辑：有参考图时 POST /v1/images/edits（multipart）
  * 接口依据 OpenAI 官方 OpenAPI 规范；没验证过的地方见文末“未验证”。
  *
- * 重要限制：只支持上游返回图片 URL（data[].url）的情形。
- *   契约不支持内联 base64 产物（产物只能是 url / text / asset），而官方 gpt-image 系列只返回 base64（b64_json），不返回 URL。
- *   所以 dall-e-2 / dall-e-3 与会返回 data[].url 的兼容中转站可用；官方 gpt-image 系列直连会得到一条明确的失败：
- *   “上游只返回 base64 图片，本协议暂不支持”（terminal）。要支持官方 gpt-image，需要先扩展契约（让宿主能把 base64 落库成素材）。
+ * 官方 gpt-image 的 base64 图片由宿主保存为素材；兼容返回 URL 的模型。
  *
  * 渠道怎么填：
  *   - Key  ：OpenAI 的 API Key（sk-...），由宿主按 Bearer 注入；
@@ -29,10 +26,9 @@
  *   prompt（必填）、op（t2i / i2i）、images（参考图，有则走编辑）、n 或 count、size、quality、style、aspect_ratio、resolution
  *   size 优先用用户给的；没给时有 aspect_ratio 就换算成该系列允许的最接近的 size；都没有就不发，让上游用默认。
  *   resolution 本接口没有对应概念，忽略（尺寸请用 size 或 aspect_ratio）。
- * 产物：data[] 里每个有 url 的成员一个 {type:"url", media_type:"image"} 产物，mime 按扩展名猜，猜不出用 image/png。
+ * 产物：URL 或宿主保存的图片素材，URL 的 MIME 按扩展名猜。
  *
  * 刻意没做：
- *   - base64 产物（见上）；
  *   - 遮罩图 mask、input_fidelity、background、output_format 等型号特有字段的输入；
  *   - 流式出图（stream / partial_images）。
  *
@@ -48,9 +44,9 @@ module.exports = {
     apiVersion: 1,
     key: "openai-image",
     name: "OpenAI · 图片",
-    version: "1.1.0",
+    version: "1.2.0",
     vendor: "openai",
-    description: "对接 OpenAI Images API：文生图与图片编辑（同步，只支持返回图片 URL 的模型 / 中转站）",
+    description: "对接 OpenAI Images API：文生图与图片编辑（同步，支持 URL 与 base64 图片）",
     auth: { type: "bearer" },
     endpoints: {
       image: { mode: "sync", method: "POST", path: "/v1/images/generations" },
@@ -157,7 +153,7 @@ function buildGenerateRequest(ctx) {
   if (series === "dalle2" || series === "dalle3") {
     body.response_format = "url"; // gpt-image 系发这个字段官方会 400，所以只对 dall-e 发
   }
-  return { method: "POST", path: "/v1/images/generations", json: body, timeout: 120 };
+  return { method: "POST", path: "/v1/images/generations", json: body, responseType: "image_json", timeout: 120 };
 }
 
 function buildEditRequest(ctx) {
@@ -197,7 +193,7 @@ function buildEditRequest(ctx) {
   for (var i = 0; i < images.length; i++) {
     parts.push({ name: partName, fileRef: images[i] });
   }
-  return { method: "POST", path: "/v1/images/edits", multipart: { fields: fields, parts: parts }, timeout: 120 };
+  return { method: "POST", path: "/v1/images/edits", multipart: { fields: fields, parts: parts }, responseType: "image_json", timeout: 120 };
 }
 
 function requirePrompt(input, model) {
@@ -260,11 +256,10 @@ function parseRatio(v) {
 // 响应
 // ---------------------------------------------------------------------------
 
-// data[] 里每个 http/https 的 url 一个产物；没有 url 但有 b64_json 说明上游只返回 base64，明确告知不支持。
+// 图片 URL 作为 url 产物，宿主保存的 base64 图片按受控索引引用。
 function parseImageResponse(body) {
   var list = isArray(body.data) ? body.data : [];
   var outputs = [];
-  var hasBase64 = false;
   for (var i = 0; i < list.length; i++) {
     var item = list[i];
     if (!item) {
@@ -272,8 +267,8 @@ function parseImageResponse(body) {
     }
     if (typeof item.url === "string" && /^https?:\/\//i.test(item.url)) {
       outputs.push({ type: "url", url: item.url, media_type: "image", mime: mimeOfImage(item.url) });
-    } else if (typeof item.b64_json === "string" && item.b64_json !== "") {
-      hasBase64 = true;
+    } else if (typeof item.asset_index === "number") {
+      outputs.push({ type: "asset", asset_index: item.asset_index });
     }
   }
   if (outputs.length > 0) {
@@ -282,9 +277,6 @@ function parseImageResponse(body) {
   var msg = errorMessageOf(body);
   if (msg) {
     return failedWith(classifyOf(errorCodeOf(body), errorTypeOf(body), msg, 200), msg, errorCodeOf(body));
-  }
-  if (hasBase64) {
-    return failedWith("terminal", "上游只返回 base64 图片，本协议暂不支持");
   }
   return failedWith("terminal", "上游没有返回图片");
 }

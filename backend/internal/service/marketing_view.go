@@ -116,6 +116,9 @@ func (s *MarketingService) roundView(ctx context.Context, vd *viewData, r *model
 	if v.RefVideo, err = s.refVideoView(ctx, r); err != nil {
 		return nil, err
 	}
+	if v.ModelAsset, err = s.roundModelAsset(ctx, vd.project.UserID, r); err != nil {
+		return nil, err
+	}
 	latest := latestRuns(vd.runs[r.ID])
 	for _, k := range []string{marketing.StepFacts, marketing.StepReverse, marketing.StepFollow, marketing.StepCreate} {
 		for _, run := range latest {
@@ -130,19 +133,36 @@ func (s *MarketingService) roundView(ctx context.Context, vd *viewData, r *model
 	if err := fillReverse(v, r); err != nil {
 		return nil, err
 	}
-	images := productCount(vd.project)
-	if r.ModelAssetID != nil {
-		images++
+	if v.Scripts, err = s.roundScriptViews(ctx, vd, r, st); err != nil {
+		return nil, err
 	}
-	credits := s.renderCredits(ctx, st, images, r.RefVideoAssetID != nil)
+	return v, nil
+}
+
+// roundScriptViews 组装一轮的全部脚本视图；出片报价 = 一次出片 + 需要转写且没有有效转写稿时的转写预估。
+func (s *MarketingService) roundScriptViews(ctx context.Context, vd *viewData, r *model.MarketingRound, st model.MarketingSettings) ([]model.MarketingScriptView, error) {
+	credits := s.roundRenderCredits(ctx, vd.project, r, st)
+	quote := s.adaptQuoteFor(ctx, st)
+	out := []model.MarketingScriptView{}
 	for i := range vd.scripts[r.ID] {
-		sv, err := s.scriptView(vd, &vd.scripts[r.ID][i], credits)
+		sc := &vd.scripts[r.ID][i]
+		extra := s.adaptExtra(quote, &scriptCtx{sc: sc, round: r, project: vd.project, st: st})
+		sv, err := s.scriptView(vd, sc, credits+extra)
 		if err != nil {
 			return nil, err
 		}
-		v.Scripts = append(v.Scripts, *sv)
+		out = append(out, *sv)
 	}
-	return v, nil
+	return out, nil
+}
+
+// roundRenderCredits 是这一轮出一次片的预估积分（参考图张数含模特图）。
+func (s *MarketingService) roundRenderCredits(ctx context.Context, p *model.MarketingProject, r *model.MarketingRound, st model.MarketingSettings) int {
+	images := productCount(p)
+	if r.ModelAssetID != nil {
+		images++
+	}
+	return s.renderCredits(ctx, st, images, r.RefVideoAssetID != nil)
 }
 
 // refVideoView 返回轮次的参考视频引用；没有或素材已删除为 nil。
@@ -381,11 +401,8 @@ func (s *MarketingService) scriptViewByRow(ctx context.Context, userID uint64, s
 	if err != nil {
 		return nil, err
 	}
-	images := productCount(p)
-	if r.ModelAssetID != nil {
-		images++
-	}
-	return s.scriptView(vd, sc, s.renderCredits(ctx, st, images, r.RefVideoAssetID != nil))
+	extra := s.adaptExtra(s.adaptQuoteFor(ctx, st), &scriptCtx{sc: sc, round: r, project: p, st: st})
+	return s.scriptView(vd, sc, s.roundRenderCredits(ctx, p, r, st)+extra)
 }
 
 // GetProject 返回项目详情：事实卡、素材、全部轮次（新的在前）。顺带把存的脚本状态按出片任务对账。
@@ -476,4 +493,16 @@ func taskIDsJSON(tasks []model.GenerationTask) []byte {
 	}
 	raw, _ := json.Marshal(ids)
 	return raw
+}
+
+// roundModelAsset 返回轮次出片用的模特图；没有或素材已删为 nil。
+func (s *MarketingService) roundModelAsset(ctx context.Context, userID uint64, r *model.MarketingRound) (*model.MarketingAssetRef, error) {
+	if r.ModelAssetID == nil {
+		return nil, nil //nolint:nilnil // 没有模特图是正常的「没有」
+	}
+	a, err := s.assetViewOrNil(ctx, userID, *r.ModelAssetID)
+	if err != nil || a == nil {
+		return nil, err
+	}
+	return &model.MarketingAssetRef{ID: a.ID, URL: a.URL}, nil
 }

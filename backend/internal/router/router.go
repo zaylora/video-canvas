@@ -197,8 +197,10 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		mktProjects.PUT("/:id", h.Marketing.Update)
 		mktProjects.DELETE("/:id", h.Marketing.Delete)
 		mktProjects.POST("/:id/rounds", h.Marketing.NewRound) // 201
+		mktProjects.POST("/:id/refresh-facts", h.Marketing.RefreshFacts)
 		mktRounds := auth.Group("/marketing-rounds")
 		mktRounds.POST("/:id/cancel", h.Marketing.CancelRound)
+		mktRounds.PUT("/:id/settings", h.Marketing.UpdateRoundSettings)
 		mktRounds.PUT("/:id/reverse", h.Marketing.UpdateReverse)
 		mktRounds.POST("/:id/reverse/restore", h.Marketing.RestoreReverse)
 		mktRounds.POST("/:id/refollow", h.Marketing.Refollow)
@@ -208,6 +210,10 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		mktScripts.PUT("/:id", h.Marketing.UpdateScript)
 		mktScripts.POST("/:id/restore", h.Marketing.RestoreScript)
 		mktScripts.GET("/:id/prompt", h.Marketing.Prompt)
+		mktScripts.PUT("/:id/prompt", h.Marketing.EditPrompt)
+		mktScripts.DELETE("/:id/prompt", h.Marketing.RestorePrompt)
+		mktScripts.POST("/:id/adapt", h.Marketing.Adapt)
+		mktScripts.PUT("/:id/adaptation", h.Marketing.EditAdaptation)
 		mktScripts.POST("/:id/render", h.Marketing.Render)
 		mktScripts.POST("/:id/to-canvas", h.Marketing.ToCanvas)
 

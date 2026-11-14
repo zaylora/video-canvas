@@ -6,6 +6,7 @@ import {
   mergeRound,
   mergeScript,
   roundTransition,
+  scriptNotice,
   scriptTransition,
 } from "@/utils/marketing/merge";
 import { parseServerMessage } from "@/utils/ws/socket-client";
@@ -91,6 +92,14 @@ describe("提醒时机", () => {
       scriptTransition(script("a", { status: "draft" }), script("a", { status: "done" })),
     ).toBeNull();
     expect(scriptTransition(undefined, script("a", { status: "done" }))).toBeNull();
+  });
+
+  test("出片提醒：只在不看该项目时提醒成片出好，出片失败不弹提醒", () => {
+    const rendering = script("a", { status: "rendering" });
+    expect(scriptNotice(rendering, script("a", { status: "done" }), false)).toBe("done");
+    expect(scriptNotice(rendering, script("a", { status: "done" }), true)).toBeNull();
+    expect(scriptNotice(rendering, script("a", { status: "failed" }), false)).toBeNull();
+    expect(scriptNotice(rendering, script("a", { status: "failed" }), true)).toBeNull();
   });
 });
 

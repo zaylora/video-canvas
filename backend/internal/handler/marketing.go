@@ -69,7 +69,7 @@ func (h *MarketingHandler) Get(c *gin.Context) {
 	reply(c, v, err)
 }
 
-// Update 改标题或事实卡（PUT /marketing-projects/:id）。
+// Update 改标题、事实卡或商品图（PUT /marketing-projects/:id）。
 func (h *MarketingHandler) Update(c *gin.Context) {
 	id, ok := CanvasPathID(c)
 	if !ok {
@@ -144,6 +144,30 @@ func (h *MarketingHandler) RestoreReverse(c *gin.Context) {
 	reply(c, v, err)
 }
 
+// UpdateRoundSettings 改一轮的出片设置：视频模型、分辨率、换模特图（PUT /marketing-rounds/:id/settings）。
+func (h *MarketingHandler) UpdateRoundSettings(c *gin.Context) {
+	id, ok := CanvasPathID(c)
+	if !ok {
+		return
+	}
+	var req model.UpdateMarketingRoundSettingsReq
+	if !BindJSON(c, &req) {
+		return
+	}
+	v, err := h.svc.UpdateRoundSettings(c.Request.Context(), currentUserID(c), id, &req)
+	reply(c, v, err)
+}
+
+// RefreshFacts 按当前商品图重新识别外观锚点（POST /marketing-projects/:id/refresh-facts）。
+func (h *MarketingHandler) RefreshFacts(c *gin.Context) {
+	id, ok := CanvasPathID(c)
+	if !ok {
+		return
+	}
+	v, err := h.svc.RefreshFacts(c.Request.Context(), currentUserID(c), id)
+	reply(c, v, err)
+}
+
 // Refollow 按当前拆解重写跟拍版（POST /marketing-rounds/:id/refollow）。
 func (h *MarketingHandler) Refollow(c *gin.Context) {
 	id, ok := CanvasPathID(c)
@@ -215,6 +239,62 @@ func (h *MarketingHandler) Prompt(c *gin.Context) {
 		return
 	}
 	v, err := h.svc.Prompt(c.Request.Context(), currentUserID(c), id, req.VideoModel)
+	reply(c, v, err)
+}
+
+// Adapt 手动转写出片提示词（POST /marketing-scripts/:id/adapt）。
+func (h *MarketingHandler) Adapt(c *gin.Context) {
+	id, ok := CanvasPathID(c)
+	if !ok {
+		return
+	}
+	var req model.AdaptMarketingScriptReq
+	if !BindJSON(c, &req) {
+		return
+	}
+	v, err := h.svc.Adapt(c.Request.Context(), currentUserID(c), id, &req)
+	reply(c, v, err)
+}
+
+// EditAdaptation 手改转写稿（PUT /marketing-scripts/:id/adaptation）。
+func (h *MarketingHandler) EditAdaptation(c *gin.Context) {
+	id, ok := CanvasPathID(c)
+	if !ok {
+		return
+	}
+	var req model.EditMarketingAdaptationReq
+	if !BindJSON(c, &req) {
+		return
+	}
+	v, err := h.svc.EditAdaptation(c.Request.Context(), currentUserID(c), id, &req)
+	reply(c, v, err)
+}
+
+// EditPrompt 手改出片原稿（PUT /marketing-scripts/:id/prompt）。
+func (h *MarketingHandler) EditPrompt(c *gin.Context) {
+	id, ok := CanvasPathID(c)
+	if !ok {
+		return
+	}
+	var req model.EditMarketingPromptReq
+	if !BindJSON(c, &req) {
+		return
+	}
+	v, err := h.svc.EditPrompt(c.Request.Context(), currentUserID(c), id, &req)
+	reply(c, v, err)
+}
+
+// RestorePrompt 还原出片原稿，回到按脚本拼出的提示词（DELETE /marketing-scripts/:id/prompt?format=）。
+func (h *MarketingHandler) RestorePrompt(c *gin.Context) {
+	id, ok := CanvasPathID(c)
+	if !ok {
+		return
+	}
+	var req model.RestoreMarketingPromptReq
+	if !BindQuery(c, &req) {
+		return
+	}
+	v, err := h.svc.RestorePrompt(c.Request.Context(), currentUserID(c), id, &req)
 	reply(c, v, err)
 }
 

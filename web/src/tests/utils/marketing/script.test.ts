@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import type { Round, Script } from "@/api/marketing/type";
 import {
+  failedTaskRef,
   methodLabel,
   playableTakes,
   roundAspect,
@@ -180,5 +181,15 @@ describe("方法小字与画幅", () => {
       { id: "2", outputs: [{ url: "u", posterUrl: "" }] },
     ] as unknown as Script["takes"];
     expect(playableTakes(script({ takes })).map((t) => t.id)).toEqual(["2"]);
+  });
+
+  test("出片失败时的任务编号取最近一条出片任务，其余状态没有", () => {
+    const takes = [
+      { id: "1", taskRef: "aa11" },
+      { id: "2", taskRef: "bb22" },
+    ] as unknown as Script["takes"];
+    expect(failedTaskRef(script({ status: "failed", takes }))).toBe("bb22");
+    expect(failedTaskRef(script({ status: "done", takes }))).toBeNull();
+    expect(failedTaskRef(script({ status: "failed", takes: [] }))).toBeNull();
   });
 });

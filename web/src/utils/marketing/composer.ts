@@ -219,6 +219,83 @@ export function videoModelSupport(
   return { ok: true, reason: null };
 }
 
+/** 一轮当前的视频参数（从设置里读出来；模型没有的参数为 undefined） */
+export interface RoundSpec {
+  aspectRatio?: string;
+  resolution?: string;
+  duration?: number;
+}
+
+/** 读出一轮设置里的画幅、分辨率、时长（画幅有 aspect_ratio / ratio 两种叫法） */
+export function roundSpec(settings: Pick<RoundSettings, "params">): RoundSpec {
+  const params = settings.params;
+  const ratio = params.aspect_ratio ?? params.ratio;
+  const duration = Number(params.duration);
+  return {
+    aspectRatio: ratio === undefined || ratio === null ? undefined : String(ratio),
+    resolution: typeof params.resolution === "string" ? params.resolution : undefined,
+    duration: params.duration === undefined || !Number.isFinite(duration) ? undefined : duration,
+  };
+}
+
+/** 模型的时长参数里有没有这个值（数值型按范围与步长算，不受选项抽样影响） */
+function supportsDuration(field: ParamField | undefined, value: number): boolean {
+  if (!field) return false;
+  if (field.type === "number") {
+    const min = field.min ?? 0;
+    const max = field.max ?? min;
+    const step = Math.max(1, field.step ?? 1);
+    return value >= min && value <= max && (value - min) % step === 0;
+  }
+  return (field.options ?? []).map(Number).includes(value);
+}
+
+/**
+ * 写完脚本后换出片模型：除了全能参考与参考图张数，还要收参考视频（本轮有的话），
+ * 并且支持本轮的画幅和时长（这两项决定分镜，换模型时不能变）。
+ * @param info 候选视频模型
+ * @param round 本轮参考图张数、有没有参考视频、当前画幅与时长
+ */
+export function roundModelSupport(
+  info: ModelInfo,
+  round: { images: number; hasRef: boolean; aspectRatio?: string; duration?: number },
+): { ok: boolean; reason: string | null } {
+  const base = videoModelSupport(info, round.images);
+  if (!base.ok) return base;
+  const caps = info.capabilities;
+  if (round.hasRef && !(caps.refs?.video?.on && caps.refs.video.max > 0)) {
+    return { ok: false, reason: "不支持参考视频" };
+  }
+  if (round.aspectRatio && !ratioOptions(caps).includes(round.aspectRatio)) {
+    return { ok: false, reason: `不支持 ${round.aspectRatio} 画幅` };
+  }
+  if (round.duration && !supportsDuration(caps.params?.duration, round.duration)) {
+    return { ok: false, reason: `不支持 ${round.duration} 秒时长` };
+  }
+  return { ok: true, reason: null };
+}
+
+/**
+ * 换出片模型后的视频参数：画幅、时长照旧，分辨率在新模型里没有就退回 720p（没有取第一个）。
+ * @param caps 新模型能力
+ * @param spec 本轮当前参数
+ */
+export function switchedRoundParams(
+  caps: Capabilities | undefined,
+  spec: RoundSpec,
+): Record<string, unknown> {
+  const next = reconcileVideoParams(caps, {
+    aspectRatio: spec.aspectRatio ?? "",
+    resolution: spec.resolution ?? "",
+    duration: spec.duration ?? 0,
+  });
+  const out = buildVideoParams(caps, next);
+  // 原来没有的参数不要凭空补上（reconcile 会给空值挑默认）
+  if (spec.aspectRatio === undefined) for (const key of ["aspect_ratio", "ratio"]) delete out[key];
+  if (spec.duration === undefined) delete out.duration;
+  return out;
+}
+
 /**
  * 参考视频时长上限（秒）：模型能力里没有这个维度（后端目前只有个数和体积），
  * 若后端以后在 refs.video 上补 max_seconds 就按它限制；没有为 null，由后端 68005 兜底。

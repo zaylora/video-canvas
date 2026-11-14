@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"sync"
 	"time"
 
 	"video-canvas/internal/model"
@@ -109,6 +110,7 @@ type MarketingService struct {
 	steps    *stepkit.Registry
 	resolver *stepkit.Resolver
 	runner   *stepkit.Runner
+	caller   stepkit.Caller // 出片前转写提示词直接调文本模型（不走环节）
 	models   provider.Registry
 	assets   MarketingAssets
 	tasks    MarketingTaskCreator
@@ -117,11 +119,12 @@ type MarketingService struct {
 	credits  StepCreditPolicy
 	bc       ws.Broadcaster
 	now      func() time.Time
+	adapting sync.Map // 进行中的转写：脚本 id + 格式，同一份同时只转一次
 }
 
 // NewMarketingService 创建营销服务；Broadcaster 为 nil 时换成空实现。
 func NewMarketingService(d MarketingDeps) *MarketingService {
-	s := &MarketingService{repo: d.Repo, steps: d.Steps, resolver: d.Resolver, runner: stepkit.NewRunner(d.Caller), models: d.Models,
+	s := &MarketingService{repo: d.Repo, steps: d.Steps, resolver: d.Resolver, runner: stepkit.NewRunner(d.Caller), caller: d.Caller, models: d.Models,
 		assets: d.Assets, tasks: d.Tasks, canvases: d.Canvases, frames: d.Frames, credits: d.Credits, bc: d.Broadcaster, now: d.Now}
 	if s.bc == nil {
 		s.bc = ws.NopBroadcaster{}

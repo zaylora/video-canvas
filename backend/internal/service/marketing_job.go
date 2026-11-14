@@ -263,8 +263,12 @@ func (s *MarketingService) classify(ctx context.Context, round *model.MarketingR
 	case errors.Is(err, stepkit.ErrModelCapability):
 		out.status, out.errMsg = model.MarketingRunFailed, "所选文本模型不能处理这个环节，请换一个模型"
 	case errors.Is(err, stepkit.ErrCallFailed):
+		// 上游返回了错误就给用户看原文；网络断开、超时这类没有原文的用统一文案
 		logger.Warn("营销环节模型调用失败", zap.String("step", stepKey), zap.Error(err))
 		out.status, out.errMsg = model.MarketingRunFailed, "文本模型暂时不可用，请稍后重试"
+		if msg := upstreamText(err); msg != "" {
+			out.errMsg = clipRunes(msg, marketingErrRunes)
+		}
 		out.charge = res != nil && res.Usage.InputTokens+res.Usage.OutputTokens > 0
 	default:
 		logger.Error("营销环节运行出错", zap.String("step", stepKey), zap.Error(err))
@@ -438,17 +442,7 @@ func (s *MarketingService) prepareApply(out *stepOutcome, round *model.Marketing
 		if err != nil {
 			return err
 		}
-		out.apply = func(ctx context.Context, tx repository.MarketingTx, _ *model.MarketingRound) error {
-			raw, err := json.Marshal(facts)
-			if err != nil {
-				return err
-			}
-			fields := map[string]any{"product": raw}
-			if p, err := tx.ProjectByID(ctx, project.ID); err == nil && (p.Title == "" || p.Title == marketingProjectPlaceholder) && facts.Name != "" {
-				fields["title"] = clipRunes(facts.Name, 120)
-			}
-			return tx.UpdateProject(ctx, project.ID, fields)
-		}
+		out.apply = applyFacts(facts, project.ID)
 	case marketing.StepReverse:
 		rev, err := marketing.DecodeReverse(res.Output)
 		if err != nil {
@@ -484,4 +478,28 @@ func factsOf(p *model.MarketingProject) marketing.ProductFacts {
 		_ = json.Unmarshal(p.Product, &f)
 	}
 	return f
+}
+
+// applyFacts 返回落库动作：写事实卡。项目已有事实卡说明是「按新图重新识别」，只换外观锚点、保留用户改过的其余内容；
+// 标题还是占位时用商品名。
+func applyFacts(facts marketing.ProductFacts, projectID uint64) func(context.Context, repository.MarketingTx, *model.MarketingRound) error {
+	return func(ctx context.Context, tx repository.MarketingTx, _ *model.MarketingRound) error {
+		p, err := tx.ProjectByID(ctx, projectID)
+		if err != nil {
+			return err
+		}
+		merged, err := mergeRefreshedFacts(p.Product, facts)
+		if err != nil {
+			return err
+		}
+		raw, err := json.Marshal(merged)
+		if err != nil {
+			return err
+		}
+		fields := map[string]any{"product": raw}
+		if (p.Title == "" || p.Title == marketingProjectPlaceholder) && facts.Name != "" {
+			fields["title"] = clipRunes(facts.Name, 120)
+		}
+		return tx.UpdateProject(ctx, projectID, fields)
+	}
 }

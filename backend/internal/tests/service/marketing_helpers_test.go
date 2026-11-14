@@ -150,7 +150,8 @@ func (c *mktCanvases) Create(_ context.Context, _ uint64, req *model.CreateCanva
 // mktCaller 按提示词里的环节职责区分环节，给每个环节脚本化的回复；可让某个环节阻塞直到放行或被取消。
 type mktCaller struct {
 	mu      sync.Mutex
-	replies map[string]func(call int) (string, error) // 环节 key → 回复
+	replies map[string]func(call int) (string, error)      // 环节 key → 回复
+	byText  map[string]func(prompt string) (string, error) // 环节 key → 按提示词现拼的回复（并发调用时用，优先于 replies）
 	calls   map[string]int
 	block   map[string]chan struct{}
 	started map[string]chan struct{}
@@ -164,8 +165,11 @@ var mktDuty = map[string]string{
 	marketing.StepCreate:  "按给定的创意角度各写",
 }
 
+// mktAdaptStep 是假模型里出片前转写的调用 key（转写不是环节，没有环节 key）。
+const mktAdaptStep = "adapt"
+
 func newMktCaller() *mktCaller {
-	return &mktCaller{replies: map[string]func(int) (string, error){}, calls: map[string]int{}, block: map[string]chan struct{}{}, started: map[string]chan struct{}{}}
+	return &mktCaller{replies: map[string]func(int) (string, error){}, byText: map[string]func(string) (string, error){}, calls: map[string]int{}, block: map[string]chan struct{}{}, started: map[string]chan struct{}{}}
 }
 
 func (c *mktCaller) on(step string, fn func(call int) (string, error)) { c.replies[step] = fn }
@@ -187,10 +191,16 @@ func (c *mktCaller) Complete(ctx context.Context, _ *provider.Snapshot, msgs []l
 			step = k
 		}
 	}
+	if strings.HasPrefix(prompt, marketing.AdaptDuty) {
+		step = mktAdaptStep // 转写提示词里带着原稿，可能含其他环节的字样，以开头的职责句为准
+	}
 	c.mu.Lock()
 	c.calls[step]++
 	n := c.calls[step]
 	fn := c.replies[step]
+	if byText := c.byText[step]; byText != nil {
+		fn = func(int) (string, error) { return byText(prompt) }
+	}
 	blk := c.block[step]
 	started := c.started[step]
 	c.mu.Unlock()

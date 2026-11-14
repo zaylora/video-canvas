@@ -272,9 +272,10 @@ var (
 	ErrDramaAdaptBusy            = New(67025, "这个片段正在转写", http.StatusConflict)
 	ErrDramaAdaptFailed          = New(67026, "转写结果不合格，请重试", http.StatusBadGateway)
 	ErrDramaAdaptMissing         = New(67027, "还没有这个格式的转写稿", http.StatusBadRequest)
+	ErrDramaModelCall            = New(67028, "文本模型调用失败", http.StatusBadGateway) // Msg 换成上游返回的错误原文
 )
 
-// 环节协议层（stepkit）与营销工作室 68xxx。68001–68011、68015、68016 由营销业务使用（见 docs/design/营销工作室/接口契约.md §6），
+// 环节协议层（stepkit）与营销工作室 68xxx。68001–68011、68015、68016、68018 由营销业务使用（见 docs/design/营销工作室/接口契约.md §6），
 // 这里先落地环节协议层用到的四个，营销业务的在下面，积分不足复用 40001。
 var (
 	ErrStepNotFound     = New(68012, "环节不存在", http.StatusNotFound)
@@ -298,4 +299,5 @@ var (
 	ErrMarketingCanvasFailed = New(68011, "发到画布失败", http.StatusInternalServerError)
 	ErrMarketingReverseBad   = New(68015, "拆解内容不合法", http.StatusBadRequest)
 	ErrMarketingNoReverse    = New(68016, "没有可用的拆解，不能重写跟拍", http.StatusConflict)
+	ErrMarketingAdaptFailed  = New(68018, "转写提示词失败：两次输出都不合格，请稍后重试", http.StatusBadGateway)
 )

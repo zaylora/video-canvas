@@ -9,6 +9,7 @@ import (
 	"video-canvas/internal/provider"
 	"video-canvas/internal/provider/plugin"
 	"video-canvas/internal/provider/pluginrunner"
+	"video-canvas/plugins"
 )
 
 func TestDraftChecker_MediaReferences(t *testing.T) {
@@ -56,5 +57,21 @@ parseSubmitResponse:function(ctx,res){return {immediate:[{url:res.body.url,media
 				}
 			}
 		})
+	}
+}
+
+func TestDraftCheckerOpenAIImage(t *testing.T) {
+	src, err := plugins.Source("openai-image")
+	if err != nil {
+		t.Fatal(err)
+	}
+	checker := plugin.NewDraftChecker(plugin.NewInProcessRunnerClient(pluginrunner.NewServer(pluginrunner.Options{}).Handler()))
+	pre, err := checker.Precheck(context.Background(), string(src))
+	if err != nil || !pre.OK {
+		t.Fatalf("预检失败：%+v %v", pre, err)
+	}
+	out, err := checker.CheckDraft(context.Background(), provider.PluginDraftInput{Code: string(src)}, pre)
+	if err != nil || !out.OK {
+		t.Fatalf("图片插件草稿检查失败：%+v %v", out, err)
 	}
 }

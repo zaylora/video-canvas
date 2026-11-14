@@ -129,10 +129,16 @@ func TestWorker_Submit_Failures(t *testing.T) {
 		wantNotInMsg string
 		wantAlert    string // 期望的 Error 级告警文案，空表示不要求
 	}{
-		{"审核未通过", &provider.Error{Class: provider.ClassModeration, Message: "raw: nsfw detected id=abc"}, "moderation", "内容未通过审核", "nsfw", ""},
-		{"上游余额不足对用户显示服务繁忙并告警", &provider.Error{Class: provider.ClassProviderBalance, Message: "raw: insufficient balance 0.00"}, "provider_balance", "服务繁忙，请稍后再试", "balance", "余额不足"},
+		{"审核未通过且没有上游原文", &provider.Error{Class: provider.ClassModeration, Message: "raw: nsfw detected id=abc"}, "moderation", "内容未通过审核", "nsfw", ""},
+		{"审核未通过显示上游原文", &provider.Error{Class: provider.ClassModeration, Message: "上游拒绝请求", Upstream: "image contains nsfw content"}, "moderation", "image contains nsfw content", "", ""},
+		{"上游余额不足显示上游原文并告警", &provider.Error{Class: provider.ClassProviderBalance, Message: "上游余额或额度不足", Upstream: "insufficient balance 0.00"}, "provider_balance", "insufficient balance 0.00", "", "余额不足"},
+		{"上游余额不足且没有原文", &provider.Error{Class: provider.ClassProviderBalance, Message: "raw: insufficient balance 0.00"}, "provider_balance", "服务繁忙，请稍后再试", "balance", "余额不足"},
 		{"提交结果未知", &provider.Error{Class: provider.ClassSubmitUnknown, Message: "raw: read timeout after 30s"}, "submit_unknown", "提交结果未知，积分已退回", "timeout after", ""},
-		{"终态错误", &provider.Error{Class: provider.ClassTerminal, Message: "raw: node 12 missing"}, "provider_error", "平台繁忙，请稍后重试", "node 12", ""},
+		{"上游拒绝显示上游原文并去掉上游请求编号", &provider.Error{Class: provider.ClassTerminal, Code: "http_400", Message: "上游拒绝请求", Upstream: "Unsupported input: prompt (request id: abc123)"}, "provider_error", "Unsupported input: prompt", "abc123", ""},
+		{"上游原文只有请求编号时用固定文案", &provider.Error{Class: provider.ClassTerminal, Code: "http_400", Message: "上游拒绝请求", Upstream: "(request id: abc123)"}, "provider_error", "平台繁忙，请稍后重试", "abc123", ""},
+		{"参数错误显示上游原文", &provider.Error{Class: provider.ClassTerminal, Code: "invalid_param", Message: "raw", Upstream: "ratio must be 9:16 or 16:9"}, "invalid_param", "ratio must be 9:16 or 16:9", "", ""},
+		{"插件级失败不显示上游原文", &provider.Error{Class: provider.ClassTerminal, Code: provider.CodePluginError, Message: "插件钩子异常", Upstream: "TypeError: x is undefined", PluginFault: true}, "provider_error", "平台繁忙，请稍后重试", "TypeError", "插件级失败"},
+		{"终态错误只有宿主信息时不透出", &provider.Error{Class: provider.ClassTerminal, Message: "raw: node 12 missing"}, "provider_error", "平台繁忙，请稍后重试", "node 12", ""},
 		{"参数错误", &provider.Error{Class: provider.ClassTerminal, Code: "invalid_param", Message: "raw: bad"}, "invalid_param", "参数不合法，请调整后重试", "raw", ""},
 		{"SSRF 拦截按终态处理", &provider.Error{Class: provider.ClassTerminal, Code: provider.CodeSSRFBlocked, Message: "raw: 10.0.0.1"}, "provider_error", "平台繁忙，请稍后重试", "10.0.0.1", ""},
 		{"未分类的普通错误按终态处理", errors.New("raw: boom secret-detail"), "provider_error", "平台繁忙，请稍后重试", "secret-detail", ""},
@@ -148,10 +154,10 @@ func TestWorker_Submit_Failures(t *testing.T) {
 			if got.Status != model.TaskFailed || got.ErrorCode != tt.wantCode || got.ErrorMessage != tt.wantMsg {
 				t.Fatalf("期望 failed/%s/%s，实际 %+v", tt.wantCode, tt.wantMsg, got)
 			}
-			if strings.Contains(got.ErrorMessage, tt.wantNotInMsg) {
-				t.Fatalf("不能把上游原始信息透给用户：%s", got.ErrorMessage)
+			if tt.wantNotInMsg != "" && strings.Contains(got.ErrorMessage, tt.wantNotInMsg) {
+				t.Fatalf("不能把宿主内部信息透给用户：%s", got.ErrorMessage)
 			}
-			// 上游原文不给用户，但要交给任务服务记进失败事件，供后台排查
+			// 完整错误串（含宿主信息）交给任务服务记进失败事件，供后台排查
 			if len(env.store.upstreams) != 1 || env.store.upstreams[0] != tt.err.Error() {
 				t.Fatalf("失败时应把上游原文 %q 交给 store，实际 %q", tt.err.Error(), env.store.upstreams)
 			}
@@ -485,8 +491,8 @@ func TestWorker_Submit_ImmediateFailed(t *testing.T) {
 	}
 	env.runOnce(t)
 	got := env.store.get(1)
-	if got.Status != model.TaskFailed || got.ErrorCode != "moderation" || got.ErrorMessage != "内容未通过审核" {
-		t.Fatalf("应按 Immediate 的分类失败：%+v", got)
+	if got.Status != model.TaskFailed || got.ErrorCode != "moderation" || got.ErrorMessage != "raw: nsfw" {
+		t.Fatalf("应按 Immediate 的分类失败，并显示插件从上游取到的原文：%+v", got)
 	}
 	if env.store.count("MarkSubmitted") != 0 || env.store.count("MarkImmediate") != 0 {
 		t.Fatalf("失败不应记录提交：%v", env.store.callList())

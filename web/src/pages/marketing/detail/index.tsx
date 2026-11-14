@@ -110,6 +110,12 @@ function Workbench({ project }: { project: Project }) {
   const { round, selection, script } = useWorkbenchTarget(project.id);
   const [composerOpen, setComposerOpen] = useState(false);
   const [factsOpen, setFactsOpen] = useState(false);
+  // 每次打开换一个 key，表单重新取最新的商品信息；关闭时不卸载，留给退出动画
+  const [factsSession, setFactsSession] = useState(0);
+  const openFacts = () => {
+    setFactsSession((n) => n + 1);
+    setFactsOpen(true);
+  };
   const latestRound = project.rounds[0];
   const seenLatest = useRef(latestRound?.id);
 
@@ -214,17 +220,12 @@ function Workbench({ project }: { project: Project }) {
           const next = project.rounds.find((item) => item.id === id);
           if (next) useWorkbenchStore.getState().setRound(id, defaultSelection(next));
         }}
-        onEditFacts={() => setFactsOpen(true)}
+        onEditFacts={openFacts}
         onComposer={() => setComposerOpen((open) => !open)}
       />
       <Columns
         list={
-          <AssetList
-            project={project}
-            round={round}
-            actions={actions}
-            onEditFacts={() => setFactsOpen(true)}
-          />
+          <AssetList project={project} round={round} actions={actions} onEditFacts={openFacts} />
         }
         stage={<Stage project={project} available={available} actions={actions} />}
         inspector={inspector}
@@ -250,14 +251,25 @@ function Workbench({ project }: { project: Project }) {
         </div>
       )}
 
-      {project.product && factsOpen && (
+      {project.product && (
         <FactDialog
-          key={project.revision}
+          key={factsSession}
           facts={project.product}
-          open
-          busy={!!actions.busy.facts}
+          productAssets={project.productAssets}
+          modelAsset={round ? round.modelAsset : null}
+          imagesLocked={project.rounds.some((item) => item.status === "scripting")}
+          open={factsOpen}
+          busy={!!actions.busy.facts || !!actions.busy["refresh-facts"]}
           onOpenChange={setFactsOpen}
-          onSave={(next) => void actions.saveFacts(next).then((ok) => ok && setFactsOpen(false))}
+          onSave={(next) =>
+            void actions.saveFacts({ ...next, round }).then((ok) => ok && setFactsOpen(false))
+          }
+          onRefresh={(next) =>
+            void (async () => {
+              if (!(await actions.saveFacts({ ...next, round }))) return;
+              if (await actions.refreshFacts()) setFactsOpen(false);
+            })()
+          }
         />
       )}
     </div>

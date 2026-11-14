@@ -487,6 +487,7 @@ export interface BackendRound {
   warnings: string[] | null;
   settings: BackendRoundSettings;
   ref_video?: { id: number; url: string; duration: number } | null;
+  model_asset?: BackendAssetRef | null;
   steps: BackendStepRun[] | null;
   plan_count: number;
   reverse?: BackendReverse | null;
@@ -527,6 +528,8 @@ export interface Round {
   settings: RoundSettings;
   /** 参考视频；没有为 null */
   refVideo: RefVideo | null;
+  /** 本轮出片用的模特图；没有为 null */
+  modelAsset: AssetRef | null;
   /** 每个环节最新一条运行记录 */
   steps: StepRun[];
   /** 计划出几份脚本，写脚本中前端画骨架卡 */
@@ -642,6 +645,16 @@ export interface CreateProjectInput {
   settings: RoundSettings;
 }
 
+/** 改一轮出片设置的输入：画幅、时长须与原来一致，模特图只能换不能加减 */
+export interface UpdateRoundSettingsInput {
+  /** 视频模型 key */
+  videoModel: string;
+  /** 视频参数，键名按所选模型 */
+  params: Record<string, unknown>;
+  /** 换用的模特图素材 ID；不换不传 */
+  modelAssetId?: number;
+}
+
 /** 新开一轮的输入 */
 export interface CreateRoundInput {
   /** 换用的模特图素材 ID */
@@ -671,11 +684,41 @@ export interface Quote {
 }
 
 /** 视频提示词 */
-export interface ScriptPrompt {
-  /** 格式化器：seedance 分区块或通用段落 */
-  format: "seedance" | "generic";
-  /** 提示词正文 */
+/** 后端提示词预览 */
+export interface BackendScriptPrompt {
+  format: ScriptPrompt["format"];
   prompt: string;
+  edited?: boolean;
+  stale?: boolean;
+  adaptation?: { prompt: string; stale: boolean; edited: boolean; updated_at: string } | null;
+  adapt_credits?: number;
+}
+
+/** 转写稿 */
+export interface PromptAdaptation {
+  /** 转写稿正文 */
+  prompt: string;
+  /** 原稿已变，出片时会重新转写 */
+  stale: boolean;
+  /** 手改过 */
+  edited: boolean;
+  /** 更新时间 */
+  updatedAt: string;
+}
+
+export interface ScriptPrompt {
+  /** 格式：seedance 分区块、通用段落；h3 要先转写（prompt 是原稿，出片用转写稿） */
+  format: "seedance" | "generic" | "h3";
+  /** 原稿：seedance、generic 就是出片用的提示词；h3 是转写依据 */
+  prompt: string;
+  /** 原稿是用户手改的 */
+  edited: boolean;
+  /** 手改之后脚本又改了：出片仍用手改稿，还原才按新脚本拼 */
+  stale: boolean;
+  /** h3 的转写稿；还没转写为 null */
+  adaptation: PromptAdaptation | null;
+  /** 转写一次的预估积分（h3 才有意义） */
+  adaptCredits: number;
 }
 
 /** 一键出片的结果 */

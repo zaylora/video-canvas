@@ -111,10 +111,16 @@ func TestSeedance_分区块结构(t *testing.T) {
 		"近景，手持推近", "旁白：「早八来不及？」", "旁白：「点下方链接带走它」",
 		"旁白：中文，温柔女声", "配乐：轻快钢琴",
 		"商品外观与参考图一致", "商品不出画", "不出现任何文字、字幕、花字或水印",
-		"橙色软管", "米白毛衣", "奶油色背景", // 关键颜色并集
+		"画面里出现的每一件商品都是 @图片1、@图片2 的晨雾香水 50ml",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("缺少 %q：\n%s", want, out)
+		}
+	}
+	// 拆解的关键颜色带着参考片的载体（人物穿着、原商品），不进出片提示词。
+	for _, ban := range []string{"关键颜色", "米白毛衣", "奶油色背景"} {
+		if strings.Contains(out, ban) {
+			t.Errorf("不应出现 %q：\n%s", ban, out)
 		}
 	}
 	if strings.Contains(out, "@视频1") {
@@ -237,12 +243,8 @@ func TestTruncate_按顺序逐步删减(t *testing.T) {
 			anchors3.Facts.Anchors = anchors3.Facts.Anchors[:3]
 			l2 := mustRender(t, f, anchors3)
 
-			noColor := anchors3
-			noColor.Reverse = nil
-			l3 := mustRender(t, f, noColor)
-
-			if runes(l0) <= runes(l1) || runes(l1) <= runes(l2) || runes(l2) <= runes(l3) {
-				t.Fatalf("固定的前三步应各自变短：%d %d %d %d", runes(l0), runes(l1), runes(l2), runes(l3))
+			if runes(l0) <= runes(l1) || runes(l1) <= runes(l2) {
+				t.Fatalf("固定的前两步应各自变短：%d %d %d", runes(l0), runes(l1), runes(l2))
 			}
 			cases := []struct {
 				name   string
@@ -252,7 +254,6 @@ func TestTruncate_按顺序逐步删减(t *testing.T) {
 				{"刚好够用不删", runes(l0), l0},
 				{"第一步去掉平台写法要点", runes(l0) - 1, l1},
 				{"第二步锚点只留前三条", runes(l1) - 1, l2},
-				{"第三步去掉关键颜色", runes(l2) - 1, l3},
 			}
 			for _, c := range cases {
 				in := base
@@ -268,11 +269,10 @@ func TestTruncate_按顺序逐步删减(t *testing.T) {
 func TestTruncate_第四步逐步截短画面描述(t *testing.T) {
 	f := format.For("seedance")
 	base := fixture()
-	noColor := base
-	noColor.Platform.Style = ""
-	noColor.Facts.Anchors = noColor.Facts.Anchors[:3]
-	noColor.Reverse = nil
-	l3 := runes(mustRender(t, f, noColor))
+	trimmed := base
+	trimmed.Platform.Style = ""
+	trimmed.Facts.Anchors = trimmed.Facts.Anchors[:3]
+	l3 := runes(mustRender(t, f, trimmed))
 
 	// 只差一点：每镜画面截到 80 字就够。
 	in := base
