@@ -246,6 +246,9 @@ func (a *applier) createNode(op Op) error {
 	if op.Storyboard != nil && op.Kind != KindStoryboard {
 		return errors.New("storyboard 只能写在分镜表节点（kind 为 storyboard）上")
 	}
+	if op.ComposeOrder != nil && op.Kind != KindCompose {
+		return errors.New("composeOrder 只能写在成片合成节点（kind 为 compose）上：先建节点，再连线，最后调顺序")
+	}
 	var storyboard map[string]any
 	if op.Kind == KindStoryboard {
 		if op.Prompt != nil || op.Model != nil || len(op.Params) > 0 || op.Mode != nil || op.AssetID != "" || op.Character != nil {
@@ -259,6 +262,14 @@ func (a *applier) createNode(op Op) error {
 	if op.Character != nil && op.Kind != KindCharacter {
 		return errors.New("character 只能写在角色节点（kind 为 character）上")
 	}
+	if op.Kind == KindCompose {
+		if op.Prompt != nil || op.Model != nil || len(op.Params) > 0 || op.Mode != nil || op.AssetID != "" {
+			return errors.New("成片合成节点不调模型，只能写标题、位置，连进来视频后用户点「合成成片」")
+		}
+		if op.ComposeOrder != nil {
+			return errors.New("composeOrder 要在视频连线建好之后用 update_node 写")
+		}
+	}
 	var character map[string]any
 	if op.Kind == KindCharacter {
 		var err error
@@ -267,7 +278,7 @@ func (a *applier) createNode(op Op) error {
 		}
 	}
 	if !validKind(op.Kind) {
-		return fmt.Errorf("节点种类 %q 不认识，可选 script / image / video / audio / character / storyboard", op.Kind)
+		return fmt.Errorf("节点种类 %q 不认识，可选 script / image / video / audio / character / storyboard / compose", op.Kind)
 	}
 	if err := checkParams(op.Params); err != nil {
 		return err
@@ -380,8 +391,20 @@ func (a *applier) updateNode(op Op) error {
 	if n.Kind() == KindDirector {
 		return errors.New("导演台节点只能由用户在导演台里修改")
 	}
-	if op.Label == nil && op.Prompt == nil && op.Model == nil && len(op.Params) == 0 && op.Mode == nil && op.Character == nil && op.Storyboard == nil {
+	if op.Label == nil && op.Prompt == nil && op.Model == nil && len(op.Params) == 0 && op.Mode == nil && op.Character == nil && op.Storyboard == nil && op.ComposeOrder == nil {
 		return errors.New("没有要修改的内容")
+	}
+	if n.Kind() == KindCompose {
+		if op.Prompt != nil || op.Model != nil || len(op.Params) > 0 || op.Mode != nil || op.Character != nil || op.Storyboard != nil {
+			return errors.New("成片合成节点不调模型，只能改标题和段落顺序（composeOrder）")
+		}
+		if op.ComposeOrder != nil {
+			if err := a.setComposeOrder(n, op.ComposeOrder); err != nil {
+				return err
+			}
+		}
+	} else if op.ComposeOrder != nil {
+		return errors.New("composeOrder 只能改成片合成节点（kind 为 compose）的段落顺序")
 	}
 	if n.Kind() == KindStoryboard {
 		if op.Prompt != nil || op.Model != nil || len(op.Params) > 0 || op.Mode != nil || op.Character != nil {
@@ -429,6 +452,43 @@ func (a *applier) updateNode(op Op) error {
 	if op.Mode != nil {
 		return a.setMode(n, *op.Mode)
 	}
+	return nil
+}
+
+// setComposeOrder 写成片节点的段落顺序（data.composeOrder）。列表里只能是已经连线接进本节点的视频，
+// 没列到的上游按画布位置（上→下、同高左→右）排在后面，所以这里只存用户点过名的那部分；
+// 传空数组等于清空，回到全按位置排。前端 utils/canvas/compose-input.ts 按同一规则合并。
+func (a *applier) setComposeOrder(n Node, ids []string) error {
+	inbound := map[string]bool{}
+	for _, e := range a.g.Edges {
+		if e.Target() != n.ID() {
+			continue
+		}
+		if src := a.g.Node(e.Source()); src != nil && src.Kind() == KindVideo {
+			inbound[src.ID()] = true
+		}
+	}
+	order := make([]any, 0, len(ids))
+	seen := map[string]bool{}
+	for _, ref := range ids {
+		src, err := a.resolve(ref)
+		if err != nil {
+			return fmt.Errorf("段落顺序里的节点 %q 不存在", ref)
+		}
+		if !inbound[src.ID()] {
+			return fmt.Errorf("「%s」没有连线接到「%s」，段落顺序只能排接进来的视频", src.Label(), n.Label())
+		}
+		if seen[src.ID()] {
+			continue
+		}
+		seen[src.ID()] = true
+		order = append(order, src.ID())
+	}
+	if len(order) == 0 {
+		delete(n.Data(), "composeOrder")
+		return nil
+	}
+	n.Data()["composeOrder"] = order
 	return nil
 }
 

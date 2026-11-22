@@ -86,6 +86,8 @@ var toolSpecs = []toolSpec{
 	{name: "show_card", label: "展示卡片", verb: "展示", run: nil},
 	{name: "admin_query", label: "查询后台记录", verb: "查询", scriptable: true, modes: []string{model.AgentModeAdmin}, run: (*AgentBridge).toolAdminQuery},
 	{name: "admin_get_resource", label: "读取后台资源", verb: "读取", scriptable: true, modes: []string{model.AgentModeAdmin}, run: (*AgentBridge).toolAdminGetResource},
+	// 成片合成：阻塞等 ffmpeg 出片，不能被脚本调用；追加在末尾以保持提示词缓存稳定。
+	{name: "canvas_compose", label: "合成成片", verb: "合成", modes: layoutModes, run: (*AgentBridge).toolCompose},
 }
 
 // layoutModes 是能排列、删除和生成的任务模式：全能创作、分镜搭建和短剧助手。

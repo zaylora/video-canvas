@@ -40,6 +40,11 @@ type ShotFields struct {
 	Action   *string  `json:"action,omitempty"`   // 动作 / 走位
 	Dialogue *string  `json:"dialogue,omitempty"` // 对白，旁白也写在这里
 	Duration *float64 `json:"duration,omitempty"` // 时长（秒），越界修正到 1–60
+	// ImageNodeID 把这一镜的分镜图指向画布上已有的图片节点；VideoNodeID 同样指向已有视频节点。
+	// 分镜表是后来加的、或者素材不是从这张表生成的时，靠这两个字段把已有素材挂进来。
+	// 传空串表示取消关联；节点必须存在，种类也要对得上。
+	ImageNodeID *string `json:"imageNodeId,omitempty"`
+	VideoNodeID *string `json:"videoNodeId,omitempty"`
 }
 
 // ShotEdit 是一步逐行修改。镜号从 1 起，按这一步执行前的顺序算（前面的插入、删除会让后面的镜号变）。
@@ -55,12 +60,13 @@ type ShotEdit struct {
 type storyboardEditor struct {
 	shots   []map[string]any
 	newID   func() string
-	clamped bool // 有时长被修正过
+	node    func(string) Node // 按 id 取画布上的节点，挂已有素材时校验用
+	clamped bool              // 有时长被修正过
 }
 
 // newStoryboard 按 Agent 给的数据构造新分镜表的 data.storyboard；不给就是空表。
 func (a *applier) newStoryboard(op *StoryboardOp) (map[string]any, error) {
-	e := &storyboardEditor{newID: func() string { return a.opt.newID("shot_") }}
+	e := &storyboardEditor{newID: func() string { return a.opt.newID("shot_") }, node: a.g.Node}
 	if op != nil {
 		if err := e.apply(op); err != nil {
 			return nil, err
@@ -72,7 +78,7 @@ func (a *applier) newStoryboard(op *StoryboardOp) (map[string]any, error) {
 
 // patchStoryboard 改已有分镜表的镜头；镜头里 Agent 不认识的字段（以后的分镜图、关联节点）原样保留。
 func (a *applier) patchStoryboard(n Node, op *StoryboardOp) error {
-	e := &storyboardEditor{newID: func() string { return a.opt.newID("shot_") }, shots: existingShots(n)}
+	e := &storyboardEditor{newID: func() string { return a.opt.newID("shot_") }, node: a.g.Node, shots: existingShots(n)}
 	if err := e.apply(op); err != nil {
 		return err
 	}
@@ -249,14 +255,59 @@ func (e *storyboardEditor) write(s map[string]any, f ShotFields, isNew bool) err
 		e.clamped = e.clamped || d != *f.Duration
 		s["duration"] = d
 	}
+	// 关联画布上已有的节点：空串取消关联，否则节点必须在画布上、种类还要对得上。
+	// 这是「分镜表后来才加」「镜头不是从这张表生成的」两种情况下唯一能把已有素材挂进来的路。
+	for _, link := range []struct {
+		key, label, kind string
+		v                *string
+	}{
+		{"imageNodeId", "分镜图节点", KindImage, f.ImageNodeID},
+		{"videoNodeId", "视频节点", KindVideo, f.VideoNodeID},
+	} {
+		if link.v == nil {
+			continue
+		}
+		id := strings.TrimSpace(*link.v)
+		if id == "" {
+			delete(s, link.key)
+			continue
+		}
+		n := Node(nil)
+		if e.node != nil {
+			n = e.node(id)
+		}
+		if n == nil {
+			return fmt.Errorf("%s %q 不在画布上（先用 canvas_get_state 读一下节点 id）", link.label, id)
+		}
+		if n.Kind() != link.kind {
+			name := kindLabel[n.Kind()]
+			if name == "" {
+				name = n.Kind()
+			}
+			return fmt.Errorf("节点 %q 是%s，不能当%s", id, name, link.label)
+		}
+		s[link.key] = id
+	}
 	return nil
 }
 
-// storyboardSummary 是目录里分镜表的摘要：「N 镜」加首镜画面。
-func storyboardSummary(n Node, runes int) string {
+// storyboardSummary 是目录里分镜表的摘要：「N 镜」、已挂能用的视频数，加首镜画面。
+// 视频数只数「节点还在、且已经出片」的：模型据此判断要不要先让用户补素材再合成。
+func storyboardSummary(g *Graph, n Node, runes int) string {
 	shots := existingShots(n)
 	if len(shots) == 0 {
 		return "0 镜"
 	}
-	return truncate(fmt.Sprintf("%d 镜 · %s", len(shots), str(shots[0]["scene"])), runes)
+	videos := 0
+	for _, s := range shots {
+		up := g.Node(str(s["videoNodeId"]))
+		if up != nil && up.Kind() == KindVideo && activeAssetID(up.Data()) != "" {
+			videos++
+		}
+	}
+	head := fmt.Sprintf("%d 镜", len(shots))
+	if videos > 0 {
+		head += fmt.Sprintf(" · 视频 %d 段已出片", videos)
+	}
+	return truncate(fmt.Sprintf("%s · %s", head, str(shots[0]["scene"])), runes)
 }

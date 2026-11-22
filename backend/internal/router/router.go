@@ -18,6 +18,8 @@ type Handlers struct {
 	CanvasProject  *handler.CanvasProjectHandler
 	CanvasTransfer *handler.CanvasTransferHandler // 画布导出为文档、从文档导入为新画布
 	Storyboard     *handler.StoryboardHandler     // 画布分镜表：从剧本拆分镜
+	CanvasCompose  *handler.CanvasComposeHandler  // 画布成片合成：把已生成的片段按顺序拼成一个 mp4
+	CanvasArchive  *handler.CanvasArchiveHandler  // 画布素材按节点归类打包下载（票据签发 + 流式 zip）
 	Conversation   *handler.ConversationHandler   // 首页生成：对话与生成记录
 	// AgentProxy：画布 Agent 的会话、运行、审批、评价由独立的 Agent 服务负责，这些接口只校验登录态后反向代理过去
 	// （路径、方法、信封不变）；技能目录等仍由 Go 自己处理。为 nil 表示没有启用 Agent，这些接口统一返回「Agent 暂不可用」。
@@ -93,6 +95,9 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		// 无需 JWT：身份由一次性 ticket 决定（浏览器 WebSocket 不能带请求头）
 		v1.GET("/ws", h.WS.Connect)
 
+		// 画布素材打包下载：浏览器原生 <a download> 带不上 Authorization，身份由票据里的签名保证
+		v1.GET("/canvas/:id/assets/archive", h.CanvasArchive.Download)
+
 		// River UI：浏览器在新标签页里直接打开，带不上 Authorization 头；身份由一次性 ticket 换来的会话 cookie 决定，仅 super_admin
 		v1.GET("/admin/river", h.RiverUI.Redirect)
 		v1.Any("/admin/river/*path", h.RiverUI.Serve)
@@ -125,6 +130,11 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		canvas.POST("/:id/storyboard/split", h.Storyboard.Split)           // 异步任务：建任务 + 入队，立刻返回 pending
 		canvas.GET("/:id/storyboard/split/active", h.Storyboard.ActiveJob) // 按 node_id 补查进行中的任务（弹窗打开 / 刷新页面）
 		canvas.GET("/:id/storyboard/split/:jobId", h.Storyboard.Job)       // 按 id 读任务当前状态（断线对账）
+		canvas.POST("/:id/compose", h.CanvasCompose.Compose)               // 异步合成成片：建任务 + 入队，立刻返回 queued
+		canvas.GET("/:id/compose/active", h.CanvasCompose.Active)          // 按 node_id 查任务与成片是否过期（弹窗打开 / 刷新页面）
+		canvas.GET("/:id/compose/:jobId", h.CanvasCompose.Job)             // 按 id 读任务当前状态（断线对账）
+		canvas.POST("/:id/compose/:jobId/cancel", h.CanvasCompose.Cancel)  // 取消还没落终态的任务
+		canvas.POST("/:id/assets/archive", h.CanvasArchive.Ticket)         // 签发一次性下载票据：返回地址 + 打包统计
 		fwd := agentRoute(h.AgentProxy)
 		canvas.GET("/:id/agent/sessions", fwd)
 		canvas.POST("/:id/agent/sessions", fwd)

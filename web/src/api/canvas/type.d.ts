@@ -15,7 +15,15 @@ export interface PersistedCanvasNodeDto {
   /** 节点携带的业务数据 */
   data: {
     /** 节点种类 */
-    kind: "script" | "image" | "video" | "audio" | "director" | "character" | "storyboard";
+    kind:
+      | "script"
+      | "image"
+      | "video"
+      | "audio"
+      | "director"
+      | "character"
+      | "storyboard"
+      | "compose";
     /** 节点标题 */
     label: string;
     /** 提示词 */
@@ -360,4 +368,22 @@ export interface CanvasImportResultDto {
     /** 因端点节点不存在而丢弃的连线数 */
     edgesDropped: number;
   };
+}
+
+/** 打包下载的票据与统计 */
+export interface CanvasArchiveTicketDto {
+  /** 免鉴权的下载地址（带签名票据，有效期 10 分钟） */
+  url: string;
+  /** 建议的保存文件名 */
+  file_name: string;
+  /** 包内文件数 */
+  count: number;
+  /** 各分组的文件数：剧本 / 分镜表 / 角色 / 图片 / 视频 / 音频 / 成片 */
+  groups: Record<string, number>;
+  /** 合计字节数 */
+  total_bytes: number;
+  /** 画布上引用了但文件取不到、被跳过的数量 */
+  skipped: number;
+  /** 票据过期时间（Unix 秒） */
+  expires_at: number;
 }

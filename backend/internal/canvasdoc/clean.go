@@ -8,6 +8,8 @@ import "fmt"
 var foreignKeys = map[string]bool{
 	"assetId": true, "src": true, "taskId": true, "pendingTaskIds": true, "voiceTaskId": true,
 	"errorTaskRef": true, "characterId": true, "activeOutputId": true, "labelCache": true,
+	// 成片字段：导出时清掉，导入文件里出现就只能是手改塞进来的
+	"finalAssetId": true, "finalFingerprint": true, "finalDurationMs": true, "finalSegmentCount": true,
 }
 
 // CheckDocumentClean 扫描导入文档的节点和连线（任意层级，包括 data.params、data.scene 这类自由区域），

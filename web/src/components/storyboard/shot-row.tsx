@@ -14,11 +14,11 @@ import { ShotVideoCell } from "./shot-video-cell";
 import { CameraMoveSelect, ShotSizeSelect } from "./shot-select";
 
 /**
- * 表格的列宽（设计 §3.1）：拖拽柄、镜号、分镜图、画面描述（弹性）、景别、运镜、动作/走位、对白、时长、行操作。
- * 表头和行共用这一份，列才对得齐。
+ * 表格的列宽（设计 §3.1）：拖拽柄、镜号、分镜图、画面描述（弹性）、景别、运镜、动作/走位、对白、时长、视频、行操作。
+ * 表头和行共用这一份，列才对得齐。视频列放得下「生成视频」和旁边的导入按钮（152px）。
  */
 export const SHOT_GRID_CLASS =
-  "grid grid-cols-[28px_48px_160px_minmax(240px,1fr)_104px_104px_200px_200px_88px_120px_40px] items-start gap-x-1";
+  "grid grid-cols-[28px_48px_160px_minmax(240px,1fr)_104px_104px_200px_200px_88px_152px_40px] items-start gap-x-1";
 
 /**
  * 横向滚动时钉在左边的三列：始终知道在改第几镜。偏移 = 前面的列宽加列间距 4px。
@@ -47,6 +47,10 @@ export type ShotRowActions = {
   onGenerateImage: (id: string) => void;
   /** 生成视频：这一行还没有视频节点就建一个（不自动开始生成） */
   onGenerateVideo: (id: string, options?: { regenerate?: boolean }) => void;
+  /** 把画布上已有的视频节点挂到这一镜（分镜表后来才加、或素材不是从表里生成的时候用） */
+  onImportVideo: (id: string) => void;
+  /** 把画布上已有的图片节点挂到这一镜的分镜图 */
+  onImportImage: (id: string) => void;
   /** 点上传：选一张图作为这一行的分镜图 */
   onPickImage: (id: string) => void;
   /** 拖进来的文件：取第一张图片上传 */
@@ -200,6 +204,7 @@ export const ShotRow = memo(function ShotRow({
           dragging={fileOver}
           onGenerate={() => actions.onGenerateImage(shot.id)}
           onUpload={() => actions.onPickImage(shot.id)}
+          onImport={() => actions.onImportImage(shot.id)}
           onRemove={() => actions.onRemoveImage(shot.id)}
           onLocate={actions.onLocate}
           onPreview={() => actions.onPreviewImage(shot.id)}
@@ -234,6 +239,7 @@ export const ShotRow = memo(function ShotRow({
       <ShotVideoCell
         shot={shot}
         onGenerate={() => actions.onGenerateVideo(shot.id)}
+        onImport={() => actions.onImportVideo(shot.id)}
         onLocate={actions.onLocate}
       />
       <div className="flex h-9 items-center justify-center">
@@ -248,6 +254,8 @@ export const ShotRow = memo(function ShotRow({
             actions.onGenerateVideo(shot.id, { regenerate: !!shot.videoNodeId })
           }
           hasVideoNode={!!shot.videoNodeId}
+          onImportVideo={() => actions.onImportVideo(shot.id)}
+          onImportImage={() => actions.onImportImage(shot.id)}
         />
       </div>
     </Reorder.Item>

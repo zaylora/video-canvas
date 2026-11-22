@@ -75,12 +75,30 @@ export type CanvasNodeData = {
   character?: NodeCharacter;
   /** 分镜表节点的镜头，只有 kind 为 storyboard 时才有；镜号按行序现算，不存 */
   storyboard?: NodeStoryboard;
+  /**
+   * 成片合成节点的段落顺序：上游节点 id 的数组，只有 kind 为 compose 时才有。
+   * 不存也算得出（按画布位置从上到下），存下来只记「用户手动调过的那部分」——
+   * 没在数组里的上游接在最后，仍按位置排，所以新连进来的视频不需要重排一遍。
+   */
+  composeOrder?: string[];
   /** @deprecated 旧版角色卡节点引用的全局角色卡 ID。角色卡已改为画布内嵌，打开画布时由 normalizeLegacyCharacters 规整掉，不再写回 */
   characterId?: string;
   /** @deprecated 旧版角色卡节点缓存的名称和主图，同上，规整时只取名字 */
   labelCache?: { name: string; coverAssetId?: string };
   /** 短剧资产元数据，只有短剧专属画布里的节点才有；没有这个字段的节点在短剧里算「未分类」 */
   drama?: NodeDrama;
+  /**
+   * 成片：最近一次成功合成的素材 id（十进制），分镜表节点才有。
+   * 由服务端合成完成后写回节点，前端只读；三个 final* 字段必须留在节点 data 顶层，
+   * 放进 storyboard 里会被 normalizeStoryboard 规整掉。
+   */
+  finalAssetId?: string;
+  /** 成片对应的输入指纹：与当前镜头序列不一致时说明成片已过期 */
+  finalFingerprint?: string;
+  /** 成片时长（毫秒） */
+  finalDurationMs?: number;
+  /** 成片包含的片段数 */
+  finalSegmentCount?: number;
 };
 
 /** 角色卡节点上的一份素材引用（补充图、音频音色）：只存素材 id 和地址，不复制文件 */

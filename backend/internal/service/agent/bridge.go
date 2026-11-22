@@ -73,6 +73,7 @@ type BridgeDeps struct {
 	Billing          *AgentBilling           // 对话计费
 	Registry         provider.Registry       // 模型注册表
 	Tasks            AgentGenTasks           // 生成任务（task_get 查进度）
+	Compose          AgentCompose            // 成片合成（canvas_compose 提交与查询）；为 nil 时工具提示不能合成
 	Assets           provider.AssetStore     // 素材（看图、看视频）
 	AssetLinks       AssetLinker             // 素材的稳定访问地址（附件落库、落画布用）；为 nil 时用 /files/<key>
 	Frames           VideoFrames             // 抽帧、截帧；为 nil 时不能抽帧，原视频理解不依赖它

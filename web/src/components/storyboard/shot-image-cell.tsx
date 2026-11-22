@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import {
   Crosshair,
+  FolderInput,
   Image,
   Link2,
   Maximize2,
@@ -25,7 +26,7 @@ type CellAction = {
   onClick: () => void;
 };
 
-function CellActionButton({ action }: { action: CellAction }) {
+function CellActionButton({ action, iconOnly }: { action: CellAction; iconOnly?: boolean }) {
   return (
     <button
       type="button"
@@ -38,7 +39,8 @@ function CellActionButton({ action }: { action: CellAction }) {
       className="nodrag flex min-w-0 flex-1 items-center justify-center gap-1.5 text-xs font-medium whitespace-nowrap text-white/80 outline-none transition-colors hover:bg-white/12 hover:text-white focus-visible:bg-white/12 focus-visible:text-white [&_svg]:size-3.5 [&_svg]:shrink-0"
     >
       {action.icon}
-      {action.label}
+      {/* 四个操作平分 144px 时放不下两字标签，只留图标，完整说法在 title 上 */}
+      {iconOnly ? <span className="sr-only">{action.label}</span> : action.label}
     </button>
   );
 }
@@ -59,7 +61,7 @@ function CellActions({ primary, rest }: { primary?: CellAction; rest: CellAction
       {rest.length > 0 && (
         <div className="flex min-h-0 flex-1 divide-x divide-white/10">
           {rest.map((action) => (
-            <CellActionButton key={action.key} action={action} />
+            <CellActionButton key={action.key} action={action} iconOnly={rest.length >= 4} />
           ))}
         </div>
       )}
@@ -76,6 +78,7 @@ function CellActions({ primary, rest }: { primary?: CellAction; rest: CellAction
  * @param dragging 有图片正拖在这一行上：整行任何位置都算拖到这一格，格子画出虚线框
  * @param onGenerate 生成 / 重新生成（复用同一个图片节点）
  * @param onUpload 点「上传」选文件
+ * @param onImport 用画布上已有的图片当这一镜的分镜图（分镜表是后来加的、图不是从表里生成的时候用）
  * @param onRemove 移除手传的图
  * @param onLocate 关掉弹窗，把画布飞到关联节点
  * @param onPreview 打开预览看原图
@@ -87,6 +90,7 @@ export function ShotImageCell({
   dragging,
   onGenerate,
   onUpload,
+  onImport,
   onRemove,
   onLocate,
   onPreview,
@@ -97,12 +101,15 @@ export function ShotImageCell({
   dragging?: boolean;
   onGenerate: () => void;
   onUpload: () => void;
+  onImport: () => void;
   onRemove: () => void;
   onLocate: (nodeId: string) => void;
   onPreview: () => void;
 }) {
   const linked = useLinkedNodeView(shot.imageNodeId);
   const state = shotImageState(shot, linked);
+  /** 挂的是哪一张：格子上只有图，挂错也看不出来，放进悬停提示里方便核对 */
+  const mounted = linked?.exists ? linked.label || shot.imageNodeId : shot.imageNodeId;
   const generating =
     state.kind === "node" && (state.phase === "queued" || state.phase === "running");
   const regenerate = state.kind === "node" && (state.phase === "done" || state.phase === "failed");
@@ -115,7 +122,13 @@ export function ShotImageCell({
     <div
       tabIndex={0}
       data-slot="shot-image-cell"
-      title={state.kind === "node" && state.phase === "failed" ? state.message : undefined}
+      title={
+        state.kind !== "node"
+          ? undefined
+          : state.phase === "failed"
+            ? state.message
+            : `已挂「${mounted}」`
+      }
       className={cn(
         "group/thumb bg-muted text-muted-foreground/50 focus-visible:ring-node-ring/60 relative grid h-[81px] w-36 place-items-center overflow-hidden rounded-md outline-none focus-visible:ring-2",
         generating && "animate-pulse",
@@ -190,6 +203,13 @@ export function ShotImageCell({
                     label: src ? "替换" : "上传",
                     icon: <Upload />,
                     onClick: onUpload,
+                  },
+                  {
+                    key: "import",
+                    title: "用画布上已有的分镜图",
+                    label: "导入",
+                    icon: <FolderInput />,
+                    onClick: onImport,
                   },
                 ]),
             ...(src

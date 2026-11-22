@@ -16,7 +16,8 @@ export const DOWNSTREAM_KINDS: Record<NodeKind, NodeKind[]> = {
   script: ["image", "video", "audio", "storyboard"],
   // 图片接音频节点：音频模型在后台开了图片参考时才真正连得上，由 canLinkNodes 按模型能力把关
   image: ["image", "video", "audio"],
-  video: ["video"],
+  // 视频能再生视频，也能连进成片合成（成片节点只收视频）
+  video: ["video", "compose"],
   audio: ["video"],
   // 导演台不接上游、也不能直接当参考：要先导出成视频 / 图片节点
   director: [],
@@ -25,6 +26,8 @@ export const DOWNSTREAM_KINDS: Record<NodeKind, NodeKind[]> = {
   // 分镜表只接剧本（文本）；能连到图片、视频：按行生成时由程序建线，也允许手动拉线。
   // 线只表示「来源」，下游不读分镜表的内容（见 utils/canvas/provenance-links.ts）
   storyboard: ["image", "video"],
+  // 成片合成是终点：收视频进来拼成一条，不再往任何节点连出去
+  compose: [],
 };
 
 /** 画布一开始是空的，节点都由用户双击或拉线建出来 */

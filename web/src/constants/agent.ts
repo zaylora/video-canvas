@@ -39,6 +39,7 @@ export const TOOL_LABELS: Record<string, string> = {
   drama_update_episode: "修改剧本",
   drama_update_segment: "修改片段",
   drama_run_job: "提交任务",
+  canvas_compose: "合成成片",
 };
 
 /** 工具的短动词：活动块收起后的摘要按它计数，如「读取 2 · 修改 3」 */
@@ -66,6 +67,7 @@ export const TOOL_VERBS: Record<string, string> = {
   drama_update_episode: "改剧本",
   drama_update_segment: "改片段",
   drama_run_job: "提交",
+  canvas_compose: "合成",
 };
 
 /** 工具的显示名：后端随事件下发的优先（新工具不用改前端），其次本地常量，都没有就显示原名 */

@@ -78,6 +78,8 @@ type Config struct {
 	Marketing MarketingHandler
 	// StoryboardSplit 是分镜表拆分镜的执行器；为 nil 时不注册 worker、入队也会报错。
 	StoryboardSplit StoryboardSplitHandler
+	// CanvasCompose 是画布成片合成的执行器；为 nil 时不注册 worker、入队也会报错。
+	CanvasCompose CanvasComposeHandler
 
 	Enabled bool // 本实例是否执行任务；为 false 时只能入队（API-only 实例）
 
@@ -185,6 +187,10 @@ func New(cfg Config) (*Runtime, error) {
 		if cfg.StoryboardSplit != nil {
 			AddWorker(workers, &storyboardSplitWorker{rt: rt})
 			rc.Queues[storyboardSplitQueue] = river.QueueConfig{MaxWorkers: hardCap}
+		}
+		if cfg.CanvasCompose != nil {
+			AddWorker(workers, &canvasComposeWorker{rt: rt})
+			rc.Queues[canvasComposeQueue] = river.QueueConfig{MaxWorkers: hardCap}
 		}
 		if cfg.Notifier != nil {
 			AddWorker(workers, &notifyWorker{rt: rt})

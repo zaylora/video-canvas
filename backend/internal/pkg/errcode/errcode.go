@@ -65,6 +65,14 @@ var (
 	ErrStoryboardSplitFailed   = New(30015, "拆分镜失败：模型两次输出都不合格，请重试", http.StatusBadGateway)
 	ErrStoryboardModelCall     = New(30016, "文本模型调用失败，请稍后重试", http.StatusBadGateway) // Msg 换成上游返回的错误原文
 	ErrStoryboardJobNotFound   = New(30017, "拆分镜任务不存在", http.StatusNotFound)
+	// 画布成片合成：按顺序把若干已生成视频拼成一个 mp4，不扣积分
+	ErrCanvasComposeBusy        = New(30018, "这张分镜表正在合成成片", http.StatusConflict)
+	ErrCanvasComposeJobNotFound = New(30019, "合成任务不存在", http.StatusNotFound)
+	ErrCanvasComposeNoClip      = New(30020, "没有可合成的视频片段", http.StatusBadRequest)
+	ErrCanvasComposeFailed      = New(30021, "合成失败，请重试", http.StatusBadGateway)
+	// 画布素材打包下载：画布上没有能打包的文件，或下载票据过期
+	ErrCanvasArchiveEmpty  = New(30022, "画布上没有可打包的素材", http.StatusBadRequest)
+	ErrCanvasArchiveTicket = New(30023, "下载链接无效或已过期，请重新点击打包素材", http.StatusUnauthorized)
 )
 
 // 生成任务 / 积分 / 素材 / AI 配置模块 4xxxx

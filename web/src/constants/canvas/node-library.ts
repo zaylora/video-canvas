@@ -2,6 +2,7 @@ import type { ComponentType } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   Clapperboard,
+  Combine,
   GalleryHorizontalEnd,
   Image,
   Music,
@@ -13,6 +14,7 @@ import {
 import {
   AudioPlaceholderIcon,
   CharacterPlaceholderIcon,
+  ComposePlaceholderIcon,
   DirectorPlaceholderIcon,
   ImagePlaceholderIcon,
   StoryboardPlaceholderIcon,
@@ -97,6 +99,14 @@ export const NODE_LIBRARY = [
     icon: GalleryHorizontalEnd,
     placeholderIcon: StoryboardPlaceholderIcon,
   },
+  {
+    kind: "compose",
+    label: "成片合成",
+    description: "把连进来的视频按顺序拼成一条",
+    placeholder: "把视频节点连进来：从上到下（同高从左到右）就是成片顺序。",
+    icon: Combine,
+    placeholderIcon: ComposePlaceholderIcon,
+  },
 ] as const satisfies readonly NodeKindEntry[];
 
 /** 节点种类，从 NODE_LIBRARY 推导，不手写以免和清单漂移 */
@@ -114,6 +124,7 @@ export const NODE_META = new Map<NodeKind, NodeKindMeta>(
 export const ADD_NODE_MENU: { kind: NodeKind; title: string; description: string }[] = [
   { kind: "image", title: "图片生成", description: "文字或参考图出图" },
   { kind: "video", title: "视频生成", description: "文生、参考、编辑、延长" },
+  { kind: "compose", title: "成片合成", description: "把连进来的视频按顺序拼成一条" },
   { kind: "script", title: "文本", description: "脚本、分镜描述" },
   { kind: "audio", title: "音频", description: "配乐、音效、配音" },
   { kind: "director", title: "导演台", description: "3D 摆位与运镜预演" },

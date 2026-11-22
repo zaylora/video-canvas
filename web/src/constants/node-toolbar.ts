@@ -132,6 +132,8 @@ export const NODE_TOOLBAR: Record<NodeKind, NodeToolbarConfig> = {
     actions: [{ id: "edit-storyboard", label: "编辑分镜", icon: Maximize2 }],
     tail: [],
   },
+  // 成片合成：不出功能区，合成 / 下载都在节点正文的合成条上（和导演台一样不显示）
+  compose: { actions: [], tail: [] },
 };
 
 /** 一种节点配置里所有按钮和菜单项的 id，用来检查不重复 */

@@ -83,3 +83,14 @@ export function CharacterPlaceholderIcon({ className }: PlaceholderIconProps) {
     </svg>
   );
 }
+
+/** 两段并成一条，成片节点还没连素材时的占位 */
+export function ComposePlaceholderIcon({ className }: PlaceholderIconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden className={className}>
+      <rect x="2.4" y="4.6" width="7" height="5.4" rx="1.3" />
+      <rect x="2.4" y="14" width="7" height="5.4" rx="1.3" />
+      <rect x="13.2" y="8" width="8.4" height="8" rx="1.6" />
+    </svg>
+  );
+}

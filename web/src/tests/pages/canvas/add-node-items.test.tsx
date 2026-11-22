@@ -4,11 +4,12 @@ import { ASSET_LIBRARY_ACTION, UPLOAD_ACTION } from "@/constants/canvas";
 import { buildAddNodeItems } from "@/pages/canvas/chrome/add-node-items";
 
 describe("buildAddNodeItems：添加节点菜单的条目", () => {
-  test("顺序：图片、视频、文本、音频、导演台、角色卡、分镜表七种节点，上传素材隔一条线，其后是从资产库添加", () => {
+  test("顺序：图片、视频、成片合成、文本、音频、导演台、角色卡、分镜表八种节点，上传素材隔一条线，其后是从资产库添加", () => {
     const items = buildAddNodeItems();
     expect(items.map((item) => item.value)).toEqual([
       "image",
       "video",
+      "compose",
       "script",
       "audio",
       "director",
@@ -18,6 +19,7 @@ describe("buildAddNodeItems：添加节点菜单的条目", () => {
       ASSET_LIBRARY_ACTION,
     ]);
     expect(items.map((item) => !!item.separated)).toEqual([
+      false,
       false,
       false,
       false,
@@ -39,10 +41,11 @@ describe("buildAddNodeItems：添加节点菜单的条目", () => {
     ]);
   });
 
-  test("名字沿用「图片生成 / 视频生成 / 文本 / 音频 / 导演台 / 角色卡 / 分镜表 / 上传素材 / 从资产库添加」", () => {
+  test("名字沿用「图片生成 / 视频生成 / 成片合成 / 文本 / 音频 / 导演台 / 角色卡 / 分镜表 / 上传素材 / 从资产库添加」", () => {
     expect(buildAddNodeItems().map((item) => item.label)).toEqual([
       "图片生成",
       "视频生成",
+      "成片合成",
       "文本",
       "音频",
       "导演台",
@@ -65,6 +68,7 @@ describe("buildAddNodeItems：添加节点菜单的条目", () => {
     expect(onlyVideo.map((item) => !!item.disabled)).toEqual([
       true,
       false,
+      true,
       true,
       true,
       true,

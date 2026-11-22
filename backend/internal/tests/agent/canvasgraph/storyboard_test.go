@@ -27,13 +27,15 @@ const storyboardPayload = `{
 
 // shot 是测试里读出来的一行镜头。
 type shot struct {
-	ID       string  `json:"id"`
-	Scene    string  `json:"scene"`
-	Shot     string  `json:"shot"`
-	Camera   string  `json:"camera"`
-	Action   string  `json:"action"`
-	Dialogue string  `json:"dialogue"`
-	Duration float64 `json:"duration"`
+	ID          string  `json:"id"`
+	Scene       string  `json:"scene"`
+	Shot        string  `json:"shot"`
+	Camera      string  `json:"camera"`
+	Action      string  `json:"action"`
+	Dialogue    string  `json:"dialogue"`
+	Duration    float64 `json:"duration"`
+	ImageNodeID string  `json:"imageNodeId"`
+	VideoNodeID string  `json:"videoNodeId"`
 }
 
 // shotsOf 读出某个分镜表节点的镜头。
@@ -392,5 +394,77 @@ func TestAgentDeleteAndMoveKeepOtherShotsLinks(t *testing.T) {
 	}
 	if len(sb.Shots) != 2 || sb.Shots[0].ID != "c" || sb.Shots[0].ImageNodeID != "n_i3" || sb.Shots[1].ID != "b" || sb.Shots[1].ImageNodeID != "n_i2" {
 		t.Errorf("挪动后各行应带着自己的关联：%s", raw)
+	}
+}
+
+// linkPayload 是一张分镜表加画布上已有的素材：v1 已出片、v2 还没出片、i1 是图片。
+// 用来验证「分镜表后来才加」「镜头不是从这张表生成」时把已有节点挂进来的路。
+const linkPayload = `{
+  "nodes": [
+    {"id":"n_sb","type":"canvas","position":{"x":0,"y":0},
+     "data":{"kind":"storyboard","label":"分镜表","storyboard":{"shots":[
+       {"id":"a","scene":"推门进屋","shot":"全景","camera":"推","action":"","dialogue":"","duration":4},
+       {"id":"b","scene":"看向窗外","shot":"中景","camera":"固定","action":"","dialogue":"","duration":3}
+     ]}}},
+    {"id":"v1","type":"canvas","position":{"x":900,"y":0},"data":{"kind":"video","label":"S1","src":"https://x/1.mp4","assetId":"11"}},
+    {"id":"v2","type":"canvas","position":{"x":900,"y":400},"data":{"kind":"video","label":"S2"}},
+    {"id":"i1","type":"canvas","position":{"x":0,"y":600},"data":{"kind":"image","label":"首帧","src":"https://x/1.png","assetId":"12"}}
+  ],
+  "edges": []
+}`
+
+// TestStoryboardLinksExistingNodes 分镜表能把画布上已有的视频、图片挂到镜头上；传空串取消关联。
+func TestStoryboardLinksExistingNodes(t *testing.T) {
+	res := mustApply(t, mustParse(t, linkPayload), `[{"op":"update_node","id":"n_sb","storyboard":{"edits":[
+	  {"op":"update","no":1,"set":{"videoNodeId":"v1","imageNodeId":"i1"}},
+	  {"op":"update","no":2,"set":{"videoNodeId":"v2"}}
+	]}}]`)
+	list := shotsOf(t, res.Graph, "n_sb")
+	if list[0].VideoNodeID != "v1" || list[0].ImageNodeID != "i1" || list[1].VideoNodeID != "v2" {
+		t.Fatalf("关联没写进去：%+v", list)
+	}
+
+	// 传空串是取消关联，不是报错
+	res = mustApply(t, res.Graph, `[{"op":"update_node","id":"n_sb","storyboard":{"edits":[{"op":"update","no":1,"set":{"videoNodeId":""}}]}}]`)
+	if got := shotsOf(t, res.Graph, "n_sb")[0].VideoNodeID; got != "" {
+		t.Errorf("取消关联后还留着 %q", got)
+	}
+}
+
+// TestStoryboardLinkRejectsWrongNodes 挂错节点要在写入前拦下来：种类不对、节点不在画布上。
+func TestStoryboardLinkRejectsWrongNodes(t *testing.T) {
+	for _, c := range []struct{ name, ops, want string }{
+		{"种类不对", `[{"op":"update_node","id":"n_sb","storyboard":{"edits":[{"op":"update","no":1,"set":{"videoNodeId":"i1"}}]}}]`, "不能当视频节点"},
+		{"节点不存在", `[{"op":"update_node","id":"n_sb","storyboard":{"edits":[{"op":"update","no":1,"set":{"videoNodeId":"nope"}}]}}]`, "不在画布上"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if msg := applyErr(t, linkPayload, c.ops); !strings.Contains(msg, c.want) {
+				t.Errorf("错误信息应提到 %q：%s", c.want, msg)
+			}
+		})
+	}
+}
+
+// TestStoryboardSummaryCountsLinkedVideos 目录摘要要带上「已出片的视频几段」：模型据此判断能不能直接出成片。
+func TestStoryboardSummaryCountsLinkedVideos(t *testing.T) {
+	promptOf := func(g *canvasgraph.Graph) string {
+		for _, row := range canvasgraph.BuildCatalog(g, canvasgraph.CatalogOptions{PromptRunes: 200}).Nodes {
+			if row.ID == "n_sb" {
+				return row.Prompt
+			}
+		}
+		t.Fatal("目录里没有分镜表")
+		return ""
+	}
+	if got := promptOf(mustParse(t, linkPayload)); !strings.HasPrefix(got, "2 镜 · 推门进屋") {
+		t.Errorf("没挂视频时摘要=%q", got)
+	}
+	res := mustApply(t, mustParse(t, linkPayload), `[{"op":"update_node","id":"n_sb","storyboard":{"edits":[
+	  {"op":"update","no":1,"set":{"videoNodeId":"v1"}},
+	  {"op":"update","no":2,"set":{"videoNodeId":"v2"}}
+	]}}]`)
+	// v2 还没出片，只数 v1
+	if got := promptOf(res.Graph); !strings.HasPrefix(got, "2 镜 · 视频 1 段已出片 · 推门进屋") {
+		t.Errorf("挂上视频后摘要=%q", got)
 	}
 }

@@ -20,6 +20,8 @@ export function toolbarGate(data: CanvasNodeData): ToolbarGate {
   if (data.kind === "director") return { visible: false, actionsDisabled: true };
   // 分镜表空表也出功能区：「编辑分镜」随时能点
   if (data.kind === "storyboard") return { visible: true, actionsDisabled: false };
+  // 成片节点没有可加工的原素材：合成与下载都在正文的合成条上，出功能区只会让两个入口打架
+  if (data.kind === "compose") return { visible: false, actionsDisabled: true };
   const hasOutput =
     data.kind === "script" ? !!data.text?.trim() : !!data.src && !data.src.startsWith("blob:");
   const running = data.status === "running";

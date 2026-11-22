@@ -3,6 +3,7 @@ import type { RequestExtraConfig } from "@/utils/requests/service";
 import type {
   BackendCanvasExportDto,
   BackendCanvasImportDto,
+  CanvasArchiveTicketDto,
   CanvasDetailDto,
   CanvasExportResultDto,
   CanvasImportResultDto,
@@ -212,3 +213,11 @@ export const importCanvas = (
         edgesDropped: report.edges_dropped,
       },
     }));
+
+/**
+ * 申请一次画布素材打包下载：返回免鉴权的下载地址与打包统计。
+ * 前端只拿票据，真正的 zip 由浏览器原生下载——素材可能有几百 MB，不进 JS 内存。
+ * @param id 画布 ID
+ */
+export const requestCanvasArchive = (id: string): Promise<CanvasArchiveTicketDto> =>
+  service.post<CanvasArchiveTicketDto>(`/canvas/${id}/assets/archive`);

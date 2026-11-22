@@ -22,6 +22,7 @@ const (
 	TypeMarketingScript = "marketing.script" // 营销脚本保存、出片开始 / 结束、软问题变化：{project_id, round_id, script}
 
 	TypeStoryboardSplit = "storyboard.split" // 分镜表拆分镜任务状态变化：{job_id, canvas_id, node_id, status, shots?, credits?, error?, model?}
+	TypeCanvasCompose   = "canvas.compose"   // 画布成片合成任务状态变化：{id, canvas_id, node_id, status, result_asset_id?, duration_ms?, segment_count?, error?}
 
 	// 以下是连接控制类消息（订阅协议与心跳）。
 	TypePing         = "ping"         // 客户端 → 服务端：应用层心跳
