@@ -72,6 +72,8 @@ type toolCall struct {
 	args json.RawMessage
 	// propose 不为 nil 时是「预估」：需要用户决定的工具把审批内容记在这里，不创建审批、不改运行状态（审批归 Agent 服务）
 	propose *approvalDraft
+	// external 为真表示这次调用来自外部接入（MCP）：没有审批卡片可点，需要用户决定的工具改走直接执行
+	external bool
 }
 
 // approvalDraft 是需要用户决定的工具算出来的审批内容。

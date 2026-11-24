@@ -157,7 +157,7 @@ func TestToolRegistry_FilterByModeAndVision(t *testing.T) {
 }
 
 func TestToolRegistry_Scriptable(t *testing.T) {
-	notScriptable := map[string]bool{"show_card": true, "canvas_delete": true, "ask_user": true, "generate_media": true, "canvas_inspect_image": true, "canvas_inspect_video": true, "canvas_capture_frame": true}
+	notScriptable := map[string]bool{"show_card": true, "canvas_delete": true, "ask_user": true, "generate_media": true, "canvas_inspect_image": true, "canvas_inspect_video": true, "canvas_capture_frame": true, "canvas_compose": true}
 	for _, d := range AgentToolDecls("all", true, false) {
 		if d.Scriptable == notScriptable[d.Name] {
 			t.Errorf("%s 的 scriptable=%v：会创建审批或返回图片的工具不能给脚本调用，其余都可以", d.Name, d.Scriptable)
@@ -174,7 +174,7 @@ func TestToolRegistry_LabelsMatchFrontend(t *testing.T) {
 		"task_get": {"查询任务", "查任务"}, "skill_search": {"搜索技能", "技能"}, "skill_read": {"读取技能", "技能"},
 		"web_search": {"搜索网页", "搜索"}, "web_fetch": {"读取网页", "读网页"},
 		"canvas_inspect_video": {"查看视频", "看视频"}, "canvas_capture_frame": {"截取视频帧", "截帧"},
-		"show_card": {"展示卡片", "展示"},
+		"show_card": {"展示卡片", "展示"}, "canvas_compose": {"合成成片", "合成"},
 	}
 	for _, d := range AgentToolDecls("all", true, false) {
 		w, ok := want[d.Name]
@@ -207,9 +207,18 @@ func TestToolEnd_CarriesLabel(t *testing.T) {
 
 func TestToolRegistry_WebToolsAreAppended(t *testing.T) {
 	names := declNames(AgentToolDecls("all", true, false))
-	n := len(names)
-	if n < 15 || names[n-3] != "web_search" || names[n-2] != "web_fetch" || names[n-1] != "show_card" {
-		t.Errorf("联网工具追加在末尾，不动原有的顺序（提示词缓存）: %v", names)
+	at := func(name string) int {
+		for i, got := range names {
+			if got == name {
+				return i
+			}
+		}
+		t.Fatalf("没有 %s: %v", name, names)
+		return -1
+	}
+	// 联网工具是后来追加的，成对相邻，排在当时已有的工具之后；之后新加的工具（成片合成）再往后排
+	if at("web_fetch") != at("web_search")+1 || at("show_card") < at("web_fetch") || at("canvas_compose") < at("show_card") {
+		t.Errorf("追加顺序不对（提示词缓存要求原有顺序不动）: %v", names)
 	}
 	// 所有任务模式都能用联网工具；它们的结果是资料，可以被脚本调用
 	for _, mode := range []string{"", "all", "script", "storyboard", "prompt"} {

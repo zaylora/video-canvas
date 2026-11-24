@@ -59,6 +59,8 @@ type AskModel struct {
 type AgentGenerationExecutor interface {
 	// Execute 为批准的条目创建生成任务，返回写进审批结果的 JSON。
 	Execute(ctx context.Context, run *model.AgentRun, approvalID uint64, items []GenerateItem) (json.RawMessage, error)
+	// ExecuteDirect 不经审批直接提交（外部接入用）：以调用 id 作幂等键，任务不带 Agent 运行。
+	ExecuteDirect(ctx context.Context, run *model.AgentRun, callKey string, items []GenerateItem) (json.RawMessage, error)
 }
 
 // 审批决定的结果：落库的状态、写进 decision_json 的内容，以及批准后要执行的东西。

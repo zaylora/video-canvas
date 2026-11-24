@@ -31,11 +31,21 @@ type RunContext struct {
 
 	BudgetCredits int `json:"budget_credits,omitempty"` // 本轮积分预算，0 表示不限制，只看账户可用积分
 	SpentExtra    int `json:"spent_extra,omitempty"`    // 除模型调用外本轮已花的积分（已批准的生成）；模型调用的部分由 Go 按 agent_model_calls 累加
+
+	// NoCanvas 声明「这次调用的工具不落在画布上」（列模型、搜技能、查任务），允许 CanvasID 为空。
+	//
+	// 内置运行不会出现这种情况：运行一定挂着画布或处于后台模式。只有外部接入（MCP）有——
+	// 外部按工具性质决定要不要画布，模型 / 技能 / 任务类工具拿不到画布也不该被拒。
+	// 置位只放宽「必须有画布」这一条，画布工具照样由接入层先解析出画布才进来。
+	NoCanvas bool `json:"no_canvas,omitempty"`
 }
 
 // validate 检查上下文：身份字段必须齐，任务模式必须认识（空模式按全能创作）。
+//
+// 画布与模式的配对规则：后台模式没有画布，其他模式必须有画布——除了 NoCanvas 声明的不落画布的工具。
 func (rc RunContext) validate() error {
-	if rc.RunID == 0 || rc.UserID == 0 || rc.SessionID == 0 || (rc.Mode == model.AgentModeAdmin) != (rc.CanvasID == 0) {
+	if rc.RunID == 0 || rc.UserID == 0 || rc.SessionID == 0 ||
+		(!rc.NoCanvas && (rc.Mode == model.AgentModeAdmin) != (rc.CanvasID == 0)) {
 		return errcode.ErrInvalidParams.WithMsg("运行上下文缺少 run_id、user_id、session_id 或 canvas_id")
 	}
 	if rc.Mode != "" && !model.ValidAgentMode(rc.Mode) {
@@ -100,6 +110,33 @@ var platformExcluded = map[string]bool{"plan_update": true, "show_card": true, "
 	"admin_request_secret":  true, "admin_test_run": true,
 	"drama_update_outline": true, "drama_update_episode": true, "drama_update_segment": true, "drama_run_job": true}
 
+// externalNoApproval 是「内置运行要审批、外部接入直接执行」的工具：生成素材与短剧的写/跑。
+//
+// 内置流程里这些工具之所以要审批：审批卡片和积分确认都在网页端，花的也是用户自己的积分。
+// 外部接入（MCP）没有这个落点——客户端那边弹不出我们的卡片，用户点不了「批准」。
+// 所以对 MCP 改成「权限档 + 余额」兜底：开放 generate_media 必须显式勾 canvas:generate，
+// 短剧的写与跑必须显式勾 canvas:drama / canvas:drama_run，任务创建时照常校验余额与并发，
+// 烧的是归属用户的积分。删除没有这条通道（申请单，见 deniedTools），
+// 因为它没有「余额」这种天然上限，绕过审批就是不可逆的数据丢失。
+var externalNoApproval = map[string]bool{
+	"generate_media":       true,
+	"drama_update_outline": true,
+	"drama_update_episode": true,
+	"drama_update_segment": true,
+	"drama_run_job":        true,
+}
+
+// ExternalMode 返回外部接入调用某个工具时该用的 Agent 模式。
+//
+// 短剧工具只登记在 drama 模式下。外部接入本来没有「模式」这个概念，按工具名给模式，
+// 是为了让 drama 工具走既有的模式校验与业务校验，而不是在工具层另开一个绕过口。
+func ExternalMode(name string) string {
+	if strings.HasPrefix(name, "drama_") {
+		return model.AgentModeDrama
+	}
+	return model.AgentModeAll
+}
+
 // ExecutePlatformTool 在上下文模式下执行一次工具调用。和令牌模式的 ExecuteTool 的区别：
 // 没有运行记录要查、不发 tool.start / tool.end（Agent 服务自己发）、不记步数和步数上限（Agent 服务自己数）；工具调用的参数、结果、耗时照常留存（后台导出和失败分析要看）。
 // 任务模式的限制仍然在这里强制，不依赖调用方自觉。
@@ -120,9 +157,35 @@ func (b *AgentBridge) ExecutePlatformTool(ctx context.Context, rc RunContext, to
 	run := rc.run()
 	started := b.d.Now()
 	b.recordToolStart(ctx, run, toolCallID, nestedParent(toolCallID), name, args, started)
-	res := b.executePlatformTool(ctx, rc, spec, toolCallID, name, args)
+	res := b.executePlatformTool(ctx, rc, spec, toolCallID, name, args, false)
 	b.recordToolEnd(ctx, run, toolCallID, res, started)
 	return res, nil
+}
+
+// ExecuteExternalTool 执行一次来自外部接入（MCP）的工具调用。
+//
+// 与 ExecutePlatformTool 的区别：不写 agent_tool_calls。那张表按 run_id 组织、给后台运行记录用，
+// 而外部接入没有真实的 Agent 运行，写进去只会留下找不到运行的孤儿行。
+// 另外 generate_media 在这一条路径上不走审批（见 externalNoApproval）——其余校验
+// （上下文、模式、排除表）完全一致，外部接入不会绕过内置 Agent 的其他限制。
+func (b *AgentBridge) ExecuteExternalTool(ctx context.Context, rc RunContext, toolCallID, name string, args json.RawMessage) (*ToolResult, error) {
+	if err := rc.validate(); err != nil {
+		return nil, err
+	}
+	if err := b.requireAdminRun(ctx, rc); err != nil {
+		return nil, err
+	}
+	spec := findTool(name)
+	if spec == nil {
+		return nil, errcode.ErrInvalidParams.WithMsg("未知的工具：" + name)
+	}
+	if platformExcluded[name] && !externalNoApproval[name] {
+		return nil, errcode.ErrInvalidParams.WithMsg("工具 " + name + " 不能经这个接口执行")
+	}
+	if len(args) == 0 {
+		args = json.RawMessage(`{}`)
+	}
+	return b.executePlatformTool(ctx, rc, spec, toolCallID, name, args, externalNoApproval[name]), nil
 }
 
 // nestedParent 取 codemode 脚本里嵌套调用的外层调用 id：嵌套调用的 id 是 <外层 id>/<key>，不是嵌套调用返回空。
@@ -133,7 +196,7 @@ func nestedParent(toolCallID string) string {
 	return ""
 }
 
-func (b *AgentBridge) executePlatformTool(ctx context.Context, rc RunContext, spec *toolSpec, toolCallID, name string, args json.RawMessage) *ToolResult {
+func (b *AgentBridge) executePlatformTool(ctx context.Context, rc RunContext, spec *toolSpec, toolCallID, name string, args json.RawMessage, external bool) *ToolResult {
 	if spec == nil {
 		return rejectedPlatformTool(toolCallID, name, "未知的工具："+name)
 	}
@@ -144,7 +207,7 @@ func (b *AgentBridge) executePlatformTool(ctx context.Context, rc RunContext, sp
 	if len(args) == 0 {
 		args = json.RawMessage(`{}`)
 	}
-	out, herr := spec.run(b, ctx, &toolCall{run: rc.run(), sess: sess, id: toolCallID, args: args})
+	out, herr := spec.run(b, ctx, &toolCall{run: rc.run(), sess: sess, id: toolCallID, args: args, external: external})
 	res := b.finishTool(out, herr)
 	res.ToolEnd = toolEndEvent(toolCallID, "", name, out, res)
 	res.summary, _ = res.ToolEnd["summary"].(string) // 留存记录里的摘要

@@ -4,6 +4,7 @@ import {
   ArrowUpToLine,
   Copy,
   Ellipsis,
+  FolderInput,
   Image,
   RefreshCw,
   Trash2,
@@ -19,7 +20,8 @@ const ITEM_CLASS =
   "hover:bg-chrome-hover focus-visible:bg-chrome-hover flex h-10 w-full items-center gap-2 rounded-xl px-3 text-left text-sm outline-none [&_svg]:size-4";
 
 /**
- * 行操作菜单（设计 §3.5）：上方 / 下方插入、复制、删除。
+ * 行操作菜单（设计 §3.5）：生成 / 导入素材、上方 / 下方插入、复制、删除。
+ * 「导入」是把画布上已有的节点挂到这一镜 —— 分镜表是后来加的、素材不是从表里生成的时候用。
  * 删除要二次确认：菜单原位换成「删除第 N 镜？」，不弹全屏确认框。
  */
 export function ShotRowMenu({
@@ -31,6 +33,8 @@ export function ShotRowMenu({
   hasImageNode,
   onGenerateVideo,
   hasVideoNode,
+  onImportVideo,
+  onImportImage,
 }: {
   number: number;
   onInsert: (side: "before" | "after") => void;
@@ -44,6 +48,10 @@ export function ShotRowMenu({
   onGenerateVideo: () => void;
   /** 这一行已经建过视频节点：菜单项叫「重新生成视频」 */
   hasVideoNode: boolean;
+  /** 挂上画布上已有的视频节点 */
+  onImportVideo: () => void;
+  /** 挂上画布上已有的图片节点当分镜图 */
+  onImportImage: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -98,6 +106,14 @@ export function ShotRowMenu({
             <button type="button" className={ITEM_CLASS} onClick={run(onGenerateVideo)}>
               <Video />
               {hasVideoNode ? "重新生成视频" : "生成视频"}
+            </button>
+            <button type="button" className={ITEM_CLASS} onClick={run(onImportVideo)}>
+              <FolderInput />
+              {hasVideoNode ? "换用画布上的视频" : "导入画布上的视频"}
+            </button>
+            <button type="button" className={ITEM_CLASS} onClick={run(onImportImage)}>
+              <FolderInput />
+              {hasImageNode ? "换用画布上的图片" : "导入画布上的图片"}
             </button>
             <div role="separator" className="bg-chrome-border mx-2 my-1 h-px" />
             <button type="button" className={ITEM_CLASS} onClick={run(() => onInsert("before"))}>

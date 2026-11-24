@@ -45,6 +45,14 @@ func (g *fakeGenerator) Execute(_ context.Context, _ *model.AgentRun, id uint64,
 	return json.RawMessage(`{"task_ids":[1,2]}`), nil
 }
 
+func (g *fakeGenerator) ExecuteDirect(_ context.Context, _ *model.AgentRun, _ string, items []GenerateItem) (json.RawMessage, error) {
+	g.calls = append(g.calls, items)
+	if g.err != nil {
+		return nil, g.err
+	}
+	return json.RawMessage(`{"task_ids":[1,2]}`), nil
+}
+
 var errAgentBoom = errors.New("boom")
 var _ = time.Now
 

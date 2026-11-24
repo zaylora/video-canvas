@@ -3,6 +3,8 @@ package agent
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -107,6 +109,11 @@ func (b *AgentBridge) dramaProposal(ctx context.Context, tc *toolCall, kind stri
 	}
 	p.Title, p.Reason = dramaTitle(kind, p), dramaReason(tc.args)
 	p.Signature = b.dramaSignature(tc.run, kind, p)
+	// 外部接入（MCP）没有审批卡片可点，勾了权限就直连执行：审批在这条通道上不是安全边界，
+	// 权限档与余额才是。真正的业务校验（锁定集、revision、并发、积分）仍在短剧服务里，一份规则。
+	if tc.external {
+		return b.dramaDirect(ctx, tc, kind, p)
+	}
 	if err := b.requestApproval(ctx, tc, kind, p, p.Estimate); err != nil {
 		return nil, err
 	}
@@ -115,6 +122,44 @@ func (b *AgentBridge) dramaProposal(ctx context.Context, tc *toolCall, kind stri
 		summary = fmt.Sprintf("运行短剧任务，预估 %d 积分", p.Estimate)
 	}
 	return &toolOut{content: "已提交给用户确认，等待决定。批准后才会修改或提交任务。", summary: summary, terminate: true}, nil
+}
+
+// dramaDirect 是外部接入的短剧执行：直接落到 executeDramaWrite，与审批执行走同一套业务调用。
+//
+// 不新增一份写逻辑，是因为「锁定集只能改标题」「revision 不一致就失败」「同项目只能跑一个任务」
+// 这些规则只能有一处实现——外部接入不该有第二套。
+func (b *AgentBridge) dramaDirect(ctx context.Context, tc *toolCall, kind string, p DramaApprovalPayload) (*toolOut, error) {
+	project, err := b.dramaProject(ctx, tc.run.UserID, tc.run.CanvasID)
+	if err != nil {
+		return nil, err
+	}
+	if project.ID != p.DramaID {
+		return nil, errcode.ErrDramaNotFound
+	}
+	rc := RunContext{
+		RunID: tc.run.ID, SessionID: tc.run.SessionID, UserID: tc.run.UserID,
+		CanvasID: tc.run.CanvasID, Mode: tc.run.Mode,
+		BudgetCredits: tc.run.BudgetCredits, SpentExtra: tc.run.SpentCredits,
+	}
+	value, err := b.executeDramaWrite(ctx, rc, kind, externalDramaKey(tc.id), project, p)
+	if err != nil {
+		return nil, err
+	}
+	content, err := jsonOut(value)
+	if err != nil {
+		return nil, err
+	}
+	return &toolOut{content: content, summary: p.Title, terminate: true}, nil
+}
+
+// externalDramaKey 把外部工具调用 ID 折成 createAgentJob 需要的幂等键。
+//
+// 短剧服务要求审批 ID 非零，并把它当幂等键：同一次审批重放不会重复建任务、重复扣积分。
+// 外部接入没有审批单，用调用 ID 派生一个，最高位置 1 以免与自增审批 ID 相撞。
+// 注意它挡的是「同一次调用被内部重放」，不是「客户端主动重发」——重发是新调用、新键，会新建任务。
+func externalDramaKey(toolCallID string) uint64 {
+	sum := sha256.Sum256([]byte("mcp-drama:" + toolCallID))
+	return binary.BigEndian.Uint64(sum[:8]) | (1 << 63)
 }
 
 // toolDramaOutline 只允许审批大纲和人物传记；revision由实际读取结果提供。

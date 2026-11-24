@@ -85,6 +85,7 @@ type bridgeEnv struct {
 	reg       *fakeBridgeRegistry
 	str       *fakeStreamer
 	br        *AgentBridge
+	compose   *fakeCompose
 	rcs       map[string]RunContext // token() 发的句柄 → 运行上下文
 	now       *time.Time
 }
@@ -113,12 +114,13 @@ func newBridgeEnvWith(t *testing.T, lib SkillLibrary, web provider.WebAccess) *b
 	}}
 	str := &fakeStreamer{script: okStream("好的", llmgateway.Usage{InputTokens: 1_000_000, OutputTokens: 100_000})}
 	now := e.now
+	compose := &fakeCompose{}
 	br := NewAgentBridge(BridgeDeps{
 		Repo: e.repo, Canvas: NewAgentCanvasService(e.repo, e.bc), Agent: e.svc, Billing: NewAgentBilling(bill),
-		Registry: reg, Secrets: fakeSecrets{"channel:ch1": "sk-test"}, Streamer: str, Skills: lib, Web: web,
+		Registry: reg, Secrets: fakeSecrets{"channel:ch1": "sk-test"}, Streamer: str, Skills: lib, Web: web, Compose: compose,
 		Now: func() time.Time { return now }, RunUsage: &fakeRunUsage{bill: bill},
 	})
-	return &bridgeEnv{agentEnv: e, bill: bill, reg: reg, str: str, br: br, now: &now, webAccess: web}
+	return &bridgeEnv{agentEnv: e, bill: bill, reg: reg, str: str, br: br, now: &now, webAccess: web, compose: compose}
 }
 
 // web 取注入的假联网能力。

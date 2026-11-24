@@ -22,6 +22,7 @@ const KIND_NAME: Record<RefNode["kind"], string> = {
   audio: "音频节点",
   character: "角色卡节点",
   storyboard: "分镜表节点",
+  compose: "成片节点",
 };
 
 /** 消息里的一个引用：id 已经解析成当前画布上的标题；节点被删了 missing 为 true，不能再点 */

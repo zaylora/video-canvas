@@ -120,7 +120,9 @@ func catalogRow(g *Graph, n Node, promptRunes int) CatalogNode {
 	row.Kind, row.Status = n.Kind(), str(d["status"])
 	row.HasOutput = hasMedia(d)
 	if n.Kind() == KindStoryboard {
-		row.Prompt = storyboardSummary(n, promptRunes)
+		row.Prompt = storyboardSummary(g, n, promptRunes)
+	} else if n.Kind() == KindCompose {
+		row.Prompt = composeSummary(g, n, promptRunes)
 	} else if t := str(d["text"]); n.Kind() == KindScript && t != "" {
 		// 文本节点的内容在正文里，没有提示词；没有正文的旧节点回退到下面的提示词
 		row.Prompt = truncate(t, promptRunes)
@@ -133,8 +135,13 @@ func catalogRow(g *Graph, n Node, promptRunes int) CatalogNode {
 }
 
 // hasMedia 判断节点是不是已经有了产物或素材。
+// 成片节点（和出过片的分镜表）的产物是挂在节点上的成片，不在 outputs / src 里，
+// 不认 finalAssetId 的话模型会看到「hasOutput=false」而以为还没出片。
 func hasMedia(d map[string]any) bool {
 	if outs, _ := d["outputs"].([]any); len(outs) > 0 {
+		return true
+	}
+	if str(d["finalAssetId"]) != "" {
 		return true
 	}
 	return str(d["src"]) != ""

@@ -9,6 +9,9 @@ const (
 	SettingDefaultMaxActiveTasks = "default_max_active_tasks" // 默认并发上限，缺省取 service.DefaultMaxActiveTasks
 	SettingQueueMultiplier       = "queue_multiplier"         // 排队倍数：用户非终态任务数达到“并发上限 × 倍数”才拒绝新任务，缺省取 service.DefaultQueueMultiplier
 	SettingQueueMaxWaitMinutes   = "queue_max_wait_minutes"   // 排队超时（分钟）：排队等名额超过它就过期并退款，缺省取 service.DefaultQueueMaxWaitMinutes
+	SettingMCPTokenDays          = "mcp_token_days"           //nolint:gosec // 设置键名，不是凭证
+	// MCP 令牌默认有效期（天，1–90），签发时不填就用它，缺省 30
+	SettingMCPCallTimeout = "mcp_call_timeout" // MCP 单次调用超时（秒，5–300），超过就中止并回可读错误，缺省 60
 )
 
 // SystemSetting 系统设置的键值表（值统一存文本）。
@@ -24,11 +27,13 @@ func (SystemSetting) TableName() string { return "system_settings" }
 
 // RegisterSettingsView 是注册设置的读写结构：GET / PUT /admin/settings/register。
 type RegisterSettingsView struct {
-	RegisterEnabled       bool `json:"register_enabled"`                                               // 是否开放注册
-	InitialCredits        int  `json:"initial_credits" binding:"min=0,max=100000000" label:"初始积分"`     // 新用户初始积分
-	DefaultMaxActiveTasks int  `json:"default_max_active_tasks" binding:"min=1,max=64" label:"默认并发上限"` // 默认并发上限
-	QueueMultiplier       int  `json:"queue_multiplier" binding:"min=1,max=20" label:"排队倍数"`           // 排队上限 = 用户并发上限 × 倍数
-	QueueMaxWaitMinutes   int  `json:"queue_max_wait_minutes" binding:"min=5,max=1440" label:"排队超时"`   // 排队等名额的最长时间（分钟）
+	RegisterEnabled       bool `json:"register_enabled"`                                                    // 是否开放注册
+	InitialCredits        int  `json:"initial_credits" binding:"min=0,max=100000000" label:"初始积分"`          // 新用户初始积分
+	DefaultMaxActiveTasks int  `json:"default_max_active_tasks" binding:"min=1,max=64" label:"默认并发上限"`      // 默认并发上限
+	QueueMultiplier       int  `json:"queue_multiplier" binding:"min=1,max=20" label:"排队倍数"`                // 排队上限 = 用户并发上限 × 倍数
+	QueueMaxWaitMinutes   int  `json:"queue_max_wait_minutes" binding:"min=5,max=1440" label:"排队超时"`        // 排队等名额的最长时间（分钟）
+	MCPTokenDays          int  `json:"mcp_token_days" binding:"omitempty,min=1,max=90" label:"令牌默认有效期"`     // 外部接入令牌不填天数时用它（天）
+	MCPCallTimeout        int  `json:"mcp_call_timeout" binding:"omitempty,min=5,max=300" label:"MCP 调用超时"` // 外部接入单次调用的服务端上限（秒）
 }
 
 // 登录页展示（showcase）相关的系统设置键，值统一存文本；库值缺省或非法时由 service 回落默认。

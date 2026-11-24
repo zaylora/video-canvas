@@ -111,6 +111,17 @@ export function serializeGraph(
           ...(rest.scene !== undefined ? { scene: rest.scene } : {}),
           ...(rest.character !== undefined ? { character: rest.character } : {}),
           ...(rest.storyboard !== undefined ? { storyboard: rest.storyboard } : {}),
+          // 成片节点手动调过的段序：不存的话刷新页面就回到「按位置排」，用户白调
+          ...(rest.composeOrder?.length ? { composeOrder: rest.composeOrder } : {}),
+          // 成片三件套：服务端合成成功后写回，必须存下来，否则刷新页面成片信息就没了
+          ...(rest.finalAssetId !== undefined ? { finalAssetId: rest.finalAssetId } : {}),
+          ...(rest.finalFingerprint !== undefined
+            ? { finalFingerprint: rest.finalFingerprint }
+            : {}),
+          ...(rest.finalDurationMs !== undefined ? { finalDurationMs: rest.finalDurationMs } : {}),
+          ...(rest.finalSegmentCount !== undefined
+            ? { finalSegmentCount: rest.finalSegmentCount }
+            : {}),
           ...(rest.voiceTaskId !== undefined ? { voiceTaskId: rest.voiceTaskId } : {}),
           ...(rest.voiceAfterImage?.length ? { voiceAfterImage: rest.voiceAfterImage } : {}),
           ...(rest.drama !== undefined ? { drama: rest.drama } : {}),

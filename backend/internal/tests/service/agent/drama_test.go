@@ -287,3 +287,96 @@ func TestDrama_BoundariesAndServiceErrors(t *testing.T) {
 		t.Fatal("普通画布执行短剧审批")
 	}
 }
+
+// TestDrama_ExternalMode 短剧工具只在 drama 模式下可用，外部接入按工具名给模式。
+func TestDrama_ExternalMode(t *testing.T) {
+	for _, name := range []string{"drama_read", "drama_update_outline", "drama_update_episode", "drama_update_segment", "drama_run_job"} {
+		if got := ExternalMode(name); got != model.AgentModeDrama {
+			t.Errorf("%s 的模式应该是 drama，得到 %q", name, got)
+		}
+	}
+	for _, name := range []string{"canvas_get_state", "generate_media", "task_get"} {
+		if got := ExternalMode(name); got != model.AgentModeAll {
+			t.Errorf("%s 不该被当成短剧工具，得到 %q", name, got)
+		}
+	}
+}
+
+// TestDrama_ExternalDirectWrite 外部接入没有审批卡片可点：勾了「改剧本」就直接落库，
+// 而且走的是同一套业务校验（revision、锁定集），不是另写一份。
+func TestDrama_ExternalDirectWrite(t *testing.T) {
+	br, f, _ := newDramaBridge(t)
+	ctx := context.Background()
+	rc := platformCtx(992, ExternalMode("drama_update_outline"))
+	res, err := br.ExecuteExternalTool(ctx, rc, "call-drama-1", "drama_update_outline", json.RawMessage(`{"outline_md":"外部改的大纲","reason":"自测"}`))
+	if err != nil {
+		t.Fatalf("外部直连写失败：%v", err)
+	}
+	if res.IsError {
+		t.Fatalf("外部直连写回了错误：%s", res.Content)
+	}
+	if f.writes != 1 || f.view.OutlineMD != "外部改的大纲" {
+		t.Fatalf("应该直接写进去：writes=%d outline=%q", f.writes, f.view.OutlineMD)
+	}
+	if !strings.Contains(res.Content, "外部改的大纲") {
+		t.Fatalf("结果里应该有改后的内容，得到 %q", res.Content)
+	}
+
+	// 参数校验仍走同一套：一个字段都不给时拒绝，且不写库。
+	res, err = br.ExecuteExternalTool(ctx, platformCtx(993, ExternalMode("drama_update_outline")), "call-drama-2",
+		"drama_update_outline", json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatalf("参数不合法不该是基础设施错误：%v", err)
+	}
+	if !res.IsError || f.writes != 1 {
+		t.Fatalf("空参数应该作为工具失败回给模型且不写库：isError=%v writes=%d", res.IsError, f.writes)
+	}
+}
+
+// TestDrama_ExternalRunJob 外部接入跑任务：幂等键置最高位（不与自增审批 ID 相撞），同一调用重放不重复建任务。
+func TestDrama_ExternalRunJob(t *testing.T) {
+	br, f, _ := newDramaBridge(t)
+	ctx := context.Background()
+	rc := platformCtx(994, ExternalMode("drama_run_job"))
+	args := json.RawMessage(`{"step":"scripts","episodes":[1]}`)
+
+	res, err := br.ExecuteExternalTool(ctx, rc, "call-job-1", "drama_run_job", args)
+	if err != nil {
+		t.Fatalf("外部跑任务失败：%v", err)
+	}
+	if res.IsError {
+		t.Fatalf("外部跑任务回了错误：%s", res.Content)
+	}
+	if len(f.jobs) != 1 {
+		t.Fatalf("应该建一个任务，得到 %d", len(f.jobs))
+	}
+	for key := range f.jobs {
+		if key&(1<<63) == 0 {
+			t.Fatalf("外部接入的幂等键要置最高位，避免与自增审批 ID 相撞：%d", key)
+		}
+		if key == 0 {
+			t.Fatal("幂等键不能是 0：短剧服务会当成缺少审批 ID 拒掉")
+		}
+	}
+	before := len(f.jobs)
+	if _, err := br.ExecuteExternalTool(ctx, rc, "call-job-1", "drama_run_job", args); err != nil {
+		t.Fatalf("重放不该报错：%v", err)
+	}
+	if len(f.jobs) != before {
+		t.Fatal("同一次调用重放应命中同一任务，不能重复建、重复扣积分")
+	}
+}
+
+// TestDrama_ExternalRejectsNonDramaCanvas 外部接入的画布边界与画布一致：普通画布不能当短剧用。
+func TestDrama_ExternalRejectsNonDramaCanvas(t *testing.T) {
+	br, _, e := newDramaBridge(t)
+	e.repo.canvas.DramaID = nil
+	res, err := br.ExecuteExternalTool(context.Background(), platformCtx(995, ExternalMode("drama_read")),
+		"call-drama-3", "drama_read", json.RawMessage(`{"scope":"overview"}`))
+	if err != nil {
+		t.Fatalf("业务拒绝不该是基础设施错误：%v", err)
+	}
+	if !res.IsError || !strings.Contains(res.Content, "短剧画布") {
+		t.Fatalf("普通画布应该回可读的业务错误，得到 %q isError=%v", res.Content, res.IsError)
+	}
+}

@@ -38,6 +38,16 @@ const (
 	DefaultQueueMaxWaitMinutes = 60
 	minQueueMaxWaitMinutes     = 5
 	maxQueueMaxWaitMinutes     = 1440 // 一天
+
+	// DefaultMCPTokenDays 是外部接入令牌的默认有效期：签发表单留空就用它。后台「注册设置」里的库值优先。
+	DefaultMCPTokenDays = 30
+	minMCPTokenDays     = 1
+	maxMCPTokenDays     = 90
+
+	// DefaultMCPCallTimeoutSeconds 是外部接入单次调用的服务端上限：一次调用挂着太久，客户端和用户都只能干等。
+	DefaultMCPCallTimeoutSeconds = 60
+	minMCPCallTimeoutSeconds     = 5
+	maxMCPCallTimeoutSeconds     = 300
 )
 
 // SettingsService 管理“库值优先、代码常量兜底”的系统设置：注册开关、初始积分、默认并发上限。
@@ -64,6 +74,8 @@ func (s *SettingsService) RegisterSettings(ctx context.Context) (*model.Register
 		DefaultMaxActiveTasks: DefaultMaxActiveTasks,
 		QueueMultiplier:       DefaultQueueMultiplier,
 		QueueMaxWaitMinutes:   DefaultQueueMaxWaitMinutes,
+		MCPTokenDays:          DefaultMCPTokenDays,
+		MCPCallTimeout:        DefaultMCPCallTimeoutSeconds,
 	}
 	// 库值损坏（非数字、越界）时忽略它而不是报错：设置读取在注册、提交任务的热路径上，不能因为一行脏数据让它们不可用
 	if n, err := strconv.Atoi(kv[model.SettingInitialCredits]); err == nil && n >= 0 && n <= maxInitialCredits {
@@ -77,6 +89,12 @@ func (s *SettingsService) RegisterSettings(ctx context.Context) (*model.Register
 	}
 	if n, err := strconv.Atoi(kv[model.SettingQueueMaxWaitMinutes]); err == nil && n >= minQueueMaxWaitMinutes && n <= maxQueueMaxWaitMinutes {
 		v.QueueMaxWaitMinutes = n
+	}
+	if n, err := strconv.Atoi(kv[model.SettingMCPTokenDays]); err == nil && n >= minMCPTokenDays && n <= maxMCPTokenDays {
+		v.MCPTokenDays = n
+	}
+	if n, err := strconv.Atoi(kv[model.SettingMCPCallTimeout]); err == nil && n >= minMCPCallTimeoutSeconds && n <= maxMCPCallTimeoutSeconds {
+		v.MCPCallTimeout = n
 	}
 	return v, nil
 }
@@ -126,6 +144,24 @@ func (s *SettingsService) QueueMaxWait(ctx context.Context) (time.Duration, erro
 	return time.Duration(v.QueueMaxWaitMinutes) * time.Minute, nil
 }
 
+// MCPTokenDays 实现 service.MCPTokenDefaults：外部接入令牌的默认有效期（天）。
+func (s *SettingsService) MCPTokenDays(ctx context.Context) (int, error) {
+	v, err := s.RegisterSettings(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return v.MCPTokenDays, nil
+}
+
+// MCPCallTimeout 返回外部接入单次调用的服务端上限。
+func (s *SettingsService) MCPCallTimeout(ctx context.Context) (time.Duration, error) {
+	v, err := s.RegisterSettings(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return time.Duration(v.MCPCallTimeout) * time.Second, nil
+}
+
 // QueueConcurrency 返回当前设置的并发（每实例同时处理的任务数）。库里没有或值非法时用默认值；
 // 不做硬上限裁剪（硬上限在配置文件里，由队列运行时在应用时裁剪）。读取在后台刷新循环里，脏数据按默认处理而不是报错。
 func (s *SettingsService) QueueConcurrency(ctx context.Context) (int, error) {
@@ -159,6 +195,19 @@ func (s *SettingsService) UpdateRegisterSettings(ctx context.Context, actorID ui
 	if req.QueueMaxWaitMinutes < minQueueMaxWaitMinutes || req.QueueMaxWaitMinutes > maxQueueMaxWaitMinutes {
 		return nil, errcode.ErrInvalidParams.WithMsg("排队超时必须在 " + strconv.Itoa(minQueueMaxWaitMinutes) + " 到 " + strconv.Itoa(maxQueueMaxWaitMinutes) + " 分钟之间")
 	}
+	// 老客户端不带这个字段（0）：按默认值处理，不能让保存整体失败
+	if req.MCPTokenDays == 0 {
+		req.MCPTokenDays = DefaultMCPTokenDays
+	}
+	if req.MCPCallTimeout == 0 {
+		req.MCPCallTimeout = DefaultMCPCallTimeoutSeconds
+	}
+	if req.MCPCallTimeout < minMCPCallTimeoutSeconds || req.MCPCallTimeout > maxMCPCallTimeoutSeconds {
+		return nil, errcode.ErrInvalidParams.WithMsg("MCP 调用超时必须在 " + strconv.Itoa(minMCPCallTimeoutSeconds) + " 到 " + strconv.Itoa(maxMCPCallTimeoutSeconds) + " 秒之间")
+	}
+	if req.MCPTokenDays < minMCPTokenDays || req.MCPTokenDays > maxMCPTokenDays {
+		return nil, errcode.ErrInvalidParams.WithMsg("令牌默认有效期必须在 " + strconv.Itoa(minMCPTokenDays) + " 到 " + strconv.Itoa(maxMCPTokenDays) + " 天之间")
+	}
 
 	// 2. 记下改前的值用于审计，再一次性写库
 	before, err := s.RegisterSettings(ctx)
@@ -171,6 +220,8 @@ func (s *SettingsService) UpdateRegisterSettings(ctx context.Context, actorID ui
 		model.SettingDefaultMaxActiveTasks: strconv.Itoa(req.DefaultMaxActiveTasks),
 		model.SettingQueueMultiplier:       strconv.Itoa(req.QueueMultiplier),
 		model.SettingQueueMaxWaitMinutes:   strconv.Itoa(req.QueueMaxWaitMinutes),
+		model.SettingMCPTokenDays:          strconv.Itoa(req.MCPTokenDays),
+		model.SettingMCPCallTimeout:        strconv.Itoa(req.MCPCallTimeout),
 	}, actorID)
 	if err != nil {
 		return nil, err
@@ -183,5 +234,6 @@ func (s *SettingsService) UpdateRegisterSettings(ctx context.Context, actorID ui
 	return &model.RegisterSettingsView{
 		RegisterEnabled: req.RegisterEnabled, InitialCredits: req.InitialCredits, DefaultMaxActiveTasks: req.DefaultMaxActiveTasks,
 		QueueMultiplier: req.QueueMultiplier, QueueMaxWaitMinutes: req.QueueMaxWaitMinutes,
+		MCPTokenDays: req.MCPTokenDays, MCPCallTimeout: req.MCPCallTimeout,
 	}, nil
 }

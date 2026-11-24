@@ -33,6 +33,10 @@ export function SidebarAccount({ children }: { children?: ReactNode }) {
         <User />
         个人中心
       </DropdownMenuItem>
+      {/*
+        接入类入口（MCP、命令行）一律不进账号菜单：管理员在后台侧栏有，普通用户由管理员开通后
+        直接访问对应地址，菜单里堆快捷方式只会让「个人中心」这一项变得指代不清。
+      */}
       {children}
     </NavUser>
   );

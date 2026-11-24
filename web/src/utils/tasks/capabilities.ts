@@ -130,6 +130,8 @@ export const PORTS_OF_KIND: Record<NodeKind, ReadonlyArray<"text" | RefKind>> = 
   director: [],
   character: ["image", "audio"],
   storyboard: [],
+  // 成片节点只收视频、不往下游提供任何东西
+  compose: [],
 };
 
 /** 节点上的一个输入口：提示词口 + 每种可接收的素材一个口 */

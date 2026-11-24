@@ -50,3 +50,12 @@ func Fail(c *gin.Context, err error) {
 	}
 	c.AbortWithStatusJSON(e.HTTPStatus(), Body{Code: e.Code, Msg: e.Msg, RequestID: utils.GetRequestID(c)})
 }
+
+// Raw 返回一个不受统一信封约束的 JSON 响应体，用于协议层自己定义报文格式的端点（如 MCP 的 JSON-RPC）。
+// request_id 仍然放进响应头，和其余接口用同一个编号排查问题。
+func Raw(c *gin.Context, status int, body any) {
+	if id := utils.GetRequestID(c); id != "" {
+		c.Header("X-Request-ID", id)
+	}
+	c.JSON(status, body)
+}

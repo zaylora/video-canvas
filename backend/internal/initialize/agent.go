@@ -57,13 +57,17 @@ func ListenBridge(ac config.Agent) (net.Listener, error) {
 type agentRuntime struct {
 	server *http.Server
 	ln     net.Listener
+	// bridge 是工具执行器：对外 MCP 接入复用它，工具行为只有一处定义，不会和内置 Agent 漂移。
+	bridge *agentsvc.AgentBridge
 }
 
 // agentDeps 是装配运行时需要的已有服务。
 type agentDeps struct {
-	admin  *agentsvc.AdminAssistantService
-	tasks  agentsvc.AgentGenTasks
-	assets provider.AssetStore
+	admin *agentsvc.AdminAssistantService
+	tasks agentsvc.AgentGenTasks
+	// compose 是画布成片合成（canvas_compose 工具）；nil 时工具提示不能合成
+	compose agentsvc.AgentCompose
+	assets  provider.AssetStore
 	// assetLinks 给素材算稳定访问地址（消息附件落库用）；nil 时用 /files/<key>
 	assetLinks agentsvc.AssetLinker
 	// frames / frameStore 是看视频和截帧要用的抽帧器和帧图存储；nil 表示没有视频处理能力
@@ -124,7 +128,7 @@ func newAgentRuntime(cfg *config.Config, d agentDeps) (*agentRuntime, error) {
 	bridge := agentsvc.NewAgentBridge(agentsvc.BridgeDeps{
 		Admin: d.admin,
 		Repo:  d.repo, Canvas: d.canvas, Agent: d.agent, Billing: agentsvc.NewAgentBilling(d.repo),
-		Registry: d.registry, Secrets: d.secrets, Tasks: d.tasks, Assets: d.assets, AssetLinks: d.assetLinks, Frames: d.frames, FrameStore: d.frameStore, Streamer: llmgateway.New(llmgateway.Options{IPAllowed: d.ipAllowed, Observer: llmlog.Observer{}}), Skills: d.skills, Web: web, RunUsage: d.repo,
+		Registry: d.registry, Secrets: d.secrets, Tasks: d.tasks, Compose: d.compose, Assets: d.assets, AssetLinks: d.assetLinks, Frames: d.frames, FrameStore: d.frameStore, Streamer: llmgateway.New(llmgateway.Options{IPAllowed: d.ipAllowed, Observer: llmlog.Observer{}}), Skills: d.skills, Web: web, RunUsage: d.repo,
 		Drama: d.drama, DramaSegments: d.segments, DramaApprovalKey: []byte(ac.ServiceToken),
 	})
 	bridge.SetDisabledTools(AgentDisabledTools(ac))
@@ -137,7 +141,8 @@ func newAgentRuntime(cfg *config.Config, d agentDeps) (*agentRuntime, error) {
 	// Agent 服务产生的事件经 /events 推过来，由 Go 发给浏览器
 	platform := agenthandler.NewPlatformHandler(bridge).WithEventRelay(agentsvc.NewEventRelay(d.broadcaster))
 	return &agentRuntime{
-		ln: ln,
+		ln:     ln,
+		bridge: bridge,
 		// 没有读写超时：模型代理是长连接的流式响应，可能持续几分钟；防慢速攻击靠只监听内网并要求服务令牌
 		server: &http.Server{Handler: router.NewBridge(cfg.Server.Mode, platform, ac.ServiceToken), ReadHeaderTimeout: 10 * time.Second},
 	}, nil

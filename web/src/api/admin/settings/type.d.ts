@@ -10,6 +10,10 @@ export interface RegisterSettings {
   queue_multiplier: number;
   /** 排队超时（分钟），5 到 1440：排队超过这个时间的任务会过期并退回积分 */
   queue_max_wait_minutes: number;
+  /** 外部接入令牌的默认有效期（天），1 到 90：签发时不填天数就用它 */
+  mcp_token_days: number;
+  /** 外部接入单次调用的服务端上限（秒），5 到 300：超过就中止并回可读错误 */
+  mcp_call_timeout: number;
 }
 
 /** SMTP 加密方式 */

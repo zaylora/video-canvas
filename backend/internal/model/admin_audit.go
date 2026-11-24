@@ -48,6 +48,12 @@ const (
 	AdminAuditAgentTokenRevoke = "agent.token_revoke" // 注销 Agent 分析令牌
 	AdminAuditAgentRunsRead    = "agent.runs_read"    // 用分析令牌读取 Agent 运行记录（列表、导出、统计）
 
+	AdminAuditMCPProjectCreate = "mcp.project_create" // 新建 MCP 接入项目
+	AdminAuditMCPProjectUpdate = "mcp.project_update" // 修改 MCP 接入项目（含启停、权限、归属用户）
+	AdminAuditMCPProjectDelete = "mcp.project_delete" // 删除 MCP 接入项目
+	AdminAuditMCPTokenIssue    = "mcp.token_issue"    // 签发 MCP 项目令牌
+	AdminAuditMCPTokenRevoke   = "mcp.token_revoke"   // 注销 MCP 项目令牌
+
 	AdminAuditTargetUser     = "user"
 	AdminAuditTargetSettings = "settings"
 	AdminAuditTargetShowcase = "showcase"
@@ -56,6 +62,7 @@ const (
 	AdminAuditTargetPayment  = "payment"
 	AdminAuditTargetQueue    = "queue"
 	AdminAuditTargetAgent    = "agent"
+	AdminAuditTargetMCP      = "mcp"
 )
 
 // AdminAuditLog 后台运营审计日志（用户管理与系统设置）：只增不改不删。detail 不含任何密码、密钥。

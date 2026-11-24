@@ -119,11 +119,38 @@ func (b *AgentBridge) toolGenerate(ctx context.Context, tc *toolCall) (*toolOut,
 		p.Items = append(p.Items, it)
 		total += it.Price
 	}
+	if tc.external {
+		return b.toolGenerateExternal(ctx, tc, p)
+	}
 	if err := b.requestApproval(ctx, tc, model.ApprovalGenerate, p, total); err != nil {
 		return nil, err
 	}
 	return &toolOut{content: "已提交给用户批准，等待决定。用户决定后你会收到结果；批准后任务才会创建并开始生成。", terminate: true,
 		summary: fmt.Sprintf("申请生成 %d 个节点（预估 %d 积分）", len(p.Items), total)}, nil
+}
+
+// toolGenerateExternal 是外部接入（MCP）的生成出口：没有审批卡片可点，直接提交任务。
+//
+// 两道闸都在别处：能调到这个工具说明项目勾了 canvas:generate（见 handler/mcp 的 toolScopes），
+// 积分够不够由任务创建时按归属用户的余额判。这里只负责「一次调用最多 maxGenerateItems 项」和
+// 「不等待」——外部对话本来就靠 task_get / canvas_get_state 查进度，挂着等几分钟不现实。
+func (b *AgentBridge) toolGenerateExternal(ctx context.Context, tc *toolCall, p GeneratePayload) (*toolOut, error) {
+	if b.d.Agent == nil || b.d.Agent.exec == nil {
+		return nil, fail("生成执行器没有装配，暂时不能生成")
+	}
+	body, err := b.d.Agent.exec.ExecuteDirect(ctx, tc.run, tc.id, p.Items)
+	if err != nil {
+		return nil, fail("%v", err)
+	}
+	total := 0
+	for _, it := range p.Items {
+		total += it.Price
+	}
+	return &toolOut{
+		content: fmt.Sprintf("已提交 %d 个生成任务（预估 %d 积分，从你名下余额扣）。任务在后台跑，用 task_get 传 task_id 查进度，"+
+			"或者用 canvas_get_state 看节点状态。结果：%s", len(p.Items), total, string(body)),
+		summary: fmt.Sprintf("生成 %d 个节点（预估 %d 积分）", len(p.Items), total),
+	}, nil
 }
 
 // precheck 预检一个节点能不能生成，通过时返回它的审批条目（含预估价）。不通过的原因是写给模型看的，说明怎么改。
@@ -238,10 +265,24 @@ func (g *AgentGenerator) Execute(ctx context.Context, run *model.AgentRun, appro
 			return prior, nil
 		}
 	}
+	return g.submitAll(ctx, run, "agent-"+strconv.FormatUint(approvalID, 10), "approval-"+strconv.FormatUint(approvalID, 10), run.ID, items)
+}
+
+// ExecuteDirect 不经审批直接提交一批生成（外部接入用）。
+//
+// callKey 是这次工具调用的 id：任务的幂等键与画布绑定键都由它派生，所以同一次调用重放不会重复建任务、重复扣积分。
+// agentRunID 传 0：外部接入没有真实的 Agent 运行，任务结束时的通知没有收件人，写进去只会多一条投递不出去的通知。
+func (g *AgentGenerator) ExecuteDirect(ctx context.Context, run *model.AgentRun, callKey string, items []GenerateItem) (json.RawMessage, error) {
+	key := "mcp-" + callKey
+	return g.submitAll(ctx, run, key, key, 0, items)
+}
+
+// submitAll 是提交与绑定的公共部分：逐条建任务，成功的统一绑到节点上，返回写进结果里的 JSON。
+func (g *AgentGenerator) submitAll(ctx context.Context, run *model.AgentRun, taskKeyPrefix, bindKey string, agentRunID uint64, items []GenerateItem) (json.RawMessage, error) {
 	var res generateResult
 	bind := map[string]string{}
 	for i, it := range items {
-		task, err := g.submit(ctx, run, approvalID, i, it)
+		task, err := g.submit(ctx, run, taskKeyPrefix, i, agentRunID, it)
 		if err != nil {
 			res.Failed = append(res.Failed, failedItem{NodeID: it.NodeID, Error: err.Error()})
 			continue
@@ -257,14 +298,14 @@ func (g *AgentGenerator) Execute(ctx context.Context, run *model.AgentRun, appro
 	if err != nil {
 		return nil, err
 	}
-	if _, err := g.canvas.bindTasks(ctx, run, "approval-"+strconv.FormatUint(approvalID, 10), bind, body); err != nil {
+	if _, err := g.canvas.bindTasks(ctx, run, bindKey, bind, body); err != nil {
 		return nil, fmt.Errorf("任务已创建但绑定到节点失败：%w", err)
 	}
 	return body, nil
 }
 
 // submit 提交一个条目。
-func (g *AgentGenerator) submit(ctx context.Context, run *model.AgentRun, approvalID uint64, idx int, it GenerateItem) (*model.GenerationTaskView, error) {
+func (g *AgentGenerator) submit(ctx context.Context, run *model.AgentRun, taskKeyPrefix string, idx int, agentRunID uint64, it GenerateItem) (*model.GenerationTaskView, error) {
 	srcs, err := g.canvas.Generations(ctx, run, []string{it.NodeID})
 	if err != nil {
 		return nil, errors.New("节点已经不存在")
@@ -277,7 +318,7 @@ func (g *AgentGenerator) submit(ctx context.Context, run *model.AgentRun, approv
 	if err != nil {
 		return nil, errors.New("模型已不可用")
 	}
-	key := fmt.Sprintf("agent-%d-%d", approvalID, idx)
+	key := fmt.Sprintf("%s-%d", taskKeyPrefix, idx)
 	input, err := buildGenInput(snap.Model.Capabilities, src)
 	if err != nil {
 		return nil, err
@@ -287,7 +328,7 @@ func (g *AgentGenerator) submit(ctx context.Context, run *model.AgentRun, approv
 	}
 	resp, err := g.tasks.Create(ctx, run.UserID, key, &model.CreateGenerationTaskReq{
 		Kind: snap.Model.Kind, ModelID: it.ModelKey, CanvasID: idcodec.ID(run.CanvasID), NodeID: it.NodeID,
-		AgentRunID: run.ID, // 任务结束时据此通知 Agent；不从请求体读，只有这里能填
+		AgentRunID: agentRunID, // 任务结束时据此通知 Agent；0 表示外部接入，没有运行可通知
 		Input:      input,
 	})
 	if err != nil {

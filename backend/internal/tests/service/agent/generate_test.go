@@ -125,6 +125,56 @@ func newGenerator(e *genEnv) *AgentGenerator {
 	return NewAgentGenerator(e.tasks, NewAgentCanvasService(e.repo, e.bc), e.reg)
 }
 
+// TestAgentGenerator_ExecuteDirect 外部接入直连生成：幂等键按调用 id、任务不带 Agent 运行。
+// 前者决定同一次调用重放不会重复扣积分，后者决定任务结束时不往一个不存在的运行里塞通知。
+func TestAgentGenerator_ExecuteDirect(t *testing.T) {
+	e := newGenEnv(t, "all")
+	items := []GenerateItem{{NodeID: e.imgID(t), Label: "角色", ModelKey: "seedream", Count: 1, Price: 5}}
+	res, err := newGenerator(e).ExecuteDirect(context.Background(), e.run, "call-9", items)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(res), `"task_id":"101"`) {
+		t.Errorf("结果=%s", res)
+	}
+	if e.tasks.keys[0] != "mcp-call-9-0" {
+		t.Errorf("幂等键 = %s", e.tasks.keys[0])
+	}
+	if e.tasks.reqs[0].AgentRunID != 0 {
+		t.Errorf("外部接入的任务不该带 Agent 运行，实际 %d", e.tasks.reqs[0].AgentRunID)
+	}
+	if d := node(t, e.repo, e.imgID(t)).Data(); d["taskId"] != "101" {
+		t.Errorf("节点应绑定任务: %v", d)
+	}
+}
+
+// TestAgentBridge_ExternalGenerateSkipsApproval 外部接入的生成不走审批：直接建任务并回任务 id。
+// 删除没有这条通道——它没有余额那种天然上限，绕过审批就是不可逆的数据丢失。
+func TestAgentBridge_ExternalGenerateSkipsApproval(t *testing.T) {
+	e := newGenEnv(t, "all")
+	canvas := NewAgentCanvasService(e.repo, e.bc)
+	svc := NewAgentService(AgentDeps{
+		Repo: e.repo, Canvas: canvas, Models: fakeAgentModels{list: defaultAgentModels},
+		Generator: NewAgentGenerator(e.tasks, canvas, e.reg),
+	})
+	br := NewAgentBridge(BridgeDeps{Repo: e.repo, Canvas: canvas, Agent: svc, Registry: e.reg, Tasks: e.tasks, Secrets: fakeSecrets{}})
+	rc := RunContext{RunID: 4242, UserID: e.run.UserID, SessionID: e.run.SessionID, CanvasID: e.run.CanvasID, Mode: model.AgentModeAll, ModelKey: "claude"}
+	args := json.RawMessage(`{"items":[{"nodeId":"` + e.imgID(t) + `"}],"reason":"出角色图"}`)
+	res, err := br.ExecuteExternalTool(context.Background(), rc, "call-1", "generate_media", args)
+	if err != nil || res.IsError {
+		t.Fatalf("res=%+v err=%v", res, err)
+	}
+	if !strings.Contains(res.Content, "已提交") || !strings.Contains(res.Content, "101") {
+		t.Errorf("要给模型任务 id 和「已提交」，实际: %s", res.Content)
+	}
+	if len(e.tasks.reqs) != 1 || e.tasks.reqs[0].AgentRunID != 0 {
+		t.Fatalf("应建一个不带运行的生成任务: %+v", e.tasks.reqs)
+	}
+	if _, err := br.ExecuteExternalTool(context.Background(), rc, "call-2", "canvas_delete", json.RawMessage(`{"nodeIds":["`+e.imgID(t)+`"]}`)); err == nil {
+		t.Error("删除仍然只能经审批，外部接入必须被拒绝")
+	}
+}
+
 func TestAgentGenerator_Execute(t *testing.T) {
 	ctx := context.Background()
 	items := func(e *genEnv) []GenerateItem {

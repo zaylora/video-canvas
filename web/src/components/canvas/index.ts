@@ -20,6 +20,7 @@ export { PendingConnectionLine, PendingFanLines } from "./pending-connection-lin
 export {
   AudioPlaceholderIcon,
   CharacterPlaceholderIcon,
+  ComposePlaceholderIcon,
   DirectorPlaceholderIcon,
   ImagePlaceholderIcon,
   StoryboardPlaceholderIcon,

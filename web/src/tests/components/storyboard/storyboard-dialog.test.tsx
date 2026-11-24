@@ -12,7 +12,7 @@ import { installDom, type DomEnv } from "@/tests/helpers/dom";
 
 let dom: DomEnv;
 let shotsModule: typeof ShotsModule;
-let Harness: (props: { shots: StoryboardShot[] }) => React.ReactElement;
+let Harness: (props: { shots: StoryboardShot[]; nodes?: CanvasNode[] }) => React.ReactElement;
 /** 测试里读节点最新的镜头 */
 let latest: () => StoryboardShot[];
 
@@ -45,7 +45,7 @@ beforeAll(async () => {
       />
     );
   }
-  Harness = ({ shots }) => (
+  Harness = ({ shots, nodes = [] }) => (
     <ReactFlowProvider
       initialNodes={[
         {
@@ -54,6 +54,7 @@ beforeAll(async () => {
           position: { x: 0, y: 0 },
           data: { kind: "storyboard", label: "分镜表", storyboard: { shots } },
         },
+        ...nodes,
       ]}
     >
       <Body />
@@ -78,11 +79,34 @@ const all = (selector: string) => Array.from(body().querySelectorAll<HTMLElement
 const byLabel = (label: string) => body().querySelector<HTMLElement>(`[aria-label="${label}"]`);
 const buttonByText = (text: string) =>
   all("button").find((b) => b.textContent?.trim() === text) ?? null;
+/** 忽略空白和前后图标，按包含关系找按钮（按钮里有图标时 textContent 会粘在一起） */
+const buttonIncl = (text: string) => {
+  const want = text.replace(/\s+/g, "");
+  return (
+    all("button").find((b) => (b.textContent ?? "").replace(/\s+/g, "").includes(want)) ?? null
+  );
+};
 const blur = (el: HTMLElement | null) =>
   dom.act(async () => {
     el?.dispatchEvent(new dom.win.FocusEvent("focusout", { bubbles: true }));
     el?.dispatchEvent(new dom.win.FocusEvent("blur"));
   });
+
+/** 画布上的视频节点：y 决定导入顺序 */
+const videoNode = (id: string, y: number): CanvasNode => ({
+  id,
+  type: "canvas",
+  position: { x: 800, y },
+  data: { kind: "video", label: id, src: `/f/${id}.mp4`, assetId: id },
+});
+
+/** 画布上的图片节点 */
+const imageNode = (id: string, y: number): CanvasNode => ({
+  id,
+  type: "canvas",
+  position: { x: 400, y },
+  data: { kind: "image", label: id, src: `/f/${id}.png`, assetId: id },
+});
 
 describe("分镜表编辑弹窗", () => {
   test("50 镜：表头统计、镜号从 01 连续到 50", async () => {
@@ -208,6 +232,124 @@ describe("分镜表编辑弹窗", () => {
     await dom.flush();
     expect(latest()).toHaveLength(1);
     expect(byLabel("第 1 镜的画面描述")).not.toBeNull();
+    await m.unmount();
+  });
+});
+
+/**
+ * 导入画布素材：分镜表是后来加的、或者素材不是从这张表生成的时，
+ * 把画布上已有的视频 / 图片节点挂到镜头行上。
+ */
+describe("导入画布素材", () => {
+  test("批量：按画布顺序挂到还没有视频的镜头", async () => {
+    // 位置上 v1 在 v2 上面，所以 v1 先挂
+    const m = await dom.mount(
+      <Harness shots={makeShots(3)} nodes={[videoNode("v2", 600), videoNode("v1", 100)]} />,
+    );
+    await dom.flush();
+    await dom.click(buttonByText("导入素材"));
+    await dom.flush();
+    expect(body().textContent).toContain("导入画布素材");
+    expect(byLabel("选择 v1")).not.toBeNull();
+    // 两个都没被用过，默认都勾上
+    expect(buttonIncl("导入2段")).not.toBeNull();
+    await dom.click(buttonIncl("导入2段"));
+    await dom.flush();
+    expect(latest().map((s) => s.videoNodeId)).toEqual(["v1", "v2", undefined]);
+    await m.unmount();
+  });
+
+  test("单行：点一项只挂这一镜，别的行不动", async () => {
+    const m = await dom.mount(<Harness shots={makeShots(2)} nodes={[videoNode("v1", 0)]} />);
+    await dom.flush();
+    await dom.click(byLabel("导入画布上已有的视频"));
+    await dom.flush();
+    expect(body().textContent).toContain("导入视频到第 01 镜");
+    await dom.click(buttonIncl("v1"));
+    await dom.flush();
+    expect(latest().map((s) => s.videoNodeId)).toEqual(["v1", undefined]);
+    await m.unmount();
+  });
+
+  test("空表：默认追加为镜头，画面描述先取节点标题", async () => {
+    const m = await dom.mount(
+      <Harness shots={[]} nodes={[videoNode("S1", 0), videoNode("S2", 400)]} />,
+    );
+    await dom.flush();
+    await dom.click(buttonByText("导入素材"));
+    await dom.flush();
+    expect(body().textContent).toContain("多出的 2 段追加为镜头");
+    await dom.click(buttonIncl("导入2段"));
+    await dom.flush();
+    expect(latest().map((s) => [s.scene, s.videoNodeId])).toEqual([
+      ["S1", "S1"],
+      ["S2", "S2"],
+    ]);
+    await m.unmount();
+  });
+
+  test("已经挂过的节点默认不勾，避免把现有安排覆盖一遍", async () => {
+    const shots = makeShots(2).map((s, i) => (i === 0 ? { ...s, videoNodeId: "v1" } : s));
+    const m = await dom.mount(
+      <Harness shots={shots} nodes={[videoNode("v1", 0), videoNode("v2", 300)]} />,
+    );
+    await dom.flush();
+    await dom.click(buttonByText("导入素材"));
+    await dom.flush();
+    expect(body().textContent).toContain("挂到第 02 镜");
+    await dom.click(buttonIncl("导入1段"));
+    await dom.flush();
+    expect(latest().map((s) => s.videoNodeId)).toEqual(["v1", "v2"]);
+    await m.unmount();
+  });
+
+  test("切到分镜图：只列图片节点，导入写 imageNodeId", async () => {
+    const m = await dom.mount(
+      <Harness shots={makeShots(1)} nodes={[videoNode("v1", 0), imageNode("i1", 200)]} />,
+    );
+    await dom.flush();
+    await dom.click(buttonByText("导入素材"));
+    await dom.flush();
+    await dom.click(buttonByText("分镜图"));
+    await dom.flush();
+    expect(byLabel("选择 i1")).not.toBeNull();
+    expect(byLabel("选择 v1")).toBeNull();
+    await dom.click(buttonIncl("导入1张"));
+    await dom.flush();
+    expect(latest()[0].imageNodeId).toBe("i1");
+    expect(latest()[0].videoNodeId).toBeUndefined();
+    await m.unmount();
+  });
+
+  test("单行也能切分镜图：从视频格进去，改成挂这一镜的分镜图", async () => {
+    const m = await dom.mount(
+      <Harness shots={makeShots(2)} nodes={[videoNode("v1", 0), imageNode("i1", 200)]} />,
+    );
+    await dom.flush();
+    await dom.click(byLabel("导入画布上已有的视频"));
+    await dom.flush();
+    expect(body().textContent).toContain("导入视频到第 01 镜");
+    // 单行原来只有视频，现在两种都能选：切过去标题跟着变，挂的是 imageNodeId
+    await dom.click(buttonByText("分镜图"));
+    await dom.flush();
+    expect(body().textContent).toContain("导入分镜图到第 01 镜");
+    await dom.click(buttonIncl("i1"));
+    await dom.flush();
+    expect(latest()[0].imageNodeId).toBe("i1");
+    expect(latest()[0].videoNodeId).toBeUndefined();
+    expect(latest()[1].imageNodeId).toBeUndefined();
+    await m.unmount();
+  });
+
+  test("分镜图格自己就能导入：不用绕行菜单", async () => {
+    const m = await dom.mount(<Harness shots={makeShots(1)} nodes={[imageNode("i1", 0)]} />);
+    await dom.flush();
+    await dom.click(byLabel("用画布上已有的分镜图"));
+    await dom.flush();
+    expect(body().textContent).toContain("导入分镜图到第 01 镜");
+    await dom.click(buttonIncl("i1"));
+    await dom.flush();
+    expect(latest()[0].imageNodeId).toBe("i1");
     await m.unmount();
   });
 });

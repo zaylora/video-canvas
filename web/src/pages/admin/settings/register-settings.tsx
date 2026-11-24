@@ -30,10 +30,13 @@ const toValues = (settings: RegisterSettings): RegisterSettingsValues => ({
   default_max_active_tasks: String(settings.default_max_active_tasks),
   queue_multiplier: String(settings.queue_multiplier),
   queue_max_wait_minutes: String(settings.queue_max_wait_minutes),
+  mcp_token_days: String(settings.mcp_token_days),
+  mcp_call_timeout: String(settings.mcp_call_timeout),
 });
 
 /**
- * 注册设置表单：开放注册开关、新用户初始积分、默认并发上限，以及排队倍数与排队超时（任务队列的用户侧限流）。
+ * 注册设置表单：开放注册开关、新用户初始积分、默认并发上限，排队倍数与排队超时（任务队列的用户侧限流），
+ * 以及外部接入令牌的默认有效期。
  * @param settings 已保存的设置
  * @param canWrite 是否可写（super_admin）
  * @param onSaved 保存成功后带回服务端返回的设置
@@ -64,6 +67,8 @@ function RegisterForm({
         default_max_active_tasks: Number(values.default_max_active_tasks),
         queue_multiplier: Number(values.queue_multiplier),
         queue_max_wait_minutes: Number(values.queue_max_wait_minutes),
+        mcp_token_days: Number(values.mcp_token_days),
+        mcp_call_timeout: Number(values.mcp_call_timeout),
       });
       if (!aliveRef.current) return;
       toast.success("注册设置已保存");
@@ -164,6 +169,40 @@ function RegisterForm({
                 aria-invalid={!!errors.queue_max_wait_minutes}
                 onChange={(event) =>
                   setValues((prev) => ({ ...prev, queue_max_wait_minutes: event.target.value }))
+                }
+              />
+            </FormField>
+            <FormField
+              label="令牌默认有效期（天）"
+              htmlFor="register-mcp-token-days"
+              hint="1–90；外部接入签发令牌时留空就用它"
+              error={errors.mcp_token_days}
+            >
+              <Input
+                id="register-mcp-token-days"
+                inputMode="numeric"
+                value={values.mcp_token_days}
+                disabled={!canWrite || saving}
+                aria-invalid={!!errors.mcp_token_days}
+                onChange={(event) =>
+                  setValues((prev) => ({ ...prev, mcp_token_days: event.target.value }))
+                }
+              />
+            </FormField>
+            <FormField
+              label="MCP 调用超时（秒）"
+              htmlFor="register-mcp-call-timeout"
+              hint="5–300；外部接入单次调用超过就中止"
+              error={errors.mcp_call_timeout}
+            >
+              <Input
+                id="register-mcp-call-timeout"
+                inputMode="numeric"
+                value={values.mcp_call_timeout}
+                disabled={!canWrite || saving}
+                aria-invalid={!!errors.mcp_call_timeout}
+                onChange={(event) =>
+                  setValues((prev) => ({ ...prev, mcp_call_timeout: event.target.value }))
                 }
               />
             </FormField>

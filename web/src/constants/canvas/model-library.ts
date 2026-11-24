@@ -38,6 +38,8 @@ export const MODEL_LIBRARY = {
   character: [],
   // 分镜表手动编辑，迭代 1 不调模型
   storyboard: [],
+  // 成片合成走 ffmpeg 拼接，不调模型
+  compose: [],
 } as const satisfies Record<NodeKind, readonly ModelOption[]>;
 
 /**

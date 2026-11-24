@@ -20,6 +20,7 @@ import (
 	"video-canvas/internal/config"
 	"video-canvas/internal/handler"
 	agenthandler "video-canvas/internal/handler/agent"
+	mcphandler "video-canvas/internal/handler/mcp"
 	"video-canvas/internal/llmgateway"
 	"video-canvas/internal/llmgateway/llmlog"
 	"video-canvas/internal/mailer"
@@ -214,6 +215,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 	stepRepo := repository.NewStepRepository(db)
 	marketingRepo := repository.NewMarketingRepository(db)
 	storyboardRepo := repository.NewStoryboardRepository(db)
+	canvasComposeRepo := repository.NewCanvasComposeRepository(db)
 	stepCaller := &stepkit.GatewayCaller{Streamer: textGateway, Secrets: aiCfgSvc}
 	stepSvc := service.NewStepAdminService(service.StepAdminDeps{
 		Registry: stepRegistry, Repo: stepRepo, Skills: skillSvc, Models: aiCfgSvc, Credits: settingsSvc, Audit: auditRepo,
@@ -229,6 +231,10 @@ func NewApp(cfg *config.Config) (*App, error) {
 	// 分镜表拆分镜：异步任务，提交、worker 执行和推送都在这个服务里；队列晚于它创建，入队器稍后回填到仓储
 	storyboardSvc := service.NewStoryboardService(service.StoryboardDeps{
 		Repo: storyboardRepo, Models: aiCfgSvc, Caller: stepCaller, Credits: settingsSvc, Broadcaster: hub,
+	})
+	// 画布成片合成：复用短剧的 ffmpeg 合成器与素材通道（只上传不登记），成片由服务在单事务里登记并写回画布
+	canvasComposeSvc := service.NewCanvasComposeService(service.CanvasComposeDeps{
+		Repo: canvasComposeRepo, Assets: assetSvc, Frames: newVideoFrames(), Broadcaster: hub,
 	})
 
 	// 配置服务反向依赖插件宿主与任务服务，所以组装完后再注入。
@@ -277,7 +283,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 	adminLogs := service.NewAuditLogService(auditRepo)
 	management := agentsvc.AdminManagementDeps{Users: adminUsers, Register: settingsSvc, SMTP: smtpSvc, Storages: storageSvc, Processors: processorSvc, Usage: adminUsage, Logs: adminLogs, Operations: adminAuditRepo}
 	adminAssistant := agentsvc.NewAdminAssistantService(agentsvc.AdminAssistantDeps{Management: &management, Models: aiConfigRepo, Writer: aiCfgSvc, Users: userRepo, Channels: aiChannelRepo, Settings: pricingSvc, Audit: adminAuditRepo, History: adminAuditRepo, Plugins: aiPluginRepo, PluginWriter: aiPluginSvc, ChannelWriter: aiChannelSvc, Checker: plugin.NewDraftChecker(runnerClient), Trials: aiCfgSvc, Attempts: adminAuditRepo})
-	agentRT, err := newAgentRuntime(cfg, agentDeps{admin: adminAssistant, tasks: taskSvc, assets: assetSvc, assetLinks: assetSvc, frames: newVideoFrames(), frameStore: assetFrameStore{assetSvc}, repo: agentRepo, agent: agentSvc, canvas: agentCanvasSvc, registry: aiCfgSvc, secrets: aiCfgSvc, skills: skillSvc, drama: dramaSvc, segments: dramaSegments, toolCalls: observeRepo, modelRequests: observeRepo, ipAllowed: outboundIPPolicy(cfg), broadcaster: hub})
+	agentRT, err := newAgentRuntime(cfg, agentDeps{admin: adminAssistant, tasks: taskSvc, compose: canvasComposeSvc, assets: assetSvc, assetLinks: assetSvc, frames: newVideoFrames(), frameStore: assetFrameStore{assetSvc}, repo: agentRepo, agent: agentSvc, canvas: agentCanvasSvc, registry: aiCfgSvc, secrets: aiCfgSvc, skills: skillSvc, drama: dramaSvc, segments: dramaSegments, toolCalls: observeRepo, modelRequests: observeRepo, ipAllowed: outboundIPPolicy(cfg), broadcaster: hub})
 	if err != nil {
 		stopRunner(runnerStop)
 		closeRedis(rdb)
@@ -293,18 +299,19 @@ func NewApp(cfg *config.Config) (*App, error) {
 
 	// 生成任务队列（River）：任务调度、并发、重试之外的实例心跳与救回都交给它；业务处理仍是 worker。
 	// 入队和后台操作总是可用，是否在本实例执行任务由 ai.worker.enabled 决定（API-only 实例关闭它）。
-	taskQueue, queueConn, err := newTaskQueue(cfg, db, taskSvc, executor, assetSvc, settingsSvc, dramaSvc, stepSvc, marketingSvc, storyboardSvc)
+	taskQueue, queueConn, err := newTaskQueue(cfg, db, taskSvc, executor, assetSvc, settingsSvc, dramaSvc, stepSvc, marketingSvc, storyboardSvc, canvasComposeSvc)
 	if err != nil {
 		stopRunner(runnerStop)
 		closeRedis(rdb)
 		closeDB(db)
 		return nil, err
 	}
-	taskRepo.SetEnqueuer(taskQueue)       // 创建任务的事务里入队：任务、积分冻结、job 一起提交
-	stepRepo.SetEnqueuer(taskQueue)       // 后台试跑与 River job 在业务事务里一并提交。
-	marketingRepo.SetEnqueuer(taskQueue)  // 营销轮次与写脚本 job 在业务事务里一并提交。
-	storyboardRepo.SetEnqueuer(taskQueue) // 分镜表拆分镜任务与 job 在业务事务里一并提交。
-	dramaRepo.SetEnqueuer(taskQueue)      // 短剧项目、流水线任务与 River job 在业务事务里一并提交。
+	taskRepo.SetEnqueuer(taskQueue)          // 创建任务的事务里入队：任务、积分冻结、job 一起提交
+	stepRepo.SetEnqueuer(taskQueue)          // 后台试跑与 River job 在业务事务里一并提交。
+	marketingRepo.SetEnqueuer(taskQueue)     // 营销轮次与写脚本 job 在业务事务里一并提交。
+	storyboardRepo.SetEnqueuer(taskQueue)    // 分镜表拆分镜任务与 job 在业务事务里一并提交。
+	canvasComposeRepo.SetEnqueuer(taskQueue) // 成片合成任务与 job 在业务事务里一并提交。
+	dramaRepo.SetEnqueuer(taskQueue)         // 短剧项目、流水线任务与 River job 在业务事务里一并提交。
 	riverUI, err := taskQueue.UIHandler(riverUIPrefix)
 	if err != nil {
 		queueConn.Close()
@@ -360,6 +367,38 @@ func NewApp(cfg *config.Config) (*App, error) {
 	if agentProxy != nil {
 		agentProxy.WithRoleLookup(roleLookup)
 	}
+	// MCP 接入：项目与令牌的后台管理 + 对外端点。工具执行复用画布 Agent 的 bridge，
+	// 所以对外接入不可能绕过内置 Agent 的任何限制；Agent 没启用时端点不注册。
+	mcpSvc := service.NewMCPProjectService(service.MCPProjectDeps{
+		Repo: repository.NewMCPRepository(db), Users: userRepo, Canvases: canvasProjectRepo, Audit: auditRepo,
+		// 令牌明文用凭证主密钥加密保存（列表里「复制」要解出来）；默认有效期取后台「注册设置」
+		SecretKey: cfg.AI.SecretKey, Defaults: settingsSvc,
+	})
+	var mcpServer *mcphandler.Server
+	if agentRT != nil && agentRT.bridge != nil {
+		mcpServer = mcphandler.NewServer(agentRT.bridge, canvasProjectRepo)
+		// drama_list 用：画布列表刻意排除短剧，外部工具得能自己发现短剧画布
+		mcpServer.SetDramaDirectory(dramaRepo)
+		// 单次调用上限取后台「注册设置」，读不到就用默认 60 秒
+		mcpServer.SetCallTimeout(func(ctx context.Context) time.Duration {
+			d, err := settingsSvc.MCPCallTimeout(ctx)
+			if err != nil {
+				return 0
+			}
+			return d
+		})
+	}
+	mcpAuth := func(ctx context.Context, plain string) (middleware.MCPIdentity, error) {
+		who, err := mcpSvc.Authenticate(ctx, plain)
+		if err != nil {
+			return middleware.MCPIdentity{}, err
+		}
+		return middleware.MCPIdentity{
+			ProjectID: who.ProjectID, UserID: who.UserID,
+			DefaultCanvasID: who.DefaultCanvasID, Scopes: who.Scopes,
+		}, nil
+	}
+
 	engineHTTP := router.New(cfg.Server.Mode, cfg.JWT.Secret, router.Handlers{
 		PricingSettings: handler.NewPricingSettingsHandler(pricingSvc),
 		AgentProxy:      agentProxy,
@@ -378,10 +417,18 @@ func NewApp(cfg *config.Config) (*App, error) {
 			Limits: canvasdoc.DefaultLimits(), // 不能留零值：零值上限会拒绝所有导入文件
 			Now:    time.Now,
 		})),
-		Storyboard:   handler.NewStoryboardHandler(storyboardSvc),
+		Storyboard:    handler.NewStoryboardHandler(storyboardSvc),
+		CanvasCompose: handler.NewCanvasComposeHandler(canvasComposeSvc),
+		CanvasArchive: handler.NewCanvasArchiveHandler(service.NewCanvasArchiveService(service.CanvasArchiveDeps{
+			Canvases: canvasProjectRepo, Assets: assetSvc, Secret: cfg.JWT.Secret,
+		})),
 		Conversation: handler.NewConversationHandler(service.NewConversationService(repository.NewConversationRepository(db), taskSvc)),
 		AgentSkill:   agenthandler.NewSkillHandler(skillSvc),
 		AgentObserve: agenthandler.NewAgentObserveHandler(observeSvc),
+		MCP:          mcpServer,
+		MCPAuth:      mcpAuth,
+		AdminMCP:     handler.NewMCPAdminHandler(mcpSvc),
+		MCPMe:        handler.NewMCPSelfHandler(mcpSvc),
 		AnalysisToken: func(ctx context.Context, plain string) (uint64, uint64, error) {
 			who, err := observeSvc.AuthenticateToken(ctx, plain)
 			if err != nil {

@@ -1,5 +1,5 @@
 import { Position, useReactFlow } from "@xyflow/react";
-import { Loader2 } from "lucide-react";
+import { Combine, Loader2 } from "lucide-react";
 
 import { NodeCard, type NodeCardHandle } from "@/components/canvas";
 import { BaseNodeContent } from "@/components/canvas/base-node";
@@ -166,6 +166,18 @@ export function StoryboardCanvasNode({
           </div>
         )}
       </BaseNodeContent>
+      {/* 成片入口就在卡片上：不打开弹窗也能看到「合成成片」是这里的出口（按钮落到弹窗底栏的合成条） */}
+      {board.shots.length > 0 && (
+        <button
+          type="button"
+          onClick={openEditor}
+          title="打开分镜表，在底栏一键合成"
+          className="nodrag border-border text-muted-foreground hover:bg-chrome-hover hover:text-foreground focus-visible:ring-node-ring/60 flex h-9 shrink-0 items-center justify-center gap-1.5 border-t text-xs outline-none focus-visible:ring-2"
+        >
+          <Combine className="size-3.5" />
+          合成成片
+        </button>
+      )}
       <SplitOverwriteDialog id={id} />
       <StoryboardDialog
         id={id}

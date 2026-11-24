@@ -4,8 +4,8 @@ import type { VideoNodeView } from "@/utils/tasks/node-view";
 
 import { formatShotNumber } from "./shots";
 
-/** 关联的图片节点此刻的情况：不在画布上，或在，带上它的展示状态 */
-export type LinkedNode = { exists: false } | { exists: true; view: VideoNodeView };
+/** 关联的图片节点此刻的情况：不在画布上，或在，带上它的展示状态和标题 */
+export type LinkedNode = { exists: false } | { exists: true; view: VideoNodeView; label?: string };
 
 /** 分镜图格该显示什么（设计 §6.5）；「上传中」是格子自己的本地瞬态，不在这里 */
 export type ShotImageState =

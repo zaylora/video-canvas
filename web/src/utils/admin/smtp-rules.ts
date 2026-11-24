@@ -38,12 +38,21 @@ export type RegisterSettingsValues = {
   queue_multiplier: string;
   /** 排队超时（分钟）输入 */
   queue_max_wait_minutes: string;
+  /** 外部接入令牌默认有效期（天）输入 */
+  mcp_token_days: string;
+  /** 外部接入单次调用超时（秒）输入 */
+  mcp_call_timeout: string;
 };
 
 /** 注册设置字段级错误 */
 export type RegisterSettingsErrors = Partial<
   Record<
-    "initial_credits" | "default_max_active_tasks" | "queue_multiplier" | "queue_max_wait_minutes",
+    | "initial_credits"
+    | "default_max_active_tasks"
+    | "queue_multiplier"
+    | "queue_max_wait_minutes"
+    | "mcp_token_days"
+    | "mcp_call_timeout",
     string
   >
 >;
@@ -97,7 +106,12 @@ export function hasSmtpErrors(errors: object): boolean {
 export function validateRegisterSettings(
   values: Pick<
     RegisterSettingsValues,
-    "initial_credits" | "default_max_active_tasks" | "queue_multiplier" | "queue_max_wait_minutes"
+    | "initial_credits"
+    | "default_max_active_tasks"
+    | "queue_multiplier"
+    | "queue_max_wait_minutes"
+    | "mcp_token_days"
+    | "mcp_call_timeout"
   >,
 ): RegisterSettingsErrors {
   const errors: RegisterSettingsErrors = {};
@@ -111,6 +125,11 @@ export function validateRegisterSettings(
   const maxWait = parseInteger(values.queue_max_wait_minutes);
   if (maxWait === null || maxWait < 5 || maxWait > 1440)
     errors.queue_max_wait_minutes = "范围 5 到 1440";
+  const tokenDays = parseInteger(values.mcp_token_days);
+  if (tokenDays === null || tokenDays < 1 || tokenDays > 90) errors.mcp_token_days = "范围 1 到 90";
+  const callTimeout = parseInteger(values.mcp_call_timeout);
+  if (callTimeout === null || callTimeout < 5 || callTimeout > 300)
+    errors.mcp_call_timeout = "范围 5 到 300";
   return errors;
 }
 

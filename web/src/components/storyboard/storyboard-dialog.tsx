@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { useReactFlow, useStore } from "@xyflow/react";
 import { motion, Reorder } from "motion/react";
-import { Plus } from "lucide-react";
+import { FolderInput, Plus } from "lucide-react";
+import { toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
 
 import { ChromePill } from "@/components/canvas/chrome/chrome";
@@ -10,12 +11,16 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { NODE_META } from "@/constants/canvas";
 import { useShotImageUpload } from "@/hooks/use-shot-image-upload";
+import { useCanvasArchive } from "@/hooks/use-canvas-archive";
+import { useCanvasCompose } from "@/hooks/use-canvas-compose";
 import { useStoryboardShotGeneration } from "@/hooks/use-storyboard-shot-generation";
 import { useStoryboardSplitUi } from "@/hooks/use-storyboard-split";
 import { cn } from "@/lib/utils";
 import { useStoryboardSplit } from "@/store/storyboard-split";
+import { composeCandidatesFrom, missingVideoSeqsFrom, seqText } from "@/utils/storyboard/compose";
+import { appendLinkedShot } from "@/utils/storyboard/import-assets";
 import { shotPreviewItems } from "@/utils/storyboard/shot-image";
-import type { CanvasNode, NodeStoryboard, StoryboardShot } from "@/types";
+import type { CanvasNode, CanvasNodeData, NodeStoryboard, StoryboardShot } from "@/types";
 import {
   addShot,
   applyOrder,
@@ -23,6 +28,7 @@ import {
   emptyStoryboard,
   formatDuration,
   insertShot,
+  linkShot,
   pruneShotLinks,
   removeShot,
   totalDuration,
@@ -30,16 +36,21 @@ import {
 } from "@/utils/storyboard/shots";
 
 import { BatchImageButton } from "./batch-image";
+import { ComposeBar } from "@/components/canvas/compose-bar";
+import { ImportAssetsDialog, type ImportRequest, type ImportResult } from "./import-assets-dialog";
 import { SHOT_GRID_CLASS, ShotRow, STICKY_CELLS, type ShotRowActions } from "./shot-row";
 import { SplitControls } from "./split-controls";
 import { StopDoubleClick } from "./stop-double-click";
 import { SplitErrorBanner, SplitProgressBar, SplitSkeletonRows } from "./split-ui";
 
+/** 面板默认打开的意图：没有具体行时导入视频（成片要用的是视频） */
+const DEFAULT_IMPORT: ImportRequest = { kind: "video" };
+
 /** 新拆进来的行高亮停留多久（毫秒），之后淡出 */
 const HIGHLIGHT_MS = 1200;
 
 /** 表格最小宽度：各列宽 + 列间距 + 行内边距，弹窗比它窄时横向滚动 */
-const TABLE_MIN_WIDTH = "min-w-[1388px]";
+const TABLE_MIN_WIDTH = "min-w-[1420px]";
 
 /** 表头文字；拖拽柄、行操作两列没有表头 */
 const HEADERS = [
@@ -59,10 +70,13 @@ const HEADERS = [
 /** 空状态：图标 + 一句标题 + 按钮（编码规范 6.2）；有 split 时主按钮是「从剧本拆分镜」，「添加镜头」退成次按钮 */
 export function StoryboardEmpty({
   onAdd,
+  onImport,
   split,
   title = "还没有镜头",
 }: {
   onAdd: () => void;
+  /** 画布上已经有视频 / 分镜图时，直接从已有素材起一张表 */
+  onImport?: () => void;
   split?: { onSplit: () => void; reason: string };
   title?: string;
 }) {
@@ -84,6 +98,12 @@ export function StoryboardEmpty({
           <Plus />
           添加镜头
         </Button>
+        {onImport && (
+          <Button variant="outline" size="sm" className="nodrag" onClick={onImport}>
+            <FolderInput />
+            导入画布素材
+          </Button>
+        )}
       </div>
     </div>
   );
@@ -144,6 +164,8 @@ export function StoryboardDialog({
   const { uploads, pickFile, dropFiles, removeImage } = useShotImageUpload(id);
   /** 正在放大看的那一行；null 表示预览关着 */
   const [previewId, setPreviewId] = useState<string | null>(null);
+  /** 导入画布素材的面板：null 表示关着；给了 shotId 就是只往那一镜挂 */
+  const [importReq, setImportReq] = useState<ImportRequest | null>(null);
 
   // 刚拆进来的行：滚到第一条新行，停留一会儿后清掉高亮（设计 §6.4）。
   // 滚动要读最新的表和弹窗开关，但它们变化时不该重置高亮定时器，所以放进 effect event
@@ -184,6 +206,44 @@ export function StoryboardDialog({
     [commit],
   );
 
+  /**
+   * 导入画布素材的结果落到分镜表：先把选中的节点挂到还没有素材的镜头，再按需要追加新行。
+   * 只写关联（videoNodeId / imageNodeId），不动画布上的节点，也不复制素材。
+   */
+  const applyImport = useCallback(
+    (result: ImportResult) => {
+      commit((b) => {
+        let next = b;
+        for (const link of result.links) {
+          next = linkShot(
+            next,
+            link.shotId,
+            result.kind === "video" ? { videoNodeId: link.nodeId } : { imageNodeId: link.nodeId },
+          );
+        }
+        for (const item of result.appended) {
+          next = appendLinkedShot(next, item.nodeId, result.kind, item.label);
+        }
+        return next;
+      });
+      // 面板一关行上只多一个小状态，容易让人以为没生效：这里给一条明确回执
+      const total = result.links.length + result.appended.length;
+      if (total === 0) return;
+      const parts: string[] = [];
+      if (result.links.length > 0) {
+        const numbers = result.links.map(
+          (link) => board.shots.findIndex((shot) => shot.id === link.shotId) + 1,
+        );
+        parts.push(`挂到第 ${seqText(numbers.map((n) => n - 1))} 镜`);
+      }
+      if (result.appended.length > 0) parts.push(`新增 ${result.appended.length} 镜`);
+      toast.success(`已导入 ${total} ${result.kind === "video" ? "段视频" : "张分镜图"}`, {
+        description: parts.join("，"),
+      });
+    },
+    [board.shots, commit],
+  );
+
   const actions = useMemo<ShotRowActions>(
     () => ({
       onChange: (shotId, patch) => commit((b) => updateShot(b, shotId, patch)),
@@ -192,6 +252,8 @@ export function StoryboardDialog({
       onRemove: (shotId) => commit((b) => removeShot(b, shotId)),
       onGenerateImage: (shotId) => void generateImage(shotId),
       onGenerateVideo: (shotId, options) => void generateVideo(shotId, options),
+      onImportVideo: (shotId) => setImportReq({ kind: "video", shotId }),
+      onImportImage: (shotId) => setImportReq({ kind: "image", shotId }),
       onPickImage: pickFile,
       onDropFiles: dropFiles,
       onRemoveImage: removeImage,
@@ -250,6 +312,24 @@ export function StoryboardDialog({
     [board.shots, previewSrcs],
   );
 
+  // 每行关联的视频节点数据：按行订阅，画布拖动不会触发重算（data 引用没变）；
+  // 出片或换版时引用会变，合成候选跟着更新
+  const shotDatas = useStore(
+    useShallow((state) =>
+      board.shots.map((shot) => {
+        const data = shot.videoNodeId
+          ? (state.nodeLookup.get(shot.videoNodeId)?.data as CanvasNodeData | undefined)
+          : undefined;
+        return data?.kind === "video" ? data : undefined;
+      }),
+    ),
+  );
+  // 顺序就是行序：不推断、不让用户在多选面板里二次确认
+  const candidates = useMemo(() => composeCandidatesFrom(board, shotDatas), [board, shotDatas]);
+  const missing = useMemo(() => missingVideoSeqsFrom(board, shotDatas), [board, shotDatas]);
+  const compose = useCanvasCompose(id, candidates);
+  const archive = useCanvasArchive();
+
   return (
     <StopDoubleClick>
       <Dialog
@@ -273,6 +353,18 @@ export function StoryboardDialog({
               </ChromePill>
             )}
             <ChromePill className={cn("h-9", board.shots.length === 0 && "ml-auto")}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="nodrag"
+                title="把画布上已有的视频 / 分镜图挂到镜头行"
+                onClick={() => setImportReq({ kind: "video" })}
+              >
+                <FolderInput />
+                导入素材
+              </Button>
+            </ChromePill>
+            <ChromePill className="h-9">
               <SplitControls id={id} />
             </ChromePill>
             <DialogDescription render={<div />} className="text-xs">
@@ -297,6 +389,7 @@ export function StoryboardDialog({
               ) : (
                 <StoryboardEmpty
                   onAdd={() => addAndFocus(addShot)}
+                  onImport={() => setImportReq({ kind: "video" })}
                   split={{ onSplit: trigger, reason: splitReason }}
                 />
               )}
@@ -366,6 +459,20 @@ export function StoryboardDialog({
               </div>
             </motion.div>
           )}
+          {board.shots.length > 0 && (
+            <ComposeBar
+              total={board.shots.length}
+              candidates={candidates}
+              missing={missing}
+              job={compose.job}
+              busy={compose.busy}
+              pending={compose.pending}
+              onCompose={() => void compose.compose()}
+              onCancel={() => void compose.cancel()}
+              onArchive={() => void archive.archive()}
+              archiving={archive.archiving}
+            />
+          )}
         </DialogContent>
       </Dialog>
       <MediaLightbox
@@ -378,6 +485,15 @@ export function StoryboardDialog({
         }}
         countLabel="本分镜表"
         onClose={() => setPreviewId(null)}
+      />
+      <ImportAssetsDialog
+        open={importReq !== null}
+        onOpenChange={(next) => {
+          if (!next) setImportReq(null);
+        }}
+        board={board}
+        request={importReq ?? DEFAULT_IMPORT}
+        onConfirm={applyImport}
       />
     </StopDoubleClick>
   );

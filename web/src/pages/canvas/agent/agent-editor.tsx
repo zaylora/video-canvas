@@ -2,6 +2,7 @@ import { useEffect, useImperativeHandle, useMemo, useRef, useState, type Ref } f
 import {
   Box,
   Clapperboard,
+  Combine,
   FileText,
   GalleryHorizontalEnd,
   Group,
@@ -82,6 +83,7 @@ const KIND_ICON = {
   audio: Music,
   character: UserRound,
   storyboard: GalleryHorizontalEnd,
+  compose: Combine,
 } as const;
 
 /** 行内 chip：不可编辑的原子节点，退格整个删除 */

@@ -78,6 +78,8 @@ describe("注册设置校验", () => {
     default_max_active_tasks: "3",
     queue_multiplier: "5",
     queue_max_wait_minutes: "60",
+    mcp_token_days: "30",
+    mcp_call_timeout: "60",
   };
 
   test("初始积分为非负整数，默认并发 1 到 64", () => {
@@ -116,6 +118,30 @@ describe("注册设置校验", () => {
     for (const queue_max_wait_minutes of ["5", "60", "1440"]) {
       expect(
         validateRegisterSettings({ ...ok, queue_max_wait_minutes }).queue_max_wait_minutes,
+      ).toBeUndefined();
+    }
+  });
+
+  test("令牌默认有效期是 1 到 90 天的整数", () => {
+    for (const mcp_token_days of ["", "0", "91", "1.5", "x"]) {
+      expect(validateRegisterSettings({ ...ok, mcp_token_days }).mcp_token_days).toBe(
+        "范围 1 到 90",
+      );
+    }
+    for (const mcp_token_days of ["1", "30", "90", " 7 "]) {
+      expect(validateRegisterSettings({ ...ok, mcp_token_days }).mcp_token_days).toBeUndefined();
+    }
+  });
+
+  test("MCP 调用超时是 5 到 300 秒的整数", () => {
+    for (const mcp_call_timeout of ["", "4", "301", "60.5", "x"]) {
+      expect(validateRegisterSettings({ ...ok, mcp_call_timeout }).mcp_call_timeout).toBe(
+        "范围 5 到 300",
+      );
+    }
+    for (const mcp_call_timeout of ["5", "60", "300"]) {
+      expect(
+        validateRegisterSettings({ ...ok, mcp_call_timeout }).mcp_call_timeout,
       ).toBeUndefined();
     }
   });

@@ -52,7 +52,7 @@ describe("后台导航", () => {
     expect(findNav("/admin/settings/version")?.item.label).toBe("版本与升级");
   });
 
-  test("AI 配置分组：总览、任务队列、模型渠道、插件、技能、运行记录、分析令牌；独立的“模型”页已并入渠道页，不再有单独的 Agent 分组", () => {
+  test("AI 配置分组：总览、任务队列、模型渠道、插件、技能、运行记录、分析令牌、MCP 接入；独立的“模型”页已并入渠道页，不再有单独的 Agent 分组", () => {
     const group = ADMIN_NAV.find((item) => item.label === "AI 配置");
     expect(group?.items.map((item) => [item.to, item.label])).toEqual([
       ["ai/overview", "总览"],
@@ -62,8 +62,19 @@ describe("后台导航", () => {
       ["agent/skills", "技能"],
       ["agent/runs", "运行记录"],
       ["agent/tokens", "分析令牌"],
+      ["agent/mcp", "MCP 接入"],
     ]);
     expect(ADMIN_NAV.some((item) => item.label === "Agent")).toBe(false);
+  });
+
+  test("MCP 接入页的面包屑落在 AI 配置分组下，图标不与其他菜单项重复", () => {
+    const found = findNav("/admin/agent/mcp");
+    expect(found?.group.label).toBe("AI 配置");
+    expect(found?.item.label).toBe("MCP 接入");
+    // 功能还是 Beta，入口要一直带着这个标记，别在后续改动里被顺手删掉
+    expect(found?.item.badge).toBe("Beta");
+    const items = ADMIN_NAV.flatMap((group) => group.items);
+    expect(items.filter((item) => item.icon === found?.item.icon)).toHaveLength(1);
   });
 
   test("技能页的面包屑落在 AI 配置分组下，路径不变", () => {

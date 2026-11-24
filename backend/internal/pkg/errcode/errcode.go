@@ -65,6 +65,14 @@ var (
 	ErrStoryboardSplitFailed   = New(30015, "拆分镜失败：模型两次输出都不合格，请重试", http.StatusBadGateway)
 	ErrStoryboardModelCall     = New(30016, "文本模型调用失败，请稍后重试", http.StatusBadGateway) // Msg 换成上游返回的错误原文
 	ErrStoryboardJobNotFound   = New(30017, "拆分镜任务不存在", http.StatusNotFound)
+	// 画布成片合成：按顺序把若干已生成视频拼成一个 mp4，不扣积分
+	ErrCanvasComposeBusy        = New(30018, "这张分镜表正在合成成片", http.StatusConflict)
+	ErrCanvasComposeJobNotFound = New(30019, "合成任务不存在", http.StatusNotFound)
+	ErrCanvasComposeNoClip      = New(30020, "没有可合成的视频片段", http.StatusBadRequest)
+	ErrCanvasComposeFailed      = New(30021, "合成失败，请重试", http.StatusBadGateway)
+	// 画布素材打包下载：画布上没有能打包的文件，或下载票据过期
+	ErrCanvasArchiveEmpty  = New(30022, "画布上没有可打包的素材", http.StatusBadRequest)
+	ErrCanvasArchiveTicket = New(30023, "下载链接无效或已过期，请重新点击打包素材", http.StatusUnauthorized)
 )
 
 // 生成任务 / 积分 / 素材 / AI 配置模块 4xxxx
@@ -326,4 +334,15 @@ var (
 	ErrVirtualHumanImageNotPublic = New(69010, "素材地址不是公网地址，方舟拉取不到，请联系管理员配置对象存储或本地存储的公网地址", http.StatusConflict)
 	ErrVirtualHumanRetryInvalid   = New(69011, "只有备案失败的图片可以重新提交", http.StatusConflict)
 	ErrVirtualHumanLimit          = New(69012, "真人数量已达上限", http.StatusConflict)
+)
+
+// 画布 MCP 接入 62xxx：外部 AI 工具通过标准协议访问画布
+var (
+	// ErrMCPTokenInvalid 统一回一句话，不区分不存在、已注销、已过期、项目停用还是归属用户被禁用，免得被拿来探测。
+	ErrMCPTokenInvalid    = New(62001, "MCP 令牌无效、已过期或已停用", http.StatusUnauthorized)
+	ErrMCPProjectNotFound = New(62002, "MCP 项目不存在", http.StatusNotFound)
+	ErrMCPTokenNotFound   = New(62003, "MCP 令牌不存在", http.StatusNotFound)
+	ErrMCPCanvasDenied    = New(62004, "这个 MCP 项目没有该画布的访问权限", http.StatusForbidden)
+	ErrMCPScopeDenied     = New(62005, "这个 MCP 项目没有该能力的权限", http.StatusForbidden)
+	ErrMCPToolDenied      = New(62006, "这个能力不对外开放", http.StatusForbidden)
 )

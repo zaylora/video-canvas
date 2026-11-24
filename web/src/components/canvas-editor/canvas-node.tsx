@@ -5,6 +5,7 @@ import type { CanvasNode } from "@/types";
 import { sameNodeProps } from "@/utils/canvas/node-props";
 
 import { CharacterCanvasNode } from "./character-node";
+import { ComposeCanvasNode } from "./compose-node";
 import { DirectorCanvasNode } from "./director-node";
 import { StoryboardCanvasNode } from "./storyboard-node";
 import { TextCanvasNode } from "./text-node";
@@ -33,6 +34,8 @@ export const CanvasNodeView = memo((props: NodeProps<CanvasNode>) => {
       return <CharacterCanvasNode id={id} data={data} selected={selected} />;
     case "storyboard":
       return <StoryboardCanvasNode id={id} data={data} selected={selected} />;
+    case "compose":
+      return <ComposeCanvasNode id={id} data={data} selected={selected} />;
   }
 }, sameNodeProps);
 CanvasNodeView.displayName = "CanvasNodeView";
