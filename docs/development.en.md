@@ -150,17 +150,17 @@ feat(canvas): 支持节点分组
 docs: 更新部署说明
 ```
 
-User-visible changes are recorded under `[Unreleased]` in [CHANGELOG.md](../CHANGELOG.md) during development; see the [contributing guide](../CONTRIBUTING.en.md#changelog).
+Record user-visible changes in individual files under `changelog.d/`. See the [contributing guide](../CONTRIBUTING.en.md#changelog).
 
 Branch naming, commit granularity, PR descriptions, how to file issues, and the review and merge process are in the [contributing guide](../CONTRIBUTING.en.md).
 
 ## CI and releases
 
 - Pushes to `master` run lint, build and tests for both backend and frontend.
-- The `Changelog` check on PRs (`.github/workflows/changelog.yml`): when a PR has `feat` / `fix` / `perf` / breaking commits, `[Unreleased]` must gain an entry; the `skip-changelog` label exempts it. Locally, the pre-commit `commit-msg` hook runs the same check (`scripts/changelog-check.mjs`).
+- The PR's `Changelog` check requires a new entry for `feat`, `fix`, `perf` or breaking changes. The local `commit-msg` hook validates staged entry files.
 - Migrations only move forward: migration files included in the latest `v*` tag must not be modified, deleted or renamed. Add a new migration instead, or CI will fail.
 - Pushing a `v*` tag makes CI check that the tag, `VERSION` and [CHANGELOG.md](../CHANGELOG.md) agree, build the `video-canvas-backend` and `video-canvas-web` images, publish them to GHCR, and then create a GitHub Release.
-- So when releasing, rename `[Unreleased]` to `## [x.y.z] - date` (keeping a new empty `[Unreleased]` on top), update `VERSION`, commit both, then create and push the tag.
+- Preview release notes with `node scripts/changelog-check.mjs release 0.7.3 2026-11-25`, substituting the target version and release date. Add `--write` to insert the new section in `CHANGELOG.md`, update `VERSION` and remove the collected entries. Review and commit these changes together before creating and pushing the tag.
 
 ## Related documents
 

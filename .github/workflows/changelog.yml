@@ -1,6 +1,6 @@
 name: Changelog
 
-# 用户可感知的改动（feat / fix / perf / 破坏性变更）要在 CHANGELOG.md 的 [Unreleased] 新增条目。
+# 用户可感知的改动（feat / fix / perf / 破坏性变更）要在 changelog.d/ 新增日志文件。
 # 单独一个 workflow：打 / 去掉 skip-changelog 标签时只重跑这一项，不重跑整套 CI
 on:
   pull_request:
@@ -15,6 +15,7 @@ concurrency:
 
 jobs:
   unreleased:
+    # 保留检查名称以兼容现有分支保护规则。
     name: CHANGELOG [Unreleased]
     runs-on: ubuntu-latest
     steps:
@@ -29,7 +30,8 @@ jobs:
       - name: 检查脚本自测
         run: node --test scripts/tests/*.test.mjs
 
-      - name: 检查 [Unreleased]
+      - name: 检查 PR 的版本日志
         env:
+          BASE_REF: ${{ github.base_ref }}
           CHANGELOG_SKIP: ${{ contains(github.event.pull_request.labels.*.name, 'skip-changelog') && '1' || '' }}
-        run: node scripts/changelog-check.mjs pr "origin/${{ github.base_ref }}"
+        run: node scripts/changelog-check.mjs pr "origin/$BASE_REF"

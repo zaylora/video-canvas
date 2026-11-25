@@ -75,24 +75,14 @@ docs(design): 3D 导演台补充面板可拖动调节的设计记录
 
 ### 版本日志（CHANGELOG）
 
-版本日志在开发时写，不在发版时从提交里拼。遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)：
+版本日志随改动编写。包含 `feat`、`fix`、`perf` 或破坏性变更（`type!:` 或正文有 `BREAKING CHANGE:`）的 PR 在 `changelog.d/` 新增日志文件。
 
-- `feat` / `fix` / `perf` 和破坏性变更（`type!:` 或正文有 `BREAKING CHANGE:`）要在**同一个提交或 PR** 里，往 `CHANGELOG.md` 顶部 `## [Unreleased]` 的对应小节加一条。
-- 小节只用：`新增`、`改进`、`修复`、`废弃`、`破坏性变更`、`文档`；没有就新建，条目以 `- ` 开头。
-- 写给使用者看：简体中文，描述用户能感知的结果，一条只写一件事，不写函数名、文件名等实现细节。
-- 用用户口吻说大白话，让不懂技术的人也能看懂：不用「限流」「上游」「最大输出」「JSON」「批次」「重试」这类技术词，换成用户能感受到的说法；只写给管理员的操作提示也不写进来。例如写「提取资产时遇到模型繁忙，会自动稍等再试，不再直接失败。」，而不是「文本模型被限流或上游临时故障时自动退避重试。」
-- 不要改已发布版本的段落；发版时维护者会把 `[Unreleased]` 整理成新版本。
-- 确实没有用户可感知的变化（内部重构、测试、CI 之类本来就不用写；`feat` 只是内部能力时）：提交正文加一行 `Changelog: skip`，PR 则请维护者打 `skip-changelog` 标签。
+- 文件名用 `<改动名>.<类别>.md`。改动名使用小写英文字母、数字和连字符。例如 `changelog.d/storyboard-legacy-assets.fix.md`。
+- 类别用 `feat`（新增）、`perf`（改进）、`fix`（修复）、`deprecated`（废弃）、`breaking`（破坏性变更）或 `docs`（文档）。
+- 正文写一行简体中文，直接描述用户能感受到的结果。例如「提取资产时遇到模型繁忙，会自动稍等再试，不再直接失败。」
+- 确实没有用户可感知的变化时，在提交正文写 `Changelog: skip`，或请维护者给 PR 打 `skip-changelog` 标签。
 
-```markdown
-## [Unreleased]
-
-### 新增
-
-- 画布支持节点分组。
-```
-
-本地 `pre-commit install` 后，`commit-msg` 钩子会在提交时检查；PR 上的 `Changelog` 检查做同样的事。
+本地 `commit-msg` 钩子校验暂存的日志文件格式，并拦截写进 `CHANGELOG.md` `[Unreleased]` 的条目。PR 上的 `Changelog` 检查确认整个 PR 是否需要新增日志；除发版外，PR 不能删除 `changelog.d/` 里已有的日志（确需撤掉时请维护者打 `skip-changelog` 标签）。
 
 ## 提交前自检
 
@@ -143,7 +133,7 @@ npm test
 
 ## 发版
 
-发版由维护者完成（把 `CHANGELOG.md` 的 `[Unreleased]` 整理为新版本、更新 `VERSION`、打 `v*` 标签）。贡献者只需在 PR 里往 `[Unreleased]` 加日志，不要改 `VERSION` 和已发布版本的段落。流程说明见 [开发指南](docs/development.md#持续集成与发布)。
+发版时由维护者把 `changelog.d/` 汇总到 `CHANGELOG.md`，更新 `VERSION` 并打 `v*` 标签。流程见[开发指南](docs/development.md#持续集成与发布)。
 
 ## 行为准则
 

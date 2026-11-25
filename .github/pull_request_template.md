@@ -30,4 +30,4 @@
 - [ ] 改了表结构：已新增迁移文件，且没有修改已发布的迁移
 - [ ] 改了接口、配置或用户可见行为：已同步更新文档
 - [ ] 没有提交密钥、令牌、真实连接串或运行时数据
-- [ ] 用户可感知的改动已在 `CHANGELOG.md` 的 `[Unreleased]` 加了条目（没有则打 `skip-changelog` 标签）；没有改 `VERSION` 和已发布版本的段落
+- [ ] 用户可感知的改动已在 `changelog.d/` 新增日志文件（没有则在提交正文写 `Changelog: skip` 或打 `skip-changelog` 标签）；没有删除别人的日志文件，仅发版时更新 `CHANGELOG.md` 和 `VERSION`

@@ -93,9 +93,9 @@ repos:
         files: ^web/(src/.*\.(ts|tsx)|tsconfig.*\.json)$
         pass_filenames: false
 
-      # feat / fix / perf 和破坏性变更要在 CHANGELOG.md 的 [Unreleased] 新增条目，正文写 `Changelog: skip` 可豁免
+      # 本地校验暂存的日志文件格式，由 PR 检查是否需要新增日志。
       - id: changelog
-        name: CHANGELOG [Unreleased]
+        name: Changelog fragments
         entry: node scripts/changelog-check.mjs commit-msg
         language: system
         stages: [commit-msg]

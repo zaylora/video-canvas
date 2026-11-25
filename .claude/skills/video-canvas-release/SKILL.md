@@ -1,6 +1,6 @@
 ---
 name: video-canvas-release
-description: 发布 video-canvas 新版本；把 CHANGELOG 的 [Unreleased] 整理成版本日志并确认，用 Git 变更查漏，再更新 VERSION、创建并推送 Git 标签。
+description: 发布 video-canvas 新版本；汇总 changelog.d/ 的日志，用 Git 变更查漏，确认发布说明后更新 VERSION 并打标签。
 metadata:
   short-description: 发布 video-canvas 版本
 ---
@@ -23,7 +23,7 @@ metadata:
 
 ## 版本日志规则
 
-版本日志面向使用 video-canvas 的用户，不是 Git 提交的复制品。日志在开发时就随改动写进 `CHANGELOG.md` 的 `## [Unreleased]`（规则见 `CONTRIBUTING.md`「版本日志」，由 commit-msg 钩子和 PR 的 `Changelog` 检查约束）。发版时以 `[Unreleased]` 为来源整理，Git 提交只用来查漏，用户确认后才写入。
+版本日志面向 video-canvas 用户。开发时随改动在 `changelog.d/` 新增日志文件，格式见 `CONTRIBUTING.md`「版本日志」。发版以这些文件为来源，用 Git 提交查漏。
 
 只保留用户可感知或需要采取行动的变化：
 
@@ -36,17 +36,17 @@ metadata:
 
 过滤以下内容，不写入用户版本日志：更新 CHANGELOG、版本号或发布 skill；合并分支；格式化和内部代码整理；没有用户影响的测试、依赖和 CI 维护；只描述实现细节、函数名、文件名或内部重命名的提交。
 
-每条日志使用简体中文，描述用户结果，尽量一条只写一件事。用用户口吻说大白话，让不懂技术的人也能看懂，不用技术术语（细则见 `CONTRIBUTING.md`「版本日志」）；整理 `[Unreleased]` 时把技术腔的条目改写成这种口吻。无法从提交、代码差异、测试或 PR 描述确认的内容标记为“待确认”，不得猜测。
+每条日志使用简体中文，一条只写一件事，用用户能感受到的结果描述。遇到需要进一步确认的改动，标记为“待确认”，并查阅代码差异、测试或 PR 描述。
 
 ## 发版流程
 
 1. 进入项目目录，读取 `git status --short --branch`、`VERSION`、远端标签和当前提交。不要覆盖用户已有的未提交改动；工作区不干净时先说明并停止。
 2. 根据上面的规则计算目标版本。确认本地和远端不存在同名 `v<version>` 标签。
-3. 读取 `CHANGELOG.md` 的 `## [Unreleased]`，先跑 `node scripts/changelog-check.mjs lint` 确认格式。`[Unreleased]` 为空时停下告诉用户，不要改回从提交生成日志。
-4. 查漏：找到最近的发布标签 `v<previous-version>`，列出 `v<previous-version>..HEAD` 的非合并提交里 `feat` / `fix` / `perf` / 破坏性变更、且没带 `Changelog: skip` 的提交，对照 `[Unreleased]` 找出没有对应条目的；必要时读代码差异确认用户影响，不要只根据提交标题猜测。
-5. 整理草稿：以 `[Unreleased]` 为准，按“版本日志规则”润色措辞、合并重复或同一功能的多条、删掉无用户影响的条目，按 `新增`、`改进`、`修复`、`废弃`、`破坏性变更`、`文档` 排序。把草稿连同第 4 步的漏写候选（单独列出，标“待确认”）展示给用户，等待确认或修改；确认前不得改写 `CHANGELOG.md`、提交、创建标签或推送。
-6. 用户确认后写入 `CHANGELOG.md`：把 `[Unreleased]` 的内容替换为确认后的草稿并改名为 `## [<version>] - YYYY-MM-DD`，在它上方放一个新的空 `## [Unreleased]`；不写 `Update changelog` 等维护记录；保留已有历史版本，不改写历史事实；更新底部版本比较链接（如果文件使用比较链接）。
-7. 运行 `node scripts/changelog-check.mjs lint`，并检查 `CHANGELOG.md` 中目标版本存在且至少有一条用户可见变更、顶部 `[Unreleased]` 为空。同时把 `VERSION` 改为目标版本，与 `CHANGELOG.md` 一起提交：`docs: update changelog for v<version>`。CI 不再回写 `VERSION`，只会校验它与标签一致，所以必须在打标签前提交。
+3. 运行 `node scripts/changelog-check.mjs release <version> <YYYY-MM-DD>` 预览待发布条目。脚本只汇总已提交的日志文件，`changelog.d/` 有未提交或改动过的文件时会拒绝执行。目录中无待发布条目时向用户说明。
+4. 找到最近的发布标签 `v<previous-version>`，对照 `v<previous-version>..HEAD` 中需要版本日志的非合并提交，核对是否遗漏了用户可感知的变化。
+5. 以预览为基础整理草稿，合并重复条目。把草稿和待确认的遗漏展示给用户，待其确认后写入。
+6. 运行预览命令并加上 `--write`，让脚本写入新版本段落、更新 `VERSION` 并移除已汇总的日志文件。把新版本段落调整为已确认的内容。若文件使用版本比较链接，同步更新对应链接。
+7. 运行 `node scripts/changelog-check.mjs lint`，检查新版本段落、`VERSION` 及已汇总的文件删除记录。把这些改动一起提交，提交消息可用 `docs: update changelog for v<version>`。
 8. 创建带说明的标签：`git tag -a v<version> -m "Release v<version>"`，然后推送：`git push origin v<version>`。
 9. 通过 `gh run list` 等待并核对 `Release Docker images`（其中 `validate` 作业先校验标签、`VERSION` 与 CHANGELOG，`release` 作业在镜像推送成功后才创建 Release）：发布说明应来自已确认的 `CHANGELOG.md`，`VERSION` 校验、质量检查和镜像发布都成功后才算完成。若任务只要求创建标签，可在标签推送成功后返回标签地址，并说明工作流状态。
 10. 最终报告目标版本、标签、Release 地址、工作流地址和每项验证结果。不要把密钥、令牌或运行时数据写入仓库。
