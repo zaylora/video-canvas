@@ -1,5 +1,6 @@
 // 命令注册入口：cli.ts 用 COMMANDS 做分发；子命令按领域拆在同目录的各文件里。
 import { agentApprove, agentCancel, agentEvents, agentRun } from "./agent.ts";
+import { assetUpload } from "./asset.ts";
 import { login, logout, whoami } from "./auth.ts";
 import {
   canvasCreate,
@@ -24,6 +25,7 @@ export const COMMANDS = {
   login,
   logout,
   whoami,
+  assetUpload,
   canvasList,
   canvasGet,
   canvasCreate,
@@ -63,6 +65,7 @@ export {
   agentCancel,
   agentEvents,
   agentRun,
+  assetUpload,
   canvasCompose,
   canvasComposeCancel,
   canvasComposeStatus,

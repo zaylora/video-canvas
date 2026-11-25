@@ -97,7 +97,7 @@ const (
 
 func TestDoubaovideoPrecheckAndMeta(t *testing.T) {
 	env := newDoubaovideoEnv(t)
-	if env.meta.Key != "doubao-video" || env.meta.Version != "1.2.1" || env.meta.Auth.Type != pluginmeta.AuthBearer {
+	if env.meta.Key != "doubao-video" || env.meta.Version != "1.2.2" || env.meta.Auth.Type != pluginmeta.AuthBearer {
 		t.Fatalf("meta 不符合预期：%+v", env.meta)
 	}
 	if ep, ok := env.meta.Endpoint("video"); !ok || ep.Mode != pluginmeta.ModeAsync {
@@ -150,6 +150,23 @@ func TestDoubaovideoVideoSubmitI2V(t *testing.T) {
 	img := content[1].(map[string]any)
 	if url, _ := img["image_url"].(map[string]any); img["type"] != "image_url" || url["url"] != doubaovideoRefURL || img["role"] != nil {
 		t.Fatalf("单张图应是不带 role 的首帧：%v", img)
+	}
+}
+
+func TestDoubaovideoVideoSubmitBaseURLIncludesAPIV3(t *testing.T) {
+	srv, up := doubaovideoServer(t, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"id":"cgt-2025-abc"}`))
+	})
+	env := newDoubaovideoEnv(t)
+	baseURL := srv.URL + "/api/v3"
+	_, err := env.exec.Submit(context.Background(), env.snapshot(baseURL, "video", doubaovideoModel), provider.SubmitInput{
+		Task: provider.TaskRef{ID: 1, UserID: 9}, Input: map[string]any{"prompt": "猫在跳舞"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := up.last(); got.Method != "POST" || got.Path != "/api/v3/contents/generations/tasks" {
+		t.Fatalf("base_url 已包含 /api/v3 时不应重复拼接：%+v", got)
 	}
 }
 

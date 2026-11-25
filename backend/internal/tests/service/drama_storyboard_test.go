@@ -115,6 +115,34 @@ func TestDramaStoryboardPipeline(t *testing.T) {
 	}
 }
 
+func TestDramaStoryboardLegacyAssetNameFallback(t *testing.T) {
+	r := newDramaMemory()
+	storyboardReady(r)
+	// 旧画布角色资产把名字放在 label/character.name，drama.name 为空；分镜必须能把它当具名资产引用。
+	r.canvas = []byte(`{"nodes":[{"id":"n_scene","data":{"drama":{"type":"scene","name":"村口","look":"夜","episodes":[]},"params":{"prompt":"夜间村口灯光"}}},{"id":"role_label","data":{"kind":"character","label":"林子若","character":{"name":""},"drama":{"type":"character","episodes":[]},"params":{"prompt":"栗色长发"}}},{"id":"role_character","data":{"kind":"character","label":"","character":{"name":"黄毛"},"drama":{"type":"character","episodes":[]},"params":{"prompt":"黄发"}}}],"edges":[]}`)
+	draft := "村口，林子若与黄毛争执。"
+	valid := `{"segments":[{"seconds":15,"prompt":"@[村口](n_scene) @[林子若](role_label) @[黄毛](role_character)"}]}`
+	e := &dramaTextStreamer{outputs: []string{draft, valid}}
+	s, _ := dramaTestService(r, e, nil)
+	job, err := s.CreateJob(context.Background(), 7, 1, storyboardRequest(t, 0, []int{1}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.HandleDrama(context.Background(), 7, 1, uint64(job.ID)); err != nil {
+		t.Fatal(err)
+	}
+	if len(r.segments) != 1 || !strings.Contains(r.segments[0].Prompt, "@[林子若](role_label)") || !strings.Contains(r.segments[0].Prompt, "@[黄毛](role_character)") {
+		t.Fatalf("旧资产引用未保留: %+v", r.segments)
+	}
+	for _, prompt := range e.prompts {
+		for _, want := range []string{`"name":"林子若"`, `"name":"黄毛"`} {
+			if !strings.Contains(prompt, want) {
+				t.Fatalf("资产清单缺少%s: %s", want, prompt)
+			}
+		}
+	}
+}
+
 func TestDramaStoryboardPrerequisitesAndBounds(t *testing.T) {
 	for _, tc := range []struct {
 		name          string

@@ -37,7 +37,7 @@ module.exports = {
     apiVersion: 1,
     key: "doubao-video",
     name: "豆包（火山方舟） · 视频",
-    version: "1.2.1",
+    version: "1.2.2",
     vendor: "volcengine",
     description: "火山引擎豆包 Seedance 视频生成（异步）",
     auth: { type: "bearer" },
@@ -76,7 +76,7 @@ module.exports = {
   buildQueryRequest: function (ctx) {
     return {
       method: "GET",
-      path: TASKS_PATH + "/" + encodeURIComponent(ctx.task.providerTaskId),
+      path: taskPath(ctx) + "/" + encodeURIComponent(ctx.task.providerTaskId),
       timeout: 30,
     };
   },
@@ -123,12 +123,20 @@ module.exports = {
   },
 
   buildCheckRequest: function (ctx) {
-    return { method: "GET", path: TASKS_PATH, query: { page_num: 1, page_size: 1 }, timeout: 15 };
+    return { method: "GET", path: taskPath(ctx), query: { page_num: 1, page_size: 1 }, timeout: 15 };
   },
 };
 
 
 var TASKS_PATH = "/api/v3/contents/generations/tasks";
+
+function taskPath(ctx) {
+  var baseUrl = ctx.channel && typeof ctx.channel.baseUrl === "string" ? ctx.channel.baseUrl : "";
+  if (/\/api\/v3\/*(?:[?#].*)?$/.test(baseUrl)) {
+    return TASKS_PATH.replace(/^\/api\/v3/, "");
+  }
+  return TASKS_PATH;
+}
 
 // ---------------------------------------------------------------------------
 // 视频（Seedance）
@@ -151,7 +159,7 @@ function buildVideoRequest(ctx) {
     body.generate_audio = input.generate_audio;
   }
   body.watermark = false; // 默认不加水印（方舟默认加）
-  return { method: "POST", path: TASKS_PATH, json: body, timeout: 60 };
+  return { method: "POST", path: taskPath(ctx), json: body, timeout: 60 };
 }
 
 // content 数组：文本在前，随后是图片 / 视频 / 音频参考。图片和音频按渠道设置传输，视频使用签名 URL。

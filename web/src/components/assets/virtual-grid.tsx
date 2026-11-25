@@ -1,4 +1,9 @@
-import { useVirtualizer, useWindowVirtualizer, type VirtualItem } from "@tanstack/react-virtual";
+import {
+  observeWindowOffset,
+  useVirtualizer,
+  useWindowVirtualizer,
+  type VirtualItem,
+} from "@tanstack/react-virtual";
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
@@ -6,6 +11,35 @@ import { gridColumns, type GridColumnSpec } from "@/utils/assets/grid-columns";
 
 /** 首屏（含服务端渲染 / 测试）还没量过滚动区时按这个尺寸出行，挂载后由真实尺寸接管 */
 const INITIAL_RECT = { width: 1024, height: 800 };
+
+const SCROLL_LOCK_ATTRIBUTE = "data-base-ui-scroll-locked";
+
+/** Base UI 锁定带常驻滚动条的页面时，可能把文档的滚动偏移转移到 body。 */
+function documentScrollOffset(win: Window) {
+  const { documentElement, body } = win.document;
+  return win.scrollY + (documentElement.hasAttribute(SCROLL_LOCK_ATTRIBUTE) ? body.scrollTop : 0);
+}
+
+/** 锁定状态变化不一定伴随 window 的 scroll 事件。 */
+const observeDocumentOffset: typeof observeWindowOffset = (instance, onOffset) => {
+  const win = instance.scrollElement;
+  if (!win) return;
+
+  const update = () => onOffset(documentScrollOffset(win), false);
+  const { documentElement, body } = win.document;
+  const observer = new MutationObserver(update);
+  observer.observe(documentElement, { attributes: true, attributeFilter: [SCROLL_LOCK_ATTRIBUTE] });
+  body.addEventListener("scroll", update, { passive: true });
+  const unobserveWindow = observeWindowOffset(instance, (_offset, isScrolling) => {
+    onOffset(documentScrollOffset(win), isScrolling);
+  });
+
+  return () => {
+    observer.disconnect();
+    body.removeEventListener("scroll", update);
+    unobserveWindow?.();
+  };
+};
 
 /** 两种虚拟器（整页 / 元素）共有、渲染行时用到的那部分 */
 interface RowVirtualizer {
@@ -44,7 +78,9 @@ function useGridLayout(mode: "window" | "parent") {
       const top = el.getBoundingClientRect().top;
       // 滚动区内的位置 = 相对滚动区可视顶边的距离 + 已滚出去的距离
       setMargin(
-        parent ? top - parent.getBoundingClientRect().top + parent.scrollTop : top + window.scrollY,
+        parent
+          ? top - parent.getBoundingClientRect().top + parent.scrollTop
+          : top + documentScrollOffset(window),
       );
     };
     measure();
@@ -153,6 +189,8 @@ function WindowScrollGrid<T>({
   // useWindowVirtualizer 的返回值不能被 React Compiler 记忆化；只在本组件内使用
   // oxlint-disable-next-line react/incompatible-library
   const virtual = useWindowVirtualizer({
+    observeElementOffset: observeDocumentOffset,
+    initialOffset: () => (typeof window === "undefined" ? 0 : documentScrollOffset(window)),
     count: Math.ceil(items.length / cols),
     estimateSize: () => estimateRowHeight(cellWidth),
     overscan: 3,

@@ -61,6 +61,17 @@
 `model show` 读的是 `capabilities`：`ops` 是生成方式（如 t2i / i2v / omni），`params` 是「名字 → 字段」的对象
 （`type` 为 `enum` / `number` / `boolean`），`refs` 是各类参考素材的开关与上限，`prompt.max` 是提示词字数上限。
 
+本地素材上传：
+
+| 命令             | 参数         | 返回                                                |
+| ---------------- | ------------ | --------------------------------------------------- |
+| `asset upload`   | `<文件路径>` | 素材视图（`id` / `kind` / `byte_size` / `file_name` 等） |
+
+一次传一个文件；路径不存在、是目录、空文件或超过 200MB 都在本地拒绝（退出码 2）。复用现有 JWT，无额外权限；
+服务端按文件头嗅探真实类型、归属到当前账号。返回的 `id` 是纯数字，直接用于 `generate --ref-*` 与首尾帧参数。
+
+上传路径与网页一致：先申请 upload-intent，系统开了直传就直传对象存储再调 complete 登记；未开直传、申请失败或直传失败则降级到 `POST /assets` 中转。登记失败（类型不合法 / 超限）是真错误，不会降级重传。
+
 ```
 generate <image|video|audio|text> --model <模型key>
          [--canvas <画布编号> --node <节点id>] [--prompt <提示词>]

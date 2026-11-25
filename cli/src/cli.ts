@@ -14,6 +14,7 @@ import {
   agentCancel,
   agentEvents,
   agentRun,
+  assetUpload,
   canvasCompose,
   canvasComposeCancel,
   canvasComposeStatus,
@@ -82,6 +83,10 @@ const USAGE = `video-canvas-cli（beta）— 连镜命令行
   canvas node set <code> <节点id> [--label 标题] [--text 正文] [--prompt 提示词] [--model 模型]
   canvas node rm <code> <节点id> [更多节点id...]
                                         只提交差异；服务端按 revision 乐观锁写入
+
+本地素材上传（用现有登录态，无需额外权限）
+  asset upload <文件路径>                         上传本地图片 / 视频 / 音频到素材库，
+                                                  返回素材 id，可直接用于 generate 的 --ref-* 参数
 
 模型与积分
   model list [--kind image|video|audio|text]      看有哪些模型、key 是什么
@@ -333,6 +338,11 @@ async function main(argv: string[]): Promise<void> {
         return await logout(ctx);
       case "whoami":
         return await whoami(ctx);
+      case "asset": {
+        const [sub, ...rest] = positional;
+        if (sub === "upload") return await assetUpload(ctx, { positional: rest, flags });
+        throw new APIError(-1, `asset 子命令只支持 upload\n\n${USAGE}`, 2);
+      }
       case "canvas":
         return await runCanvas(ctx, positional, flags);
       case "task":

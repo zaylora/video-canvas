@@ -182,6 +182,7 @@ func (s *DramaService) storyboardAssets(ctx context.Context, p *model.DramaProje
 		Nodes []struct {
 			ID   string `json:"id"`
 			Data struct {
+				Label string `json:"label"`
 				Drama *struct {
 					Type     string `json:"type"`
 					Name     string `json:"name"`
@@ -192,6 +193,7 @@ func (s *DramaService) storyboardAssets(ctx context.Context, p *model.DramaProje
 					Prompt string `json:"prompt"`
 				} `json:"params"`
 				Character *struct {
+					Name  string `json:"name"`
 					Voice *struct {
 						Mode    string `json:"mode"`
 						AssetID string `json:"assetId"`
@@ -210,13 +212,25 @@ func (s *DramaService) storyboardAssets(ctx context.Context, p *model.DramaProje
 		if node.ID == "" || d == nil || d.Episodes == nil || !slices.Contains([]string{"character", "scene", "prop"}, d.Type) || len(d.Episodes) > 0 && !slices.Contains(d.Episodes, no) {
 			continue
 		}
+		// 旧画布的角色资产把名字放在 label/character.name，drama.name 为空；和前端取资产同一口径回退，
+		// 否则模型拿到空名字，分镜里只能写纯文本，视频生成时无法绑定参考图。
+		name := strings.TrimSpace(d.Name)
+		if name == "" {
+			name = strings.TrimSpace(node.Data.Label)
+		}
+		if name == "" && node.Data.Character != nil {
+			name = strings.TrimSpace(node.Data.Character.Name)
+		}
+		if name == "" {
+			continue
+		}
 		summary := []rune(strings.TrimSpace(node.Data.Params.Prompt))
 		if len(summary) > 500 {
 			summary = summary[:500]
 		}
 		// 和片场提交视频同一口径：角色卡绑了音频声音就会带上参考音频
 		voice := node.Data.Character != nil && node.Data.Character.Voice != nil && node.Data.Character.Voice.Mode == "audio" && node.Data.Character.Voice.AssetID != ""
-		assets = append(assets, dramaStoryboardAsset{NodeID: node.ID, Type: d.Type, Name: d.Name, Look: d.Look, PromptSummary: string(summary), HasVoice: d.Type == "character" && voice})
+		assets = append(assets, dramaStoryboardAsset{NodeID: node.ID, Type: d.Type, Name: name, Look: strings.TrimSpace(d.Look), PromptSummary: string(summary), HasVoice: d.Type == "character" && voice})
 	}
 	return assets, nil
 }
