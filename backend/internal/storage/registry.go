@@ -98,10 +98,19 @@ func (r *Registry) Default(ctx context.Context) (*Handle, error) {
 
 // Get 按 id 返回存储；不存在返回 ErrStorageNotFound。
 func (r *Registry) Get(ctx context.Context, id uint64) (*Handle, error) {
+	return r.get(ctx, id, false)
+}
+
+// GetCurrent 核对数据库中的配置版本，再复用同版本的客户端。
+func (r *Registry) GetCurrent(ctx context.Context, id uint64) (*Handle, error) {
+	return r.get(ctx, id, true)
+}
+
+func (r *Registry) get(ctx context.Context, id uint64, refresh bool) (*Handle, error) {
 	r.mu.Lock()
 	c, ok := r.items[id]
 	r.mu.Unlock()
-	if ok && r.now().Before(c.expires) {
+	if !refresh && ok && r.now().Before(c.expires) {
 		return c.h, nil
 	}
 

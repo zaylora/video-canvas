@@ -11,7 +11,7 @@ import (
 )
 
 func storageModels() []any {
-	return []any{&model.StorageConfig{}, &model.Asset{}, &model.AssetUploadIntent{}, &model.AISecret{}}
+	return []any{&model.StorageConfig{}, &model.StorageHybridPolicy{}, &model.Asset{}, &model.AssetUploadIntent{}, &model.AISecret{}}
 }
 
 func newStorageRow(name string) *model.StorageConfig {

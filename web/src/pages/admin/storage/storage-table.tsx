@@ -2,7 +2,7 @@ import { Activity, Loader2, Star, Trash2 } from "lucide-react";
 import { Link } from "react-router";
 
 import type { ProcessorOption, ProcessorPreset } from "@/api/admin/image-processor/type.d";
-import type { StoragePreset, StorageView } from "@/api/admin/storage/type.d";
+import type { StorageHybridStatus, StoragePreset, StorageView } from "@/api/admin/storage/type.d";
 import { EmptyState, EmptyStateActions, EmptyStateTitle } from "@/components/admin-ui/empty-state";
 import { TableSkeletonRows } from "@/components/admin-ui/table-skeleton-rows";
 import { ReasonTooltip } from "@/components/admin-ui/reason-tooltip";
@@ -17,6 +17,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { hybridStorageLocks } from "@/utils/admin/storage-hybrid";
 import { bindingOfStorage, enableTarget } from "@/utils/admin/image-processor";
 import {
   accessLabel,
@@ -58,6 +59,7 @@ export type StorageRowActions = {
  */
 export function StorageTable({
   storages,
+  hybrid = null,
   presets,
   canWrite,
   loading = false,
@@ -69,6 +71,8 @@ export function StorageTable({
   actions,
 }: {
   storages: StorageView[];
+  /** 混合策略影响的操作锁 */
+  hybrid?: StorageHybridStatus | null;
   presets: StoragePreset[];
   canWrite: boolean;
   /** 加载中：表头照常显示，表格体换成骨架行 */
@@ -116,6 +120,7 @@ export function StorageTable({
             <StorageRow
               key={storage.id}
               storage={storage}
+              hybrid={hybrid}
               presets={presets}
               canWrite={canWrite}
               busy={busyId === storage.id}
@@ -132,6 +137,7 @@ export function StorageTable({
 
 function StorageRow({
   storage,
+  hybrid,
   presets,
   canWrite,
   busy,
@@ -140,6 +146,7 @@ function StorageRow({
   actions,
 }: {
   storage: StorageView;
+  hybrid: StorageHybridStatus | null;
   presets: StoragePreset[];
   canWrite: boolean;
   busy: boolean;
@@ -148,8 +155,9 @@ function StorageRow({
   actions: StorageRowActions;
 }) {
   const where = storageLocation(storage);
-  const defaultReason = defaultBlockReason(storage);
-  const deleteReason = deleteBlockReason(storage);
+  const locks = hybridStorageLocks(hybrid, storage.id);
+  const defaultReason = locks.defaultReason || defaultBlockReason(storage);
+  const deleteReason = locks.deleteReason || deleteBlockReason(storage);
   const openable = !storage.builtin;
   /** 操作列里的点击不该打开弹窗；浮层 portal 出去的事件也会沿 React 树冒泡到这里 */
   const stop = {

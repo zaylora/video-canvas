@@ -52,17 +52,19 @@ type App struct {
 	rdb    *redis.Client
 	server *http.Server
 
-	hub        *ws.Hub                   // WebSocket 连接管理，退出时需要显式关闭（Shutdown 不会等已劫持的连接）
-	taskQueue  *queue.Runtime            // 生成任务队列（River）：本实例是否执行任务由 ai.worker.enabled 决定，但入队和后台操作总是可用
-	queueConn  *pgxpool.Pool             // 队列用来 LISTEN 新任务通知的专用连接池，退出时关闭
-	skills     *agentsvc.SkillService    // Agent 技能库；后台周期清理过期暂存和待删除的版本
-	agent      *agentRuntime             // 画布 Agent 的桥和运行进程；agent.enabled=false 时为 nil
-	runnerStop func()                    // 停止 plugin-runner 子进程的监督并结束进程；非 spawn 模式为 nil
-	assets     *service.AssetService     // 素材服务；后台定期用它清理过期未登记的直传对象
-	loginLogs  *service.LoginLogCleaner  // 登录记录清理器；后台每天清理超过保留天数的记录
-	cliDevices *service.CLIDeviceCleaner // 命令行设备授权清理器；后台每天清理过期的设备码
-	observe    *agentsvc.ObserveService  // Agent 运行观测；后台每天清理超过 30 天的工具参数和结果
-	payment    *service.PaymentService   // 积分充值；后台每 30 秒补单、处理超时订单
+	hub           *ws.Hub                        // WebSocket 连接管理，退出时需要显式关闭（Shutdown 不会等已劫持的连接）
+	taskQueue     *queue.Runtime                 // 生成任务队列（River）：本实例是否执行任务由 ai.worker.enabled 决定，但入队和后台操作总是可用
+	queueConn     *pgxpool.Pool                  // 队列用来 LISTEN 新任务通知的专用连接池，退出时关闭
+	skills        *agentsvc.SkillService         // Agent 技能库；后台周期清理过期暂存和待删除的版本
+	agent         *agentRuntime                  // 画布 Agent 的桥和运行进程；agent.enabled=false 时为 nil
+	runnerStop    func()                         // 停止 plugin-runner 子进程的监督并结束进程；非 spawn 模式为 nil
+	refCache      *service.ReferenceCacheRuntime // 本地参考素材的临时 R2 地址，可关闭
+	storageHybrid *service.StorageHybridService
+	assets        *service.AssetService     // 素材服务；后台定期用它清理过期未登记的直传对象
+	loginLogs     *service.LoginLogCleaner  // 登录记录清理器；后台每天清理超过保留天数的记录
+	cliDevices    *service.CLIDeviceCleaner // 命令行设备授权清理器；后台每天清理过期的设备码
+	observe       *agentsvc.ObserveService  // Agent 运行观测；后台每天清理超过 30 天的工具参数和结果
+	payment       *service.PaymentService   // 积分充值；后台每 30 秒补单、处理超时订单
 }
 
 // NewApp 初始化基础设施并手动组装依赖：repository -> service -> handler -> router。
@@ -134,7 +136,8 @@ func NewApp(cfg *config.Config) (*App, error) {
 	storeRegistry := storage.NewRegistry(storageSvc, 30*time.Second)
 	storageSvc.SetInvalidator(storeRegistry)
 	assetRepo := repository.NewAssetRepository(db)
-	assetSvc := service.NewAssetService(assetRepo, storeRegistry, cfg.Storage) // 同时是 provider.AssetStore 和 provider.AssetSaver
+	storageHybrid := service.NewStorageHybridService(storageRepo, storeRegistry, cfg.Storage.ReferenceCache)
+	assetSvc := service.NewAssetService(assetRepo, storageHybrid, cfg.Storage) // 同时是 provider.AssetStore 和 provider.AssetSaver
 	assetSvc.SetUploadIntents(repository.NewUploadIntentRepository(db))        // 开启浏览器直传
 	// 画布列表的封面：素材 key 换成稳定的 /files 地址并带 v=thumb 取缩略图（没有处理服务时服务端回退到原图）
 	canvasProjectSvc := service.NewCanvasProjectService(canvasProjectRepo,
@@ -170,7 +173,8 @@ func NewApp(cfg *config.Config) (*App, error) {
 	}
 	virtualHumanRepo := repository.NewVirtualHumanRepository(db)
 	filedAssets := service.NewFiledAssetResolver(virtualHumanRepo)
-	executor := plugin.New(plugin.Options{
+	refCache := service.NewReferenceCacheRuntime(cfg.Storage.ReferenceCache, storeRegistry, repository.NewReferenceCacheRepository(db), storageRepo)
+	executorOptions := plugin.Options{
 		Runner:      runnerClient,
 		Codes:       pluginCodeStore{repo: aiPluginRepo},
 		Secrets:     aiCfgSvc,
@@ -178,7 +182,9 @@ func NewApp(cfg *config.Config) (*App, error) {
 		Saver:       assetSvc,
 		FiledAssets: filedAssets, // 真人库里备案可用的图片换成 asset://
 		IPAllowed:   outboundIPPolicy(cfg),
-	})
+	}
+	executorOptions.ReferenceURLs = refCache
+	executor := plugin.New(executorOptions)
 
 	// 生成任务：提交 / 对账 / 取消 / 积分事务
 	taskRepo := repository.NewGenerationTaskRepository(db)
@@ -434,7 +440,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 			}
 			return st.Role, nil
 		}, cfg.JWT.Secret, riverUIPrefix),
-		AdminStorage:   handler.NewAdminStorageHandler(storageSvc),
+		AdminStorage:   handler.NewAdminStorageHandler(storageSvc).WithHybrid(storageHybrid),
 		AdminImageProc: handler.NewAdminImageProcessorHandler(processorSvc),
 		AdminMe:        handler.NewAdminMeHandler(roleLookup),
 		AdminUser:      handler.NewAdminUserHandler(adminUsers),
@@ -451,21 +457,23 @@ func NewApp(cfg *config.Config) (*App, error) {
 	})
 
 	return &App{
-		fx:         fx.New(pricingRepo, outboundIPPolicy(cfg)),
-		cfg:        cfg,
-		db:         db,
-		rdb:        rdb,
-		hub:        hub,
-		agent:      agentRT,
-		skills:     skillSvc,
-		taskQueue:  taskQueue,
-		queueConn:  queueConn,
-		runnerStop: runnerStop,
-		assets:     assetSvc,
-		loginLogs:  service.NewLoginLogCleaner(userRepo),
-		cliDevices: service.NewCLIDeviceCleaner(cliDeviceRepo, nil),
-		observe:    observeSvc,
-		payment:    pay.svc,
+		fx:            fx.New(pricingRepo, outboundIPPolicy(cfg)),
+		cfg:           cfg,
+		db:            db,
+		rdb:           rdb,
+		hub:           hub,
+		agent:         agentRT,
+		skills:        skillSvc,
+		taskQueue:     taskQueue,
+		queueConn:     queueConn,
+		runnerStop:    runnerStop,
+		assets:        assetSvc,
+		refCache:      refCache,
+		storageHybrid: storageHybrid,
+		loginLogs:     service.NewLoginLogCleaner(userRepo),
+		cliDevices:    service.NewCLIDeviceCleaner(cliDeviceRepo, nil),
+		observe:       observeSvc,
+		payment:       pay.svc,
 		server: &http.Server{
 			Addr:         cfg.Server.Addr(),
 			Handler:      engineHTTP,
@@ -574,6 +582,10 @@ func (p cmdProcess) Kill() error {
 // Run 启动 HTTP 服务，ctx 取消（收到退出信号）后优雅关闭并释放资源。
 func (a *App) Run(ctx context.Context) error {
 	defer a.close()
+	stopStorageHybrid := a.startStorageHybrid(ctx)
+	defer stopStorageHybrid()
+	stopReferenceCache := a.startReferenceCache(ctx)
+	defer stopReferenceCache()
 	// 与现有清理和同步任务共用可取消 ticker 的生命周期，不依赖生成 worker 是否启用。
 	fxCtx, fxCancel := context.WithCancel(context.Background())
 	fxDone := make(chan struct{})

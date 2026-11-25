@@ -217,10 +217,11 @@ type Queue struct {
 // Storage 是素材存储的全局配置。对象存储（阿里云 OSS / 腾讯云 COS / S3 / R2）在后台“存储配置”里管理，
 // 这里只保留内置的本地磁盘、上传 / 转存大小上限，以及稳定地址的站点前缀。
 type Storage struct {
-	MaxUpload int64         `mapstructure:"max_upload_bytes"` // 单个上传文件上限
-	MaxResult int64         `mapstructure:"max_result_bytes"` // 单个生成产物转存上限
-	SignedTTL time.Duration `mapstructure:"signed_ttl"`       // 存储自己没配签名有效期时的兜底（本地磁盘、旧版导入）
-	Local     LocalStorage  `mapstructure:"local"`
+	MaxUpload      int64          `mapstructure:"max_upload_bytes"` // 单个上传文件上限
+	MaxResult      int64          `mapstructure:"max_result_bytes"` // 单个生成产物转存上限
+	SignedTTL      time.Duration  `mapstructure:"signed_ttl"`       // 存储自己没配签名有效期时的兜底（本地磁盘、旧版导入）
+	Local          LocalStorage   `mapstructure:"local"`
+	ReferenceCache ReferenceCache `mapstructure:"reference_cache"`
 
 	// Driver 与 S3 是旧版（升级前）用环境变量配置对象存储的方式，已废弃：
 	// 只在升级后首次启动时读取，用来一次性导入为后台存储，之后不再使用。
@@ -276,6 +277,8 @@ func Load(path string) (*Config, error) {
 		"agent.enabled", "agent.url", "agent.bridge_url", "agent.bridge_addr", "agent.service_token", "agent.web_enabled", "agent.searxng_url", "agent.disabled_tools",
 		"storage.s3.endpoint", "storage.s3.region", "storage.s3.bucket", "storage.s3.access_key", "storage.s3.secret_key",
 		"storage.s3.use_ssl", "storage.s3.public_base_url", "storage.s3.path_prefix",
+		"storage.reference_cache.enabled", "storage.reference_cache.storage_id", "storage.reference_cache.prefix",
+		"storage.reference_cache.signed_ttl", "storage.reference_cache.max_bytes", "storage.reference_cache.prepare_timeout", "storage.reference_cache.unknown_grace",
 	} {
 		_ = v.BindEnv(key)
 	}
@@ -284,6 +287,7 @@ func Load(path string) (*Config, error) {
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
+	cfg.Storage.ReferenceCache = cfg.Storage.ReferenceCache.WithDefaults()
 	cfg.Agent = cfg.Agent.WithDefaults()
 	if err := cfg.Agent.Validate(); err != nil {
 		return nil, err

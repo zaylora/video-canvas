@@ -255,7 +255,7 @@ func (s *AssetService) Open(ctx context.Context, userID, assetID uint64) (*provi
 
 	// 2. 找到素材所在的存储（按素材自己记录的 storage_id，而不是当前默认存储）；
 	//    存储配置已不存在属于数据不一致，按“素材不存在”处理并留日志
-	h, err := s.stores.Get(ctx, a.StorageID)
+	h, err := s.storageForAsset(ctx, a)
 	if err != nil {
 		if errors.Is(err, storage.ErrStorageNotFound) {
 			logger.Error("素材所属的存储已不存在", zap.Uint64("asset_id", a.ID), zap.Uint64("storage_id", a.StorageID))
@@ -649,7 +649,7 @@ func (s *AssetService) lookupFile(ctx context.Context, key string) (*model.Asset
 		}
 		return nil, nil, err
 	}
-	h, err := s.stores.Get(ctx, a.StorageID)
+	h, err := s.storageForAsset(ctx, a)
 	if err != nil {
 		// 内部原因（解密失败、配置被删等）只写日志，不透传给浏览器
 		logger.Error("解析素材所在存储失败", zap.Uint64("asset_id", a.ID), zap.Uint64("storage_id", a.StorageID), zap.Error(err))

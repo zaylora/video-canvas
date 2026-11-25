@@ -4,6 +4,8 @@
  *
  *   GET    /admin/storages                      存储列表（分页，?q=&page=&page_size=；含素材数、默认标记、最近测试结果）
  *   GET    /admin/storages/options              全部存储的精简视图（不分页，给图片服务的绑定表和向导用）
+ *   GET    /admin/storages/hybrid               混合策略状态
+ *   PUT    /admin/storages/hybrid               开启或关闭混合策略（super_admin）
  *   GET    /admin/storages/presets              服务商预设与地域列表
  *   GET    /admin/storages/:id                  存储详情
  *   POST   /admin/storages/test                 测试一份未保存的配置（super_admin，不落库）
@@ -22,6 +24,7 @@ const one = (id: number) => `${P}/${seg(id)}`;
 export const adminStorageEndpoints = {
   list: () => P,
   presets: () => `${P}/presets`,
+  hybrid: () => `${P}/hybrid`,
   options: () => `${P}/options`,
   detail: one,
   test: () => `${P}/test`,

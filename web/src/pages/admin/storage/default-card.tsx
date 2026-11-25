@@ -18,13 +18,16 @@ import { StorageStatus } from "./storage-status";
  * 默认存储卡片：先回答“现在新文件写到哪”这一个问题，只读角色也能一眼确认。
  * @param storage 当前默认存储
  * @param presets 服务商预设（取服务商显示名）
+ * @param hybridActive 混合策略已接管新素材的写入位置
  */
 export function DefaultStorageCard({
   storage,
   presets,
+  hybridActive,
 }: {
   storage: StorageView;
   presets: StoragePreset[];
+  hybridActive: boolean;
 }) {
   const Icon = PROVIDER_META[storage.provider].icon;
   const where = storageLocation(storage);
@@ -39,7 +42,11 @@ export function DefaultStorageCard({
             {storage.name}
             <Tag>{providerLabel(storage.provider, presets)}</Tag>
             {storage.builtin && <Tag>内置</Tag>}
+            {hybridActive && <Tag>原默认</Tag>}
           </div>
+          {hybridActive && (
+            <div className="text-muted-foreground mt-1 text-xs">新素材写入本地磁盘</div>
+          )}
         </div>
         <DescriptionList className="ml-auto grid-cols-3 gap-x-8 md:grid-cols-3 2xl:grid-cols-3">
           <DescriptionItem>

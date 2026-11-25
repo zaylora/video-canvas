@@ -58,6 +58,25 @@ func ossEntry(id uint64, version int) Entry {
 	return Entry{ID: id, Version: version, Provider: ProviderAliyunOSS, Spec: sp, SignedTTL: 2 * time.Hour, DirectUpload: true}
 }
 
+func TestRegistryGetCurrentIgnoresUnexpiredVersion(t *testing.T) {
+	ctx := t.Context()
+	src := newFakeSource(ossEntry(2, 1))
+	r := NewRegistry(src, time.Hour)
+	old, err := r.Get(ctx, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	src.set(ossEntry(2, 2))
+	current, err := r.GetCurrent(ctx, 2)
+	if err != nil || current.Version != 2 || current.Storage == old.Storage {
+		t.Fatalf("应取得新版本：%+v, %v", current, err)
+	}
+	cached, err := r.Get(ctx, 2)
+	if err != nil || cached != current {
+		t.Fatalf("应重用已刷新句柄：%+v, %v", cached, err)
+	}
+}
+
 func TestRegistry(t *testing.T) {
 	ctx := context.Background()
 	now := time.Date(2026, 10, 3, 12, 0, 0, 0, time.UTC)

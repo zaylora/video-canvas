@@ -30,7 +30,8 @@ type StorageAdminService interface {
 // AdminStorageHandler 是存储配置的管理接口：列表 / 详情 / 预设（admin 可用），
 // 测试 / 创建 / 更新 / 换密钥 / 重测 / 设默认 / 删除（仅 super_admin，由路由挂中间件）。
 type AdminStorageHandler struct {
-	svc StorageAdminService
+	svc    StorageAdminService
+	hybrid StorageHybridAdminService
 }
 
 // NewAdminStorageHandler 创建存储配置管理接口的 handler。

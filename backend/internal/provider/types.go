@@ -18,6 +18,7 @@ import (
 	"io"
 	"net/url"
 	"strings"
+	"time"
 
 	"video-canvas/internal/model"
 	"video-canvas/internal/provider/modelcfg"
@@ -45,6 +46,18 @@ const (
 	CodePluginError = "plugin_error"
 	// CodeSSRFBlocked 表示请求被 SSRF 防护拒绝（域名不在白名单、内网地址、重定向过多）。
 	CodeSSRFBlocked = "ssrf_blocked"
+	// CodeReferenceCacheCapacity 表示临时参考素材超出应用配置的容量。
+	CodeReferenceCacheCapacity = "reference_cache_capacity"
+	// CodeReferenceCacheConfig 表示目标、签名窗口或远端对象元信息不符合配置。
+	CodeReferenceCacheConfig = "reference_cache_config"
+	// CodeReferenceCachePermission 表示 R2 目标拒绝访问。
+	CodeReferenceCachePermission = "reference_cache_permission"
+	// CodeReferenceCacheTimeout 表示准备参考素材超过独立时限。
+	CodeReferenceCacheTimeout = "reference_cache_timeout"
+	// CodeReferenceCacheMissing 表示本地素材不可用。
+	CodeReferenceCacheMissing = "reference_cache_missing"
+	// CodeReferenceCacheUnavailable 表示其他临时准备失败。
+	CodeReferenceCacheUnavailable = "reference_cache_unavailable"
 )
 
 // Error 是 Executor 返回的分类错误。Message 与 Cause 只用于日志和管理端，不直接给终端用户看；
@@ -124,11 +137,13 @@ func DecodeProviderState(raw []byte) (st ProviderState, ok bool) {
 
 // TaskRef 是 Executor 认识的任务最小信息。
 type TaskRef struct {
-	ID             uint64
-	UserID         uint64
-	ProviderTaskID string          // 提交前为空
-	State          json.RawMessage // 插件上次返回的私有状态（ProviderState.Plugin），没有为空
-	Prepared       json.RawMessage // 准备阶段已经完成的结果（ProviderState.Prepared），没有为空
+	ID                   uint64
+	UserID               uint64
+	DeadlineAt           time.Time       // 生成任务的总截止时间；无持久任务的调用可以留空
+	ReferenceFetchWindow time.Duration   // 异步任务受理后仍可能拉取外链的窗口
+	ProviderTaskID       string          // 提交前为空
+	State                json.RawMessage // 插件上次返回的私有状态（ProviderState.Plugin），没有为空
+	Prepared             json.RawMessage // 准备阶段已经完成的结果（ProviderState.Prepared），没有为空
 }
 
 // SubmitInput 提交请求。Input 是已按模型能力（capabilities）校验过的规范化输入：prompt、op、各生成参数，以及 images / videos / audios 素材 id（uint64）数组。
@@ -307,6 +322,14 @@ type AssetStore interface {
 	// Open 打开素材内容并生成可访问 URL。
 	Open(ctx context.Context, userID, assetID uint64) (*AssetFile, error)
 }
+
+// ReferenceURLPreparer 为已经过所有权校验的本地文件准备限时外部 URL。
+type ReferenceURLPreparer interface {
+	PrepareURL(ctx context.Context, task TaskRef, file *AssetFile) (string, error)
+}
+
+// ErrReferenceCacheDisabled 表示当前部署与管理端的外链缓存功能都已关闭。
+var ErrReferenceCacheDisabled = errors.New("参考素材外链缓存未启用")
 
 // ErrAssetNotFound 素材不存在或不属于该用户。
 var ErrAssetNotFound = errors.New("素材不存在")

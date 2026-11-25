@@ -22,6 +22,7 @@ type fakeS3 struct {
 	bucket  string
 	objects map[string][]byte
 	types   map[string]string
+	digests map[string]string
 	ranges  []string // 收到的 Range 头，用于断言只读了需要的字节
 	deleted []string
 	copies  []string // 服务端复制（带 X-Amz-Copy-Source 的 PUT）的源 key
@@ -33,7 +34,7 @@ type fakeS3 struct {
 
 func newFakeS3(t *testing.T, bucket string) *fakeS3 {
 	t.Helper()
-	f := &fakeS3{bucket: bucket, objects: map[string][]byte{}, types: map[string]string{}}
+	f := &fakeS3{bucket: bucket, objects: map[string][]byte{}, types: map[string]string{}, digests: map[string]string{}}
 	f.srv = httptest.NewServer(http.HandlerFunc(f.handle))
 	t.Cleanup(f.srv.Close)
 	return f
@@ -112,6 +113,10 @@ func (f *fakeS3) handle(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprint(w, `<?xml version="1.0" encoding="UTF-8"?><CopyObjectResult><ETag>"fake"</ETag><LastModified>2006-01-02T15:04:05.000Z</LastModified></CopyObjectResult>`)
 			return
 		}
+		if _, exists := f.objects[key]; exists && r.Header.Get("If-None-Match") == "*" {
+			f.writeErr(w, r, http.StatusPreconditionFailed, "PreconditionFailed")
+			return
+		}
 		b, _ := io.ReadAll(r.Body)
 		// 明文 HTTP 下 minio-go 用 aws-chunked 流式签名上传，真实 S3 会解码，这里也要解码
 		if strings.HasPrefix(r.Header.Get("X-Amz-Content-Sha256"), "STREAMING-") {
@@ -119,10 +124,12 @@ func (f *fakeS3) handle(w http.ResponseWriter, r *http.Request) {
 		}
 		f.objects[key] = b
 		f.types[key] = r.Header.Get("Content-Type")
+		f.digests[key] = r.Header.Get("X-Amz-Meta-Sha256")
 		w.Header().Set("ETag", `"fake"`)
 		w.WriteHeader(http.StatusOK)
 	case http.MethodDelete:
 		delete(f.objects, key)
+		delete(f.digests, key)
 		f.deleted = append(f.deleted, key)
 		w.WriteHeader(http.StatusNoContent)
 	case http.MethodGet, http.MethodHead:
@@ -135,6 +142,7 @@ func (f *fakeS3) handle(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("Content-Type", f.types[key])
+		w.Header().Set("X-Amz-Meta-Sha256", f.digests[key])
 		w.Header().Set("ETag", `"fake"`)
 		w.Header().Set("Last-Modified", "Mon, 02 Jan 2006 15:04:05 GMT")
 		if rg := r.Header.Get("Range"); rg != "" && r.Method == http.MethodGet {

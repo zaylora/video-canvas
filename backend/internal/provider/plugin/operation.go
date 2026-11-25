@@ -29,8 +29,9 @@ type operation struct {
 	trace *provider.Trace
 	red   redactor
 
-	input map[string]any    // 规范化后的输入（媒体字段是 asset id）；Check / Import 为 nil
-	media map[string]uint64 // 已填写的媒体字段 → asset id，文件引用只能指向这里
+	input         map[string]any    // 规范化后的输入（媒体字段是 asset id）；Check / Import 为 nil
+	media         map[string]uint64 // 已填写的媒体字段 → asset id，文件引用只能指向这里
+	referenceURLs map[uint64]string // 本次执行中已准备的本地素材地址
 
 	dryRun       bool
 	secret       string

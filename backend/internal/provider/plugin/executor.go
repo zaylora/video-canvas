@@ -48,8 +48,9 @@ type Options struct {
 	Saver   provider.AssetSaver
 	// FiledAssets 把真人库里备案可用的图片换成上游素材引用（方舟 asset://…），只对插件标了 filed 的文件引用生效；
 	// 为 nil 时一律用素材地址。
-	FiledAssets provider.FiledAssetResolver
-	Now         func() time.Time
+	FiledAssets   provider.FiledAssetResolver
+	ReferenceURLs provider.ReferenceURLPreparer // 本地素材的 URL 形态才需要临时外部地址
+	Now           func() time.Time
 
 	HookTimeout         time.Duration
 	DefaultTimeout      time.Duration
@@ -142,6 +143,10 @@ func (e *Executor) Submit(ctx context.Context, snap *provider.Snapshot, in provi
 	o, err := e.newOperation(ctx, rt, &snap.Model, in.Task)
 	if err != nil {
 		return nil, err
+	}
+	// 异步任务受理后会重算截止时间，外链也必须覆盖延迟拉取窗口。
+	if ep.Mode == pluginmeta.ModeAsync {
+		o.task.ReferenceFetchWindow = snap.Model.Deadline.D()
 	}
 	o.setInput(in.Input)
 	if err := o.validateInput(ctx); err != nil {
@@ -538,6 +543,9 @@ func (o *operation) prepare(ctx context.Context) (json.RawMessage, error) {
 	raw, err = o.require(ctx, pluginproto.HookParsePrepareResponse, hc, resps)
 	if err != nil {
 		return nil, err
+	}
+	if o.hasPreparedURL(raw) {
+		return nil, pluginFault("准备阶段结果必须保存上游文件标识，请勿保存临时参考素材链接")
 	}
 	if len(raw) > pluginproto.MaxStateBytes {
 		return nil, pluginFault("准备阶段结果超过 64KB")
@@ -1030,6 +1038,11 @@ func (o *operation) resolveRef(ctx context.Context, ref fileRef) (any, error) {
 	if uri, ok := o.filedAssetURI(ctx, ref, id); ok {
 		return uri, nil
 	}
+	if ref.as == "url" {
+		if signed, ok := o.referenceURLs[id]; ok {
+			return signed, nil
+		}
+	}
 	f, err := o.e.opts.Assets.Open(ctx, o.task.UserID, id)
 	if err != nil {
 		return nil, terminalErr(codeAssetUnavailable, "打开任务输入素材失败", redactError(err, o.red.str))
@@ -1037,7 +1050,7 @@ func (o *operation) resolveRef(ctx context.Context, ref fileRef) (any, error) {
 	defer f.Body.Close()
 	switch ref.as {
 	case "url":
-		return f.URL, nil
+		return o.referenceURL(ctx, id, f)
 	case "base64", "dataUrl":
 		data, err := io.ReadAll(io.LimitReader(f.Body, o.e.opts.MaxInlineBytes+1))
 		if err != nil {
@@ -1047,6 +1060,7 @@ func (o *operation) resolveRef(ctx context.Context, ref fileRef) (any, error) {
 			return nil, terminalErr(codeMediaTooLarge, "内联素材超过大小上限", nil)
 		}
 		encoded := base64.StdEncoding.EncodeToString(data)
+		o.red.add(encoded)
 		if ref.as == "dataUrl" {
 			return "data:" + f.Asset.MimeType + ";base64," + encoded, nil
 		}
@@ -1081,35 +1095,28 @@ func (o *operation) httpRequest(ctx context.Context, b *builtRequest) (*http.Req
 		}
 		body, contentType = bytes.NewReader(raw), "application/json"
 	case bodyForm:
+		fields, err := o.resolveForm(ctx, b.formBody)
+		if err != nil {
+			return nil, cleanup, err
+		}
 		values := url.Values{}
-		for _, f := range b.formBody {
-			v := f.value
-			if f.ref != nil {
-				resolved, err := o.resolveRef(ctx, *f.ref)
-				if err != nil {
-					return nil, cleanup, err
-				}
-				v = fmt.Sprint(resolved)
-			}
-			values.Set(f.name, v)
+		for _, field := range fields {
+			values.Set(field.name, field.value)
 		}
 		body, contentType = strings.NewReader(values.Encode()), "application/x-www-form-urlencoded"
 	case bodyMultipart:
+		// 先解析表单引用；URL 准备失败时上游还没有收到请求。
+		fields, err := o.resolveForm(ctx, b.formBody)
+		if err != nil {
+			return nil, cleanup, err
+		}
 		pr, pw := io.Pipe()
 		mw := multipart.NewWriter(pw)
 		done := make(chan error, 1)
 		go func() {
 			err := func() error {
-				for _, f := range b.formBody {
-					v := f.value
-					if f.ref != nil {
-						resolved, err := o.resolveRef(ctx, *f.ref)
-						if err != nil {
-							return err
-						}
-						v = fmt.Sprint(resolved)
-					}
-					if err := mw.WriteField(f.name, v); err != nil {
+				for _, f := range fields {
+					if err := mw.WriteField(f.name, f.value); err != nil {
 						return err
 					}
 				}

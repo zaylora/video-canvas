@@ -120,6 +120,7 @@ var (
 	ErrStorageNotChecked      = New(51010, "最近一次连接测试未通过，不能设为默认存储", http.StatusConflict)
 	ErrStorageIsDefault       = New(51011, "默认存储不能删除，请先把其他存储设为默认", http.StatusConflict)
 	ErrStorageSecretUnset     = New(51012, "存储密钥尚未设置", http.StatusConflict)
+	ErrStorageHybridLocked    = New(51013, "混合策略开启或准备期间无法执行这项操作", http.StatusConflict)
 	ErrUploadIntentNotFound   = New(51021, "上传申请不存在或已过期", http.StatusNotFound)
 	ErrUploadSizeMismatch     = New(51022, "上传的文件大小与申请不一致", http.StatusBadRequest)
 	ErrUploadDirectDisabled   = New(51023, "当前存储未开启浏览器直传", http.StatusConflict)

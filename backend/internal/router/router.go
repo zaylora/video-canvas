@@ -421,6 +421,8 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		storages.GET("", h.AdminStorage.List)
 		storages.GET("/presets", h.AdminStorage.Presets)
 		storages.GET("/options", h.AdminStorage.Options)
+		storages.GET("/hybrid", h.AdminStorage.Hybrid)
+		storages.PUT("/hybrid", superOnly, h.AdminStorage.SetHybrid)
 		storages.POST("/test", superOnly, h.AdminStorage.Test)
 		storages.POST("", superOnly, h.AdminStorage.Create)
 		storages.PUT("/default", superOnly, h.AdminStorage.SetDefault)
