@@ -34,7 +34,7 @@ func (s *ReferenceCache) Maintain(ctx context.Context) (ReferenceCacheStats, err
 	cancelList()
 	// 2. 列举有独立时限，给已入账对象的清理留出时间。
 	cleanupErr := s.reclaimReferences(ctx, target, 40)
-	bytes, err := s.repo.Bytes(ctx)
+	bytes, err := s.repo.Bytes(ctx, target.namespace)
 	if err != nil {
 		err = referenceOperationError(ctx, err, "读取临时参考素材占用失败")
 	}

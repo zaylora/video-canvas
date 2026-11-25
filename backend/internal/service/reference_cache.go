@@ -29,8 +29,8 @@ type ReferenceCacheRepository interface {
 	TrackOrphan(ctx context.Context, object model.ReferenceCacheObject) error
 	// FinishCleanup 在对象确认不存在后释放容量。
 	FinishCleanup(ctx context.Context, key string) error
-	// Bytes 返回对象和预留的计费总量。
-	Bytes(ctx context.Context) (int64, error)
+	// Bytes 返回当前命名空间内对象和预留的计费总量。
+	Bytes(ctx context.Context, namespace string) (int64, error)
 }
 
 const (

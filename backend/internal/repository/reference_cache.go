@@ -35,7 +35,7 @@ func (r *ReferenceCacheRepository) withTx(ctx context.Context, fn func(*gorm.DB)
 	})
 }
 
-// Reserve 复用仍有寿命的对象，或者先检查总容量再创建一条预留，同时登记任务保护。
+// Reserve 复用仍有寿命的对象，或者先检查当前命名空间的容量再创建一条预留，同时登记任务保护。
 func (r *ReferenceCacheRepository) Reserve(ctx context.Context, req model.ReferenceCacheReservation) (model.ReferenceCacheObject, error) {
 	var object model.ReferenceCacheObject
 	err := r.withTx(ctx, func(tx *gorm.DB) error {
@@ -68,7 +68,7 @@ func reserveReferenceBytes(tx *gorm.DB, object *model.ReferenceCacheObject, limi
 	if limit == 0 {
 		return tx.Create(object).Error
 	}
-	used, err := referenceCacheBytes(tx)
+	used, err := referenceCacheBytes(tx, object.Namespace)
 	if err != nil {
 		return err
 	}
@@ -158,13 +158,14 @@ func (r *ReferenceCacheRepository) FinishCleanup(ctx context.Context, key string
 	})
 }
 
-// Bytes 返回临时对象与上传预留占用的总字节。
-func (r *ReferenceCacheRepository) Bytes(ctx context.Context) (int64, error) {
-	return referenceCacheBytes(r.db.WithContext(ctx))
+// Bytes 返回指定命名空间内临时对象与上传预留占用的总字节。
+func (r *ReferenceCacheRepository) Bytes(ctx context.Context, namespace string) (int64, error) {
+	return referenceCacheBytes(r.db.WithContext(ctx), namespace)
 }
 
-func referenceCacheBytes(db *gorm.DB) (int64, error) {
+func referenceCacheBytes(db *gorm.DB, namespace string) (int64, error) {
 	var out int64
-	err := db.Model(&model.ReferenceCacheObject{}).Select("COALESCE(SUM(size), 0)").Scan(&out).Error
+	err := db.Model(&model.ReferenceCacheObject{}).Where("namespace = ?", namespace).
+		Select("COALESCE(SUM(size), 0)").Scan(&out).Error
 	return out, err
 }

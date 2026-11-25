@@ -131,13 +131,13 @@ func assertCleanupReservation(t *testing.T, repo *repository.ReferenceCacheRepos
 	if err := repo.MarkReady(t.Context(), row.Key, req.TaskID, now.Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := repo.Bytes(t.Context()); got != 10 || err != nil {
+	if got, err := repo.Bytes(t.Context(), "test"); got != 10 || err != nil {
 		t.Fatalf("未确认删除之前不能释放容量：bytes=%d err=%v", got, err)
 	}
 	if err := repo.FinishCleanup(t.Context(), key); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := repo.Bytes(t.Context()); got != 8 || err != nil {
+	if got, err := repo.Bytes(t.Context(), "test"); got != 8 || err != nil {
 		t.Fatalf("确认删除才释放容量：bytes=%d err=%v", got, err)
 	}
 }
@@ -155,7 +155,7 @@ func TestReferenceCacheRepositoryRenewsAgingObject(t *testing.T) {
 	if err != nil || row.Key != fresh.Object.Key {
 		t.Fatalf("剩余生命周期不足时需要新代际：got=%v err=%v", row, err)
 	}
-	if got, err := repo.Bytes(t.Context()); got != 8 || err != nil {
+	if got, err := repo.Bytes(t.Context(), "test"); got != 8 || err != nil {
 		t.Fatalf("替换时两代对象分别计入占用：bytes=%d err=%v", got, err)
 	}
 }
@@ -178,11 +178,37 @@ func TestReferenceCacheRepositoryTracksOnlyUnrecordedObjects(t *testing.T) {
 	if err := repo.TrackOrphan(t.Context(), discovered); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := repo.Bytes(t.Context()); got != 6 || err != nil {
+	if got, err := repo.Bytes(t.Context(), "test"); got != 6 || err != nil {
 		t.Fatalf("应只补记未记录对象：bytes=%d err=%v", got, err)
 	}
 	row, err := repo.ClaimCleanup(t.Context(), cacheSweep(now.Add(time.Second)))
 	if err != nil || row == nil || row.Key != discovered.Key {
 		t.Fatalf("只应认领孤儿，不能改变已租用对象：got=%v err=%v", row, err)
+	}
+}
+
+func TestReferenceCacheRepositoryReservesCapacityPerNamespace(t *testing.T) {
+	db := isolatedDB(t, &model.ReferenceCacheObject{}, &model.ReferenceCacheUse{})
+	repo := repository.NewReferenceCacheRepository(db)
+	now := time.Now()
+	old := cacheReservation(now, "ref-cache/old-bucket", "source", 10, 1)
+	if _, err := repo.Reserve(t.Context(), old); err != nil {
+		t.Fatal(err)
+	}
+	fresh := cacheReservation(now, "ref-cache/new-bucket", "source", 6, 2)
+	fresh.Object.Namespace = "new-bucket"
+	if _, err := repo.Reserve(t.Context(), fresh); err != nil {
+		t.Fatalf("原桶占满容量时，新桶仍应可预留：%v", err)
+	}
+	over := cacheReservation(now, "ref-cache/over-limit", "another-source", 5, 3)
+	over.Object.Namespace = fresh.Object.Namespace
+	if _, err := repo.Reserve(t.Context(), over); !errors.Is(err, repository.ErrReferenceCacheCapacity) {
+		t.Fatalf("新桶仍应执行自己的限额：%v", err)
+	}
+	if got, err := repo.Bytes(t.Context(), fresh.Object.Namespace); got != 6 || err != nil {
+		t.Fatalf("新桶用量应只计入本桶预留：bytes=%d err=%v", got, err)
+	}
+	if got, err := repo.Bytes(t.Context(), old.Object.Namespace); got != 10 || err != nil {
+		t.Fatalf("原桶的容量记录应保留：bytes=%d err=%v", got, err)
 	}
 }

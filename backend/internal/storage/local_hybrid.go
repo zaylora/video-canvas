@@ -3,7 +3,6 @@ package storage
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -89,7 +88,7 @@ func writeMirrorFile(ctx context.Context, file *os.File, r io.Reader, size int64
 	return closeErr
 }
 
-// MirrorMatches 核验文件字节与原素材记录一致，防止同路径的不同文件被当成原素材。
+// MirrorMatches 核验镜像内容，并在文件身份、大小和修改时间一致时复用校验结果。
 func (l *LocalStorage) MirrorMatches(ctx context.Context, key string, size int64, digest string) bool {
 	if ValidateKey(key) != nil || len(digest) != sha256.Size*2 {
 		return false
@@ -108,7 +107,5 @@ func (l *LocalStorage) MirrorMatches(ctx context.Context, key string, size int64
 	if err != nil || !info.Mode().IsRegular() || info.Size() != size {
 		return false
 	}
-	hash := sha256.New()
-	n, err := io.Copy(hash, &ctxReader{ctx: ctx, r: file})
-	return err == nil && n == size && strings.EqualFold(hex.EncodeToString(hash.Sum(nil)), digest)
+	return l.mirrors.matches(ctx, key, file, info, strings.ToLower(digest))
 }

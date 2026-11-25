@@ -162,7 +162,7 @@ func (r *referenceRows) FinishCleanup(context.Context, string) error {
 	return nil
 }
 
-func (r *referenceRows) Bytes(context.Context) (int64, error) {
+func (r *referenceRows) Bytes(context.Context, string) (int64, error) {
 	if r.cleanupKey != "" {
 		return 2, nil
 	}

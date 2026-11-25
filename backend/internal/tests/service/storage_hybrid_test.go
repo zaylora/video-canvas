@@ -255,3 +255,70 @@ func TestStorageHybridDisablesTemporaryLimitAtZero(t *testing.T) {
 		t.Fatalf("关闭后应恢复未启用缓存时的行为: %v", err)
 	}
 }
+
+func TestAssetServiceHybridOpenPreservesCloudURL(t *testing.T) {
+	assets, local, origin, asset := hybridAssetFixture(t, "image")
+	open := func(wantBody string) {
+		t.Helper()
+		file, err := assets.Open(t.Context(), asset.UserID, asset.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer file.Body.Close()
+		body, err := io.ReadAll(file.Body)
+		if err != nil || string(body) != wantBody || !file.Remote || !strings.HasPrefix(file.URL, "https://example.com/") {
+			t.Fatalf("应读取 %q 并返回云端签名 URL: body=%q remote=%v url=%q err=%v", wantBody, body, file.Remote, file.URL, err)
+		}
+	}
+	// 仅镜像可读时，仍使用原云端存储的签名地址。
+	open("mirror")
+	// 本地同路径内容变化后，应重新验证并回退原来的云端存储。
+	origin.Storage.(*hybridCloud).content[asset.StorageKey] = "source"
+	if err := local.Put(t.Context(), asset.StorageKey, strings.NewReader("broken"), 6, ""); err != nil {
+		t.Fatal(err)
+	}
+	open("source")
+}
+
+func TestAssetServiceHybridVariantsKeepCloudHandle(t *testing.T) {
+	for _, tc := range []struct{ kind, variant string }{{"image", "thumb"}, {"video", "poster"}} {
+		t.Run(tc.variant, func(t *testing.T) {
+			assets, local, origin, asset := hybridAssetFixture(t, tc.kind)
+			res := &fakeVariantResolver{targets: map[string]service.VariantTarget{
+				tc.variant: {URL: "https://example.com/variant?signature=test", Signed: true},
+			}}
+			assets.SetVariantResolver(res)
+			target, err := assets.ResolveVariant(t.Context(), asset.StorageKey, tc.variant)
+			if err != nil || res.gotStore != origin.ID || res.gotHandle != origin || target.MaxAge != 30*time.Minute {
+				t.Fatalf("变体应使用原云端配置和签名时长: target=%+v storage=%d handle=%v err=%v",
+					target, res.gotStore, res.gotHandle == origin, err)
+			}
+			assets.SetVariantResolver(nil)
+			if tc.variant == "thumb" {
+				fallback, err := assets.ResolveVariant(t.Context(), asset.StorageKey, tc.variant)
+				if err != nil || fallback.Local != local {
+					t.Fatalf("缩略图回退原图时应优先使用本地镜像: %+v, %v", fallback, err)
+				}
+			}
+		})
+	}
+}
+
+func hybridAssetFixture(t *testing.T, kind string) (*service.AssetService, *storage.LocalStorage, *storage.Handle, *model.Asset) {
+	t.Helper()
+	hybrid, rows, stores, local, _ := hybridServiceFixture(t)
+	rows.state = model.StorageHybridPolicy{State: model.StorageHybridActive, LocalID: 1, CloudID: 2}
+	origin := stores.stores[2]
+	origin.Spec.Bucket = "original-bucket"
+	origin.SignedTTL = 2 * time.Hour
+	asset := &model.Asset{
+		ID: 5, UserID: 1, Kind: kind, StorageID: 2, StorageKey: "u1/mirror.bin", ByteSize: 6,
+		Sha256: fmt.Sprintf("%x", sha256.Sum256([]byte("mirror"))),
+	}
+	if err := local.Put(t.Context(), asset.StorageKey, strings.NewReader("mirror"), asset.ByteSize, ""); err != nil {
+		t.Fatal(err)
+	}
+	repo := newFakeAssetRepo()
+	repo.rows[asset.ID] = asset
+	return service.NewAssetService(repo, hybrid, config.Storage{}), local, origin, asset
+}
