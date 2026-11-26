@@ -7,6 +7,7 @@ import type { AssetDto } from "@/api/asset/type";
 import { NodeCard, NodeVideoBody, type NodeCardHandle } from "@/components/canvas";
 import type { SecondarySubmit } from "@/components/canvas/node-prompt-input";
 import { BaseNodeContent } from "@/components/canvas/base-node";
+import { NodeImage } from "@/components/canvas/node-image";
 import { VersionBadge } from "@/components/canvas/version-badge";
 import { toggleVoice, useVoicePlaying } from "@/components/characters/voice-player";
 import { Button } from "@/components/ui/button";
@@ -24,7 +25,8 @@ import { usePromptEditor } from "@/store/prompt-editor";
 import type { CanvasNode, CanvasNodeData } from "@/types";
 import { shouldRecordAspect } from "@/utils/canvas/media-aspect";
 import { showVersionBadge } from "@/utils/canvas/versions";
-import { nodeFrameSize, paramAspect } from "@/utils/canvas/node-frame";
+import { nodeFrameSize, sharedParamAspect } from "@/utils/canvas/node-frame";
+import { useSharedCanvas } from "@/utils/canvas/read-only";
 import {
   applyPickedAssets,
   characterImageUploaded,
@@ -46,6 +48,7 @@ import { useDragSelected } from "./overlay-gate";
 import { useMultiSelected } from "./selection-toolbar";
 import { LibraryPickerForCharacter } from "./character-library-picker";
 import { NodeStatusLabel, TaskPromptPanel } from "./video-node";
+import { SharedDetailsButton } from "./shared-node-details";
 
 /**
  * 角色卡节点两侧各一个口：左边接参考图 / 文本（「参考图建角色」类生成用，规则同图片节点），
@@ -64,7 +67,78 @@ const SHOWS_TASK_BODY = new Set(["queued", "running", "finalizing", "failed"]);
  * 和图片节点一样的普通节点，角色数据（名字、形象名、补充图、音色）就存在节点上、只属于当前画布。
  * 新建是空节点，封面给「上传」「素材库」两个入口，选中后下方出现图片生成面板，生成的图就是主图。
  */
-export function CharacterCanvasNode({
+export function CharacterCanvasNode(props: {
+  id: string;
+  data: CanvasNodeData;
+  selected?: boolean;
+}) {
+  const shared = useSharedCanvas();
+  return shared ? <SharedCharacterNode data={props.data} /> : <EditableCharacterNode {...props} />;
+}
+
+function SharedCharacterNode({ data }: { data: CanvasNodeData }) {
+  const character = data.character ?? emptyCharacter(data.label);
+  const KindIcon = NODE_META.get("character")?.icon;
+  const measured = useMediaAspect(data.src, "image");
+  const aspect = characterNodeAspect({
+    measured,
+    declared: data.mediaAspect,
+    selected: sharedParamAspect(data),
+  });
+  return (
+    <NodeCard
+      title={data.label}
+      icon={KindIcon ? <KindIcon /> : undefined}
+      handles={CHARACTER_HANDLES}
+      width={nodeFrameSize(aspect).width}
+    >
+      <BaseNodeContent>
+        <div className="bg-muted relative w-full" style={{ aspectRatio: aspect }}>
+          {data.src ? (
+            <CharacterCover src={data.src} name={character.name} />
+          ) : (
+            <p className="text-muted-foreground grid size-full place-items-center text-xs">
+              暂无形象
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5 px-2.5 pt-2.5">
+          {character.voice && (
+            <AudioCell
+              asset={{ id: character.voice.assetId, url: character.voice.src } as AssetDto}
+              name={character.voice.name}
+            />
+          )}
+          <CharacterExtraImages extras={character.extras} />
+        </div>
+        <div className="flex items-center justify-between gap-1.5 px-2.5 pt-2 pb-2.5 text-xs">
+          <b className="truncate text-[13px]" title={character.look}>
+            {character.look}
+          </b>
+          <SharedDetailsButton data={data} label="查看角色" />
+        </div>
+      </BaseNodeContent>
+    </NodeCard>
+  );
+}
+
+function CharacterCover({ src, name }: { src: string; name: string }) {
+  return <NodeImage src={src} alt={name} className="absolute inset-0 size-full object-cover" />;
+}
+
+function CharacterExtraImages({
+  extras,
+}: {
+  extras: NonNullable<CanvasNodeData["character"]>["extras"];
+}) {
+  return extras.map((extra) => (
+    <span key={extra.assetId} className="bg-muted size-9 shrink-0 overflow-hidden rounded-[10px]">
+      <NodeImage src={extra.src} alt="" compact className="size-full object-cover" />
+    </span>
+  ));
+}
+
+function EditableCharacterNode({
   id,
   data,
   selected,
@@ -236,7 +310,7 @@ function CharacterNodeBody({
   const aspect = characterNodeAspect({
     measured: measuredAspect,
     declared: data.mediaAspect,
-    selected: paramAspect(vm.caps, vm.params),
+    selected: vm.paramFrameAspect,
   });
 
   // 生成过多张（或换过主图）：右上角出「历史」徽标，点开选一张当主图，和图片节点一样
@@ -273,12 +347,7 @@ function CharacterNodeBody({
               retryHint={vm.blockedReason ?? undefined}
             />
           ) : view.phase === "ready" && data.src ? (
-            <img
-              src={data.src}
-              alt={character.name}
-              draggable={false}
-              className="absolute inset-0 size-full object-cover"
-            />
+            <CharacterCover src={data.src} name={character.name} />
           ) : (
             <div className="bg-muted absolute inset-0 flex flex-col items-center justify-center gap-2 px-6">
               <Button
@@ -327,14 +396,7 @@ function CharacterNodeBody({
               {cell.kind === "generating" ? <Loader2 className="animate-spin" /> : <AudioLines />}
             </button>
           )}
-          {character.extras.map((extra) => (
-            <span
-              key={extra.assetId}
-              className="bg-muted size-9 shrink-0 overflow-hidden rounded-[10px]"
-            >
-              <img src={extra.src} alt="" draggable={false} className="size-full object-cover" />
-            </span>
-          ))}
+          <CharacterExtraImages extras={character.extras} />
           {!extraFull && (
             <button
               type="button"

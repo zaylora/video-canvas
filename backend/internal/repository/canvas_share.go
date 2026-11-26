@@ -96,6 +96,13 @@ func (r *CanvasShareRepository) SharedCanvas(ctx context.Context, user, canvas u
 	return &row, translate(err)
 }
 
+// SharedCanvasRevision 在同一套查看授权下读取版本号。
+func (r *CanvasShareRepository) SharedCanvasRevision(ctx context.Context, user, canvas uint64) (uint64, error) {
+	var row model.CanvasProject
+	err := r.shared(ctx, user).Select("canvas_projects.revision").Where("canvas_projects.id = ?", canvas).Take(&row).Error
+	return row.Revision, translate(err)
+}
+
 // Source 读取调用者拥有的普通画布。
 func (r *CanvasShareRepository) Source(ctx context.Context, owner, id uint64) (*model.CanvasProject, error) {
 	var row model.CanvasProject

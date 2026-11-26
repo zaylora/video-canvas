@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import type { CanvasEdge, CanvasGroupNode, FlowNode } from "@/types";
 import { GROUP_MIN, canResizeGroup, groupTitleScale, membersBounds } from "@/utils/canvas/group";
 import { NODE_LABEL_MAX, normalizeNodeLabel } from "@/utils/canvas/node-label";
+import { useCanvasReadOnly } from "@/utils/canvas/read-only";
 
 import { GroupToolbar } from "./group-toolbar";
 import { useGroupFanOut, useGroupUi } from "./group-ui";
@@ -33,7 +34,8 @@ const titleScaleOf = (state: ReactFlowState) =>
 function GroupTitle({ id, label }: { id: string; label: string }) {
   const { updateNodeData } = useReactFlow<FlowNode, CanvasEdge>();
   const ui = useGroupUi();
-  const editing = ui.renamingId === id;
+  const readOnly = useCanvasReadOnly();
+  const editing = !readOnly && ui.renamingId === id;
   const input = useRef<HTMLInputElement>(null);
   const finished = useRef(false);
   // 画布缩小时组名反向放大，屏幕上的字号保持可读；宽度也按倍数收窄，免得超出组框
@@ -59,7 +61,7 @@ function GroupTitle({ id, label }: { id: string; label: string }) {
   return (
     <div
       data-slot="group-title"
-      onDoubleClick={() => ui.setRenamingId(id)}
+      onDoubleClick={readOnly ? undefined : () => ui.setRenamingId(id)}
       style={{
         transform: scale === 1 ? undefined : `scale(${scale})`,
         transformOrigin: "left bottom",

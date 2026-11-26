@@ -123,11 +123,13 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 			middleware.JWTAuth(mediaSecret + ":" + c.Param("id"))(c)
 		}, middleware.RequireActive(h.UserState), h.DramaShare.Media)
 		canvasSecret := jwtSecret + ":canvas-media"
-		v1.GET("/canvas-media/:id/:asset", func(c *gin.Context) {
+		canvasMediaAuth := func(c *gin.Context) {
 			ticket, _ := c.Cookie("canvas_media")
 			c.Request.Header.Set("Authorization", "Bearer "+ticket)
 			middleware.JWTAuth(canvasSecret + ":" + c.Param("id"))(c)
-		}, middleware.RequireActive(h.UserState), h.CanvasShare.Media)
+		}
+		v1.GET("/canvas-media/:id/:asset", canvasMediaAuth, middleware.RequireActive(h.UserState), h.CanvasShare.Media)
+		v1.HEAD("/canvas-media/:id/:asset", canvasMediaAuth, middleware.RequireActive(h.UserState), h.CanvasShare.Media)
 
 		// 首页公告：生效中的公告，最多 5 条，全站共享；只在登录后的首页外壳展示，所以要登录
 		auth.GET("/announcements", h.Announcement.Public)

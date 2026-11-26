@@ -85,7 +85,13 @@ function viewThrough(camera: PerspectiveCamera, pose: CameraPose, ratio: number,
  * 机位视角：站在当前机位里看，画面按机位的画幅取景（画幅外压暗），操作改的是这台机位。
  * 舞台每帧按编辑器状态同步，不走 React 重渲染。
  */
-export function DirectorViewport({ ref }: { ref?: Ref<DirectorViewportApi> }) {
+export function DirectorViewport({
+  ref,
+  readOnly = false,
+}: {
+  ref?: Ref<DirectorViewportApi>;
+  readOnly?: boolean;
+}) {
   const labelsRef = useRef<HTMLDivElement>(null);
   const stage = useMemo(() => createStage({ helpers: true }), []);
   useEffect(() => () => stage.dispose(), [stage]);
@@ -99,7 +105,7 @@ export function DirectorViewport({ ref }: { ref?: Ref<DirectorViewportApi> }) {
         camera={{ position: INITIAL_POSITION, fov: 50, near: 0.05, far: 200 }}
         dpr={[1, 2]}
       >
-        <StageContent stage={stage} labelsRef={labelsRef} apiRef={ref} />
+        <StageContent stage={stage} labelsRef={labelsRef} apiRef={ref} readOnly={readOnly} />
       </Canvas>
       <div ref={labelsRef} className="pointer-events-none absolute inset-0 overflow-hidden" />
       <CameraFrame />
@@ -111,10 +117,12 @@ function StageContent({
   stage,
   labelsRef,
   apiRef,
+  readOnly,
 }: {
   stage: DirectorStage;
   labelsRef: React.RefObject<HTMLDivElement | null>;
   apiRef?: Ref<DirectorViewportApi>;
+  readOnly: boolean;
 }) {
   const camera = useThree((state) => state.camera) as PerspectiveCamera;
   const size = useThree((state) => state.size);
@@ -245,6 +253,7 @@ function StageContent({
   // 自由相机操作：导演视角操作主视口的相机，机位视角操作当前机位（一次连续操作算撤销栈一步）。
   // 已有关键帧的机位，改动先是「未记录」，按 K 才写进轨道
   useEffect(() => {
+    if (readOnly && camViewId) return;
     const controller = attachFreeCamera({
       element: gl.domElement,
       camera,
@@ -257,7 +266,7 @@ function StageContent({
       controller.dispose();
       freeCamera.current = null;
     };
-  }, [camViewId, camera, gl]);
+  }, [camViewId, camera, gl, readOnly]);
 
   /** 点选：点中对象就选它，点地面或空白就取消选中；拖过视角的不算点击；机位视角里左键是调朝向，不点选 */
   const onClick = (event: ThreeEvent<MouseEvent>) => {
@@ -288,8 +297,8 @@ function StageContent({
   const rotating = tool === "rotate";
   return (
     <>
-      <primitive object={stage.root} onClick={onClick} />
-      {attached && kind && !camView && (
+      <primitive object={stage.root} onClick={readOnly ? undefined : onClick} />
+      {!readOnly && attached && kind && !camView && (
         <TransformControls
           object={attached}
           mode={rotating ? "rotate" : "translate"}

@@ -16,16 +16,19 @@ export type VariantUrl = {
 
 /** 匹配「可选的 http(s) 域名 + /files/ 路径」 */
 const FILES_URL = /^(?:https?:\/\/[^/?#]+)?\/files\//i;
+const SHARED_CANVAS_MEDIA_URL = /^\/api\/v1\/canvas-media\/[^/?#]+\/[^/?#]+(?:[?#]|$)/;
 
 /**
- * 给后端 /files/ 地址追加 `v=thumb|poster`，其余 query 与 hash 原样保留；已有的 v 会被替换。
+ * 给后端 /files/ 地址追加 `v=thumb|poster`，共享画布媒体地址仅追加 `v=poster`。
  * 为什么不改 src 本身：payload 里的稳定地址不能变，变体只在展示时拼出来。
  * @param src 节点里的素材地址，相对或绝对均可
  * @param variant 要的变体
- * @returns 变体地址；非 /files/ 地址原样返回并标记无变体
+ * @returns 变体地址，不支持变体时原样返回
  */
 export function variantUrl(src: string, variant: MediaVariant): VariantUrl {
-  if (!FILES_URL.test(src)) return { url: src, hasVariant: false };
+  if (!FILES_URL.test(src) && !(variant === "poster" && SHARED_CANVAS_MEDIA_URL.test(src))) {
+    return { url: src, hasVariant: false };
+  }
   const hashAt = src.indexOf("#");
   const hash = hashAt >= 0 ? src.slice(hashAt) : "";
   const rest = hashAt >= 0 ? src.slice(0, hashAt) : src;
@@ -110,7 +113,7 @@ export function createVideoSlotPool(limit: number = MAX_MOUNTED_VIDEOS): VideoSl
  * @returns `m:ss`，超过一小时为 `h:mm:ss`；没有有效时长返回 null
  */
 export function formatMediaDuration(ms: number | null | undefined): string | null {
-  if (ms == null || !Number.isFinite(ms) || ms <= 0) return null;
+  if (ms === null || ms === undefined || !Number.isFinite(ms) || ms <= 0) return null;
   const total = Math.round(ms / 1000);
   const h = Math.floor(total / 3600);
   const m = Math.floor((total % 3600) / 60);

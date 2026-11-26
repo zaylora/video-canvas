@@ -19,6 +19,7 @@ import (
 
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
+	"video-canvas/internal/pkg/idcodec"
 	"video-canvas/internal/provider"
 	"video-canvas/internal/repository"
 )
@@ -106,6 +107,64 @@ func (e *gtiEnv) assertReconciled(t *testing.T) *repository.CreditReconcile {
 			rec, rec.FrozenDiff(), rec.ActiveDiff(), rec.BalanceDiff())
 	}
 	return rec
+}
+
+func TestCanvasShareDeliveredGeneration(t *testing.T) {
+	for _, mode := range []string{"copy", "transfer"} {
+		t.Run(mode, func(t *testing.T) {
+			env := newGTIEnv(t, defaultTaskLimits())
+			ctx := context.Background()
+			if _, err := env.svc.GetCredits(ctx, env.user); err != nil {
+				t.Fatal(err)
+			}
+			if err := env.db.AutoMigrate(&model.User{}, &model.Asset{}, &model.CanvasViewer{}, &model.CanvasDelivery{}, &model.CanvasDeliveryStage{}, &model.StoryboardSplitJob{}); err != nil {
+				t.Fatal(err)
+			}
+			recipient := &model.User{Username: "recipient", Email: "recipient@example.test"}
+			if err := env.db.Create(recipient).Error; err != nil {
+				t.Fatal(err)
+			}
+			request := validCreateReq()
+			source := uint64(request.CanvasID)
+			share := NewCanvasShareService(repository.NewCanvasShareRepository(env.db), nil, nil)
+			if err := share.Share(ctx, env.user, source, model.CanvasShareReq{Mode: "view", Email: recipient.Email}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := createSingle(ctx, env.svc, recipient.ID, "view", request); err == nil {
+				t.Fatal("只读查看者不能在原作上生成")
+			}
+			delivery := model.CanvasShareReq{Mode: mode, Email: recipient.Email, Revision: 1, RequestKey: mode}
+			if err := share.Share(ctx, env.user, source, delivery); err != nil {
+				t.Fatal(err)
+			}
+			projects := repository.NewCanvasProjectRepository(env.db)
+			owned, _, err := projects.List(ctx, recipient.ID, "", 0, 20)
+			if err != nil || len(owned) != 1 {
+				t.Fatalf("接收方作品：%v, %v", owned, err)
+			}
+			request.CanvasID = idcodec.ID(owned[0].ID)
+			if _, err := createSingle(ctx, env.svc, env.user, "foreign", request); err == nil {
+				t.Fatal("交付方不能在接收方作品上生成")
+			}
+			verifyDeliveredGeneration(t, env, recipient.ID, request)
+		})
+	}
+}
+
+func verifyDeliveredGeneration(t *testing.T, env *gtiEnv, recipient uint64, request *model.CreateGenerationTaskReq) {
+	t.Helper()
+	ctx := context.Background()
+	view, err := createSingle(ctx, env.svc, recipient, "owned", request)
+	if err != nil || view.Status != model.TaskPending || view.CanvasProjectID == nil || *view.CanvasProjectID != request.CanvasID {
+		t.Fatalf("接收方生成任务未挂到交付画布：%+v, %v", view, err)
+	}
+	recipientCredits, err := env.store.Reconcile(ctx, recipient)
+	if err != nil || recipientCredits.Frozen != 10 || recipientCredits.FrozenDiff() != 0 || recipientCredits.ActiveDiff() != 0 {
+		t.Fatalf("接收方应只为成功入队的生成冻结积分：%+v, %v", recipientCredits, err)
+	}
+	if senderCredits := env.assertReconciled(t); senderCredits.Frozen != 0 || senderCredits.FreezeSum != 0 {
+		t.Fatalf("交付方积分不能用于接收方生成：%+v", senderCredits)
+	}
 }
 
 func TestGenerationTaskService_Integration_Create(t *testing.T) {

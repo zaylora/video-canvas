@@ -1,178 +1,229 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router";
-import {
-  ReactFlow,
-  Background,
-  Controls,
-  Handle,
-  Position,
-  type NodeProps,
-  type Node,
-} from "@xyflow/react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { canvasSharing } from "@/api/drama/share";
 import { mapCanvasProject } from "@/api/canvas";
 import type { BackendCanvasProjectDto, CanvasDetailDto } from "@/api/canvas/type";
-import type { CanvasNodeData } from "@/types/canvas";
+import { ApiError } from "@/utils/requests/request";
 import service from "@/utils/requests/service";
-import "@xyflow/react/dist/style.css";
+import { SharedCanvasScene } from "@/components/canvas-editor/shared-scene";
+import { usePageTitle } from "@/hooks/use-page-title";
+import { canvasPageTitle } from "@/utils/page-title";
 
-function Media({ src, kind }: { src?: string | null; kind?: string }) {
-  if (!src?.startsWith("/api/v1/canvas-media/")) return null;
-  if (kind === "audio") return <audio controls preload="none" src={src} className="w-full" />;
-  if (kind === "video") return <video controls preload="metadata" src={src} className="w-full" />;
-  return <img loading="lazy" alt="" src={src} className="w-full object-contain" />;
-}
-function ReadNode({ data }: NodeProps<Node<CanvasNodeData>>) {
-  const prompt = typeof data.params?.prompt === "string" ? data.params.prompt : data.prompt;
-  return (
-    <article className="w-72 space-y-2 rounded-xl border bg-card p-3 text-card-foreground shadow-sm">
-      <Handle type="target" position={Position.Left} />
-      <strong>{data.label}</strong>
-      {prompt && <p className="whitespace-pre-wrap break-words">{prompt}</p>}
-      {data.text && <p className="whitespace-pre-wrap break-words">{data.text}</p>}
-      <Media src={data.src ?? data.scene?.thumb?.url} kind={data.mediaType} />
-      {data.outputs?.length ? (
-        <details>
-          <summary>已保存结果 · {data.outputs.length}</summary>
-          {data.outputs.map((output) => (
-            <Media key={output.id} src={output.src} kind={output.mediaType} />
-          ))}
-        </details>
-      ) : null}
-      {data.character && (
-        <details>
-          <summary>
-            {data.character.name} · {data.character.look}
-          </summary>
-          <p>{data.character.description}</p>
-          <p>{data.character.voicePrompt}</p>
-          {data.character.extras?.map((item) => (
-            <Media key={item.assetId} src={item.src} />
-          ))}
-          <Media src={data.character.voice?.src} kind="audio" />
-        </details>
-      )}
-      {data.storyboard?.shots?.map((shot) => (
-        <p key={shot.id}>
-          {[
-            shot.shot,
-            shot.camera,
-            shot.scene,
-            shot.action,
-            shot.dialogue,
-            Number.isFinite(shot.duration) ? `${shot.duration} 秒` : null,
-          ]
-            .filter(Boolean)
-            .join(" · ")}
-          <Media src={shot.image?.src} />
-        </p>
-      ))}
-      {data.paramAssets && (
-        <details>
-          <summary>参考素材</summary>
-          {Object.entries(data.paramAssets).map(([key, item]) => (
-            <Media key={key} src={item.url} kind={item.mediaType} />
-          ))}
-        </details>
-      )}
-      <Handle type="source" position={Position.Right} />
-    </article>
-  );
-}
-const nodeTypes = {
-  canvas: ReadNode,
-  group: ({ data }: NodeProps) => (
-    <div className="h-full rounded-xl border border-dashed bg-muted/25 p-3">
-      {String(data.label ?? "分组")}
-    </div>
-  ),
-};
+import {
+  DEFAULT_SHARED_REFRESH_SECONDS,
+  MAX_SHARED_REFRESH_SECONDS,
+} from "./chrome/shared-refresh-control";
+import { SharedTopLeftBar } from "./chrome/top-left-bar";
+import { WorkspaceChrome } from "./chrome/workspace-chrome";
+
 const back = "/canvases?scope=shared-canvas";
+const REFRESH_PREFERENCE_KEY = "canvas:shared-refresh-seconds";
+const AUTO_REFRESH_PREFERENCE_KEY = "canvas:shared-auto-refresh";
+type SharedCanvasResponse = BackendCanvasProjectDto | { unchanged: true };
+
+function readAutoRefresh() {
+  try {
+    return localStorage.getItem(AUTO_REFRESH_PREFERENCE_KEY) !== "off";
+  } catch {
+    return true;
+  }
+}
+
+function readRefreshSeconds() {
+  try {
+    const seconds = Number(localStorage.getItem(REFRESH_PREFERENCE_KEY));
+    if (Number.isInteger(seconds) && seconds >= 1 && seconds <= MAX_SHARED_REFRESH_SECONDS)
+      return seconds;
+  } catch {
+    return DEFAULT_SHARED_REFRESH_SECONDS;
+  }
+  return DEFAULT_SHARED_REFRESH_SECONDS;
+}
+
 export default function SharedCanvasReader() {
   const { id = "" } = useParams();
+  return <CanvasReader key={id} id={id} />;
+}
+
+function CanvasReader({ id }: { id: string }) {
   const navigate = useNavigate();
   const [canvas, setCanvas] = useState<CanvasDetailDto | null>(null);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<"access" | "network" | null>(null);
   const [reload, setReload] = useState(0);
+  const [leaving, setLeaving] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState(readAutoRefresh);
+  const [refreshSeconds, setRefreshSeconds] = useState(readRefreshSeconds);
+  const version = useRef<number | undefined>(undefined);
+  const autoRefreshActions = useRef<{
+    poll: () => void;
+    focus: () => void;
+    cancel: () => void;
+  } | null>(null);
+  usePageTitle(canvasPageTitle(canvas?.title ?? "共享画布"));
   useEffect(() => {
-    let sequence = 0;
-    let controller: AbortController | undefined;
-    const load = () => {
-      controller?.abort();
-      controller = new AbortController();
-      const request = ++sequence;
-      setError(false);
+    let pending: { controller: AbortController; automatic: boolean } | undefined;
+    let accessEnded = false;
+    const load = (automatic: boolean) => {
+      pending?.controller.abort();
+      const request = new AbortController();
+      pending = { controller: request, automatic };
       void service
-        .get<BackendCanvasProjectDto>(`/canvas/${id}/reader`, undefined, {
-          signal: controller.signal,
-          silent: true,
-        })
+        .get<SharedCanvasResponse>(
+          `/canvas/${id}/reader`,
+          version.current === undefined ? undefined : { revision: version.current },
+          { signal: request.signal, silent: true },
+        )
         .then(
           (row) => {
-            if (request === sequence) setCanvas(mapCanvasProject(row));
+            if (request.signal.aborted) return;
+            accessEnded = false;
+            setError(null);
+            if ("unchanged" in row) return;
+            const next = mapCanvasProject(row);
+            version.current = next.version;
+            setCanvas(next);
           },
-          () => {
-            if (request === sequence) {
+          (failure: unknown) => {
+            if (request.signal.aborted) return;
+            const denied =
+              failure instanceof ApiError && [401, 403, 404, 410].includes(failure.status);
+            if (denied) {
+              accessEnded = true;
+              version.current = undefined;
               setCanvas(null);
-              setError(true);
             }
+            setError(denied ? "access" : "network");
           },
-        );
+        )
+        .finally(() => {
+          if (pending?.controller === request) pending = undefined;
+        });
     };
-    load();
-    window.addEventListener("focus", load);
+    load(false);
+    autoRefreshActions.current = {
+      poll: () => {
+        if (!document.hidden && !accessEnded && !pending) load(true);
+      },
+      focus: () => load(true),
+      cancel: () => {
+        if (!pending?.automatic) return;
+        pending.controller.abort();
+        pending = undefined;
+      },
+    };
     return () => {
-      sequence++;
-      controller?.abort();
-      window.removeEventListener("focus", load);
+      pending?.controller.abort();
+      autoRefreshActions.current = null;
     };
   }, [id, reload]);
-  const current = canvas?.id === id ? canvas : null;
-  return (
-    <main className="flex h-dvh flex-col">
-      <header className="flex items-center gap-4 border-b px-5 py-3">
-        <Link to={back}>共享给我</Link>
-        <strong className="truncate">{current?.title}</strong>
-        <span>仅可查看</span>
-        <Button variant="ghost" onClick={() => setReload((value) => value + 1)}>
-          刷新
-        </Button>
-        {current && (
-          <Button
-            variant="outline"
-            onClick={async () => {
-              try {
-                await canvasSharing.remove(id, "me");
-                navigate(back, { replace: true });
-              } catch {
-                toast.error("退出共享失败，请重试");
-              }
-            }}
-          >
-            退出共享
+
+  useEffect(() => {
+    if (!autoRefresh) return;
+    const focus = () => autoRefreshActions.current?.focus();
+    window.addEventListener("focus", focus);
+    return () => {
+      window.removeEventListener("focus", focus);
+      autoRefreshActions.current?.cancel();
+    };
+  }, [autoRefresh]);
+
+  useEffect(() => {
+    if (!autoRefresh) return;
+    const interval = window.setInterval(
+      () => autoRefreshActions.current?.poll(),
+      refreshSeconds * 1000,
+    );
+    return () => window.clearInterval(interval);
+  }, [autoRefresh, refreshSeconds]);
+
+  const changeAutoRefresh = (enabled: boolean) => {
+    setAutoRefresh(enabled);
+    try {
+      localStorage.setItem(AUTO_REFRESH_PREFERENCE_KEY, enabled ? "on" : "off");
+    } catch {
+      return;
+    }
+  };
+
+  const changeRefreshInterval = (seconds: number) => {
+    setRefreshSeconds(seconds);
+    try {
+      localStorage.setItem(REFRESH_PREFERENCE_KEY, String(seconds));
+    } catch {
+      return;
+    }
+  };
+
+  const leave = async () => {
+    setLeaving(true);
+    try {
+      await canvasSharing.remove(id, "me");
+      setCanvas(null);
+      navigate(back, { replace: true });
+    } catch {
+      toast.error("退出共享失败，请重试");
+      setLeaving(false);
+    }
+  };
+
+  const refresh = () => setReload((value) => value + 1);
+  if (!canvas)
+    return (
+      <main className="grid h-svh place-content-center justify-items-center gap-4 px-4 text-center">
+        <p role="status">
+          {error === "access"
+            ? "画布不可访问，请确认共享权限。"
+            : error === "network"
+              ? "加载画布失败，请刷新重试。"
+              : "正在加载画布…"}
+        </p>
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" nativeButton={false} render={<Link to={back} />}>
+            共享给我
           </Button>
-        )}
-      </header>
-      {current ? (
-        <ReactFlow
-          key={`${id}:${current.version}`}
-          nodes={current.graph.nodes}
-          edges={current.graph.edges.map(({ id, source, target }) => ({ id, source, target }))}
-          nodeTypes={nodeTypes}
-          defaultViewport={current.graph.viewport}
-          nodesDraggable={false}
-          nodesConnectable={false}
-          elementsSelectable={false}
-          deleteKeyCode={null}
-        >
-          <Background />
-          <Controls showInteractive={false} />
-        </ReactFlow>
-      ) : (
-        <p className="m-auto">{error ? "画布不可访问，请确认共享权限或重试。" : "正在加载画布…"}</p>
+          {error && (
+            <Button variant="outline" onClick={refresh}>
+              刷新
+            </Button>
+          )}
+        </div>
+      </main>
+    );
+  return (
+    <SharedCanvasScene
+      graph={canvas.graph}
+      overlay={(minimap, setMinimap) => (
+        <WorkspaceChrome
+          shared
+          minimap={minimap}
+          onMinimapChange={setMinimap}
+          topLeft={
+            <div className="grid justify-items-start gap-2">
+              <SharedTopLeftBar
+                title={canvas.title}
+                back={back}
+                leaving={leaving}
+                autoRefresh={autoRefresh}
+                refreshSeconds={refreshSeconds}
+                onAutoRefreshChange={changeAutoRefresh}
+                onRefreshIntervalChange={changeRefreshInterval}
+                onRefresh={refresh}
+                onLeave={() => void leave()}
+              />
+              {error === "network" && (
+                <span
+                  role="status"
+                  className="bg-background text-muted-foreground rounded-full px-3 py-1 text-sm"
+                >
+                  刷新失败，请重试。
+                </span>
+              )}
+            </div>
+          }
+        />
       )}
-    </main>
+    />
   );
 }

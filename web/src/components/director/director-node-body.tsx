@@ -1,5 +1,6 @@
 import { Video } from "lucide-react";
 
+import { NodeImage } from "@/components/canvas/node-image";
 import { NODE_META } from "@/constants/canvas";
 import { cn } from "@/lib/utils";
 import type { DirectorScene } from "@/types";
@@ -24,7 +25,7 @@ export function DirectorNodeBody({
     <div className="bg-muted relative aspect-video w-full overflow-hidden rounded-[inherit]">
       {thumb && (
         <>
-          <img src={thumb} alt="" draggable={false} className="size-full object-contain" />
+          <NodeImage src={thumb} alt="" className="size-full items-start object-contain" />
           <div data-mask className="absolute inset-0 bg-black/55" />
         </>
       )}

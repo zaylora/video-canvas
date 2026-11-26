@@ -81,16 +81,17 @@ func projectNode(value any, mediaURL func(string) string) error {
 	if kind, _ := data["kind"].(string); kind != "" && !slices.Contains([]string{"script", "image", "video", "audio", "director", "character", "storyboard"}, kind) {
 		return ErrInvalid
 	}
-	if data == nil || (data["characterId"] != nil && data["character"] == nil) {
+	if data == nil {
 		return ErrInvalid
 	}
+	normalizeSharedCharacter(data)
 	if err := checkSharedKeys(data); err != nil {
 		return err
 	}
 	if err := checkParamReferences(data); err != nil {
 		return err
 	}
-	keepFields(data, "mediaAspect outpaintFrom kind label color labelColor prompt text model status assetId src mediaType uploaded fileName params paramAssets character storyboard scene outputs activeOutputId")
+	keepFields(data, "mediaAspect frameAspect outpaintFrom kind label color labelColor prompt text model status assetId src mediaType uploaded fileName params paramAssets character storyboard scene outputs activeOutputId")
 	if data["status"] == "running" {
 		data["status"] = "idle"
 	}
@@ -98,6 +99,30 @@ func projectNode(value any, mediaURL func(string) string) error {
 		return err
 	}
 	return nil
+}
+
+func normalizeSharedCharacter(data map[string]any) {
+	if data["kind"] != "character" || data["character"] != nil {
+		return
+	}
+	_, hasID := data["characterId"]
+	_, hasCache := data["labelCache"]
+	if !hasID && !hasCache {
+		return
+	}
+	cache, _ := data["labelCache"].(map[string]any)
+	cachedName, _ := cache["name"].(string)
+	label, _ := data["label"].(string)
+	name := strings.TrimSpace(cachedName)
+	if name == "" {
+		name = strings.TrimSpace(label)
+	}
+	if name == "" {
+		name = "未命名角色"
+	}
+	data["character"] = map[string]any{
+		"name": name, "look": "基础形象", "description": "", "extras": []any{}, "voice": nil,
+	}
 }
 
 func cleanSharedObject(obj map[string]any, mediaURL func(string) string) error {

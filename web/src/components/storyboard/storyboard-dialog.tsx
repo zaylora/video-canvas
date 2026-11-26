@@ -62,7 +62,7 @@ export function StoryboardEmpty({
   split,
   title = "还没有镜头",
 }: {
-  onAdd: () => void;
+  onAdd?: () => void;
   split?: { onSplit: () => void; reason: string };
   title?: string;
 }) {
@@ -80,10 +80,12 @@ export function StoryboardEmpty({
             </Button>
           </span>
         )}
-        <Button variant="outline" size="sm" className="nodrag" onClick={onAdd}>
-          <Plus />
-          添加镜头
-        </Button>
+        {onAdd && (
+          <Button variant="outline" size="sm" className="nodrag" onClick={onAdd}>
+            <Plus />
+            添加镜头
+          </Button>
+        )}
       </div>
     </div>
   );

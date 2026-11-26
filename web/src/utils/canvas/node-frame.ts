@@ -54,6 +54,20 @@ export function paramAspect(
   return entry ? parseAspect(effectiveValue(entry, params, entry.name)) : null;
 }
 
+/** 无需加载作者的模型配置即可还原占位画幅，旧存档从参数取值。 */
+export function sharedParamAspect({
+  frameAspect,
+  params,
+}: {
+  frameAspect?: number | null;
+  params?: Record<string, unknown>;
+}): number | null {
+  if (frameAspect === null) return null;
+  if (typeof frameAspect === "number" && Number.isFinite(frameAspect) && frameAspect > 0)
+    return frameAspect;
+  return parseAspect(params?.aspect_ratio ?? params?.ratio);
+}
+
 /**
  * 模型的比例参数（aspect_ratio 或 ratio）。
  * @returns 参数名、是否开放给用户、可选值等；模型没有比例参数时为 undefined

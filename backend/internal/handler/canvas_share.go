@@ -3,8 +3,10 @@ package handler
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -131,7 +133,13 @@ func (h *CanvasShareHandler) Workspace(secret string) gin.HandlerFunc {
 		if !ok {
 			return
 		}
-		work, err := h.service.Read(c.Request.Context(), currentUserID(c), id)
+		var query struct {
+			Revision uint64 `form:"revision"`
+		}
+		if !BindQuery(c, &query) {
+			return
+		}
+		work, err := h.service.ReadIfChanged(c.Request.Context(), currentUserID(c), id, query.Revision)
 		if err != nil {
 			response.Fail(c, err)
 			return
@@ -144,6 +152,10 @@ func (h *CanvasShareHandler) Workspace(secret string) gin.HandlerFunc {
 		c.SetSameSite(http.SameSiteStrictMode)
 		c.SetCookie("canvas_media", ticket, 3600, "/api/v1/canvas-media/"+c.Param("id")+"/", "", c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https", true)
 		c.Header("Cache-Control", "private, no-store")
+		if work == nil {
+			response.OK(c, gin.H{"unchanged": true})
+			return
+		}
 		response.OK(c, work)
 	}
 }
@@ -159,7 +171,11 @@ func (h *CanvasShareHandler) Media(c *gin.Context) {
 		response.Fail(c, errcode.ErrAssetNotFound)
 		return
 	}
-	file, err := h.service.Media(c.Request.Context(), currentUserID(c), id, asset)
+	open := h.service.Media
+	if c.Query("v") == "poster" {
+		open = h.service.Poster
+	}
+	file, err := open(c.Request.Context(), currentUserID(c), id, asset)
 	if err != nil {
 		response.Fail(c, err)
 		return
@@ -170,12 +186,63 @@ func (h *CanvasShareHandler) Media(c *gin.Context) {
 		return
 	}
 	c.Header("Content-Security-Policy", "sandbox; default-src 'none'")
+	c.Header("Cache-Control", "private, no-store")
+	c.Header("X-Content-Type-Options", "nosniff")
+	c.Header("Content-Type", file.Asset.MimeType)
+	if c.Request.Method == http.MethodHead && file.Asset.ByteSize > 0 {
+		c.Header("Content-Length", strconv.FormatInt(file.Asset.ByteSize, 10))
+		c.Status(http.StatusOK)
+		return
+	}
 	if body, ok := file.Body.(io.ReadSeeker); ok {
-		c.Header("Cache-Control", "private, no-store")
-		c.Header("X-Content-Type-Options", "nosniff")
-		c.Header("Content-Type", file.Asset.MimeType)
 		http.ServeContent(c.Writer, c.Request, "media", file.Asset.CreatedAt, body)
 		return
 	}
-	c.DataFromReader(200, file.Asset.ByteSize, file.Asset.MimeType, file.Body, map[string]string{"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"})
+	serveCanvasMediaStream(c, file.Body, file.Asset.MimeType, file.Asset.ByteSize)
+}
+
+func serveCanvasMediaStream(c *gin.Context, body io.Reader, mime string, size int64) {
+	rangeHeader := c.GetHeader("Range")
+	if size <= 0 || rangeHeader == "" || c.GetHeader("If-Range") != "" || strings.Contains(rangeHeader, ",") {
+		c.DataFromReader(http.StatusOK, size, mime, body, nil)
+		return
+	}
+	start, end, ok := canvasMediaRange(rangeHeader, size)
+	if !ok {
+		c.Header("Content-Range", fmt.Sprintf("bytes */%d", size))
+		c.Status(http.StatusRequestedRangeNotSatisfiable)
+		return
+	}
+	if _, err := io.CopyN(io.Discard, body, start); err != nil {
+		response.Fail(c, errcode.ErrAssetNotFound)
+		return
+	}
+	c.Header("Accept-Ranges", "bytes")
+	c.Header("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, size))
+	length := end - start + 1
+	c.DataFromReader(http.StatusPartialContent, length, mime, io.LimitReader(body, length), nil)
+}
+
+func canvasMediaRange(header string, size int64) (int64, int64, bool) {
+	value, found := strings.CutPrefix(header, "bytes=")
+	if !found {
+		return 0, 0, false
+	}
+	first, last, found := strings.Cut(value, "-")
+	if !found {
+		return 0, 0, false
+	}
+	if first == "" {
+		length, err := strconv.ParseInt(last, 10, 64)
+		return max(0, size-length), size - 1, err == nil && length > 0
+	}
+	start, err := strconv.ParseInt(first, 10, 64)
+	if err != nil || start < 0 || start >= size {
+		return 0, 0, false
+	}
+	if last == "" {
+		return start, size - 1, true
+	}
+	end, err := strconv.ParseInt(last, 10, 64)
+	return start, min(end, size-1), err == nil && end >= start
 }

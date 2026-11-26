@@ -146,6 +146,35 @@ func TestClient_BinaryResponseOnlyRecordsSize(t *testing.T) {
 	}
 }
 
+func TestClient_PrivateURLOnlyLogsSummary(t *testing.T) {
+	readApp, readPayload := logFiles(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Query().Get("signature") != "private-value" {
+			t.Error("出站请求应保留签名")
+		}
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte("private upstream details"))
+	}))
+	defer srv.Close()
+	ctx := outbound.WithPrivateURL(context.Background())
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"/private-key?signature=private-value", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := outbound.Client("asset.canvas_poster", nil).Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	calls := extCalls(readApp())
+	if len(calls) != 1 || calls[0]["purpose"] != "asset.canvas_poster" || calls[0]["status"] != float64(502) || calls[0]["path"] != nil {
+		t.Fatalf("应只记录出站摘要: %v", calls)
+	}
+	if payload := readPayload(); len(payload) != 0 {
+		t.Fatal("私有素材请求不应记录请求或响应全文")
+	}
+}
+
 func TestClient_FailuresAreWarn(t *testing.T) {
 	readApp, _ := logFiles(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

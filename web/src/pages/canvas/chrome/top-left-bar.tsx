@@ -2,7 +2,7 @@ import { openDialog } from "@/store/dialog";
 import { DramaShareDialog } from "@/pages/drama/share-dialog";
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import {
   ArrowLeft,
   Check,
@@ -22,6 +22,17 @@ import { Logo } from "@/components/brand/logo";
 import { ChromeButton, ChromePill, ChromeTooltip } from "@/components/canvas/chrome/chrome";
 import { TransferProgressDialog } from "@/components/canvas/transfer-progress-dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -35,6 +46,8 @@ import { runCanvasExport } from "@/utils/canvas/export-flow";
 import { createTransferCancel, type TransferCancel } from "@/utils/canvas/transfer-cancel";
 import { downloadJson } from "@/utils/canvas/transfer-file";
 
+import { SharedRefreshControl } from "./shared-refresh-control";
+
 /** 画布名最长多少字 */
 const TITLE_MAX = 60;
 
@@ -45,7 +58,7 @@ function CanvasTitle({
   readOnly,
 }: {
   title: string;
-  onRename: (title: string) => void;
+  onRename?: (title: string) => void;
   /** 只读预览：名字能看不能改 */
   readOnly?: boolean;
 }) {
@@ -58,7 +71,7 @@ function CanvasTitle({
     if (draft === null) return;
     const next = draft.trim().slice(0, TITLE_MAX);
     setDraft(null);
-    if (next && next !== title) onRename(next);
+    if (next && next !== title) onRename?.(next);
   };
 
   return (
@@ -99,6 +112,76 @@ function CanvasTitle({
         }}
       />
     </span>
+  );
+}
+
+export function SharedTopLeftBar({
+  title,
+  back,
+  leaving,
+  autoRefresh,
+  refreshSeconds,
+  onAutoRefreshChange,
+  onRefreshIntervalChange,
+  onRefresh,
+  onLeave,
+}: {
+  title: string;
+  back: string;
+  leaving: boolean;
+  autoRefresh: boolean;
+  refreshSeconds: number;
+  onAutoRefreshChange: (enabled: boolean) => void;
+  onRefreshIntervalChange: (seconds: number) => void;
+  onRefresh: () => void;
+  onLeave: () => void;
+}) {
+  const [confirmLeave, setConfirmLeave] = useState(false);
+
+  return (
+    <ChromePill className="max-w-[calc(100vw-24px)] pr-1">
+      <ChromeTooltip label="共享给我" side="bottom">
+        <Link
+          to={back}
+          aria-label="共享给我"
+          className="hover:bg-chrome-hover grid size-8 shrink-0 place-items-center rounded-full"
+        >
+          <ArrowLeft className="size-4" />
+        </Link>
+      </ChromeTooltip>
+      <CanvasTitle title={title} readOnly />
+      <span className="text-muted-foreground shrink-0 px-1 text-xs">仅可查看</span>
+      <SharedRefreshControl
+        enabled={autoRefresh}
+        seconds={refreshSeconds}
+        onEnabledChange={onAutoRefreshChange}
+        onIntervalChange={onRefreshIntervalChange}
+        onRefresh={onRefresh}
+      />
+      <AlertDialog open={confirmLeave} onOpenChange={(open) => !leaving && setConfirmLeave(open)}>
+        <AlertDialogTrigger
+          render={
+            <ChromeButton className="bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive">
+              退出共享
+            </ChromeButton>
+          }
+        />
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>退出这张画布的共享？</AlertDialogTitle>
+            <AlertDialogDescription>
+              退出后，这张画布将从你的「共享给我」列表中移除，你也将失去查看权限。原画布会保留在分享者的作品中。如需再次查看，请联系分享者重新共享。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={leaving}>取消</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" disabled={leaving} onClick={onLeave}>
+              {leaving ? "正在退出…" : "确认退出共享"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </ChromePill>
   );
 }
 

@@ -6,6 +6,7 @@ import { TextEditorDialog } from "@/components/canvas/text-editor-dialog";
 import { NODE_META } from "@/constants/canvas";
 import type { CanvasNode, CanvasNodeData } from "@/types";
 import { textEditPatch } from "@/utils/canvas/text-body";
+import { useCanvasReadOnly, useSharedCanvas } from "@/utils/canvas/read-only";
 
 import { NodeOverlays, NodeOverlaysPresence } from "./node-overlays";
 import { useDragSelected } from "./overlay-gate";
@@ -41,7 +42,9 @@ export function TextCanvasNode({
   const [editing, setEditing] = useState(false);
   const openEditor = useCallback(() => setEditing(true), []);
   /** 生成中锁定：弹窗只能看，免得和即将回填的结果打架 */
-  const editable = status !== "running";
+  const readOnly = useCanvasReadOnly();
+  const shared = useSharedCanvas();
+  const editable = !readOnly && status !== "running";
 
   /** 弹窗关闭时写回正文：正文就是下游引用到的那份 */
   const onTextChange = useCallback(
@@ -73,8 +76,8 @@ export function TextCanvasNode({
           error={data.error}
           taskRef={data.taskId ? data.errorTaskRef : null}
           icon={PlaceholderIcon ? <PlaceholderIcon className="size-10" /> : null}
-          placeholder="双击输入文字"
-          onEdit={editable ? openEditor : undefined}
+          placeholder={shared ? "暂无正文" : "双击输入文字"}
+          onEdit={editable || (shared && !!data.text) ? openEditor : undefined}
         />
       </NodeCard>
       <TextEditorDialog

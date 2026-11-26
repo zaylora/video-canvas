@@ -157,11 +157,14 @@ function sharing(resource: "dramas" | "canvas") {
       }
     },
     list: (keyword: string, page: number) =>
-      service.get<{ list: SharedDrama[]; total: number }>(`/${resource}/shared`, {
-        keyword,
-        page,
-        page_size: 24,
-      }),
+      service.get<{ list: SharedDrama[]; total: number; page: number; page_size: number }>(
+        `/${resource}/shared`,
+        {
+          keyword,
+          page,
+          page_size: 24,
+        },
+      ),
   };
 }
 export const canvasSharing = sharing("canvas");

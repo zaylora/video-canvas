@@ -1,10 +1,8 @@
-import { ChromeZone } from "@/components/canvas/chrome/chrome";
 import { ActionContextMenu } from "@/components/action-context-menu";
 import { useCanvasEditor } from "@/components/canvas-editor/editor-api";
 import { ASSISTANT_NAME } from "@/constants/agent";
 import { useAgentNotifications } from "@/hooks/use-agent-notifications";
 import { usePageTitle } from "@/hooks/use-page-title";
-import { cn } from "@/lib/utils";
 import { useAgentSettings } from "@/store/agent-settings";
 import { usePetStore } from "@/store/pet";
 import { watchTitlePrefix } from "@/utils/agent/watch";
@@ -17,10 +15,9 @@ import { BottomToolbar } from "./chrome/bottom-toolbar";
 import { EmptyState } from "./chrome/empty-state";
 import { PetLayer } from "./pet/pet-layer";
 import { ShortcutsDialog } from "./chrome/shortcuts-dialog";
-import { StatsBar } from "./chrome/stats-bar";
 import { TopLeftBar } from "./chrome/top-left-bar";
 import { TopRightBar } from "./chrome/top-right-bar";
-import { ViewControls } from "./chrome/view-controls";
+import { WorkspaceChrome } from "./chrome/workspace-chrome";
 import { openShortcuts, useShortcutsDialog } from "./shortcuts-state";
 
 /**
@@ -49,73 +46,67 @@ export function CanvasChrome() {
         <EmptyState onAdd={editor.addAtCenter} onUpload={editor.uploadAtCenter} />
       )}
 
-      <ChromeZone position="top-left">
-        <TopLeftBar
-          canvasId={editor.canvasId}
-          title={title}
-          onRename={editor.rename}
-          saveStatus={editor.saveStatus}
-          getVersion={editor.getVersion}
-          onSaveNow={editor.saveNow}
-          readOnly={editor.readOnly}
-        />
-      </ChromeZone>
-      <ChromeZone position="top-right">
-        <TopRightBar onOpenSettings={editor.openSettings} onOpenShortcuts={openShortcuts} />
-      </ChromeZone>
-      {/* 底栏是新建、上传、素材库、撤销重做：只读预览里一条都用不了，整条收起来，只留视图控件 */}
-      {!editor.readOnly && (
-        <ChromeZone position="left-center">
-          <BottomToolbar
-            tool={editor.tool}
-            onToolChange={editor.setTool}
-            onAdd={editor.addAtCenter}
-            onUpload={editor.uploadAtCenter}
-            onOpenAssets={editor.openAssetPicker}
-            canUndo={editor.history.canUndo}
-            canRedo={editor.history.canRedo}
-            onUndo={editor.history.undo}
-            onRedo={editor.history.redo}
+      <WorkspaceChrome
+        minimap={editor.minimap}
+        onMinimapChange={editor.setMinimap}
+        onOpenShortcuts={openShortcuts}
+        reserveForPet={reserveForPet}
+        topLeft={
+          <TopLeftBar
+            canvasId={editor.canvasId}
+            title={title}
+            onRename={editor.rename}
+            saveStatus={editor.saveStatus}
+            getVersion={editor.getVersion}
+            onSaveNow={editor.saveNow}
+            readOnly={editor.readOnly}
           />
-        </ChromeZone>
-      )}
-      <ChromeZone position="bottom-left" className="max-md:hidden">
-        <ViewControls
-          minimap={editor.minimap}
-          onMinimapChange={editor.setMinimap}
-          onOpenShortcuts={openShortcuts}
-        />
-      </ChromeZone>
-      <ChromeZone position="bottom-right">
-        {showLauncher && (
-          // 隐藏档下右键胶囊可以把桌宠请回来
-          <ActionContextMenu
-            className="contents"
-            actions={
-              petHidden
-                ? [
-                    {
-                      key: "show-pet",
-                      label: `显示${ASSISTANT_NAME}`,
-                      onSelect: () => useAgentSettings.getState().patchPet({ mode: "lively" }),
-                    },
-                  ]
-                : []
-            }
-          >
-            <AgentLauncher
-              open={agent.open}
-              available={agent.models === null ? null : agent.models.length > 0}
-              running={agent.ctl.busy}
-              onToggle={agent.toggle}
+        }
+        topRight={
+          <TopRightBar onOpenSettings={editor.openSettings} onOpenShortcuts={openShortcuts} />
+        }
+        toolbar={
+          !editor.readOnly && (
+            <BottomToolbar
+              tool={editor.tool}
+              onToolChange={editor.setTool}
+              onAdd={editor.addAtCenter}
+              onUpload={editor.uploadAtCenter}
+              onOpenAssets={editor.openAssetPicker}
+              canUndo={editor.history.canUndo}
+              canRedo={editor.history.canRedo}
+              onUndo={editor.history.undo}
+              onRedo={editor.history.redo}
             />
-          </ActionContextMenu>
-        )}
-        {/* 桌宠在右下角时，统计条往左让出 96px，不被压住 */}
-        <div className={cn("max-md:hidden", reserveForPet && "mr-24")}>
-          <StatsBar />
-        </div>
-      </ChromeZone>
+          )
+        }
+        assistant={
+          showLauncher && (
+            // 隐藏档下右键胶囊可以把桌宠请回来
+            <ActionContextMenu
+              className="contents"
+              actions={
+                petHidden
+                  ? [
+                      {
+                        key: "show-pet",
+                        label: `显示${ASSISTANT_NAME}`,
+                        onSelect: () => useAgentSettings.getState().patchPet({ mode: "lively" }),
+                      },
+                    ]
+                  : []
+              }
+            >
+              <AgentLauncher
+                open={agent.open}
+                available={agent.models === null ? null : agent.models.length > 0}
+                running={agent.ctl.busy}
+                onToggle={agent.toggle}
+              />
+            </ActionContextMenu>
+          )
+        }
+      />
       <PetLayer canvasId={editor.canvasId} />
       <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
     </>

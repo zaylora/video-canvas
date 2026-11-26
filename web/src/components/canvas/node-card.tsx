@@ -117,6 +117,7 @@ function NodeCardHandleDot({ type, position, id, top, label, compact, hidden }: 
         type={type}
         position={position}
         id={id}
+        style={top ? { top } : undefined}
         isConnectable={false}
         className="pointer-events-none opacity-0"
       />
@@ -282,7 +283,7 @@ export function NodeCard({
             top={handle.top}
             label={handle.label}
             compact={handle.compact}
-            hidden={handle.hidden}
+            hidden={handle.hidden || readOnly}
           />
         ))}
       </BaseNode>

@@ -73,10 +73,12 @@ export function DramaShareDialog({
   const [reload, setReload] = useState(0);
   useEffect(() => {
     let active = true;
-    setFailed(false);
     void api.members(id).then(
       (items) => {
-        if (active) setMembers(items);
+        if (active) {
+          setMembers(items);
+          setFailed(false);
+        }
       },
       () => {
         if (active) setFailed(true);
@@ -96,6 +98,9 @@ export function DramaShareDialog({
       await api.submit(id, mode, email.trim(), revision);
       toast.success(
         mode === "view" ? "已授予查看权限" : mode === "copy" ? "已发送副本" : "已转移所有权",
+        api === canvasSharing && mode !== "view"
+          ? { description: "对方可在「我的作品 → 个人画布」继续编辑。" }
+          : undefined,
       );
       if (mode === "transfer") transferred();
       onClose();
@@ -219,7 +224,10 @@ export function DramaShareDialog({
                   type="button"
                   variant="ghost"
                   className="self-start rounded-full"
-                  onClick={() => setReload((value) => value + 1)}
+                  onClick={() => {
+                    setFailed(false);
+                    setReload((value) => value + 1);
+                  }}
                 >
                   重新加载成员
                 </Button>

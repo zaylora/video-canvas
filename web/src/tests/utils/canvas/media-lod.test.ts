@@ -35,6 +35,13 @@ describe("variantUrl：给 /files/ 地址追加变体参数", () => {
     expect(variantUrl("/files/x.png#a", "thumb").url).toBe("/files/x.png?v=thumb#a");
   });
 
+  test("共享视频封面使用同一受限媒体地址", () => {
+    const src = "/api/v1/canvas-media/c1/a2";
+    expect(variantUrl(src, "poster")).toEqual({ url: `${src}?v=poster`, hasVariant: true });
+    expect(variantUrl(src, "thumb")).toEqual({ url: src, hasVariant: false });
+    expect(variantUrl(`https://other.example${src}`, "poster").hasVariant).toBe(false);
+  });
+
   test("非 /files/ 地址原样返回并标记无变体", () => {
     for (const src of [
       "https://other.com/a.png",

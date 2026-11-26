@@ -13,3 +13,7 @@ const ReadOnlyContext = createContext(false);
 export const CanvasReadOnlyProvider = ReadOnlyContext.Provider;
 
 export const useCanvasReadOnly = () => useContext(ReadOnlyContext);
+
+const SharedCanvasContext = createContext(false);
+export const SharedCanvasProvider = SharedCanvasContext.Provider;
+export const useSharedCanvas = () => useContext(SharedCanvasContext);

@@ -96,6 +96,7 @@ export function serializeGraph(
           ...(rest.src !== undefined ? { src: rest.src } : {}),
           ...(rest.mediaType !== undefined ? { mediaType: rest.mediaType } : {}),
           ...(rest.mediaAspect !== undefined ? { mediaAspect: rest.mediaAspect } : {}),
+          ...(rest.frameAspect !== undefined ? { frameAspect: rest.frameAspect } : {}),
           ...(rest.assetId !== undefined ? { assetId: rest.assetId } : {}),
           ...(rest.uploaded !== undefined ? { uploaded: rest.uploaded } : {}),
           ...(rest.fileName !== undefined ? { fileName: rest.fileName } : {}),

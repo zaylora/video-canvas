@@ -17,6 +17,8 @@ import type { CanvasEdge, CanvasNode, CanvasNodeData, ParamAsset } from "@/types
 import { isGenerating } from "@/utils/canvas/outputs";
 import { mentionableNodes, opForLink, unlinkSource } from "@/utils/canvas/link-rule";
 import { withoutOutpaintSource } from "@/utils/canvas/outpaint-node";
+import { paramAspect, sharedParamAspect } from "@/utils/canvas/node-frame";
+import { useCanvasReadOnly } from "@/utils/canvas/read-only";
 import { withoutProvenanceSources } from "@/utils/canvas/provenance-links";
 import { removePromptRef } from "@/utils/canvas/prompt-tokens";
 import { referencedText } from "@/utils/canvas/text-body";
@@ -78,6 +80,7 @@ export function useTaskNode(
 ) {
   const { updateNodeData, setEdges, getNodes, getEdges } = useReactFlow<CanvasNode, CanvasEdge>();
   const history = useCanvasHistoryContext();
+  const readOnly = useCanvasReadOnly();
   const remote = useRemoteModels(REMOTE_KIND_OF_NODE[nodeKind]);
   const availableCredits = useCreditsStore((state) => state.credits?.available ?? null);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -92,6 +95,19 @@ export function useTaskNode(
 
   // ---- 参数、生成方式与上游连线 ----
   const params = useMemo(() => readParams(data), [data]);
+  const resolvedAspect = paramAspect(caps, params);
+  const aspect = modelsStatus === "ready" ? resolvedAspect : sharedParamAspect(data);
+  const frameAspect =
+    resolvedAspect === sharedParamAspect({ params: data.params }) ? undefined : resolvedAspect;
+  useEffect(() => {
+    if (
+      !readOnly &&
+      nodeKind !== "audio" &&
+      modelsStatus === "ready" &&
+      frameAspect !== data.frameAspect
+    )
+      updateNodeData(id, { frameAspect });
+  }, [data.frameAspect, frameAspect, id, modelsStatus, nodeKind, readOnly, updateNodeData]);
   const allConnections = useNodeConnections({ id, handleType: "target" });
   // 扩图出来的节点：来自原图的那条线只表示来源，参考图只有合成图（设计稿 6.17）
   const candidateConnections = useMemo(
@@ -554,6 +570,7 @@ export function useTaskNode(
     unlink,
     // 参数
     caps,
+    paramFrameAspect: aspect,
     op,
     /** 生成方式由有没有图片引用决定，面板不再让用户选 */
     autoOp,

@@ -9,6 +9,7 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -19,7 +20,20 @@ import (
 	"video-canvas/internal/service"
 )
 
-type canvasTestAssets struct{ deliveryAssets }
+type canvasTestAssets struct {
+	deliveryAssets
+	posterReads int
+}
+
+func (a *canvasTestAssets) OpenCanvasPoster(ctx context.Context, user, id uint64) (*provider.AssetFile, error) {
+	row, err := a.Get(ctx, user, id)
+	if err != nil {
+		return nil, err
+	}
+	a.posterReads++
+	row.MimeType, row.ByteSize = "image/jpeg", 6
+	return &provider.AssetFile{Asset: row, Body: io.NopCloser(strings.NewReader("poster"))}, nil
+}
 
 func (a *canvasTestAssets) StageCanvasAsset(ctx context.Context, src *model.Asset, user uint64, record func(uint64, string) error) (*model.Asset, error) {
 	key := "stage-" + rand.Text()
@@ -44,7 +58,7 @@ func (a *canvasTestAssets) Open(ctx context.Context, user, id uint64) (*provider
 }
 func canvasSeed(t *testing.T) (*gorm.DB, *service.CanvasShareService, *canvasTestAssets) {
 	t.Helper()
-	db := isolatedDB(t, &model.User{}, &model.CanvasProject{}, &model.CanvasViewer{}, &model.CanvasDelivery{}, &model.CanvasDeliveryStage{}, &model.Asset{}, &model.GenerationTask{}, &model.StoryboardSplitJob{})
+	db := isolatedDB(t, &model.User{}, &model.CanvasProject{}, &model.CanvasViewer{}, &model.CanvasDelivery{}, &model.CanvasDeliveryStage{}, &model.Asset{}, &model.GenerationTask{}, &model.GenerationTaskEvent{}, &model.StoryboardSplitJob{})
 	graph := `{"nodes":[{"id":"n","type":"canvas","data":{"kind":"image","assetId":"10","src":"/files/source","outputs":[{"id":"10","assetId":"10","src":"/files/source"},{"id":"11","assetId":"11","src":"/files/older"}],"activeOutputId":"10","params":{"images":["11"]}}}],"edges":[]}`
 	for _, row := range []any{&model.User{Username: "recipient", Email: "recv@test.example"}, &model.CanvasProject{BaseModel: model.BaseModel{ID: 8}, UserID: 42, Title: "test", CoverAssetID: 10, PayloadJSON: []byte(graph)}} {
 		if err := db.Create(row).Error; err != nil {
@@ -122,7 +136,45 @@ func TestCanvasShareDeliveryReplay(t *testing.T) {
 			if err := svc.Share(ctx, 42, 8, req); err == nil {
 				t.Fatal("不同版本重用了请求键")
 			}
+			verifyCanvasDeliveryOwner(t, db, svc, next.ID, mode)
 		})
+	}
+}
+
+func verifyCanvasDeliveryOwner(t *testing.T, db *gorm.DB, svc *service.CanvasShareService, targetID uint64, mode string) {
+	t.Helper()
+	ctx := context.Background()
+	projects := repository.NewCanvasProjectRepository(db)
+	items, total, err := projects.List(ctx, 1, "", 0, 20)
+	if err != nil || total != 1 || len(items) != 1 || items[0].ID != targetID {
+		t.Fatalf("接收作品应出现在个人列表: %v, %d, %v", items, total, err)
+	}
+	shared, _, err := svc.Shared(ctx, 1, "", 1, 20)
+	if err != nil || (mode == "copy" && len(shared) != 1) || (mode == "transfer" && len(shared) != 0) {
+		t.Fatalf("共享列表只应保留有效查看授权: %v, %v", shared, err)
+	}
+	if _, err = svc.Read(ctx, 1, targetID); err == nil {
+		t.Fatal("交付作品不应从共享读页打开")
+	}
+	projectService := service.NewCanvasProjectService(projects)
+	title := "由接收方继续编辑"
+	update := &model.UpdateCanvasProjectReq{Revision: 1, Title: &title}
+	if saved, saveErr := projectService.Update(ctx, 1, targetID, update); saveErr != nil || saved.Title != title || saved.Revision != 2 {
+		t.Fatalf("接收方应能用标准保存接口编辑: %+v, %v", saved, saveErr)
+	}
+	if _, err = projectService.Update(ctx, 1, 8, update); err == nil {
+		t.Fatal("仅查看或已退役的原作不应被接收方写入")
+	}
+	tasks := repository.NewGenerationTaskRepository(db)
+	ownedTask := gtTask(1, model.TaskPending, 1, time.Now())
+	ownedTask.CanvasProjectID, ownedTask.NodeID = &targetID, "n"
+	if inserted, taskErr := tasks.InsertTask(ctx, ownedTask); taskErr != nil || !inserted {
+		t.Fatalf("接收方的生成任务应能挂到交付画布: %t, %v", inserted, taskErr)
+	}
+	foreignTask := gtTask(42, model.TaskPending, 1, time.Now())
+	foreignTask.CanvasProjectID, foreignTask.NodeID = &targetID, "n"
+	if inserted, taskErr := tasks.InsertTask(ctx, foreignTask); inserted || !errors.Is(taskErr, repository.ErrNotFound) {
+		t.Fatalf("发送方不能给另一个用户的交付画布创建任务: %t, %v", inserted, taskErr)
 	}
 }
 func TestCanvasShareFailedTransferRetainsOriginal(t *testing.T) {

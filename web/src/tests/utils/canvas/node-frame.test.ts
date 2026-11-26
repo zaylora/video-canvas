@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import type { Capabilities } from "@/api/model/type";
+import { serializeGraph } from "@/utils/canvas/canvas-persistence";
 import {
   AUDIO_NODE_ASPECT,
   DEFAULT_NODE_ASPECT,
@@ -8,6 +9,7 @@ import {
   paramAspect,
   parseAspect,
   resolveNodeAspect,
+  sharedParamAspect,
 } from "@/utils/canvas/node-frame";
 
 const capsWith = (params: NonNullable<Capabilities["params"]>): Capabilities => ({
@@ -20,6 +22,27 @@ const ratioField = (name: string, options: string[], fallback?: string) =>
   capsWith({
     [name]: { type: "enum", label: "比例", open: true, options, default: fallback },
   });
+
+test("保存并复用模型默认画幅，旧画布仍按已保存参数展示", () => {
+  const selected = paramAspect(ratioField("ratio", ["9:16", "16:9"], "9:16"), {});
+  const graph = serializeGraph(
+    [
+      {
+        id: "image",
+        type: "canvas",
+        position: { x: 0, y: 0 },
+        data: { kind: "image", label: "待生成", frameAspect: selected },
+      },
+    ],
+    [],
+    { x: 0, y: 0, zoom: 1 },
+  );
+  const node = graph.nodes[0];
+  if (node.type !== "canvas") throw new Error("缺少图片节点");
+  expect(sharedParamAspect(node.data)).toBe(9 / 16);
+  expect(sharedParamAspect({ params: { ratio: "1:1" } })).toBe(1);
+  expect(sharedParamAspect({ frameAspect: null, params: { ratio: "1:1" } })).toBeNull();
+});
 
 describe("parseAspect：把比例参数值读成宽高比", () => {
   test("W:H 写法换算成宽 / 高", () => {

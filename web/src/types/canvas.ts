@@ -30,6 +30,8 @@ export type CanvasNodeData = {
   mediaType?: NodeMediaType;
   /** 素材的宽 / 高：上传前读本地文件、截帧裁切扩图时就记下，让节点框在素材出来之前就按它占位 */
   mediaAspect?: number;
+  /** 保存时由模型解析的占位画幅，null 表示使用通用默认值；不参与生成 */
+  frameAspect?: number | null;
   /** 服务端素材记录 id；有它的 URL 才能安全持久化 */
   assetId?: string;
   /** 素材是从本机传进来的，不是模型生成的 */

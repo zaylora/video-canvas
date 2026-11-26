@@ -1,6 +1,6 @@
 import { useCallback, useEffect } from "react";
 import { ChevronDown } from "lucide-react";
-import { useReactFlow } from "@xyflow/react";
+import { Position, useReactFlow } from "@xyflow/react";
 import { toast } from "sonner";
 
 import {
@@ -9,6 +9,7 @@ import {
   NodeVideoBody,
   VideoParamPanel,
   type IncomingConnection,
+  type NodeCardHandle,
 } from "@/components/canvas";
 import { useHandleRemeasure } from "@/components/canvas/hooks/use-handle-remeasure";
 import { PANEL_CHIP_CLASS, type SecondarySubmit } from "@/components/canvas/node-prompt-input";
@@ -46,7 +47,7 @@ import type { CanvasNode, CanvasNodeData, NodeKind } from "@/types";
 import { canFillNode } from "@/utils/canvas/fill-upload";
 import { canLinkFrom } from "@/utils/canvas/link-rule";
 import { shouldRecordAspect } from "@/utils/canvas/media-aspect";
-import { nodeFrameSize, paramAspect, resolveNodeAspect } from "@/utils/canvas/node-frame";
+import { nodeFrameSize, resolveNodeAspect, sharedParamAspect } from "@/utils/canvas/node-frame";
 import { outpaintRunner } from "@/utils/canvas/outpaint-run";
 import { isUploadFailed, isUploading } from "@/utils/canvas/upload-state";
 import { uploadRunner } from "@/utils/canvas/upload-runner";
@@ -66,6 +67,8 @@ import type { VideoNodeView } from "@/utils/tasks/node-view";
 
 import { VersionBadge } from "@/components/canvas/version-badge";
 import { showVersionBadge } from "@/utils/canvas/versions";
+import { useSharedCanvas } from "@/utils/canvas/read-only";
+import { deriveVideoNodeView } from "@/utils/tasks/node-view";
 
 import { useRegisterNodeActions } from "./node-actions";
 import { NodeFillActions } from "./node-fill-actions";
@@ -73,6 +76,7 @@ import { PROMPT_DIALOG_PANEL_CLASS, PromptEditDialog } from "./prompt-edit-dialo
 import { NodeOverlays, NodeOverlaysPresence } from "./node-overlays";
 import { useDragSelected } from "./overlay-gate";
 import { useMultiSelected } from "./selection-toolbar";
+import { SharedDetailsButton } from "./shared-node-details";
 
 /** 走「提交任务 -> 轮询 / 推送 -> 回填」流程的媒体节点种类 */
 export type MediaTaskKind = "image" | "video" | "audio";
@@ -389,7 +393,7 @@ function MediaTaskNode({
   const aspect = resolveNodeAspect({
     measured: measuredAspect,
     declared: data.mediaAspect,
-    selected: paramAspect(vm.caps, vm.params),
+    selected: vm.paramFrameAspect,
     mediaType,
   });
   const uploadFailed = interrupted || isUploadFailed(data);
@@ -521,8 +525,55 @@ function MediaTaskNode({
 type MediaNodeProps = { id: string; data: CanvasNodeData; selected?: boolean };
 
 /** 图片节点 */
-export const ImageCanvasNode = (props: MediaNodeProps) => <MediaTaskNode {...props} kind="image" />;
+const MEDIA_HANDLES: NodeCardHandle[] = [
+  { type: "target", position: Position.Left },
+  { type: "source", position: Position.Right },
+];
+
+function SharedMediaTaskNode({ data, kind }: MediaNodeProps & { kind: MediaTaskKind }) {
+  const meta = NODE_META.get(kind);
+  const Icon = meta?.icon;
+  const Placeholder = meta?.placeholderIcon;
+  const mediaType = data.mediaType ?? kind;
+  const view = deriveVideoNodeView(data, undefined, 0);
+  const measured = useMediaAspect(view.phase === "done" ? view.src : null, mediaType);
+  const aspect = resolveNodeAspect({
+    mediaType,
+    measured,
+    declared: data.mediaAspect,
+    selected: sharedParamAspect(data),
+  });
+  const hasDetails =
+    data.prompt ||
+    data.params?.prompt ||
+    data.outputs?.length ||
+    Object.keys(data.paramAssets ?? {}).length;
+  return (
+    <NodeCard
+      title={data.label}
+      icon={Icon ? <Icon /> : undefined}
+      status={hasDetails ? <SharedDetailsButton data={data} /> : <NodeStatusLabel view={view} />}
+      handles={MEDIA_HANDLES}
+      width={nodeFrameSize(aspect).width}
+    >
+      <NodeVideoBody
+        view={view}
+        aspect={aspect}
+        mediaType={mediaType}
+        placeholder={`暂无${meta?.label ?? "素材"}`}
+        placeholderIcon={Placeholder ? <Placeholder className="size-10" /> : undefined}
+      />
+    </NodeCard>
+  );
+}
+
+function MediaNode(props: MediaNodeProps & { kind: MediaTaskKind }) {
+  const shared = useSharedCanvas();
+  return shared ? <SharedMediaTaskNode {...props} /> : <MediaTaskNode {...props} />;
+}
+
+export const ImageCanvasNode = (props: MediaNodeProps) => <MediaNode {...props} kind="image" />;
 /** 视频节点 */
-export const VideoCanvasNode = (props: MediaNodeProps) => <MediaTaskNode {...props} kind="video" />;
+export const VideoCanvasNode = (props: MediaNodeProps) => <MediaNode {...props} kind="video" />;
 /** 音频节点 */
-export const AudioCanvasNode = (props: MediaNodeProps) => <MediaTaskNode {...props} kind="audio" />;
+export const AudioCanvasNode = (props: MediaNodeProps) => <MediaNode {...props} kind="audio" />;

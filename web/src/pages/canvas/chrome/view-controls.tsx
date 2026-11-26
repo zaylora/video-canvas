@@ -30,7 +30,7 @@ export function ViewControls({
 }: {
   minimap: boolean;
   onMinimapChange: (minimap: boolean) => void;
-  onOpenShortcuts: () => void;
+  onOpenShortcuts?: () => void;
 }) {
   const zoom = useStore((state) => state.transform[2]);
   const { zoomIn, zoomOut, zoomTo, fitView } = useReactFlow();
@@ -60,22 +60,22 @@ export function ViewControls({
           <DropdownMenuContent side="top" sideOffset={12} className="w-48">
             <DropdownMenuItem onClick={() => void zoomIn({ duration: VIEWPORT_DURATION })}>
               放大
-              <DropdownMenuShortcut>{MOD}+</DropdownMenuShortcut>
+              {onOpenShortcuts && <DropdownMenuShortcut>{MOD}+</DropdownMenuShortcut>}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => void zoomOut({ duration: VIEWPORT_DURATION })}>
               缩小
-              <DropdownMenuShortcut>{MOD}−</DropdownMenuShortcut>
+              {onOpenShortcuts && <DropdownMenuShortcut>{MOD}−</DropdownMenuShortcut>}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={() => void fitView({ duration: VIEWPORT_DURATION, padding: 0.2 })}
             >
               适应画布
-              <DropdownMenuShortcut>⇧1</DropdownMenuShortcut>
+              {onOpenShortcuts && <DropdownMenuShortcut>⇧1</DropdownMenuShortcut>}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => void zoomTo(1, { duration: VIEWPORT_DURATION })}>
               缩放到 100%
-              <DropdownMenuShortcut>⇧0</DropdownMenuShortcut>
+              {onOpenShortcuts && <DropdownMenuShortcut>⇧0</DropdownMenuShortcut>}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -90,13 +90,15 @@ export function ViewControls({
           </ChromeButton>
         </ChromeTooltip>
       </ChromePill>
-      <ChromePill>
-        <ChromeTooltip label="快捷键" shortcut="?">
-          <ChromeButton aria-label="快捷键" onClick={onOpenShortcuts}>
-            <CircleHelp />
-          </ChromeButton>
-        </ChromeTooltip>
-      </ChromePill>
+      {onOpenShortcuts && (
+        <ChromePill>
+          <ChromeTooltip label="快捷键" shortcut="?">
+            <ChromeButton aria-label="快捷键" onClick={onOpenShortcuts}>
+              <CircleHelp />
+            </ChromeButton>
+          </ChromeTooltip>
+        </ChromePill>
+      )}
     </>
   );
 }

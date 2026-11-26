@@ -116,6 +116,11 @@ export function useCanvasList(pageSize: number) {
 
   const reload = useCallback(() => setReloadKey((key) => key + 1), []);
 
+  useEffect(() => {
+    window.addEventListener("focus", reload);
+    return () => window.removeEventListener("focus", reload);
+  }, [reload]);
+
   const remove = useCallback(async (id: string) => {
     setDeleting((prev) => new Set(prev).add(id));
     try {

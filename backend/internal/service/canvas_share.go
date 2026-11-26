@@ -27,6 +27,7 @@ type CanvasShareRepo interface {
 	Members(context.Context, uint64, uint64) ([]model.CanvasShareMember, error)
 	Shared(context.Context, uint64, string, int, int) ([]model.CanvasShareItem, int64, error)
 	SharedCanvas(context.Context, uint64, uint64) (*model.CanvasProject, error)
+	SharedCanvasRevision(context.Context, uint64, uint64) (uint64, error)
 	Source(context.Context, uint64, uint64) (*model.CanvasProject, error)
 	Claim(context.Context, model.CanvasDelivery) (bool, uint64, error)
 	Release(context.Context, model.CanvasDelivery) error
@@ -40,6 +41,7 @@ type CanvasShareRepo interface {
 type CanvasShareAssets interface {
 	Get(context.Context, uint64, uint64) (*model.Asset, error)
 	Open(context.Context, uint64, uint64) (*provider.AssetFile, error)
+	OpenCanvasPoster(context.Context, uint64, uint64) (*provider.AssetFile, error)
 	StageCanvasAsset(context.Context, *model.Asset, uint64, func(uint64, string) error) (*model.Asset, error)
 	DiscardCopies(context.Context, []*model.Asset)
 	FileURL(string) string
@@ -151,8 +153,31 @@ func (s *CanvasShareService) Read(ctx context.Context, user, id uint64) (*model.
 	return view, err
 }
 
+// ReadIfChanged 检查已保存版本，仅在变化时生成共享投影。
+func (s *CanvasShareService) ReadIfChanged(ctx context.Context, user, id, version uint64) (*model.CanvasProjectView, error) {
+	if version != 0 {
+		current, err := s.repo.SharedCanvasRevision(ctx, user, id)
+		if err != nil {
+			return nil, canvasShareError(err)
+		}
+		if version == current {
+			return nil, nil
+		}
+	}
+	return s.Read(ctx, user, id)
+}
+
 // Media 复核当前授权和素材引用范围后打开文件。
 func (s *CanvasShareService) Media(ctx context.Context, user, id, asset uint64) (*provider.AssetFile, error) {
+	return s.openMedia(ctx, user, id, asset, s.assets.Open)
+}
+
+// Poster 复核共享范围后读取视频封面，沿用原视频的查看授权。
+func (s *CanvasShareService) Poster(ctx context.Context, user, id, asset uint64) (*provider.AssetFile, error) {
+	return s.openMedia(ctx, user, id, asset, s.assets.OpenCanvasPoster)
+}
+
+func (s *CanvasShareService) openMedia(ctx context.Context, user, id, asset uint64, open func(context.Context, uint64, uint64) (*provider.AssetFile, error)) (*provider.AssetFile, error) {
 	row, err := s.repo.SharedCanvas(ctx, user, id)
 	if err != nil {
 		return nil, canvasShareError(err)
@@ -164,7 +189,7 @@ func (s *CanvasShareService) Media(ctx context.Context, user, id, asset uint64) 
 	if graph.assets[asset] == nil {
 		return nil, errcode.ErrAssetNotFound
 	}
-	file, err := s.assets.Open(ctx, row.UserID, asset)
+	file, err := open(ctx, row.UserID, asset)
 	return file, canvasShareError(err)
 }
 

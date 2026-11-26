@@ -28,6 +28,8 @@ export interface PersistedCanvasNodeDto {
     src?: string | null;
     /** src 素材的媒体类型 */
     mediaType?: "image" | "video" | "audio";
+    /** 保存时解析的占位画幅，null 表示使用通用默认值 */
+    frameAspect?: number | null;
     /** 服务端素材记录 ID */
     assetId?: string;
     /** 素材是否为本机上传 */
