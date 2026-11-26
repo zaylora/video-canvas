@@ -110,23 +110,34 @@ describe("characterRefsOfNode：节点自带的数据 → 绑定要用的素材�
       src: "/a/20.mp3",
       origin: "upload" as const,
     };
-    for (const patch of [{ assetId: undefined }, { status: "running" as const }]) {
-      expect(
-        characterRefsOfNode(
-          "n1",
-          data({
-            ...patch,
-            character: character({ voice, extras: [{ assetId: "11", src: "/a/11.png" }] }),
-          }),
-        ),
-      ).toEqual({
-        id: "n1",
-        name: "林晚",
-        avatarAssetId: "",
-        extraAssetIds: [],
-        voiceAssetId: "20",
-      });
-    }
+    const extras = [{ assetId: "11", src: "/a/11.png" }];
+    // 从没有主图（旁白）：当作画外音，可以只带音色提交
+    expect(
+      characterRefsOfNode(
+        "n1",
+        data({ assetId: undefined, character: character({ voice, extras }) }),
+      ),
+    ).toEqual({
+      id: "n1",
+      name: "林晚",
+      avatarAssetId: "",
+      extraAssetIds: [],
+      voiceAssetId: "20",
+    });
+    // 主图正在生成：不能当成旁白放出提交，要等主图出来或明确没图
+    expect(
+      characterRefsOfNode(
+        "n1",
+        data({ status: "running", character: character({ voice, extras }) }),
+      ),
+    ).toEqual({
+      id: "n1",
+      name: "林晚",
+      avatarAssetId: "",
+      extraAssetIds: [],
+      voiceAssetId: "20",
+      avatarPending: true,
+    });
   });
 
   test("没有 character 元数据（异常数据）：返回 null", () => {

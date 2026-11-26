@@ -268,18 +268,20 @@ func TestAgentGenerator_CharacterVoice(t *testing.T) {
 	 {"id":"c2","type":"canvas","data":{"kind":"character","label":"林夏·老年","assetId":"5","character":{"name":"林夏","extras":[],"voice":{"mode":"audio","assetId":"10"}}}}
 	 ],"edges":[{"id":"e1","source":"c1","target":"v"},{"id":"e2","source":"c2","target":"v"}]}`
 	for _, tc := range []struct {
-		name                   string
-		images, audios         int
-		noAudio, mute, noImage bool
-		voiceStatus            string
-		want                   string
+		name                    string
+		images, audios          int
+		noAudio, mute, offstage bool
+		imageRunning            bool
+		voiceStatus             string
+		want                    string
 	}{
 		{name: "同名角色按最终素材编号对应各自声音", images: 3, audios: 3},
 		{name: "声音不足不创建任务", images: 3, audios: 1, want: "参考音频"},
 		{name: "主图不足不创建任务", images: 2, audios: 3, want: "参考图片"},
 		{name: "模型不收音频不创建任务", images: 3, audios: 3, noAudio: true, want: "声音未带入"},
 		{name: "关闭声音不创建任务", images: 3, audios: 3, mute: true, want: "开启声音"},
-		{name: "主图未就绪不创建任务", images: 3, audios: 3, noImage: true, want: "主图未就绪"},
+		{name: "主图正在生成不创建任务", images: 3, audios: 3, imageRunning: true, want: "主图未就绪"},
+		{name: "只有声音没有主图的旁白可以提交", images: 3, audios: 3, offstage: true},
 		{name: "声音生成中不沿用旧音色", images: 3, audios: 3, voiceStatus: model.TaskRunning, want: "声音尚未就绪"},
 		{name: "声音成功但未回填不沿用旧音色", images: 3, audios: 3, voiceStatus: model.TaskSucceeded, want: "声音尚未就绪"},
 		{name: "声音失败后可以复用已绑定声音", images: 3, audios: 3, voiceStatus: model.TaskFailed},
@@ -291,8 +293,14 @@ func TestAgentGenerator_CharacterVoice(t *testing.T) {
 				e.repo.canvas.PayloadJSON = []byte(strings.Replace(payload, `"assetId":"1",`, `"assetId":"1","voiceTaskId":"901",`, 1))
 				e.tasks.views = map[uint64]*model.GenerationTaskView{901: {ID: 901, Status: tc.voiceStatus}}
 			}
-			if tc.noImage {
-				e.repo.canvas.PayloadJSON = []byte(strings.Replace(payload, `"assetId":"1",`, "", 1))
+			if tc.imageRunning {
+				// 主图正在重绘：不能当成「本来就没有主图」的旁白放过去
+				e.repo.canvas.PayloadJSON = []byte(strings.Replace(payload, `"assetId":"1",`, `"assetId":"1","status":"running",`, 1))
+			}
+			if tc.offstage {
+				// 只有声音、从来没有主图的角色（旁白）：声音照样带进来，不再要求参考图
+				body := strings.Replace(payload, `"assetId":"1",`, "", 1)
+				e.repo.canvas.PayloadJSON = []byte(strings.Replace(body, `"name":"林夏"`, `"name":"旁白"`, 1))
 			}
 			caps := modelcfg.Capabilities{Ops: []string{"omni"}, Refs: modelcfg.Refs{Image: modelcfg.RefSpec{On: true, Max: tc.images}, Audio: modelcfg.RefSpec{On: !tc.noAudio, Max: tc.audios}}, Prompt: modelcfg.PromptSpec{MaxLength: 5000}}
 			if tc.mute {
@@ -316,6 +324,16 @@ func TestAgentGenerator_CharacterVoice(t *testing.T) {
 			}
 			input := e.tasks.reqs[0].Input
 			prompt, _ := input["prompt"].(string)
+			if tc.offstage {
+				// 旁白只有音色：不进【人物参考】，按画外音写进【人物音色对应】
+				if !strings.Contains(prompt, "旁白（画外音）：音色参考音频2。") || !strings.Contains(prompt, "林夏（图片2中的人物）说话时，音色参考音频3。") || strings.Contains(prompt, "【人物参考】\n旁白") || strings.Contains(prompt, "补充视角") {
+					t.Fatalf("画外音人物与声音不对应：%v", input)
+				}
+				if got, _ := json.Marshal(input["images"]); string(got) != "[100,5]" {
+					t.Fatalf("旁白不占参考图：%v", input)
+				}
+				return
+			}
 			if !strings.Contains(prompt, "林夏（图片2中的人物）说话时，音色参考音频2。") || !strings.Contains(prompt, "林夏（图片3中的人物）说话时，音色参考音频3。") || strings.Contains(prompt, "补充视角") {
 				t.Fatalf("人物与声音不对应：%v", input)
 			}

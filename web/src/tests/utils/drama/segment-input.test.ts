@@ -250,22 +250,40 @@ describe("planSegmentInput：@ 解析与参考素材组装（契约 §13）", ()
     }
   });
 
-  test("没有图的资产只保留文字：空角色节点（没有形象图）、场景没有素材都不进参考图，也不算失效", () => {
+  test("没有图的资产只保留文字：空角色节点（没有形象图也没音色）、场景没有素材都不进参考图，也不算失效", () => {
     const plan = planSegmentInput({
       ...base,
       caps: video(),
       prompt: "@[林川](n1)在@[村口](n2)",
       assets: [
-        character("n1", { src: null, assetId: undefined }),
+        character("n1", { src: null, assetId: undefined, character: roleData({ voice: null }) }),
         scene("n2", { src: null, assetId: undefined }),
       ],
     });
     expect(plan.refs.map((ref) => ref.state)).toEqual(["text", "text"]);
     expect(plan.input.images).toBeUndefined();
     expect(plan.input.prompt).toBe("林川在村口");
-    // 一张图都没有且模型有文生视频：退回 t2v，不报缺参考素材
+    // 一张图都没有且模型有文生视频：退回 t2v，不报缺参考素材，也没有别的要拦的
     expect(plan.op).toBe("t2v");
-    expect(plan.errors.images).toBeTruthy();
+    expect(plan.errors).toEqual({});
+  });
+
+  test("有音色没有主图的旁白只带音色：不报缺图，按画外音提交", () => {
+    const plan = planSegmentInput({
+      ...base,
+      caps: video(),
+      prompt: "@[林川](n1)说：“走吧。”",
+      assets: [character("n1", { src: null, assetId: undefined })],
+    });
+    // 只 @ 了角色卡的声音也算有参考素材，走全能参考；文生视频没有参考音频口
+    expect(plan.op).toBe("omni");
+    expect(plan.input.images).toBeUndefined();
+    expect(plan.input.audios).toEqual([9]);
+    expect(plan.errors).toEqual({});
+    expect(String(plan.input.prompt)).toContain(
+      "【人物音色对应】\n林川（画外音）：音色参考音频1。",
+    );
+    expect(String(plan.input.prompt)).not.toContain("【人物参考】");
   });
 
   test("引用的节点已被删：标成失效、记下名字，提示词退回成名字，不阻断", () => {

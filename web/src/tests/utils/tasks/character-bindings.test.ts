@@ -134,6 +134,34 @@ describe("人物与音色对应：最终素材编号和必要参考校验", () =
     expect(params.prompt).toBe("说话");
   });
 
+  test("只有声音没有主图的旁白只带音色，不占参考图也不再拦提交", () => {
+    const built = buildFreshInput(video(), { op: "omni", prompt: "@[旁白](n1)念" }, [
+      imageLink("a", "100"),
+      charLink({
+        character: refs({
+          name: "旁白",
+          avatarAssetId: "",
+          extraAssetIds: [],
+          voiceAssetId: "9",
+        }),
+      }),
+    ]);
+    expect(built.errors).toEqual({});
+    expect(built.input.images).toEqual([100]);
+    expect(built.input.audios).toEqual([9]);
+    expect(built.input.prompt).toContain("【人物音色对应】\n旁白（画外音）：音色参考音频1。");
+    expect(String(built.input.prompt)).not.toContain("【人物参考】");
+  });
+
+  test("主图正在生成的带音色角色仍被拦住，不能静默降级成画外音", () => {
+    const built = buildFreshInput(video(), { op: "omni", prompt: "说话" }, [
+      charLink({
+        character: refs({ avatarAssetId: "", extraAssetIds: [], avatarPending: true }),
+      }),
+    ]);
+    expect(built.errors.images).toContain("主图未就绪");
+  });
+
   test("上游剧本里的角色引用也展开，绑定说明只追加一次", () => {
     const built = buildFreshInput(video(), { op: "omni", prompt: "电影感" }, [
       charLink(),

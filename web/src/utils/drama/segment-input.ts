@@ -67,6 +67,11 @@ export type BoardPlan = {
 /** 故事板的虚拟连线 id：不和任何画布节点重名 */
 const BOARD_LINK_ID = "__board__";
 
+/** 这根连线能带来的参考音频：音频节点自己，或角色卡绑定的声音（旁白常常只有声音没有主图） */
+function audioIdOf(link: IncomingLink): string | undefined {
+  return link.sourceKind === "audio" ? link.assetId : (link.character?.voiceAssetId ?? undefined);
+}
+
 /**
  * 决定故事板带不带：只有全能参考（omni）才带，图生视频会把第一张图当首帧、文生视频不收图。
  * 带的时候生成方式固定为 omni，故事板作为普通图片连线排在所有引用前面，于是固定是图片1。
@@ -267,9 +272,7 @@ export function planSegmentInput(args: {
       ]
     : linked.links;
   const hasImages = hasImageRefs({}, { images: imageLinksOf(linked.links) });
-  const readyAudio = linked.links.filter(
-    (link) => link.sourceKind === "audio" && toAssetNumber(link.assetId) !== null,
-  );
+  const readyAudio = linked.links.filter((link) => toAssetNumber(audioIdOf(link)) !== null);
   // 只 @ 了音频（没有参考图）时也要走全能参考，文生视频没有参考素材口
   const audioOnly = !hasImages && readyAudio.length > 0;
   const op =
@@ -289,7 +292,7 @@ export function planSegmentInput(args: {
   }
   // 模型不收参考音频时音频会被静默丢掉，旁白就变成没有音色的普通文字
   const sentAudios = Array.isArray(built.input.audios) ? built.input.audios : [];
-  const narrator = readyAudio.filter((link) => sentAudios.includes(toAssetNumber(link.assetId)));
+  const narrator = readyAudio.filter((link) => sentAudios.includes(toAssetNumber(audioIdOf(link))));
   if (caps && narrator.length < readyAudio.length)
     built.errors.audios ??=
       "当前模型或生成方式不接收参考音频，旁白音色带不进去；请换支持参考音频的模型，或去掉音频引用";

@@ -159,6 +159,8 @@ export type CharacterRefs = {
   extraAssetIds: string[];
   /** 声音素材 ID；没有声音为 null */
   voiceAssetId: string | null;
+  /** 主图正在生成：没有图可带，但也不是「本来就没有主图」的旁白 */
+  avatarPending?: boolean;
   /** 声音正在生成或尚未回填，视频不能沿用旧音色 */
   voicePending?: boolean;
 };
@@ -639,7 +641,10 @@ function composePrompt(
   return parts.filter(Boolean).join("\n\n");
 }
 
-/** 按最终素材数组编译人物与声音的对应关系；名字只用于展示，身份以角色节点为准。 */
+/**
+ * 按最终素材数组编译人物与声音的对应关系；名字只用于展示，身份以角色节点为准。
+ * 只有声音、没有主图的角色（旁白、画外音）不受参考图约束：只带音色，按画外音写进【人物音色对应】。
+ */
 function characterPrompt(
   links: IncomingLink[],
   input: Record<string, unknown>,
@@ -675,11 +680,15 @@ function characterPrompt(
       );
     }
     if (!role.voiceAssetId) continue;
-    if (image < 0) errors.images ??= `角色「${role.name}」的主图未就绪或当前方式不支持参考图片`;
+    // 真的没有主图的角色（旁白、画外音）只带音色：不占参考图，也不当成画面里的人物
+    const offstage = !role.avatarAssetId && !role.avatarPending;
+    if (image < 0 && !offstage)
+      errors.images ??= `角色「${role.name}」的主图未就绪或当前方式不支持参考图片`;
     const audio = indexOf("audios", role.voiceAssetId);
     if (audio < 0)
       errors.audios ??= `角色「${role.name}」的声音未带入，请选择支持参考音频的生成方式`;
-    if (image >= 0 && audio >= 0)
+    else if (offstage) voices.push(`${role.name}（画外音）：音色参考音频${audio + 1}。`);
+    else if (image >= 0)
       voices.push(`${names.get(link.sourceId)}说话时，音色参考音频${audio + 1}。`);
   }
   return {

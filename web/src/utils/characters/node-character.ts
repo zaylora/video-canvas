@@ -51,6 +51,7 @@ export function newCharacterData(existingLabels: Iterable<string>): {
 /**
  * 节点自带的数据换成绑定用的素材引用（取代旧版「按 characterId 读缓存」）。
  * 没有主图或正在生成时不带旧图；若已绑定声音，保留声音关系，让视频提交明确提示主图未就绪。
+ * 主图正在生成时记下 avatarPending：既不能沿用旧图，也不能当成「本来就没有主图」的旁白。
  * 没有声音的空节点仍返回 null，补充图要有主图才带。
  * 没有声音时 voiceAssetId 为 null。
  * @param id 节点 id，连线展开出的虚拟连线靠它定位
@@ -67,7 +68,8 @@ export function characterRefsOfNode(
   const voicePending = Boolean(
     data.voiceTaskId && !["failed", "expired", "canceled"].includes(voiceTaskStatus ?? ""),
   );
-  const ready = Boolean(data.assetId && data.status !== "running");
+  const pending = data.status === "running";
+  const ready = Boolean(data.assetId && !pending);
   if (!ready && !character.voice && !voicePending) return null;
   return {
     id,
@@ -75,6 +77,7 @@ export function characterRefsOfNode(
     avatarAssetId: ready ? data.assetId! : "",
     extraAssetIds: ready ? character.extras.map((extra) => extra.assetId) : [],
     voiceAssetId: character.voice?.mode === "audio" ? character.voice.assetId : null,
+    ...(pending ? { avatarPending: true } : {}),
     ...(voicePending ? { voicePending: true } : {}),
   };
 }
