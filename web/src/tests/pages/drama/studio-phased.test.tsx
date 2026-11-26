@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 
 import { installDom, type DomEnv } from "@/tests/helpers/dom";
 import type { StudioView as StudioViewType } from "@/pages/drama/studio/view";
@@ -53,27 +53,50 @@ const drama = {
 const phased = (c: HTMLElement) =>
   [...c.querySelectorAll("[data-phased]")].map((el) => el.getAttribute("data-phased")).sort();
 
-async function frames(n: number) {
-  for (let i = 0; i < n; i++) await dom.flush(20);
-}
-
 describe("片场外壳：分拍挂载", () => {
-  test("第一帧所有分区都还没挂；之后先出预览 + 编辑区，再出资产库 + 片段条", async () => {
-    const m = await dom.mount(
-      <Context.Provider
-        value={{ drama, jobs: [], refresh: async () => {} } as unknown as DramaWorkspace}
-      >
-        <StudioView drama={drama} no={1} refresh={async () => {}} />
-      </Context.Provider>,
+  test("先挂分栏骨架，随后逐帧挂载预览和编辑区、资产库和片段条", async () => {
+    const pendingFrames = new Map<number, FrameRequestCallback>();
+    let nextId = 0;
+    const requestFrame = spyOn(globalThis, "requestAnimationFrame").mockImplementation(
+      (callback) => {
+        const id = ++nextId;
+        pendingFrames.set(id, callback);
+        return id;
+      },
     );
-    // 第 0 拍：骨架（分栏面板在，内容都还没挂）
-    expect(phased(m.container)).toEqual([]);
-    await frames(1);
-    // 第 1 拍：用户马上要看的主体
-    expect(phased(m.container)).toEqual(["editor", "preview"]);
-    await frames(2);
-    // 第 2 拍：最重的两块
-    expect(phased(m.container)).toEqual(["clips", "editor", "library", "preview"]);
-    await m.unmount();
+    const cancelFrame = spyOn(globalThis, "cancelAnimationFrame").mockImplementation((id) => {
+      pendingFrames.delete(id);
+    });
+    const advanceFrame = () =>
+      dom.act(async () => {
+        const timestamp = performance.now();
+        for (const id of [...pendingFrames.keys()]) {
+          const callback = pendingFrames.get(id);
+          pendingFrames.delete(id);
+          callback?.(timestamp);
+        }
+      });
+
+    try {
+      const view = await dom.mount(
+        <Context.Provider
+          value={{ drama, jobs: [], refresh: async () => {} } as unknown as DramaWorkspace}
+        >
+          <StudioView drama={drama} no={1} refresh={async () => {}} />
+        </Context.Provider>,
+      );
+      try {
+        expect(phased(view.container)).toEqual([]);
+        await advanceFrame();
+        expect(phased(view.container)).toEqual(["editor", "preview"]);
+        await advanceFrame();
+        expect(phased(view.container)).toEqual(["clips", "editor", "library", "preview"]);
+      } finally {
+        await view.unmount();
+      }
+    } finally {
+      cancelFrame.mockRestore();
+      requestFrame.mockRestore();
+    }
   });
 });
