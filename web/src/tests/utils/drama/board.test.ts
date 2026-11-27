@@ -80,6 +80,15 @@ describe("utils/drama/board：镜头与布局", () => {
     ]);
   });
 
+  test("语气括号里带逗号：括号算说话人的一部分，整段台词去掉，后面的终点画面保留", () => {
+    const prompt = [
+      "【时间轴】",
+      "0-4秒：近景。@[冯媛](n_feng)（压低声，迟疑）：『走吧』。终点是她回头。",
+      "4-8秒：中景。@[班婉](n_ban)(轻声, 带笑)：『好。』终点是两人并肩。",
+    ].join("\n");
+    expect(shotLines(prompt)).toEqual(["近景。终点是她回头。", "中景。终点是两人并肩。"]);
+  });
+
   test("故事板固定 16:9 横版：1–4 镜 2x2，5–6 镜 3x2，7 镜以上 3x3", () => {
     expect(BOARD_RATIO).toBe("16:9");
     expect(boardLayout(0)).toEqual({ layout: "2x2", cols: 2, rows: 2 });
