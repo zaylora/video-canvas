@@ -159,6 +159,51 @@ describe("planBoardInput：片场生成故事板的请求", () => {
     expect(String(body.input.prompt)).toContain("图片1");
   });
 
+  test("角色卡带进参考图时，提示词里的人物也写成图片编号，和发出去的参考图一一对上", () => {
+    const role = (id: string, name: string, assetId: string): RefAsset =>
+      asset(id, name, {
+        type: "character",
+        kind: "character",
+        assetId,
+        character: { name, look: "", description: "", extras: [], voice: null },
+      });
+    const plan = planBoardInput({
+      segment: {
+        id: "s1",
+        seq: 0,
+        prompt: [
+          "【参考与人物】@[班婉居所](n_room)：门窗斜对案席；@[班婉](n_ban)：素白深衣；@[冯媛](n_feng)：浅黛青深衣；@[长信宫灯](n_lamp)：铜罩合拢。",
+          "【时间轴】",
+          "0-4秒：中全景。@[班婉](n_ban)在案前执卷，@[冯媛](n_feng)走到席边。",
+        ].join("\n"),
+      },
+      episodeNo: 3,
+      hash: "h",
+      model: model(),
+      template: TEMPLATE,
+      assets: [
+        asset("n_room", "班婉居所", { assetId: "377" }),
+        role("n_ban", "班婉", "371"),
+        role("n_feng", "冯媛", "373"),
+        asset("n_lamp", "长信宫灯", { type: "prop", assetId: "376" }),
+      ],
+    });
+    expect(plan.error).toBeNull();
+    const input = plan.body!.input;
+    // 普通资产在前、角色卡在后（参考图的既有排列规则）
+    expect(input.images).toEqual([377, 376, 371, 373]);
+    const prompt = String(input.prompt);
+    expect(prompt).toContain(
+      "人物与道具：图片1：门窗斜对案席；班婉（图片3中的人物）：素白深衣；冯媛（图片4中的人物）：浅黛青深衣；图片2：铜罩合拢。",
+    );
+    expect(prompt).toContain(
+      "1. 中全景。班婉（图片3中的人物）在案前执卷，冯媛（图片4中的人物）走到席边。",
+    );
+    expect(prompt.endsWith("【人物参考】\n班婉：图片3中的人物。\n冯媛：图片4中的人物。")).toBe(
+      true,
+    );
+  });
+
   test("参考图有上限：只带前几个", () => {
     const plan = planBoardInput({
       segment,

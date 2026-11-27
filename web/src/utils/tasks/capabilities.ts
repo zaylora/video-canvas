@@ -644,11 +644,14 @@ function composePrompt(
 /**
  * 按最终素材数组编译人物与声音的对应关系；名字只用于展示，身份以角色节点为准。
  * 只有声音、没有主图的角色（旁白、画外音）不受参考图约束：只带音色，按画外音写进【人物音色对应】。
+ * 图片生成（withVoice 为假）只编人物与参考图的对应：角色主图照样进参考图，正文里的人物也要写成图片编号；
+ * 不带音色，也不做声音相关的校验。
  */
 function characterPrompt(
   links: IncomingLink[],
   input: Record<string, unknown>,
   errors: Record<string, string>,
+  withVoice = true,
 ) {
   const names = new Map<string, string>();
   const visuals: string[] = [];
@@ -662,7 +665,7 @@ function characterPrompt(
     const role = link.character;
     if (!role || seen.has(role.id)) continue;
     seen.add(role.id);
-    if (role.voicePending)
+    if (withVoice && role.voicePending)
       errors.audios ??= `角色「${role.name}」的声音尚未就绪，请等待声音生成完成`;
     const image = indexOf("images", role.avatarAssetId);
     if (image >= 0) {
@@ -679,7 +682,7 @@ function characterPrompt(
         `${role.name}：图片${image + 1}中的人物${extras.length ? `，补充视角：${extras.map((index) => `图片${index + 1}`).join("、")}` : ""}。`,
       );
     }
-    if (!role.voiceAssetId) continue;
+    if (!withVoice || !role.voiceAssetId) continue;
     // 真的没有主图的角色（旁白、画外音）只带音色：不占参考图，也不当成画面里的人物
     const offstage = !role.avatarAssetId && !role.avatarPending;
     if (image < 0 && !offstage)
@@ -776,9 +779,10 @@ export function buildTaskInput(
   const link = bindings.prompt;
   const typed = typeof params.prompt === "string" ? params.prompt : "";
   const video = op === "t2v" || op === "i2v" || op === "omni";
-  const character = video
-    ? characterPrompt(links, input, errors)
-    : { names: new Map<string, string>(), blocks: [] };
+  const character =
+    video || op === "t2i" || op === "i2i"
+      ? characterPrompt(links, input, errors, video)
+      : { names: new Map<string, string>(), blocks: [] };
   const hasVoice = video && links.some((item) => item.character?.voiceAssetId);
   const sound = caps.params?.generate_audio;
   const soundValue = sound?.open ? input.generate_audio : sound?.default;

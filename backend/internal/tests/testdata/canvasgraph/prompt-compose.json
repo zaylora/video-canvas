@@ -1,5 +1,5 @@
 {
-  "说明": "生成时提示词怎么合成：节点自己的提示词展开 @ 引用，没被 @ 的文本上游按连线顺序追加在后面，提示词为空时就只用文本上游。前端 web/src/tests/utils/tasks/prompt-compose-fixture.test.ts 与后端 internal/tests/agent/canvasgraph 读同一份，防止画布上点生成和 Agent 生成的规则漂移。nodes 是连到目标节点的上游，按连线顺序；引用写成 @[名字](节点id)；素材编号是它在同类素材里的位置（从 1 起）。",
+  "说明": "生成时提示词怎么合成：节点自己的提示词展开 @ 引用，没被 @ 的文本上游按连线顺序追加在后面，提示词为空时就只用文本上游。前端 web/src/tests/utils/tasks/prompt-compose-fixture.test.ts 与后端 internal/tests/agent/canvasgraph 读同一份，防止画布上点生成和 Agent 生成的规则漂移。nodes 是连到目标节点的上游，按连线顺序；引用写成 @[名字](节点id)；素材编号是它在同类素材里的位置（从 1 起）。target 是目标节点种类，缺省为 video；image 按图生图合成。",
   "cases": [
     {
       "name": "提示词为空：文本上游按连线顺序拼接",
@@ -117,6 +117,16 @@
       ],
       "prompt": "",
       "expect": "草原深处，毡房亮起一盏灯。"
+    },
+    {
+      "name": "图片生成：角色卡同样按最终主图编号，补充视角写进人物参考，不写音色",
+      "target": "image",
+      "nodes": [
+        {"id": "i1", "kind": "image", "label": "街景", "assetId": "11"},
+        {"id": "c1", "kind": "character", "label": "林夏 · 基础形象", "assetId": "21", "character": {"name": "林夏", "extras": ["22"], "voice": "31"}}
+      ],
+      "prompt": "@[林夏 · 基础形象](c1) 站在 @[街景](i1) 前，林夏说：“@[街景](i1)真冷。”",
+      "expect": "林夏（图片2中的人物） 站在 图片1 前，林夏说：“街景真冷。”\n\n【人物参考】\n林夏：图片2中的人物，补充视角：图片3。"
     }
   ]
 }

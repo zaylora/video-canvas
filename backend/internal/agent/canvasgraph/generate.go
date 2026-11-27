@@ -255,7 +255,7 @@ var promptRef = regexp.MustCompile(`@\[([^\]\n]*)\]\((?:node:)?([^)\s]+)\)`)
 // refWord 是素材引用在提示词里的叫法：「图片1」「视频2」「音频1」。
 var refWord = map[string]string{"image": "图片", "video": "视频", "audio": "音频"}
 
-// ComposePrompt 按最终参考素材编号展开 @，追加上游文字及视频人物与音色对应说明。
+// ComposePrompt 按最终参考素材编号展开 @，追加上游文字及人物参考（视频另加音色对应）说明。
 // refs 必须是实际提交的素材数组，不能用截断、去重前的素材估算编号。
 func ComposePrompt(s *GenSource, refs map[string][]uint64) string {
 	numbers := assetNumbers(s.Assets, refs)
@@ -406,11 +406,12 @@ func characterVoice(c GenCharacter, subject string, audio int) string {
 	return ""
 }
 
-// characterPrompt 按角色节点编译人物及声音说明，只用于视频，不注入人物设定或试音台词。
+// characterPrompt 按角色节点编译人物及声音说明，用于视频和图片，不注入人物设定或试音台词。
 // 没有主图的角色（旁白、画外音）只写音色对应，不进【人物参考】，也不当作画面里的人物。
+// 图片生成同样带角色主图，正文里的人物要写成图片编号；不带音色。
 func (s *GenSource) characterPrompt(refs map[string][]uint64) (map[string]string, []string) {
 	names := map[string]string{}
-	if s.Kind != KindVideo {
+	if s.Kind != KindVideo && s.Kind != KindImage {
 		return names, nil
 	}
 	var visuals, voices []string
@@ -419,6 +420,9 @@ func (s *GenSource) characterPrompt(refs map[string][]uint64) (map[string]string
 		if subject != "" {
 			names[c.NodeID] = subject
 			visuals = append(visuals, line)
+		}
+		if s.Kind != KindVideo {
+			continue
 		}
 		if voice := characterVoice(c, subject, referenceIndex(refs, KindAudio, c.VoiceAssetID)); voice != "" {
 			voices = append(voices, voice)

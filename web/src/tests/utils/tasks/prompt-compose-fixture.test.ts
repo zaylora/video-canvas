@@ -14,6 +14,8 @@ const DIR = join(import.meta.dir, "../../../../../backend/internal/tests/testdat
 const { cases } = JSON.parse(readFileSync(join(DIR, "prompt-compose.json"), "utf-8")) as {
   cases: {
     name: string;
+    /** 目标节点种类，缺省为视频（全能参考）；image 按图生图合成 */
+    target?: "video" | "image";
     nodes: {
       id: string;
       kind: NodeKind;
@@ -39,6 +41,18 @@ const caps: Capabilities = {
   params: {},
 };
 
+/** 图片目标：文生图 + 图生图，只收参考图 */
+const imageCaps: Capabilities = {
+  ops: ["t2i", "i2i"],
+  refs: {
+    image: { on: true, max: 9, max_mb: 10 },
+    audio: { on: false, max: 0, max_mb: 0 },
+    video: { on: false, max: 0, max_mb: 0 },
+  },
+  prompt: { max_length: 5000 },
+  params: {},
+};
+
 describe("与后端共用的提示词合成规则", () => {
   for (const c of cases) {
     test(c.name, () => {
@@ -58,8 +72,10 @@ describe("与后端共用的提示词合成规则", () => {
           voiceAssetId: node.character.voice ?? null,
         },
       }));
-      const bindings = resolveBindings(caps, "omni", links);
-      const built = buildTaskInput(caps, { prompt: c.prompt }, bindings, "omni", links);
+      const [model, op] =
+        c.target === "image" ? [imageCaps, "i2i" as const] : [caps, "omni" as const];
+      const bindings = resolveBindings(model, op, links);
+      const built = buildTaskInput(model, { prompt: c.prompt }, bindings, op, links);
       // 没有参考素材时全能参考本身会报素材错误，这里只关心提示词
       expect(built.errors.prompt).toBeUndefined();
       expect(built.input.prompt).toBe(c.expect);

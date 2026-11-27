@@ -175,8 +175,10 @@ func TestGroupMatchesFrontend(t *testing.T) {
 func TestComposePromptMatchesFrontend(t *testing.T) {
 	var fx struct {
 		Cases []struct {
-			Name  string
-			Nodes []struct {
+			Name string
+			// Target 是目标节点种类，缺省为 video；image 按图生图合成
+			Target string
+			Nodes  []struct {
 				ID, Kind, Label, Text string
 				AssetID               string `json:"assetId"`
 				// Character 是角色卡的人物数据：补充图和声音的素材 id
@@ -196,8 +198,12 @@ func TestComposePromptMatchesFrontend(t *testing.T) {
 	}
 	for _, c := range fx.Cases {
 		t.Run(c.Name, func(t *testing.T) {
+			target := c.Target
+			if target == "" {
+				target = "video"
+			}
 			nodes := []map[string]any{{"id": "target", "type": "canvas", "data": map[string]any{
-				"kind": "video", "label": "目标", "params": map[string]any{"prompt": c.Prompt}}}}
+				"kind": target, "label": "目标", "params": map[string]any{"prompt": c.Prompt}}}}
 			edges := []map[string]any{}
 			for i, n := range c.Nodes {
 				data := map[string]any{"kind": n.Kind, "label": n.Label}
@@ -229,7 +235,11 @@ func TestComposePromptMatchesFrontend(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			refs := src.RefIDs([]string{"image", "video", "audio"}, func(string) int { return 9 })
+			used := []string{"image", "video", "audio"}
+			if target == "image" {
+				used = []string{"image"}
+			}
+			refs := src.RefIDs(used, func(string) int { return 9 })
 			got := canvasgraph.ComposePrompt(src, refs)
 			if got != c.Expect {
 				t.Errorf("提示词 = %q，期望 %q", got, c.Expect)
