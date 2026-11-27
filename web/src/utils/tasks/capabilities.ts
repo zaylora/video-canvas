@@ -544,19 +544,27 @@ function expandQuoted(prompt: string, run: (segment: string, speech: boolean) =>
 }
 
 /**
+ * 角色引用的写法（角色节点 id → 文字）；没有的退回角色名。
+ * body 用在画面描述里（如「林夏（图片2中的人物）」），spoken 用在台词、字幕里：
+ * 图片生成为空（只写名字，台词和字幕容易被画进图里），视频同 body。
+ */
+type RefNames = { body: Map<string, string>; spoken: Map<string, string> };
+
+/**
  * 单个素材引用的展开规则。numbering 为真时写成「图片1」这种编号，为假（台词）时退回素材名：
- * 视频模型会把台词照念出来，「图片2」就成了一句台词。
+ * 视频模型会把台词照念出来，「图片2」就成了一句台词。角色按 names 里画面 / 台词各自的写法。
  */
 function refResolver(
   links: IncomingLink[],
   input: Record<string, unknown>,
-  names: Map<string, string>,
+  names: RefNames,
   numbering: boolean,
 ): (id: string, label: string) => string {
   return (id, label) => {
     const link = links.find((item) => item.sourceId === id);
     if (!link) return label;
-    if (link.sourceKind === "character") return names.get(id) || link.character?.name || label;
+    if (link.sourceKind === "character")
+      return (numbering ? names.body : names.spoken).get(id) || link.character?.name || label;
     const ports = PORTS_OF_KIND[link.sourceKind];
     if (ports.length !== 1) return label;
     const port = ports[0];
@@ -587,7 +595,7 @@ function expandRefs(
   prompt: string,
   links: IncomingLink[],
   input: Record<string, unknown>,
-  names: Map<string, string>,
+  names: RefNames,
   speechOnly = false,
 ): string {
   const preset = (kind: PresetKind, id: string) => findPreset(kind, id)?.prompt;
@@ -611,7 +619,7 @@ function composePrompt(
   links: IncomingLink[],
   promptLink: IncomingLink | undefined,
   input: Record<string, unknown>,
-  names: Map<string, string>,
+  names: RefNames,
 ) {
   const texts = new Map<string, string>();
   const upstream = links.filter((item) => item.sourceKind === "script");
@@ -644,8 +652,8 @@ function composePrompt(
 /**
  * 按最终素材数组编译人物与声音的对应关系；名字只用于展示，身份以角色节点为准。
  * 只有声音、没有主图的角色（旁白、画外音）不受参考图约束：只带音色，按画外音写进【人物音色对应】。
- * 图片生成（withVoice 为假）只编人物与参考图的对应：角色主图照样进参考图，正文里的人物也要写成图片编号；
- * 不带音色，也不做声音相关的校验。
+ * 图片生成（withVoice 为假）只编人物与参考图的对应：角色主图照样进参考图，正文里的人物也要写成图片编号，
+ * 台词、字幕（引号里、文本上游）里只写名字；不带音色，也不做声音相关的校验。
  */
 function characterPrompt(
   links: IncomingLink[],
@@ -695,7 +703,7 @@ function characterPrompt(
       voices.push(`${names.get(link.sourceId)}说话时，音色参考音频${audio + 1}。`);
   }
   return {
-    names,
+    names: { body: names, spoken: withVoice ? names : new Map<string, string>() },
     blocks: [
       visuals.length ? `【人物参考】\n${visuals.join("\n")}` : "",
       voices.length
@@ -782,7 +790,10 @@ export function buildTaskInput(
   const character =
     video || op === "t2i" || op === "i2i"
       ? characterPrompt(links, input, errors, video)
-      : { names: new Map<string, string>(), blocks: [] };
+      : {
+          names: { body: new Map<string, string>(), spoken: new Map<string, string>() },
+          blocks: [],
+        };
   const hasVoice = video && links.some((item) => item.character?.voiceAssetId);
   const sound = caps.params?.generate_audio;
   const soundValue = sound?.open ? input.generate_audio : sound?.default;

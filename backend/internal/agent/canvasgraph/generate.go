@@ -266,17 +266,26 @@ func ComposePrompt(s *GenSource, refs map[string][]uint64) string {
 			texts[t.NodeID] = text
 		}
 	}
+	// spoken 是台词 / 字幕里的人物写法：图片生成写纯名字，台词和字幕容易被画进图里；
+	// 视频保持原样（同样带编号，留待单独处理）
+	spoken := names
+	if s.Kind != KindVideo {
+		spoken = map[string]string{}
+	}
 	for _, c := range s.Characters {
 		if names[c.NodeID] == "" {
 			names[c.NodeID] = c.Name
 		}
+		if spoken[c.NodeID] == "" {
+			spoken[c.NodeID] = c.Name
+		}
 	}
 	for id, text := range texts {
 		// 文本节点整段都是台词 / 字幕 / 屏幕文字：要被人念出来或看见，引用只还原名字，不给画面编号
-		texts[id] = expandRefsIn(text, names, nil)
+		texts[id] = expandRefsIn(text, spoken, nil)
 	}
 	cited := map[string]bool{}
-	body := expandScriptPrompt(s.Prompt, texts, names, numbers, cited)
+	body := expandScriptPrompt(s.Prompt, texts, names, spoken, numbers, cited)
 	parts := []string{strings.TrimSpace(body)}
 	for _, t := range s.Texts {
 		if text := texts[t.NodeID]; text != "" && !cited[t.NodeID] {
@@ -297,14 +306,15 @@ func ComposePrompt(s *GenSource, refs map[string][]uint64) string {
 var speechQuote = regexp.MustCompile(`“[^”\n]*”|「[^」\n]*」|"[^"\n]*"`)
 
 // expandScriptPrompt 展开整段提示词：引号外按素材编号（画面要看的是第几张图），
-// 引号里是台词与字幕，视频模型会照着念，把道具念成「图片2」就是噪声，那里只还原名字。
+// 引号里是台词与字幕，视频模型会照着念，把道具念成「图片2」就是噪声，那里只还原名字；
+// 引号里的人物按 spoken 写（图片生成是纯名字）。
 // 被 @ 到的文本节点换成它的正文并记为已引用，调用方据此避免重复追加。
-func expandScriptPrompt(prompt string, texts, names, numbers map[string]string, cited map[string]bool) string {
+func expandScriptPrompt(prompt string, texts, names, spoken, numbers map[string]string, cited map[string]bool) string {
 	var b strings.Builder
 	last := 0
 	for _, loc := range speechQuote.FindAllStringIndex(prompt, -1) {
 		b.WriteString(expandPromptRefs(prompt[last:loc[0]], texts, names, numbers, cited))
-		b.WriteString(expandPromptRefs(prompt[loc[0]:loc[1]], texts, names, nil, cited))
+		b.WriteString(expandPromptRefs(prompt[loc[0]:loc[1]], texts, spoken, nil, cited))
 		last = loc[1]
 	}
 	b.WriteString(expandPromptRefs(prompt[last:], texts, names, numbers, cited))
