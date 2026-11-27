@@ -88,8 +88,13 @@ export function boardLine(shots: number, ratio: string, lang: PromptLang = "zh")
 
 /** 【时间轴】里一个镜头行：「0-3秒：」「6-9.5秒：」开头 */
 const SHOT_RE = /^\s*\d+(?:\.\d+)?\s*[-–~]\s*\d+(?:\.\d+)?\s*秒\s*[:：]\s*(.*)$/;
-/** 不画进宫格的句子：台词、对白、声音 */
-const SPOKEN_RE = /^(台词|对白|声音|音效|环境声)/;
+/** 不画进宫格的句子：台词、对白、旁白、声音 */
+const SPOKEN_RE = /^(台词|对白|旁白|画外音|声音|音效|环境声)/;
+/**
+ * 一句台词：「说话人（语气）：『原文』」，说话人从上一个句读之后算起。
+ * 整对引号一起匹配，引号里的句号不会把台词切成两半。
+ */
+const SPEECH_RE = /[^。！？!?；;，,]*[:：]\s*『[^』]*』/g;
 
 /** 取某个分栏（【名】开头那一行）冒号后的正文；没有为空串 */
 function section(prompt: string, name: string): string {
@@ -102,12 +107,17 @@ function section(prompt: string, name: string): string {
     : "";
 }
 
-/** 去掉一镜里的台词和声音，只留看得见的画面 */
+/**
+ * 去掉一镜里的台词和声音，只留看得见的画面。
+ * 先整句去掉台词（换成句号，台词后面的终点画面另起一句），再按句号切开去掉声音句；
+ * 仍带引号的句子（没有说话人的引语）整句不要。
+ */
 function visual(text: string): string {
   return text
+    .replace(SPEECH_RE, "。")
     .split("。")
-    .map((part) => part.trim())
-    .filter((part) => part && !part.includes("『") && !SPOKEN_RE.test(part))
+    .map((part) => part.trim().replace(/[，,、；;]+$/, ""))
+    .filter((part) => part && !/[『』]/.test(part) && !SPOKEN_RE.test(part))
     .map((part) => `${part}。`)
     .join("");
 }
