@@ -87,6 +87,15 @@ func (r *StoryboardRepository) SplitJobByID(ctx context.Context, userID, jobID u
 	return &job, nil
 }
 
+// SplitJobByRequest 查询发起人自己的拆分镜请求，尚未受理返回 ErrNotFound。
+func (r *StoryboardRepository) SplitJobByRequest(ctx context.Context, userID uint64, key string) (*model.StoryboardSplitJob, error) {
+	var job model.StoryboardSplitJob
+	if err := r.db.WithContext(ctx).Where("user_id = ? AND request_key = ?", userID, key).Take(&job).Error; err != nil {
+		return nil, translate(err)
+	}
+	return &job, nil
+}
+
 // ActiveSplitJob 查某个节点上未结束的任务（弹窗刚打开时恢复用）；不存在返回 ErrNotFound。
 func (r *StoryboardRepository) ActiveSplitJob(ctx context.Context, userID, canvasID uint64, nodeID string) (*model.StoryboardSplitJob, error) {
 	var job model.StoryboardSplitJob
@@ -107,14 +116,30 @@ func (r *StoryboardRepository) CreateSplitJob(ctx context.Context, job *model.St
 		job.CreatedAt = now
 	}
 	job.UpdatedAt = now
-	if err := lockTaskCanvas(r.db.WithContext(ctx), job.UserID, job.CanvasID); err != nil {
+	db := r.db.WithContext(ctx)
+	project, err := guardSplitCanvas(db, job)
+	if err != nil {
 		return err
 	}
-	if err := r.db.WithContext(ctx).Create(job).Error; err != nil {
+	if job.BudgetRequest != nil {
+		if job.MaxCredits == nil {
+			return ErrCanvasCollaborationInvalidBatch
+		}
+		job.BudgetGroupID, err = reserveCanvasGenerationBudget(db, job.BudgetRequest, job.CanvasID, job.UserID, job.CollaborationEpoch, *job.MaxCredits)
+		if err != nil {
+			return err
+		}
+	}
+	if err := db.Create(job).Error; err != nil {
 		if isUniqueViolation(err) {
 			return ErrSplitJobBusy
 		}
 		return err
+	}
+	if project != nil {
+		if err := bindCollaborationSplit(db, project, job); err != nil {
+			return err
+		}
 	}
 	if r.enq == nil {
 		return errors.New("拆分镜队列未绑定")

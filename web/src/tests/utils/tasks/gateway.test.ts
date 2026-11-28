@@ -133,6 +133,16 @@ describe("submitCanvasTasks：画布节点的提交", () => {
     await expect(submitCanvasTasks(request())).rejects.toMatchObject({ code: 40003 });
     expect(calls.create).toHaveLength(1);
   });
+
+  test("同一形象任务续接音色时复用调用方的幂等键", async () => {
+    createImpl = async () => ({ items: [] });
+    await submitCanvasTasks(request(), "voice-after-image:21");
+    await submitCanvasTasks(request(), "voice-after-image:21");
+    expect(calls.create.map((call) => call.key)).toEqual([
+      "voice-after-image:21",
+      "voice-after-image:21",
+    ]);
+  });
 });
 
 describe("submitRecordTasks：首页对话的提交", () => {

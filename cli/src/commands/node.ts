@@ -1,8 +1,12 @@
 // 节点级编辑：只提交差异，且必须由人在终端确认。
 
+import { randomUUID } from "node:crypto";
+
 import { APIError, request } from "../client.ts";
 import { stringFlag } from "./args.ts";
 import { fetchCanvas } from "./canvas.ts";
+import { newCollaborationPlan, runCollaborationPlan } from "./collaboration-plan.ts";
+import { CollaborationError, type CollaborationChange } from "./collaboration.ts";
 import { askYes, baseOf, emit, requireInteractive, requireToken } from "./shared.ts";
 import type { Args, CanvasNode, Ctx, FlagValue, Graph, OpsResult } from "../types.ts";
 
@@ -57,18 +61,10 @@ function formatChanges(res: OpsResult): string {
 interface NodeOps {
   ops?: Array<Record<string, unknown>>;
   deleteNodeIds?: string[];
+  changes: CollaborationChange[];
   lines: string[];
 }
 
-/**
- * 节点级改动的唯一出口：先读当前图、把要改的内容摆给人看、等终端确认，
- * 确认后带「刚才读到的那个 revision」提交。
- *
- * 这样人确认的差异与实际落库的差异不会错位：读完之后画布被别人改过，
- * 服务端会以 409 拒绝，而不是把人没看过的版本覆盖掉。
- *
- * 没有 --yes 之类的旁路：脚本要批量改画布，走 `canvas graph` + `canvas save --revision`（只增改、不删节点时无需确认）。
- */
 async function commitNodeOps(
   ctx: Ctx,
   code: string,
@@ -77,17 +73,38 @@ async function commitNodeOps(
   requireInteractive(
     ctx,
     "节点级修改",
-    "脚本批量修改画布请用 canvas graph + canvas save --revision（删节点时仍要在终端确认）。",
+    "协作批量编辑请用 canvas plan + canvas apply。个人画布请用 canvas graph + canvas save --revision。",
   );
 
   const canvas = await fetchCanvas(ctx, code);
+  const { collaboration_role: role, collaboration_epoch: epoch } = canvas;
+  if (role === "viewer") {
+    throw new CollaborationError(-1, "仅查看成员不能修改画布", 403, "permission_denied");
+  }
   const graph: Graph = canvas.payload_json || { nodes: [], edges: [] };
-  const { ops, deleteNodeIds, lines } = build(graph);
+  const { ops, deleteNodeIds, changes, lines } = build(graph);
+  if (canvas.collaboration_active && (!role || !epoch)) {
+    throw new CollaborationError(30018, "请重新读取当前协作会话", 409, "epoch_expired");
+  }
+  const plan =
+    canvas.collaboration_active && role && epoch
+      ? await newCollaborationPlan(
+          ctx,
+          { role, epoch, canvas },
+          changes,
+          Boolean(deleteNodeIds?.length),
+        )
+      : null;
 
   ctx.stderr(`画布：${canvas.title}（${code}）当前版本 ${canvas.revision}`);
   ctx.stderr("将提交以下改动：");
   for (const line of lines) ctx.stderr(`  ${line}`);
   await askYes(ctx, "确认执行？输入 yes 回车，其它任意输入取消：", "已取消，画布未修改");
+  if (plan) {
+    const commit = await runCollaborationPlan(ctx, plan);
+    emit(ctx, commit, `已确认操作 ${plan.opId}，版本 ${commit.revision}`);
+    return;
+  }
 
   const body: Record<string, unknown> = { revision: canvas.revision };
   if (ops?.length) body.ops = ops;
@@ -145,7 +162,18 @@ export async function canvasNodeAdd(ctx: Ctx, args: Args): Promise<void> {
       lines.push(`  ${kind === "script" ? "正文" : "提示词"} ${content.length} 字`);
     if (model !== undefined) lines.push(`  模型 ${model}`);
     if (at) lines.push(`  位置 ${at.x},${at.y}`);
-    return { ops: [op], lines };
+    const data: Record<string, unknown> = { kind, label: label || kindName(kind) };
+    if (content !== undefined) data[kind === "script" ? "text" : "prompt"] = content;
+    if (model !== undefined) data.model = model;
+    const changes: CollaborationChange[] = [
+      {
+        kind: "node",
+        id: randomUUID(),
+        action: "create",
+        value: { position: at ?? { x: 0, y: 0 }, data },
+      },
+    ];
+    return { ops: [op], changes, lines };
   });
 }
 
@@ -163,6 +191,7 @@ export async function canvasNodeSet(ctx: Ctx, args: Args): Promise<void> {
     const node = nodeById(graph, id);
     const kind = node.data?.kind;
     const op: Record<string, unknown> = { op: "update_node", id };
+    const fields: Record<string, unknown> = {};
     const lines = [
       `~ 修改${kindName(kind)}节点 ${id}${node.data?.label ? `「${node.data.label}」` : ""}`,
     ];
@@ -170,6 +199,7 @@ export async function canvasNodeSet(ctx: Ctx, args: Args): Promise<void> {
     if (args.flags.label !== undefined) {
       const value = stringFlag(args.flags, "label", usage);
       op.label = value;
+      fields["data.label"] = value;
       lines.push(`  标题 → ${value}`);
     }
     if (args.flags.text !== undefined) {
@@ -177,20 +207,23 @@ export async function canvasNodeSet(ctx: Ctx, args: Args): Promise<void> {
         throw new APIError(-1, `--text 只用于文本节点；${kindName(kind)}节点请用 --prompt`, 2);
       const value = stringFlag(args.flags, "text", usage);
       op.prompt = value;
+      fields["data.text"] = value;
       lines.push(`  正文 → ${value.length} 字`);
     }
     if (args.flags.prompt !== undefined) {
       if (kind === "script") throw new APIError(-1, "文本节点的正文请用 --text", 2);
       const value = stringFlag(args.flags, "prompt", usage);
       op.prompt = value;
+      fields["data.prompt"] = value;
       lines.push(`  提示词 → ${value.length} 字`);
     }
     if (args.flags.model !== undefined) {
       const value = stringFlag(args.flags, "model", usage);
       op.model = value;
+      fields["data.model"] = value;
       lines.push(`  模型 → ${value}`);
     }
-    return { ops: [op], lines };
+    return { ops: [op], changes: [{ kind: "node", id, fields }], lines };
   });
 }
 
@@ -228,6 +261,10 @@ export async function canvasNodeRm(ctx: Ctx, args: Args): Promise<void> {
       if (Array.isArray(order)) for (const v of order) if (drop.has(String(v))) refs++;
     }
     if (refs) lines.push(`  同时清掉 ${refs} 处分镜 / 成片引用`);
-    return { deleteNodeIds: ids, lines };
+    return {
+      deleteNodeIds: ids,
+      changes: ids.map((id) => ({ kind: "node", id, action: "delete" })),
+      lines,
+    };
   });
 }

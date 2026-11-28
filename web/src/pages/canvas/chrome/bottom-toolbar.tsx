@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { FolderOpen, Hand, History, MousePointer2, Plus, Redo2, Undo2 } from "lucide-react";
+import { useState } from "react";
+import { FolderOpen, Hand, History, MousePointer2, Redo2, Undo2 } from "lucide-react";
 
 import {
   ChromeButton,
@@ -9,16 +9,9 @@ import {
   ChromeTooltip,
 } from "@/components/canvas/chrome/chrome";
 import type { CanvasTool } from "@/components/canvas";
-import { ADD_NODE_MENU_CONTENT_CLASS, AddNodeMenuBody } from "@/components/canvas/add-node-menu";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { ASSET_LIBRARY_ACTION, UPLOAD_ACTION } from "@/constants/canvas";
 import type { NodeKind } from "@/types";
 
-import { buildAddNodeItems } from "./add-node-items";
+import { AddNodeButton } from "./add-node-button";
 import { MOD } from "@/components/canvas-editor/keys";
 import { TasksSheet } from "./tasks-sheet";
 
@@ -52,7 +45,6 @@ export function BottomToolbar({
   onRedo: () => void;
 }) {
   const [tasksOpen, setTasksOpen] = useState(false);
-  const addItems = useMemo(() => buildAddNodeItems(), []);
   const vertical = orientation === "vertical";
   // 竖排时提示和菜单往右弹，横排（在底部）时往上弹
   const side = vertical ? "right" : "top";
@@ -62,30 +54,7 @@ export function BottomToolbar({
   return (
     <>
       <ChromePill size="lg" orientation={orientation}>
-        <DropdownMenu modal={false}>
-          <ChromeTooltip label="添加节点" side={side}>
-            <DropdownMenuTrigger
-              render={<ChromeButton variant="primary" size="lg" aria-label="添加节点" />}
-            >
-              <Plus />
-            </DropdownMenuTrigger>
-          </ChromeTooltip>
-          <DropdownMenuContent
-            side={side}
-            align="start"
-            sideOffset={14}
-            className={ADD_NODE_MENU_CONTENT_CLASS}
-          >
-            <AddNodeMenuBody
-              items={addItems}
-              onSelect={(value) => {
-                if (value === UPLOAD_ACTION) onUpload();
-                else if (value === ASSET_LIBRARY_ACTION) onOpenAssets();
-                else onAdd(value as NodeKind);
-              }}
-            />
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <AddNodeButton side={side} onAdd={onAdd} onUpload={onUpload} onOpenAssets={onOpenAssets} />
 
         <ChromeSeparator orientation={separator} />
 

@@ -36,6 +36,14 @@ scripts/start-docker.bat --detach
 
 启动脚本会在每次启动时清理悬空镜像。后端和前端容器启动时分别执行 `go mod download`、`bun install --frozen-lockfile`，所以修改 `go.mod`、`go.sum`、`package.json` 或 `bun.lock` 后，重新运行脚本即可同步新增依赖；依赖缓存卷仍会保留，不需要每次重新下载全部依赖。
 
+### 画布实时协作测试
+
+```bash
+APP_CANVAS_COLLABORATION_ENABLED=true docker compose -f docker-compose.dev.yml up --build --wait
+```
+
+用所有者账号进入一张普通画布，在左上角画布菜单选择「开启实时协作」，再分别邀请编辑成员和仅查看者。Windows 可在 `.env` 中设置 `APP_CANVAS_COLLABORATION_ENABLED=true` 后运行 Compose。若已有开发实例占用端口，沿用该实例的 Compose 项目与端口配置。
+
 ## 常用命令
 
 ```bash

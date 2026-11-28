@@ -45,49 +45,65 @@ func IsTerminalStatus(s string) bool {
 // GenerationTask 通用生成任务，是任务状态的唯一事实来源（见 docs/design/长任务生成设计.md 7.1）。
 // 不使用软删除：任务是审计和对账的依据，不允许被删掉。
 type GenerationTask struct {
-	ID              uint64         `gorm:"primaryKey" json:"id"`                                                                                                                                                                                                 // 任务 ID
-	UserID          uint64         `gorm:"not null;index:idx_task_user_status,priority:1;index:idx_task_user_created,priority:1;index:idx_task_user_canvas_node,priority:1;uniqueIndex:uk_task_user_idem,priority:1,where:idempotency_key <> ''" json:"user_id"` // 所属用户
-	CanvasProjectID *uint64        `gorm:"index;index:idx_task_user_canvas_node,priority:2" json:"canvas_project_id"`                                                                                                                                            // 所属画布，可空
-	NodeID          string         `gorm:"size:64;not null;default:'';index:idx_task_user_canvas_node,priority:3" json:"node_id"`                                                                                                                                // 前端节点 id
-	Kind            string         `gorm:"size:16;not null" json:"kind"`                                                                                                                                                                                         // video / image / audio / text
-	ModelKey        string         `gorm:"column:model_id;size:128;not null" json:"model_id"`                                                                                                                                                                    // 模型 key（ai_models.key）
-	TaskRef         string         `gorm:"size:32;not null;default:'';uniqueIndex:uk_task_ref,where:task_ref <> ''" json:"task_ref"`                                                                                                                             // 任务编号：id 的十六进制编码，界面展示、日志 task_id 都是它；创建时写入，库里可按它直接查原始数据，唯一
-	Provider        string         `gorm:"size:64;not null" json:"provider"`                                                                                                                                                                                     // 平台 key
-	ProviderTaskID  string         `gorm:"size:128;not null;default:'';index:idx_task_provider,priority:2" json:"-"`                                                                                                                                             // 上游任务 id，提交成功后才有
-	Status          string         `gorm:"size:16;not null;index:idx_task_user_status,priority:2" json:"status"`                                                                                                                                                 // 任务状态，取值见 Task* 常量
-	Progress        *int           `json:"progress"`                                                                                                                                                                                                             // 0–100，平台不提供时为空
-	InputJSON       datatypes.JSON `gorm:"type:jsonb;not null" json:"-"`                                                                                                                                                                                         // 已校验的规范化输入
-	OutputJSON      datatypes.JSON `gorm:"type:jsonb" json:"-"`                                                                                                                                                                                                  // []TaskOutput
-	ErrorCode       string         `gorm:"size:64;not null;default:''" json:"error_code"`                                                                                                                                                                        // 统一错误码
-	ErrorMessage    string         `gorm:"size:512;not null;default:''" json:"error_message"`                                                                                                                                                                    // 给用户看的文案
-	Credits         int            `gorm:"not null;default:0" json:"credits"`                                                                                                                                                                                    // 冻结的积分（下单时按定价算出）
-	ChargedCredits  *int           `json:"charged_credits"`                                                                                                                                                                                                      // 成功时实际扣的积分；Token 计费按用量结算，可能小于冻结额，未结算为空
-	Version         int64          `gorm:"not null;default:1" json:"version"`                                                                                                                                                                                    // 每次状态变化 +1
-	IdempotencyKey  string         `gorm:"size:128;not null;default:'';uniqueIndex:uk_task_user_idem,priority:2,where:idempotency_key <> ''" json:"-"`                                                                                                           // 幂等键（Idempotency-Key 请求头），同一用户下唯一
-	ConfigSnapshot  datatypes.JSON `gorm:"type:jsonb;not null" json:"-"`                                                                                                                                                                                         // 创建时 model revision + 渠道配置 + 插件版本哈希的快照（provider.Snapshot，不含 Key）
-	ProviderState   datatypes.JSON `gorm:"type:jsonb" json:"-"`                                                                                                                                                                                                  // 插件私有状态（≤64KB），由宿主持久化后下次传回插件
-	ProviderResult  datatypes.JSON `gorm:"type:jsonb" json:"-"`                                                                                                                                                                                                  // 同步接口的即时结果（[]provider.Output），转存前落库，重启后继续转存而不重复调用上游
-	TraceJSON       datatypes.JSON `gorm:"type:jsonb" json:"-"`                                                                                                                                                                                                  // 仅 is_test：插件钩子与 HTTP 的执行追踪（已脱敏），管理端试跑面板展示
-	IsTest          bool           `gorm:"not null;default:false" json:"is_test"`                                                                                                                                                                                // 运营试跑：不扣积分、不推送
-	AgentRunID      uint64         `gorm:"not null;default:0;index:idx_generation_tasks_agent_run,where:agent_run_id <> 0" json:"-"`                                                                                                                             // 发起它的 Agent 运行 id，0 表示不是 Agent 发起的；任务进入终态时据此通知 Agent
-	NextPollAt      time.Time      `gorm:"not null" json:"-"`                                                                                                                                                                                                    // worker 调度依据（部分索引由迁移补建）
-	PollAttempts    int            `gorm:"not null;default:0" json:"-"`                                                                                                                                                                                          // 已轮询次数
-	LeaseUntil      *time.Time     `json:"-"`                                                                                                                                                                                                                    // worker 租约
-	SlotAcquiredAt  *time.Time     `json:"-"`                                                                                                                                                                                                                    // 拿到用户名额与渠道名额的时间；空表示还在排队等名额（部分索引由迁移补建）
-	DeadlineAt      time.Time      `gorm:"not null" json:"deadline_at"`                                                                                                                                                                                          // 超过则 expired
-	SubmittedAt     *time.Time     `json:"submitted_at"`                                                                                                                                                                                                         // 提交给平台的时间
-	FinishedAt      *time.Time     `json:"finished_at"`                                                                                                                                                                                                          // 进入终态的时间
-	CreatedAt       time.Time      `gorm:"index:idx_task_user_created,priority:2;index:idx_task_created" json:"created_at"`                                                                                                                                      // 创建时间（与 user_id 组成热力图 / 近 7 天统计用的索引；单列索引 idx_task_created 给后台总览的全站按时间聚合用）
-	UpdatedAt       time.Time      `json:"updated_at"`                                                                                                                                                                                                           // 更新时间
+	BudgetGroupID                *uint64                        `gorm:"index:idx_generation_tasks_budget_group_id,where:budget_group_id IS NOT NULL" json:"-"`
+	BudgetRequest                *CanvasGenerationBudgetRequest `gorm:"-" json:"-"`
+	CollaborationEpoch           uint64                         `gorm:"not null;default:0;index:idx_generation_task_canvas_epoch,priority:2" json:"-"`
+	CollaborationInputRevision   uint64                         `gorm:"not null;default:0" json:"-"`
+	CollaborationRequestHash     string                         `gorm:"size:64;not null;default:''" json:"-"`
+	CollaborationAppliedRevision uint64                         `gorm:"-" json:"-"`
+	CollaborationRawInput        map[string]any                 `gorm:"-" json:"-"`
+	CollaborationMedia           []CanvasGenerationMedia        `gorm:"-" json:"-"`
+	ID                           uint64                         `gorm:"primaryKey" json:"id"`                                                                                                                                                                                                 // 任务 ID
+	UserID                       uint64                         `gorm:"not null;index:idx_task_user_status,priority:1;index:idx_task_user_created,priority:1;index:idx_task_user_canvas_node,priority:1;uniqueIndex:uk_task_user_idem,priority:1,where:idempotency_key <> ''" json:"user_id"` // 所属用户
+	CanvasProjectID              *uint64                        `gorm:"index;index:idx_task_user_canvas_node,priority:2;index:idx_generation_task_canvas_epoch,priority:1" json:"canvas_project_id"`                                                                                          // 所属画布，可空
+	NodeID                       string                         `gorm:"size:64;not null;default:'';index:idx_task_user_canvas_node,priority:3" json:"node_id"`                                                                                                                                // 前端节点 id
+	Kind                         string                         `gorm:"size:16;not null" json:"kind"`                                                                                                                                                                                         // video / image / audio / text
+	ModelKey                     string                         `gorm:"column:model_id;size:128;not null" json:"model_id"`                                                                                                                                                                    // 模型 key（ai_models.key）
+	TaskRef                      string                         `gorm:"size:32;not null;default:'';uniqueIndex:uk_task_ref,where:task_ref <> ''" json:"task_ref"`                                                                                                                             // 任务编号：id 的十六进制编码，界面展示、日志 task_id 都是它；创建时写入，库里可按它直接查原始数据，唯一
+	Provider                     string                         `gorm:"size:64;not null" json:"provider"`                                                                                                                                                                                     // 平台 key
+	ProviderTaskID               string                         `gorm:"size:128;not null;default:'';index:idx_task_provider,priority:2" json:"-"`                                                                                                                                             // 上游任务 id，提交成功后才有
+	Status                       string                         `gorm:"size:16;not null;index:idx_task_user_status,priority:2" json:"status"`                                                                                                                                                 // 任务状态，取值见 Task* 常量
+	Progress                     *int                           `json:"progress"`                                                                                                                                                                                                             // 0–100，平台不提供时为空
+	InputJSON                    datatypes.JSON                 `gorm:"type:jsonb;not null" json:"-"`                                                                                                                                                                                         // 已校验的规范化输入
+	OutputJSON                   datatypes.JSON                 `gorm:"type:jsonb" json:"-"`                                                                                                                                                                                                  // []TaskOutput
+	ErrorCode                    string                         `gorm:"size:64;not null;default:''" json:"error_code"`                                                                                                                                                                        // 统一错误码
+	ErrorMessage                 string                         `gorm:"size:512;not null;default:''" json:"error_message"`                                                                                                                                                                    // 给用户看的文案
+	Credits                      int                            `gorm:"not null;default:0" json:"credits"`                                                                                                                                                                                    // 冻结的积分（下单时按定价算出）
+	ChargedCredits               *int                           `json:"charged_credits"`                                                                                                                                                                                                      // 成功时实际扣的积分；Token 计费按用量结算，可能小于冻结额，未结算为空
+	Version                      int64                          `gorm:"not null;default:1" json:"version"`                                                                                                                                                                                    // 每次状态变化 +1
+	IdempotencyKey               string                         `gorm:"size:128;not null;default:'';uniqueIndex:uk_task_user_idem,priority:2,where:idempotency_key <> ''" json:"-"`                                                                                                           // 幂等键（Idempotency-Key 请求头），同一用户下唯一
+	ConfigSnapshot               datatypes.JSON                 `gorm:"type:jsonb;not null" json:"-"`                                                                                                                                                                                         // 创建时 model revision + 渠道配置 + 插件版本哈希的快照（provider.Snapshot，不含 Key）
+	ProviderState                datatypes.JSON                 `gorm:"type:jsonb" json:"-"`                                                                                                                                                                                                  // 插件私有状态（≤64KB），由宿主持久化后下次传回插件
+	ProviderResult               datatypes.JSON                 `gorm:"type:jsonb" json:"-"`                                                                                                                                                                                                  // 同步接口的即时结果（[]provider.Output），转存前落库，重启后继续转存而不重复调用上游
+	TraceJSON                    datatypes.JSON                 `gorm:"type:jsonb" json:"-"`                                                                                                                                                                                                  // 仅 is_test：插件钩子与 HTTP 的执行追踪（已脱敏），管理端试跑面板展示
+	IsTest                       bool                           `gorm:"not null;default:false" json:"is_test"`                                                                                                                                                                                // 运营试跑：不扣积分、不推送
+	AgentRunID                   uint64                         `gorm:"not null;default:0;index:idx_generation_tasks_agent_run,where:agent_run_id <> 0" json:"-"`                                                                                                                             // 发起它的 Agent 运行 id，0 表示不是 Agent 发起的；任务进入终态时据此通知 Agent
+	NextPollAt                   time.Time                      `gorm:"not null" json:"-"`                                                                                                                                                                                                    // worker 调度依据（部分索引由迁移补建）
+	PollAttempts                 int                            `gorm:"not null;default:0" json:"-"`                                                                                                                                                                                          // 已轮询次数
+	LeaseUntil                   *time.Time                     `json:"-"`                                                                                                                                                                                                                    // worker 租约
+	SlotAcquiredAt               *time.Time                     `json:"-"`                                                                                                                                                                                                                    // 拿到用户名额与渠道名额的时间；空表示还在排队等名额（部分索引由迁移补建）
+	DeadlineAt                   time.Time                      `gorm:"not null" json:"deadline_at"`                                                                                                                                                                                          // 超过则 expired
+	SubmittedAt                  *time.Time                     `json:"submitted_at"`                                                                                                                                                                                                         // 提交给平台的时间
+	FinishedAt                   *time.Time                     `json:"finished_at"`                                                                                                                                                                                                          // 进入终态的时间
+	CreatedAt                    time.Time                      `gorm:"index:idx_task_user_created,priority:2;index:idx_task_created" json:"created_at"`                                                                                                                                      // 创建时间（与 user_id 组成热力图 / 近 7 天统计用的索引；单列索引 idx_task_created 给后台总览的全站按时间聚合用）
+	UpdatedAt                    time.Time                      `json:"updated_at"`                                                                                                                                                                                                           // 更新时间
+}
+
+// CanvasGenerationMedia 是等待事务确认的画布产物副本。
+type CanvasGenerationMedia struct {
+	Asset   *Asset
+	Attempt string
+	Output  TaskOutput
 }
 
 func (GenerationTask) TableName() string { return "generation_tasks" }
 
 // TaskOutput 是 output_json 里的一项：已转存到自有存储的产物。
 type TaskOutput struct {
-	AssetID      uint64 `json:"asset_id,omitempty"`       // 素材 ID（text 没有）
-	URL          string `json:"url,omitempty"`            // 访问地址（text 没有）
-	MediaType    string `json:"media_type"`               // video / image / audio / text
+	AssetID      uint64 `json:"asset_id,omitempty"` // 素材 ID（text 没有）
+	URL          string `json:"url,omitempty"`      // 访问地址（text 没有）
+	MediaType    string `json:"media_type"`         // video / image / audio / text
+	Stem         string `json:"stem,omitempty"`
 	Text         string `json:"text,omitempty"`           // media_type=text 时的正文
 	DurationMs   int64  `json:"duration_ms,omitempty"`    // 时长（毫秒）
 	Width        int    `json:"width,omitempty"`          // 宽度（像素）
@@ -121,13 +137,22 @@ type GenerationTaskView struct {
 
 // CreateGenerationTaskReq 提交任务。Idempotency-Key 走请求头，不在 body 里。
 type CreateGenerationTaskReq struct {
-	Kind       string         `json:"kind" binding:"required,oneof=video image audio text" label:"生成种类"` // video / image / audio / text
-	ModelID    string         `json:"model_id" binding:"required,max=128" label:"模型"`                    // 模型 key
-	CanvasID   idcodec.ID     `json:"canvas_id" label:"画布"`                                              // 所属画布（十六进制串），可不传
-	NodeID     string         `json:"node_id" binding:"max=64" label:"节点"`                               // 前端节点 id（只生成 1 个时可以只传它）
-	NodeIDs    []string       `json:"node_ids" binding:"omitempty,max=8,dive,max=64" label:"节点"`         // 每个任务绑定的节点，长度等于生成数量；第 i 个任务绑定第 i 个节点，允许重复（多个任务绑同一个节点）
-	Input      map[string]any `json:"input" binding:"required" label:"生成参数"`                             // 生成参数，按模型的 capabilities 校验
-	AgentRunID uint64         `json:"-"`                                                                 // 发起它的 Agent 运行 id，只由 Agent 的生成执行器填写，不接受请求体里的值
+	Collaboration *CanvasGenerationBinding `json:"collaboration,omitempty"`
+	Kind          string                   `json:"kind" binding:"required,oneof=video image audio text" label:"生成种类"` // video / image / audio / text
+	ModelID       string                   `json:"model_id" binding:"required,max=128" label:"模型"`                    // 模型 key
+	CanvasID      idcodec.ID               `json:"canvas_id" label:"画布"`                                              // 所属画布（十六进制串），可不传
+	NodeID        string                   `json:"node_id" binding:"max=64" label:"节点"`                               // 前端节点 id（只生成 1 个时可以只传它）
+	NodeIDs       []string                 `json:"node_ids" binding:"omitempty,max=8,dive,max=64" label:"节点"`         // 每个任务绑定的节点，长度等于生成数量；第 i 个任务绑定第 i 个节点，允许重复（多个任务绑同一个节点）
+	Input         map[string]any           `json:"input" binding:"required" label:"生成参数"`                             // 生成参数，按模型的 capabilities 校验
+	AgentRunID    uint64                   `json:"-"`                                                                 // 发起它的 Agent 运行 id，只由 Agent 的生成执行器填写，不接受请求体里的值
+}
+
+// CanvasGenerationBinding 固定生成时对应的画布代数与已确认输入版本。
+type CanvasGenerationBinding struct {
+	Budget     *CanvasGenerationBudgetRequest `json:"budget,omitempty"`
+	Epoch      uint64                         `json:"epoch" binding:"required"`
+	Revision   uint64                         `json:"revision" binding:"required"`
+	MaxCredits *int                           `json:"max_credits,omitempty" binding:"omitempty,min=0"`
 }
 
 // CreateGenerationTaskResp 是提交的结果：按节点顺序逐项给出创建好的任务，或这个节点的错误。

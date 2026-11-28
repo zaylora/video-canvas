@@ -1,12 +1,14 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useContext, useRef, useState } from "react";
 import { useReactFlow } from "@xyflow/react";
 import { toast } from "sonner";
 
 import { REMOTE_KIND_OF_NODE } from "@/constants/canvas";
+import { useTasksStore } from "@/store/tasks";
 import type { CanvasEdge, CanvasNode, CanvasNodeData } from "@/types";
-import { useCurrentCanvasId } from "@/utils/canvas/canvas-id";
+import { CanvasGenerationContext, useCurrentCanvasId } from "@/utils/canvas/canvas-id";
 import { releaseObjectUrl } from "@/utils/canvas/media";
 import { cancelTasks, submitCanvasTasks } from "@/utils/tasks/gateway";
+import { cancelableCanvasNodeTaskIds } from "@/utils/tasks/status";
 import {
   buildSubmittedPatch,
   describeSubmitError,
@@ -31,9 +33,17 @@ export type TaskGeneration = ReturnType<typeof useTaskGeneration>;
  * 只有一部分任务提交成功（积分只够几个、并发已满）时，成功的照常生成，失败的数量用 toast 说明；
  * 一个都没成功时节点不动，把原因交回调用方就地提示。
  */
-export function useTaskGeneration(nodeId: string, nodeKind: TaskNodeKind) {
+export function useTaskGeneration(nodeId: string, nodeKind: TaskNodeKind, collaborative = true) {
   const { updateNodeData } = useReactFlow<CanvasNode, CanvasEdge>();
   const canvasId = useCurrentCanvasId();
+  const collaboration = useContext(CanvasGenerationContext);
+  const kind = REMOTE_KIND_OF_NODE[nodeKind];
+  const generationBlocked =
+    collaboration && (!collaboration.canGenerate || !collaborative)
+      ? collaboration.canGenerate
+        ? "此节点暂不支持协作生成"
+        : "请联系画布所有者授权生成"
+      : null;
   const [submitting, setSubmitting] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const lockRef = useRef(false);
@@ -60,6 +70,14 @@ export function useTaskGeneration(nodeId: string, nodeKind: TaskNodeKind) {
       setSubmitting(true);
       const count = Math.max(1, args.count ?? 1);
       try {
+        if (generationBlocked)
+          return { ok: false, error: { kind: "unknown", message: generationBlocked } };
+        const revision = await collaboration?.confirmGeneration(nodeId, args.modelKey, args.input);
+        if (collaboration && (revision === null || revision === undefined))
+          return {
+            ok: false,
+            error: { kind: "unknown", message: "请先处理未同步的编辑，再发起生成" },
+          };
         // 幂等键、重试、快照入库、刷新余额都在统一入口里（utils/tasks/gateway.ts）
         const items = await submitCanvasTasks({
           kind: REMOTE_KIND_OF_NODE[nodeKind],
@@ -68,6 +86,11 @@ export function useTaskGeneration(nodeId: string, nodeKind: TaskNodeKind) {
           node_id: nodeId,
           node_ids: Array.from({ length: count }, () => nodeId),
           input: args.input,
+          ...(collaboration && revision !== null && revision !== undefined
+            ? {
+                collaboration: { epoch: collaboration.epoch, revision },
+              }
+            : {}),
         });
         for (const item of items) {
           if (
@@ -90,11 +113,15 @@ export function useTaskGeneration(nodeId: string, nodeKind: TaskNodeKind) {
             error: failures[0] ?? { kind: "unknown", message: "提交失败，请稍后重试" },
           };
         }
-        releaseObjectUrl(args.currentSrc);
-        updateNodeData(nodeId, (node) => ({
-          ...buildSubmittedPatch(nodeKind, taskIds, node.data),
-          ...args.extraPatch?.(taskIds),
-        }));
+        if (!collaboration) {
+          releaseObjectUrl(args.currentSrc);
+          updateNodeData(nodeId, (node) => ({
+            ...buildSubmittedPatch(nodeKind, taskIds, node.data),
+            ...args.extraPatch?.(taskIds),
+          }));
+        } else {
+          args.extraPatch?.(taskIds);
+        }
         if (failures.length > 0) {
           toast.warning(`有 ${failures.length} 张没能提交：${failures[0].message}`);
         }
@@ -107,22 +134,42 @@ export function useTaskGeneration(nodeId: string, nodeKind: TaskNodeKind) {
         setSubmitting(false);
       }
     },
-    [canvasId, nodeId, nodeKind, updateNodeData],
+    [canvasId, collaboration, generationBlocked, nodeId, nodeKind, updateNodeData],
   );
 
   /** 取消任务；传多个（节点的全部进行中任务）时逐个取消 */
   const cancel = useCallback(
     async (taskIds: string | string[]) => {
       if (cancelling) return;
+      const ids =
+        collaboration && canvasId
+          ? cancelableCanvasNodeTaskIds(
+              Object.values(useTasksStore.getState().tasks),
+              canvasId,
+              nodeId,
+              kind,
+            )
+          : Array.isArray(taskIds)
+            ? taskIds
+            : [taskIds];
+      if (ids.length === 0) return;
       setCancelling(true);
       try {
-        await cancelTasks(Array.isArray(taskIds) ? taskIds : [taskIds]);
+        await cancelTasks(ids);
       } finally {
         setCancelling(false);
       }
     },
-    [cancelling],
+    [cancelling, canvasId, collaboration, kind, nodeId],
   );
 
-  return { submit, cancel, submitting, cancelling };
+  return {
+    submit,
+    cancel,
+    submitting,
+    cancelling,
+    generationBlocked,
+    collaboration,
+    canvasId,
+  };
 }

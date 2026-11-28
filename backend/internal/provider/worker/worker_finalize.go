@@ -31,6 +31,12 @@ func (w *Worker) finalize(ctx context.Context, t *model.GenerationTask, snap *pr
 		w.fail(ctx, t, snap, failure{class: provider.ClassTerminal, raw: err.Error()})
 		return
 	}
+	if snap.Model.Capabilities.AudioOperation == modelcfg.AudioOperationVocalSeparation && !validVocalStems(outs) {
+		err := fmt.Errorf("%w：人声分离需要人声和伴奏各一个音频产物", errInvalidOutput)
+		log.Error("产物不合规，直接失败", zap.Error(err))
+		w.fail(ctx, t, snap, failure{class: provider.ClassTerminal, raw: err.Error()})
+		return
+	}
 
 	// 2. 逐个处理（已成功的跳过），失败按退避重试，耗尽后失败退款
 	tctx, tcancel := context.WithTimeout(ctx, w.opts.TransferTimeout)
@@ -54,6 +60,26 @@ func (w *Worker) finalize(ctx context.Context, t *model.GenerationTask, snap *pr
 		return
 	}
 	log.Info("任务完成", zap.Int("outputs", len(outputs)))
+}
+
+func validVocalStems(outs []provider.Output) bool {
+	if len(outs) != 2 {
+		return false
+	}
+	for _, out := range outs {
+		if out.Type == provider.OutputText || mediaOf(out, model.KindAudio) != model.KindAudio {
+			return false
+		}
+		if out.Type == provider.OutputAsset && (out.AssetID == 0 || out.AssetURL == "") {
+			return false
+		}
+	}
+	if outs[0].Type == outs[1].Type && (outs[0].Type == provider.OutputAsset && outs[0].AssetID == outs[1].AssetID ||
+		outs[0].Type == provider.OutputURL && outs[0].URL == outs[1].URL) {
+		return false
+	}
+	return (outs[0].Stem == "vocals" && outs[1].Stem == "accompaniment") ||
+		(outs[1].Stem == "vocals" && outs[0].Stem == "accompaniment")
 }
 
 // finalOutputs 取待转存的产物；ok=false 表示已经按错误处理完（重试或失败），调用方直接返回。
@@ -171,7 +197,7 @@ func (w *Worker) transferOne(ctx context.Context, t *model.GenerationTask, snap 
 	case provider.OutputAsset:
 		return model.TaskOutput{
 			AssetID: out.AssetID, URL: out.AssetURL, MediaType: mediaOf(out.Output, snap.Model.Kind),
-			DurationMs: out.DurationMs, Width: out.Width, Height: out.Height,
+			DurationMs: out.DurationMs, Width: out.Width, Height: out.Height, Stem: out.Stem,
 		}, nil
 	}
 	return w.downloadOne(ctx, t, snap, out)
@@ -211,6 +237,7 @@ func (w *Worker) downloadOne(ctx context.Context, t *model.GenerationTask, snap 
 		AssetID:    asset.ID,
 		URL:        url,
 		MediaType:  kind,
+		Stem:       out.Stem,
 		DurationMs: asset.DurationMs,
 		Width:      asset.Width,
 		Height:     asset.Height,

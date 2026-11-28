@@ -152,6 +152,14 @@ BEGIN SELECT RAISE(ABORT,'canvas delivery busy'); END;`,
   )
   .join("\n")}`,
   },
+  {
+    version: 7,
+    name: "canvas-collaboration-epoch",
+    sql: `ALTER TABLE agent_runs ADD COLUMN collaboration_epoch INTEGER NOT NULL DEFAULT 0;
+DROP INDEX uk_agent_runs_active_canvas;
+CREATE UNIQUE INDEX uk_agent_runs_active_canvas ON agent_runs (canvas_id) WHERE canvas_id > 0 AND collaboration_epoch = 0 AND status IN (${ACTIVE_RUN_STATUSES});
+CREATE UNIQUE INDEX uk_agent_runs_active_collaboration ON agent_runs (canvas_id, user_id, collaboration_epoch) WHERE canvas_id > 0 AND collaboration_epoch > 0 AND status IN (${ACTIVE_RUN_STATUSES});`,
+  },
 ];
 
 const checksum = (sql: string): string => createHash("sha256").update(sql).digest("hex");

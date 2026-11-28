@@ -2,7 +2,9 @@
 
 import { APIError, request } from "../client.ts";
 import { retryNotice, withRetry } from "../retry.ts";
-import { intFlag } from "./args.ts";
+import { intFlag, stringFlag } from "./args.ts";
+import { canvasPath, collaborationRequest } from "./collaboration.ts";
+import { readComposeJob } from "./compose.ts";
 import {
   TERMINAL_TASK_STATUSES,
   baseOf,
@@ -15,6 +17,12 @@ import type { Args, Ctx, Task } from "../types.ts";
 
 /** 任务查询：纯数字走 /:id，编码任务号走 ?ids=（列表接口两种都认）。 */
 async function fetchTask(ctx: Ctx, idOrRef: string): Promise<Task> {
+  if (ctx.automation) {
+    return collaborationRequest<Task>(
+      ctx,
+      `${canvasPath(ctx.automation.canvasId)}/collaboration/generation-tasks/${encodeURIComponent(idOrRef)}`,
+    );
+  }
   const token = requireToken(ctx);
   if (/^\d+$/.test(idOrRef)) {
     return request<Task>({
@@ -62,7 +70,39 @@ export function formatTask(task: Task): string {
 export async function taskGet(ctx: Ctx, args: Args): Promise<void> {
   const id = args.positional[0];
   if (!id) throw new APIError(-1, "用法：task get <id|task_ref>", 2);
+  if (args.flags.canvas !== undefined)
+    return readComposeJob(
+      ctx,
+      args,
+      stringFlag(args.flags, "canvas", "task get <id> --canvas <画布> --epoch E"),
+      id,
+      "get",
+    );
   const task = await fetchTask(ctx, id);
+  emit(ctx, task, formatTask(task));
+}
+
+export async function taskCancel(ctx: Ctx, args: Args): Promise<void> {
+  if (ctx.automation) throw new APIError(-1, "自动化凭据仅支持查询本凭据提交的生成任务", 403);
+  const id = args.positional[0];
+  if (!id) throw new APIError(-1, "用法：task cancel <id|task_ref>", 2);
+  if (args.flags.canvas !== undefined)
+    return readComposeJob(
+      ctx,
+      args,
+      stringFlag(args.flags, "canvas", "task cancel <id> --canvas <画布> --epoch E"),
+      id,
+      "cancel",
+    );
+  const taskId = /^\d+$/.test(id) ? id : String((await fetchTask(ctx, id)).id);
+  if (!/^[1-9]\d*$/.test(taskId)) throw new APIError(-1, "无效的任务 ID", 2);
+  const task = await request<Task>({
+    base: baseOf(ctx),
+    token: requireToken(ctx),
+    method: "POST",
+    path: `/generation-tasks/${taskId}/cancel`,
+    fetchImpl: ctx.fetchImpl,
+  });
   emit(ctx, task, formatTask(task));
 }
 
@@ -71,6 +111,14 @@ export async function taskWait(ctx: Ctx, args: Args): Promise<void> {
   const id = args.positional[0];
   if (!id)
     throw new APIError(-1, "用法：task wait <id|task_ref> [--timeout 600] [--interval 3]", 2);
+  if (args.flags.canvas !== undefined)
+    return readComposeJob(
+      ctx,
+      args,
+      stringFlag(args.flags, "canvas", "task wait <id> --canvas <画布> --epoch E"),
+      id,
+      "wait",
+    );
   const timeoutSeconds = intFlag(args.flags, "timeout", 600, { max: 86400 });
   const intervalSeconds = intFlag(args.flags, "interval", 3, { max: 3600 });
   const deadline = Date.now() + timeoutSeconds * 1000;

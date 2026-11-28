@@ -3,6 +3,7 @@ package handler
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -56,7 +57,25 @@ func (h *CanvasTransferHandler) Export(c *gin.Context) {
 	if !ok {
 		return
 	}
-	res, err := h.svc.Export(c.Request.Context(), currentUserID(c), id)
+	userID := currentUserID(c)
+	epochs, epochSet := c.GetQueryArray("epoch")
+	revisions, revisionSet := c.GetQueryArray("revision")
+	if epochSet || revisionSet {
+		if len(epochs) != 1 || len(revisions) != 1 {
+			response.Fail(c, errcode.ErrInvalidParams)
+			return
+		}
+		epoch, epochErr := strconv.ParseUint(epochs[0], 10, 64)
+		revision, revisionErr := strconv.ParseUint(revisions[0], 10, 64)
+		if epochErr != nil || revisionErr != nil || epoch == 0 || revision == 0 {
+			response.Fail(c, errcode.ErrInvalidParams)
+			return
+		}
+		res, err := h.svc.ExportVersion(c.Request.Context(), userID, id, epoch, revision)
+		collaborationReply(c, res, err)
+		return
+	}
+	res, err := h.svc.Export(c.Request.Context(), userID, id)
 	if err != nil {
 		response.Fail(c, err)
 		return

@@ -1,6 +1,6 @@
 import type { Capabilities, ModelInfo } from "@/api/model/type";
 import { ANIMATED_EDGE_OPTIONS } from "@/constants/canvas";
-import type { CanvasEdge, CanvasNode, FlowNode } from "@/types";
+import type { CanvasEdge, CanvasNode, CanvasNodeData, FlowNode } from "@/types";
 
 import { NODE_LABEL_MAX, newNodeLabel } from "./node-label";
 import { nodeFrameSize, parseAspect, ratioParam } from "./node-frame";
@@ -80,6 +80,22 @@ export function buildOutpaintNode(input: {
     ...ANIMATED_EDGE_OPTIONS,
   };
   return { node, edge };
+}
+
+export function preserveOutpaintPreparation(projected: CanvasNodeData, current: CanvasNodeData) {
+  if (
+    !current.outpaintFrom ||
+    current.outpaintFrom !== projected.outpaintFrom ||
+    current.taskId ||
+    current.generationRevision ||
+    projected.src ||
+    projected.taskId ||
+    projected.generationRevision ||
+    (projected.status && projected.status !== "idle") ||
+    (current.status !== "running" && current.status !== "error")
+  )
+    return projected;
+  return { ...projected, status: current.status, error: current.error };
 }
 
 /** 能做扩图的模型：支持图生图，并且开了图片参考 */

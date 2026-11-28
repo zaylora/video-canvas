@@ -1,3 +1,5 @@
+import type { CanvasVersion } from "@/utils/canvas/collaboration-version";
+
 import type { HandleType, Node, Position, XYPosition } from "@xyflow/react";
 
 import type { AnimatedSvgEdge, MediaType, NodeMediaType, NodeStatus } from "@/components/canvas";
@@ -46,6 +48,8 @@ export type CanvasNodeData = {
   errorTaskRef?: string | null;
   /** 视频生成任务 id（后端 id 是数字，这里统一存字符串）；status 为 running 时靠它对账回填 */
   taskId?: string;
+  /** 协作房间使用任务启动时的版本匹配公开进度。 */
+  generationRevision?: CanvasVersion | null;
   /**
    * 本节点进行中的任务 id 集合：一次提交了 ≥2 个任务（生成数量 N）才有，都绑在这个节点上。
    * 任务到达终态时回填把它移出，空了就删掉这个字段；taskId 是其中第一个，保持原语义。
@@ -56,6 +60,9 @@ export type CanvasNodeData = {
    * 任务 node_id 是 voice:{节点id}；成功时回填把音频绑成角色的声音并删掉这个字段，失败时留着让详情页显示原因和重试。
    */
   voiceTaskId?: string;
+  voiceError?: string;
+  storyboardSplitRunning?: boolean;
+  characterImageTaskId?: string;
   /**
    * 角色卡点「生成（含音色）」后记下的这次形象任务 id：这些任务出图后，用新主图接着生成音色，然后删掉这个字段；
    * 形象失败或被取消时同样删掉，不拿旧图生成。只有 kind 为 character 时才有。
@@ -150,6 +157,7 @@ export type NodeDrama = {
 
 /** 节点的一版生成产物 */
 export type NodeOutput = {
+  stem?: "vocals" | "accompaniment";
   /** 版本 id，取素材 id，同一素材不会重复入列 */
   id: string;
   src: string;

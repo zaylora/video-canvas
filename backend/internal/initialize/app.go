@@ -53,17 +53,19 @@ type App struct {
 	rdb    *redis.Client
 	server *http.Server
 
-	hub        *ws.Hub                   // WebSocket 连接管理，退出时需要显式关闭（Shutdown 不会等已劫持的连接）
-	taskQueue  *queue.Runtime            // 生成任务队列（River）：本实例是否执行任务由 ai.worker.enabled 决定，但入队和后台操作总是可用
-	queueConn  *pgxpool.Pool             // 队列用来 LISTEN 新任务通知的专用连接池，退出时关闭
-	skills     *agentsvc.SkillService    // Agent 技能库；后台周期清理过期暂存和待删除的版本
-	agent      *agentRuntime             // 画布 Agent 的桥和运行进程；agent.enabled=false 时为 nil
-	runnerStop func()                    // 停止 plugin-runner 子进程的监督并结束进程；非 spawn 模式为 nil
-	assets     *service.AssetService     // 素材服务；后台定期用它清理过期未登记的直传对象
-	loginLogs  *service.LoginLogCleaner  // 登录记录清理器；后台每天清理超过保留天数的记录
-	cliDevices *service.CLIDeviceCleaner // 命令行设备授权清理器；后台每天清理过期的设备码
-	observe    *agentsvc.ObserveService  // Agent 运行观测；后台每天清理超过 30 天的工具参数和结果
-	payment    *service.PaymentService   // 积分充值；后台每 30 秒补单、处理超时订单
+	hub                 *ws.Hub // WebSocket 连接管理，退出时需要显式关闭（Shutdown 不会等已劫持的连接）
+	canvasBus           *ws.CanvasCollaborationBus
+	canvasCollaboration *repository.CanvasCollaborationRepository
+	taskQueue           *queue.Runtime            // 生成任务队列（River）：本实例是否执行任务由 ai.worker.enabled 决定，但入队和后台操作总是可用
+	queueConn           *pgxpool.Pool             // 队列用来 LISTEN 新任务通知的专用连接池，退出时关闭
+	skills              *agentsvc.SkillService    // Agent 技能库；后台周期清理过期暂存和待删除的版本
+	agent               *agentRuntime             // 画布 Agent 的桥和运行进程；agent.enabled=false 时为 nil
+	runnerStop          func()                    // 停止 plugin-runner 子进程的监督并结束进程；非 spawn 模式为 nil
+	assets              *service.AssetService     // 素材服务；后台定期用它清理过期未登记的直传对象
+	loginLogs           *service.LoginLogCleaner  // 登录记录清理器；后台每天清理超过保留天数的记录
+	cliDevices          *service.CLIDeviceCleaner // 命令行设备授权清理器；后台每天清理过期的设备码
+	observe             *agentsvc.ObserveService  // Agent 运行观测；后台每天清理超过 30 天的工具参数和结果
+	payment             *service.PaymentService   // 积分充值；后台每 30 秒补单、处理超时订单
 }
 
 // NewApp 初始化基础设施并手动组装依赖：repository -> service -> handler -> router。
@@ -102,7 +104,11 @@ func NewApp(cfg *config.Config) (*App, error) {
 	idcodec.Init(idKey)
 
 	// 实时推送的连接中心：画布节点级编辑等业务写库后经它推给浏览器（ticket 存储在下面按 Redis 是否开启创建）
-	hub := ws.NewHub()
+	collaborationRepo := repository.NewCanvasCollaborationRepository(db)
+	hub := ws.NewHub(ws.WithAuthorizer(canvasRoomAuthorizer(collaborationRepo.CanJoin)), ws.WithRoomReaders(canvasRoomReaders(collaborationRepo)))
+	canvasBus := ws.NewCanvasCollaborationBus(hub, rdb, canvasRoomAuthorizer(collaborationRepo.CanEditRoom)).
+		WithPresenceUsername(canvasPresenceUsername(userSvc)).
+		WithNoticeAcknowledgement(canvasNoticeAcknowledgement(collaborationRepo))
 
 	// 画布
 	canvasProjectRepo := repository.NewCanvasProjectRepository(db)
@@ -136,7 +142,8 @@ func NewApp(cfg *config.Config) (*App, error) {
 	storageSvc.SetInvalidator(storeRegistry)
 	assetRepo := repository.NewAssetRepository(db)
 	assetSvc := service.NewAssetService(assetRepo, storeRegistry, cfg.Storage) // 同时是 provider.AssetStore 和 provider.AssetSaver
-	assetSvc.SetUploadIntents(repository.NewUploadIntentRepository(db))        // 开启浏览器直传
+	assetSvc.SetCanvasReferences(collaborationRepo)
+	assetSvc.SetUploadIntents(repository.NewUploadIntentRepository(db)) // 开启浏览器直传
 	// 画布列表的封面：素材 key 换成稳定的 /files 地址并带 v=thumb 取缩略图（没有处理服务时服务端回退到原图）
 	canvasProjectSvc := service.NewCanvasProjectService(canvasProjectRepo,
 		service.WithCoverURL(func(key string) string { return assetSvc.FileURL(key) + "?v=thumb" }),
@@ -257,6 +264,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 	taskSvc.SetTaskObserver(service.TaskObservers{dramaSegments, marketingSvc})
 	// 产物不依赖浏览器回写：任务落终态时由服务端写进画布节点，命令行与无人值守也看得到。
 	taskSvc.SetCanvasNodeBackfill(service.NewCanvasNodeBackfill(canvasProjectRepo, hub))
+	taskSvc.SetCanvasCollaborationBus(canvasBus)
 	// 分镜表拆分镜：异步任务，提交、worker 执行和推送都在这个服务里；队列晚于它创建，入队器稍后回填到仓储
 	storyboardSvc := service.NewStoryboardService(service.StoryboardDeps{
 		Repo: storyboardRepo, Models: aiCfgSvc, Caller: stepCaller, Credits: settingsSvc, Broadcaster: hub,
@@ -270,6 +278,16 @@ func NewApp(cfg *config.Config) (*App, error) {
 	agentRepo := repository.NewAgentRepository(db)
 	// Agent 技能库：整包存在素材所用的对象存储里（key 前缀 agent-skills/，不会被 /files 公开路由读到：那里只认有素材记录的 key）
 	agentCanvasSvc := agentsvc.NewAgentCanvasService(agentRepo, hub)
+	canvasShares := repository.NewCanvasShareRepository(db)
+	canvasGuard := service.AgentCanvasDeliveryGuard(cfg.Agent)
+	collaborationSvc := service.NewCanvasCollaborationService(collaborationRepo, canvasShares, canvasGuard, cfg.Canvas.CollaborationEnabled).
+		WithRoomBus(canvasBus).WithMediaImports(assetSvc).WithMediaDrafts(assetSvc).WithUsernameDirectory(userRepo)
+	var composeSvc *service.CanvasComposeService
+	if cfg.Canvas.CollaborationEnabled {
+		composer := videoframe.New(videoframe.Options{Timeout: 10 * time.Minute, MaxConcurrent: 2, Protocols: "file"})
+		composeSvc = service.NewCanvasComposeService(collaborationRepo, canvasShares, assetSvc, composer).WithRoomBus(canvasBus)
+	}
+	agentCanvasSvc.SetCanvasCollaboration(canvasBus, collaborationSvc)
 	// Agent 运行观测：工具调用逐条留存、运行摘要、用户反馈、后台只读导出。Harness 版本在创建运行时记下，改了提示词或工具后才能对比效果
 	observeRepo := repository.NewAgentObserveRepository(db)
 	buildSHA := version.GitCommit
@@ -324,7 +342,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 
 	// 生成任务队列（River）：任务调度、并发、重试之外的实例心跳与救回都交给它；业务处理仍是 worker。
 	// 入队和后台操作总是可用，是否在本实例执行任务由 ai.worker.enabled 决定（API-only 实例关闭它）。
-	taskQueue, queueConn, err := newTaskQueue(cfg, db, taskSvc, executor, assetSvc, settingsSvc, dramaSvc, stepSvc, marketingSvc, storyboardSvc)
+	taskQueue, queueConn, err := newTaskQueue(cfg, db, taskSvc, executor, assetSvc, settingsSvc, dramaSvc, stepSvc, marketingSvc, storyboardSvc, composeSvc)
 	if err != nil {
 		stopRunner(runnerStop)
 		closeRedis(rdb)
@@ -336,6 +354,9 @@ func NewApp(cfg *config.Config) (*App, error) {
 	marketingRepo.SetEnqueuer(taskQueue)  // 营销轮次与写脚本 job 在业务事务里一并提交。
 	storyboardRepo.SetEnqueuer(taskQueue) // 分镜表拆分镜任务与 job 在业务事务里一并提交。
 	dramaRepo.SetEnqueuer(taskQueue)      // 短剧项目、流水线任务与 River job 在业务事务里一并提交。
+	if composeSvc != nil {
+		collaborationSvc.WithCompose(composeSvc.WithEnqueuer(taskQueue))
+	}
 	riverUI, err := taskQueue.UIHandler(riverUIPrefix)
 	if err != nil {
 		queueConn.Close()
@@ -392,21 +413,22 @@ func NewApp(cfg *config.Config) (*App, error) {
 		agentProxy.WithRoleLookup(roleLookup)
 	}
 	engineHTTP := router.New(cfg.Server.Mode, cfg.JWT.Secret, router.Handlers{
-		PricingSettings: handler.NewPricingSettingsHandler(pricingSvc),
-		AgentProxy:      agentProxy,
-		Health:          handler.NewHealthHandler(db, rdb),
-		User:            handler.NewUserHandler(userSvc),
-		Me:              handler.NewMeHandler(meSvc),
-		CanvasProject:   handler.NewCanvasProjectHandler(canvasProjectSvc),
-		Drama:           handler.NewDramaHandler(dramaSvc),
-		CanvasShare:     handler.NewCanvasShareHandler(service.NewCanvasShareService(repository.NewCanvasShareRepository(db), assetSvc, service.AgentCanvasDeliveryGuard(cfg.Agent))),
-		DramaShare:      handler.NewDramaShareHandler(service.NewDramaShareService(repository.NewDramaShareRepository(db), assetSvc)),
-		AdminStep:       handler.NewAdminStepHandler(stepSvc),
-		AdminFormatter:  handler.NewAdminFormatterHandler(),
-		Marketing:       handler.NewMarketingHandler(marketingSvc),
-		DramaSegment:    handler.NewDramaSegmentHandler(dramaSegments),
+		PricingSettings:     handler.NewPricingSettingsHandler(pricingSvc),
+		AgentProxy:          agentProxy,
+		Health:              handler.NewHealthHandler(db, rdb),
+		User:                handler.NewUserHandler(userSvc),
+		Me:                  handler.NewMeHandler(meSvc),
+		CanvasProject:       handler.NewCanvasProjectHandler(canvasProjectSvc),
+		Drama:               handler.NewDramaHandler(dramaSvc),
+		CanvasShare:         handler.NewCanvasShareHandler(service.NewCanvasShareService(canvasShares, assetSvc, canvasGuard).WithRoomBus(canvasBus)),
+		CanvasCollaboration: handler.NewCanvasCollaborationHandler(collaborationSvc),
+		DramaShare:          handler.NewDramaShareHandler(service.NewDramaShareService(repository.NewDramaShareRepository(db), assetSvc)),
+		AdminStep:           handler.NewAdminStepHandler(stepSvc),
+		AdminFormatter:      handler.NewAdminFormatterHandler(),
+		Marketing:           handler.NewMarketingHandler(marketingSvc),
+		DramaSegment:        handler.NewDramaSegmentHandler(dramaSegments),
 		CanvasTransfer: handler.NewCanvasTransferHandler(service.NewCanvasTransferService(service.CanvasTransferDeps{
-			Canvases: canvasProjectRepo, Assets: assetSvc,
+			Canvases: canvasProjectRepo, History: collaborationRepo, Assets: assetSvc,
 			Tx: repository.NewCanvasTransferRepository(db), AppVersion: version.Version,
 			Limits: canvasdoc.DefaultLimits(), // 不能留零值：零值上限会拒绝所有导入文件
 			Now:    time.Now,
@@ -470,21 +492,23 @@ func NewApp(cfg *config.Config) (*App, error) {
 	})
 
 	return &App{
-		fx:         fx.New(pricingRepo, outboundIPPolicy(cfg)),
-		cfg:        cfg,
-		db:         db,
-		rdb:        rdb,
-		hub:        hub,
-		agent:      agentRT,
-		skills:     skillSvc,
-		taskQueue:  taskQueue,
-		queueConn:  queueConn,
-		runnerStop: runnerStop,
-		assets:     assetSvc,
-		loginLogs:  service.NewLoginLogCleaner(userRepo),
-		cliDevices: service.NewCLIDeviceCleaner(cliDeviceRepo, nil),
-		observe:    observeSvc,
-		payment:    pay.svc,
+		fx:                  fx.New(pricingRepo, outboundIPPolicy(cfg)),
+		cfg:                 cfg,
+		db:                  db,
+		rdb:                 rdb,
+		hub:                 hub,
+		canvasBus:           canvasBus,
+		canvasCollaboration: collaborationRepo,
+		agent:               agentRT,
+		skills:              skillSvc,
+		taskQueue:           taskQueue,
+		queueConn:           queueConn,
+		runnerStop:          runnerStop,
+		assets:              assetSvc,
+		loginLogs:           service.NewLoginLogCleaner(userRepo),
+		cliDevices:          service.NewCLIDeviceCleaner(cliDeviceRepo, nil),
+		observe:             observeSvc,
+		payment:             pay.svc,
 		server: &http.Server{
 			Addr:         cfg.Server.Addr(),
 			Handler:      engineHTTP,
@@ -593,6 +617,8 @@ func (p cmdProcess) Kill() error {
 // Run 启动 HTTP 服务，ctx 取消（收到退出信号）后优雅关闭并释放资源。
 func (a *App) Run(ctx context.Context) error {
 	defer a.close()
+	stopCanvasBus := runCanvasBus(a.canvasBus, a.canvasCollaboration)
+	defer stopCanvasBus()
 	// 与现有清理和同步任务共用可取消 ticker 的生命周期，不依赖生成 worker 是否启用。
 	fxCtx, fxCancel := context.WithCancel(context.Background())
 	fxDone := make(chan struct{})
@@ -755,6 +781,10 @@ func (a *App) cleanupUploads(ctx context.Context) {
 			if err := repository.NewCanvasShareRepository(a.db).SweepStages(ctx, a.assets.DeleteStagedObject); err != nil {
 				logger.Error("回收过期画布交付对象失败", zap.Error(err))
 			}
+			if err := a.canvasCollaboration.SweepMediaDrafts(ctx, a.assets.DeleteStagedObject); err != nil {
+				logger.Error("回收过期画布加工产物失败", zap.Error(err))
+			}
+			a.cleanupCollaborationHistory(ctx)
 			if n, err := a.assets.CleanupUploads(ctx, 200); err != nil {
 				logger.Error("清理过期直传失败", zap.Error(err))
 			} else if n > 0 {

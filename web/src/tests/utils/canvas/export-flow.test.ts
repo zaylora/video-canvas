@@ -49,6 +49,21 @@ describe("runCanvasExport：画布内导出流程", () => {
     expect(deps.notify.error).not.toHaveBeenCalled();
   });
 
+  test("协作导出使用本轮保存确认后的画布版本", async () => {
+    let revision = 4;
+    const deps = setup({
+      saveNow: mock(async () => {
+        revision = 5;
+        return true;
+      }),
+      getVersion: () => ({ epoch: 3, revision }),
+    });
+
+    await runCanvasExport(deps);
+
+    expect(deps.exportCanvas).toHaveBeenCalledWith("42", undefined, { epoch: 3, revision: 5 });
+  });
+
   test("有素材被跳过：仍然下载，并额外警告跳过的个数", async () => {
     const deps = setup({ exportCanvas: mock(async () => ({ document: doc, skippedAssets: 2 })) });
     await runCanvasExport(deps);

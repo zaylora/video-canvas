@@ -22,6 +22,8 @@ const MULTI_FLAGS = new Set<string>([
   "assets",
   "seqs",
   "to",
+  "mention",
+  "attach",
 ]);
 
 /**
@@ -31,8 +33,12 @@ const MULTI_FLAGS = new Set<string>([
  */
 const BOOLEAN_FLAGS = new Set<string>([
   "json",
+  "jsonl",
+  "once",
   "wait",
   "watch",
+  "tasks",
+  "voice-from-image",
   "active",
   "reject",
   "force",

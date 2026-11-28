@@ -79,7 +79,7 @@ export function useGridSplitNodes() {
               uploadRunner.start(id, file, (target, patch) => updateNodeData(target, patch)),
             isActive: (id) => uploadRunner.isActive(id),
             patch: (id, patch) => updateNodeData(id, patch),
-            release: (id) => uploadRunner.cancel(id),
+            release: (id, prepare) => uploadRunner.rememberPreparation(id, prepare),
           }),
         );
         if (result.status === "unreadable") {
@@ -93,8 +93,8 @@ export function useGridSplitNodes() {
         } else if (result.failed > 0) {
           toast.error(
             result.failed === 1
-              ? "有 1 张切图上传失败，可以在节点上重试"
-              : `有 ${result.failed} 张切图上传失败，可以在节点上重试`,
+              ? "有 1 个宫格处理失败，可以在节点上重试"
+              : `有 ${result.failed} 个宫格处理失败，可以在节点上重试`,
           );
         }
       } finally {

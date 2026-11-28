@@ -110,6 +110,7 @@ export function resolveOutput(
 }
 
 export function requireToken(ctx: Ctx): string {
+  if (ctx.automation) throw new APIError(-1, "自动化凭据只能访问授权的协作操作", 403);
   if (ctx.baseMismatch) {
     const { saved, requested } = ctx.baseMismatch;
     throw new APIError(

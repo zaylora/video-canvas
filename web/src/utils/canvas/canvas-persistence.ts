@@ -1,3 +1,5 @@
+import type { CanvasVersion } from "@/utils/canvas/collaboration-version";
+
 import type { Viewport } from "@xyflow/react";
 import type { CanvasGraphDto } from "@/api/canvas/type";
 import { ANIMATED_EDGE_OPTIONS } from "@/constants/canvas";
@@ -7,7 +9,7 @@ import { createDefaultScene, normalizeScene } from "@/utils/director/scene";
 
 import { isGroupNode, normalizeFlowNodes } from "./group";
 import { unflatten, type MergeEdge, type MergeOptions } from "./graph-changes";
-import { isUploading } from "./upload-state";
+import { isUploadFailed, isUploading } from "./upload-state";
 import { dropNodeOrigin } from "./placement";
 import { normalizeLegacyCharacter } from "@/utils/characters/node-character";
 import { normalizeStoryboard } from "@/utils/storyboard/shots";
@@ -22,8 +24,15 @@ export const OUTPAINT_RESUBMIT = "扩图被中断，点重试可以重新提交"
  * 这段进度只活在当前页面的内存里（outpaintRunner），刷新后没人接着跑，所以存档时要说清楚被打断了，
  * 不能当成普通的「生成中」静悄悄改成空壳。
  */
-function isOutpaintInFlight(data: { status?: string; taskId?: string; outpaintFrom?: string }) {
-  return data.status === "running" && !data.taskId && !!data.outpaintFrom;
+function isOutpaintInFlight(data: {
+  status?: string;
+  taskId?: string;
+  generationRevision?: CanvasVersion | null;
+  outpaintFrom?: string;
+}) {
+  return (
+    data.status === "running" && !data.taskId && !data.generationRevision && !!data.outpaintFrom
+  );
 }
 
 /** 被打断的扩图节点要写的话：合成图已经上传（params.images 有值）就能重试提交，否则要回原图 */
@@ -43,6 +52,7 @@ export function hasVolatileRunning(nodes: FlowNode[]) {
       !isGroupNode(node) &&
       node.data.status === "running" &&
       !node.data.taskId &&
+      !node.data.generationRevision &&
       !isUploading(node.data) &&
       !isOutpaintInFlight(node.data),
   );
@@ -52,87 +62,102 @@ export function serializeGraph(
   nodes: FlowNode[],
   edges: CanvasEdge[],
   viewport: Viewport,
+  wasProjected?: (id: string) => boolean,
 ): CanvasGraphDto {
+  const included = nodes.filter(
+    (node) =>
+      isGroupNode(node) ||
+      (!isUploading(node.data) &&
+        (!wasProjected || !isUploadFailed(node.data) || wasProjected(node.id))),
+  );
+  const ids = new Set(included.map((node) => node.id));
   return {
     // 上传中的节点还没有正式素材，存下来重开画布也是空壳，直接不存
-    nodes: nodes
-      .filter((node) => isGroupNode(node) || !isUploading(node.data))
-      .map((node) => {
-        if (isGroupNode(node)) {
-          const { label, color, labelColor } = node.data;
-          return {
-            id: node.id,
-            type: "group" as const,
-            position: { x: node.position.x, y: node.position.y },
-            width: node.width ?? node.measured?.width ?? 0,
-            height: node.height ?? node.measured?.height ?? 0,
-            data: {
-              label,
-              ...(color ? { color } : {}),
-              ...(labelColor ? { labelColor } : {}),
-            },
-          };
-        }
-        const { status, ...rest } = node.data;
-        const interrupted = isOutpaintInFlight(node.data);
-        const data = {
-          kind: rest.kind,
-          label: rest.label,
-          ...(rest.prompt !== undefined ? { prompt: rest.prompt } : {}),
-          ...(rest.model !== undefined ? { model: rest.model } : {}),
-          ...(status
-            ? {
-                status: interrupted
-                  ? ("error" as const)
-                  : status === "running" && !rest.taskId
-                    ? ("idle" as const)
-                    : status,
-              }
-            : {}),
-          ...(rest.taskId !== undefined ? { taskId: rest.taskId } : {}),
-          ...(rest.pendingTaskIds?.length ? { pendingTaskIds: rest.pendingTaskIds } : {}),
-          ...(rest.params !== undefined ? { params: rest.params } : {}),
-          ...(rest.paramAssets !== undefined ? { paramAssets: rest.paramAssets } : {}),
-          ...(rest.src !== undefined ? { src: rest.src } : {}),
-          ...(rest.mediaType !== undefined ? { mediaType: rest.mediaType } : {}),
-          ...(rest.mediaAspect !== undefined ? { mediaAspect: rest.mediaAspect } : {}),
-          ...(rest.frameAspect !== undefined ? { frameAspect: rest.frameAspect } : {}),
-          ...(rest.assetId !== undefined ? { assetId: rest.assetId } : {}),
-          ...(rest.uploaded !== undefined ? { uploaded: rest.uploaded } : {}),
-          ...(rest.fileName !== undefined ? { fileName: rest.fileName } : {}),
-          ...(rest.text !== undefined ? { text: rest.text } : {}),
-          ...(interrupted
-            ? { error: outpaintInterruptedMessage(rest.params) }
-            : rest.error !== undefined
-              ? { error: rest.error }
-              : {}),
-          ...(rest.outputs?.length ? { outputs: rest.outputs } : {}),
-          ...(rest.activeOutputId !== undefined ? { activeOutputId: rest.activeOutputId } : {}),
-          ...(rest.outpaintFrom !== undefined ? { outpaintFrom: rest.outpaintFrom } : {}),
-          ...(rest.scene !== undefined ? { scene: rest.scene } : {}),
-          ...(rest.character !== undefined ? { character: rest.character } : {}),
-          ...(rest.storyboard !== undefined ? { storyboard: rest.storyboard } : {}),
-          ...(rest.voiceTaskId !== undefined ? { voiceTaskId: rest.voiceTaskId } : {}),
-          ...(rest.voiceAfterImage?.length ? { voiceAfterImage: rest.voiceAfterImage } : {}),
-          ...(rest.drama !== undefined ? { drama: rest.drama } : {}),
-        };
-        if (data.src?.startsWith("blob:") && !data.assetId) delete data.src;
+    nodes: included.map((node) => {
+      if (isGroupNode(node)) {
+        const { label, color, labelColor } = node.data;
         return {
           id: node.id,
-          type: "canvas",
+          type: "group" as const,
           position: { x: node.position.x, y: node.position.y },
-          ...(node.parentId ? { parentId: node.parentId } : {}),
-          ...(node.origin ? { origin: node.origin as [number, number] } : {}),
-          data,
+          width: node.width ?? node.measured?.width ?? 0,
+          height: node.height ?? node.measured?.height ?? 0,
+          data: {
+            label,
+            ...(color ? { color } : {}),
+            ...(labelColor ? { labelColor } : {}),
+          },
         };
-      }),
-    edges: edges.map((edge) => ({
-      id: edge.id,
-      source: edge.source,
-      target: edge.target,
-      ...(edge.sourceHandle !== undefined ? { sourceHandle: edge.sourceHandle } : {}),
-      ...(edge.targetHandle !== undefined ? { targetHandle: edge.targetHandle } : {}),
-    })),
+      }
+      const { status, ...rest } = node.data;
+      const interrupted = isOutpaintInFlight(node.data);
+      const data = {
+        kind: rest.kind,
+        label: rest.label,
+        ...(rest.prompt !== undefined ? { prompt: rest.prompt } : {}),
+        ...(rest.model !== undefined ? { model: rest.model } : {}),
+        ...(status
+          ? {
+              status: interrupted
+                ? ("error" as const)
+                : status === "running" && !rest.taskId
+                  ? ("idle" as const)
+                  : status,
+            }
+          : {}),
+        ...(rest.taskId !== undefined ? { taskId: rest.taskId } : {}),
+        ...(rest.pendingTaskIds?.length ? { pendingTaskIds: rest.pendingTaskIds } : {}),
+        ...(rest.params !== undefined ? { params: rest.params } : {}),
+        ...(rest.paramAssets !== undefined ? { paramAssets: rest.paramAssets } : {}),
+        ...(rest.src !== undefined ? { src: rest.src } : {}),
+        ...(rest.mediaType !== undefined ? { mediaType: rest.mediaType } : {}),
+        ...(rest.mediaAspect !== undefined ? { mediaAspect: rest.mediaAspect } : {}),
+        ...(rest.frameAspect !== undefined ? { frameAspect: rest.frameAspect } : {}),
+        ...(rest.assetId !== undefined ? { assetId: rest.assetId } : {}),
+        ...(rest.uploaded !== undefined ? { uploaded: rest.uploaded } : {}),
+        ...(rest.fileName !== undefined ? { fileName: rest.fileName } : {}),
+        ...(rest.text !== undefined ? { text: rest.text } : {}),
+        ...(interrupted
+          ? { error: outpaintInterruptedMessage(rest.params) }
+          : rest.error !== undefined
+            ? { error: rest.error }
+            : {}),
+        ...(rest.outputs?.length ? { outputs: rest.outputs } : {}),
+        ...(rest.activeOutputId !== undefined ? { activeOutputId: rest.activeOutputId } : {}),
+        ...(rest.outpaintFrom !== undefined ? { outpaintFrom: rest.outpaintFrom } : {}),
+        ...(rest.scene !== undefined ? { scene: rest.scene } : {}),
+        ...(rest.character !== undefined ? { character: rest.character } : {}),
+        ...(rest.storyboard !== undefined ? { storyboard: rest.storyboard } : {}),
+        ...(rest.voiceTaskId !== undefined ? { voiceTaskId: rest.voiceTaskId } : {}),
+        ...(rest.voiceError !== undefined ? { voiceError: rest.voiceError } : {}),
+        ...(rest.storyboardSplitRunning !== undefined
+          ? { storyboardSplitRunning: rest.storyboardSplitRunning }
+          : {}),
+        ...(rest.characterImageTaskId !== undefined
+          ? { characterImageTaskId: rest.characterImageTaskId }
+          : {}),
+        ...(rest.voiceAfterImage?.length ? { voiceAfterImage: rest.voiceAfterImage } : {}),
+        ...(rest.drama !== undefined ? { drama: rest.drama } : {}),
+      };
+      if (data.src?.startsWith("blob:") && !data.assetId) delete data.src;
+      return {
+        id: node.id,
+        type: "canvas",
+        position: { x: node.position.x, y: node.position.y },
+        ...(node.parentId ? { parentId: node.parentId } : {}),
+        ...(node.origin ? { origin: node.origin as [number, number] } : {}),
+        data,
+      };
+    }),
+    edges: edges
+      .filter((edge) => ids.has(edge.source) && ids.has(edge.target))
+      .map((edge) => ({
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+        ...(edge.sourceHandle !== undefined ? { sourceHandle: edge.sourceHandle } : {}),
+        ...(edge.targetHandle !== undefined ? { targetHandle: edge.targetHandle } : {}),
+      })),
     viewport,
   };
 }
@@ -167,6 +192,7 @@ export function deserializeNode(node: CanvasGraphDto["nodes"][number]): FlowNode
   const data = node.data as {
     status?: string;
     taskId?: string;
+    generationRevision?: CanvasVersion | null;
     outpaintFrom?: string;
     params?: Record<string, unknown>;
   };
@@ -181,7 +207,7 @@ export function deserializeNode(node: CanvasGraphDto["nodes"][number]): FlowNode
           error: outpaintInterruptedMessage(data.params),
         },
       }
-    : data.status === "running" && !data.taskId
+    : data.status === "running" && !data.taskId && !data.generationRevision
       ? { ...node, data: { ...node.data, status: "idle" as const } }
       : node;
   // 老存档里带 origin 的节点，position 统一换算成左上角

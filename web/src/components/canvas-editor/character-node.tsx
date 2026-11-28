@@ -16,7 +16,7 @@ import { useCharacterMedia } from "@/hooks/use-character-media";
 import { useMediaAspect } from "@/hooks/use-media-aspect";
 import { useTaskGeneration } from "@/hooks/use-task-generation";
 import { useTaskNode } from "@/hooks/use-task-node";
-import { useVoiceAfterImage } from "@/hooks/use-voice-after-image";
+import { useCollaborativeVoiceAfterImage, useVoiceAfterImage } from "@/hooks/use-voice-after-image";
 import { useVoiceBackfill } from "@/hooks/use-voice-backfill";
 import { useVoiceGeneration, type VoiceGeneration } from "@/hooks/use-voice-generation";
 import { cn } from "@/lib/utils";
@@ -151,14 +151,20 @@ function EditableCharacterNode({
   const vm = useTaskNode(id, data, "image", generation);
   // 声音生成只在这里起一份：详情页、面板和短剧列表的「生成（含音色）」共用，模型选择、提交锁都是同一份
   const voiceGen = useVoiceGeneration(id, data);
+  const afterImage = useCollaborativeVoiceAfterImage(id, data, voiceGen);
   const voicePrompt = data.character?.voicePrompt ?? "";
-  const voiceBlocked = voiceGen.blockedReason(voicePrompt);
+  const voiceBlocked = afterImage.pending
+    ? "出图后会接着生成音色"
+    : voiceGen.blockedReason(voicePrompt);
   useVoiceAfterImage(id, data, voiceGen);
   /** 「生成（含音色）」：先提交形象，这次的任务 id 记进 voiceAfterImage，出图后用新主图接着生成音色 */
   const submitWithVoice = () =>
     voiceBlocked
       ? Promise.resolve(voiceBlocked)
-      : vm.submit((taskIds) => ({ voiceAfterImage: taskIds }));
+      : vm.submit((taskIds) => {
+          afterImage.remember(taskIds);
+          return { voiceAfterImage: taskIds };
+        });
   useRegisterNodeActions(id, {
     blockedReason: () => vm.blockedReason,
     submit: () => vm.submit(),

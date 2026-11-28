@@ -14,7 +14,7 @@ import { useLocateNode } from "./use-focus-node";
 
 const legacyMediaTargets = new Set(["image", "video", "audio", "character"]);
 
-function sharedLayout(graph: CanvasGraphDto) {
+function sharedLayout(graph: CanvasGraphDto): ReturnType<typeof deserializeGraph> {
   const layout = deserializeGraph(graph);
   const singleTarget = new Set(
     layout.nodes.flatMap((node) =>
@@ -23,6 +23,9 @@ function sharedLayout(graph: CanvasGraphDto) {
   );
   return {
     ...layout,
+    nodes: layout.nodes.map((node) =>
+      node.type === "canvas" ? { ...node, style: { ...node.style, pointerEvents: "auto" } } : node,
+    ),
     edges: layout.edges.map((edge) =>
       edge.targetHandle && singleTarget.has(edge.target) ? { ...edge, targetHandle: null } : edge,
     ),
@@ -32,6 +35,7 @@ function sharedLayout(graph: CanvasGraphDto) {
 type SharedSceneProps = {
   graph: CanvasGraphDto;
   overlay: (minimap: boolean, setMinimap: (open: boolean) => void) => ReactNode;
+  embedded?: boolean;
 };
 
 export function SharedCanvasScene(props: SharedSceneProps) {
@@ -42,7 +46,7 @@ export function SharedCanvasScene(props: SharedSceneProps) {
   );
 }
 
-function SharedSceneContent({ graph, overlay }: SharedSceneProps) {
+function SharedSceneContent({ graph, overlay, embedded }: SharedSceneProps) {
   const layout = useMemo(() => sharedLayout(graph), [graph]);
   const items = useMemo(() => collectPreviewItems(layout.nodes), [layout.nodes]);
   const [preview, setPreview] = useState<LightboxTarget | null>(null);
@@ -53,7 +57,7 @@ function SharedSceneContent({ graph, overlay }: SharedSceneProps) {
   };
 
   return (
-    <CanvasWorkspace>
+    <CanvasWorkspace containerClassName={embedded ? "size-full" : undefined}>
       <CanvasReadOnlyProvider value>
         <SharedCanvasProvider value>
           <TooltipProvider delay={400}>
@@ -63,6 +67,7 @@ function SharedSceneContent({ graph, overlay }: SharedSceneProps) {
                 nodes={layout.nodes}
                 edges={layout.edges}
                 defaultViewport={layout.viewport}
+                fitView={embedded}
                 onNodeDoubleClick={(_event, node) => openPreview(node.id)}
                 panOnDrag
                 nodesDraggable={false}

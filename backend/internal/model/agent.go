@@ -106,27 +106,28 @@ func (AgentSession) TableName() string { return "agent_sessions" }
 
 // AgentRun 是用户发一条消息触发的一次运行。
 type AgentRun struct {
-	ID            uint64     `gorm:"primaryKey" json:"id"`                                                                                                                     // 运行 ID
-	SessionID     uint64     `gorm:"not null;index" json:"session_id"`                                                                                                         // 所属会话
-	CanvasID      uint64     `gorm:"not null;uniqueIndex:uk_agent_runs_active,where:status IN ('queued'\\,'running'\\,'waiting_approval'\\,'waiting_input')" json:"canvas_id"` // 所属画布；活跃运行在同一画布上唯一
-	UserID        uint64     `gorm:"not null;index" json:"user_id"`                                                                                                            // 所属用户
-	Status        string     `gorm:"size:20;not null" json:"status"`                                                                                                           // 运行状态，取值见 Run* 常量
-	Mode          string     `gorm:"size:16;not null;default:'all'" json:"mode"`                                                                                               // 本轮的任务模式
-	BudgetCredits int        `gorm:"not null;default:0" json:"budget_credits"`                                                                                                 // 本轮积分预算；0 表示不限制，只受账户可用积分约束
-	SpentCredits  int        `gorm:"not null;default:0" json:"spent_credits"`                                                                                                  // 已花积分（对话 token + 已批准的生成）
-	ContextTokens int        `gorm:"not null;default:0" json:"context_tokens"`                                                                                                 // 最近一次对话调用送进模型的输入 Token 数，即会话当前的上下文大小
-	Steps         int        `gorm:"not null;default:0" json:"steps"`                                                                                                          // 已执行的步数
-	MaxSteps      int        `gorm:"not null;default:40" json:"max_steps"`                                                                                                     // 步数上限
-	ErrorCode     string     `gorm:"size:64;not null;default:''" json:"error_code"`                                                                                            // 失败时的错误码
-	ErrorMessage  string     `gorm:"size:512;not null;default:''" json:"error_message"`                                                                                        // 失败时给用户看的文案
-	PromptVersion int        `gorm:"not null;default:0" json:"prompt_version"`                                                                                                 // 系统提示词版本，运行创建时确定
-	ToolsHash     string     `gorm:"size:12;not null;default:''" json:"tools_hash"`                                                                                            // 工具声明哈希
-	BuildSHA      string     `gorm:"column:build_sha;size:40;not null;default:''" json:"build_sha"`                                                                            // 构建的 git commit
-	HarnessKey    string     `gorm:"size:12;not null;default:'';index:idx_agent_runs_harness,priority:1" json:"harness_key"`                                                   // 以上三项合并的短哈希
-	LeaseUntil    time.Time  `json:"lease_until"`                                                                                                                              // runtime 租约到期时间，过期未续约视为中断
-	CreatedAt     time.Time  `gorm:"index:idx_agent_runs_harness,priority:2" json:"created_at"`                                                                                // 创建时间
-	UpdatedAt     time.Time  `json:"updated_at"`                                                                                                                               // 更新时间
-	EndedAt       *time.Time `json:"ended_at"`                                                                                                                                 // 结束时间
+	CollaborationEpoch uint64     `gorm:"-" json:"-"`
+	ID                 uint64     `gorm:"primaryKey" json:"id"`                                                                                                                     // 运行 ID
+	SessionID          uint64     `gorm:"not null;index" json:"session_id"`                                                                                                         // 所属会话
+	CanvasID           uint64     `gorm:"not null;uniqueIndex:uk_agent_runs_active,where:status IN ('queued'\\,'running'\\,'waiting_approval'\\,'waiting_input')" json:"canvas_id"` // 所属画布；活跃运行在同一画布上唯一
+	UserID             uint64     `gorm:"not null;index" json:"user_id"`                                                                                                            // 所属用户
+	Status             string     `gorm:"size:20;not null" json:"status"`                                                                                                           // 运行状态，取值见 Run* 常量
+	Mode               string     `gorm:"size:16;not null;default:'all'" json:"mode"`                                                                                               // 本轮的任务模式
+	BudgetCredits      int        `gorm:"not null;default:0" json:"budget_credits"`                                                                                                 // 本轮积分预算；0 表示不限制，只受账户可用积分约束
+	SpentCredits       int        `gorm:"not null;default:0" json:"spent_credits"`                                                                                                  // 已花积分（对话 token + 已批准的生成）
+	ContextTokens      int        `gorm:"not null;default:0" json:"context_tokens"`                                                                                                 // 最近一次对话调用送进模型的输入 Token 数，即会话当前的上下文大小
+	Steps              int        `gorm:"not null;default:0" json:"steps"`                                                                                                          // 已执行的步数
+	MaxSteps           int        `gorm:"not null;default:40" json:"max_steps"`                                                                                                     // 步数上限
+	ErrorCode          string     `gorm:"size:64;not null;default:''" json:"error_code"`                                                                                            // 失败时的错误码
+	ErrorMessage       string     `gorm:"size:512;not null;default:''" json:"error_message"`                                                                                        // 失败时给用户看的文案
+	PromptVersion      int        `gorm:"not null;default:0" json:"prompt_version"`                                                                                                 // 系统提示词版本，运行创建时确定
+	ToolsHash          string     `gorm:"size:12;not null;default:''" json:"tools_hash"`                                                                                            // 工具声明哈希
+	BuildSHA           string     `gorm:"column:build_sha;size:40;not null;default:''" json:"build_sha"`                                                                            // 构建的 git commit
+	HarnessKey         string     `gorm:"size:12;not null;default:'';index:idx_agent_runs_harness,priority:1" json:"harness_key"`                                                   // 以上三项合并的短哈希
+	LeaseUntil         time.Time  `json:"lease_until"`                                                                                                                              // runtime 租约到期时间，过期未续约视为中断
+	CreatedAt          time.Time  `gorm:"index:idx_agent_runs_harness,priority:2" json:"created_at"`                                                                                // 创建时间
+	UpdatedAt          time.Time  `json:"updated_at"`                                                                                                                               // 更新时间
+	EndedAt            *time.Time `json:"ended_at"`                                                                                                                                 // 结束时间
 }
 
 // TableName 表名。

@@ -12,12 +12,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"video-canvas/internal/middleware"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/pkg/idcodec"
 	"video-canvas/internal/pkg/response"
-	"video-canvas/internal/pkg/utils"
+	"video-canvas/internal/provider"
 	"video-canvas/internal/service"
 	"video-canvas/pkg/pagination"
 )
@@ -134,23 +133,26 @@ func (h *CanvasShareHandler) Workspace(secret string) gin.HandlerFunc {
 			return
 		}
 		var query struct {
-			Revision uint64 `form:"revision"`
+			Revision   uint64 `form:"revision"`
+			AccessOnly bool   `form:"access_only"`
 		}
 		if !BindQuery(c, &query) {
 			return
 		}
-		work, err := h.service.ReadIfChanged(c.Request.Context(), currentUserID(c), id, query.Revision)
+		var work *model.CanvasProjectView
+		var err error
+		if query.AccessOnly {
+			err = h.service.CheckAccess(c.Request.Context(), currentUserID(c), id)
+		} else {
+			work, err = h.service.ReadIfChanged(c.Request.Context(), currentUserID(c), id, query.Revision)
+		}
 		if err != nil {
 			response.Fail(c, err)
 			return
 		}
-		ticket, _, err := utils.GenerateToken(middleware.GetUserID(c), "", middleware.GetTokenVersion(c), secret+":"+c.Param("id"), "canvas-media", 1)
-		if err != nil {
-			response.Fail(c, err)
+		if !issueCanvasMediaCookie(c, secret) {
 			return
 		}
-		c.SetSameSite(http.SameSiteStrictMode)
-		c.SetCookie("canvas_media", ticket, 3600, "/api/v1/canvas-media/"+c.Param("id")+"/", "", c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https", true)
 		c.Header("Cache-Control", "private, no-store")
 		if work == nil {
 			response.OK(c, gin.H{"unchanged": true})
@@ -176,6 +178,25 @@ func (h *CanvasShareHandler) Media(c *gin.Context) {
 		open = h.service.Poster
 	}
 	file, err := open(c.Request.Context(), currentUserID(c), id, asset)
+	serveCanvasMedia(c, file, err)
+}
+
+// DownloadMedia 使用登录态读取画布内的素材。
+func (h *CanvasShareHandler) DownloadMedia(c *gin.Context) {
+	id, ok := CanvasPathID(c)
+	if !ok {
+		return
+	}
+	asset, err := strconv.ParseUint(c.Param("asset"), 10, 64)
+	if err != nil || asset == 0 {
+		response.Fail(c, errcode.ErrAssetNotFound)
+		return
+	}
+	file, err := h.service.DownloadMedia(c.Request.Context(), currentUserID(c), id, asset)
+	serveCanvasMedia(c, file, err)
+}
+
+func serveCanvasMedia(c *gin.Context, file *provider.AssetFile, err error) {
 	if err != nil {
 		response.Fail(c, err)
 		return

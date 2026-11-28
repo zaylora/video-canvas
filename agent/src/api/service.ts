@@ -6,6 +6,7 @@
  * 所有 id 参数都是十进制字符串；路径里的编码串由 HTTP 层先解码。
  */
 import type { AttachmentCheck } from "../attachments.ts";
+import type { CollaborationEpoch } from "../collaboration-epoch.ts";
 import type { AgentEngine, ApprovalView, WatchBatchView } from "../engine/engine.ts";
 import { fromPlatform } from "../engine/engine.ts";
 import { AgentError, Err } from "../engine/errors.ts";
@@ -64,6 +65,7 @@ export interface StartRunRequest {
   selection?: string[];
   viewport?: unknown;
   budget_credits?: number | null;
+  collaboration_epoch?: CollaborationEpoch;
   agent_model_key?: string;
   /** 图片附件：只带素材 id，归属、格式、大小由 Go 校验 */
   attachments?: Array<{ asset_id: string }>;
@@ -196,9 +198,8 @@ export class AgentApiService {
 
   /** 删除会话（软删除）。这个会话正占着画布时不允许，免得 Agent 往一个看不见的会话里继续写 */
   async deleteSession(userId: string, sessionId: string): Promise<void> {
-    const sess = this.#session(userId, sessionId);
-    const active = this.#o.store.activeRun(sess.canvasId, userId);
-    if (active && active.sessionId === sessionId) throw Err.runActive();
+    this.#session(userId, sessionId);
+    if (this.#o.store.hasActiveSessionRun(sessionId)) throw Err.runActive();
     await this.#o.engine.cancelWatches(userId, sessionId).catch(() => {}); // 后台等待的监听任务一并收掉
     this.#o.store.deleteSession(userId, sessionId);
   }
@@ -317,6 +318,7 @@ export class AgentApiService {
       selection,
       attachments,
       budgetCredits: req.budget_credits ?? 0,
+      collaborationEpoch: req.collaboration_epoch,
       pageContext: sess.mode === "admin" ? req.page_context : undefined,
     });
     return runView(this.#o.codec, run);
@@ -376,6 +378,7 @@ export class AgentApiService {
         canvas_id: run.canvasId,
         mode: run.mode,
         model_key: sess.modelKey,
+        ...(run.collaborationEpoch && { collaboration_epoch: run.collaborationEpoch }),
       }),
     );
     if (res.revision !== 0) {

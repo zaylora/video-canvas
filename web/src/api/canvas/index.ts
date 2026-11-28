@@ -5,6 +5,7 @@ import type {
   BackendCanvasImportDto,
   CanvasDetailDto,
   CanvasExportResultDto,
+  CanvasExportVersion,
   CanvasImportResultDto,
   CanvasGraphDto,
   CanvasListQueryDto,
@@ -51,6 +52,8 @@ export const mapCanvasProject = (canvas: BackendCanvasProjectDto): CanvasDetailD
   graph: normalizeGraph(canvas.payload_json),
   createdAt: canvas.created_at,
   updatedAt: canvas.updated_at,
+  ...(canvas.collaboration_active ? { collaborationActive: true } : {}),
+  ...(canvas.collaboration_epoch ? { collaborationEpoch: canvas.collaboration_epoch } : {}),
 });
 
 /**
@@ -169,11 +172,16 @@ const CANVAS_TRANSFER_TIMEOUT = 5 * 60 * 1000;
  * 导出画布为文档
  * @param id 画布 ID
  * @param signal 取消信号；取消后请求层原样抛出取消错误、不弹提示
+ * @param version 协作画布的会话代数和确认版本，个人画布省略
  * @returns 导出文档，以及因找不到文件被跳过的素材数
  */
-export const exportCanvas = (id: string, signal?: AbortSignal): Promise<CanvasExportResultDto> =>
+export const exportCanvas = (
+  id: string,
+  signal?: AbortSignal,
+  version?: CanvasExportVersion,
+): Promise<CanvasExportResultDto> =>
   service
-    .get<BackendCanvasExportDto>(`/canvas/${id}/export`, undefined, {
+    .get<BackendCanvasExportDto>(`/canvas/${id}/export`, version ? { ...version } : undefined, {
       timeout: CANVAS_TRANSFER_TIMEOUT,
       signal,
     })

@@ -17,6 +17,7 @@ import (
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/pkg/idcodec"
+	"video-canvas/internal/repository"
 	"video-canvas/internal/service"
 )
 
@@ -40,6 +41,15 @@ func (fakeTransferHandlerAssets) CopyBySha256(_ context.Context, userID uint64, 
 func (fakeTransferHandlerAssets) DiscardCopies(context.Context, []*model.Asset) {}
 
 func (fakeTransferHandlerAssets) FileURL(key string) string { return "/files/" + key }
+
+type fakeTransferHandlerHistory struct{}
+
+func (fakeTransferHandlerHistory) HistoricalSnapshot(_ context.Context, owner, canvas, epoch, revision uint64) (*model.CanvasProject, error) {
+	if owner != 1 || canvas != 1 || epoch != 2 || revision != 3 {
+		return nil, repository.ErrNotFound
+	}
+	return &model.CanvasProject{Title: "确认版本", PayloadJSON: datatypes.JSON(`{"nodes":[],"edges":[]}`)}, nil
+}
 
 // fakeTransferHandlerTx 是内存事务：只关心画布写入。
 type fakeTransferHandlerTx struct{ canvases []*model.CanvasProject }
@@ -70,7 +80,7 @@ func newTransferRouter() (*gin.Engine, *fakeTransferHandlerTx) {
 	}}
 	tx := &fakeTransferHandlerTx{}
 	svc := service.NewCanvasTransferService(service.CanvasTransferDeps{
-		Canvases: repo, Assets: fakeTransferHandlerAssets{},
+		Canvases: repo, Assets: fakeTransferHandlerAssets{}, History: fakeTransferHandlerHistory{},
 		Tx: tx, AppVersion: "v1", Limits: canvasdoc.DefaultLimits(),
 		Now: func() time.Time { return time.Date(2026, 10, 24, 8, 0, 0, 0, time.UTC) },
 	})
@@ -138,6 +148,34 @@ func TestCanvasTransferHandler_ExportNotFound(t *testing.T) {
 	status, resp = canvasCall(t, r, http.MethodGet, "/api/v1/canvas/abc/export", "")
 	if status != http.StatusBadRequest || respCode(resp) != errcode.ErrInvalidParams.Code {
 		t.Errorf("非法 ID 应 400 + 10001：%d %v", status, resp)
+	}
+}
+
+func TestCanvasTransferHandler_ExportVersionQuery(t *testing.T) {
+	router, _ := newTransferRouter()
+	endpoint := "/api/v1/canvas/" + idcodec.Encode(1) + "/export"
+	for _, query := range []string{"?revision=2", "?epoch=2", "?epoch=2&revision=0", "?epoch=2&revision=-1", "?epoch=&revision=", "?epoch=1&epoch=2&revision=3"} {
+		status, result := canvasCall(t, router, http.MethodGet, endpoint+query, "")
+		if status != http.StatusBadRequest || respCode(result) != errcode.ErrInvalidParams.Code {
+			t.Errorf("导出版本参数 %q 应返回 400 + 10001，得到 %d %v", query, status, result)
+		}
+	}
+}
+
+func TestCanvasTransferHandler_ExportConfirmedVersion(t *testing.T) {
+	router, _ := newTransferRouter()
+	endpoint := "/api/v1/canvas/" + idcodec.Encode(1) + "/export?epoch=2&revision="
+	status, result := canvasCall(t, router, http.MethodGet, endpoint+"3", "")
+	if status != http.StatusOK || respCode(result) != 0 {
+		t.Fatalf("指定确认版本应导出成功：%d %v", status, result)
+	}
+	document := result["data"].(map[string]any)["document"].(map[string]any)
+	if title := document["canvas"].(map[string]any)["title"]; title != "确认版本" {
+		t.Fatalf("应从指定的确认版本构建导出文档，得到 %v", title)
+	}
+	status, result = canvasCall(t, router, http.MethodGet, endpoint+"4", "")
+	if status != http.StatusNotFound || respCode(result) != errcode.ErrCanvasNotFound.Code {
+		t.Fatalf("历史读取拒绝时应返回 404 + 30001：%d %v", status, result)
 	}
 }
 

@@ -33,6 +33,7 @@ type sbRepo struct {
 	enqueued []uint64
 	// failCreate 非空时 CreateSplitJob 返回它，用来验证建任务失败时不入队
 	failCreate error
+	accessErr  error
 }
 
 func newSBRepo() *sbRepo {
@@ -113,6 +114,19 @@ func (r *sbRepo) SplitJobByID(_ context.Context, userID, id uint64) (*model.Stor
 	}
 	cp := *j
 	return &cp, nil
+}
+
+func (r *sbRepo) SplitJobByRequest(_ context.Context, userID uint64, key string) (*model.StoryboardSplitJob, error) {
+	for _, job := range r.jobs {
+		if job.UserID == userID && job.RequestKey != nil && *job.RequestKey == key {
+			return job, nil
+		}
+	}
+	return nil, repository.ErrNotFound
+}
+
+func (r *sbRepo) CheckCollaborationSplit(context.Context, *model.StoryboardSplitJob) error {
+	return r.accessErr
 }
 
 func (r *sbRepo) ActiveSplitJob(_ context.Context, userID, canvasID uint64, nodeID string) (*model.StoryboardSplitJob, error) {
@@ -203,6 +217,25 @@ func run(t *testing.T, e *sbEnv, jobID uint64) error {
 	return e.svc.HandleStoryboardSplit(context.Background(), jobID)
 }
 
+func TestStoryboardSplit_QueueRetryReclaimsRunningJob(t *testing.T) {
+	e := newSBEnv(stepfake.Reply{Text: sbValid})
+	jobID := submit(t, e, "剧本")
+	e.repo.jobs[jobID].Status = model.SplitJobRunning
+	e.repo.jobs[jobID].Attempts = 1
+	if err := run(t, e, jobID); err != nil {
+		t.Fatal(err)
+	}
+	if e.caller.Calls != 0 {
+		t.Fatal("同一次队列执行不得重复调用模型")
+	}
+	if err := e.svc.HandleStoryboardSplitAttempt(t.Context(), jobID, 2, false); err != nil {
+		t.Fatal(err)
+	}
+	if job := e.repo.jobs[jobID]; job.Status != model.SplitJobSucceeded || job.Attempts != 2 || e.repo.Credits[sbUser].Balance != 95 {
+		t.Fatalf("队列重试应接管并只结算一次: %+v", job)
+	}
+}
+
 // TestStoryboardSplit_SubmitReturnsPendingAndEnqueues 提交后立刻返回 pending、入队、不扣费、不调模型。
 func TestStoryboardSplit_SubmitReturnsPendingAndEnqueues(t *testing.T) {
 	e := newSBEnv(stepfake.Reply{Text: sbValid})
@@ -231,7 +264,7 @@ func TestStoryboardSplit_Succeeds(t *testing.T) {
 	if err := run(t, e, id); err != nil {
 		t.Fatalf("worker: %v", err)
 	}
-	snap, err := e.svc.Job(context.Background(), sbUser, id)
+	snap, err := e.svc.Job(context.Background(), sbUser, sbCanvas, id)
 	if err != nil {
 		t.Fatalf("Job: %v", err)
 	}
@@ -249,7 +282,7 @@ func TestStoryboardSplit_Succeeds(t *testing.T) {
 // jobOf 读任务终态快照。
 func jobOf(t *testing.T, e *sbEnv, id uint64) *model.StoryboardSplitResp {
 	t.Helper()
-	snap, err := e.svc.Job(context.Background(), sbUser, id)
+	snap, err := e.svc.Job(context.Background(), sbUser, sbCanvas, id)
 	if err != nil {
 		t.Fatalf("Job: %v", err)
 	}
@@ -392,8 +425,50 @@ func TestStoryboardSplit_WorkerSkipsMissingJob(t *testing.T) {
 func TestStoryboardSplit_JobIsPrivate(t *testing.T) {
 	e := newSBEnv(stepfake.Reply{Text: sbValid})
 	id := submit(t, e, "剧本")
-	if _, err := e.svc.Job(context.Background(), sbUser+1, id); !errors.Is(err, errcode.ErrStoryboardJobNotFound) {
+	if _, err := e.svc.Job(context.Background(), sbUser+1, sbCanvas, id); !errors.Is(err, errcode.ErrStoryboardJobNotFound) {
 		t.Fatalf("别人的任务应按不存在：%v", err)
+	}
+	if _, err := e.svc.Job(t.Context(), sbUser, sbCanvas+1, id); !errors.Is(err, errcode.ErrStoryboardJobNotFound) {
+		t.Fatalf("其他画布不能读取任务: %v", err)
+	}
+}
+
+func TestStoryboardSplit_RequestRecoversTerminalJob(t *testing.T) {
+	e := newSBEnv()
+	ctx := t.Context()
+	budget := 0
+	request := sbReq(" 剧本 ")
+	request.Mode = "append"
+	request.RequestKey = "split-1"
+	request.Collaboration = &model.CanvasGenerationBinding{Epoch: 3, Revision: 7, MaxCredits: &budget}
+	if _, err := e.svc.Split(ctx, sbUser, sbCanvas, request); !errors.Is(err, errcode.ErrGenerationBudget) || len(e.repo.enqueued) != 0 || len(e.repo.Ledger) != 0 {
+		t.Fatalf("预算不足不得入队或计费: %v", err)
+	}
+	budget = 100
+	prior, err := e.svc.Split(ctx, sbUser, sbCanvas, request)
+	if err != nil || len(e.repo.enqueued) != 1 {
+		t.Fatalf("提交任务: %+v %v", prior, err)
+	}
+	job := e.repo.jobs[e.repo.enqueued[0]]
+	job.Status, job.Script = model.SplitJobSucceeded, ""
+	e.models.Snapshots = nil
+	request.Script = "剧本"
+	resumed, err := e.svc.Split(ctx, sbUser, sbCanvas, request)
+	if err != nil || resumed.ID != prior.ID || resumed.Status != model.SplitJobSucceeded || len(e.repo.enqueued) != 1 {
+		t.Fatalf("模型配置变化后仍应返回原任务: %+v %v", resumed, err)
+	}
+	request.Script = "另一版"
+	var conflict *errcode.Error
+	if _, err := e.svc.Split(ctx, sbUser, sbCanvas, request); !errors.As(err, &conflict) || conflict.Code != errcode.ErrCanvasConflict.Code {
+		t.Fatalf("同编号不同正文应冲突: %v", err)
+	}
+	request.Script = "剧本"
+	e.repo.accessErr = repository.ErrNotFound
+	if _, err := e.svc.Split(ctx, sbUser, sbCanvas, request); err == nil {
+		t.Fatal("撤权后不可重试读取原任务")
+	}
+	if _, err := e.svc.Job(ctx, sbUser, sbCanvas, job.ID); !errors.Is(err, errcode.ErrStoryboardJobNotFound) {
+		t.Fatalf("撤权后不可通过任务轮询获取分镜结果: %v", err)
 	}
 }
 

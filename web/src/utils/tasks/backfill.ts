@@ -39,6 +39,7 @@ function taskOutputs(data: CanvasNodeData, view: TaskView): NodeOutput[] {
         id: assetId,
         src: output.url,
         mediaType: mediaTypeOf(output.media_type),
+        ...(output.stem ? { stem: output.stem } : {}),
         assetId,
         taskId: taskKey(view.id),
         model: data.model,

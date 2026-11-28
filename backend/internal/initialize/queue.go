@@ -29,7 +29,7 @@ const riverUIPrefix = "/api/v1/admin/river"
 // 拿不到时（例如经过不支持 LISTEN 的连接池）退化成轮询，只是取任务慢一点。
 func newTaskQueue(cfg *config.Config, db *gorm.DB, taskSvc *service.GenerationTaskService, executor provider.Executor,
 	assetSvc *service.AssetService, settingsSvc *service.SettingsService, dramaSvc queue.DramaHandler, stepSvc queue.StepTrialHandler, marketingSvc queue.MarketingHandler,
-	storyboardSvc queue.StoryboardSplitHandler) (*queue.Runtime, *pgxpool.Pool, error) {
+	storyboardSvc queue.StoryboardSplitHandler, composeSvc *service.CanvasComposeService) (*queue.Runtime, *pgxpool.Pool, error) {
 	sqlDB, err := db.DB()
 	if err != nil {
 		return nil, nil, fmt.Errorf("取数据库连接池失败: %w", err)
@@ -45,7 +45,7 @@ func newTaskQueue(cfg *config.Config, db *gorm.DB, taskSvc *service.GenerationTa
 	}
 	listener := newQueueListener(cfg.Database.DSN)
 	host, _ := os.Hostname()
-	rt, err := queue.New(queue.Config{
+	options := queue.Config{
 		DB: sqlDB, ListenerPool: listener, Store: taskSvc, Handler: handler, Settings: settingsSvc,
 		Repo: repository.NewQueueRepository(db), Enabled: cfg.AI.Worker.Enabled,
 		Drama:     dramaSvc,
@@ -56,7 +56,11 @@ func newTaskQueue(cfg *config.Config, db *gorm.DB, taskSvc *service.GenerationTa
 		HardCap:         cfg.AI.Queue.MaxConcurrency,
 		Notifier:        notifier, AgentNotify: cfg.Agent.Enabled,
 		Version: version.Version, Hostname: host, StopTimeout: cfg.Server.ShutdownTimeout,
-	})
+	}
+	if composeSvc != nil {
+		options.CanvasCompose = composeSvc
+	}
+	rt, err := queue.New(options)
 	if err != nil {
 		if listener != nil {
 			listener.Close()

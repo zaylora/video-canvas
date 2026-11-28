@@ -12,6 +12,15 @@ import (
 
 // ProjectShared removes account-specific state and replaces private file URLs with scoped media URLs.
 func ProjectShared(raw []byte, mediaURL func(string) string) ([]byte, error) {
+	return projectShared(raw, mediaURL, false)
+}
+
+// ProjectCollaboration includes task bindings required by the live editor.
+func ProjectCollaboration(raw []byte, mediaURL func(string) string) ([]byte, error) {
+	return projectShared(raw, mediaURL, true)
+}
+
+func projectShared(raw []byte, mediaURL func(string) string, live bool) ([]byte, error) {
 	var payload map[string]any
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.UseNumber()
@@ -30,7 +39,7 @@ func ProjectShared(raw []byte, mediaURL func(string) string) ([]byte, error) {
 		return nil, ErrInvalid
 	}
 	for _, value := range nodes {
-		if err := projectNode(value, mediaURL); err != nil {
+		if err := projectNode(value, mediaURL, live); err != nil {
 			return nil, err
 		}
 	}
@@ -68,7 +77,7 @@ func cleanSharedValue(value any, mediaURL func(string) string) error {
 	return nil
 }
 
-func projectNode(value any, mediaURL func(string) string) error {
+func projectNode(value any, mediaURL func(string) string, live bool) error {
 	node, _ := value.(map[string]any)
 	if node == nil || (node["type"] != "canvas" && node["type"] != "group") {
 		return ErrInvalid
@@ -91,14 +100,45 @@ func projectNode(value any, mediaURL func(string) string) error {
 	if err := checkParamReferences(data); err != nil {
 		return err
 	}
-	keepFields(data, "mediaAspect frameAspect outpaintFrom kind label color labelColor prompt text model status assetId src mediaType uploaded fileName params paramAssets character storyboard scene outputs activeOutputId")
-	if data["status"] == "running" {
-		data["status"] = "idle"
+	voiceTask, _ := data["voiceTaskId"].(string)
+	imageTask, _ := data["characterImageTaskId"].(string)
+	imageAsset, _ := data["characterImageAssetId"].(string)
+	keepFields(data, "mediaAspect frameAspect outpaintFrom kind label color labelColor prompt text model status assetId src mediaType uploaded fileName params paramAssets character storyboard scene outputs activeOutputId generationRevision voiceError storyboardSplitRunning")
+	if !live {
+		delete(data, "storyboardSplitRunning")
 	}
+	projectGenerationStatus(data)
 	if err := cleanSharedValue(data, mediaURL); err != nil {
 		return err
 	}
+	if live && data["kind"] == "character" {
+		projectCharacterTaskBinding(data, voiceTask, imageTask, imageAsset)
+	}
 	return nil
+}
+
+func projectCharacterTaskBinding(data map[string]any, voiceTask, imageTask, imageAsset string) {
+	if id, err := strconv.ParseUint(voiceTask, 10, 64); err == nil && id > 0 {
+		data["voiceTaskId"] = voiceTask
+	}
+	if id, err := strconv.ParseUint(imageTask, 10, 64); err == nil && id > 0 {
+		data["characterImageTaskId"] = imageTask
+		if imageAsset != "" && imageAsset == scalarString(data["assetId"]) {
+			data["characterImageAssetId"] = imageAsset
+		}
+	}
+}
+
+func projectGenerationStatus(data map[string]any) {
+	revision, _ := data["generationRevision"].(json.Number)
+	value, err := strconv.ParseUint(string(revision), 10, 64)
+	if data["status"] == "running" && err == nil && value > 0 {
+		return
+	}
+	delete(data, "generationRevision")
+	if data["status"] == "running" {
+		data["status"] = "idle"
+	}
 }
 
 func normalizeSharedCharacter(data map[string]any) {

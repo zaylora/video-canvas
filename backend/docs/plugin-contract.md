@@ -203,6 +203,12 @@ meta: {
 
 宿主校验（不合规就按 `terminal` 失败并告警，且算插件级失败）：`status` 是四个值之一；`succeeded` 必须有非空 `outputs`；`url` 产物必须是 http/https（主机不限，内网地址在下载时拦截）；`text` 产物的 `text` 是字符串且 ≤256KB；`media_type` 缺省取模型 kind（text 模型的产物必须是 `text` 类型、其余模型的产物不能是 `text`）；`failed` 必须有 `error`，`error.class` 合法；`progress` 夹到 0–100；`state` ≤64KB。
 
+### 人声分离
+
+音频模型通过 `capabilities.audio_operation: "vocal_separation"` 声明此能力。配置 `refs.audio.on: true`、`max: 1` 和文件大小上限，关闭图像与视频参考，禁用任务数量拆分。调用方提交 `input.audios: ["素材ID"]`，无需提示词。可传 `input.audio_operation: "vocal_separation"` 要求服务端验证模型能力。宿主向插件传入该操作和唯一文件引用 `input:audios.0`。
+
+成功结果必须包含两个不同的音频产物。`outputs` 中各有一个 `stem: "vocals"` 和 `stem: "accompaniment"`，顺序不限。每项可用带独立 URL 的 `type: "url"` 或指向各自宿主素材的 `type: "asset"`。配对、媒体类型或产物身份无效时，任务失败并走原生成任务退款流程。音轨标签保留到任务结果和画布历史中。
+
 **导入草稿的参数预填建议（`paramHints`，可选）**：模型能力由运营在后台配置，插件不声明；但导入时插件可以告诉平台“这个模型的某个生成参数建议配成什么”，平台在导入那一刻按种类套默认能力模板后，用它覆盖**模板里同名参数**的取值设置。之后运营可以随意修改，后端校验与下单都不读它。
 
 ```jsonc

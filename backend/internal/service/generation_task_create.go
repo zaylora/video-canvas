@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -36,12 +38,28 @@ func (s *GenerationTaskService) Create(ctx context.Context, userID uint64, idemp
 	if len(idempotencyKey) > maxIdempotencyKeyLen-len("#9") {
 		return nil, errcode.ErrInvalidParams.WithMsg("Idempotency-Key 过长")
 	}
+	if req.Collaboration != nil && (req.CanvasID == 0 || !sameCollaborationGenerationNode(nodes) || idempotencyKey == "") {
+		return nil, errcode.ErrInvalidParams.WithMsg("协作生成需要一个已保存的画布节点和请求编号")
+	}
+	idempotencyKey, err := automationGenerationKey(ctx, userID, req, idempotencyKey)
+	if err != nil {
+		return nil, err
+	}
+	hash, err := collaborationGenerationRequestHash(req)
+	if err != nil {
+		return nil, err
+	}
 
 	// 2. 幂等快速路径：每个节点都已经有任务时直接返回，不再做任何校验和冻结
 	//    （即使模型此后被下线，重复请求也应得到第一次的结果）
 	existing, err := s.findIdempotentAll(ctx, userID, idempotencyKey, len(nodes))
 	if err != nil {
 		return nil, err
+	}
+	for _, task := range existing {
+		if err := matchCollaborationGenerationRequest(task, hash); err != nil {
+			return nil, err
+		}
 	}
 	if allFound(existing) {
 		return taskItems(nodes, existing, nil), nil
@@ -54,7 +72,11 @@ func (s *GenerationTaskService) Create(ctx context.Context, userID uint64, idemp
 	}
 
 	// 4. 按 capabilities 校验并规范化输入，再校验参考素材都属于当前用户
-	input, err := s.prepareInput(ctx, userID, snap, req.Input)
+	inputCtx := ctx
+	if req.Collaboration != nil {
+		inputCtx = provider.WithCanvasAccess(ctx, uint64(req.CanvasID), req.Collaboration.Epoch)
+	}
+	input, err := s.prepareInput(inputCtx, userID, snap, req.Input)
 	if err != nil {
 		return nil, err
 	}
@@ -66,18 +88,76 @@ func (s *GenerationTaskService) Create(ctx context.Context, userID uint64, idemp
 		return nil, errcode.ErrInvalidParams.WithMsg(fmt.Sprintf("node_ids 的数量（%d）必须等于生成数量（%d）", len(nodes), n))
 	}
 	one := max(modelcfg.Quote(snap.Model.Pricing, caps, modelcfg.SpecFromInput(input, caps.System)), 0)
+	if binding := req.Collaboration; binding != nil && binding.MaxCredits != nil {
+		budget := *binding.MaxCredits
+		if budget < 0 || one > budget/len(nodes) {
+			return nil, errcode.ErrGenerationBudget
+		}
+	}
 	if name := modelcfg.FanoutParam(caps); name != "" {
 		delete(input, name)
 	}
 
 	// 6. 按节点顺序逐个创建
 	errs, err := s.createAll(ctx, userID, idempotencyKey, nodes, existing, func() *model.GenerationTask {
-		return &model.GenerationTask{UserID: userID, Credits: one}
+		return &model.GenerationTask{UserID: userID, Credits: one, CollaborationRequestHash: hash}
 	}, req, snap, input, n)
 	if err != nil {
 		return nil, err
 	}
 	return taskItems(nodes, existing, errs), nil
+}
+
+func automationGenerationKey(ctx context.Context, user uint64, req *model.CreateGenerationTaskReq, idempotencyKey string) (string, error) {
+	key, scoped := model.CanvasAutomationFromContext(ctx)
+	if !scoped {
+		if strings.HasPrefix(idempotencyKey, model.CanvasAutomationBudgetPrefix) {
+			return "", errcode.ErrInvalidParams
+		}
+		return idempotencyKey, nil
+	}
+	if key.Scope != model.CanvasAutomationGenerate || key.UserID != user || key.CanvasID != uint64(req.CanvasID) ||
+		req.Collaboration == nil || key.Epoch != req.Collaboration.Epoch || idempotencyKey == "" {
+		return "", errcode.ErrForbidden
+	}
+	if req.Collaboration.Budget != nil {
+		return "", errcode.ErrInvalidParams.WithMsg("自动化任务使用凭据的固定预算")
+	}
+	digest := sha256.Sum256([]byte(idempotencyKey))
+	return fmt.Sprintf("%s%d:%x", model.CanvasAutomationBudgetPrefix, key.ID, digest), nil
+}
+
+func sameCollaborationGenerationNode(nodes []string) bool {
+	if len(nodes) == 0 || nodes[0] == "" {
+		return false
+	}
+	for _, node := range nodes[1:] {
+		if node != nodes[0] {
+			return false
+		}
+	}
+	return true
+}
+
+// collaborationGenerationRequestHash 固定协作生成的原始请求正文，模型下线后仍可验证重试。
+func collaborationGenerationRequestHash(req *model.CreateGenerationTaskReq) (string, error) {
+	if req.Collaboration == nil {
+		return "", nil
+	}
+	body, err := json.Marshal(req)
+	if err != nil {
+		return "", errcode.ErrInvalidParams
+	}
+	hash := sha256.Sum256(body)
+	return hex.EncodeToString(hash[:]), nil
+}
+
+// matchCollaborationGenerationRequest 拒绝跨画布、跨版本或使用不同输入的幂等键重用。
+func matchCollaborationGenerationRequest(task *model.GenerationTask, hash string) error {
+	if task != nil && (hash != "" || task.CollaborationEpoch != 0) && task.CollaborationRequestHash != hash {
+		return errcode.ErrCanvasConflict.WithMsg("生成请求编号已用于不同的协作生成内容")
+	}
+	return nil
 }
 
 // createAll 按节点顺序逐个创建任务，结果写回 existing：已存在的原样保留，其余各自冻结。
@@ -124,6 +204,12 @@ func (s *GenerationTaskService) createOne(ctx context.Context, task *model.Gener
 		task.CanvasProjectID = &canvasID
 	}
 	task.AgentRunID = req.AgentRunID
+	if req.Collaboration != nil {
+		task.CollaborationEpoch = req.Collaboration.Epoch
+		task.CollaborationInputRevision = req.Collaboration.Revision
+		task.CollaborationRawInput = req.Input
+		task.BudgetRequest = req.Collaboration.Budget
+	}
 	queueWait, err := s.queueMaxWait(ctx)
 	if err != nil {
 		return nil, err
@@ -132,8 +218,14 @@ func (s *GenerationTaskService) createOne(ctx context.Context, task *model.Gener
 		return nil, err
 	}
 	existing, err := s.insertAndFreeze(ctx, task)
-	if err != nil || existing != nil {
+	if err != nil {
 		return existing, err
+	}
+	if existing != nil {
+		if err := matchCollaborationGenerationRequest(existing, task.CollaborationRequestHash); err != nil {
+			return nil, err
+		}
+		return existing, nil
 	}
 	// 任务与队列里的 job 已在同一个事务里提交；事务提交之后才推送，避免对方读到还没提交的数据
 	s.publish(ctx, task)
@@ -275,6 +367,18 @@ func (s *GenerationTaskService) findIdempotent(ctx context.Context, q repository
 	return t, nil
 }
 
+// FindAgentTask 恢复同一审批条目已成功提交的任务。
+func (s *GenerationTaskService) FindAgentTask(ctx context.Context, run *model.AgentRun, key string) (*model.GenerationTaskView, error) {
+	task, err := s.findIdempotent(ctx, s.repo, run.UserID, key)
+	if err != nil || task == nil {
+		return nil, err
+	}
+	if task.AgentRunID != run.ID || task.CollaborationEpoch != run.CollaborationEpoch || task.CanvasProjectID == nil || *task.CanvasProjectID != run.CanvasID {
+		return nil, errcode.ErrInvalidParams.WithMsg("任务编号不属于本次小镜运行")
+	}
+	return taskView(task), nil
+}
+
 // snapshotFor 取模型的当前快照并核对种类：模型不存在 / 未发布 / 已下架 / 渠道或插件不可用统一返回“模型不可用”；
 // 模型种类必须与请求一致，避免拿视频模型提交图片任务。
 func (s *GenerationTaskService) snapshotFor(ctx context.Context, req *model.CreateGenerationTaskReq) (*provider.Snapshot, error) {
@@ -400,6 +504,18 @@ func (s *GenerationTaskService) insertAndFreeze(ctx context.Context, task *model
 	// 7. 幂等冲突：事务已回滚，取赢家的任务返回；其它错误原样返回（errcode 直接透传给前端）
 	if errors.Is(err, errIdempotentConflict) {
 		return s.repo.FindByIdempotencyKey(ctx, userID, key)
+	}
+	if errors.Is(err, repository.ErrCanvasCollaborationActive) {
+		return nil, errcode.ErrCanvasCollaborationActive.WithMsg("协作画布需要通过协作生成入口提交任务")
+	}
+	if errors.Is(err, repository.ErrCanvasCollaborationInput) {
+		return nil, errcode.ErrCanvasConflict.WithMsg(err.Error())
+	}
+	if errors.Is(err, repository.ErrCanvasGenerationBudget) || errors.Is(err, repository.ErrCanvasCollaborationOpID) || errors.Is(err, repository.ErrCanvasCollaborationInvalidBatch) {
+		return nil, collaborationError(err)
+	}
+	if task.CollaborationEpoch != 0 && (errors.Is(err, repository.ErrNotFound) || errors.Is(err, repository.ErrCanvasCollaborationSession)) {
+		return nil, collaborationError(err)
 	}
 	if err != nil {
 		return nil, err

@@ -77,4 +77,27 @@ describe("引用条上的上游缩略图", () => {
     expect(dom.win.document.body.textContent).toContain("音色库");
     await unmount();
   });
+
+  test("添加参考图打开现有的画布和上传菜单", async () => {
+    const { container, unmount } = await dom.mount(
+      <RefStrip
+        items={[]}
+        manual={[]}
+        candidates={() => [{ id: "image", kind: "image", label: "场景图" }]}
+        onLink={() => {}}
+        onUnlink={() => {}}
+        uploadKinds={[{ key: "images", kind: "image", label: "参考图片", maxMb: 10 }]}
+        onUpload={() => {}}
+        onRemoveManual={() => {}}
+        errors={[]}
+        referencePrompt={{ action: "添加参考图", hint: "可选画布图片，或上传参考图" }}
+      />,
+    );
+    expect(container.textContent).toContain("可选画布图片");
+    await dom.click(container.querySelector('button[aria-label="添加参考图"]'));
+    await dom.flush();
+    expect(dom.win.document.body.textContent).toContain("场景图");
+    expect(dom.win.document.body.textContent).toContain("上传参考素材");
+    await unmount();
+  });
 });

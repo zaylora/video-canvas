@@ -1,11 +1,11 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useContext, useRef, useState } from "react";
 import { useReactFlow } from "@xyflow/react";
 
 import type { ModelInfo } from "@/api/model/type";
 import { useRemoteModels } from "@/hooks/use-models";
 import { useTask } from "@/store/tasks";
 import type { CanvasNode, CanvasNodeData } from "@/types";
-import { useCurrentCanvasId } from "@/utils/canvas/canvas-id";
+import { CanvasGenerationContext, useCurrentCanvasId } from "@/utils/canvas/canvas-id";
 import { withVoiceModel } from "@/utils/characters/voice-history";
 import {
   buildVoiceInput,
@@ -27,13 +27,18 @@ import { describeSubmitError, settleSubmission } from "@/utils/tasks/submit";
 export function useVoiceGeneration(id: string, data: CanvasNodeData) {
   const { updateNodeData } = useReactFlow<CanvasNode>();
   const canvasId = useCurrentCanvasId();
+  const collaboration = useContext(CanvasGenerationContext);
+  const unavailable = collaboration && !collaboration.canGenerate ? "没有协作生成权限" : undefined;
   const remote = useRemoteModels("audio");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const lockRef = useRef(false);
 
   const model: ModelInfo | undefined = pickVoiceModel(remote.models, data.character?.voiceModel);
-  const task = voiceTaskView(data.voiceTaskId, useTask(data.voiceTaskId));
+  const snapshot = useTask(data.voiceTaskId);
+  const task = data.voiceError
+    ? ({ phase: "failed", reason: data.voiceError } as const)
+    : voiceTaskView(data.voiceTaskId, snapshot);
 
   /**
    * 此刻不能生成音色的原因（提交前就能知道的那些）；可以返回 null。
@@ -41,13 +46,14 @@ export function useVoiceGeneration(id: string, data: CanvasNodeData) {
    */
   const blockedReason = useCallback(
     (prompt: string): string | null => {
+      if (unavailable) return unavailable;
       if (task.phase === "generating") return "音色正在生成";
       if (data.voiceAfterImage?.length) return "出图后会接着生成音色";
       if (!prompt.trim()) return "还没有音色描述";
       if (!model) return "没有可用的音频模型";
       return buildVoiceInput(model.capabilities, prompt).error;
     },
-    [data.voiceAfterImage, model, task.phase],
+    [data.voiceAfterImage, model, task.phase, unavailable],
   );
 
   /**
@@ -56,13 +62,18 @@ export function useVoiceGeneration(id: string, data: CanvasNodeData) {
    * @param imageAssetId 参考的角色主图，缺省取节点此刻的主图（出图后接着生成时由调用方传新图）
    */
   const submit = useCallback(
-    async (prompt: string, imageAssetId = data.assetId): Promise<string | null> => {
+    async (
+      prompt: string,
+      imageAssetId = data.assetId,
+      idempotencyKey?: string,
+    ): Promise<string | null> => {
       if (lockRef.current) return "正在提交";
       const fail = (reason: string) => {
         setError(reason);
         return reason;
       };
       setError(null);
+      if (unavailable) return fail(unavailable);
       if (!canvasId) return fail("画布信息缺失，请刷新页面重试");
       if (!model) return fail("没有可用的音频模型");
       const built = buildVoiceInput(model.capabilities, prompt, imageAssetId);
@@ -70,16 +81,24 @@ export function useVoiceGeneration(id: string, data: CanvasNodeData) {
       lockRef.current = true;
       setSubmitting(true);
       try {
-        const items = await submitCanvasTasks({
-          kind: "audio",
-          model_id: model.key,
-          canvas_id: canvasId,
-          node_id: voiceNodeId(id),
-          input: built.input,
-        });
+        const revision = await collaboration?.confirmGeneration(id, model.key, built.input);
+        if (collaboration && !revision) return fail("画布修改尚未同步，请稍后重试");
+        const items = await submitCanvasTasks(
+          {
+            kind: "audio",
+            model_id: model.key,
+            canvas_id: canvasId,
+            node_id: voiceNodeId(id),
+            input: built.input,
+            ...(collaboration && revision
+              ? { collaboration: { epoch: collaboration.epoch, revision } }
+              : {}),
+          },
+          idempotencyKey,
+        );
         const { taskIds, failures } = settleSubmission(items);
         if (taskIds.length === 0) return fail(failures[0]?.message ?? "提交失败，请稍后重试");
-        updateNodeData(id, { voiceTaskId: taskIds[0] });
+        if (!collaboration) updateNodeData(id, { voiceTaskId: taskIds[0] });
         return null;
       } catch (caught) {
         return fail(describeSubmitError(caught).message);
@@ -88,7 +107,7 @@ export function useVoiceGeneration(id: string, data: CanvasNodeData) {
         setSubmitting(false);
       }
     },
-    [canvasId, data.assetId, id, model, updateNodeData],
+    [canvasId, collaboration, data.assetId, id, model, unavailable, updateNodeData],
   );
 
   /** 选音频模型：写进节点数据，和提示词一样随画布保存 */
@@ -107,6 +126,7 @@ export function useVoiceGeneration(id: string, data: CanvasNodeData) {
     options: remote.options,
     modelsStatus: remote.status,
     model,
+    unavailable,
     selectModel,
     task,
     blockedReason,

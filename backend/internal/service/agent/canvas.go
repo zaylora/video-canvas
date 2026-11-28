@@ -11,6 +11,7 @@ import (
 	"video-canvas/internal/agent/canvasgraph"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
+	"video-canvas/internal/pkg/idcodec"
 	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/pkg/ws"
 	"video-canvas/internal/provider"
@@ -41,9 +42,17 @@ type AgentCanvasRepo interface {
 // 工具层的错误（*canvasgraph.ValidationError、canvasgraph.ErrInvalid）原样返回，由调用方转成给模型看的工具错误，
 // 不是 HTTP 错误；其余业务错误都是 errcode.*。
 type AgentCanvasService struct {
-	repo     AgentCanvasRepo
-	bc       ws.Broadcaster
-	modelOps ModelOpsSource // 校验和展示生成方式用；nil 表示不校验、不展示
+	repo         AgentCanvasRepo
+	bc           ws.Broadcaster
+	canvasBus    *ws.CanvasCollaborationBus
+	mediaImports *service.CanvasCollaborationService
+	modelOps     ModelOpsSource // 校验和展示生成方式用；nil 表示不校验、不展示
+}
+
+// SetCanvasCollaboration 绑定协作确认版号通知和素材导入。
+func (s *AgentCanvasService) SetCanvasCollaboration(bus *ws.CanvasCollaborationBus, imports *service.CanvasCollaborationService) {
+	s.canvasBus = bus
+	s.mediaImports = imports
 }
 
 // ModelOpsSource 返回已上架、可用的图片和视频模型各自支持的生成方式（模型 key → ops）。
@@ -326,6 +335,9 @@ func (s *AgentCanvasService) load(ctx context.Context, run *model.AgentRun) (*ca
 	if err != nil {
 		return nil, 0, err
 	}
+	if run.CollaborationEpoch > 0 && (!cv.CollaborationActive || cv.CollaborationEpoch != run.CollaborationEpoch) {
+		return nil, 0, errcode.ErrCanvasCollaborationSession
+	}
 	g, err := canvasgraph.Parse(cv.PayloadJSON)
 	if err != nil {
 		return nil, 0, errcode.ErrCanvasPayload
@@ -342,7 +354,7 @@ func (s *AgentCanvasService) mutate(ctx context.Context, run *model.AgentRun, to
 		extra  any
 	}
 	idemKey := IdempotencyKeyFrom(ctx)
-	out, err := service.WriteCanvas(ctx, s.repo, run.UserID, run.CanvasID, func(g *canvasgraph.Graph, revision uint64) (outcome, error) {
+	out, err := service.WriteCanvasAtEpoch(ctx, s.repo, run.UserID, run.CanvasID, run.CollaborationEpoch, func(g *canvasgraph.Graph, revision uint64) (outcome, error) {
 		// 幂等查询必须在读取本次画布快照之后：并发提交会被 CAS 挡住，重读时才可安全重放。
 		prior, err := s.priorWrite(ctx, run.ID, idemKey, kind)
 		if err != nil {
@@ -368,14 +380,21 @@ func (s *AgentCanvasService) mutate(ctx context.Context, run *model.AgentRun, to
 			return outcome{}, err
 		}
 		mut := &model.AgentMutation{RunID: run.ID, ToolCallID: toolCallID, Kind: kind, ChangesJSON: changesJSON, IdemKey: idemKey, ResultJSON: resultJSON(ed)}
-		err = s.repo.CommitCanvasMutation(ctx, repository.CommitInput{
+		err = s.commitMutation(ctx, repository.CommitInput{
 			UserID: run.UserID, CanvasID: run.CanvasID, BaseRevision: revision, Payload: payload, Mutation: mut, UndoRunID: undoRunID,
-			CreatedReads: canvasReadRows(run, nodeIDsByOp(ed.changes, canvasgraph.ChangeCreate)),
+			CollaborationEpoch: run.CollaborationEpoch,
+			CreatedReads:       canvasReadRows(run, nodeIDsByOp(ed.changes, canvasgraph.ChangeCreate)),
 		})
 		if err != nil {
 			return outcome{}, err
 		}
-		s.publishPatch(ctx, run, mut, ed.changes)
+		if run.CollaborationEpoch > 0 {
+			if s.canvasBus != nil {
+				s.canvasBus.Notice(ctx, ws.CanvasCollaborationNotice{CanvasID: idcodec.Encode(run.CanvasID), Epoch: run.CollaborationEpoch, Revision: mut.RevisionAfter})
+			}
+		} else {
+			s.publishPatch(ctx, run, mut, ed.changes)
+		}
 		return outcome{result: &WriteResult{
 			IDMap: ed.idMap, MutationID: mut.ID, Revision: mut.RevisionAfter, Changes: len(ed.changes),
 			Created: nodeIDsByOp(ed.changes, canvasgraph.ChangeCreate), Updated: nodeIDsByOp(ed.changes, canvasgraph.ChangeUpdate),
@@ -385,6 +404,20 @@ func (s *AgentCanvasService) mutate(ctx context.Context, run *model.AgentRun, to
 		err = errcode.ErrAgentWriteConflict
 	}
 	return out.result, out.extra, err
+}
+
+func (s *AgentCanvasService) commitMutation(ctx context.Context, input repository.CommitInput) error {
+	if input.CollaborationEpoch > 0 && s.mediaImports != nil {
+		batch, err := repository.AgentCollaborationBatch(input)
+		if err != nil {
+			return err
+		}
+		input.MediaImports, err = s.mediaImports.StageMediaImports(ctx, input.UserID, input.CanvasID, batch)
+		if err != nil {
+			return err
+		}
+	}
+	return s.repo.CommitCanvasMutation(ctx, input)
 }
 
 type idemKeyCtx struct{}
@@ -465,17 +498,22 @@ func (s *AgentCanvasService) publishPatch(ctx context.Context, run *model.AgentR
 
 // Generations 读出若干节点发起生成所需的输入，顺序与 ids 一致。任何一个节点不能生成都整体返回 canvasgraph.ErrInvalid。
 func (s *AgentCanvasService) Generations(ctx context.Context, run *model.AgentRun, ids []string) ([]*canvasgraph.GenSource, error) {
-	g, _, err := s.load(ctx, run)
+	sources, _, err := s.generationSources(ctx, run, ids)
+	return sources, err
+}
+
+func (s *AgentCanvasService) generationSources(ctx context.Context, run *model.AgentRun, ids []string) ([]*canvasgraph.GenSource, uint64, error) {
+	g, revision, err := s.load(ctx, run)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	out := make([]*canvasgraph.GenSource, len(ids))
 	for i, id := range ids {
 		if out[i], err = canvasgraph.Generation(g, id); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 	}
-	return out, nil
+	return out, revision, nil
 }
 
 // BindTasks 把批准后创建的生成任务绑定到节点（节点 id → 任务 id 的十进制字符串）。

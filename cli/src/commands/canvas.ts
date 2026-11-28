@@ -3,6 +3,14 @@ import path from "node:path";
 
 import { APIError, request } from "../client.ts";
 import { boolFlag, intFlag, stringFlag, toInt } from "./args.ts";
+import {
+  CollaborationError,
+  getCollaboration,
+  readOwnedCanvas,
+  readSharedCanvas,
+  snapshotCanvas,
+  tryCollaboration,
+} from "./collaboration.ts";
 import { kindName } from "./node.ts";
 import {
   askYes,
@@ -40,19 +48,34 @@ function formatCanvasRows(list: Canvas[]): string {
 
 export async function canvasList(ctx: Ctx, args: Args): Promise<void> {
   const token = requireToken(ctx);
+  const scope = args.flags.scope ?? "personal";
+  if (scope !== "personal" && scope !== "shared" && scope !== "all") {
+    throw new APIError(-1, "--scope 需要 personal、shared 或 all", 2);
+  }
   const pageSizeRaw =
     args.flags["page-size"] !== undefined ? args.flags["page-size"] : args.flags.page_size;
-  const page = await request<Page<Canvas>>({
-    base: baseOf(ctx),
-    token,
-    path: "/canvas",
-    query: {
-      page: intFlag(args.flags, "page", undefined),
-      page_size:
-        pageSizeRaw === undefined ? undefined : toInt(pageSizeRaw, "page-size", { max: 200 }),
-    },
-    fetchImpl: ctx.fetchImpl,
-  });
+  const load = (path: string) =>
+    request<Page<Canvas>>({
+      base: baseOf(ctx),
+      token,
+      path,
+      query: {
+        page: intFlag(args.flags, "page", undefined),
+        page_size:
+          pageSizeRaw === undefined ? undefined : toInt(pageSizeRaw, "page-size", { max: 200 }),
+      },
+      fetchImpl: ctx.fetchImpl,
+    });
+  if (scope === "all") {
+    const [personal, shared] = await Promise.all([load("/canvas"), load("/canvas/shared")]);
+    emit(
+      ctx,
+      { personal, shared },
+      `个人画布\n${formatCanvasRows(personal.list ?? [])}\n\n共享画布\n${formatCanvasRows(shared.list ?? [])}`,
+    );
+    return;
+  }
+  const page = await load(scope === "shared" ? "/canvas/shared" : "/canvas");
   const list = page.list || [];
   emit(
     ctx,
@@ -63,13 +86,13 @@ export async function canvasList(ctx: Ctx, args: Args): Promise<void> {
 
 /** 取一张画布的完整数据；code 是画布的对外十六进制 id。 */
 export async function fetchCanvas(ctx: Ctx, code: string): Promise<Canvas> {
-  const token = requireToken(ctx);
-  return request<Canvas>({
-    base: baseOf(ctx),
-    token,
-    path: `/canvas/${encodeURIComponent(code)}`,
-    fetchImpl: ctx.fetchImpl,
-  });
+  if (ctx.automation) return snapshotCanvas(await getCollaboration(ctx, code));
+  const owned = await readOwnedCanvas(ctx, code);
+  if (owned && !owned.collaboration_active) return owned;
+  const snapshot = await tryCollaboration(ctx, owned?.id ?? code);
+  if (snapshot) return snapshotCanvas(snapshot);
+  if (owned) throw new CollaborationError(30018, "请重新读取当前协作会话", 409, "epoch_expired");
+  return readSharedCanvas(ctx, code);
 }
 
 export async function canvasGet(ctx: Ctx, args: Args): Promise<void> {
@@ -282,6 +305,17 @@ export async function canvasSave(ctx: Ctx, args: Args): Promise<void> {
   const revision = intFlag(args.flags, "revision", undefined) as number;
 
   const current = await fetchCanvas(ctx, code);
+  if (current.collaboration_role === "viewer") {
+    throw new CollaborationError(-1, "仅查看成员不能修改画布", 403, "permission_denied");
+  }
+  if (current.collaboration_active) {
+    throw new CollaborationError(
+      30010,
+      "协作画布请用 canvas plan + canvas apply 提交差异",
+      409,
+      "unsupported",
+    );
+  }
   const keep = new Set<string>(
     (Array.isArray(payload?.nodes) ? payload.nodes : []).map((n: CanvasNode) => String(n?.id)),
   );

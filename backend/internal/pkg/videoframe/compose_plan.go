@@ -95,10 +95,11 @@ func (e *Extractor) ComposeTimeline(ctx context.Context, plan ComposePlan, ratio
 		}
 	}
 	scriptPath := filepath.Join(dir, "graph.txt")
-	if err := os.WriteFile(scriptPath, []byte(g.script()), 0600); err != nil {
+	script := g.script()
+	if err := os.WriteFile(scriptPath, []byte(script), 0600); err != nil {
 		return fmt.Errorf("写入滤镜图失败：%w", err)
 	}
-	return e.renderGraph(ctx, base, g, scriptPath, destination)
+	return e.renderGraph(ctx, base, g, scriptPath, script, destination)
 }
 
 // graphOf 探测所有附属素材、校验入出点，给每个输入编号，算出成片总长。
@@ -191,7 +192,7 @@ func (e *Extractor) composeProbeAudio(ctx context.Context, source string) (float
 
 // renderGraph 用底片和各附属输入跑一遍滤镜图，编码成最终成片。
 // 滤镜图放在文件里（图可能很长）：ffmpeg 7 起用 -/filter_complex，旧版本只认 -filter_complex_script，先试新的，不认再退回。
-func (e *Extractor) renderGraph(ctx context.Context, base string, g graphSpec, scriptPath, destination string) error {
+func (e *Extractor) renderGraph(ctx context.Context, base string, g graphSpec, scriptPath, script, destination string) error {
 	args := []string{"-nostdin", "-v", "error", "-protocol_whitelist", "file", "-i", base}
 	for _, o := range g.overlays {
 		args = append(args, overlayInputArgs(o, g.spec.FPS)...)
@@ -204,8 +205,14 @@ func (e *Extractor) renderGraph(ctx context.Context, base string, g graphSpec, s
 		"-r", strconv.Itoa(g.spec.FPS),
 		"-c:a", "aac", "-ar", "48000", "-ac", "2", "-t", secs(g.totalMS), "-movflags", "+faststart", "-y", destination}
 	var err error
-	for _, option := range []string{"-/filter_complex", "-filter_complex_script"} {
-		all := append(append(append([]string{}, args...), option, scriptPath), tail...)
+	for _, filter := range []struct {
+		option string
+		value  string
+	}{
+		{option: "-/filter_complex", value: scriptPath},
+		{option: "-filter_complex", value: script},
+	} {
+		all := append(append(append([]string{}, args...), filter.option, filter.value), tail...)
 		if _, err = e.run(ctx, e.ffmpeg, all...); err == nil || !unknownOption(err) {
 			return err
 		}

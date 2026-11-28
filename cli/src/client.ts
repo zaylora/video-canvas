@@ -1,3 +1,4 @@
+import { openAsBlob } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
 
@@ -71,14 +72,49 @@ export interface RequestOptions {
   query?: Query;
   headers?: Record<string, string>;
   fetchImpl?: typeof fetch;
+  signal?: AbortSignal;
+  exactIntegers?: boolean;
+  redirect?: RequestInit["redirect"];
+}
+
+const exactJSON = JSON as unknown as {
+  parse(
+    text: string,
+    reviver: (key: string, value: unknown, context?: { source?: string }) => unknown,
+  ): unknown;
+  rawJSON(text: string): object;
+};
+
+export function parseExactIntegers(text: string): unknown {
+  return exactJSON.parse(text, (_key, value, context) => {
+    if (
+      typeof value === "number" &&
+      !Number.isSafeInteger(value) &&
+      /^-?\d+$/.test(context?.source ?? "")
+    ) {
+      return context?.source;
+    }
+    return value;
+  });
+}
+
+export function encodeUnsignedInteger(value: string): object | number {
+  if (!/^[1-9]\d{0,19}$/.test(value) || BigInt(value) > 18_446_744_073_709_551_615n)
+    throw new APIError(-1, "编号须在无符号 64 位整数范围内", 2);
+  const numeric = Number(value);
+  return Number.isSafeInteger(numeric) ? numeric : exactJSON.rawJSON(value);
 }
 
 /** 拆统一信封：所有接口（JSON 与 multipart）共用同一套 401 / 错误码 / 重试语义。 */
-async function parseEnvelope<T>(res: Response): Promise<T> {
-  const text = await res.text();
+async function parseEnvelope<T>(res: Response, exactIntegers = false): Promise<T> {
+  const text = await res.text().catch((err: unknown) => {
+    throw new APIError(-1, `未读完服务端响应：${errorMessage(err)}`, 0, undefined, true);
+  });
   let envelope: Envelope;
   try {
-    envelope = text ? (JSON.parse(text) as Envelope) : {};
+    envelope = text
+      ? ((exactIntegers ? parseExactIntegers(text) : JSON.parse(text)) as Envelope)
+      : {};
   } catch {
     throw new APIError(
       -1,
@@ -124,6 +160,9 @@ export async function request<T = unknown>({
   query,
   headers: extra = {},
   fetchImpl = fetch,
+  signal,
+  exactIntegers,
+  redirect,
 }: RequestOptions): Promise<T> {
   const headers: Record<string, string> = { Accept: "application/json", ...extra };
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -134,12 +173,14 @@ export async function request<T = unknown>({
     res = await fetchImpl(buildURL(base, path, query), {
       method,
       headers,
+      signal,
+      redirect,
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch (err) {
     throw new APIError(-1, `无法连接 ${base}：${errorMessage(err)}`, 0, undefined, true);
   }
-  return parseEnvelope<T>(res);
+  return parseEnvelope<T>(res, exactIntegers);
 }
 
 export interface UploadOptions {
@@ -155,6 +196,8 @@ export interface UploadOptions {
   fileName?: string;
   /** 文件的真实类型，写进 multipart 的 part 头；缺省按二进制流。 */
   contentType?: string;
+  query?: Query;
+  signal?: AbortSignal;
   fetchImpl?: typeof fetch;
 }
 
@@ -172,12 +215,14 @@ export async function uploadFile<T = unknown>({
   field = "file",
   fileName,
   contentType,
+  query,
+  signal,
   fetchImpl = fetch,
 }: UploadOptions): Promise<T> {
   const form = new FormData();
   form.append(
     field,
-    new Blob([await readFile(file)], { type: contentType || "application/octet-stream" }),
+    await openAsBlob(file, { type: contentType || "application/octet-stream" }),
     fileName || basename(file),
   );
 
@@ -186,10 +231,11 @@ export async function uploadFile<T = unknown>({
 
   let res: Response;
   try {
-    res = await fetchImpl(buildURL(base, path), {
+    res = await fetchImpl(buildURL(base, path, query), {
       method: "POST",
       headers,
       body: form,
+      signal,
     });
   } catch (err) {
     throw new APIError(-1, `无法连接 ${base}：${errorMessage(err)}`, 0, undefined, true);

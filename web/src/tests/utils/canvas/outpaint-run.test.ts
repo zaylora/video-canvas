@@ -101,6 +101,30 @@ function setup(over: Partial<OutpaintDeps> = {}) {
 }
 
 describe("OutpaintRunner 成功路径", () => {
+  test("协作扩图在合成图就绪后确认输入，并把任务状态交给服务端", async () => {
+    const t = setup();
+    const confirmGeneration = async (id: string, model: string, input: Record<string, unknown>) => {
+      expect([id, model]).toEqual(["n2", "img-1"]);
+      expect(input.images).toEqual([77]);
+      expect(t.data().params?.images).toEqual(["77"]);
+      return 12;
+    };
+    await createOutpaintRunner(t.deps).start(job(), t.patch, { epoch: 2, confirmGeneration });
+    expect(t.submits[0]?.collaboration).toEqual({ epoch: 2, revision: 12 });
+    expect(t.data().taskId).toBeUndefined();
+    expect(t.patches[0]?.status).toBe("running");
+  });
+
+  test("协作扩图在节点无法确认时保留素材，不提交模型任务", async () => {
+    const t = setup();
+    await createOutpaintRunner(t.deps).start(job(), t.patch, {
+      epoch: 2,
+      confirmGeneration: async () => null,
+    });
+    expect(t.submits).toHaveLength(0);
+    expect(t.data()).toMatchObject({ status: "error", params: { images: ["77"] } });
+  });
+
   test("读图 → 合成 → 上传 → 提交，参考图是合成图素材，节点写入 taskId", async () => {
     const t = setup();
     const runner = createOutpaintRunner(t.deps);

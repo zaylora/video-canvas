@@ -10,7 +10,7 @@ agent_created: true
 
 **接入（拿令牌）→ 项目（拿画布编号与节点 id）→ 素材（产物回填到节点）→ 画布（决定片子长什么样）**
 
-成片合成命令暂时不可用（服务端合成接口还没就绪），成片请在网页里做。
+协作画布声明 `compose` 能力时，可以按已确认的视频节点顺序提交成片，并在终端恢复等待或下载结果。
 
 短剧是另一条线，放在最后一节。所有能力都在已有命令里：**不自己拼 HTTP 请求，不绕过命令的确认环节**。
 
@@ -21,7 +21,7 @@ agent_created: true
 用：批量提交生成并等结果、按节点改动画布、整图导出导入备份、
 在不开浏览器时核对任务与积分、把拿不准的改动交给画布 Agent 并替人收审批。
 
-不用：画布里的创意编辑与拖拽排版、分镜表与角色卡的结构化编辑、合成成片（回网页）；
+不用：画布里的拖拽排版、合成成片（回网页）；
 短剧的建项目、规划、生成剧本、分集出片（回网页或 MCP 的短剧能力族）；删除画布（CLI 没有 `canvas delete`）。
 
 ---
@@ -71,6 +71,10 @@ vc canvas graph <画布编号> -o /tmp/graph.json   # 只要 nodes/edges：这�
 `graph` 与 `export` 别混：`graph` 是 `{nodes, edges, viewport}`，给 `save` / `create --payload` 用；
 `export` 是带 `format` / `canvas` / `assets` 的导出文档，给 `import` 用。把导出文档喂给 `save` 会被拒绝。
 `canvas export` 不覆盖已有文件，要覆盖才加 `--force`。
+
+活跃协作画布先用 `vc canvas status <画布编号>` 核对角色、代数和版本。用 `canvas watch --jsonl` 跟进队友修改，恢复游标时同时提供 `--since` 和 `--epoch`。用 `canvas presence` 查看在线队友，收到跟随请求时用 `canvas watch --follow <用户名或成员ID>`。协作画布用 `canvas plan` 与 `canvas apply` 写入差异。遇到未知结果先用 `canvas op status` 查询，再按需 `canvas resume`。
+
+协作生成须给出团队本次授权的 `--max-credits`。多个请求共用额度时同时使用 `--budget-key` 和 `--budget-credits`，恢复时保留原参数、上限和 `--idempotency-key`。高影响共享操作和撤销由用户在终端确认。命令组合和受限自动化凭据见 [CLI 参考](references/commands.md#实时协作)。
 
 ## 三、素材：唯一花钱、也唯一产出东西的一步
 
@@ -185,10 +189,15 @@ node scripts/node-pick.ts /tmp/graph.json --label "旁白"          # 按标题
 用的是与网页同一套画布语义，产物一样落在节点上。
 
 ```bash
+vc agent sessions <画布编号>
+vc agent history <会话编号> [--before 序号]
 vc agent run <画布编号> --message "把 S03 这一镜重做成 10 秒视频，参考现有 S03 关键帧" --watch
 vc agent events <会话编号> [--after 序号]      # 单独回看，含审批条目
 vc agent approve <审批编号> --session <会话编号> [--items 0,1]   # 按编号批准；--reject 整体驳回
 vc agent cancel <运行编号>                     # 停这一轮，已提交的生成任务照常跑完
+vc agent interject <运行编号> --message "改成夜景"
+vc agent resume <运行编号> [--add-budget 积分]
+vc agent undo <运行编号>                       # 输入 yes 确认撤销检查
 ```
 
 - `--selection 节点id,节点id` 圈定范围，不说就由它自己读画布找。

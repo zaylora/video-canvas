@@ -36,42 +36,43 @@ type Handlers struct {
 	AnalysisToken middleware.TokenAuthenticator     // 校验分析令牌，本地 agent-trace 用它只读拉取运行记录
 
 	// 长任务生成相关
-	GenerationTask *handler.GenerationTaskHandler // 任务提交 / 对账 / 取消 / 积分 / webhook
-	WS             *handler.WSHandler             // 用户级 WebSocket 推送
-	Asset          *handler.AssetHandler          // 素材上传与查询
-	AssetLibrary   *handler.AssetLibraryHandler   // 资产库：文件夹、库归属、生成历史
-	VirtualHuman   *handler.VirtualHumanHandler   // 真人库：方舟虚拟人像库备案
-	Drama          *handler.DramaHandler          // 短剧项目、分集剧本、资产流水线
-	CanvasShare    *handler.CanvasShareHandler
-	DramaShare     *handler.DramaShareHandler
-	DramaSegment   *handler.DramaSegmentHandler        // 分集片段编辑、排序与视频/首帧生成
-	Files          gin.HandlerFunc                     // 素材稳定地址 /files/*：本地存储直出，对象存储签名后 302
-	AIModel        *handler.AIModelHandler             // 面向画布的模型清单
-	AdminAI        *handler.AdminAIHandler             // AI 模型配置管理
-	AdminCatalog   *handler.AdminCatalogHandler        // 渠道 / 插件 / 模型的分页列表与下拉 options
-	AdminPlugin    *handler.AdminPluginHandler         // 协议插件管理
-	AdminChannel   *handler.AdminChannelHandler        // 渠道管理
-	AdminStats     *handler.AdminStatsHandler          // 总览页任务统计
-	AdminStep      *handler.AdminStepHandler           // 后台「环节技能」页：环节协议、方法绑定、试跑
-	AdminFormatter *handler.AdminFormatterHandler      // 后台「视频提示词格式化器」只读列表
-	Marketing      *handler.MarketingHandler           // 营销工作室
-	AdminQueue     *handler.AdminQueueHandler          // 后台「任务队列」页：队列、渠道名额、吞吐、实例，调并发与暂停
-	RiverUI        *handler.RiverUIHandler             // 嵌入的 River UI（任务级监控）：一次性 ticket 换会话 cookie，仅 super_admin
-	AdminStorage   *handler.AdminStorageHandler        // 存储配置管理
-	AdminImageProc *handler.AdminImageProcessorHandler // 图片处理服务管理
-	AdminMe        *handler.AdminMeHandler             // 当前管理员身份
-	AdminUser      *handler.AdminUserHandler           // 后台用户管理
-	AdminUsage     *handler.AdminUsageHandler          // 后台使用记录（用户 › 使用记录）：全站生成任务的流水、摘要与详情，只读
-	AdminLogs      *handler.AdminLogHandler            // 后台日志管理（日志管理 › 操作审计），只读
-	AdminSettings  *handler.AdminSettingsHandler       // 注册与邮件设置
-	AdminSystem    *handler.AdminSystemHandler         // 版本面板：当前版本、检查更新、迁移状态
-	Showcase       *handler.ShowcaseHandler            // 登录页展示：公开读取 + 后台配置
-	Announcement   *handler.AnnouncementHandler        // 首页公告：用户端读取 + 后台管理
-	DramaPreset    *handler.DramaPresetHandler         // 开拍设置预设（题材 / 画风）：后台维护 + 公开预览图
-	Payment        *handler.PaymentHandler             // 积分商城：商品、下单、订单状态；渠道回调（无需登录）
-	AdminPayment   *handler.PaymentAdminHandler        // 后台支付管理：全局设置、渠道、商品、订单
-	AdminRole      middleware.RoleLookup               // 管理接口的角色查询（与 UserState 同一套：Redis 缓存 + 变更时主动失效）
-	UserState      middleware.UserStateLookup          // 登录后分组的用户状态查询（停用 / token_version）
+	GenerationTask      *handler.GenerationTaskHandler // 任务提交 / 对账 / 取消 / 积分 / webhook
+	WS                  *handler.WSHandler             // 用户级 WebSocket 推送
+	Asset               *handler.AssetHandler          // 素材上传与查询
+	AssetLibrary        *handler.AssetLibraryHandler   // 资产库：文件夹、库归属、生成历史
+	VirtualHuman        *handler.VirtualHumanHandler   // 真人库：方舟虚拟人像库备案
+	Drama               *handler.DramaHandler          // 短剧项目、分集剧本、资产流水线
+	CanvasShare         *handler.CanvasShareHandler
+	CanvasCollaboration *handler.CanvasCollaborationHandler
+	DramaShare          *handler.DramaShareHandler
+	DramaSegment        *handler.DramaSegmentHandler        // 分集片段编辑、排序与视频/首帧生成
+	Files               gin.HandlerFunc                     // 素材稳定地址 /files/*：本地存储直出，对象存储签名后 302
+	AIModel             *handler.AIModelHandler             // 面向画布的模型清单
+	AdminAI             *handler.AdminAIHandler             // AI 模型配置管理
+	AdminCatalog        *handler.AdminCatalogHandler        // 渠道 / 插件 / 模型的分页列表与下拉 options
+	AdminPlugin         *handler.AdminPluginHandler         // 协议插件管理
+	AdminChannel        *handler.AdminChannelHandler        // 渠道管理
+	AdminStats          *handler.AdminStatsHandler          // 总览页任务统计
+	AdminStep           *handler.AdminStepHandler           // 后台「环节技能」页：环节协议、方法绑定、试跑
+	AdminFormatter      *handler.AdminFormatterHandler      // 后台「视频提示词格式化器」只读列表
+	Marketing           *handler.MarketingHandler           // 营销工作室
+	AdminQueue          *handler.AdminQueueHandler          // 后台「任务队列」页：队列、渠道名额、吞吐、实例，调并发与暂停
+	RiverUI             *handler.RiverUIHandler             // 嵌入的 River UI（任务级监控）：一次性 ticket 换会话 cookie，仅 super_admin
+	AdminStorage        *handler.AdminStorageHandler        // 存储配置管理
+	AdminImageProc      *handler.AdminImageProcessorHandler // 图片处理服务管理
+	AdminMe             *handler.AdminMeHandler             // 当前管理员身份
+	AdminUser           *handler.AdminUserHandler           // 后台用户管理
+	AdminUsage          *handler.AdminUsageHandler          // 后台使用记录（用户 › 使用记录）：全站生成任务的流水、摘要与详情，只读
+	AdminLogs           *handler.AdminLogHandler            // 后台日志管理（日志管理 › 操作审计），只读
+	AdminSettings       *handler.AdminSettingsHandler       // 注册与邮件设置
+	AdminSystem         *handler.AdminSystemHandler         // 版本面板：当前版本、检查更新、迁移状态
+	Showcase            *handler.ShowcaseHandler            // 登录页展示：公开读取 + 后台配置
+	Announcement        *handler.AnnouncementHandler        // 首页公告：用户端读取 + 后台管理
+	DramaPreset         *handler.DramaPresetHandler         // 开拍设置预设（题材 / 画风）：后台维护 + 公开预览图
+	Payment             *handler.PaymentHandler             // 积分商城：商品、下单、订单状态；渠道回调（无需登录）
+	AdminPayment        *handler.PaymentAdminHandler        // 后台支付管理：全局设置、渠道、商品、订单
+	AdminRole           middleware.RoleLookup               // 管理接口的角色查询（与 UserState 同一套：Redis 缓存 + 变更时主动失效）
+	UserState           middleware.UserStateLookup          // 登录后分组的用户状态查询（停用 / token_version）
 }
 
 func New(mode, jwtSecret string, h Handlers) *gin.Engine {
@@ -152,6 +153,35 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 
 		// 画布操作
 		canvas := auth.Group("/canvas")
+		if collab := h.CanvasCollaboration; collab != nil {
+			canvas.GET("/:id/management", collab.ArchivePreview)
+			canvas.POST("/:id/management", collab.Manage)
+			canvas.GET("/:id/collaboration", collab.Snapshot(canvasSecret))
+			canvas.GET("/:id/collaboration/mode", collab.ModePreview)
+			canvas.PUT("/:id/collaboration/mode", collab.Mode)
+			canvas.PUT("/:id/collaboration/member", collab.Member)
+			canvas.PUT("/:id/collaboration/member/:member/generation", collab.MemberGeneration)
+			canvas.PUT("/:id/collaboration/member/:member/library", collab.MemberLibrary)
+			canvas.POST("/:id/collaboration/library", collab.CopyToLibrary)
+			canvas.POST("/:id/collaboration/media/drafts/:draftId", collab.StageMediaDraft)
+			canvas.POST("/:id/collaboration/media/drafts/:draftId/attach", collab.AttachMediaDraft)
+			canvas.POST("/:id/collaboration/compose", collab.SubmitCompose)
+			canvas.GET("/:id/collaboration/compose/:jobId", collab.GetComposeJob)
+			canvas.DELETE("/:id/collaboration/compose/:jobId", collab.CancelComposeJob)
+			registerCanvasAutomation(v1, canvas, collab, h.GenerationTask, h.UserState, canvasSecret)
+			canvas.POST("/:id/collaboration/ops", collab.Commit)
+			canvas.GET("/:id/collaboration/ops/:opId", collab.ReceiptStatus)
+			canvas.POST("/:id/collaboration/undo", collab.Undo)
+			canvas.GET("/:id/collaboration/events", collab.Replay)
+			canvas.GET("/:id/collaboration/tasks", collab.TaskSummaries)
+			canvas.GET("/:id/collaboration/comments", collab.Comments)
+			canvas.GET("/:id/collaboration/comments/events", collab.CommentEvents)
+			canvas.POST("/:id/collaboration/comments", collab.AddComment)
+			canvas.GET("/:id/collaboration/mentions", collab.Mentions)
+			canvas.GET("/:id/collaboration/history", collab.History)
+			canvas.GET("/:id/collaboration/history/:revision", collab.HistoricalSnapshot)
+			canvas.POST("/:id/collaboration/history/:revision/copy", collab.CopyHistoricalVersion)
+		}
 		canvas.GET("/shared", h.CanvasShare.Shared)
 		canvas.GET("/:id/deliveries/:key", h.CanvasShare.Receipt)
 		canvas.POST("/:id/shares", h.CanvasShare.Share)
@@ -159,6 +189,7 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		canvas.DELETE("/:id/shares/:member", h.CanvasShare.Remove)
 		canvas.GET("/:id/reader", h.CanvasShare.Workspace(canvasSecret))
 		canvas.GET("/:id/reader/media/:asset", h.CanvasShare.Media)
+		canvas.GET("/:id/media/:asset", h.CanvasShare.DownloadMedia)
 		canvas.POST("", h.CanvasProject.Create)
 		canvas.GET("", h.CanvasProject.List)
 		canvas.GET("/:id", h.CanvasProject.Get)
@@ -228,6 +259,7 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		auth.DELETE("/assets/generated/:id", h.AssetLibrary.HideGenerated)       // 从生成历史删除：只隐藏，不删素材
 		auth.GET("/assets/official", h.Asset.ListOfficial)                       // 官方参考音色列表；静态段优先于 /assets/:id
 		auth.GET("/assets/:id", h.Asset.Get)
+		auth.GET("/assets/:id/download", h.Asset.Download)
 
 		// 资产库：文件夹与库条目的 id 是十六进制串；POST /asset-folders、新增归属返回 201，已在库里返回 200
 		auth.GET("/asset-folders", h.AssetLibrary.ListFolders)

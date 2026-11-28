@@ -49,6 +49,12 @@ func RefKindsUsed(c Capabilities, op string) []string {
 //
 // 未知键忽略。
 func validateInput(kind string, c Capabilities, in map[string]any) (map[string]any, []FieldError) {
+	if requested, exists := in["audio_operation"]; exists && (kind != KindAudio || requested != AudioOperationVocalSeparation || c.AudioOperation != AudioOperationVocalSeparation) {
+		return nil, []FieldError{{Field: "audio_operation", Message: "所选模型不支持此音频处理能力"}}
+	}
+	if kind == KindAudio && c.AudioOperation == AudioOperationVocalSeparation {
+		return vocalSeparationInput(c, in)
+	}
 	out := map[string]any{}
 	var errs []FieldError
 
@@ -59,6 +65,18 @@ func validateInput(kind string, c Capabilities, in map[string]any) (map[string]a
 	errs = append(errs, inputRefs(c, op, in, out)...)
 
 	if len(errs) > 0 {
+		return nil, errs
+	}
+	return out, nil
+}
+
+func vocalSeparationInput(c Capabilities, in map[string]any) (map[string]any, []FieldError) {
+	ids, message := refIDs(in[MediaKeyAudios])
+	if !c.Refs.Audio.On || message != "" || len(ids) != 1 || in[MediaKeyImages] != nil || in[MediaKeyVideos] != nil {
+		return nil, []FieldError{{Field: MediaKeyAudios, Message: "人声分离需要且仅接受一条音频素材"}}
+	}
+	out := map[string]any{MediaKeyAudios: ids, "audio_operation": AudioOperationVocalSeparation}
+	if errs := inputParams(c, in, out); len(errs) > 0 {
 		return nil, errs
 	}
 	return out, nil

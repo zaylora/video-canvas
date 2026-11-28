@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useContext, useEffect } from "react";
 import { ChevronDown } from "lucide-react";
 import { Position, useReactFlow } from "@xyflow/react";
 import { toast } from "sonner";
@@ -62,15 +62,18 @@ import {
   openParams,
   paramSummary,
   refKindsOf,
+  videoReferencePrompt,
 } from "@/utils/tasks/capabilities";
 import type { VideoNodeView } from "@/utils/tasks/node-view";
 
 import { VersionBadge } from "@/components/canvas/version-badge";
 import { showVersionBadge } from "@/utils/canvas/versions";
 import { useSharedCanvas } from "@/utils/canvas/read-only";
+import { CanvasGenerationContext, useCurrentCanvasId } from "@/utils/canvas/canvas-id";
 import { deriveVideoNodeView } from "@/utils/tasks/node-view";
 
 import { useRegisterNodeActions } from "./node-actions";
+import { useNodeExtensions } from "./extensions";
 import { NodeFillActions } from "./node-fill-actions";
 import { PROMPT_DIALOG_PANEL_CLASS, PromptEditDialog } from "./prompt-edit-dialog";
 import { NodeOverlays, NodeOverlaysPresence } from "./node-overlays";
@@ -177,6 +180,9 @@ export function TaskPromptPanel({
   /** 发送键旁边的第二种生成（角色卡的「生成（含音色）」） */
   secondarySubmit?: SecondarySubmit;
 }) {
+  const { beginTextEdit } = useNodeExtensions();
+  const canvasId = useCurrentCanvasId();
+  const collaboration = useContext(CanvasGenerationContext);
   const meta = NODE_META.get(kind);
   // 连着图片 / 视频 / 音频节点，或手动加过参考素材，就算有参考素材（文本不算）
   const hasRefs =
@@ -201,11 +207,27 @@ export function TaskPromptPanel({
     ? { tone: "error" as const, text: vm.submitError }
     : vm.offline
       ? { tone: "error" as const, text: "这个模型已经下线，请换一个模型后再生成" }
-      : null;
+      : collaboration?.canGenerate === false
+        ? { tone: "info" as const, text: "可编辑提示词与参数，发起生成需画布所有者授权" }
+        : null;
 
   const locked = vm.running || vm.submitting;
   const ops = vm.caps?.ops ?? [];
   const params = openParams(vm.caps);
+  const videoRefKinds = kind === "video" ? refKindsOf(vm.caps, vm.op) : [];
+  const referencePrompt =
+    kind === "video"
+      ? videoReferencePrompt(
+          vm.caps,
+          vm.op,
+          REF_KEYS.some(
+            ({ key, kind: refKind }) =>
+              videoRefKinds.includes(refKind) &&
+              (manualRefs(vm.params, key).length > 0 ||
+                vm.bindings[key].some((item) => item.assetId)),
+          ),
+        )
+      : undefined;
 
   // 音色库放在引用条的「+」里：模型只要支持参考音频就能选；当前方式不收音频时自动切到全能参考。
   const supportsVoice = !!vm.caps && acceptableRefKinds(vm.caps).includes("audio");
@@ -249,6 +271,15 @@ export function TaskPromptPanel({
         className={className}
         value={typeof vm.params.prompt === "string" ? vm.params.prompt : ""}
         onValueChange={vm.setPrompt}
+        presenceNode={beginTextEdit && canvasId ? { canvasId, nodeId } : undefined}
+        beginComposition={(value) => {
+          const mark = beginTextEdit?.(nodeId, "data.prompt", value);
+          if (!mark) return;
+          return (confirmed) => {
+            mark(confirmed);
+            vm.setPrompt(confirmed);
+          };
+        }}
         models={vm.modelOptions}
         modelId={vm.modelKey ?? ""}
         onModelChange={vm.setModel}
@@ -280,7 +311,10 @@ export function TaskPromptPanel({
               options={ops.map((op) => ({
                 value: op,
                 label: OP_LABEL[op],
-                disabledHint: opDisabledHint(vm.caps, op, hasRefs),
+                disabledHint:
+                  kind === "video" && (op === "i2v" || op === "omni")
+                    ? undefined
+                    : opDisabledHint(vm.caps, op, hasRefs),
               }))}
               onValueChange={(op: GenerationOp) => vm.setOp(op)}
               disabled={locked}
@@ -316,7 +350,17 @@ export function TaskPromptPanel({
         <RefStrip
           items={vm.refItems}
           manual={vm.manualRefItems}
-          candidates={() => vm.mention.list().canvas}
+          candidates={() =>
+            vm.mention
+              .list()
+              .canvas.filter(
+                (source) =>
+                  !referencePrompt ||
+                  PORTS_OF_KIND[source.kind].some(
+                    (port) => port !== "text" && videoRefKinds.includes(port),
+                  ),
+              )
+          }
           onLink={(source) => vm.linkSource(source)}
           onUnlink={vm.unlink}
           uploadKinds={vm.uploadKinds}
@@ -325,6 +369,7 @@ export function TaskPromptPanel({
           onRemoveManual={vm.removeRef}
           errors={REF_KEYS.flatMap((ref) => (vm.errors[ref.key] ? [vm.errors[ref.key]] : []))}
           notices={vm.bindings.notices}
+          referencePrompt={referencePrompt}
           disabled={locked}
         />
       </NodePromptInput>
@@ -400,12 +445,16 @@ function MediaTaskNode({
   const retryable = view.phase === "failed";
   /** 扩图的合成图还没传上去（读图 / 合成 / 上传阶段失败）：重试是从合成重来，不是重新提交任务 */
   const outpaintBeforeUpload = !!data.outpaintFrom && manualRefs(vm.params, "images").length === 0;
+  const collaboration = useContext(CanvasGenerationContext);
   const retryOutpaint = useCallback(async () => {
-    const started = await outpaintRunner.retry(id, (nodeId, update) =>
-      updateNodeData(nodeId, (node) => update(node.data)),
+    if (collaboration?.canGenerate === false) return;
+    const started = await outpaintRunner.retry(
+      id,
+      (nodeId, update) => updateNodeData(nodeId, (node) => update(node.data)),
+      collaboration ?? undefined,
     );
     if (!started) toast("扩图的重试材料已经失效，请回到原图重新扩图");
-  }, [id, updateNodeData]);
+  }, [collaboration, id, updateNodeData]);
   /** 上传失败的重试是用留着的文件重新传，不是重新提交生成任务；文件没了（刷新后）就没有重试 */
   const retry = uploadFailed
     ? uploadRunner.canRetry(id)

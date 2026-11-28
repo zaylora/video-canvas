@@ -2,9 +2,11 @@
 
 import { APIError, request } from "../client.ts";
 import { retryNotice, withRetry } from "../retry.ts";
-import { boolFlag, intFlag, listFlag, toInt } from "./args.ts";
+import { boolFlag, intFlag, listFlag, stringFlag, toInt } from "./args.ts";
+import { CollaborationError, tryCollaboration } from "./collaboration.ts";
 import { askYes, baseOf, emit, requireToken } from "./shared.ts";
 import type { Args, Ctx } from "../types.ts";
+import { encodeWireVersion } from "./collaboration-version.ts";
 
 interface AgentSessionView {
   id: string;
@@ -81,14 +83,7 @@ async function resolveAgentSession(
   const token = requireToken(ctx);
   const base = baseOf(ctx);
   const path = `/canvas/${encodeURIComponent(code)}/agent/sessions`;
-  const list = await request<AgentSessionView[]>({
-    base,
-    token,
-    method: "GET",
-    path,
-    fetchImpl: ctx.fetchImpl,
-  });
-  const sessions = Array.isArray(list) ? list : [];
+  const sessions = await listAgentSessions(ctx, code);
   let session: AgentSessionView | undefined;
   if (requested) {
     session = sessions.find((item) => item.id === requested);
@@ -111,6 +106,27 @@ async function resolveAgentSession(
   const cursor =
     typeof session.last_seq === "number" ? session.last_seq : await latestAgentSeq(ctx, session.id);
   return { sid: session.id, cursor };
+}
+
+async function listAgentSessions(ctx: Ctx, code: string): Promise<AgentSessionView[]> {
+  const list = await request<AgentSessionView[]>({
+    base: baseOf(ctx),
+    token: requireToken(ctx),
+    path: `/canvas/${encodeURIComponent(code)}/agent/sessions`,
+    fetchImpl: ctx.fetchImpl,
+  });
+  return Array.isArray(list) ? list : [];
+}
+
+function agentAttachments(args: Args) {
+  const ids = listFlag(args.flags, "attach");
+  if (
+    args.flags.attach === true ||
+    ids.length > 12 ||
+    ids.some((id) => !/^[1-9]\d{0,19}$/.test(id))
+  )
+    throw new APIError(-1, "--attach 需要素材 ID，每条消息最多传入 12 个 ID", 2);
+  return ids.length ? { attachments: ids.map((asset_id) => ({ asset_id })) } : {};
 }
 
 /** 一条事件的人类可读形态：回复原文输出，审批把 payload 原样摊开，工具调用给一行摘要。 */
@@ -251,10 +267,7 @@ export async function agentRun(ctx: Ctx, args: Args): Promise<void> {
 
   const requested =
     typeof args.flags.session === "string" && args.flags.session ? args.flags.session : undefined;
-  const { sid, cursor: startCursor } = await resolveAgentSession(ctx, code, requested);
-  let cursor = startCursor;
-
-  const body: Record<string, unknown> = { message };
+  const body: Record<string, unknown> = { message, ...agentAttachments(args) };
   const selection = listFlag(args.flags, "selection");
   if (selection.length) body.selection = selection;
   if (args.flags.budget !== undefined) {
@@ -263,6 +276,17 @@ export async function agentRun(ctx: Ctx, args: Args): Promise<void> {
   const interval = intFlag(args.flags, "interval", 2, { min: 1 });
   const timeout = intFlag(args.flags, "timeout", 600, { min: 1 });
 
+  const snapshot = await tryCollaboration(ctx, code);
+  if (snapshot?.role === "viewer") {
+    throw new CollaborationError(-1, "仅查看成员不能启动小镜", 403, "permission_denied");
+  }
+  if (snapshot) body.collaboration_epoch = encodeWireVersion(snapshot.epoch);
+  const { sid, cursor: startCursor } = await resolveAgentSession(
+    ctx,
+    snapshot?.canvas.id ?? code,
+    requested,
+  );
+  let cursor = startCursor;
   const token = requireToken(ctx);
   const run = await request<AgentRunView>({
     base: baseOf(ctx),
@@ -427,4 +451,71 @@ export async function agentCancel(ctx: Ctx, args: Args): Promise<void> {
     fetchImpl: ctx.fetchImpl,
   });
   emit(ctx, view, `已取消运行 ${rid}。`);
+}
+
+export async function agentSessions(ctx: Ctx, args: Args): Promise<void> {
+  const [code] = args.positional;
+  if (!code || args.positional.length !== 1)
+    throw new APIError(-1, "用法：agent sessions <画布>", 2);
+  const sessions = await listAgentSessions(ctx, code);
+  emit(
+    ctx,
+    sessions,
+    sessions.map(({ id, title }) => `${id}\t${title}`).join("\n") || "还没有小镜会话",
+  );
+}
+
+export async function agentHistory(ctx: Ctx, args: Args): Promise<void> {
+  const [sid] = args.positional;
+  if (!sid || args.positional.length !== 1)
+    throw new APIError(-1, "用法：agent history <会话> [--before N --limit N]", 2);
+  const view = await request<{ events: AgentEventView[]; has_more: boolean }>({
+    base: baseOf(ctx),
+    token: requireToken(ctx),
+    path: `/agent/sessions/${encodeURIComponent(sid)}/history`,
+    query: {
+      before: intFlag(args.flags, "before", undefined, { min: 0 }),
+      limit: intFlag(args.flags, "limit", undefined, { max: 200 }),
+    },
+    fetchImpl: ctx.fetchImpl,
+  });
+  const next = view.has_more ? view.events[0]?.seq : undefined;
+  const lines = view.events.map(formatAgentEvent).filter(Boolean);
+  if (next !== undefined) lines.push(`查看更多：vc agent history ${sid} --before ${next}`);
+  emit(ctx, { ...view, before: next }, lines.join("\n") || "没有聊天记录");
+}
+
+export async function agentControl(
+  ctx: Ctx,
+  args: Args,
+  action: "interject" | "resume" | "undo",
+): Promise<void> {
+  const [rid] = args.positional;
+  const usage = `用法：agent ${action} <运行编号>`;
+  if (!rid || args.positional.length !== 1) throw new APIError(-1, usage, 2);
+  const token = requireToken(ctx);
+  let body: Record<string, unknown> = {};
+  if (action === "interject") {
+    const message = stringFlag(args.flags, "message", `${usage} --message <消息>`).trim();
+    if (!message || message.length > 20_000) throw new APIError(-1, "消息长度须在 1–20000 之间", 2);
+    body = { message, ...agentAttachments(args) };
+  } else if (action === "resume") {
+    body = { add_budget: intFlag(args.flags, "add-budget", 0, { min: 0, max: 100_000 }) };
+  } else {
+    await askYes(ctx, `撤销小镜运行 ${rid} 对画布的修改？输入 yes 确认：`, "已取消撤销");
+  }
+  const result = await request<unknown>({
+    base: baseOf(ctx),
+    token,
+    method: "POST",
+    path: `/agent/runs/${encodeURIComponent(rid)}/${action}`,
+    body,
+    fetchImpl: ctx.fetchImpl,
+  });
+  const messages = { interject: "已追加指令", resume: "已请求续跑", undo: "已执行撤销检查" };
+  emit(
+    ctx,
+    result ?? {},
+    `${messages[action]}：${rid}${result ? `\n${JSON.stringify(result, null, 2)}` : ""}`,
+  );
 }

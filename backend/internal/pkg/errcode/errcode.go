@@ -47,11 +47,14 @@ var (
 
 // 画布模块 3xxxx
 var (
-	ErrCanvasNotFound     = New(30001, "画布不存在", http.StatusNotFound)
-	ErrCanvasConflict     = New(30002, "画布已被修改，请刷新后重试", http.StatusConflict)
-	ErrCanvasDeliveryBusy = New(30009, "画布还有任务或交付进行中，请稍后重试", http.StatusConflict)
-	ErrCanvasPayload      = New(30003, "画布内容必须是 JSON 对象", http.StatusBadRequest)
-	ErrCanvasNoChange     = New(30004, "title 和 payload_json 至少传一个", http.StatusBadRequest)
+	ErrCanvasNotFound              = New(30001, "画布不存在", http.StatusNotFound)
+	ErrCanvasConflict              = New(30002, "画布已被修改，请刷新后重试", http.StatusConflict)
+	ErrCanvasDeliveryBusy          = New(30009, "画布还有任务或交付进行中，请稍后重试", http.StatusConflict)
+	ErrCanvasCollaborationActive   = New(30010, "画布正在协作，请使用实时协作入口", http.StatusConflict)
+	ErrCanvasCollaborationSession  = New(30018, "协作会话已变更，请重新打开画布", http.StatusConflict)
+	ErrCanvasCollaborationDisabled = New(30019, "此站点尚未开启画布协作内测", http.StatusForbidden)
+	ErrCanvasPayload               = New(30003, "画布内容必须是 JSON 对象", http.StatusBadRequest)
+	ErrCanvasNoChange              = New(30004, "title 和 payload_json 至少传一个", http.StatusBadRequest)
 	// 画布导入：具体原因用 WithMsg 给出
 	ErrCanvasImportInvalid  = New(30005, "导入文件格式不对", http.StatusBadRequest)
 	ErrCanvasImportTooNew   = New(30006, "导入文件来自更新版本，请升级后再导入", http.StatusBadRequest)
@@ -83,6 +86,7 @@ var (
 	ErrConfigNotFound      = New(40011, "配置不存在", http.StatusNotFound)
 	ErrSecretNotSet        = New(40013, "凭证尚未设置", http.StatusConflict)
 	ErrWSTicketInvalid     = New(40014, "连接凭证无效或已过期", http.StatusUnauthorized)
+	ErrGenerationBudget    = New(40015, "生成报价超过本次积分上限", http.StatusPaymentRequired)
 )
 
 // 协议插件 / 渠道 / 模型删除 5xxxx

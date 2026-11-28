@@ -1,3 +1,5 @@
+import type { CanvasVersion } from "@/utils/canvas/collaboration-version";
+
 import type { PaymentWsUpdate } from "@/store/payment";
 import type { AgentEventDto, CanvasPatchDto } from "@/api/agent/type";
 import type { BackendJobView, DramaEpisodeEvent, DramaSegmentEvent } from "@/api/drama/type";
@@ -24,6 +26,7 @@ export type TaskStatus =
 
 /** 任务产出的一份素材 */
 export interface TaskOutput {
+  stem?: "vocals" | "accompaniment";
   /** 素材 ID；文本产出没有 */
   asset_id?: number | string;
   /** 素材访问地址；文本产出没有 */
@@ -86,6 +89,8 @@ export interface TaskView {
 
 /** 提交生成任务的请求体 */
 export interface CreateTaskRequest {
+  /** 协作画布生成时固定已确认版本。 */
+  collaboration?: { epoch: CanvasVersion; revision: CanvasVersion };
   /** 任务类型 */
   kind: string;
   /** 使用的模型 key */
@@ -127,6 +132,27 @@ export type ServerMessage =
   | { type: "task.updated"; channel?: string; data: TaskView }
   /** Agent 改了画布：带逐节点的改动，前端并进当前画布 */
   | { type: "canvas.patch"; channel?: string; data: CanvasPatchDto }
+  /** 协作房间需要补取确认版本。 */
+  | {
+      type: "canvas.collaboration";
+      channel: string;
+      data: {
+        canvasId: string;
+        epoch?: CanvasVersion;
+        revision?: CanvasVersion;
+        transferPending?: boolean;
+      };
+    }
+  /** 订阅状态。 */
+  | { type: "subscribed" | "unsubscribed"; channel: string }
+  /** 协作房间内由服务端标记成员身份的临时状态。 */
+  | { type: "canvas.presence" | "canvas.attendance"; channel: string; data: CanvasPresenceEvent }
+  /** 协作节点的公开进度，连接慢时允许丢弃。 */
+  | {
+      type: "canvas.generation_progress";
+      channel: string;
+      data: { canvasId: string; epoch: CanvasVersion; progress: CanvasGenerationProgress };
+    }
   /** 画布 Agent 会话里的一条事件（文本增量、工具调用、审批……） */
   | { type: "agent.event"; channel?: string; data: AgentEventDto }
   /** 支付订单状态变化（入账、关单……）：前端据此刷新商城面板和余额 */
@@ -148,4 +174,37 @@ export type ServerMessage =
   /** 心跳应答 */
   | { type: "pong" }
   /** 服务端错误 */
-  | { type: "error"; data?: { code?: number; msg?: string } };
+  | { type: "error"; channel?: string; data?: { code?: number | string; msg?: string } };
+
+/** 画布坐标中的协作临时状态。 */
+export type CanvasPresenceState = {
+  /** 画布会话代数。 */
+  epoch: CanvasVersion;
+  /** 光标位置。 */
+  cursor?: { x: number; y: number };
+  /** 当前选中的节点。 */
+  selection?: string[];
+  /** 正在移动的节点及预览坐标。 */
+  drag?: { id: string; x: number; y: number };
+  /** 正在编辑内容的节点 ID。 */
+  editing?: string;
+  /** 世界坐标中的视角中心和缩放。 */
+  view?: { x: number; y: number; zoom: number };
+};
+
+/** 服务端为临时状态附加的账户标记。 */
+export type CanvasPresenceEvent = CanvasPresenceState & {
+  actorId: string;
+  actorUsername?: string;
+  onlineOnly?: boolean;
+};
+
+/** 画布上一次运行的临时进度。 */
+export type CanvasGenerationProgress = {
+  /** 接收进度的节点。 */
+  nodeId: string;
+  /** 开始运行的节点确认版本。 */
+  runRevision: CanvasVersion;
+  /** 0 到 100 的进度。 */
+  percent: number;
+};

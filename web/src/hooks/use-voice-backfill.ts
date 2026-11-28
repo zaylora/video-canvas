@@ -1,9 +1,10 @@
-import { useEffect } from "react";
+import { useContext, useEffect } from "react";
 import { useReactFlow } from "@xyflow/react";
 import { canvasNotice } from "@/utils/pet/notice";
 
 import { useTask, useTasksStore } from "@/store/tasks";
 import type { CanvasNode, CanvasNodeData } from "@/types";
+import { CanvasGenerationContext } from "@/utils/canvas/canvas-id";
 import { applyVoiceResult, voiceTaskView, type VoiceTaskView } from "@/utils/characters/voice-task";
 import { reconcileTaskIds } from "@/utils/ws/task-events";
 
@@ -19,6 +20,7 @@ import { reconcileTaskIds } from "@/utils/ws/task-events";
  */
 export function useVoiceBackfill(id: string, data: CanvasNodeData): VoiceTaskView {
   const { updateNodeData } = useReactFlow<CanvasNode>();
+  const collaboration = useContext(CanvasGenerationContext);
   const taskId = data.voiceTaskId;
   const view = useTask(taskId);
   const state = voiceTaskView(taskId, view);
@@ -27,7 +29,7 @@ export function useVoiceBackfill(id: string, data: CanvasNodeData): VoiceTaskVie
   const refunded = state.phase === "canceled" ? state.refunded : true;
 
   useEffect(() => {
-    if (!taskId) return;
+    if (collaboration || !taskId) return;
     if (asset) {
       updateNodeData(id, (node) => applyVoiceResult(node.data, asset));
     } else if (phase === "canceled") {
@@ -36,20 +38,20 @@ export function useVoiceBackfill(id: string, data: CanvasNodeData): VoiceTaskVie
       });
       updateNodeData(id, { voiceTaskId: undefined });
     }
-  }, [asset, id, phase, refunded, taskId, updateNodeData]);
+  }, [asset, collaboration, id, phase, refunded, taskId, updateNodeData]);
 
   useEffect(() => {
     if (!taskId || useTasksStore.getState().tasks[taskId]) return;
     let active = true;
     void reconcileTaskIds([taskId]).then((missing) => {
-      if (!active || !missing?.includes(taskId)) return;
+      if (collaboration || !active || !missing?.includes(taskId)) return;
       if (useTasksStore.getState().tasks[taskId]) return;
       updateNodeData(id, { voiceTaskId: undefined });
     });
     return () => {
       active = false;
     };
-  }, [id, taskId, updateNodeData]);
+  }, [collaboration, id, taskId, updateNodeData]);
 
   return state;
 }

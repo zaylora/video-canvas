@@ -1,6 +1,6 @@
 import { ReactFlowProvider } from "@xyflow/react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useParams } from "react-router";
+import { Navigate, useParams } from "react-router";
 import { useCanvasLock } from "@/hooks/use-canvas-lock";
 import { useCanvasOpening } from "@/hooks/use-canvas-opening";
 import { useAgentSettings } from "@/store/agent-settings";
@@ -47,6 +47,8 @@ export default function Canvas() {
   }, [id]);
 
   if (!id) return null;
+  if (current?.canvas.collaborationActive)
+    return <Navigate to={`/canvas/${id}/collaboration`} replace />;
   if (error) return <div className="grid min-h-svh place-items-center">画布不存在或无法加载</div>;
   return (
     <>

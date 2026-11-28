@@ -13,6 +13,27 @@ import (
 
 func mcInt(v int) *int { return &v }
 
+func TestVocalSeparationInput(t *testing.T) {
+	var caps modelcfg.Capabilities
+	if err := json.Unmarshal([]byte(`{"audio_operation":"vocal_separation","refs":{"audio":{"on":true,"max":1,"max_mb":50}}}`), &caps); err != nil {
+		t.Fatal(err)
+	}
+	input, errs := modelcfg.ValidateInput(modelcfg.KindAudio, caps, map[string]any{"audios": []any{"9007199254740993"}})
+	if len(errs) != 0 || !reflect.DeepEqual(input["audios"], []uint64{9007199254740993}) {
+		t.Fatalf("人声分离必须保留唯一源音频的精确素材编号: %+v %+v", input, errs)
+	}
+	for _, invalid := range []map[string]any{{}, {"audios": []any{"1", "2"}}, {"audios": []any{"1"}, "images": []any{"2"}}} {
+		if _, errs := modelcfg.ValidateInput(modelcfg.KindAudio, caps, invalid); len(errs) == 0 {
+			t.Fatalf("不合法的音频来源被接受: %+v", invalid)
+		}
+	}
+	if _, errs := modelcfg.ValidateInput(modelcfg.KindAudio, modelcfg.Capabilities{Prompt: modelcfg.PromptSpec{MaxLength: 100}}, map[string]any{
+		"audio_operation": modelcfg.AudioOperationVocalSeparation, "prompt": "生成音色", "audios": []any{"1"},
+	}); len(errs) == 0 || errs[0].Field != "audio_operation" {
+		t.Fatalf("普通音频模型不能冒充人声分离模型: %+v", errs)
+	}
+}
+
 // mcVideoCaps 是视频模型的测试能力：三种生成方式，图片最多 2 张、音频最多 1 个，视频素材关闭。
 func mcVideoCaps() modelcfg.Capabilities {
 	return modelcfg.Capabilities{

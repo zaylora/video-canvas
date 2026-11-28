@@ -34,9 +34,13 @@ export function CanvasWorkspace({
 
 export function CanvasFlowSurface({
   minimap,
+  onMiniMapInteraction,
   children,
   ...props
-}: ReactFlowProps<FlowNode, CanvasEdge> & { minimap: boolean }) {
+}: ReactFlowProps<FlowNode, CanvasEdge> & {
+  minimap: boolean;
+  onMiniMapInteraction?: () => void;
+}) {
   const background = useSettingsStore((state) => state.background);
   const wheelZoom = useSettingsStore((state) => state.wheelMode === "zoom");
   return (
@@ -55,14 +59,20 @@ export function CanvasFlowSurface({
       <CanvasBackgroundLayer background={background} />
       {children}
       {minimap && (
-        <MiniMap
-          position="bottom-left"
-          pannable
-          zoomable
-          className="canvas-overlay-interactive !bottom-16 !left-[76px] overflow-hidden rounded-xl shadow-lg ring-1 ring-chrome-border"
-          nodeColor="var(--muted-foreground)"
-          nodeBorderRadius={12}
-        />
+        <div
+          className="contents"
+          onPointerDownCapture={onMiniMapInteraction}
+          onWheelCapture={onMiniMapInteraction}
+        >
+          <MiniMap
+            position="bottom-left"
+            pannable
+            zoomable
+            className="canvas-overlay-interactive !bottom-16 !left-[76px] overflow-hidden rounded-xl shadow-lg ring-1 ring-chrome-border"
+            nodeColor="var(--muted-foreground)"
+            nodeBorderRadius={12}
+          />
+        </div>
       )}
     </ReactFlow>
   );

@@ -61,6 +61,7 @@ export interface Capabilities {
   vision?: boolean;
   /** 能不能理解视频画面和声音，仅 Gemini 格式的 agent */
   video?: boolean;
+  audio_operation?: "vocal_separation";
   /** 提示词格式，仅视频；缺省或空 = 通用 */
   prompt_format?: PromptFormat;
 }

@@ -10,6 +10,7 @@ import {
   buildOutpaintPrompt,
   outpaintModels,
   pickOutpaintModel,
+  preserveOutpaintPreparation,
   resolveRatioParam,
   withoutOutpaintSource,
 } from "@/utils/canvas/outpaint-node";
@@ -34,6 +35,23 @@ const args = {
   newId: () => "new1",
   edgeId: () => "edge1",
 };
+
+test("协作增量保留本地扩图准备和失败提示，任务确认后以服务端为准", () => {
+  const { node } = buildOutpaintNode(args);
+  const projected = { ...node.data, status: "idle" as const, label: "队友改名" };
+  expect(preserveOutpaintPreparation(projected, node.data)).toMatchObject({
+    status: "running",
+    label: "队友改名",
+  });
+  const failed = { ...node.data, status: "error" as const, error: "合成图上传失败" };
+  expect(preserveOutpaintPreparation(projected, failed)).toMatchObject({
+    status: "error",
+    error: "合成图上传失败",
+  });
+  const submitted = { ...projected, status: "running" as const, generationRevision: 12 };
+  expect(preserveOutpaintPreparation(submitted, failed)).toBe(submitted);
+  expect(preserveOutpaintPreparation(projected, submitted)).toBe(projected);
+});
 
 describe("buildOutpaintPrompt 提示词", () => {
   test("用户没写就只有固定指令", () => {

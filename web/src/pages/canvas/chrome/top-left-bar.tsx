@@ -1,3 +1,5 @@
+import type { CanvasVersion } from "@/utils/canvas/collaboration-version";
+
 import { openDialog } from "@/store/dialog";
 import { DramaShareDialog } from "@/pages/drama/share-dialog";
 import { useEffect, useRef, useState } from "react";
@@ -12,12 +14,13 @@ import {
   LoaderCircle,
   Plus,
   RefreshCw,
+  Users,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import { canvasNotice } from "@/utils/pet/notice";
 
-import { createCanvas, exportCanvas } from "@/api/canvas";
+import { createCanvas } from "@/api/canvas";
 import { Logo } from "@/components/brand/logo";
 import { ChromeButton, ChromePill, ChromeTooltip } from "@/components/canvas/chrome/chrome";
 import { TransferProgressDialog } from "@/components/canvas/transfer-progress-dialog";
@@ -40,13 +43,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { SaveStatus } from "@/hooks/use-canvas-persistence";
+import { useCanvasExport } from "@/hooks/use-canvas-export";
 import { DURATION, EASE_OUT } from "@/lib/motion";
 import { cn } from "@/lib/utils";
-import { runCanvasExport } from "@/utils/canvas/export-flow";
-import { createTransferCancel, type TransferCancel } from "@/utils/canvas/transfer-cancel";
-import { downloadJson } from "@/utils/canvas/transfer-file";
 
 import { SharedRefreshControl } from "./shared-refresh-control";
+import { CanvasModeDialog } from "./canvas-mode-dialog";
 
 /** 画布名最长多少字 */
 const TITLE_MAX = 60;
@@ -125,6 +127,8 @@ export function SharedTopLeftBar({
   onRefreshIntervalChange,
   onRefresh,
   onLeave,
+  live,
+  onLiveChange,
 }: {
   title: string;
   back: string;
@@ -135,6 +139,8 @@ export function SharedTopLeftBar({
   onRefreshIntervalChange: (seconds: number) => void;
   onRefresh: () => void;
   onLeave: () => void;
+  live?: boolean;
+  onLiveChange?: (enabled: boolean) => void;
 }) {
   const [confirmLeave, setConfirmLeave] = useState(false);
 
@@ -157,6 +163,8 @@ export function SharedTopLeftBar({
         onEnabledChange={onAutoRefreshChange}
         onIntervalChange={onRefreshIntervalChange}
         onRefresh={onRefresh}
+        live={live}
+        onLiveChange={onLiveChange}
       />
       <AlertDialog open={confirmLeave} onOpenChange={(open) => !leaving && setConfirmLeave(open)}>
         <AlertDialogTrigger
@@ -262,18 +270,20 @@ export function TopLeftBar({
   onRename: (title: string) => void;
   saveStatus: SaveStatus;
   /** 立即保存，返回保存后是否已经没有未保存的内容 */
-  getVersion?: () => number;
+  getVersion?: () => CanvasVersion;
   onSaveNow: () => Promise<boolean>;
   /** 只读预览：名字不能改，也不摆保存状态（这里没有要保存的东西，「已保存」会让人误以为是这一份） */
   readOnly?: boolean;
 }) {
   const navigate = useNavigate();
   const [creating, setCreating] = useState(false);
-  const [exporting, setExporting] = useState(false);
-  /** 已点取消、正在等请求收尾；弹窗据此把按钮置灰 */
-  const [cancelling, setCancelling] = useState(false);
-  /** 当前这次导出的取消控制器；每次导出新建一个 */
-  const exportCancel = useRef<TransferCancel | null>(null);
+  const [startingCollaboration, setStartingCollaboration] = useState(false);
+  const [modeOpen, setModeOpen] = useState(false);
+  const { exporting, cancelling, startExport, cancelExport } = useCanvasExport({
+    canvasId,
+    title,
+    saveNow: onSaveNow,
+  });
 
   /** 离开前先把没存的内容存掉；存不上就留在原地，别让内容悄悄丢了 */
   const leaveTo = async (to: string) => {
@@ -301,36 +311,18 @@ export function TopLeftBar({
     }
   };
 
-  /** 导出期间菜单项置灰，防止重复点击连发请求、连下多份文件 */
-  const exportThisCanvas = async () => {
-    if (exporting) return;
-    const cancel = createTransferCancel();
-    exportCancel.current = cancel;
-    setExporting(true);
+  const startCollaboration = async () => {
+    if (!getVersion || startingCollaboration) return;
+    setStartingCollaboration(true);
     try {
-      const outcome = await runCanvasExport({
-        canvasId,
-        title,
-        saveNow: onSaveNow,
-        exportCanvas,
-        signal: cancel.signal,
-        download: downloadJson,
-        notify: toast,
-      });
-      // 请求层不会为主动取消弹提示，这里告诉用户；导出不写数据，不需要刷新什么
-      if (outcome === "cancelled") toast.info("已取消导出");
+      if (!(await onSaveNow())) {
+        toast.error("请先保存当前改动，再开启协作");
+        return;
+      }
+      setModeOpen(true);
     } finally {
-      exportCancel.current = null;
-      setCancelling(false);
-      setExporting(false);
+      setStartingCollaboration(false);
     }
-  };
-
-  /** 点「取消」：中止请求，弹窗继续锁住，等 exportThisCanvas 收尾后才关闭 */
-  const cancelExport = () => {
-    if (!exportCancel.current || cancelling) return;
-    setCancelling(true);
-    exportCancel.current.cancel();
   };
 
   return (
@@ -376,13 +368,32 @@ export function TopLeftBar({
               共享画布
             </DropdownMenuItem>
           )}
-          <DropdownMenuItem disabled={exporting} onClick={() => void exportThisCanvas()}>
+          {!readOnly && getVersion && (
+            <DropdownMenuItem
+              disabled={startingCollaboration}
+              onClick={() => void startCollaboration()}
+            >
+              <Users />
+              开启实时协作
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuItem disabled={exporting} onClick={() => void startExport()}>
             <FileDown />
             导出画布
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
       <CanvasTitle title={title} onRename={onRename} readOnly={readOnly} />
+      {!readOnly && getVersion && (
+        <CanvasModeDialog
+          canvasId={canvasId}
+          active
+          open={modeOpen}
+          onOpenChange={setModeOpen}
+          beforeConfirm={onSaveNow}
+          onChanged={() => navigate(`/canvas/${canvasId}/collaboration`, { replace: true })}
+        />
+      )}
       {!readOnly && (
         <SaveIndicator key={saveStatus} status={saveStatus} onSave={() => void onSaveNow()} />
       )}

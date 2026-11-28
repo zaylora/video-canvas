@@ -80,6 +80,18 @@ func TestRevertKeepsNodesWithOutputsOrEdits(t *testing.T) {
 	}
 }
 
+func TestRevertPreservesConnectionsAddedAfterRun(t *testing.T) {
+	graph := mustParse(t, basePayload)
+	built := mustApply(t, graph, `[{"op":"create_node","tempId":"asset","kind":"image","label":"新图"}]`)
+	assetID := built.IDMap["asset"]
+	current := built.Graph.Clone()
+	current.Edges = append(current.Edges, canvasgraph.Edge{"id": "member-link", "source": "n_script", "target": assetID})
+	result := canvasgraph.Revert(current, built.Changes)
+	if result.Graph.Node(assetID) == nil || len(result.Graph.Edges) != len(current.Edges) || len(result.Skipped) != 1 {
+		t.Fatalf("应保留成员新增连线关联的节点: %+v", result)
+	}
+}
+
 func TestRevertRestoresDeletedNodesAndEdges(t *testing.T) {
 	g := mustParse(t, basePayload)
 	built := mustApply(t, g, shotOps)

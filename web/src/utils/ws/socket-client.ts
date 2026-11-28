@@ -1,10 +1,15 @@
 import type { AgentEventDto, CanvasPatchDto } from "@/api/agent/type";
 import type { BackendJobView, DramaEpisodeEvent, DramaSegmentEvent } from "@/api/drama/type";
-import type { ServerMessage, TaskView } from "@/api/generation-task/type";
+import type { CanvasPresenceState, ServerMessage, TaskView } from "@/api/generation-task/type";
 import type { MarketingRoundEvent, MarketingScriptEvent } from "@/api/marketing/type";
 import type { StoryboardSplitJob } from "@/api/storyboard/type";
 import type { PaymentWsUpdate } from "@/store/payment";
 import type { ConnectionState } from "@/store/ws";
+import {
+  isPositiveCanvasVersion,
+  parseCanvasVersions,
+  stringifyCanvasVersions,
+} from "../canvas/collaboration-version";
 
 /** 客户端每隔多久发一次 ping */
 export const HEARTBEAT_INTERVAL = 25_000;
@@ -50,18 +55,57 @@ export function buildWsUrl(
   return `${origin}${path}/ws?ticket=${encodeURIComponent(ticket)}`;
 }
 
+function validCanvasProgress(data: unknown) {
+  if (!data || typeof data !== "object") return false;
+  const { canvasId, epoch, progress } = data as Partial<
+    Extract<ServerMessage, { type: "canvas.generation_progress" }>["data"]
+  >;
+  return (
+    typeof canvasId === "string" &&
+    isPositiveCanvasVersion(epoch) &&
+    !!progress &&
+    typeof progress.nodeId === "string" &&
+    isPositiveCanvasVersion(progress.runRevision) &&
+    Number.isInteger(progress.percent) &&
+    progress.percent >= 0 &&
+    progress.percent <= 100
+  );
+}
+
 /** 解析服务端消息；格式不认识的一律丢弃，不让脏数据进 store */
 export function parseServerMessage(raw: unknown): ServerMessage | null {
   if (typeof raw !== "string") return null;
   let msg: unknown;
   try {
-    msg = JSON.parse(raw);
+    msg = parseCanvasVersions(raw);
   } catch {
     return null;
   }
   if (typeof msg !== "object" || msg === null) return null;
-  const { type, data } = msg as { type?: unknown; data?: unknown };
+  const { type, data, channel } = msg as { type?: unknown; data?: unknown; channel?: unknown };
   switch (type) {
+    case "subscribed":
+    case "unsubscribed":
+      return typeof channel === "string" ? (msg as ServerMessage) : null;
+    case "canvas.collaboration":
+      return typeof channel === "string" &&
+        typeof data === "object" &&
+        data !== null &&
+        typeof (data as { canvasId?: unknown }).canvasId === "string"
+        ? (msg as ServerMessage)
+        : null;
+    case "canvas.presence":
+    case "canvas.attendance":
+      return typeof channel === "string" &&
+        typeof data === "object" &&
+        data !== null &&
+        typeof (data as { actorId?: unknown }).actorId === "string"
+        ? (msg as ServerMessage)
+        : null;
+    case "canvas.generation_progress":
+      return typeof channel === "string" && validCanvasProgress(data)
+        ? (msg as ServerMessage)
+        : null;
     case "hello":
     case "pong":
     case "error":
@@ -83,8 +127,8 @@ export function parseServerMessage(raw: unknown): ServerMessage | null {
       const patch = data as Partial<CanvasPatchDto>;
       if (
         typeof patch.canvas_id !== "string" ||
-        typeof patch.revision_before !== "number" ||
-        typeof patch.revision_after !== "number" ||
+        (patch.revision_before !== 0 && !isPositiveCanvasVersion(patch.revision_before)) ||
+        (patch.revision_after !== 0 && !isPositiveCanvasVersion(patch.revision_after)) ||
         !Array.isArray(patch.changes)
       ) {
         return null;
@@ -221,6 +265,7 @@ export function parseServerMessage(raw: unknown): ServerMessage | null {
 
 /** 客户端用到的 WebSocket 最小接口，方便测试里换成假的 */
 export interface SocketLike {
+  bufferedAmount?: number;
   onopen: ((event: Event) => unknown) | null;
   onmessage: ((event: MessageEvent) => unknown) | null;
   onclose: ((event: CloseEvent) => unknown) | null;
@@ -245,6 +290,8 @@ export type SocketClientDeps = {
   onTask: (view: TaskView) => void;
   /** 收到 Agent 对画布的改动 */
   onCanvasPatch?: (patch: CanvasPatchDto) => void;
+  /** 房间通知与订阅控制。 */
+  onRoomMessage?: (message: ServerMessage) => void;
   /** 收到画布 Agent 会话里的一条事件 */
   onAgentEvent?: (event: AgentEventDto) => void;
   /** 收到支付订单状态变化 */
@@ -264,7 +311,7 @@ export type SocketClientDeps = {
   /** 收到分镜表拆分镜任务的状态变化 */
   onStoryboardSplit?: (job: StoryboardSplitJob) => void;
   /** 每次连接成功（包括重连）后调用，用来对账 */
-  onOpen: () => void;
+  onOpen: (reconnected: boolean) => void;
   onState: (state: ConnectionState) => void;
   /** 没登录就别连了 */
   canConnect?: () => boolean;
@@ -337,6 +384,22 @@ export class TaskSocketClient {
     this.connect();
   }
 
+  /** 订阅或离开当前连接上的房间。 */
+  room(action: "subscribe" | "unsubscribe", channel: string, resumed = false) {
+    if (this.state === "connected") {
+      this.socket?.send(
+        JSON.stringify({ type: action, channel, ...(resumed && { data: { resumed } }) }),
+      );
+    }
+  }
+
+  /** 低优先级状态遇到传输积压时允许丢弃。 */
+  presence(channel: string, data: CanvasPresenceState) {
+    if (this.state === "connected" && this.socket && (this.socket.bufferedAmount ?? 0) < 8192) {
+      this.socket.send(stringifyCanvasVersions({ type: "canvas.presence", channel, data }));
+    }
+  }
+
   private setState(state: ConnectionState) {
     if (this.state === state) return;
     this.state = state;
@@ -399,11 +462,12 @@ export class TaskSocketClient {
 
     socket.onopen = () => {
       if (generation !== this.generation) return;
+      const reconnected = this.everConnected;
       this.everConnected = true;
       this.lastMessageAt = this.lastPingAt = this.now();
       this.setState("connected");
       this.startHeartbeat();
-      this.deps.onOpen();
+      this.deps.onOpen(reconnected);
     };
     socket.onmessage = (event) => {
       if (generation !== this.generation) return;
@@ -412,6 +476,8 @@ export class TaskSocketClient {
       if (!msg) return;
       // 服务端确认握手后才算稳定，之前的退避计数在这里清零
       if (msg.type === "hello") this.attempt = 0;
+      if ("channel" in msg && msg.channel?.startsWith("canvas-collaboration:"))
+        this.deps.onRoomMessage?.(msg);
       if (msg.type === "task.updated") this.deps.onTask(msg.data);
       else if (msg.type === "canvas.patch") this.deps.onCanvasPatch?.(msg.data);
       else if (msg.type === "agent.event") this.deps.onAgentEvent?.(msg.data);

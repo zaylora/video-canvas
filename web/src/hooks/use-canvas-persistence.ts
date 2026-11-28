@@ -1,3 +1,5 @@
+import type { CanvasVersion } from "@/utils/canvas/collaboration-version";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CanvasDetailDto, CanvasGraphDto } from "@/api/canvas/type";
 import { getCanvas, saveCanvasGraph, updateCanvas } from "@/api/canvas";
@@ -30,15 +32,15 @@ export function useCanvasPersistence({
   readOnly = false,
 }: {
   canvasId: string;
-  initialVersion: number;
+  initialVersion: CanvasVersion;
   /** 取当前完整图谱；还没准备好时返回 null */
   getGraph: () => CanvasGraphDto | null;
   /** 用户选择「加载最新」后，把别处的最新画布交给外面重挂 */
   onConflict: (current: CanvasDetailDto) => void;
   /** 保存撞上 409 时先试着自动合并：返回合并后的服务端版本号，null 表示不能合并，走冲突弹窗 */
-  autoMerge?: () => Promise<number | null>;
+  autoMerge?: () => Promise<CanvasVersion | null>;
   /** 一次保存成功：这份图谱就是服务端在该版本的内容 */
-  onSaved?: (graph: CanvasGraphDto, version: number) => void;
+  onSaved?: (graph: CanvasGraphDto, version: CanvasVersion) => void;
   /**
    * 只读预览：这条链路一点都不写——不写草稿、不上传云端、不写视口（视口在画布页处理）。
    * 草稿按 user + canvas 一份，只读标签页写它就是把另一个标签页正在编辑的内容覆盖掉。
@@ -199,7 +201,7 @@ export function useCanvasPersistence({
   const getVersion = useCallback(() => coordinator.version, [coordinator]);
   /** 别处的改动已并进本地：把版本接到它的 revision */
   const mergeVersion = useCallback(
-    (version: number) => coordinator.mergeVersion(version),
+    (version: CanvasVersion) => coordinator.mergeVersion(version),
     [coordinator],
   );
   /** 云端还有没存上的内容（改动没发出去，或请求在途） */

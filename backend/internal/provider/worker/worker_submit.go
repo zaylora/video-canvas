@@ -40,6 +40,9 @@ func (w *Worker) submit(ctx context.Context, t *model.GenerationTask, snap *prov
 	st := w.providerState(t)
 	cctx, cancel := context.WithTimeout(ctx, submitTimeout(snap, w.opts.OperationTimeout))
 	defer cancel()
+	if t.CanvasProjectID != nil && t.CollaborationEpoch > 0 {
+		cctx = provider.WithCanvasAccess(cctx, *t.CanvasProjectID, t.CollaborationEpoch)
+	}
 	res, err := w.exec.Submit(cctx, snap, provider.SubmitInput{
 		Task:       taskRef(t, st),
 		Input:      input,

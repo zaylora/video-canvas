@@ -146,6 +146,8 @@ func (s *CanvasProjectService) Update(ctx context.Context, userID, id uint64, re
 		return nil, errcode.ErrCanvasNotFound
 	case errors.Is(err, repository.ErrRevisionConflict):
 		return nil, errcode.ErrCanvasConflict
+	case errors.Is(err, repository.ErrCanvasCollaborationActive):
+		return nil, errcode.ErrCanvasCollaborationActive
 	case err != nil:
 		return nil, err
 	}
@@ -160,6 +162,9 @@ func (s *CanvasProjectService) Delete(ctx context.Context, userID, id uint64) er
 	err := s.repo.Delete(ctx, userID, id)
 	if errors.Is(err, repository.ErrNotFound) {
 		return errcode.ErrCanvasNotFound
+	}
+	if errors.Is(err, repository.ErrCanvasCollaborationActive) {
+		return errcode.ErrCanvasCollaborationActive
 	}
 	return err
 }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Position, addEdge, useNodeConnections, useNodesData, useReactFlow } from "@xyflow/react";
+import { toast } from "sonner";
 
 import type { GenerationOp, ModelInfo } from "@/api/model/type";
 import type { NodeCardHandle } from "@/components/canvas";
@@ -24,6 +25,7 @@ import { removePromptRef } from "@/utils/canvas/prompt-tokens";
 import { referencedText } from "@/utils/canvas/text-body";
 import { characterDisplayName, characterRefsOfNode } from "@/utils/characters/node-character";
 import {
+  OP_LABEL,
   REF_KEYS,
   PORTS_OF_KIND,
   buildTaskInput,
@@ -43,6 +45,7 @@ import {
   type RefKey,
 } from "@/utils/tasks/capabilities";
 import { deriveVideoNodeView } from "@/utils/tasks/node-view";
+import { cancelableCanvasNodeTaskIds } from "@/utils/tasks/status";
 import { fanoutCount, quote } from "@/utils/pricing/quote";
 
 /** 节点的连接点：左进右出各一个 */
@@ -216,6 +219,7 @@ export function useTaskNode(
       const nextOp = sourceNode && self && opForLink(sourceNode.data, self.data);
       if (nextOp) {
         updateNodeData(id, (node) => ({ params: { ...node.data.params, op: nextOp } }));
+        if (nodeKind === "video") toast(`已切换为${OP_LABEL[nextOp]}`);
       }
       setEdges((edges) =>
         addEdge(
@@ -230,7 +234,7 @@ export function useTaskNode(
         ),
       );
     },
-    [getEdges, getNodes, history, id, setEdges, updateNodeData],
+    [getEdges, getNodes, history, id, nodeKind, setEdges, updateNodeData],
   );
 
   /**
@@ -341,6 +345,19 @@ export function useTaskNode(
 
   // ---- 展示状态 ----
   const running = data.status === "running";
+  const canvasId = generation.canvasId;
+  const hasOwnCandidates = useTasksStore(
+    (state) =>
+      running &&
+      !!generation.collaboration &&
+      !!canvasId &&
+      cancelableCanvasNodeTaskIds(
+        Object.values(state.tasks),
+        canvasId,
+        id,
+        REMOTE_KIND_OF_NODE[nodeKind],
+      ).length > 0,
+  );
   /** 还有任务在跑：占位中，或第一张已出、同一批的其余任务还没结清（此时不能再次生成） */
   const generating = isGenerating(data);
   const task = useTask(data.taskId);
@@ -350,19 +367,21 @@ export function useTaskNode(
   // ---- 能不能生成，不能的话为什么 ----
   const promptBinding = bindings.prompt;
   const firstError = Object.values(built.errors)[0];
-  const blockedReason: string | null = generating
-    ? "生成中"
-    : generation.submitting
-      ? "正在提交"
-      : modelsStatus === "idle" || modelsStatus === "loading"
-        ? "正在加载模型清单"
-        : modelsStatus === "error"
-          ? "模型清单加载失败，请稍后重试"
-          : offline
-            ? "该模型已下线，请换一个模型"
-            : !model
-              ? "暂无可用模型"
-              : (firstError ?? null);
+  const blockedReason: string | null =
+    generation.generationBlocked ??
+    (generating
+      ? "生成中"
+      : generation.submitting
+        ? "正在提交"
+        : modelsStatus === "idle" || modelsStatus === "loading"
+          ? "正在加载模型清单"
+          : modelsStatus === "error"
+            ? "模型清单加载失败，请稍后重试"
+            : offline
+              ? "该模型已下线，请换一个模型"
+              : !model
+                ? "暂无可用模型"
+                : (firstError ?? null));
 
   /**
    * 提交失败就地提示在提示词面板里，全局错误 toast 由请求层统一弹出。
@@ -399,8 +418,8 @@ export function useTaskNode(
       : data.taskId
         ? [data.taskId]
         : [];
-    if (ids.length) void generation.cancel(ids);
-  }, [data.pendingTaskIds, data.taskId, generation]);
+    if (ids.length || hasOwnCandidates) void generation.cancel(ids);
+  }, [data.pendingTaskIds, data.taskId, generation, hasOwnCandidates]);
 
   // ---- 编辑 ----
   const setPrompt = useCallback(
@@ -600,7 +619,7 @@ export function useTaskNode(
     running,
     generating,
     view,
-    cancel,
+    cancel: !readOnly && (!generation.collaboration || hasOwnCandidates) ? cancel : undefined,
     cancelling: generation.cancelling,
   };
 }

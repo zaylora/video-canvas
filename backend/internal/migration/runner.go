@@ -74,6 +74,28 @@ type record struct {
 	AppliedAt  time.Time
 }
 
+var renamedMigrations = map[string]string{
+	"0055_canvas_collaboration.sql":                    "0059_canvas_collaboration.sql",
+	"0056_canvas_collaboration_undo.sql":               "0060_canvas_collaboration_undo.sql",
+	"0057_canvas_collaboration_generation.sql":         "0061_canvas_collaboration_generation.sql",
+	"0058_canvas_collaboration_generation_request.sql": "0062_canvas_collaboration_generation_request.sql",
+	"0059_canvas_collaboration_outbox.sql":             "0063_canvas_collaboration_outbox.sql",
+	"0060_canvas_collaboration_comments.sql":           "0064_canvas_collaboration_comments.sql",
+	"0061_canvas_collaboration_checkpoints.sql":        "0065_canvas_collaboration_checkpoints.sql",
+	"0062_canvas_member_generation_permission.sql":     "0066_canvas_member_generation_permission.sql",
+	"0063_storyboard_split_collaboration.sql":          "0067_storyboard_split_collaboration.sql",
+	"0064_canvas_member_library_permission.sql":        "0068_canvas_member_library_permission.sql",
+	"0065_storyboard_split_request.sql":                "0069_storyboard_split_request.sql",
+	"0066_canvas_collaboration_comment_replay.sql":     "0070_canvas_collaboration_comment_replay.sql",
+	"0067_canvas_media_drafts.sql":                     "0071_canvas_media_drafts.sql",
+	"0068_canvas_collaboration_task_summaries.sql":     "0072_canvas_collaboration_task_summaries.sql",
+	"0069_canvas_compose_jobs.sql":                     "0073_canvas_compose_jobs.sql",
+	"0070_canvas_automation_keys.sql":                  "0074_canvas_automation_keys.sql",
+	"0071_canvas_generation_budgets.sql":               "0075_canvas_generation_budgets.sql",
+	"0072_canvas_automation_budget.sql":                "0076_canvas_automation_budget.sql",
+	"0073_canvas_collaboration_record_order.sql":       "0077_canvas_collaboration_record_order.sql",
+}
+
 // Run 执行全部未执行的迁移。任何一步失败都返回错误，调用方应中止启动。
 func Run(ctx context.Context, db *gorm.DB, opts Options) error {
 	opts = withDefaults(opts)
@@ -101,6 +123,10 @@ func Run(ctx context.Context, db *gorm.DB, opts Options) error {
 		return fmt.Errorf("创建 schema_migrations 失败: %w", err)
 	}
 	records, err := loadRecords(ctx, conn)
+	if err != nil {
+		return err
+	}
+	records, err = canonicalizeRecords(files, records)
 	if err != nil {
 		return err
 	}
@@ -151,6 +177,10 @@ func Status(ctx context.Context, db *gorm.DB, fsys fs.FS) ([]FileStatus, error) 
 		if records, err = loadRecords(ctx, conn); err != nil {
 			return nil, err
 		}
+	}
+	records, err = canonicalizeRecords(files, records)
+	if err != nil {
+		return nil, err
 	}
 
 	out := make([]FileStatus, 0, len(files))
@@ -278,6 +308,26 @@ func loadRecords(ctx context.Context, conn *sql.Conn) (map[string]record, error)
 		records[r.Filename] = r
 	}
 	return records, rows.Err()
+}
+
+func canonicalizeRecords(files []migrationFile, records map[string]record) (map[string]record, error) {
+	known := make(map[string]bool, len(files))
+	for _, file := range files {
+		known[file.name] = true
+	}
+	canonical := make(map[string]record, len(records))
+	for filename, item := range records {
+		newName, renamed := renamedMigrations[filename]
+		if renamed && known[newName] {
+			if _, exists := records[newName]; exists {
+				return nil, fmt.Errorf("数据库同时记录了迁移 %s 和其重编号版本 %s", filename, newName)
+			}
+			item.Filename = newName
+			filename = newName
+		}
+		canonical[filename] = item
+	}
+	return canonical, nil
 }
 
 func sortedRecords(records map[string]record) []record {

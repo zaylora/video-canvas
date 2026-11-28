@@ -58,6 +58,21 @@ const newRun = (
   s.createRun({ sessionId, canvasId: "7", userId: "1", status: "running", mode: "all", ...over });
 
 test(
+  "SQLite 重开后仍区分相邻的大整数协作代数",
+  withStore((store, clock, dbPath) => {
+    const first = newRun(store, newSession(store).id, { collaborationEpoch: "9007199254740992" });
+    const second = newRun(store, newSession(store).id, { collaborationEpoch: "9007199254740993" });
+    const reopened = openStore(dbPath, { workerId: 2, now: clock.now });
+    try {
+      assert.equal(reopened.getRunById(first.id).collaborationEpoch, "9007199254740992");
+      assert.equal(reopened.getRunById(second.id).collaborationEpoch, "9007199254740993");
+    } finally {
+      reopened.close();
+    }
+  }),
+);
+
+test(
   "画布交付和运行互斥，只有原租约能释放",
   withStore((store) => {
     const session = newSession(store);

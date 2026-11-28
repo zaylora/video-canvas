@@ -33,6 +33,7 @@ const bone = (group: Group, name: string) => {
   return found.getWorldPosition(new Vector3());
 };
 
+beforeEach(() => resetFigureModel());
 afterEach(() => resetFigureModel());
 
 describe("模型加载", () => {

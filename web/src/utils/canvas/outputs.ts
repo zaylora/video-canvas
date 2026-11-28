@@ -3,11 +3,17 @@ import type { CanvasNodeData, NodeKind, NodeOutput } from "@/types";
 /** 每个节点最多留几版，超出丢最旧的（只丢引用，素材本身不删） */
 export const MAX_NODE_OUTPUTS = 50;
 
+/** 计算主结果所需的素材字段，渲染节点和持久化节点共用。 */
+type OutputData = Pick<
+  CanvasNodeData,
+  "outputs" | "activeOutputId" | "src" | "assetId" | "mediaType" | "taskId" | "model"
+>;
+
 /**
  * 节点的历次产物。旧画布没有 outputs，但有一份已经存下来的素材时，就把它当成唯一的一版；
  * 本地还没传完的 blob、没有 assetId 的素材不算。
  */
-export function readOutputs(data: CanvasNodeData): NodeOutput[] {
+export function readOutputs(data: OutputData): NodeOutput[] {
   if (data.outputs?.length) return data.outputs;
   if (!data.src || !data.assetId || data.src.startsWith("blob:")) return [];
   return [
@@ -80,7 +86,7 @@ export function isGenerating(data: Pick<CanvasNodeData, "status" | "pendingTaskI
 
 /** 切到某一版：只改当前指向和镜像字段，找不到这一版时返回 null */
 export function selectOutput(
-  data: CanvasNodeData,
+  data: OutputData,
   outputId: string,
 ): Pick<CanvasNodeData, "outputs" | "activeOutputId" | "src" | "mediaType" | "assetId"> | null {
   const outputs = readOutputs(data);
@@ -96,7 +102,7 @@ export function selectOutput(
 }
 
 /** 当前那一版的 id：没记的时候认最后一版 */
-export function activeOutputIdOf(data: CanvasNodeData): string | undefined {
+export function activeOutputIdOf(data: OutputData): string | undefined {
   const outputs = readOutputs(data);
   if (data.activeOutputId && outputs.some((item) => item.id === data.activeOutputId))
     return data.activeOutputId;

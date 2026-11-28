@@ -1,9 +1,13 @@
 package handler
 
 import (
+	"strconv"
+
 	"github.com/gin-gonic/gin"
 
 	"video-canvas/internal/model"
+	"video-canvas/internal/pkg/errcode"
+	"video-canvas/internal/pkg/idcodec"
 	"video-canvas/internal/pkg/response"
 	"video-canvas/internal/service"
 )
@@ -37,6 +41,25 @@ func (h *GenerationTaskHandler) Get(c *gin.Context) {
 	if !ok {
 		return
 	}
+	h.get(c, id)
+}
+
+// GetAutomationTask accepts the task number or encoded reference within an authorized key scope.
+func (h *GenerationTaskHandler) GetAutomationTask(c *gin.Context) {
+	ref := c.Param("task")
+	id, ok := idcodec.Decode(ref)
+	if !ok {
+		var err error
+		id, err = strconv.ParseUint(ref, 10, 64)
+		if err != nil || id == 0 {
+			response.Fail(c, errcode.ErrInvalidParams)
+			return
+		}
+	}
+	h.get(c, id)
+}
+
+func (h *GenerationTaskHandler) get(c *gin.Context, id uint64) {
 	view, err := h.svc.Get(c.Request.Context(), currentUserID(c), id)
 	if err != nil {
 		response.Fail(c, err)

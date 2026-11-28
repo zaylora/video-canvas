@@ -132,6 +132,7 @@ func fieldPaths(c Change) []string {
 
 // removeCreatedNodes 删除 Agent 新建且没人动过的节点：先删普通节点，再删已经空了的组。
 func (r *reverter) removeCreatedNodes(changes []Change) {
+	referenced := retainedConnectionNodes(r.g.Edges, changes)
 	for _, pass := range []bool{false, true} {
 		for i := len(changes) - 1; i >= 0; i-- {
 			c := changes[i]
@@ -142,7 +143,7 @@ func (r *reverter) removeCreatedNodes(changes []Change) {
 			if n == nil || n.IsGroup() != pass {
 				continue
 			}
-			if reason := r.keepReason(n, c); reason != "" {
+			if reason := r.keepReason(n, c, referenced[c.ID]); reason != "" {
 				r.kept[c.ID] = true
 				r.res.Skipped = append(r.res.Skipped, Skip{Kind: "node", NodeID: c.ID, Reason: reason})
 				continue
@@ -153,8 +154,28 @@ func (r *reverter) removeCreatedNodes(changes []Change) {
 	}
 }
 
+func retainedConnectionNodes(edges []Edge, changes []Change) map[string]bool {
+	created := make(map[string]bool)
+	for _, change := range changes {
+		if change.Kind == "edge" && change.Op == ChangeCreate {
+			created[change.ID] = true
+		}
+	}
+	referenced := make(map[string]bool)
+	for _, edge := range edges {
+		if !created[edge.ID()] {
+			referenced[edge.Source()] = true
+			referenced[edge.Target()] = true
+		}
+	}
+	return referenced
+}
+
 // keepReason 判断新建的节点该不该保留，返回保留原因，空串表示可以删除。
-func (r *reverter) keepReason(n Node, c Change) string {
+func (r *reverter) keepReason(n Node, c Change, referenced bool) string {
+	if referenced {
+		return "已有其他连线，保留"
+	}
 	if n.IsGroup() {
 		if len(r.g.members(n.ID())) > 0 {
 			return "组里还有节点，保留"

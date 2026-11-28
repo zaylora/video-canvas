@@ -198,7 +198,9 @@ export function CharacterDetailDialog({
     purpose: "main" | "extra" | "voice",
     origin: "upload" | "library" = "library",
   ) => {
-    const { patch, warnings } = applyPickedAssets(data, assets, purpose, origin);
+    const current = getNode(id)?.data;
+    if (!current) return;
+    const { patch, warnings } = applyPickedAssets(current, assets, purpose, origin);
     if (Object.keys(patch).length > 0) updateNodeData(id, patch);
     if (warnings.length > 0) toast.warning([...new Set(warnings)].join("；"));
   };
@@ -229,7 +231,9 @@ export function CharacterDetailDialog({
   /** 从真人库引入：真人的可用图片替换主图和补充图，之后照常可以换、删 */
   const [pickingHuman, setPickingHuman] = useState(false);
   const applyHuman = (images: AssetDto[]) => {
-    const patch = applyHumanImages(data, images);
+    const current = getNode(id)?.data;
+    if (!current) return;
+    const patch = applyHumanImages(current, images);
     if (Object.keys(patch).length > 0) updateNodeData(id, patch);
   };
 
@@ -569,9 +573,15 @@ export function CharacterDetailDialog({
                       <Button
                         className="h-9 rounded-full px-5"
                         disabled={
-                          voiceGen.submitting || !voiceGen.model || !!data.voiceAfterImage?.length
+                          !!voiceGen.unavailable ||
+                          voiceGen.submitting ||
+                          !voiceGen.model ||
+                          !!data.voiceAfterImage?.length
                         }
-                        title={data.voiceAfterImage?.length ? "出图后会接着生成音色" : undefined}
+                        title={
+                          voiceGen.unavailable ??
+                          (data.voiceAfterImage?.length ? "出图后会接着生成音色" : undefined)
+                        }
                         onClick={() => void voiceGen.submit(character.voicePrompt ?? "")}
                       >
                         {voiceGen.task.phase === "failed"

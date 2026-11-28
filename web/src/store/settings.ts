@@ -32,6 +32,8 @@ export type Settings = {
   // 画布
   background: CanvasBackground;
   wheelMode: CanvasWheelMode;
+  /** 协作编辑时，本机拖动节点是否启用对齐线与吸附 */
+  collaborationAlignment: boolean;
   // 通用
   theme: ThemeSetting;
   /** 空画布时顶部那条操作提示 */
@@ -60,6 +62,7 @@ export const GRID_SIZE = 20;
 const DEFAULT_SETTINGS: Settings = {
   background: "dots",
   wheelMode: "pan",
+  collaborationAlignment: true,
   theme: "dark",
   showHints: true,
   defaultModels: {},
@@ -117,6 +120,7 @@ export const useSettingsStore = create<SettingsStore>()(
       partialize: ({
         background,
         wheelMode,
+        collaborationAlignment,
         theme,
         showHints,
         defaultModels,
@@ -124,6 +128,7 @@ export const useSettingsStore = create<SettingsStore>()(
       }): Settings => ({
         background,
         wheelMode,
+        collaborationAlignment,
         theme,
         showHints,
         defaultModels,

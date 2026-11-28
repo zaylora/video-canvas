@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"gorm.io/datatypes"
@@ -75,22 +76,30 @@ func (r *AgentRepository) ListEvents(ctx context.Context, sessionID uint64, afte
 // GetCanvas 按 id + user_id 读画布（含 payload_json），不存在或不属于该用户返回 ErrNotFound。
 // Agent 的工具只能碰运行所属用户自己的画布。
 func (r *AgentRepository) GetCanvas(ctx context.Context, userID, id uint64) (*model.CanvasProject, error) {
-	var c model.CanvasProject
-	if err := r.db.WithContext(ctx).Where("id = ? AND user_id = ?", id, userID).First(&c).Error; err != nil {
-		return nil, translate(err)
+	project, err := readCanvasWithCollaboration(r.db.WithContext(ctx), func(db *gorm.DB, project *model.CanvasProject) error {
+		return db.Where("id = ? AND user_id = ?", id, userID).First(project).Error
+	})
+	if !errors.Is(err, ErrNotFound) {
+		return project, err
 	}
-	return &c, nil
+	project, _, err = NewCanvasCollaborationRepository(r.db).Snapshot(ctx, userID, id)
+	if err != nil || !project.CollaborationCanGenerate {
+		return nil, ErrNotFound
+	}
+	return project, nil
 }
 
 // CommitInput 是一次画布写入的全部内容。
 type CommitInput struct {
-	UserID       uint64                  // 画布所有者
-	CanvasID     uint64                  // 画布 id
-	BaseRevision uint64                  // 写入所基于的 revision，乐观锁
-	Payload      []byte                  // 新的 payload_json
-	Mutation     *model.AgentMutation    // 要记录的改动（RunID、Kind、ChangesJSON 等由调用方填好）
-	UndoRunID    uint64                  // 非 0 表示这是对该运行的撤销，同一事务里把它的改动标记为已撤销
-	CreatedReads []model.AgentCanvasRead // 自建节点同时计为已读，和画布写入一起提交，避免崩溃后丢失
+	CollaborationEpoch uint64
+	MediaImports       map[uint64]CanvasCollaborationImport
+	UserID             uint64                  // 画布所有者
+	CanvasID           uint64                  // 画布 id
+	BaseRevision       uint64                  // 写入所基于的 revision，乐观锁
+	Payload            []byte                  // 新的 payload_json
+	Mutation           *model.AgentMutation    // 要记录的改动（RunID、Kind、ChangesJSON 等由调用方填好）
+	UndoRunID          uint64                  // 非 0 表示这是对该运行的撤销，同一事务里把它的改动标记为已撤销
+	CreatedReads       []model.AgentCanvasRead // 自建节点同时计为已读，和画布写入一起提交，避免崩溃后丢失
 }
 
 // CommitCanvasMutation 在一个事务里完成「按乐观锁更新画布」「记录改动」「记录自建节点已读」「标记被撤销的改动」，要么都成要么都不成：
@@ -99,8 +108,14 @@ type CommitInput struct {
 // 成功时 Mutation 的 seq、revision_before、revision_after 被回填。
 func (r *AgentRepository) CommitCanvasMutation(ctx context.Context, in CommitInput) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if in.CollaborationEpoch > 0 {
+			if err := commitAgentCollaboration(tx, in); err != nil {
+				return err
+			}
+			return recordAgentMutation(tx, in)
+		}
 		res := tx.Model(&model.CanvasProject{}).
-			Where("id = ? AND user_id = ? AND revision = ?", in.CanvasID, in.UserID, in.BaseRevision).
+			Where("id = ? AND user_id = ? AND revision = ? AND collaboration_active = false", in.CanvasID, in.UserID, in.BaseRevision).
 			Updates(map[string]any{
 				"payload_json": datatypes.JSON(in.Payload),
 				"revision":     gorm.Expr("revision + 1"),
@@ -109,37 +124,34 @@ func (r *AgentRepository) CommitCanvasMutation(ctx context.Context, in CommitInp
 			return res.Error
 		}
 		if res.RowsAffected == 0 {
-			var n int64
-			if err := tx.Model(&model.CanvasProject{}).Where("id = ? AND user_id = ?", in.CanvasID, in.UserID).Count(&n).Error; err != nil {
-				return err
-			}
-			if n == 0 {
-				return ErrNotFound
-			}
-			return ErrRevisionConflict
+			return legacyCanvasWriteError(tx, in.UserID, in.CanvasID, ErrRevisionConflict)
 		}
-		m := in.Mutation
-		var maxSeq int
-		if err := tx.Model(&model.AgentMutation{}).Where("run_id = ?", m.RunID).
-			Select("COALESCE(MAX(seq), 0)").Scan(&maxSeq).Error; err != nil {
-			return err
-		}
-		m.Seq, m.CanvasID, m.UserID = maxSeq+1, in.CanvasID, in.UserID
-		m.RevisionBefore, m.RevisionAfter = in.BaseRevision, in.BaseRevision+1
-		m.ChangesJSON = emptyJSON(m.ChangesJSON, "[]")
-		if err := tx.Create(m).Error; err != nil {
-			return err
-		}
-		if err := insertCanvasReads(tx, in.CreatedReads); err != nil {
-			return err
-		}
-		if in.UndoRunID == 0 {
-			return nil
-		}
-		return tx.Model(&model.AgentMutation{}).
-			Where("run_id = ? AND undone_at IS NULL AND kind <> ?", in.UndoRunID, model.MutationUndo).
-			Update("undone_at", time.Now()).Error
+		return recordAgentMutation(tx, in)
 	})
+}
+
+func recordAgentMutation(tx *gorm.DB, in CommitInput) error {
+	m := in.Mutation
+	var maxSeq int
+	if err := tx.Model(&model.AgentMutation{}).Where("run_id = ?", m.RunID).
+		Select("COALESCE(MAX(seq), 0)").Scan(&maxSeq).Error; err != nil {
+		return err
+	}
+	m.Seq, m.CanvasID, m.UserID = maxSeq+1, in.CanvasID, in.UserID
+	m.RevisionBefore, m.RevisionAfter = in.BaseRevision, in.BaseRevision+1
+	m.ChangesJSON = emptyJSON(m.ChangesJSON, "[]")
+	if err := tx.Create(m).Error; err != nil {
+		return err
+	}
+	if err := insertCanvasReads(tx, in.CreatedReads); err != nil {
+		return err
+	}
+	if in.UndoRunID == 0 {
+		return nil
+	}
+	return tx.Model(&model.AgentMutation{}).
+		Where("run_id = ? AND undone_at IS NULL AND kind <> ?", in.UndoRunID, model.MutationUndo).
+		Update("undone_at", time.Now()).Error
 }
 
 // ListMutations 列出某运行的全部改动，按序号升序。

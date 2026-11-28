@@ -9,6 +9,7 @@
  */
 import { timingSafeEqual } from "node:crypto";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
+import { normalizeEpoch, parseEpochJSON } from "../collaboration-epoch.ts";
 import { AgentError, Err } from "../engine/errors.ts";
 import type { IdCodec } from "../ids.ts";
 import { asLogger, installRequestLog } from "../log.ts";
@@ -37,6 +38,7 @@ const START_RUN: FieldSpec[] = [
   { key: "selection", label: "选中节点", kind: "strings", max: 200, itemMax: 64 },
   { key: "viewport", label: "视口", kind: "any" },
   { key: "budget_credits", label: "本轮预算", kind: "int", nullable: true, ...BUDGET },
+  { key: "collaboration_epoch", label: "协作代数", kind: "any" },
   { key: "agent_model_key", label: "Agent 模型", kind: "string", max: 128 },
   { key: "attachments", label: "附件", kind: "any" },
 ];
@@ -138,7 +140,7 @@ export function createApiApp(o: ApiOptions): FastifyInstance {
     const raw = String(body).trim();
     if (!raw) return done(null, {});
     try {
-      done(null, JSON.parse(raw));
+      done(null, parseEpochJSON(raw));
     } catch {
       done(new ValidationError("请求参数格式错误"));
     }
@@ -302,11 +304,15 @@ export function createApiApp(o: ApiOptions): FastifyInstance {
       const specs = service.isAdminSession(user(req), sid)
         ? START_RUN.filter((s) => !["selection", "viewport", "attachments"].includes(s.key))
         : START_RUN;
-      return ok(
-        reply,
-        await service.startRun(user(req), sid, validateBody(body(req), specs) as never),
-        202,
-      );
+      const input = validateBody(body(req), specs);
+      if (input.collaboration_epoch !== undefined) {
+        try {
+          input.collaboration_epoch = normalizeEpoch(input.collaboration_epoch);
+        } catch {
+          throw new ValidationError("协作代数必须是有效的正整数");
+        }
+      }
+      return ok(reply, await service.startRun(user(req), sid, input as never), 202);
     });
     app.get("/agent/sessions/:sid/watches", async (req: Req, reply) =>
       ok(reply, await service.watches(user(req), id(req, "sid"))),

@@ -24,6 +24,11 @@ import {
 
 import { handleTaskView, reconcileActiveTasks } from "./task-events";
 import { buildWsUrl, TaskSocketClient } from "./socket-client";
+import {
+  attachCanvasRoomSocket,
+  dispatchCanvasRoomMessage,
+  restoreCanvasRoomSubscriptions,
+} from "./canvas-room";
 
 /** 拿 ticket 遇到 401 说明登录已失效，重试没有意义 */
 const isUnauthorized = (error: unknown) =>
@@ -52,7 +57,9 @@ export function useTaskSocket() {
       onMarketingRound: handleMarketingRoundEvent,
       onMarketingScript: handleMarketingScriptEvent,
       onStoryboardSplit: handleStoryboardSplitEvent,
-      onOpen: () => {
+      onRoomMessage: dispatchCanvasRoomMessage,
+      onOpen: (reconnected) => {
+        restoreCanvasRoomSubscriptions(reconnected);
         void reconcileStoryboardSplit();
         void reconcileActiveTasks();
         void reconcileWatchedDramas();
@@ -67,6 +74,7 @@ export function useTaskSocket() {
       canConnect: () => !!getToken(),
       isFatal: isUnauthorized,
     });
+    const detachCanvasRooms = attachCanvasRoomSocket(client);
     client.start();
 
     const onVisible = () => {
@@ -85,6 +93,7 @@ export function useTaskSocket() {
     return () => {
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("online", onOnline);
+      detachCanvasRooms();
       client.stop();
       setConnection("idle");
     };

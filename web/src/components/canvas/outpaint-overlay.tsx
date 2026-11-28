@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useContext, useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
 import { NodeToolbar, Position, useReactFlow, useStore, type ReactFlowState } from "@xyflow/react";
 
@@ -17,7 +17,7 @@ import { DURATION, EASE_OUT } from "@/lib/motion";
 import { useCreditsStore } from "@/store/credits";
 import { useOutpaintStore } from "@/store/outpaint";
 import type { CanvasEdge, CanvasNode, CanvasNodeData } from "@/types";
-import { useCurrentCanvasId } from "@/utils/canvas/canvas-id";
+import { CanvasGenerationContext, useCurrentCanvasId } from "@/utils/canvas/canvas-id";
 import { planCompose } from "@/utils/canvas/outpaint-compose";
 import {
   frameByMult,
@@ -54,6 +54,7 @@ export function OutpaintOverlay({ id, data }: { id: string; data: CanvasNodeData
     CanvasEdge
   >();
   const canvasId = useCurrentCanvasId();
+  const collaboration = useContext(CanvasGenerationContext);
   const history = useCanvasHistoryContext();
   const leave = useOutpaintStore((state) => state.leave);
   const { width, shift } = usePanelPlacement(id);
@@ -123,13 +124,15 @@ export function OutpaintOverlay({ id, data }: { id: string; data: CanvasNodeData
   const firstError = preview ? Object.values(preview.built.errors)[0] : undefined;
   const lowCredits = !!price && availableCredits !== null && price.total > availableCredits;
   const blockedReason =
-    remote.status === "loading" || remote.status === "idle"
-      ? "正在加载模型清单"
-      : !model
-        ? "暂无支持图生图的模型"
-        : !origin || !currentFrame || !data.src
-          ? "原图还没有准备好"
-          : (firstError ?? (lowCredits ? "积分不足" : null));
+    collaboration?.canGenerate === false
+      ? "请联系画布所有者授权生成"
+      : remote.status === "loading" || remote.status === "idle"
+        ? "正在加载模型清单"
+        : !model
+          ? "暂无支持图生图的模型"
+          : !origin || !currentFrame || !data.src
+            ? "原图还没有准备好"
+            : (firstError ?? (lowCredits ? "积分不足" : null));
 
   if (!origin || !currentFrame) return null;
 
@@ -170,6 +173,7 @@ export function OutpaintOverlay({ id, data }: { id: string; data: CanvasNodeData
         params: node.data.params ?? {},
       },
       (nodeId, update) => updateNodeData(nodeId, (current) => update(current.data)),
+      collaboration ?? undefined,
     );
   };
 

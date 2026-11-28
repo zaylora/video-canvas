@@ -1,4 +1,15 @@
-import type { DirectorScene, NodeCharacter, NodeDrama, NodeStoryboard } from "@/types";
+import type { CanvasVersion } from "@/utils/canvas/collaboration-version";
+
+import type { DirectorScene, NodeCharacter, NodeDrama, NodeOutput, NodeStoryboard } from "@/types";
+
+export interface CanvasModePreviewDto {
+  title: string;
+  revision: CanvasVersion;
+  preview: string;
+  editors: number;
+  viewers: number;
+  active: boolean;
+}
 
 /** 持久化到后端的画布节点 */
 export interface PersistedCanvasNodeDto {
@@ -32,6 +43,10 @@ export interface PersistedCanvasNodeDto {
     frameAspect?: number | null;
     /** 服务端素材记录 ID */
     assetId?: string;
+    /** 此节点的生成结果，旧的排在前面 */
+    outputs?: NodeOutput[];
+    /** 当前结果在历史中的标识 */
+    activeOutputId?: string;
     /** 素材是否为本机上传 */
     uploaded?: boolean;
     /** 上传的文件名 */
@@ -46,8 +61,12 @@ export interface PersistedCanvasNodeDto {
     taskId?: string;
     /** 角色声音生成任务 id；声音独立于主图任务回填 */
     voiceTaskId?: string;
+    voiceError?: string;
+    storyboardSplitRunning?: boolean;
+    characterImageTaskId?: string;
     /** 本节点进行中的任务 id 集合（一次提交多个任务时才有） */
     pendingTaskIds?: string[];
+    outpaintFrom?: string;
     /** 按模型 capabilities 存的参数值（提示词、生成方式、生成参数、手动添加的参考素材） */
     params?: Record<string, unknown>;
     /** 参数里媒体字段所选素材的展示信息 */
@@ -125,7 +144,7 @@ export interface CanvasListItemDto {
   /** 封面地址，暂无封面为 null */
   coverUrl: string | null;
   /** 画布版本号 */
-  revision: number;
+  revision: CanvasVersion;
   /** 最近更新时间 */
   updatedAt: string;
 }
@@ -161,7 +180,7 @@ export interface BackendCanvasListItemDto {
   /** 画布标题 */
   title: string;
   /** 画布版本号 */
-  revision: number;
+  revision: CanvasVersion;
   /** 创建时间 */
   created_at: string;
   /** 最近更新时间 */
@@ -184,6 +203,10 @@ export interface BackendCanvasListResponseDto {
 
 /** 后端 POST /canvas 的原始响应结构。 */
 export interface BackendCanvasProjectDto {
+  /** 活跃协作会话的代数。 */
+  collaboration_epoch?: CanvasVersion;
+  /** 当前是否由实时协作协议写入。 */
+  collaboration_active?: boolean;
   /** 画布 ID，十六进制串 */
   id: string;
   /** 画布标题 */
@@ -191,7 +214,7 @@ export interface BackendCanvasProjectDto {
   /** 画布图谱 JSON */
   payload_json: unknown;
   /** 画布版本号，用于乐观锁 */
-  revision: number;
+  revision: CanvasVersion;
   /** 创建时间 */
   created_at: string;
   /** 最近更新时间 */
@@ -200,6 +223,10 @@ export interface BackendCanvasProjectDto {
 
 /** 前端使用的画布详情 */
 export interface CanvasDetailDto {
+  /** 活跃协作会话的代数。 */
+  collaborationEpoch?: CanvasVersion;
+  /** 当前是否由实时协作协议写入。 */
+  collaborationActive?: boolean;
   /** 画布 ID */
   id: string;
   /** 画布标题 */
@@ -207,7 +234,7 @@ export interface CanvasDetailDto {
   /** 画布描述，后端暂未提供为 null */
   description: string | null;
   /** 画布版本号 */
-  version: number;
+  version: CanvasVersion;
   /** 画布图谱 */
   graph: CanvasGraphDto;
   /** 创建时间 */
@@ -231,13 +258,13 @@ export interface UpdateCanvasDto {
   /** 新图谱 */
   graph?: CanvasGraphDto;
   /** 当前版本号，用于乐观锁 */
-  revision: number;
+  revision: CanvasVersion;
 }
 
 /** 保存画布图谱的参数 */
 export interface SaveCanvasGraphDto {
   /** 保存所基于的版本号 */
-  baseVersion: number;
+  baseVersion: CanvasVersion;
   /** 待保存的图谱 */
   graph: CanvasGraphDto;
 }
@@ -245,7 +272,7 @@ export interface SaveCanvasGraphDto {
 /** 保存画布图谱的结果 */
 export interface SaveCanvasGraphResponseDto {
   /** 保存后的版本号 */
-  version: number;
+  version: CanvasVersion;
   /** 保存后的更新时间 */
   updatedAt: string;
 }
@@ -273,7 +300,7 @@ export interface CanvasExportDocument {
   /** 固定为 "video-canvas/canvas" */
   format: string;
   /** 文件格式版本 */
-  version: number;
+  version: CanvasVersion;
   /** 导出时间，RFC 3339 UTC，只用于展示 */
   exportedAt: string;
   /** 导出时的应用版本，只用于排查 */
@@ -302,6 +329,14 @@ export interface BackendCanvasExportDto {
   };
 }
 
+/** 协作画布导出使用的确认版本。 */
+export interface CanvasExportVersion {
+  /** 当前协作会话代数 */
+  epoch: CanvasVersion;
+  /** 要导出的已确认版本号 */
+  revision: CanvasVersion;
+}
+
 /** 导出画布的结果 */
 export interface CanvasExportResultDto {
   /** 导出文档 */
@@ -319,7 +354,7 @@ export interface BackendCanvasImportDto {
     /** 画布标题 */
     title: string;
     /** 当前版本号 */
-    revision: number;
+    revision: CanvasVersion;
   };
   /** 导入报告 */
   report: {
@@ -346,7 +381,7 @@ export interface CanvasImportResultDto {
     /** 画布标题 */
     title: string;
     /** 当前版本号 */
-    revision: number;
+    revision: CanvasVersion;
   };
   /** 导入报告 */
   report: {

@@ -39,6 +39,7 @@ services:
     environment:
       APP_DATABASE_DSN: "host=postgres user=postgres password=root dbname=video_canvas port=5432 sslmode=disable TimeZone=Asia/Shanghai"
       APP_DATABASE_ALLOW_NEWER_SCHEMA: ${APP_DATABASE_ALLOW_NEWER_SCHEMA:-false}
+      APP_CANVAS_COLLABORATION_ENABLED: ${APP_CANVAS_COLLABORATION_ENABLED:-false}
       APP_REDIS_ENABLED: "true"
       APP_REDIS_ADDR: "redis:6379"
       APP_JWT_SECRET: "change-me-in-dev"

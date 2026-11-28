@@ -14,6 +14,7 @@ import (
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/pkg/idcodec"
+	"video-canvas/internal/pkg/ws"
 	"video-canvas/internal/provider"
 	"video-canvas/internal/repository"
 )
@@ -29,12 +30,13 @@ type CanvasShareRepo interface {
 	SharedCanvas(context.Context, uint64, uint64) (*model.CanvasProject, error)
 	SharedCanvasRevision(context.Context, uint64, uint64) (uint64, error)
 	Source(context.Context, uint64, uint64) (*model.CanvasProject, error)
+	DeliverySource(context.Context, model.CanvasDelivery) (*model.CanvasProject, error)
 	Claim(context.Context, model.CanvasDelivery) (bool, uint64, error)
 	Release(context.Context, model.CanvasDelivery) error
 	Result(context.Context, model.CanvasDelivery) (uint64, error)
 	Receipt(context.Context, uint64, uint64, string) (string, error)
 	Ready(context.Context, uint64, uint64) error
-	WithDelivery(context.Context, model.CanvasDelivery, uint64, func(repository.CanvasShareTx) (uint64, error)) error
+	WithDelivery(context.Context, model.CanvasDelivery, uint64, uint64, func(repository.CanvasShareTx) (uint64, error)) error
 }
 
 // CanvasShareAssets 提供按所有者鉴权的读取以及可回收的独立副本。
@@ -52,6 +54,7 @@ type CanvasShareService struct {
 	repo    CanvasShareRepo
 	assets  CanvasShareAssets
 	reserve CanvasDeliveryGuard
+	bus     *ws.CanvasCollaborationBus
 }
 
 // CanvasDeliveryGuard 在交付期间持有阻止 Agent 运行的租约。
@@ -60,6 +63,12 @@ type CanvasDeliveryGuard func(context.Context, uint64, uint64) (func(), error)
 // NewCanvasShareService 组装共享仓储、素材存储和 Agent 运行保护。
 func NewCanvasShareService(repo CanvasShareRepo, assets CanvasShareAssets, reserve CanvasDeliveryGuard) *CanvasShareService {
 	return &CanvasShareService{repo: repo, assets: assets, reserve: reserve}
+}
+
+// WithRoomBus attaches room invalidations to authorization and ownership changes.
+func (s *CanvasShareService) WithRoomBus(bus *ws.CanvasCollaborationBus) *CanvasShareService {
+	s.bus = bus
+	return s
 }
 
 func canvasShareError(err error) error {
@@ -94,7 +103,11 @@ func (s *CanvasShareService) Share(ctx context.Context, user, id uint64, req mod
 	if (req.Mode != "copy" && req.Mode != "transfer") || req.RequestKey == "" || req.Revision == 0 {
 		return errcode.ErrInvalidParams
 	}
-	return canvasShareError(s.deliver(ctx, model.CanvasDelivery{UserID: user, CanvasID: id, Recipient: recipient, Revision: req.Revision, RequestKey: req.RequestKey, Mode: req.Mode}))
+	err = s.deliver(ctx, model.CanvasDelivery{UserID: user, CanvasID: id, Recipient: recipient, Revision: req.Revision, RequestKey: req.RequestKey, Mode: req.Mode})
+	if err == nil && req.Mode == "transfer" {
+		s.invalidateCanvasRoom(ctx, id)
+	}
+	return canvasShareError(err)
 }
 
 // Receipt checks the original request without starting a new delivery.
@@ -111,7 +124,17 @@ func (s *CanvasShareService) Members(ctx context.Context, user, id uint64) ([]mo
 
 // Remove 撤销单个成员的授权或退出共享。
 func (s *CanvasShareService) Remove(ctx context.Context, user, id, member uint64) error {
-	return canvasShareError(s.repo.Remove(ctx, user, id, member))
+	if err := s.repo.Remove(ctx, user, id, member); err != nil {
+		return canvasShareError(err)
+	}
+	s.invalidateCanvasRoom(ctx, id)
+	return nil
+}
+
+func (s *CanvasShareService) invalidateCanvasRoom(ctx context.Context, id uint64) {
+	if s.bus != nil {
+		s.bus.Notice(ctx, ws.CanvasCollaborationNotice{CanvasID: idcodec.Encode(id)})
+	}
 }
 
 // Shared 按标题分页列出共享给用户的普通画布。
@@ -120,7 +143,11 @@ func (s *CanvasShareService) Shared(ctx context.Context, user uint64, keyword st
 }
 
 func projectedCanvas(row *model.CanvasProject) ([]byte, *shareGraph, error) {
-	raw, err := canvasdoc.ProjectShared(row.PayloadJSON, func(id string) string { return "" })
+	return projectedCanvasWith(row, canvasdoc.ProjectShared)
+}
+
+func projectedCanvasWith(row *model.CanvasProject, project func([]byte, func(string) string) ([]byte, error)) ([]byte, *shareGraph, error) {
+	raw, err := project(row.PayloadJSON, func(string) string { return "" })
 	if err != nil {
 		return nil, nil, err
 	}
@@ -140,13 +167,21 @@ func (s *CanvasShareService) Read(ctx context.Context, user, id uint64) (*model.
 	if err != nil {
 		return nil, canvasShareError(err)
 	}
-	raw, graph, err := projectedCanvas(row)
+	return canvasSharedView(row)
+}
+
+func canvasSharedView(row *model.CanvasProject) (*model.CanvasProjectView, error) {
+	return canvasSharedViewWith(row, canvasdoc.ProjectShared)
+}
+
+func canvasSharedViewWith(row *model.CanvasProject, project func([]byte, func(string) string) ([]byte, error)) (*model.CanvasProjectView, error) {
+	raw, graph, err := projectedCanvasWith(row, project)
 	if err != nil {
 		return nil, canvasShareError(err)
 	}
 	for asset, ref := range graph.assets {
 		ref.asset = &model.Asset{ID: asset}
-		ref.url = "/api/v1/canvas-media/" + idcodec.Encode(id) + "/" + idcodec.Encode(asset)
+		ref.url = "/api/v1/canvas-media/" + idcodec.Encode(row.ID) + "/" + idcodec.Encode(asset)
 	}
 	view := row.View()
 	view.PayloadJSON, err = graph.payload(raw)
@@ -167,6 +202,12 @@ func (s *CanvasShareService) ReadIfChanged(ctx context.Context, user, id, versio
 	return s.Read(ctx, user, id)
 }
 
+// CheckAccess 只校验访问关系，不读取画布正文。
+func (s *CanvasShareService) CheckAccess(ctx context.Context, user, id uint64) error {
+	_, err := s.repo.SharedCanvasRevision(ctx, user, id)
+	return canvasShareError(err)
+}
+
 // Media 复核当前授权和素材引用范围后打开文件。
 func (s *CanvasShareService) Media(ctx context.Context, user, id, asset uint64) (*provider.AssetFile, error) {
 	return s.openMedia(ctx, user, id, asset, s.assets.Open)
@@ -182,7 +223,23 @@ func (s *CanvasShareService) openMedia(ctx context.Context, user, id, asset uint
 	if err != nil {
 		return nil, canvasShareError(err)
 	}
-	_, graph, err := projectedCanvas(row)
+	return openProjectedMedia(ctx, row, asset, canvasdoc.ProjectShared, open)
+}
+
+// DownloadMedia 读取调用者当前有权查看的画布素材，并返回文件流。
+func (s *CanvasShareService) DownloadMedia(ctx context.Context, user, id, asset uint64) (*provider.AssetFile, error) {
+	row, err := s.repo.Source(ctx, user, id)
+	if errors.Is(err, repository.ErrNotFound) {
+		return s.Media(ctx, user, id, asset)
+	}
+	if err != nil {
+		return nil, canvasShareError(err)
+	}
+	return openProjectedMedia(ctx, row, asset, canvasdoc.ProjectCollaboration, s.assets.Open)
+}
+
+func openProjectedMedia(ctx context.Context, row *model.CanvasProject, asset uint64, project func([]byte, func(string) string) ([]byte, error), open func(context.Context, uint64, uint64) (*provider.AssetFile, error)) (*provider.AssetFile, error) {
+	_, graph, err := projectedCanvasWith(row, project)
 	if err != nil {
 		return nil, canvasShareError(err)
 	}
@@ -223,6 +280,11 @@ func (s *CanvasShareService) prepareAndCommit(ctx context.Context, request model
 		}
 		defer release()
 	}
+	if s.bus != nil && source.CollaborationActive && request.Mode == "transfer" {
+		s.bus.Notice(ctx, ws.CanvasCollaborationNotice{
+			CanvasID: idcodec.Encode(request.CanvasID), Epoch: source.CollaborationEpoch, TransferPending: true,
+		})
+	}
 	copies, err := s.stageAssets(ctx, request, graph)
 	if err != nil {
 		s.assets.DiscardCopies(context.WithoutCancel(ctx), copies)
@@ -243,12 +305,9 @@ func (s *CanvasShareService) prepareAndCommit(ctx context.Context, request model
 	return err
 }
 func (s *CanvasShareService) deliverySnapshot(ctx context.Context, request model.CanvasDelivery) (*model.CanvasProject, *shareGraph, []byte, error) {
-	source, err := s.repo.Source(ctx, request.UserID, request.CanvasID)
+	source, err := s.repo.DeliverySource(ctx, request)
 	if err != nil {
 		return nil, nil, nil, err
-	}
-	if source.Revision != request.Revision {
-		return nil, nil, nil, repository.ErrRevisionConflict
 	}
 	if err = s.repo.Ready(ctx, request.UserID, request.CanvasID); err != nil {
 		return nil, nil, nil, err
@@ -264,7 +323,7 @@ func (s *CanvasShareService) deliverySnapshot(ctx context.Context, request model
 	return source, graph, raw, nil
 }
 func (s *CanvasShareService) commitDelivery(ctx context.Context, request model.CanvasDelivery, source *model.CanvasProject, graph *shareGraph, raw []byte) error {
-	return s.repo.WithDelivery(ctx, request, source.CoverAssetID, func(tx repository.CanvasShareTx) (uint64, error) {
+	return s.repo.WithDelivery(ctx, request, source.CoverAssetID, source.CollaborationEpoch, func(tx repository.CanvasShareTx) (uint64, error) {
 		for _, ref := range graph.assets {
 			if ref.asset != nil {
 				if err := tx.CreateAsset(ctx, ref.asset); err != nil {

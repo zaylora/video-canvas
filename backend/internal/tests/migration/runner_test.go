@@ -2,6 +2,8 @@ package migration_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"strings"
 	"sync"
@@ -97,6 +99,57 @@ func TestRunRejectsModifiedMigration(t *testing.T) {
 	err := run(t, db, opts(fsys))
 	if err == nil || !strings.Contains(err.Error(), "0002_add_age.sql") {
 		t.Fatalf("已执行的文件被改过应报错并指出文件名，得到 %v", err)
+	}
+}
+
+func TestRunAdoptsRenamedMigrationRecord(t *testing.T) {
+	db := connect(t, newSchema(t))
+	content := "ALTER TABLE users ADD COLUMN collaboration INT"
+	fsys := files(map[string]string{
+		"0001_baseline.sql":             baselineSQL,
+		"0059_canvas_collaboration.sql": content,
+	})
+	if err := run(t, db, opts(files(map[string]string{"0001_baseline.sql": baselineSQL}))); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec("ALTER TABLE users ADD COLUMN collaboration INT").Error; err != nil {
+		t.Fatal(err)
+	}
+	checksum := sha256.Sum256([]byte(content))
+	if err := db.Exec(`INSERT INTO schema_migrations (filename, checksum, app_version, duration_ms)
+		VALUES (?, ?, ?, 0)`, "0055_canvas_collaboration.sql", hex.EncodeToString(checksum[:]), "old").Error; err != nil {
+		t.Fatal(err)
+	}
+
+	if err := run(t, db, opts(fsys)); err != nil {
+		t.Fatalf("旧迁移记录应被重编号后认领：%v", err)
+	}
+	if !hasColumn(t, db, "users", "collaboration") {
+		t.Fatal("已执行的旧迁移不应重复执行")
+	}
+}
+
+func TestRunRejectsRenamedMigrationRecordCollision(t *testing.T) {
+	db := connect(t, newSchema(t))
+	content := "ALTER TABLE users ADD COLUMN collaboration INT"
+	fsys := files(map[string]string{
+		"0001_baseline.sql":             baselineSQL,
+		"0059_canvas_collaboration.sql": content,
+	})
+	if err := run(t, db, opts(files(map[string]string{"0001_baseline.sql": baselineSQL}))); err != nil {
+		t.Fatal(err)
+	}
+	checksum := sha256.Sum256([]byte(content))
+	for _, filename := range []string{"0055_canvas_collaboration.sql", "0059_canvas_collaboration.sql"} {
+		if err := db.Exec(`INSERT INTO schema_migrations (filename, checksum, app_version, duration_ms)
+			VALUES (?, ?, ?, 0)`, filename, hex.EncodeToString(checksum[:]), "old").Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	err := run(t, db, opts(fsys))
+	if err == nil || !strings.Contains(err.Error(), "同时记录") {
+		t.Fatalf("旧名和新名同时存在时应拒绝启动，得到 %v", err)
 	}
 }
 

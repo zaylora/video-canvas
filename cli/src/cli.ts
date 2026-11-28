@@ -9,6 +9,46 @@ import { fileURLToPath } from "node:url";
 
 import { insecureBaseWarning, isInsecureRemoteBase, sameBase } from "./base.ts";
 import { APIError, normalizeBase } from "./client.ts";
+import { assetDownload } from "./commands/asset-download.ts";
+import { canvasStatus, CollaborationError } from "./commands/collaboration.ts";
+import { canvasAutomation, configureAutomation } from "./commands/collaboration-automation.ts";
+import {
+  assetLibraryList,
+  canvasAsset,
+  canvasCharacterGenerate,
+  canvasDirectorScene,
+  canvasOutput,
+  canvasStructuredNode,
+} from "./commands/collaboration-content.ts";
+import { canvasMedia } from "./commands/collaboration-media.ts";
+import { canvasTaskList } from "./commands/collaboration-tasks.ts";
+import { canvasApply, canvasOpStatus, canvasPlan } from "./commands/collaboration-plan.ts";
+import {
+  canvasComment,
+  canvasHistory,
+  canvasMention,
+  canvasUndo,
+} from "./commands/collaboration-review.ts";
+import {
+  canvasCollaborationMode,
+  canvasManage,
+  canvasMember,
+  canvasShare,
+} from "./commands/collaboration-sharing.ts";
+import { canvasPresence, canvasWatch } from "./commands/collaboration-watch.ts";
+import { storyboardJob, storyboardSplit } from "./commands/collaboration-storyboard.ts";
+import {
+  canvasEdge,
+  canvasGroup,
+  canvasNodeArrange,
+  canvasNodeDuplicate,
+  canvasNodeMove,
+  canvasNodeRead,
+  canvasNodeRefs,
+} from "./commands/collaboration-structure.ts";
+import { storyboardShot } from "./commands/collaboration-shots.ts";
+import { taskCancel } from "./commands/task.ts";
+import { agentControl, agentHistory, agentSessions } from "./commands/agent.ts";
 import {
   agentApprove,
   agentCancel,
@@ -67,8 +107,55 @@ const USAGE = `video-canvas-cli（beta）— 连镜命令行
   skill install [--to <技能目录>]                 把技能装进终端助手（默认 Claude Code，已装 Codex 的也一并装）
 
 画布（读写）
-  canvas list [--page N] [--page-size N]
+  canvas list [--scope personal|shared|all] [--page N] [--page-size N]
   canvas get <code>
+  canvas status <code>                     查看权限、协作代数和确认版本
+  canvas rename <code> --title <标题> [--revision N]
+  canvas archive <code> [--revision N]      确认后归档并撤销成员访问
+  canvas watch <code> [--since N --epoch E] [--once | --follow 成员] [--jsonl]  监听、跟随或补取确认增量
+    --comments-since <游标> --epoch E                              恢复授权评论流
+    --tasks                                                     监听拆分镜和角色音色的协作摘要
+  canvas task list <code> [--limit N]                             读取协作任务摘要
+  canvas presence <code> [--json]                              查看在线协作者
+  canvas plan <code> --input <文件> [-o <文件>]       生成协作变更计划
+  canvas apply <code> --plan <文件>                    提交计划并保留可恢复的操作记录
+  canvas resume <code> --run <操作编号>                对账先前提交的协作操作
+  canvas op status <code> <操作编号> [--epoch N]        查询本人操作收据
+  canvas node list|get <code> [节点]                  查找节点与观察版本
+  canvas node move <code> <节点> --at x,y --epoch N --revision N
+  canvas node arrange <code> <节点...> --mode row|column|grid --epoch N --revision N
+  canvas node duplicate <code> <节点> --epoch N --revision N [--at x,y]
+  canvas node refs <code> <节点> [--input 文件 --epoch N --revision N]
+  canvas edge add|rm <code> <连线> [来源节点 目标节点] --epoch N --revision N
+  canvas group add|set|rm <code> <分组> --epoch N --revision N
+  canvas comment list|add <code> --node <节点>          查看或发表节点评论
+  canvas mention list <code>                          查看提及提醒
+  canvas history list|show|copy <code> [版本]           查看活动、预览或另存版本
+  canvas undo|redo <code> --target <版本>               撤销或重做指定的当前个人操作
+  canvas collaboration enable|disable <code>          切换协作模式
+  canvas member list|role|grant <code> [成员ID]         查看成员或调整权限
+  canvas share invite|revoke|leave|copy|transfer|receipt <code>
+  canvas asset attach|replace|collect <code> <节点> --asset-id <素材>
+  canvas output list|select <code> <节点> [--output-id <结果>]
+  canvas media frame|trim <code> <节点> --epoch N --revision N -o <文件>
+  canvas media grid <code> <图片节点> --epoch N --revision N -o <目录> [--rows N --columns N | --input 文件]
+  canvas media annotate <code> <图片节点> --epoch N --revision N --input <笔画文件> -o <PNG>
+  canvas media stage <code> <来源节点> --file <文件> --source-asset ID --epoch N --revision N --op-id ID
+  canvas media attach <code> --epoch N --op-id ID
+  canvas media outpaint <code> <图片节点> --epoch N --revision N [--left PX --right PX --top PX --bottom PX] -o <PNG>
+  canvas media outpaint-submit <code> <底片节点> --source-asset ID --epoch N --revision N --model KEY --max-credits N --idempotency-key ID
+  canvas media separate-voice <code> <音频节点> --source-asset ID --epoch N --revision N --model KEY --max-credits N --idempotency-key ID
+  canvas compose <code> (--nodes 视频节点,... | --node 成片节点) --epoch E --revision N --op-id ID [--wait]
+  canvas compose-status|compose-cancel <code> --job ID --epoch E
+  canvas automation issue <code> --scope read|edit|generate --output <凭据文件> [--hours N] [--budget-credits N]
+  canvas automation list|revoke <code> [凭据 ID]
+  canvas character|director|storyboard get|set <code> <节点> [--input 文件 --revision N]
+  canvas director scene get|apply <code> <节点> [--epoch E --revision N --input 文件]
+  canvas character generate <code> <节点> --kind image|voice|image-and-voice --max-credits N
+  canvas storyboard split <code> <节点> --script-file 文件 --mode append|replace --max-credits N
+  协作生成可加 --budget-key ID --budget-credits N，跨请求共用累计积分上限
+  canvas storyboard status|wait <code> <任务>
+  canvas storyboard shot list|add|set|move|rm <code> <节点> [镜头]
   canvas create --title <标题> [--payload 文件]
   canvas import <导出文件.json>
   canvas export <code> [-o 文件] [--force]   -o 与 --output 等价；- 表示输出到 stdout；已有同名文件不覆盖，--force 才覆盖
@@ -85,6 +172,7 @@ const USAGE = `video-canvas-cli（beta）— 连镜命令行
                                         只提交差异；服务端按 revision 乐观锁写入
 
 本地素材上传（用现有登录态，无需额外权限）
+  asset download <素材ID> [--canvas <code>] -o <文件>  下载有权访问的媒体
   asset upload <文件路径>                         上传本地图片 / 视频 / 音频到素材库，
                                                   返回素材 id，可直接用于 generate 的 --ref-* 参数
 
@@ -103,16 +191,22 @@ const USAGE = `video-canvas-cli（beta）— 连镜命令行
 
 生成任务
   task get <id|task_ref>
+  task cancel <id|task_ref>
   task wait <id|task_ref> [--timeout 600] [--interval 3]
 
 画布 Agent（小镜）：把要改/要生成的事交给它，需要拍板的动作停下来等你决定
   agent run <画布编号> --message "把 S03 重新生成成 10 秒视频" [--selection 节点id,节点id]
-            [--budget 积分] [--session 会话编号] [--watch] [--interval 2] [--timeout 600]
+            [--attach 素材ID] [--budget 积分] [--session 会话编号] [--watch] [--interval 2] [--timeout 600]
+  agent sessions <画布编号>
+  agent history <会话编号> [--before 序号] [--limit N]
   agent events <会话编号> [--after 序号]      看已经发生的事（含审批条目）
   agent approve <审批编号> [--session 会话编号] [--items 0,1] [--reject] [--answer 文本]
                                         批准前会列出将批准的条目（需要 --session）；终端里还要再确认一次
   agent cancel <运行编号>
                                         只提交时打印运行编号；--watch 跟到结束或等到需要审批
+  agent interject <运行编号> --message <消息> [--attach 素材ID]
+  agent resume <运行编号> [--add-budget 积分]
+  agent undo <运行编号>
 
 短剧（只读与任务控制；建项目、改剧本、跑任务仍在网页里）
   drama list [--keyword 关键词] [--page N] [--page-size N]
@@ -145,10 +239,67 @@ async function runCanvas(ctx: Ctx, positional: string[], flags: Flags): Promise<
   const [sub, ...rest] = positional;
   const args: Args = { positional: rest, flags };
   switch (sub) {
+    case "automation":
+      return canvasAutomation(ctx, args);
     case "list":
       return canvasList(ctx, args);
     case "get":
       return canvasGet(ctx, args);
+    case "status":
+      return canvasStatus(ctx, args);
+    case "rename":
+    case "archive":
+      return canvasManage(ctx, args, sub);
+    case "watch":
+      return canvasWatch(ctx, args);
+    case "task":
+      return canvasTaskList(ctx, args);
+    case "presence":
+      return canvasPresence(ctx, args);
+    case "plan":
+      return canvasPlan(ctx, args);
+    case "apply":
+      return canvasApply(ctx, args);
+    case "resume":
+      return canvasApply(ctx, args, true);
+    case "op":
+      if (rest[0] !== "status")
+        throw new APIError(-1, "用法：canvas op status <画布> <操作编号>", 2);
+      return canvasOpStatus(ctx, { positional: rest.slice(1), flags });
+    case "comment":
+      return canvasComment(ctx, args);
+    case "mention":
+      return canvasMention(ctx, args);
+    case "history":
+      return canvasHistory(ctx, args);
+    case "undo":
+      return canvasUndo(ctx, args, false);
+    case "redo":
+      return canvasUndo(ctx, args, true);
+    case "collaboration":
+      return canvasCollaborationMode(ctx, args);
+    case "member":
+      return canvasMember(ctx, args);
+    case "share":
+      return canvasShare(ctx, args);
+    case "asset":
+      return canvasAsset(ctx, args);
+    case "output":
+      return canvasOutput(ctx, args);
+    case "media":
+      return canvasMedia(ctx, args);
+    case "character":
+      if (rest[0] === "generate") return canvasCharacterGenerate(ctx, args);
+      return canvasStructuredNode(ctx, args, sub);
+    case "director":
+      if (rest[0] === "scene")
+        return canvasDirectorScene(ctx, { positional: rest.slice(1), flags });
+      return canvasStructuredNode(ctx, args, sub);
+    case "storyboard":
+      if (rest[0] === "shot") return storyboardShot(ctx, { positional: rest.slice(1), flags });
+      if (rest[0] === "split") return storyboardSplit(ctx, args);
+      if (rest[0] === "status" || rest[0] === "wait") return storyboardJob(ctx, args);
+      return canvasStructuredNode(ctx, args, sub);
     case "create":
       return canvasCreate(ctx, args);
     case "import":
@@ -161,6 +312,10 @@ async function runCanvas(ctx: Ctx, positional: string[], flags: Flags): Promise<
       return canvasSave(ctx, args);
     case "node":
       return runCanvasNode(ctx, rest, flags);
+    case "edge":
+      return canvasEdge(ctx, args);
+    case "group":
+      return canvasGroup(ctx, args);
     case "compose":
       return canvasCompose(ctx, { positional: rest, flags });
     case "compose-status":
@@ -177,6 +332,17 @@ async function runCanvasNode(ctx: Ctx, positional: string[], flags: Flags): Prom
   const [sub, code, ...rest] = positional;
   const args: Args = { positional: [code as string, ...rest], flags };
   switch (sub) {
+    case "list":
+    case "get":
+      return canvasNodeRead(ctx, args, sub);
+    case "move":
+      return canvasNodeMove(ctx, args);
+    case "arrange":
+      return canvasNodeArrange(ctx, args);
+    case "duplicate":
+      return canvasNodeDuplicate(ctx, args);
+    case "refs":
+      return canvasNodeRefs(ctx, args);
     case "add":
       return canvasNodeAdd(ctx, args);
     case "set":
@@ -196,6 +362,8 @@ async function runTask(ctx: Ctx, positional: string[], flags: Flags): Promise<vo
   switch (sub) {
     case "get":
       return taskGet(ctx, args);
+    case "cancel":
+      return taskCancel(ctx, args);
     case "wait":
       return taskWait(ctx, args);
     default:
@@ -226,10 +394,18 @@ async function runAgent(ctx: Ctx, positional: string[], flags: Flags): Promise<v
       return agentRun(ctx, args);
     case "events":
       return agentEvents(ctx, args);
+    case "sessions":
+      return agentSessions(ctx, args);
+    case "history":
+      return agentHistory(ctx, args);
     case "approve":
       return agentApprove(ctx, args);
     case "cancel":
       return agentCancel(ctx, args);
+    case "interject":
+    case "resume":
+    case "undo":
+      return agentControl(ctx, args, sub);
     default:
       throw new APIError(-1, `未知的 agent 子命令：${sub || "（空）"}\n\n${USAGE}`, 2);
   }
@@ -323,6 +499,9 @@ async function main(argv: string[]): Promise<void> {
     process.stdout.write(`${USAGE}\n`);
     return;
   }
+  configureAutomation(ctx, flags);
+  if (ctx.automation && command !== "canvas" && command !== "generate" && command !== "task")
+    throw new APIError(-1, "自动化凭据只能访问授权的协作画布", 403);
   // 明文 http 的远程站点：令牌与内容都会裸奔，每次都提醒（本机调试地址不提醒）
   if (ctx.base && command !== "trace" && command !== "skill" && isInsecureRemoteBase(ctx.base)) {
     ctx.stderr(insecureBaseWarning(ctx.base));
@@ -341,7 +520,10 @@ async function main(argv: string[]): Promise<void> {
       case "asset": {
         const [sub, ...rest] = positional;
         if (sub === "upload") return await assetUpload(ctx, { positional: rest, flags });
-        throw new APIError(-1, `asset 子命令只支持 upload\n\n${USAGE}`, 2);
+        if (sub === "download") return await assetDownload(ctx, { positional: rest, flags });
+        if (sub === "library" && rest[0] === "list")
+          return await assetLibraryList(ctx, { positional: rest.slice(1), flags });
+        throw new APIError(-1, `asset 子命令支持 upload、download 和 library list\n\n${USAGE}`, 2);
       }
       case "canvas":
         return await runCanvas(ctx, positional, flags);
@@ -438,7 +620,7 @@ main(process.argv.slice(2)).catch((err: unknown) => {
   if (err instanceof APIError) {
     if (wantsJson) {
       process.stdout.write(
-        `${JSON.stringify({ ok: false, error: { code: err.code, message: err.message } })}\n`,
+        `${JSON.stringify({ ok: false, error: { code: err.code, message: err.message, ...(err instanceof CollaborationError && { reason: err.reason, details: err.details }) } })}\n`,
       );
     } else {
       process.stderr.write(`错误：${err.message}\n`);

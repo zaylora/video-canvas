@@ -22,12 +22,13 @@ func (AssetFolder) TableName() string { return "asset_folders" }
 // AssetLibraryItem 个人资产库的一条归属：同一条素材（assets）在该用户的库里最多一条，不复制文件。
 // 不使用外键：删除文件夹时由服务在同一事务里先删归属行再删文件夹。
 type AssetLibraryItem struct {
-	Name      string    `gorm:"size:255;not null;default:''" json:"name"`                                                                                  // 库内名称，空串沿用原始文件名
-	ID        uint64    `gorm:"primaryKey;index:idx_asset_library_user_folder,priority:4,sort:desc" json:"id"`                                             // 归属 ID
-	UserID    uint64    `gorm:"not null;uniqueIndex:uk_asset_library_user_asset,priority:1;index:idx_asset_library_user_folder,priority:1" json:"user_id"` // 所属用户
-	AssetID   uint64    `gorm:"not null;uniqueIndex:uk_asset_library_user_asset,priority:2" json:"asset_id"`                                               // 素材 ID（assets.id）
-	FolderID  *uint64   `gorm:"index:idx_asset_library_user_folder,priority:2" json:"folder_id"`                                                           // 所在文件夹；null 表示根目录
-	CreatedAt time.Time `gorm:"index:idx_asset_library_user_folder,priority:3,sort:desc" json:"created_at"`                                                // 加入时间，库内按它倒序
+	CanvasSourceAssetID *uint64   `gorm:"uniqueIndex:uk_asset_library_canvas_source,priority:2" json:"-"`
+	Name                string    `gorm:"size:255;not null;default:''" json:"name"`                                                                                                                                        // 库内名称，空串沿用原始文件名
+	ID                  uint64    `gorm:"primaryKey;index:idx_asset_library_user_folder,priority:4,sort:desc" json:"id"`                                                                                                   // 归属 ID
+	UserID              uint64    `gorm:"not null;uniqueIndex:uk_asset_library_user_asset,priority:1;uniqueIndex:uk_asset_library_canvas_source,priority:1;index:idx_asset_library_user_folder,priority:1" json:"user_id"` // 所属用户
+	AssetID             uint64    `gorm:"not null;uniqueIndex:uk_asset_library_user_asset,priority:2" json:"asset_id"`                                                                                                     // 素材 ID（assets.id）
+	FolderID            *uint64   `gorm:"index:idx_asset_library_user_folder,priority:2" json:"folder_id"`                                                                                                                 // 所在文件夹；null 表示根目录
+	CreatedAt           time.Time `gorm:"index:idx_asset_library_user_folder,priority:3,sort:desc" json:"created_at"`                                                                                                      // 加入时间，库内按它倒序
 }
 
 // TableName 表名。

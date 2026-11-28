@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { DatabaseSync, type StatementSync } from "node:sqlite";
+import { normalizeEpoch } from "../collaboration-epoch.ts";
 import { SNOWFLAKE_EPOCH_MS, createSnowflake, parseDecimal, type Snowflake } from "../ids.ts";
 import { DuplicateError, NotFoundError, StateConflictError } from "./errors.ts";
 import { MIGRATIONS, migrate } from "./migrations.ts";
@@ -63,6 +64,7 @@ function runOf(r: Row): Run {
     status: String(r.status),
     mode: String(r.mode),
     budgetCredits: num(r.budget_credits),
+    collaborationEpoch: r.collaboration_epoch ? normalizeEpoch(String(r.collaboration_epoch)) : 0,
     spentCredits: num(r.spent_credits),
     contextTokens: num(r.context_tokens),
     steps: num(r.steps),
@@ -484,8 +486,8 @@ export class AgentStore {
     try {
       const row = this.#get(
         `INSERT INTO agent_runs (id, session_id, canvas_id, user_id, status, mode, budget_credits, max_steps, prompt_version,
-           tools_hash, build_sha, harness_key, lease_until, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`,
+           tools_hash, build_sha, harness_key, lease_until, created_at, updated_at, collaboration_epoch)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`,
         this.#newId(),
         dec(in_.sessionId),
         dec(in_.canvasId),
@@ -501,6 +503,7 @@ export class AgentStore {
         in_.leaseUntil ?? 0,
         t,
         t,
+        in_.collaborationEpoch ? BigInt(normalizeEpoch(in_.collaborationEpoch)) : 0n,
       );
       return runOf(row!);
     } catch (e) {
@@ -571,6 +574,15 @@ export class AgentStore {
       dec(userId),
     );
     return row ? runOf(row) : undefined;
+  }
+
+  hasActiveSessionRun(sessionId: string): boolean {
+    return Boolean(
+      this.#get(
+        "SELECT 1 FROM agent_runs WHERE session_id = ? AND status IN ('queued','running','waiting_approval','waiting_input')",
+        dec(sessionId),
+      ),
+    );
   }
 
   /**

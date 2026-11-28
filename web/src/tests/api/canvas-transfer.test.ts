@@ -27,6 +27,14 @@ describe("api/canvas：导出与导入", () => {
     expect(result.skippedAssets).toBe(2);
   });
 
+  test("协作画布导出请求携带确认版本和会话代数", async () => {
+    get.mockResolvedValue({ document: {} });
+
+    await exportCanvas("42", undefined, { epoch: 3, revision: 17 });
+
+    expect(get.mock.calls[0]?.[1]).toEqual({ epoch: 3, revision: 17 });
+  });
+
   test("导出和导入放宽请求超时到 5 分钟（默认 2 分钟不够复制大量素材）", async () => {
     get.mockResolvedValue({ document: {} });
     post.mockResolvedValue({

@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { createBrowserRouter, Navigate, Outlet, useLocation } from "react-router";
 
 import SharedCanvasReader from "@/pages/canvas/shared-reader";
+import CollaborationPage from "@/pages/canvas/collaboration";
 import { DialogHost } from "@/components/dialog-host";
 import { WsRuntime } from "@/components/ws-runtime";
 import AdminLayout from "@/pages/admin/layout";
@@ -141,6 +142,7 @@ export const router = createBrowserRouter([
             element: <DramaWorkspace />,
           },
           { path: "canvas/:id/reader", element: <SharedCanvasReader /> },
+          { path: "canvas/:id/collaboration", element: <CollaborationPage /> },
           { path: "drama/:id/reader", element: <DramaWorkspace viewer /> },
           /** 营销创作台：全屏，与短剧工作台同级，不带首页侧栏 */
           {

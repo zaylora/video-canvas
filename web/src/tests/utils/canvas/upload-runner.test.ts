@@ -125,6 +125,22 @@ describe("上传流程：失败与重试", () => {
     expect(runner.canRetry("ghost")).toBe(false);
     expect(await runner.retry("ghost", () => {})).toBe("failed");
   });
+
+  test("切图失败后可在同一节点重新准备文件再上传", async () => {
+    const { upload, calls } = controlled();
+    const runner = createUploadRunner(upload);
+    const { log, update } = patches();
+    const tile = file();
+    runner.hold("tile");
+    runner.rememberPreparation("tile", async () => tile);
+    expect(runner.canRetry("tile")).toBe(true);
+    const pending = runner.retry("tile", update);
+    await Promise.resolve();
+    expect(calls[0]?.file).toBe(tile);
+    calls[0].ok(asset());
+    expect(await pending).toBe("done");
+    expect(log.at(-1)?.patch.assetId).toBe("7");
+  });
 });
 
 describe("上传流程：取消", () => {

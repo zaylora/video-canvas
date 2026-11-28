@@ -63,6 +63,10 @@ type NodePromptInputProps = {
   /** 提示词文本，@ 进来的素材写成 `@[名字](节点 id)` */
   value: string;
   onValueChange: (value: string) => void;
+  /** 记录组字起点并处理确认边界。 */
+  beginComposition?: (value: string) => ((confirmed: string) => void) | undefined;
+  /** 弹窗内的编辑焦点所属画布和节点。 */
+  presenceNode?: { canvasId: string; nodeId: string };
   /** 空输入时的提示 */
   placeholder?: string;
   /** 可选模型清单 */
@@ -314,6 +318,8 @@ function SubmitPill({
 export function NodePromptInput({
   value,
   onValueChange,
+  beginComposition,
+  presenceNode,
   placeholder = "写下你想要的内容",
   models,
   modelId,
@@ -457,6 +463,8 @@ export function NodePromptInput({
               ref={editorRef}
               value={value}
               onValueChange={onValueChange}
+              beginComposition={beginComposition}
+              presenceNode={presenceNode}
               placeholder={promptPlaceholder}
               disabled={promptDisabled}
               onSubmit={submit}
@@ -490,6 +498,8 @@ export function NodePromptInput({
               autoFocus
               value={value}
               onValueChange={onValueChange}
+              beginComposition={beginComposition}
+              presenceNode={presenceNode}
               placeholder={promptPlaceholder}
               disabled={promptDisabled}
               mention={mention}

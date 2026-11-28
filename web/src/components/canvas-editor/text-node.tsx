@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Position, useReactFlow } from "@xyflow/react";
 
 import { NodeCard, NodeTextBody, type NodeCardHandle } from "@/components/canvas";
@@ -9,6 +9,7 @@ import { textEditPatch } from "@/utils/canvas/text-body";
 import { useCanvasReadOnly, useSharedCanvas } from "@/utils/canvas/read-only";
 
 import { NodeOverlays, NodeOverlaysPresence } from "./node-overlays";
+import { useNodeExtensions } from "./extensions";
 import { useDragSelected } from "./overlay-gate";
 import { useMultiSelected } from "./selection-toolbar";
 import { NodeStatusLabel } from "./video-node";
@@ -40,17 +41,27 @@ export function TextCanvasNode({
 
   /** 编辑弹窗是否打开：双击正文、工具栏「放大」都走它 */
   const [editing, setEditing] = useState(false);
-  const openEditor = useCallback(() => setEditing(true), []);
+  const { beginTextEdit } = useNodeExtensions();
+  const confirmOrigin = useRef<((confirmed: string) => void) | undefined>(undefined);
   /** 生成中锁定：弹窗只能看，免得和即将回填的结果打架 */
   const readOnly = useCanvasReadOnly();
   const shared = useSharedCanvas();
   const editable = !readOnly && status !== "running";
+  const openEditor = useCallback(() => {
+    confirmOrigin.current = editable
+      ? beginTextEdit?.(id, "data.text", data.text ?? "")
+      : undefined;
+    setEditing(true);
+  }, [beginTextEdit, data.text, editable, id]);
 
   /** 弹窗关闭时写回正文：正文就是下游引用到的那份 */
   const onTextChange = useCallback(
     (draft: string) => {
       const patch = textEditPatch(data, draft);
-      if (patch) updateNodeData(id, patch);
+      if (patch) {
+        confirmOrigin.current?.(draft);
+        updateNodeData(id, patch);
+      }
     },
     [data, id, updateNodeData],
   );

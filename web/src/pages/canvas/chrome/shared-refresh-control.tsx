@@ -14,12 +14,16 @@ export function SharedRefreshControl({
   onEnabledChange,
   onIntervalChange,
   onRefresh,
+  live,
+  onLiveChange,
 }: {
   enabled: boolean;
   seconds: number;
   onEnabledChange: (enabled: boolean) => void;
   onIntervalChange: (seconds: number) => void;
   onRefresh: () => void;
+  live?: boolean;
+  onLiveChange?: (enabled: boolean) => void;
 }) {
   const group = useId();
   const [draftSeconds, setDraftSeconds] = useState(seconds);
@@ -34,7 +38,7 @@ export function SharedRefreshControl({
           render={
             <ChromeButton
               aria-label="自动刷新设置"
-              title={enabled ? `自动刷新 · ${seconds} 秒` : "不刷新"}
+              title={live ? "实时观看" : enabled ? `自动刷新 · ${seconds} 秒` : "不刷新"}
               className="rounded-l-sm data-popup-open:bg-chrome-hover"
             >
               <ChevronDown />
@@ -50,7 +54,7 @@ export function SharedRefreshControl({
                 type="radio"
                 name={group}
                 value="disabled"
-                checked={!enabled}
+                checked={!enabled && !live}
                 onChange={() => {
                   setDraftSeconds(seconds);
                   onEnabledChange(false);
@@ -64,14 +68,27 @@ export function SharedRefreshControl({
                 type="radio"
                 name={group}
                 value="automatic"
-                checked={enabled}
+                checked={enabled && !live}
                 onChange={() => onEnabledChange(true)}
                 className="accent-primary"
               />
               自动刷新
             </label>
+            {onLiveChange && (
+              <label className="hover:bg-chrome-hover flex min-h-8 cursor-pointer items-center gap-2 rounded-md px-2">
+                <input
+                  type="radio"
+                  name={group}
+                  value="live"
+                  checked={!!live}
+                  onChange={() => onLiveChange(true)}
+                  className="accent-primary"
+                />
+                实时观看
+              </label>
+            )}
           </fieldset>
-          {enabled && (
+          {enabled && !live && (
             <label className="flex items-center gap-3 px-2 py-1">
               <span className="sr-only">自动刷新间隔（秒）</span>
               <Slider

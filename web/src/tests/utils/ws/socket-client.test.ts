@@ -59,6 +59,38 @@ describe("buildWsUrl", () => {
 });
 
 describe("parseServerMessage", () => {
+  test("保留相邻的大整数协作代数及运行版本", () => {
+    const frame =
+      '{"type":"canvas.generation_progress","channel":"canvas-collaboration:fixture","data":{"canvasId":"fixture","epoch":9007199254740992,"progress":{"nodeId":"shot","runRevision":9007199254740993,"percent":47}}}';
+    expect(parseServerMessage(frame)).toMatchObject({
+      data: { epoch: "9007199254740992", progress: { runRevision: "9007199254740993" } },
+    });
+  });
+
+  test("协作进度要求有效代数、运行版本和百分比", () => {
+    const valid = {
+      type: "canvas.generation_progress",
+      channel: "canvas-collaboration:fixture",
+      data: {
+        canvasId: "fixture",
+        epoch: 3,
+        progress: { nodeId: "shot", runRevision: 5, percent: 47 },
+      },
+    };
+    expect(parseServerMessage(JSON.stringify(valid))).toEqual(valid);
+    expect(
+      parseServerMessage(JSON.stringify({ ...valid, data: { ...valid.data, epoch: 0 } })),
+    ).toBeNull();
+    expect(
+      parseServerMessage(
+        JSON.stringify({
+          ...valid,
+          data: { ...valid.data, progress: { ...valid.data.progress, percent: 101 } },
+        }),
+      ),
+    ).toBeNull();
+  });
+
   test("认识的消息通过，脏数据丢弃", () => {
     expect(parseServerMessage('{"type":"pong"}')).toEqual({ type: "pong" });
     expect(parseServerMessage('{"type":"hello","data":{"server_time":"x"}}')?.type).toBe("hello");
@@ -158,6 +190,7 @@ function setup(
   const splits: StoryboardSplitJob[] = [];
   const dramaEpisodes: DramaEpisodeEvent[] = [];
   const dramas: { drama_id: string }[] = [];
+  const resumed: boolean[] = [];
   let opens = 0;
   let tickets = 0;
   const client = new TaskSocketClient({
@@ -180,8 +213,9 @@ function setup(
     onStoryboardSplit: (job) => splits.push(job),
     onDrama: (event) => dramas.push(event),
     onDramaEpisode: (event) => dramaEpisodes.push(event),
-    onOpen: () => {
+    onOpen: (reconnected: boolean) => {
       opens += 1;
+      resumed.push(reconnected);
     },
     onState: (state) => states.push(state),
     canConnect: options.canConnect,
@@ -201,6 +235,7 @@ function setup(
     splits,
     dramaEpisodes,
     dramas,
+    resumed,
     advance,
     flush,
     opens: () => opens,
@@ -392,6 +427,7 @@ describe("TaskSocketClient", () => {
     t.sockets[2].open();
     expect(t.client.getState()).toBe("connected");
     expect(t.opens()).toBe(2);
+    expect(t.resumed).toEqual([false, true]);
   });
 
   test("收到 hello 后退避计数清零", async () => {

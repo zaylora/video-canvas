@@ -46,18 +46,22 @@ const (
 )
 
 // reservedInputKeys 是任务输入里宿主占用的键，生成参数不能重名。
-var reservedInputKeys = []string{"prompt", "op", "system", "max_tokens", MediaKeyImages, MediaKeyVideos, MediaKeyAudios}
+var reservedInputKeys = []string{"prompt", "op", "system", "max_tokens", "audio_operation", MediaKeyImages, MediaKeyVideos, MediaKeyAudios}
+
+// AudioOperationVocalSeparation identifies models that split one audio asset into two stems.
+const AudioOperationVocalSeparation = "vocal_separation"
 
 // Capabilities 是模型能力。
 type Capabilities struct {
-	Ops     []string     `json:"ops,omitempty"`     // 生成方式，仅 video / image，至少一种
-	Refs    Refs         `json:"refs"`              // 参考素材：按媒体类型配开关与上限，仅 video / image
-	Prompt  PromptSpec   `json:"prompt"`            // 提示词上限
-	Params  ParamSet     `json:"params,omitempty"`  // 生成参数：有序，书写顺序 = 画布参数面板的显示顺序
-	Context *ContextSpec `json:"context,omitempty"` // 上下文能力，仅 text / agent
-	System  string       `json:"system,omitempty"`  // 固定系统提示，仅 text，用户看不到
-	Vision  bool         `json:"vision,omitempty"`  // 能不能看图，仅 agent；不能看图的模型不会收到「看图」工具
-	Video   bool         `json:"video,omitempty"`   // 能不能理解视频画面和声音，仅 Gemini 格式的 agent
+	Ops            []string     `json:"ops,omitempty"`     // 生成方式，仅 video / image，至少一种
+	Refs           Refs         `json:"refs"`              // 参考素材：按媒体类型配开关与上限，仅 video / image
+	Prompt         PromptSpec   `json:"prompt"`            // 提示词上限
+	Params         ParamSet     `json:"params,omitempty"`  // 生成参数：有序，书写顺序 = 画布参数面板的显示顺序
+	Context        *ContextSpec `json:"context,omitempty"` // 上下文能力，仅 text / agent
+	System         string       `json:"system,omitempty"`  // 固定系统提示，仅 text，用户看不到
+	Vision         bool         `json:"vision,omitempty"`  // 能不能看图，仅 agent；不能看图的模型不会收到「看图」工具
+	Video          bool         `json:"video,omitempty"`   // 能不能理解视频画面和声音，仅 Gemini 格式的 agent
+	AudioOperation string       `json:"audio_operation,omitempty"`
 	// PromptFormat 是视频模型的提示词写法，短剧分镜据此选模板：空 = 通用，seedance，h3；仅 video
 	PromptFormat string `json:"prompt_format,omitempty"`
 }

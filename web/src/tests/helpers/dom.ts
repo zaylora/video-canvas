@@ -176,6 +176,16 @@ export async function installDom(): Promise<DomEnv> {
   };
 }
 
+export async function installStaticMotionDom(): Promise<DomEnv> {
+  const dom = await installDom();
+  const { createElement } = await import("react");
+  const { MotionConfig } = await import("motion/react");
+  return {
+    ...dom,
+    mount: (element) => dom.mount(createElement(MotionConfig, { isStatic: true }, element)),
+  };
+}
+
 /**
  * 让 base-ui 弹窗的退出动画一直不结束，定格在「正在关闭」这一刻，用来检查关闭途中弹窗里还是原来的内容。
  * jsdom 没有 getAnimations，base-ui 会立即卸载；这里补一个永不完成的动画。

@@ -1,6 +1,7 @@
 import axios from "axios";
 import { toast } from "sonner";
 import type { AxiosInstance, AxiosResponse, InternalAxiosRequestConfig } from "axios";
+import { parseCanvasVersions, stringifyCanvasVersions } from "../canvas/collaboration-version";
 import { clearSession } from "../storage/session";
 import { getToken } from "../storage/token";
 import { getErrorAction } from "./error-actions";
@@ -129,6 +130,23 @@ instance.interceptors.request.use(
   (config) => {
     const token = getToken();
     if (token) config.headers.Authorization = `Bearer ${token}`;
+    if (/^\/(?:canvas(?:\/|$)|agent\/|generation-tasks(?:\/|$))/.test(config.url ?? "")) {
+      const transform = config.transformResponse;
+      config.transformResponse = [
+        (body: unknown) => {
+          if (typeof body !== "string") return body;
+          try {
+            return parseCanvasVersions(body);
+          } catch {
+            return body;
+          }
+        },
+        ...(Array.isArray(transform) ? transform : transform ? [transform] : []),
+      ];
+      if (config.data && Object.getPrototypeOf(config.data) === Object.prototype) {
+        config.data = stringifyCanvasVersions(config.data);
+      }
+    }
     // 后台接口记一笔日志，响应拦截器里补上结果与耗时
     if (shouldLogRequest(config.url)) logStart.set(config, Date.now());
     return config;

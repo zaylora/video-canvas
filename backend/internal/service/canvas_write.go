@@ -21,14 +21,22 @@ type CanvasReader interface {
 // WriteCanvas 在最新图上执行原子写入，版本冲突最多重读重放三次；apply 必须把关联写入和 CAS 放在同一事务。
 // 调用方负责已读、幂等、撤销等业务校验；重试耗尽返回 repository.ErrRevisionConflict。
 func WriteCanvas[T any](ctx context.Context, repo CanvasReader, userID, canvasID uint64, apply func(*canvasgraph.Graph, uint64) (T, error)) (T, error) {
+	return WriteCanvasAtEpoch(ctx, repo, userID, canvasID, 0, apply)
+}
+
+// WriteCanvasAtEpoch 使用指定的协作会话重读和重放记录级修改。
+func WriteCanvasAtEpoch[T any](ctx context.Context, repo CanvasReader, userID, canvasID, epoch uint64, apply func(*canvasgraph.Graph, uint64) (T, error)) (T, error) {
 	var zero T
 	// 1. 每次重试都重新读取用户自己的画布，不能复用旧快照覆盖用户同时保存的内容。
-	for range 3 {
+	for attempt := 0; attempt < 3; attempt++ {
 		cv, err := repo.GetCanvas(ctx, userID, canvasID)
 		if errors.Is(err, repository.ErrNotFound) {
 			return zero, errcode.ErrCanvasNotFound
 		}
 		if err != nil {
+			return zero, err
+		}
+		if err := verifyWriteEpoch(cv, epoch); err != nil {
 			return zero, err
 		}
 		g, err := canvasgraph.Parse(cv.PayloadJSON)
@@ -37,15 +45,38 @@ func WriteCanvas[T any](ctx context.Context, repo CanvasReader, userID, canvasID
 		}
 		// 2. apply 负责事务边界；CAS 失败必须回滚关联行，下一次才可安全重新建卡或检查幂等。
 		out, err := apply(g, cv.Revision)
+		if err == nil {
+			return out, nil
+		}
 		if errors.Is(err, repository.ErrRevisionConflict) {
 			continue
 		}
-		if errors.Is(err, repository.ErrNotFound) {
-			return zero, errcode.ErrCanvasNotFound
-		}
-		return out, err
+		return zero, mapCanvasWriteError(err)
 	}
 	return zero, repository.ErrRevisionConflict
+}
+
+func mapCanvasWriteError(err error) error {
+	switch {
+	case errors.Is(err, repository.ErrNotFound):
+		return errcode.ErrCanvasNotFound
+	case errors.Is(err, repository.ErrCanvasCollaborationActive):
+		return errcode.ErrCanvasCollaborationActive
+	case errors.Is(err, repository.ErrCanvasCollaborationSession):
+		return errcode.ErrCanvasCollaborationSession
+	default:
+		return err
+	}
+}
+
+func verifyWriteEpoch(project *model.CanvasProject, epoch uint64) error {
+	if epoch == 0 && project.CollaborationActive {
+		return errcode.ErrCanvasCollaborationActive
+	}
+	if epoch != 0 && (!project.CollaborationActive || project.CollaborationEpoch != epoch) {
+		return errcode.ErrCanvasCollaborationSession
+	}
+	return nil
 }
 
 // CanvasPatch 是公共画布修改事件，Agent 可附带运行和改动日志标识；普通业务写入不伪造运行。

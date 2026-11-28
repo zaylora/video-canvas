@@ -85,6 +85,10 @@ function Tile({
   onAdd,
 }: TileProps) {
   const isImage = output.mediaType === "image";
+  const isAudio = output.mediaType === "audio";
+  const stemLabel =
+    output.stem === "vocals" ? "人声" : output.stem === "accompaniment" ? "伴奏" : null;
+  const selectionLabel = isAudio ? "当前音频" : "当前主图";
   const stop = (fn: () => void) => (event: React.SyntheticEvent) => {
     event.stopPropagation();
     fn();
@@ -103,8 +107,8 @@ function Tile({
       role="button"
       tabIndex={0}
       aria-pressed={current}
-      aria-label={`第 ${index + 1} 版${current ? "（当前主图）" : ""}`}
-      title={disabledReason ?? (current ? "当前主图" : "设为主图")}
+      aria-label={`${stemLabel ?? `第 ${index + 1} 版`}${current ? `（${selectionLabel}）` : ""}`}
+      title={disabledReason ?? (current ? selectionLabel : isAudio ? "设为当前音频" : "设为主图")}
       data-history-tile
       onClick={onPick}
       onDoubleClick={fullscreen ? onZoom : undefined}
@@ -121,15 +125,20 @@ function Tile({
       )}
     >
       <TileMedia output={output} />
+      {stemLabel && (
+        <span className="absolute inset-x-0 bottom-2 text-center text-xs font-medium">
+          {stemLabel}
+        </span>
+      )}
       {current &&
         (fullscreen ? (
           <span className="absolute top-2 left-2 z-10 rounded-md bg-white/90 px-2 py-0.5 text-xs font-semibold text-black">
-            主图
+            {isAudio ? "当前音频" : "主图"}
           </span>
         ) : (
           <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center gap-1.5 bg-linear-to-b from-black/55 to-transparent px-2.5 pt-2 pb-4 text-xs text-white">
             <ImageIcon className="size-3.5" />
-            当前图片
+            {isAudio ? "当前音频" : "当前图片"}
           </div>
         ))}
       <div className="absolute right-1.5 bottom-1.5 z-10 flex gap-0.5 rounded-[10px] bg-neutral-800/85 p-0.5 opacity-0 transition-opacity group-focus-within/tile:opacity-100 group-hover/tile:opacity-100 pointer-coarse:opacity-100">
@@ -159,7 +168,11 @@ function Tile({
           title="下载"
           className={TOOL_BUTTON}
           onClick={stop(
-            () => void downloadMedia(output.src, downloadName(`版本${index + 1}`, output.src)),
+            () =>
+              void downloadMedia(
+                output.src,
+                downloadName(stemLabel ?? `版本${index + 1}`, output.src),
+              ),
           )}
         >
           <Download className="size-3.5" />

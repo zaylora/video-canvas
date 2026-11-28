@@ -1,3 +1,5 @@
+import type { CanvasVersion } from "@/utils/canvas/collaboration-version";
+
 import {
   useEffect,
   useRef,
@@ -24,9 +26,9 @@ export type AgentCanvasSyncArgs = {
   /** 打开时拿到的画布（服务端的内容和版本） */
   canvas: CanvasDetailDto;
   /** 本地当前认的服务端版本 */
-  getVersion: () => number;
+  getVersion: () => CanvasVersion;
   /** 别处的改动已并进本地：把版本接到它 */
-  mergeVersion: (version: number) => void;
+  mergeVersion: (version: CanvasVersion) => void;
   /** 本地还有没存上的改动 */
   hasUnsaved: () => boolean;
   /** 最新的节点（合并后立刻更新，不等渲染） */

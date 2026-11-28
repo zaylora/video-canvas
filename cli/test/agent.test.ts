@@ -72,6 +72,67 @@ const status = (seq: number, value: string): Ev => ({
   data: { status: value },
 });
 
+test("小镜绑定当前协作代数，查看者不能创建会话或启动运行", async (context) => {
+  let role = "editor";
+  const site = await agentSite([], ({ path }) => {
+    if (path.endsWith("/collaboration"))
+      return ok({ epoch: 3, role, canvas: { id: "c1", revision: 7 } });
+  });
+  context.after(() => site.close());
+  const args = ["agent", "run", "c1", "--message", "改一下", "--budget", "10", "--json"];
+  const env = envFor(site.base);
+  const result = await runCli(args, env);
+  assert.equal(result.code, 0, result.stdout);
+  assert.equal(
+    site.requests.find(({ path }) => path.endsWith("/runs"))?.body.collaboration_epoch,
+    3,
+  );
+  role = "viewer";
+  const denied = await runCli(args, env);
+  assert.equal(denied.code, 1, denied.stdout);
+  assert.equal(JSON.parse(denied.stdout).error.reason, "permission_denied");
+  assert.equal(site.requests.filter(({ method }) => method === "POST").length, 1);
+});
+
+test("小镜读取会话历史并通过现有接口追加指令、续跑和撤销", async (context) => {
+  const site = await agentSite([], ({ path }) => {
+    if (path.endsWith("/history")) return ok({ events: [], has_more: false });
+    if (path.endsWith("/interject")) return ok(null);
+    if (path.endsWith("/resume")) return ok({ id: "r1", status: "queued" });
+    if (path.endsWith("/undo")) return ok({ revision: 8, reverted: 1, skipped: [] });
+  });
+  context.after(() => site.close());
+  const env = envFor(site.base);
+  const sessions = await runCli(["agent", "sessions", "c1", "--json"], env);
+  assert.equal(sessions.code, 0, sessions.stdout);
+  assert.deepEqual(JSON.parse(sessions.stdout).data, SESSIONS);
+  for (const command of [
+    ["history", "s1", "--before", "20", "--limit", "30"],
+    ["run", "c1", "--message", "参考这个镜头", "--attach", "9007199254740993"],
+    ["interject", "r1", "--message", "改成夜景", "--attach", "32"],
+    ["resume", "r1", "--add-budget", "20"],
+  ]) {
+    const result = await runCli(["agent", ...command, "--json"], env);
+    assert.equal(result.code, 0, result.stdout);
+  }
+  const history = site.requests.find(({ path }) => path.endsWith("/history"));
+  assert.equal(history?.query.get("before"), "20");
+  assert.equal(history?.query.get("limit"), "30");
+  assert.deepEqual(
+    site.requests.filter(({ method }) => method === "POST").map(({ body }) => body),
+    [
+      { message: "参考这个镜头", attachments: [{ asset_id: "9007199254740993" }] },
+      { message: "改成夜景", attachments: [{ asset_id: "32" }] },
+      { add_budget: 20 },
+    ],
+  );
+  if (hasPty) {
+    const undo = await runInPty(["agent", "undo", "r1"], env, "yes\n");
+    assert.equal(undo.code, 0, undo.stdout + undo.stderr);
+    assert.equal(site.requests.at(-1)?.path, "/api/v1/agent/runs/r1/undo");
+  }
+});
+
 test("agent run --session：会话不存在就报错，不新建会话也不提交运行", async () => {
   const site = await agentSite([[]]);
   try {

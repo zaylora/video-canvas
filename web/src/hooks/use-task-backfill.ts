@@ -46,8 +46,9 @@ export function useTaskBackfill(
   nodes: CanvasNode[],
   setNodes: React.Dispatch<React.SetStateAction<CanvasNode[]>>,
   canvasId: string | null = null,
+  enabled = true,
 ) {
-  const tasks = useTasksStore((state) => state.tasks);
+  const tasks = useTasksStore((state) => (enabled ? state.tasks : emptyTasks));
   const { fitView } = useReactFlow();
   const fitViewRef = useRef(fitView);
   useEffect(() => {
@@ -70,6 +71,7 @@ export function useTaskBackfill(
 
   // 每次节点或任务快照变化都过一遍；没有可回填的就什么都不做
   useEffect(() => {
+    if (!enabled) return;
     const { events } = applyBackfill(nodes, tasks);
     if (events.length === 0) return;
     setNodes((prev) => applyBackfill(prev, tasks).nodes);
@@ -99,11 +101,12 @@ export function useTaskBackfill(
                 }),
       });
     }
-  }, [nodes, tasks, setNodes, canvasId, accumulator]);
+  }, [nodes, tasks, setNodes, canvasId, accumulator, enabled]);
 
   // 打开画布只对账一次
   const initialNodesRef = useRef(nodes);
   useEffect(() => {
+    if (!enabled) return;
     let active = true;
     const ids = collectRunningTaskIds(initialNodesRef.current, useTasksStore.getState().tasks);
     if (ids.length === 0) return;
@@ -123,5 +126,7 @@ export function useTaskBackfill(
     return () => {
       active = false;
     };
-  }, [setNodes]);
+  }, [setNodes, enabled]);
 }
+
+const emptyTasks: ReturnType<typeof useTasksStore.getState>["tasks"] = {};

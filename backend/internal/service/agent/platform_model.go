@@ -35,7 +35,7 @@ func (b *AgentBridge) ProxyModelPlatform(ctx context.Context, rc RunContext, bod
 	if err := rc.validate(); err != nil {
 		return err
 	}
-	if err := b.requireAdminRun(ctx, rc); err != nil {
+	if err := b.authorizePlatformRun(ctx, rc); err != nil {
 		return err
 	}
 	if rc.ModelKey == "" {

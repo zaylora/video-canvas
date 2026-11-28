@@ -374,6 +374,21 @@ export function opDisabledHint(
   return labels.length > 0 ? `需要连接${labels.join("/")}节点` : undefined;
 }
 
+export function videoReferencePrompt(
+  caps: Capabilities | undefined,
+  op: GenerationOp | undefined,
+  hasRefs: boolean,
+): { action: string; hint: string } | undefined {
+  if (hasRefs || (op !== "i2v" && op !== "omni")) return undefined;
+  const kinds = refKindsOf(caps, op);
+  if (kinds.length === 0) return undefined;
+  if (op === "i2v") return { action: "添加参考图", hint: "可选画布图片，或上传参考图" };
+  const labels = REF_KEYS.filter((ref) => kinds.includes(ref.kind)).map((ref) =>
+    ref.label.replace("参考", ""),
+  );
+  return { action: "添加参考素材", hint: `此模型支持 ${labels.join(" / ")}，可从画布选择或上传` };
+}
+
 /**
  * 当前生成方式收不下这种上游时，换成哪种方式就收得下：优先全能参考，
  * 其次任何收这种素材的方式。已经收得下、清单没到、哪种方式都收不下，都返回 undefined（不切）。

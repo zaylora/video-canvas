@@ -1,3 +1,5 @@
+import { compareCanvasVersions, type CanvasVersion } from "@/utils/canvas/collaboration-version";
+
 import type { CanvasPatchDto } from "@/api/agent/type";
 import {
   applyChanges,
@@ -16,13 +18,13 @@ type Snapshot = { nodes: MergeNode[]; edges: MergeEdge[] };
 /** 同步控制器的依赖，都由调用方注入，方便脱离 React 测试 */
 export type AgentSyncDeps<N extends MergeNode, E extends MergeEdge> = {
   /** 打开画布时服务端的内容和版本 */
-  initial: { graph: Snapshot; version: number };
+  initial: { graph: Snapshot; version: CanvasVersion };
   /** 拉服务端最新的画布 */
-  fetchLatest: () => Promise<{ graph: Snapshot; version: number }>;
+  fetchLatest: () => Promise<{ graph: Snapshot; version: CanvasVersion }>;
   /** 本地当前认的服务端版本 */
-  getVersion: () => number;
+  getVersion: () => CanvasVersion;
   /** 别处的改动已并进本地：把版本接到它 */
-  mergeVersion: (version: number) => void;
+  mergeVersion: (version: CanvasVersion) => void;
   /** 本地还有没存上的改动 */
   hasUnsaved: () => boolean;
   /** 读本地画布（要是最新的，包括刚合并进去还没渲染的） */
@@ -47,9 +49,9 @@ export type AgentSync = {
   /** 收到 Agent 对画布的一次改动 */
   handlePatch: (patch: CanvasPatchDto) => Promise<void>;
   /** 保存撞上 409：别处的改动是 Agent 写的就自动合并，返回合并后的服务端版本；不能合并返回 null */
-  autoMerge: () => Promise<number | null>;
+  autoMerge: () => Promise<CanvasVersion | null>;
   /** 一次保存成功：这份图谱就是服务端在该版本的内容 */
-  saved: (graph: Snapshot, version: number) => void;
+  saved: (graph: Snapshot, version: CanvasVersion) => void;
 };
 
 /**
@@ -73,7 +75,7 @@ export function createAgentSync<N extends MergeNode, E extends MergeEdge>(
   };
 
   /** 基准图是服务端内容，直接套用，不需要保护用户的值 */
-  const advanceBase = (changes: GraphChange[], version: number) => {
+  const advanceBase = (changes: GraphChange[], version: CanvasVersion) => {
     const r = applyChanges(base.graph as MergeGraph<MergeNode, MergeEdge>, changes, {
       guard: false,
       makeNode: (f) => unflatten(f) as unknown as MergeNode,
@@ -96,9 +98,9 @@ export function createAgentSync<N extends MergeNode, E extends MergeEdge>(
   };
 
   /** 拉最新画布并并进本地；服务端没有比本地更新的版本返回 null */
-  const resync = async (): Promise<number | null> => {
+  const resync = async (): Promise<CanvasVersion | null> => {
     const latest = await deps.fetchLatest();
-    if (latest.version <= deps.getVersion()) return null;
+    if (compareCanvasVersions(latest.version, deps.getVersion()) <= 0) return null;
     applyRemote(diffGraph(base.graph, latest.graph));
     base = { graph: latest.graph, version: latest.version };
     deps.mergeVersion(latest.version);
@@ -110,7 +112,7 @@ export function createAgentSync<N extends MergeNode, E extends MergeEdge>(
       serial(async () => {
         touched = true;
         const version = deps.getVersion();
-        if (patch.revision_after <= version) return; // 已经包含在本地版本里
+        if (compareCanvasVersions(patch.revision_after, version) <= 0) return; // 已经包含在本地版本里
         if (patch.revision_before === version) {
           applyRemote(patch.changes);
           advanceBase(patch.changes, patch.revision_after);
@@ -128,7 +130,7 @@ export function createAgentSync<N extends MergeNode, E extends MergeEdge>(
       }),
 
     saved: (graph, version) => {
-      if (version > base.version)
+      if (compareCanvasVersions(version, base.version) > 0)
         base = { graph: { nodes: graph.nodes, edges: graph.edges }, version };
     },
   };

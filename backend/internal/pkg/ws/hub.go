@@ -15,7 +15,8 @@ import (
 
 // 连接参数默认值，可用 Option 覆盖（测试里会缩短）。
 const (
-	defaultSendQueueSize  = 64               // 每个连接的发送队列长度，满了就断开慢连接
+	defaultSendQueueSize  = 64 // 每个连接的发送队列长度，满了就断开慢连接
+	defaultSendQueueBytes = 16 << 20
 	defaultPingInterval   = 25 * time.Second // 服务端 ping 间隔
 	defaultPongWait       = 60 * time.Second // 超过这个时间没收到任何 pong/消息就断开
 	defaultWriteWait      = 10 * time.Second // 单次写的超时
@@ -36,6 +37,9 @@ var pongBytes = []byte(`{"type":"pong"}`)
 // 用户自己的 user:{id} 频道在建连时自动订阅，不经过 Authorizer。
 type Authorizer func(ctx context.Context, userID uint64, channel string) bool
 
+// RoomReaders 批量校验画布房间的版本通知接收者。
+type RoomReaders func(ctx context.Context, users []uint64, channel string) map[uint64]bool
+
 // denyAllAuthorizer 是默认授权函数：MVP 不开放任何手动订阅，
 // 协作功能上线时再注入“校验画布访问权限”的实现，避免用户订阅到别人的频道。
 func denyAllAuthorizer(context.Context, uint64, string) bool { return false }
@@ -50,6 +54,11 @@ func WithAuthorizer(a Authorizer) Option {
 			h.authorizer = a
 		}
 	}
+}
+
+// WithRoomReaders 让版本广播对同一房间的成员共用一次授权查询。
+func WithRoomReaders(readers RoomReaders) Option {
+	return func(h *Hub) { h.roomReaders = readers }
 }
 
 // WithSendQueueSize 设置每个连接的发送队列长度（默认 64）。
@@ -94,12 +103,15 @@ func WithReadLimit(n int64) Option {
 // Hub 管理所有 WebSocket 连接并实现 Broadcaster。
 // 模型：频道 → 连接集合。建连时自动订阅 user:{id}，同一用户的多个标签页各自是一个连接。
 type Hub struct {
-	authorizer    Authorizer
-	sendQueueSize int
-	pingInterval  time.Duration
-	pongWait      time.Duration
-	writeWait     time.Duration
-	readLimit     int64
+	authorizer     Authorizer
+	roomReaders    RoomReaders
+	sendQueueSize  int
+	sendQueueBytes int
+	pingInterval   time.Duration
+	pongWait       time.Duration
+	writeWait      time.Duration
+	readLimit      int64
+	canvasBus      *CanvasCollaborationBus
 
 	mu       sync.RWMutex
 	clients  map[*client]struct{}
@@ -113,14 +125,15 @@ var _ Broadcaster = (*Hub)(nil)
 // NewHub 创建 Hub。
 func NewHub(opts ...Option) *Hub {
 	h := &Hub{
-		authorizer:    denyAllAuthorizer,
-		sendQueueSize: defaultSendQueueSize,
-		pingInterval:  defaultPingInterval,
-		pongWait:      defaultPongWait,
-		writeWait:     defaultWriteWait,
-		readLimit:     defaultReadLimit,
-		clients:       make(map[*client]struct{}),
-		channels:      make(map[string]map[*client]struct{}),
+		authorizer:     denyAllAuthorizer,
+		sendQueueSize:  defaultSendQueueSize,
+		sendQueueBytes: defaultSendQueueBytes,
+		pingInterval:   defaultPingInterval,
+		pongWait:       defaultPongWait,
+		writeWait:      defaultWriteWait,
+		readLimit:      defaultReadLimit,
+		clients:        make(map[*client]struct{}),
+		channels:       make(map[string]map[*client]struct{}),
 	}
 	for _, opt := range opts {
 		opt(h)
@@ -130,13 +143,40 @@ func NewHub(opts ...Option) *Hub {
 
 // client 是一条 WebSocket 连接在 Hub 里的状态。
 type client struct {
-	hub    *Hub
-	userID uint64
-	ws     *websocket.Conn // 单元测试里可能为 nil（只测队列逻辑）
-	send   chan []byte     // 有界发送队列；只有写 goroutine 消费，不会被 close
-	done   chan struct{}   // 关闭信号，stop() 时 close
-	once   sync.Once
-	subs   map[string]struct{} // 已订阅的频道，受 hub.mu 保护
+	hub                     *Hub
+	userID                  uint64
+	ws                      *websocket.Conn // 单元测试里可能为 nil（只测队列逻辑）
+	send                    *outboundQueue
+	done                    chan struct{} // 关闭信号，stop() 时 close
+	once                    sync.Once
+	subs                    map[string]*roomSubscription
+	presenceAt              time.Time
+	presenceAuth            map[string]canvasPresenceAccess
+	presenceUsername        string
+	presenceUsernameRetryAt time.Time
+}
+
+type roomSubscription struct {
+	done                  chan struct{}
+	presenceAccessVersion uint64
+}
+
+type outboundMessage struct {
+	payload      []byte
+	subscription *roomSubscription
+	key          transientKey
+}
+
+func (message outboundMessage) deliverable() bool {
+	if message.subscription == nil {
+		return true
+	}
+	select {
+	case <-message.subscription.done:
+		return false
+	default:
+		return true
+	}
 }
 
 func (h *Hub) newClient(ws *websocket.Conn, userID uint64) *client {
@@ -144,9 +184,9 @@ func (h *Hub) newClient(ws *websocket.Conn, userID uint64) *client {
 		hub:    h,
 		userID: userID,
 		ws:     ws,
-		send:   make(chan []byte, h.sendQueueSize),
+		send:   newOutboundQueue(h.sendQueueSize, h.sendQueueBytes),
 		done:   make(chan struct{}),
-		subs:   make(map[string]struct{}),
+		subs:   make(map[string]*roomSubscription),
 	}
 }
 
@@ -165,25 +205,23 @@ func (c *client) kill() {
 }
 
 // enqueue 非阻塞地把消息放进发送队列；队列满或连接已关闭返回 false。
-func (c *client) enqueue(b []byte) bool {
+func (c *client) enqueue(message outboundMessage) bool {
 	select {
 	case <-c.done:
 		return false
 	default:
 	}
-	select {
-	case c.send <- b:
-		return true
-	default:
-		return false
-	}
+	return c.send.offer(message)
 }
 
 // enqueueOrKick 入队，队列满时断开该慢连接（客户端重连后会通过对账接口补齐状态）。
 func (c *client) enqueueOrKick(b []byte) {
-	if c.enqueue(b) {
-		return
+	if !c.enqueue(outboundMessage{payload: b}) {
+		c.kickSlowClient()
 	}
+}
+
+func (c *client) kickSlowClient() {
 	select {
 	case <-c.done: // 已经关了，无需再踢
 		return
@@ -211,15 +249,9 @@ func (h *Hub) unregister(c *client) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	delete(h.clients, c)
-	for ch := range c.subs {
-		if set := h.channels[ch]; set != nil {
-			delete(set, c)
-			if len(set) == 0 {
-				delete(h.channels, ch)
-			}
-		}
+	for channel := range c.subs {
+		c.removeSubscriptionLocked(channel)
 	}
-	c.subs = make(map[string]struct{})
 }
 
 func (h *Hub) subscribeLocked(c *client, channel string) {
@@ -229,12 +261,21 @@ func (h *Hub) subscribeLocked(c *client, channel string) {
 		h.channels[channel] = set
 	}
 	set[c] = struct{}{}
-	c.subs[channel] = struct{}{}
+	if _, room := CanvasCollaborationID(channel); room {
+		c.subs[channel] = &roomSubscription{done: make(chan struct{})}
+	} else {
+		c.subs[channel] = nil
+	}
+}
+
+type publishTarget struct {
+	*client
+	subscription *roomSubscription
 }
 
 // Publish 把消息投递给订阅了该频道的所有连接。
 // 全程不阻塞：发送队列满的连接直接被踢，没有订阅者时立即返回。
-func (h *Hub) Publish(_ context.Context, channel string, msg Message) {
+func (h *Hub) Publish(ctx context.Context, channel string, msg Message) {
 	if msg.Channel == "" {
 		msg.Channel = channel
 	}
@@ -251,15 +292,101 @@ func (h *Hub) Publish(_ context.Context, channel string, msg Message) {
 		h.mu.RUnlock()
 		return
 	}
-	targets := make([]*client, 0, len(set))
+	targets := make([]publishTarget, 0, len(set))
 	for c := range set {
-		targets = append(targets, c)
+		targets = append(targets, publishTarget{client: c, subscription: c.subs[channel]})
 	}
 	h.mu.RUnlock()
 
+	if msg.Type == TypeCanvasCollaboration {
+		h.publishCollaborationNotice(ctx, channel, targets, b, transientKey{})
+		return
+	}
+	if msg.Type == TypeCanvasProgress {
+		if notice, ok := msg.Data.(CanvasCollaborationNotice); ok && notice.Progress != nil {
+			key := transientKey{kind: msg.Type, subject: notice.Progress.NodeID}
+			h.publishCollaborationNotice(ctx, channel, targets, b, key)
+		}
+		return
+	}
+	if msg.Type == TypeCanvasCommentChanged {
+		h.publishCanvasCommentNotice(ctx, channel, targets, b)
+		return
+	}
+	if msg.Type == TypeCanvasPresence || msg.Type == TypeCanvasAttendance {
+		h.publishCanvasPresence(ctx, channel, targets, msg.Data, b)
+		return
+	}
 	for _, c := range targets {
 		c.enqueueOrKick(b)
 	}
+}
+
+func (h *Hub) publishCanvasCommentNotice(ctx context.Context, channel string, targets []publishTarget, payload []byte) {
+	if h.canvasBus == nil || h.canvasBus.editAccess == nil {
+		return
+	}
+	allowed := make(map[uint64]bool, len(targets))
+	key := transientKey{kind: TypeCanvasCommentChanged}
+	for _, target := range targets {
+		canEdit, checked := allowed[target.userID]
+		if !checked {
+			check, cancel := context.WithTimeout(ctx, 150*time.Millisecond)
+			canEdit = h.canvasBus.editAccess(check, target.userID, channel)
+			cancel()
+			allowed[target.userID] = canEdit
+		}
+		if canEdit {
+			target.enqueueRoomMessage(payload, key)
+		}
+	}
+}
+
+func (h *Hub) publishCollaborationNotice(ctx context.Context, channel string, targets []publishTarget, payload []byte, key transientKey) {
+	allowed := h.collaborationReaders(ctx, channel, targets)
+	for _, target := range targets {
+		if !allowed[target.userID] {
+			if target.unsubscribe(channel, target.subscription) {
+				target.reply(Message{Type: TypeUnsubscribed, Channel: channel})
+			}
+			continue
+		}
+		target.enqueueRoomMessage(payload, key)
+	}
+}
+
+func (target publishTarget) enqueueRoomMessage(payload []byte, key transientKey) {
+	if target.subscription == nil {
+		return
+	}
+	message := outboundMessage{payload: payload, subscription: target.subscription, key: key}
+	if !target.enqueue(message) && key == (transientKey{}) && message.deliverable() {
+		target.kickSlowClient()
+	}
+}
+
+func (h *Hub) collaborationReaders(ctx context.Context, channel string, targets []publishTarget) map[uint64]bool {
+	allowed := make(map[uint64]bool, len(targets))
+	if h.roomReaders != nil {
+		users := make([]uint64, 0, len(targets))
+		for _, target := range targets {
+			if _, present := allowed[target.userID]; !present {
+				allowed[target.userID] = false
+				users = append(users, target.userID)
+			}
+		}
+		check, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+		defer cancel()
+		return h.roomReaders(check, users, channel)
+	}
+	for _, target := range targets {
+		if _, present := allowed[target.userID]; !present {
+			check, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+			allowed[target.userID] = h.authorizer(check, target.userID, channel)
+			cancel()
+		}
+	}
+	return allowed
 }
 
 // Serve 接管一条已完成 Upgrade 的连接，直到连接断开才返回（返回时读写 goroutine 都已退出）。
@@ -273,7 +400,7 @@ func (h *Hub) Serve(ws *websocket.Conn, userID uint64) {
 		Type: TypeHello,
 		Data: map[string]any{"server_time": time.Now().Format(time.RFC3339)},
 	})
-	c.send <- hello
+	c.enqueue(outboundMessage{payload: hello})
 
 	// 2. 注册；Hub 已关闭（正在优雅退出）时直接拒绝这条连接
 	if !h.register(c) {
@@ -309,9 +436,13 @@ func (c *client) writeLoop() {
 
 	for {
 		select {
-		case b := <-c.send:
+		case <-c.send.ready:
+			message, available := c.send.pop()
+			if !available || !message.deliverable() {
+				continue
+			}
 			_ = c.ws.SetWriteDeadline(time.Now().Add(c.hub.writeWait))
-			if err := c.ws.WriteMessage(websocket.TextMessage, b); err != nil {
+			if err := c.ws.WriteMessage(websocket.TextMessage, message.payload); err != nil {
 				c.kill()
 				return
 			}
@@ -333,8 +464,9 @@ func (c *client) writeLoop() {
 
 // clientMessage 是客户端 → 服务端的消息。
 type clientMessage struct {
-	Type    string `json:"type"`
-	Channel string `json:"channel"`
+	Type    string          `json:"type"`
+	Channel string          `json:"channel"`
+	Data    json.RawMessage `json:"data"`
 }
 
 // readLoop 读客户端消息：处理 ping / subscribe / unsubscribe，同时负责读超时（心跳）。
@@ -372,16 +504,24 @@ func (c *client) handleClientMessage(ctx context.Context, data []byte) {
 	case TypePing:
 		c.enqueueOrKick(pongBytes)
 	case TypeSubscribe:
-		c.handleSubscribe(ctx, m.Channel)
+		var metadata struct {
+			Resumed bool `json:"resumed"`
+		}
+		resumed := len(m.Data) > 0 && json.Unmarshal(m.Data, &metadata) == nil && metadata.Resumed
+		c.handleSubscribe(ctx, m.Channel, resumed)
 	case TypeUnsubscribe:
 		c.handleUnsubscribe(m.Channel)
+	case TypeCanvasPresence, TypeCanvasAttendance:
+		if c.hub.canvasBus != nil {
+			c.hub.canvasBus.receivePresence(ctx, c, m.Channel, m.Data, m.Type == TypeCanvasAttendance)
+		}
 	default:
 		c.reply(Message{Type: TypeError, Data: errData(errCodeBadRequest, "不支持的消息类型")})
 	}
 }
 
 // handleSubscribe 处理订阅请求：必须通过 Authorizer 才能订阅（默认拒绝）。
-func (c *client) handleSubscribe(ctx context.Context, channel string) {
+func (c *client) handleSubscribe(ctx context.Context, channel string, resumed bool) {
 	if !validChannel(channel) {
 		c.reply(Message{Type: TypeError, Channel: channel, Data: errData(errCodeBadRequest, "频道名不合法")})
 		return
@@ -408,6 +548,12 @@ func (c *client) handleSubscribe(ctx context.Context, channel string) {
 			return
 		}
 		h.subscribeLocked(c, channel)
+		if _, canvas := CanvasCollaborationID(channel); canvas && h.canvasBus != nil {
+			h.canvasBus.joins.Add(1)
+			if resumed {
+				h.canvasBus.resumed.Add(1)
+			}
+		}
 	}
 	h.mu.Unlock()
 	c.reply(Message{Type: TypeSubscribed, Channel: channel})
@@ -423,19 +569,34 @@ func (c *client) handleUnsubscribe(channel string) {
 		c.reply(Message{Type: TypeError, Channel: channel, Data: errData(errCodeForbidden, "不能取消自己的用户频道")})
 		return
 	}
-	h := c.hub
-	h.mu.Lock()
-	if _, ok := c.subs[channel]; ok {
-		delete(c.subs, channel)
-		if set := h.channels[channel]; set != nil {
-			delete(set, c)
-			if len(set) == 0 {
-				delete(h.channels, channel)
-			}
+	c.unsubscribe(channel, nil)
+	c.reply(Message{Type: TypeUnsubscribed, Channel: channel})
+}
+
+func (c *client) unsubscribe(channel string, expected *roomSubscription) bool {
+	c.hub.mu.Lock()
+	defer c.hub.mu.Unlock()
+	current, subscribed := c.subs[channel]
+	if !subscribed || (expected != nil && current != expected) {
+		return false
+	}
+	c.removeSubscriptionLocked(channel)
+	return true
+}
+
+func (c *client) removeSubscriptionLocked(channel string) {
+	if subscription := c.subs[channel]; subscription != nil {
+		close(subscription.done)
+		c.send.purge(subscription)
+	}
+	delete(c.subs, channel)
+	delete(c.presenceAuth, channel)
+	if members := c.hub.channels[channel]; members != nil {
+		delete(members, c)
+		if len(members) == 0 {
+			delete(c.hub.channels, channel)
 		}
 	}
-	h.mu.Unlock()
-	c.reply(Message{Type: TypeUnsubscribed, Channel: channel})
 }
 
 // reply 给当前连接回一条控制消息。

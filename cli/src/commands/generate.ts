@@ -2,27 +2,13 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 
-import { APIError, errorMessage, request } from "../client.ts";
+import { APIError, errorMessage } from "../client.ts";
 import { boolFlag, intFlag, listFlag, stringFlag } from "./args.ts";
-import {
-  TERMINAL_TASK_STATUSES,
-  baseOf,
-  emit,
-  formatElapsed,
-  readJSONFile,
-  requireToken,
-} from "./shared.ts";
+import { generationBudget, submitGenerationRequest } from "./collaboration-generation.ts";
+import { TERMINAL_TASK_STATUSES, emit, formatElapsed, readJSONFile } from "./shared.ts";
 import { formatTask, waitTaskTerminal } from "./task.ts";
 import type { JSONValue } from "./shared.ts";
-import type {
-  Args,
-  Ctx,
-  FlagValue,
-  Flags,
-  GenerateItem,
-  GenerateResponse,
-  Task,
-} from "../types.ts";
+import type { Args, Ctx, FlagValue, Flags, GenerateItem, Task } from "../types.ts";
 
 const GENERATE_KINDS = new Set<string>(["image", "video", "audio", "text"]);
 
@@ -184,7 +170,7 @@ export async function generate(ctx: Ctx, args: Args): Promise<void> {
     "generate <image|video|audio|text> --model <模型key> " +
     "[--canvas <画布编号> --node <节点id>] [--prompt <提示词>] [--param 名=值]... " +
     "[--input '<json>'|@文件|-] [--ref-image <素材id>]... " +
-    "[--first-frame <素材id> [--last-frame <素材id>]] [--count 1] [--wait] [--timeout 600] [--interval 3]";
+    "[--first-frame <素材id> [--last-frame <素材id>]] [--count 1] [--max-credits N] [--wait] [--timeout 600] [--interval 3]";
   if (!kind || !GENERATE_KINDS.has(kind))
     throw new APIError(
       -1,
@@ -226,8 +212,9 @@ export async function generate(ctx: Ctx, args: Args): Promise<void> {
   const timeoutSeconds = intFlag(args.flags, "timeout", 600, { max: 86400 });
   const intervalSeconds = intFlag(args.flags, "interval", 3, { max: 3600 });
   const idempotencyKey = idempotencyKeyOf(args.flags, usage);
+  const maxCredits = intFlag(args.flags, "max-credits", undefined, { min: 0 });
+  const budget = generationBudget(args.flags);
 
-  const token = requireToken(ctx);
   // 先把参考图的语义说清楚：给了图不等于锁了首帧，模式不对会白跑一段。
   const refNote = describeRefInput(input);
   if (refNote) ctx.stderr(refNote);
@@ -235,15 +222,7 @@ export async function generate(ctx: Ctx, args: Args): Promise<void> {
   ctx.stderr(
     `幂等键：${idempotencyKey}（请求结果不确定时，加 --idempotency-key ${idempotencyKey} 重跑同一条命令，不会重复扣费）`,
   );
-  const res = await request<GenerateResponse>({
-    base: baseOf(ctx),
-    token,
-    method: "POST",
-    path: "/generation-tasks",
-    body,
-    headers: { "Idempotency-Key": idempotencyKey },
-    fetchImpl: ctx.fetchImpl,
-  });
+  const res = await submitGenerationRequest(ctx, idempotencyKey, body, maxCredits, { budget });
   const items = Array.isArray(res?.items) ? res.items : [];
   const tasks = items.map((item) => item.task).filter((task): task is Task => Boolean(task));
   const failures = items.filter((item) => item.error);

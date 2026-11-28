@@ -61,6 +61,16 @@ test("运行上下文：身份字段必须是规范的十进制字符串（数�
   }
 });
 
+test("小镜把大整数协作代数作为精确的 JSON 整数传给 Go", () => {
+  const context = { ...rc, collaboration_epoch: "9007199254740993" as const };
+  const header = encodeRunContext(context);
+  assert.match(
+    Buffer.from(header, "base64url").toString("utf8"),
+    /"collaboration_epoch":9007199254740993[},]/,
+  );
+  assert.deepEqual(decodeRunContext(header), context);
+});
+
 test("运行上下文头太大（选中的节点太多）要在本地报错，而不是等 Go 返回 400", () => {
   assert.throws(
     () =>

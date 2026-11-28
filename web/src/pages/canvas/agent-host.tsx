@@ -1,3 +1,5 @@
+import type { CanvasVersion } from "@/utils/canvas/collaboration-version";
+
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useReactFlow } from "@xyflow/react";
 import { AnimatePresence } from "motion/react";
@@ -43,26 +45,45 @@ export function useAgentHost(): AgentHost {
 export function AgentHostProvider({
   canvasId,
   children,
+  collaboration,
+  enabled = true,
 }: {
   canvasId: string;
   children: ReactNode;
+  collaboration?: { epoch: CanvasVersion; flush: () => Promise<boolean> };
+  enabled?: boolean;
 }) {
   const { getViewport } = useReactFlow();
-  const models = useAgentModels();
   const [open, setOpen] = useState(false);
-  const ctl = useAgentController({ canvasId, models: models ?? [], getViewport });
-  const toggle = useCallback(() => setOpen((current) => !current), []);
+  const [opened, setOpened] = useState(false);
+  const load = enabled && (!collaboration || opened);
+  const models = useAgentModels(load);
+  const ctl = useAgentController({
+    canvasId,
+    models: models ?? [],
+    getViewport,
+    collaboration,
+    enabled: load,
+  });
+  const toggle = useCallback(() => {
+    setOpened(true);
+    setOpen((current) => !current);
+  }, []);
   useEffect(() => {
+    if (!enabled) return;
     const onKey = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key === "/") {
         event.preventDefault();
-        setOpen((current) => !current);
+        toggle();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
-  const value = useMemo(() => ({ models, open, toggle, ctl }), [ctl, models, open, toggle]);
+  }, [enabled, toggle]);
+  const value = useMemo(
+    () => ({ models, open: enabled && open, toggle, ctl }),
+    [ctl, enabled, models, open, toggle],
+  );
   return <AgentHostContext.Provider value={value}>{children}</AgentHostContext.Provider>;
 }
 

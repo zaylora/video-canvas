@@ -44,7 +44,7 @@ export async function loadCanvasForEditing({
   removeDraft: (canvasId: string) => Promise<void>;
 }): Promise<OpenedCanvas> {
   const canvas = await getCanvas(canvasId);
-  if (!userId) return { canvas, recovery: null };
+  if (!userId || canvas.collaborationActive) return { canvas, recovery: null };
 
   const result = reconcileDraft({
     draft: await loadDraft(userId, canvasId),

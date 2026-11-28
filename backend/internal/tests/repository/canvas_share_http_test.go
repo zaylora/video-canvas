@@ -69,9 +69,13 @@ func TestCanvasShareHTTPScopedMedia(t *testing.T) {
 	if w := send("GET", canvas+"/reader?revision=1", "", 1, nil); w.Code != 200 || !strings.Contains(w.Body.String(), `"title":"owner-edit"`) || !strings.Contains(w.Body.String(), `"revision":2`) || !strings.Contains(w.Body.String(), `"payload_json"`) {
 		t.Fatal("持旧版本的查看者应收到作者保存后的投影", w.Code, w.Body.String())
 	}
+	if w := send("GET", canvas+"/reader?access_only=true", "", 1, nil); w.Code != 200 || !strings.Contains(w.Body.String(), `"unchanged":true`) || strings.Contains(w.Body.String(), `"payload_json"`) || len(w.Result().Cookies()) != 1 {
+		t.Fatal("仅校验访问权限时应续签媒体凭据且不传输画布", w.Code, w.Body.String())
+	}
 	if w := send("GET", media, "", 0, cookies[0]); w.Code != 200 || w.Body.String() != "sample" || !strings.Contains(w.Header().Get("Cache-Control"), "no-store") {
 		t.Fatal("媒体读取失败", w.Code)
 	}
+	assertCLIAssetAccess(t, send, canvas)
 	if w := send("GET", media, "", 0, cookies[0], "bytes=1-3"); w.Code != 206 || w.Body.String() != "amp" || w.Header().Get("Content-Range") != "bytes 1-3/6" {
 		t.Fatal("远程媒体分段读取失败", w.Code, w.Body.String())
 	}
@@ -106,7 +110,22 @@ func TestCanvasShareHTTPScopedMedia(t *testing.T) {
 	if w := send("GET", media, "", 0, cookies[0], "bytes=1-3"); w.Code != 404 {
 		t.Fatal("已撤权的票据仍可读", w.Code)
 	}
+	if w := send("GET", canvas+"/media/10", "", 1, nil); w.Code != 404 {
+		t.Fatal("撤权后的终端不能下载", w.Code)
+	}
 	if w := send("GET", poster, "", 0, cookies[0]); w.Code != 404 || assets.posterReads != 2 {
 		t.Fatal("已撤权的票据不应请求封面", w.Code, assets.posterReads)
+	}
+}
+
+func assertCLIAssetAccess(t *testing.T, send func(string, string, string, uint64, *http.Cookie, ...string) *httptest.ResponseRecorder, canvas string) {
+	t.Helper()
+	for _, user := range []uint64{1, 42} {
+		if w := send("GET", canvas+"/media/10", "", user, nil); w.Code != 200 || w.Body.String() != "sample" || w.Header().Get("Location") != "" {
+			t.Fatal("已授权的 CLI 应得到画布素材流", user, w.Code)
+		}
+	}
+	if w := send("GET", canvas+"/media/99", "", 1, nil); w.Code != 404 {
+		t.Fatal("画布之外的素材应拒绝", w.Code)
 	}
 }

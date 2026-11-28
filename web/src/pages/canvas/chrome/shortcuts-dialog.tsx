@@ -18,21 +18,30 @@ const SHORTCUTS: [string, string][] = [
   ["打开快捷键", "?"],
 ];
 
+const VIEW_SHORTCUTS = new Set(["放大 / 缩小", "适应画布 / 100%", "打开快捷键"]);
+
 export function ShortcutsDialog({
   open,
   onOpenChange,
+  scope = "personal",
+  canGenerate = true,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  scope?: "personal" | "editor" | "viewer";
+  canGenerate?: boolean;
 }) {
+  const shortcuts = SHORTCUTS.filter(([label]) =>
+    scope === "viewer" ? VIEW_SHORTCUTS.has(label) : canGenerate || label !== "发送生成",
+  );
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="flex max-h-[min(88svh,620px)] flex-col sm:max-w-md">
         <DialogHeader>
           <DialogTitle>快捷键</DialogTitle>
         </DialogHeader>
-        <dl className="grid grid-cols-[1fr_auto] items-center gap-x-6 gap-y-2.5 text-sm">
-          {SHORTCUTS.map(([label, keys]) => (
+        <dl className="grid min-h-0 grid-cols-[minmax(0,1fr)_minmax(0,auto)] items-center gap-x-3 gap-y-2.5 overflow-y-auto text-sm sm:gap-x-6">
+          {shortcuts.map(([label, keys]) => (
             <div key={label} className="contents">
               <dt className="text-muted-foreground">{label}</dt>
               <dd>

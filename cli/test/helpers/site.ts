@@ -20,11 +20,13 @@ export interface Recorded {
   query: URLSearchParams;
   headers: http.IncomingHttpHeaders;
   body: Json;
+  raw: string;
 }
 
 export interface Reply {
   status?: number;
   body: unknown;
+  contentType?: string;
 }
 
 export type Handler = (req: Recorded, count: number) => Reply | undefined;
@@ -48,15 +50,21 @@ export async function startSite(handler: Handler): Promise<Site> {
         path: url.pathname,
         query: url.searchParams,
         headers: req.headers,
-        body: raw ? (JSON.parse(raw) as Json) : {},
+        body:
+          raw && !req.headers["content-type"]?.startsWith("multipart/")
+            ? (JSON.parse(raw) as Json)
+            : {},
+        raw,
       };
       requests.push(recorded);
       const reply = handler(recorded, requests.length) ?? {
         status: 404,
         body: { code: 404, msg: "not found" },
       };
-      res.writeHead(reply.status ?? 200, { "content-type": "application/json" });
-      res.end(JSON.stringify(reply.body));
+      res.writeHead(reply.status ?? 200, {
+        "content-type": reply.contentType ?? "application/json",
+      });
+      res.end(Buffer.isBuffer(reply.body) ? reply.body : JSON.stringify(reply.body));
     });
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));

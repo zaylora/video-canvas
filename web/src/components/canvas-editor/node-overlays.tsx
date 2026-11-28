@@ -1,9 +1,10 @@
-import { useCallback, useState, type ReactNode } from "react";
+import { useCallback, useContext, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { NodeToolbar, Position, useStore } from "@xyflow/react";
 import { toast } from "sonner";
 
 import { addToLibrary } from "@/api/asset-library";
+import { copyCanvasAssetToLibrary } from "@/api/canvas/collaboration";
 import { FolderPickerDialog } from "@/components/assets/folder-picker-dialog";
 import { NodeActionBar } from "@/components/canvas/node-action-bar";
 import { DoodleOverlay } from "@/components/canvas/doodle-overlay";
@@ -11,6 +12,7 @@ import { GridSplitOverlay } from "@/components/canvas/grid-split-overlay";
 import { OutpaintOverlay } from "@/components/canvas/outpaint-overlay";
 import { FrameOverlay } from "@/components/canvas/frame-overlay";
 import { TrimOverlay } from "@/components/canvas/trim-overlay";
+import { VocalSeparationDialog } from "@/components/canvas/vocal-separation-dialog";
 import {
   PANEL_OFFSET,
   useMarqueeSelecting,
@@ -31,6 +33,7 @@ import { useOutpaintStore } from "@/store/outpaint";
 import { useStoryboardEditor } from "@/store/storyboard-editor";
 import { useTrimStore } from "@/store/trim";
 import type { CanvasNodeData } from "@/types";
+import { CanvasLibraryContext } from "@/utils/canvas/canvas-id";
 import { downloadMedia, downloadName } from "@/utils/canvas/download";
 import { canReplaceImage } from "@/utils/canvas/fill-upload";
 import { addNodeToLibrary, canAddToLibrary } from "@/utils/canvas/library-entry";
@@ -92,6 +95,7 @@ export function NodeOverlays({
   children?: (width: number) => ReactNode;
 }) {
   const previewNode = useNodePreview();
+  const library = useContext(CanvasLibraryContext);
   const { toolbarExtra, toolbarVisible, readOnly } = useNodeExtensions();
   const { width, shift } = usePanelPlacement(id);
   const paneBusy = usePaneBusy();
@@ -112,6 +116,7 @@ export function NodeOverlays({
   const fillActions = useFillUploadActions();
   /** 「加入资产库」的文件夹选择器是否打开 */
   const [pickingFolder, setPickingFolder] = useState(false);
+  const [vocalSource, setVocalSource] = useState<string | null>(null);
   const imageModels = useRemoteModels("image", data.kind === "image");
 
   const config = NODE_TOOLBAR[data.kind];
@@ -181,7 +186,14 @@ export function NodeOverlays({
           }
         : data.kind === "storyboard"
           ? { "edit-storyboard": () => useStoryboardEditor.getState().open(id) }
-          : undefined;
+          : data.kind === "audio"
+            ? {
+                split: () => {
+                  if (data.assetId) setVocalSource(data.assetId);
+                  else toast("音频尚未上传完成");
+                },
+              }
+            : undefined;
 
   const { src, text, label, fileName } = data;
   const onTail: Partial<Record<ToolbarTail, () => void>> = {
@@ -208,7 +220,26 @@ export function NodeOverlays({
   };
   /** 选好文件夹后加入资产库；失败（请求层已弹提示）抛出，让选择器保持打开 */
   const confirmAddToLibrary = async (folderId: string | null, name?: string) => {
-    await addNodeToLibrary(data, folderId, { addToLibrary }, name);
+    if (library && data.assetId) {
+      if (!library.allowed) {
+        toast.error("加入资产库需所有者授权");
+        throw new Error("Canvas library permission required");
+      }
+      if (!(await library.flush())) {
+        toast.error("画布尚未同步，请同步后再加入资产库");
+        throw new Error("Canvas has unsynced edits");
+      }
+      await copyCanvasAssetToLibrary(
+        library.canvasId,
+        library.epoch,
+        id,
+        data.assetId,
+        folderId,
+        name,
+      );
+    } else {
+      await addNodeToLibrary(data, folderId, { addToLibrary }, name);
+    }
     toast.success("已加入资产库");
   };
 
@@ -258,6 +289,7 @@ export function NodeOverlays({
               gate={gate}
               onAction={onAction}
               onTail={onTail}
+              libraryPermissionRequired={library?.allowed === false}
               onGridPick={startGridSplit}
               extra={toolbarExtra?.({ id, data })}
             />
@@ -273,6 +305,14 @@ export function NodeOverlays({
         assetName={data.fileName ?? ""}
         onConfirm={confirmAddToLibrary}
       />
+      {vocalSource && (
+        <VocalSeparationDialog
+          id={id}
+          data={data}
+          source={vocalSource}
+          onClose={() => setVocalSource(null)}
+        />
+      )}
       {/* 扩图出来的节点提示词是固定的，参考图只有合成图，没有可调的东西，不摆生成面板 */}
       {children && !data.uploaded && !data.outpaintFrom && data.kind !== "director" && (
         <NodeToolbar isVisible position={Position.Bottom} offset={PANEL_OFFSET}>

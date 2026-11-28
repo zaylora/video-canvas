@@ -365,7 +365,7 @@ func TestBuildASS_TimingPositionAndEscaping(t *testing.T) {
 	}
 }
 
-// 旧版 ffmpeg（如 alpine 的 6.x）不认识 -/filter_complex：应自动退回 -filter_complex_script，合成结果不变。
+// 旧版 ffmpeg（如 alpine 的 6.x）不认识 -/filter_complex：应自动退回带内联滤镜图的 -filter_complex，合成结果不变。
 func TestComposeTimeline_FallsBackToFilterComplexScript(t *testing.T) {
 	needFFmpeg(t)
 	ffmpegPath, err := exec.LookPath("ffmpeg")
@@ -373,7 +373,7 @@ func TestComposeTimeline_FallsBackToFilterComplexScript(t *testing.T) {
 		t.Skip("没有 ffmpeg")
 	}
 	dir := t.TempDir()
-	// 包装脚本：遇到 -/filter_complex 就按旧版报「不认识的选项」，其余原样交给真 ffmpeg；同时把 -filter_complex_script 当 -filter_complex_script 用
+	// 包装脚本：遇到 -/filter_complex 就按旧版报「不认识的选项」，其余原样交给真 ffmpeg。
 	wrapper := filepath.Join(dir, "ffmpeg6")
 	script := "#!/bin/sh\nfor a in \"$@\"; do\n  if [ \"$a\" = \"-/filter_complex\" ]; then echo \"Unrecognized option '/filter_complex'.\" >&2; exit 1; fi\ndone\nexec " + ffmpegPath + " \"$@\"\n"
 	if err := os.WriteFile(wrapper, []byte(script), 0o700); err != nil {

@@ -97,7 +97,7 @@ func (b *AgentBridge) PrepareRun(ctx context.Context, rc RunContext, req Prepare
 	if err := rc.validate(); err != nil {
 		return nil, err
 	}
-	if err := b.requireAdminRun(ctx, rc); err != nil {
+	if err := b.authorizePlatformRun(ctx, rc); err != nil {
 		return nil, err
 	}
 	if rc.Mode == model.AgentModeDrama {

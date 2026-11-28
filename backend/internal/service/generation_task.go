@@ -10,6 +10,7 @@ import (
 
 	"video-canvas/internal/config"
 	"video-canvas/internal/model"
+	"video-canvas/internal/pkg/idcodec"
 	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/pkg/ws"
 	"video-canvas/internal/provider"
@@ -122,6 +123,7 @@ type GenerationTaskService struct {
 	covers       CanvasCoverSetter
 	nodeBackfill CanvasNodeBackfiller
 	observer     GenerationTaskObserver
+	canvasBus    *ws.CanvasCollaborationBus
 
 	validateInput func(kind string, caps modelcfg.Capabilities, input map[string]any) (map[string]any, []modelcfg.FieldError)
 	now           func() time.Time
@@ -161,6 +163,11 @@ func NewGenerationTaskService(deps GenerationTaskDeps, opts ...GenerationTaskOpt
 func (s *GenerationTaskService) SetCanvasNodeBackfill(backfill CanvasNodeBackfiller) {
 	// 与观察者一样是初始化后注入：画布仓储晚于任务服务创建。
 	s.nodeBackfill = backfill
+}
+
+// SetCanvasCollaborationBus 绑定任务提交后的协作版号通知。
+func (s *GenerationTaskService) SetCanvasCollaborationBus(bus *ws.CanvasCollaborationBus) {
+	s.canvasBus = bus
 }
 
 // SetTaskObserver 在初始化时绑定关联业务观察者，必须在接收请求和启动队列前调用。
@@ -221,6 +228,10 @@ func (s *GenerationTaskService) publish(ctx context.Context, t *model.Generation
 		Channel: channel,
 		Data:    taskView(t),
 	})
+	if s.canvasBus != nil && t.CanvasProjectID != nil && t.CollaborationAppliedRevision > 0 {
+		s.canvasBus.Notice(ctx, ws.CanvasCollaborationNotice{CanvasID: idcodec.Encode(*t.CanvasProjectID), Epoch: t.CollaborationEpoch, Revision: t.CollaborationAppliedRevision})
+	}
+	s.publishCanvasGenerationProgress(ctx, t)
 	if s.observer != nil {
 		if err := s.observer.OnTaskChanged(ctx, t); err != nil {
 			// 任务与积分已提交，不能回滚或重标为失败；关联业务读取时按任务表重新对账。

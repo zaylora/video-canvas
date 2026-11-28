@@ -27,6 +27,7 @@ export interface Credentials {
 
 /** 所有命令共用的执行上下文。 */
 export interface Ctx {
+  automation?: { base: string; canvasId: string; token: string };
   env: NodeJS.ProcessEnv;
   creds: Credentials | null;
   credsPath: string;
@@ -51,6 +52,7 @@ export interface Ctx {
 
 /** 节点上一版产物。 */
 export interface NodeOutput {
+  stem?: "vocals" | "accompaniment";
   id?: string | number;
   assetId?: string;
   [key: string]: unknown;
@@ -101,12 +103,17 @@ export interface Graph {
   [key: string]: unknown;
 }
 
+export type WireVersion = number | string;
+
 export interface Canvas {
   id: string;
   title: string;
-  revision: number;
+  revision: WireVersion;
   updated_at?: string;
   payload_json?: Graph;
+  collaboration_active?: boolean;
+  collaboration_epoch?: WireVersion;
+  collaboration_role?: "owner" | "editor" | "viewer";
   [key: string]: unknown;
 }
 
@@ -138,6 +145,7 @@ export interface OpsResult {
 // ---------------------------------------------------------------------------
 
 export interface TaskOutput {
+  stem?: "vocals" | "accompaniment";
   url?: string;
   [key: string]: unknown;
 }
@@ -238,12 +246,10 @@ export interface ComposeJob {
   duration_ms?: number;
   result_asset_id?: number | string;
   result_asset_url?: string;
+  result_node?: string;
   error?: string | null;
   [key: string]: unknown;
 }
-
-/** compose-status 按节点查时额外带「素材变了、成片过期」。 */
-export type ComposeActive = ComposeJob & { stale?: boolean };
 
 /** 推导出来的一段素材。 */
 export interface ComposeRow {

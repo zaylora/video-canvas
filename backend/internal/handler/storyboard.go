@@ -41,7 +41,7 @@ func (h *StoryboardHandler) Split(c *gin.Context) {
 
 // Job 读任务当前状态（断线对账）：别人的任务按不存在处理。
 func (h *StoryboardHandler) Job(c *gin.Context) {
-	_, ok := CanvasPathID(c)
+	id, ok := CanvasPathID(c)
 	if !ok {
 		return
 	}
@@ -50,7 +50,7 @@ func (h *StoryboardHandler) Job(c *gin.Context) {
 		response.Fail(c, errcode.ErrInvalidParams.WithMsg("job id 格式错误"))
 		return
 	}
-	res, err := h.svc.Job(c.Request.Context(), currentUserID(c), jobID)
+	res, err := h.svc.Job(c.Request.Context(), currentUserID(c), id, jobID)
 	if err != nil {
 		response.Fail(c, err)
 		return

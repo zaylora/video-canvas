@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useReactFlow } from "@xyflow/react";
+import { useReactFlow, useStore } from "@xyflow/react";
 import { toast } from "sonner";
 
 import { uploadAsset } from "@/api/asset";
+import { useNodeExtensions } from "@/components/canvas-editor/extensions";
 import { useDirectorStore } from "@/store/director";
 import type { CanvasEdge, CanvasNode, DirectorScene } from "@/types";
 import { renderThumbnail } from "@/utils/director/render";
-import { sceneSizeError } from "@/utils/director/scene";
+import { canonicalStructuredValue } from "@/utils/canvas/collaboration-graph";
+import { createDefaultScene, sceneSizeError } from "@/utils/director/scene";
 
 /** 停手多久才把场景写回节点（毫秒） */
 const WRITE_DELAY = 500;
@@ -14,13 +16,27 @@ const WRITE_DELAY = 500;
 /** 场景写回节点的状态：已写入、等待写入、太大写不进去 */
 export type DirectorSaveStatus = "saved" | "saving" | "too-large";
 
+function sameSceneContent(first: DirectorScene | undefined, second: DirectorScene | undefined) {
+  if (!first || !second) return first === second;
+  return (
+    JSON.stringify(canonicalStructuredValue({ ...first, thumb: undefined })) ===
+    JSON.stringify(canonicalStructuredValue({ ...second, thumb: undefined }))
+  );
+}
+
 /**
  * 编辑器里的场景自动写回导演台节点的 data.scene（随画布自动保存落库，设计稿 §7）。
  * 停手 500ms 写一次；超过体积上限时不写并提示。缩略图由节点保管，写场景时保留节点上现有的缩略图。
  * @returns status 给顶栏显示；finish 在关闭编辑器时调用：立刻写入，改过的话再渲染并上传缩略图
  */
 export function useDirectorSync(nodeId: string) {
-  const { updateNodeData } = useReactFlow<CanvasNode, CanvasEdge>();
+  const { getNode, updateNodeData } = useReactFlow<CanvasNode, CanvasEdge>();
+  const { beginSceneEdit } = useNodeExtensions();
+  const received = useStore(
+    (state) => (state.nodeLookup.get(nodeId)?.data as CanvasNode["data"] | undefined)?.scene,
+  );
+  const origin = useRef<ReturnType<NonNullable<typeof beginSceneEdit>>>(undefined);
+  const applyingRemote = useRef(false);
   const [status, setStatus] = useState<DirectorSaveStatus>("saved");
   const timer = useRef<number | null>(null);
   const latest = useRef<DirectorScene | null>(null);
@@ -38,14 +54,45 @@ export function useDirectorSync(nodeId: string) {
       toast.error(error, { id: "director-scene-size" });
       return;
     }
-    updateNodeData(nodeId, (node) => ({ scene: { ...scene, thumb: node.data.scene?.thumb } }));
+    const current = getNode(nodeId)?.data.scene;
+    const next = { ...scene, thumb: current?.thumb };
+    origin.current?.(next);
+    updateNodeData(nodeId, { scene: next });
     setStatus("saved");
-  }, [nodeId, updateNodeData]);
+  }, [getNode, nodeId, updateNodeData]);
+
+  useEffect(() => {
+    if (!beginSceneEdit || latest.current) return;
+    const store = useDirectorStore.getState();
+    if (store.nodeId !== nodeId) return;
+    origin.current = beginSceneEdit(nodeId, received);
+    const next = received ?? createDefaultScene();
+    if (sameSceneContent(store.scene ?? undefined, next)) return;
+    applyingRemote.current = true;
+    useDirectorStore.setState({
+      scene: next,
+      past: [],
+      future: [],
+      selectedId: null,
+      selectedKey: null,
+      pending: {},
+      gestureBase: null,
+      playing: false,
+      t: Math.min(store.t, next.duration),
+    });
+    applyingRemote.current = false;
+  }, [beginSceneEdit, nodeId, received]);
 
   useEffect(
     () =>
       useDirectorStore.subscribe((state, prev) => {
-        if (state.nodeId !== nodeId || !state.scene || state.scene === prev.scene) return;
+        if (
+          applyingRemote.current ||
+          state.nodeId !== nodeId ||
+          !state.scene ||
+          state.scene === prev.scene
+        )
+          return;
         if (prev.nodeId !== nodeId) return;
         latest.current = state.scene;
         changed.current = true;
@@ -81,7 +128,7 @@ export function useDirectorSync(nodeId: string) {
           new File([blob], "director-thumb.jpg", { type: "image/jpeg" }),
         );
         updateNodeData(nodeId, (node) =>
-          node.data.scene
+          node.data.scene && sameSceneContent(node.data.scene, scene)
             ? { scene: { ...node.data.scene, thumb: { assetId: asset.id, url: asset.url } } }
             : {},
         );

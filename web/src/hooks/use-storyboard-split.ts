@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useContext, useEffect, useRef } from "react";
 import { useReactFlow, useStore } from "@xyflow/react";
 import { toast } from "sonner";
 
@@ -13,7 +13,7 @@ import {
   type SplitState,
 } from "@/store/storyboard-split";
 import type { CanvasEdge, CanvasNode } from "@/types";
-import { useCurrentCanvasId } from "@/utils/canvas/canvas-id";
+import { CanvasGenerationContext, useCurrentCanvasId } from "@/utils/canvas/canvas-id";
 import { ApiError } from "@/utils/requests/request";
 import { emptyStoryboard, normalizeStoryboard } from "@/utils/storyboard/shots";
 import { forgetSplit, recallSplit, rememberSplit } from "@/utils/storyboard/split-memory";
@@ -58,20 +58,38 @@ const SPLIT_JOB_NOT_FOUND = 30017;
  */
 export function useStoryboardSplitAction(id: string) {
   const canvasId = useCurrentCanvasId();
+  const collaboration = useContext(CanvasGenerationContext);
   const { getNode, getNodes, getEdges } = useReactFlow<CanvasNode, CanvasEdge>();
 
   const run = useCallback(
     async (mode: "replace" | "append") => {
       const split = useStoryboardSplit.getState();
-      if (!canvasId || split.stateOf(id).phase === "running") return;
+      if (
+        collaboration?.canGenerate === false ||
+        !canvasId ||
+        split.stateOf(id).phase === "running"
+      )
+        return;
+      if (getNode(id)?.data.storyboardSplitRunning) return;
       const scripts = upstreamScripts(id, getNodes(), getEdges());
       if (!scripts.script) return;
       split.start(id, mode);
       try {
+        const revision = await collaboration?.confirmGeneration(id, "storyboard-split", {
+          script: scripts.script.trim(),
+          mode,
+        });
+        if (collaboration && !revision) {
+          split.fail(id, "画布修改尚未同步，请稍后重试");
+          return;
+        }
         const job = await splitStoryboard(canvasId, {
           node_id: id,
           script: scripts.script,
           model: split.model,
+          ...(collaboration && revision
+            ? { mode, collaboration: { epoch: collaboration.epoch, revision } }
+            : {}),
         });
         // 推送比提交的响应先到时结果已经写回，不能再回头记一条永远等不到结果的任务
         if (!isSplitSettled(job.id)) rememberSplit(canvasId, id, { jobId: job.id, mode });
@@ -89,21 +107,22 @@ export function useStoryboardSplitAction(id: string) {
         toast.error(`拆分镜失败：${reason}`);
       }
     },
-    [canvasId, getEdges, getNodes, id],
+    [canvasId, collaboration, getEdges, getNode, getNodes, id],
   );
 
   const trigger = useCallback(() => {
+    if (collaboration?.canGenerate === false) return;
     const existing = getNode(id)?.data.storyboard?.shots.length ?? 0;
     if (existing > 0) useStoryboardSplit.getState().askOverwrite(id, existing);
     else void run("replace");
-  }, [getNode, id, run]);
+  }, [collaboration, getNode, id, run]);
 
   const retry = useCallback(() => {
     const state = useStoryboardSplit.getState().stateOf(id);
     if (state.phase === "failed") void run(state.mode);
   }, [id, run]);
 
-  return { run, trigger, retry };
+  return { run, trigger, retry, collaboration };
 }
 
 /** 节点上记着的任务只在 id 对得上时才算「这条任务」，免得旧任务的收尾带走新任务的记录 */
@@ -129,12 +148,18 @@ const storyboardNodeIds = (nodes: CanvasNode[]) =>
  */
 export function useStoryboardSplitSync() {
   const canvasId = useCurrentCanvasId();
+  const collaboration = useContext(CanvasGenerationContext);
   const { getNode, getNodes, updateNodeData } = useReactFlow<CanvasNode, CanvasEdge>();
   const history = useCanvasHistoryContext();
   const nodeIds = useStore((state) => storyboardNodeIds(state.nodes as CanvasNode[]));
 
   const apply = (job: StoryboardSplitJob) => {
-    if (!canvasId || isSplitSettled(job.id)) return;
+    if (
+      !canvasId ||
+      (job.collaboration_epoch ?? 0) !== (collaboration?.epoch ?? 0) ||
+      isSplitSettled(job.id)
+    )
+      return;
     const split = useStoryboardSplit.getState();
     const id = job.node_id;
     const node = getNode(id);
@@ -163,6 +188,11 @@ export function useStoryboardSplitSync() {
       return;
     }
 
+    if (collaboration) {
+      split.dismiss(id);
+      void useCreditsStore.getState().refresh();
+      return;
+    }
     const incoming = normalizeStoryboard({ shots: job.shots ?? [] }).shots;
     const existing = node.data.storyboard ?? emptyStoryboard();
     const shots = mode === "replace" ? incoming : [...existing.shots, ...incoming];
@@ -240,7 +270,14 @@ export function useStoryboardSplitSync() {
 export function useStoryboardSplitUi(id: string) {
   const scripts = useUpstreamScripts(id);
   const state = useSplitStateOf(id);
-  const { trigger, run, retry } = useStoryboardSplitAction(id);
-  const reason = splitDisabledReason(scripts.hasScript, !scripts.script, state.phase);
-  return { state, reason, busy: state.phase === "running", trigger, run, retry };
+  const { trigger, run, retry, collaboration } = useStoryboardSplitAction(id);
+  const remoteBusy = useStore(
+    (store) => store.nodeLookup.get(id)?.data.storyboardSplitRunning === true,
+  );
+  const busy = state.phase === "running" || remoteBusy;
+  const reason =
+    collaboration?.canGenerate === false
+      ? "没有协作生成权限"
+      : splitDisabledReason(scripts.hasScript, !scripts.script, busy ? "running" : state.phase);
+  return { state, reason, busy, trigger, run, retry };
 }

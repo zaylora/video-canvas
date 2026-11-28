@@ -1,6 +1,6 @@
 # vc 命令全集（参数 · 默认值 · 返回结构）
 
-按 `vc --help` 与站点 `/cli/docs` 对齐（成片合成命令暂时不可用，这里不再列出），章节顺序与 SKILL.md 的业务主线一致，方便按阶段查。
+按 `vc --help` 与站点 `/cli/docs` 对齐，章节顺序与 SKILL.md 的业务主线一致，方便按阶段查。
 **这里不写具体模型 key、站点域名、画布编号**：那些每次都不一样，现场用 `model list` / `whoami` 取。
 
 所有命令都吃全局选项：
@@ -63,9 +63,9 @@
 
 本地素材上传：
 
-| 命令             | 参数         | 返回                                                |
-| ---------------- | ------------ | --------------------------------------------------- |
-| `asset upload`   | `<文件路径>` | 素材视图（`id` / `kind` / `byte_size` / `file_name` 等） |
+| 命令           | 参数         | 返回                                                     |
+| -------------- | ------------ | -------------------------------------------------------- |
+| `asset upload` | `<文件路径>` | 素材视图（`id` / `kind` / `byte_size` / `file_name` 等） |
 
 一次传一个文件；路径不存在、是目录、空文件或超过 200MB 都在本地拒绝（退出码 2）。复用现有 JWT，无额外权限；
 服务端按文件头嗅探真实类型、归属到当前账号。返回的 `id` 是纯数字，直接用于 `generate --ref-*` 与首尾帧参数。
@@ -126,14 +126,65 @@ generate <image|video|audio|text> --model <模型key>
 节点级编辑的确认流程：读当前图 → 逐行列出要改什么 → 等 `yes` → 带读到的 `revision` 提交（期间被改则 409）。
 `--json` 与非交互终端一律拒绝；脚本批量改走 `canvas graph` + `canvas save --revision`（只增改、不删节点时无需确认）。
 
+### 实时协作
+
+`vc canvas list --scope shared` 查找受邀画布。`vc canvas status <画布>` 查看权限和确认版本。活跃协作画布的终端改动通过 `vc canvas node` 或 `vc canvas plan/apply` 提交。`plan --input` 接收 `{"changes":[...]}`，计划文件由 `-o` 写出。不要对活跃协作画布调用 `canvas save`。
+
+`vc canvas watch <画布> --jsonl` 输出快照、权限、已确认变更及在线名单变化。通过 `--epoch E --since N` 恢复游标，只用 `snapshot` 或 `change` 事件推进游标。`vc canvas presence <画布> --json` 采样其他在线成员。`watch --follow <用户名或成员ID>` 才会输出该队友明确共享的视角及选区。`vc canvas op status <画布> <操作>` 查询本人收据，`vc canvas resume <画布> --run <操作>` 核对后按需重试原操作。
+
+站点开放 `comments-replay` 时，所有者和编辑者可持续读取 `comment` 和 `comment-cursor`。保存最近的 `comment-cursor.data.cursor` 并使用 `--comments-since <游标> --epoch E` 恢复评论，或用 `--comments-since 0` 从当前代数首条可见评论开始。评论游标独立于图谱版本。
+
+`generation-progress` 只用于显示已确认的节点运行进度。读取任务的最终状态时使用 `change` 或 `snapshot`。
+
+`vc generate … --canvas <画布> --node <节点> --max-credits N` 使用服务端检查的本次积分上限。重试沿用完整参数和原幂等键。`vc asset library list`、`vc canvas asset attach/replace/collect`、`vc canvas output list/select` 可完成素材挂载与结果选择。结构化编辑使用 `canvas character/director/storyboard get/set`，更新时指定观察版本。
+
+多个协作生成与自动拆分镜任务可共用 `--budget-key <编号> --budget-credits N`。上限绑定当前账号、画布和协作代数，并与每次请求的 `--max-credits` 同时生效。服务端统计在途预留及已结算用量。
+
+脚本可通过 `VC_AUTOMATION_CREDENTIALS` 使用用户在终端签发的画布专用凭据文件。`canvas automation issue <画布> --scope read|edit --output <文件> [--hours N]` 签发，`canvas automation list|revoke` 管理本人签发的凭据。凭据用于受限图谱读取、增量回放、收据和普通编辑。脚本需在原站点与画布使用凭据文件，并保护文件和密钥内容。
+
+多批计划的输入使用 `batches`，每批包含 `id`、`changes` 和可选的 `after`。按依赖顺序声明批次，部分成功时从 `error.details.runId` 取得运行编号并传给 `canvas resume --run`。
+
+`vc canvas storyboard shot list/add/set/move/rm` 按稳定 ID 操作镜头，写入需要列表返回的 `--epoch` 和 `--revision`。`vc canvas storyboard split <画布> <节点> --script-file <文件> --mode append --max-credits N` 提交拆分镜，用 `canvas storyboard status/wait <画布> <任务>` 检查状态。角色形象和独立音色使用 `canvas character generate --kind image|voice`，指定模型、提示词和积分上限。
+
+`vc canvas director scene get <画布> <节点>` 读取导演台场景及其版本。`vc canvas director scene apply <画布> <节点> --epoch E --revision N --input edit.json` 提交对象变更。示例 `{"action":"set","collection":"props","id":"wall","fields":{"x":4}}`。集合可用 `characters`、`props` 或 `cameras`，动作可用 `add`、`set` 或 `rm`。删除需要确认，镜头关键帧以对象的 `keys` 字段更新。
+
+`canvas character generate --kind image-and-voice` 依次提交两个任务，分别使用 `--image-model`、`--image-input <JSON文件>`、`--voice-model`、`--voice-input <JSON文件>` 和共享的 `--max-credits`。`--image-max-credits` 指定图像分配额度，余量用于音色。重启后保留原参数和 `--idempotency-key`。`canvas node list/get/move`、`canvas edge add/rm`、`canvas group add/set/rm` 用于图结构操作，写入时携带观察版本和代数。
+
+`vc asset download <素材ID> [--canvas <画布>] -o <文件>` 下载有权访问的媒体。画布素材须指定画布编号，输出路径须为新文件。
+
+`canvas node refs <画布> <节点>` 查看连线和手选参考。替换手选参考时提供 `--input`、`--epoch`、`--revision`，输入如 `{"images":[{"assetId":"123"}]}`。`canvas node duplicate` 复制文本和媒体节点的配置与入边。`canvas node arrange <画布> <节点...> --mode row|column|grid` 整理所选节点。两者都需要观察版本与代数。
+
+`canvas media frame` 用 `--which first|last` 或 `--at-ms <毫秒>` 抽帧为 PNG。`canvas media trim` 用 `--from-ms` 和 `--to-ms` 修剪为视频 MP4 或音频 M4A。两个命令需要本机 FFmpeg、明确的画布和节点、`--epoch`、`--revision` 以及新建的 `-o` 本地路径。结果自带来源素材和版本。
+
+`canvas media grid` 将授权图片切成 PNG 并写入 `-o` 指定的新目录。默认 3×3，可用 `--rows N --columns N` 均分，或用 `--input` 指定 `{"xs":[0.3],"ys":[0.75]}` 格式的比例切线。需要 FFmpeg 和明确的 `--epoch` 与 `--revision`。
+
+`canvas media annotate` 将 `--input` 笔画文件画在已确认的授权图片上。格式为 `{"strokes":[{"color":"#FF0000","width":3,"points":[[0.25,0.5],[0.75,0.5]]}]}`，左上角为 `[0,0]`，右下角为 `[1,1]`，宽度按原图像素计算。需要本机 FFmpeg，传入 `--epoch`、`--revision` 和尚未存在的 `-o` PNG 路径。
+
+`canvas media stage <画布> <来源节点> --file <文件> --source-asset ID --epoch E --revision N --op-id ID` 暂存加工文件。使用加工结果中的来源素材 ID 和观察版本。`canvas media attach <画布> --epoch E --op-id ID` 原子确认素材、节点和来源连线。挂载超时可用同一操作编号重试。未消费的产物一小时后进入回收。
+
+`canvas media outpaint` 先在本机生成透明扩图底片。用 `canvas media stage` 和 `canvas media attach` 确认底片节点，再用 `canvas media outpaint-submit` 按模型能力提交图生图任务。扩图任务仍走协作版本、生成授权、预算和幂等键。
+
+`canvas compose <画布> --nodes <节点1,节点2,...> --epoch E --revision N --op-id ID [--wait]` 以指定顺序合成 1–24 段视频。也可用 `--node <成片节点>` 按当前上游顺序取片段。用 `task get|wait|cancel <任务> --canvas <画布> --epoch E` 恢复查询和控制。提交结果不明确时，保留原节点顺序、版本和操作编号重试。
+
+`canvas task list <画布> [--limit N]` 查看协作编辑成员可见的拆分镜和角色音色摘要。`canvas watch <画布> --tasks --jsonl` 监听 `task-summaries` 事件。个人账单、请求参数、错误详情和运行控制沿用发起人的任务接口。
+
+`vc canvas comment list/add`、`vc canvas mention list` 和 `vc canvas history list/show/copy` 支持审阅。`vc canvas undo/redo --target N` 绑定个人操作版本。共享和授权用 `canvas share`、`canvas member`、`canvas collaboration` 子命令，涉及退出、转移、授权以及撤销时由用户自己确认。
+
+所有者可用 `vc canvas rename <画布> --title <标题>` 改名。`vc canvas archive <画布>` 会预览将失去访问的编辑者和查看者人数，必须由用户在终端确认。成员范围或画布版本变化时，重新读取影响范围再确认。
+
 ## 五、画布 Agent（小镜）
 
 ```
-agent run <画布编号> --message "…" [--selection 节点id,节点id] [--budget 积分]
+agent sessions <画布编号>
+agent history <会话编号> [--before 序号] [--limit 50]
+agent run <画布编号> --message "…" [--selection 节点id,节点id] [--budget 积分] [--attach 素材ID]
           [--session 会话编号] [--watch] [--interval 2] [--timeout 600]
 agent events <会话编号> [--after 序号]
 agent approve <审批编号> [--session 会话编号] [--items 0,1] [--reject] [--answer 文本]
+agent interject <运行编号> --message "…" [--attach 素材ID]
+agent resume <运行编号> [--add-budget 积分]
 agent cancel <运行编号>
+agent undo <运行编号>
 ```
 
 - `run` 返回 `{session_id, run:{id, session_id, status}}`。不发 `--session` 时复用该画布已有的会话（没有就新建一条，
@@ -153,6 +204,7 @@ agent cancel <运行编号>
   批准前会把将批准的条目列到 stderr：后端没有按审批编号查详情的接口，条目只在会话事件里，所以要带 `--session`
   才能展示（缺了会明说看不到）；在终端里再输入 `yes` 才提交，脚本 / `--json` 下只展示不拦（软闸门）；`--reject` 不需要确认。
 - `cancel` 只停这一轮；它已经提交的生成任务在服务端继续跑完、产物照常写回节点。
+- `history` 用返回的 `before` 继续翻页。`run` 和 `interject` 可重复传入 `--attach`，每条消息最多 12 个素材 ID。`resume` 可追加本轮预算。`undo` 须输入 `yes`，以服务端返回的实际撤销结果为准。
 
 ## 六、短剧（只读 + 任务控制）
 

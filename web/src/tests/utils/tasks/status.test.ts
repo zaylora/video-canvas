@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   cancelableTaskIds,
+  cancelableCanvasNodeTaskIds,
   cancelRefunds,
   canceledRefunded,
   isCancelableTask,
@@ -9,6 +10,19 @@ import {
   outputText,
 } from "@/utils/tasks/status";
 import { makeTask, succeeded, textSucceeded } from "./fixtures";
+
+test("协作节点只取消当前账户下同画布、同节点仍可取消的候选", () => {
+  const base = { canvas_id: "canvas", node_id: "node", kind: "image" };
+  const tasks = [
+    makeTask({ ...base, id: "1", status: "running" }),
+    makeTask({ ...base, id: "2", status: "queued" }),
+    makeTask({ ...base, id: "3", status: "finalizing" }),
+    makeTask({ ...base, id: "4", status: "running", canvas_id: "other" }),
+    makeTask({ ...base, id: "5", status: "running", node_id: "other" }),
+    makeTask({ ...base, id: "6", status: "running", kind: "audio" }),
+  ];
+  expect(cancelableCanvasNodeTaskIds(tasks, "canvas", "node", "image")).toEqual(["1", "2"]);
+});
 
 describe("matchesTaskId：跨画布和短剧的任务身份", () => {
   test("十进制 ID 和编码任务编号匹配同一份快照，不把已返回的编码查询误判为丢失", () => {

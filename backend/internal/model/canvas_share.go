@@ -2,12 +2,22 @@ package model
 
 import "time"
 
-// CanvasViewer 记录一位用户对一张原画布的查看授权。
+// 画布的所有者、可编辑成员和仅查看成员角色。
+const (
+	CanvasRoleOwner  = "owner"
+	CanvasRoleEditor = "editor"
+	CanvasRoleViewer = "viewer"
+)
+
+// CanvasViewer 记录一位用户对一张原画布的成员授权。
 type CanvasViewer struct {
-	Canvas   CanvasProject `gorm:"foreignKey:CanvasID;references:ID;constraint:OnDelete:CASCADE" json:"-"`
-	User     User          `gorm:"foreignKey:UserID;references:ID;constraint:OnDelete:CASCADE" json:"-"`
-	CanvasID uint64        `gorm:"primaryKey;autoIncrement:false;not null;index:idx_canvas_viewers_user,priority:2"`
-	UserID   uint64        `gorm:"primaryKey;autoIncrement:false;not null;index:idx_canvas_viewers_user,priority:1"`
+	Canvas           CanvasProject `gorm:"foreignKey:CanvasID;references:ID;constraint:OnDelete:CASCADE" json:"-"`
+	User             User          `gorm:"foreignKey:UserID;references:ID;constraint:OnDelete:CASCADE" json:"-"`
+	CanvasID         uint64        `gorm:"primaryKey;autoIncrement:false;not null;index:idx_canvas_viewers_user,priority:2"`
+	UserID           uint64        `gorm:"primaryKey;autoIncrement:false;not null;index:idx_canvas_viewers_user,priority:1"`
+	Role             string        `gorm:"size:8;not null;default:viewer;check:chk_canvas_viewers_role,role IN ('viewer','editor')"`
+	CanGenerate      bool          `gorm:"not null;default:false"`
+	CanCopyToLibrary bool          `gorm:"not null;default:false"`
 }
 
 // TableName 返回授权或交付记录的表名。
@@ -40,6 +50,7 @@ type CanvasShareReq struct {
 
 // CanvasShareItem 是共享给当前用户的列表项。
 type CanvasShareItem struct {
+	Role       string    `json:"role,omitempty"`
 	CoverAsset string    `json:"cover_asset,omitempty"`
 	ID         string    `json:"id"`
 	Title      string    `json:"title"`
@@ -49,8 +60,19 @@ type CanvasShareItem struct {
 
 // CanvasShareMember 是原画布的只读成员。
 type CanvasShareMember struct {
-	ID    string `json:"id"`
-	Email string `json:"email"`
+	CanGenerate      bool   `json:"canGenerate,omitempty"`
+	CanCopyToLibrary bool   `json:"canCopyToLibrary,omitempty"`
+	Role             string `json:"role,omitempty"`
+	ID               string `json:"id"`
+	Email            string `json:"email"`
+	Username         string `json:"username"`
+}
+
+// CanvasLibraryCopyReq 绑定个人收藏与当前协作会话。
+type CanvasLibraryCopyReq struct {
+	Epoch  uint64 `json:"epoch" binding:"required"`
+	NodeID string `json:"nodeId" binding:"required,max=128"`
+	AddAssetLibraryItemReq
 }
 
 // CanvasDeliveryStage 记录提交前创建的存储对象，供异常中断后回收。

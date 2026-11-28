@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"video-canvas/internal/pkg/configbody"
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/provider/modelcfg"
+	"video-canvas/internal/repository"
 	"video-canvas/internal/service"
 )
 
@@ -23,6 +25,29 @@ func (b *AgentBridge) requireAdminRun(ctx context.Context, rc RunContext) error 
 		return fail("后台助手未配置")
 	}
 	return b.d.Admin.RequireAdmin(ctx, rc.UserID)
+}
+
+func (b *AgentBridge) authorizePlatformRun(ctx context.Context, rc RunContext) error {
+	if rc.Mode == model.AgentModeAdmin {
+		return b.requireAdminRun(ctx, rc)
+	}
+	repo, ok := b.d.Repo.(interface {
+		CheckAgentCanvasEpoch(context.Context, uint64, uint64, uint64) error
+	})
+	if !ok {
+		if rc.CollaborationEpoch > 0 {
+			return errcode.ErrCanvasCollaborationSession
+		}
+		return nil
+	}
+	err := repo.CheckAgentCanvasEpoch(ctx, rc.UserID, rc.CanvasID, rc.CollaborationEpoch)
+	if errors.Is(err, repository.ErrNotFound) {
+		return errcode.ErrCanvasNotFound
+	}
+	if errors.Is(err, repository.ErrCanvasCollaborationSession) {
+		return errcode.ErrCanvasCollaborationSession
+	}
+	return err
 }
 
 // toolAdminListModels 返回后台模型概要，可按类型筛选，不发出渠道凭证。

@@ -35,6 +35,31 @@ describe("planBackfill：终态回填节点", () => {
     expect(planBackfill(data, succeeded())).toBeNull();
   });
 
+  test("人声分离保留原音频和两条可区分的音轨", () => {
+    const data = makeData({
+      kind: "audio",
+      status: "running",
+      taskId: "1",
+      outputs: [
+        { id: "76", assetId: "76", src: "/original.wav", mediaType: "audio", createdAt: 1 },
+      ],
+    });
+    const patch = planBackfill(
+      data,
+      succeeded({
+        outputs: [
+          { asset_id: 77, url: "/voice.wav", media_type: "audio", stem: "vocals" },
+          { asset_id: 78, url: "/music.wav", media_type: "audio", stem: "accompaniment" },
+        ],
+      }),
+    );
+    expect(patch?.outputs?.map(({ id, stem }) => [id, stem])).toEqual([
+      ["76", undefined],
+      ["77", "vocals"],
+      ["78", "accompaniment"],
+    ]);
+  });
+
   test("taskId 与任务不一致不回填（重新生成后旧任务的推送不能覆盖新任务）", () => {
     const data = makeData({ status: "running", taskId: "2" });
     expect(planBackfill(data, succeeded({ id: 1 }))).toBeNull();

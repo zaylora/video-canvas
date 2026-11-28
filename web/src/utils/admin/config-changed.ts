@@ -70,6 +70,6 @@ export function notifyAdminConfigChanged(event: AgentEventDto): void {
   const targets = adminConfigChangeTargets(event);
   if (!targets || typeof window === "undefined") return;
   window.dispatchEvent(
-    new CustomEvent<AdminConfigChangedDetail>(ADMIN_CONFIG_CHANGED, { detail: { targets } }),
+    new window.CustomEvent<AdminConfigChangedDetail>(ADMIN_CONFIG_CHANGED, { detail: { targets } }),
   );
 }

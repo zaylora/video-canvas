@@ -12,7 +12,8 @@ import {
   type ClipboardContent,
 } from "@/utils/canvas/paste";
 
-import { VIEWPORT_DURATION } from "./viewport";
+import { isCanvasInputTarget } from "./keys";
+import { useCanvasViewShortcuts } from "./use-canvas-view-shortcuts";
 
 /** 复制到剪贴板的节点：跨画布也能粘（同一个标签页里） */
 let clipboard: { nodes: FlowNode[]; edges: CanvasEdge[] } | null = null;
@@ -22,14 +23,6 @@ let clipboardText = "";
 
 /** 刚按下复制、等着 copy 事件取走的那段文字；copy 事件一过就清空 */
 let pendingCopyText: string | null = null;
-
-/** 焦点在能打字的地方、或者在弹窗菜单里时，按键是给那边的 */
-function isBusyTarget(target: EventTarget | null) {
-  if (!(target instanceof HTMLElement)) return false;
-  if (target.isContentEditable) return true;
-  if (["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return true;
-  return !!target.closest("[role=dialog], [role=menu], [role=listbox]");
-}
 
 type FlowOps = Pick<
   ReturnType<typeof useReactFlow<FlowNode, CanvasEdge>>,
@@ -82,6 +75,7 @@ export function useCanvasShortcuts({
   save,
   group,
   paste,
+  onLocalViewChange,
   readOnly = false,
 }: {
   undo: () => void;
@@ -94,24 +88,19 @@ export function useCanvasShortcuts({
   group: { group: () => void; ungroup: () => void; rename: () => boolean };
   /** 粘贴来自剪贴板的外部内容（文件或文字）；at 是指针处的画布坐标，指针不在画布上为 null */
   paste: (content: ClipboardContent, at: { x: number; y: number } | null) => void;
+  onLocalViewChange?: () => void;
   /**
    * 只读预览：撤销重做、粘贴、原地复制、打组这些会改画布的快捷键全部不响应，
    * 缩放、抓手切换、快捷键说明照旧——看的时候还能用。
    */
   readOnly?: boolean;
 }) {
-  const {
-    getNodes,
-    getEdges,
-    setNodes,
-    setEdges,
-    screenToFlowPosition,
-    fitView,
-    zoomTo,
-    zoomIn,
-    zoomOut,
-  } = useReactFlow<FlowNode, CanvasEdge>();
+  const { getNodes, getEdges, setNodes, setEdges, screenToFlowPosition } = useReactFlow<
+    FlowNode,
+    CanvasEdge
+  >();
   const pointer = useRef<{ x: number; y: number } | null>(null);
+  useCanvasViewShortcuts({ openShortcuts, onLocalViewChange });
 
   useEffect(() => {
     const onPointerMove = (event: PointerEvent) => {
@@ -149,7 +138,7 @@ export function useCanvasShortcuts({
     /** 粘贴：粘回复制的节点，或把剪贴板里的文件、文字交给调用方落成节点；输入框里的粘贴不管 */
     const onPaste = (event: ClipboardEvent) => {
       if (readOnly) return;
-      if (isBusyTarget(event.target) || !event.clipboardData) return;
+      if (isCanvasInputTarget(event.target) || !event.clipboardData) return;
       const content = readClipboard(event.clipboardData);
       const decision = decidePaste(content, clipboardText, !!clipboard?.nodes.length);
       if (decision === "ignore") return;
@@ -169,7 +158,7 @@ export function useCanvasShortcuts({
         if (!readOnly) save();
         return;
       }
-      if (isBusyTarget(event.target)) return;
+      if (isCanvasInputTarget(event.target)) return;
 
       if (mod && (key === "z" || key === "y")) {
         // 只读时撤销重做也会改画布，连浏览器自己的撤销都不用管
@@ -204,30 +193,7 @@ export function useCanvasShortcuts({
         duplicateSelection({ getNodes, getEdges, setNodes, setEdges });
         return;
       }
-      if (mod && (key === "=" || key === "+")) {
-        event.preventDefault();
-        void zoomIn({ duration: VIEWPORT_DURATION });
-        return;
-      }
-      if (mod && key === "-") {
-        event.preventDefault();
-        void zoomOut({ duration: VIEWPORT_DURATION });
-        return;
-      }
       if (mod || event.altKey) return;
-
-      if (event.shiftKey && event.code === "Digit1") {
-        void fitView({ duration: VIEWPORT_DURATION, padding: 0.2 });
-        return;
-      }
-      if (event.shiftKey && event.code === "Digit0") {
-        void zoomTo(1, { duration: VIEWPORT_DURATION });
-        return;
-      }
-      if (event.key === "?") {
-        openShortcuts();
-        return;
-      }
       if (key === "v") setTool("select");
       if (key === "h") setTool("pan");
       if ((event.key === "Enter" || event.key === "F2") && !readOnly && group.rename()) {
@@ -263,10 +229,8 @@ export function useCanvasShortcuts({
       window.removeEventListener("paste", onPaste);
     };
   }, [
-    fitView,
     getEdges,
     getNodes,
-    openShortcuts,
     group,
     paste,
     readOnly,
@@ -277,8 +241,5 @@ export function useCanvasShortcuts({
     setNodes,
     setTool,
     undo,
-    zoomIn,
-    zoomOut,
-    zoomTo,
   ]);
 }

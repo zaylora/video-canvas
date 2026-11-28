@@ -536,14 +536,24 @@ test("generate --wait：任务失败时 ok:false 且退出码 1", async () => {
   }
 });
 
-test("canvas compose*：后端还没有成片合成接口，三条命令一律明确拒绝且不发请求", async () => {
+test("canvas compose*：旧服务端没有协作成片能力时拒绝提交", async () => {
   const site = await fakeSite();
   try {
     const env = { XDG_CONFIG_HOME: tempConfig(site.base) };
     const calls = [
-      ["canvas", "compose", "c1", "--node", "c_node", "--assets", "7,8"],
-      ["canvas", "compose-status", "c1", "--job", "job1"],
-      ["canvas", "compose-cancel", "c1", "--job", "job1"],
+      [
+        "canvas",
+        "compose",
+        "c1",
+        "--nodes",
+        "v2,v1",
+        "--epoch",
+        "1",
+        "--revision",
+        "2",
+        "--op-id",
+        "render",
+      ],
     ];
     for (const argv of calls) {
       const { code, stderr } = await run(argv, env);
@@ -567,9 +577,9 @@ test("deriveComposeAssets：按 composeOrder 先、其余按位置，v1 取 acti
   assert.throws(() => deriveComposeAssets(GRAPH, "v1"), /不是成片节点/);
 });
 
-test("--help 不再列出成片合成命令", async () => {
+test("--help 列出成片合成命令", async () => {
   const { stdout } = await run(["--help"], { XDG_CONFIG_HOME: tempConfig("http://127.0.0.1:1") });
-  assert.doesNotMatch(stdout, /compose/);
+  assert.match(stdout, /canvas compose <code>/);
 });
 
 test("drama：列表、详情、单元、任务四条都是只读", async () => {

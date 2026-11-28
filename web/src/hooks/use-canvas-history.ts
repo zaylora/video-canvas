@@ -46,11 +46,13 @@ export function useCanvasHistory({
   edges,
   setNodes,
   setEdges,
+  enabled = true,
 }: {
   nodes: FlowNode[];
   edges: CanvasEdge[];
   setNodes: React.Dispatch<React.SetStateAction<FlowNode[]>>;
   setEdges: React.Dispatch<React.SetStateAction<CanvasEdge[]>>;
+  enabled?: boolean;
 }) {
   const past = useRef<HistorySnapshot[]>([]);
   const future = useRef<HistorySnapshot[]>([]);
@@ -92,6 +94,7 @@ export function useCanvasHistory({
   }, [push, sync]);
 
   useEffect(() => {
+    if (!enabled) return;
     const previous = latest.current;
     if (!previous || restoring.current) {
       restoring.current = false;
@@ -116,7 +119,7 @@ export function useCanvasHistory({
       typingTimer.current = window.setTimeout(settleTyping, TYPING_SETTLE_MS);
     }
     latest.current = current;
-  }, [edges, nodes, push, settleTyping, sync]);
+  }, [edges, enabled, nodes, push, settleTyping, sync]);
 
   useEffect(
     () => () => {
@@ -175,14 +178,15 @@ export function useCanvasHistory({
 
   /** 下一个改动不会被自动发现（比如只换了当前版本）时，先手动记一步 */
   const record = useCallback(() => {
+    if (!enabled) return;
     settleTyping();
     if (latest.current) push(latest.current);
-  }, [push, settleTyping]);
+  }, [enabled, push, settleTyping]);
 
   /** 紧接着的那次结构改动（比如 @ 素材时自动连的线）和正在攒的打字合成一步 */
   const absorbTyping = useCallback(() => {
-    absorbNext.current = true;
-  }, []);
+    if (enabled) absorbNext.current = true;
+  }, [enabled]);
 
   const canUndo = depth.past > 0 || depth.typing;
   const canRedo = depth.future > 0;

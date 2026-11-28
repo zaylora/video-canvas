@@ -41,6 +41,11 @@ type TransferRepo interface {
 // 而 repository 不能反过来 import service。
 type TransferTx = repository.CanvasTransferTx
 
+// TransferCanvasHistory 读取仅对画布所有者开放的已确认协作版本。
+type TransferCanvasHistory interface {
+	HistoricalSnapshot(ctx context.Context, owner, canvas, epoch, revision uint64) (*model.CanvasProject, error)
+}
+
 // 编译期确认真实实现满足导入导出依赖的接口。
 var (
 	_ TransferAssets = (*AssetService)(nil)
@@ -50,6 +55,7 @@ var (
 // CanvasTransferDeps 是 CanvasTransferService 的依赖。
 type CanvasTransferDeps struct {
 	Canvases CanvasProjectRepo
+	History  TransferCanvasHistory
 	Assets   TransferAssets
 	Tx       TransferRepo
 	// AppVersion 写进导出文件，为空时记为 "unknown"。
@@ -62,6 +68,7 @@ type CanvasTransferDeps struct {
 // CanvasTransferService 负责画布与导出文件之间的转换：导出把画布改写成文档，导入把文档还原成新画布。
 type CanvasTransferService struct {
 	canvases   CanvasProjectRepo
+	history    TransferCanvasHistory
 	assets     TransferAssets
 	tx         TransferRepo
 	appVersion string
@@ -73,6 +80,7 @@ type CanvasTransferService struct {
 func NewCanvasTransferService(d CanvasTransferDeps) *CanvasTransferService {
 	s := &CanvasTransferService{
 		canvases:   d.Canvases,
+		history:    d.History,
 		assets:     d.Assets,
 		tx:         d.Tx,
 		appVersion: d.AppVersion,
@@ -114,7 +122,28 @@ func (s *CanvasTransferService) Export(ctx context.Context, userID, id uint64) (
 	if p.DramaID != nil {
 		return nil, errcode.ErrCanvasNotFound
 	}
+	if p.CollaborationActive {
+		return nil, errcode.ErrCanvasCollaborationActive
+	}
+	return s.exportProject(ctx, userID, p)
+}
 
+// ExportVersion 导出所有者指定的确认版本，其后提交的修改不会进入这次导出。
+func (s *CanvasTransferService) ExportVersion(ctx context.Context, userID, id, epoch, revision uint64) (*ExportResult, error) {
+	if s.history == nil || epoch == 0 || revision == 0 {
+		return nil, errcode.ErrInvalidParams
+	}
+	project, err := s.history.HistoricalSnapshot(ctx, userID, id, epoch, revision)
+	if errors.Is(err, repository.ErrCanvasVersionUnavailable) {
+		return nil, errcode.ErrCanvasConflict.WithMsg(err.Error())
+	}
+	if err != nil {
+		return nil, collaborationError(err)
+	}
+	return s.exportProject(ctx, userID, project)
+}
+
+func (s *CanvasTransferService) exportProject(ctx context.Context, userID uint64, p *model.CanvasProject) (*ExportResult, error) {
 	// 2. 扫描画布内容，找出会被导出的素材 ID（含角色节点内嵌的补充图和音频音色）；内容不是合法 JSON 时原样返回错误
 	refs, err := canvasdoc.CollectRefs(p.PayloadJSON)
 	if err != nil {

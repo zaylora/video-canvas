@@ -1,3 +1,5 @@
+import type { CanvasVersion } from "@/utils/canvas/collaboration-version";
+
 import type { CanvasGraphDto } from "@/api/canvas/type";
 
 import type { Draft } from "./draft-store";
@@ -43,7 +45,7 @@ export function reconcileDraft({
   cloudGraph,
 }: {
   draft: Draft | null;
-  cloudVersion: number;
+  cloudVersion: CanvasVersion;
   cloudGraph: CanvasGraphDto;
 }): Reconciliation {
   if (!draft) return { kind: "none" };

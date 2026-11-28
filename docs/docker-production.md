@@ -78,6 +78,12 @@ docker compose --profile updater up -d    # 启动 updater
 - 升级时 updater 自己不会被重建；要升级 updater 本身，在部署目录再执行一次 `docker compose --profile updater up -d`。
 - 停用：`docker compose --profile updater rm -sf updater`。
 
+### 画布实时协作（内测）
+
+默认关闭新的协作启用请求。在部署目录的 `.env` 设置 `APP_CANVAS_COLLABORATION_ENABLED=true`，再执行 `docker compose up -d backend`。普通画布仍由所有者逐张开启。
+
+将环境变量改回 `false` 并重新应用 Compose 配置，可停止开启更多画布。已开启的画布继续运行。要结束某张画布的协作，由所有者选择「关闭协作」，系统按最后确认版本恢复个人编辑，已有共享成员仍可查看。
+
 ### Agent 服务
 
 画布 Agent 是独立的常驻服务（`agent` 容器，镜像 `video-canvas-agent`，Pi Durable + SQLite），**默认随 Compose 一起启动**：

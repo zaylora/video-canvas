@@ -47,11 +47,11 @@ export function acceptTasks(views: ReadonlyArray<TaskView | null | undefined>) {
  * @param data 提交内容
  * @returns 每个节点的结果
  */
-export async function submitCanvasTasks(data: CreateTaskRequest): Promise<CreateTaskItem[]> {
-  const { items } = await submitWithRetry(
-    (key) => createGenerationTask(data, key),
-    crypto.randomUUID(),
-  );
+export async function submitCanvasTasks(
+  data: CreateTaskRequest,
+  idempotencyKey: string = crypto.randomUUID(),
+): Promise<CreateTaskItem[]> {
+  const { items } = await submitWithRetry((key) => createGenerationTask(data, key), idempotencyKey);
   acceptTasks(items.map((item) => item.task));
   return items;
 }

@@ -51,6 +51,7 @@ import {
   type GroupTool,
 } from "../activity-summary.ts";
 import { CARD_LIMITS } from "../card.ts";
+import type { CollaborationEpoch } from "../collaboration-epoch.ts";
 import { createToolsExtension, type ToolHost, type ToolRun } from "../durable-tools.ts";
 import type { IdCodec } from "../ids.ts";
 import {
@@ -195,6 +196,7 @@ export interface StartRunRequest {
   attachments?: AttachmentCheck[];
   /** 本轮积分预算，不传或 0 表示不限制 */
   budgetCredits?: number;
+  collaborationEpoch?: CollaborationEpoch;
   maxSteps?: number;
   pageContext?: unknown;
 }
@@ -798,6 +800,7 @@ export class AgentEngine {
         status: "queued",
         mode,
         budgetCredits: req.budgetCredits ?? 0,
+        collaborationEpoch: req.collaborationEpoch,
         maxSteps,
       });
     } catch (e) {
@@ -1035,6 +1038,7 @@ export class AgentEngine {
       model_key: sess.modelKey,
       selection,
       ...(run.budgetCredits ? { budget_credits: run.budgetCredits } : {}),
+      ...(run.collaborationEpoch ? { collaboration_epoch: run.collaborationEpoch } : {}),
       ...(extras ? { spent_extra: extras } : {}),
     };
   }

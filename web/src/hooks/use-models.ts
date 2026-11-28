@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo } from "react";
 
-import type { ModelInfo } from "@/api/model/type";
+import type { Capabilities, ModelInfo } from "@/api/model/type";
 import { useModelsStore, type ModelsEntry } from "@/store/models";
 import type { ModelOption } from "@/types";
 import { lowestUnit, priceLabel } from "@/utils/pricing/quote";
@@ -23,7 +23,11 @@ export const toModelOption = (info: ModelInfo): ModelOption => ({
  * status 让调用方分清「还在加载」「加载失败」和「加载成功但没有这个模型」——
  * 只有最后一种才该判定模型已下线。
  */
-export function useRemoteModels(kind: string, enabled = true) {
+export function useRemoteModels(
+  kind: string,
+  enabled = true,
+  operation?: Capabilities["audio_operation"],
+) {
   const entry = useModelsStore((state) => state.byKind[kind]) ?? EMPTY_ENTRY;
   const load = useModelsStore((state) => state.load);
 
@@ -32,11 +36,18 @@ export function useRemoteModels(kind: string, enabled = true) {
   }, [enabled, kind, load]);
 
   const reload = useCallback(() => load(kind, true), [kind, load]);
-  const options = useMemo(() => entry.models.map(toModelOption), [entry.models]);
+  const models = useMemo(
+    () =>
+      kind === "audio"
+        ? entry.models.filter((model) => model.capabilities.audio_operation === operation)
+        : entry.models,
+    [entry.models, kind, operation],
+  );
+  const options = useMemo(() => models.map(toModelOption), [models]);
 
   return {
     status: entry.status,
-    models: entry.models,
+    models,
     options,
     reload,
   };

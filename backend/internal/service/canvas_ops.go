@@ -103,6 +103,9 @@ func (s *CanvasProjectService) ApplyOps(ctx context.Context, userID, id uint64, 
 	if cv.DramaID != nil {
 		return nil, errcode.ErrInvalidParams.WithMsg("短剧画布的节点由短剧项目维护，请在网页里编辑")
 	}
+	if cv.CollaborationActive {
+		return nil, errcode.ErrCanvasCollaborationActive
+	}
 	g, err := canvasgraph.Parse(cv.PayloadJSON)
 	if err != nil {
 		return nil, errcode.ErrCanvasPayload
@@ -162,6 +165,8 @@ func (s *CanvasProjectService) ApplyOps(ctx context.Context, userID, id uint64, 
 		return nil, errcode.ErrCanvasNotFound
 	case errors.Is(err, repository.ErrRevisionConflict):
 		return nil, errcode.ErrCanvasConflict
+	case errors.Is(err, repository.ErrCanvasCollaborationActive):
+		return nil, errcode.ErrCanvasCollaborationActive
 	case err != nil:
 		return nil, err
 	}

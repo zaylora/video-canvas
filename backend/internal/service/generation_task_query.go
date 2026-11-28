@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"video-canvas/internal/model"
@@ -19,6 +20,13 @@ func (s *GenerationTaskService) Get(ctx context.Context, userID, id uint64) (*mo
 	t, err := s.userTask(ctx, userID, id, false)
 	if err != nil {
 		return nil, err
+	}
+	if key, scoped := model.CanvasAutomationFromContext(ctx); scoped {
+		prefix := model.CanvasAutomationBudgetPrefix + strconv.FormatUint(key.ID, 10) + ":"
+		if key.Scope != model.CanvasAutomationGenerate || t.CanvasProjectID == nil || *t.CanvasProjectID != key.CanvasID ||
+			t.CollaborationEpoch != key.Epoch || t.BudgetGroupID == nil || !strings.HasPrefix(t.IdempotencyKey, prefix) {
+			return nil, errcode.ErrTaskNotFound
+		}
 	}
 	return taskView(t), nil
 }

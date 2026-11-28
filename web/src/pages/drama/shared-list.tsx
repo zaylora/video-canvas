@@ -100,12 +100,14 @@ export function SharedDramaList({
       {items.map((item) => (
         <Link
           key={item.id}
-          to={`/${canvas ? "canvas" : "drama"}/${item.id}/reader`}
+          to={`/${canvas ? "canvas" : "drama"}/${item.id}/${canvas && item.role === "editor" ? "collaboration" : "reader"}`}
           className="border-border hover:bg-chrome-hover grid min-w-0 gap-2 rounded-xl border p-5"
         >
           {canvas && <SharedCover key={item.cover_asset} item={item} />}
           <strong className="truncate">{item.title}</strong>
-          <span className="text-muted-foreground text-sm">仅可查看</span>
+          <span className="text-muted-foreground text-sm">
+            {canvas && item.role === "editor" ? "可协作编辑" : "仅可查看"}
+          </span>
         </Link>
       ))}
       <div className="col-span-full flex justify-center py-6 text-sm text-muted-foreground">

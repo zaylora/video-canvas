@@ -1,6 +1,7 @@
 import { createContext, useContext, type ReactNode } from "react";
 
 import type { CanvasNode, CanvasNodeData } from "@/types";
+import type { CanvasCollaborationEditor } from "@/hooks/use-canvas-collaboration";
 import type { ToolbarGate } from "@/utils/canvas/node-toolbar-state";
 
 /**
@@ -16,6 +17,9 @@ export type NodeToolbarExtraProps = {
 };
 
 export type NodeExtensions = {
+  /** 协作编辑保留输入开始时的字段版本。 */
+  beginTextEdit?: CanvasCollaborationEditor["beginTextEdit"];
+  beginSceneEdit?: CanvasCollaborationEditor["beginSceneEdit"];
   /**
    * 只读预览（另一标签页正拿着编辑锁）：功能区、生成面板、各种就地编辑一律不摆。
    * 节点由 xyflow 的 nodeTypes 渲染，页面没法把 props 逐个递进去，所以经这里下发。

@@ -20,7 +20,13 @@ type Config struct {
 	Storage  Storage  `mapstructure:"storage"`
 	Agent    Agent    `mapstructure:"agent"`
 	Drama    Drama    `mapstructure:"drama"`
+	Canvas   Canvas   `mapstructure:"canvas"`
 	Update   Update   `mapstructure:"update"`
+}
+
+// Canvas contains rollout settings for ordinary canvases.
+type Canvas struct {
+	CollaborationEnabled bool `mapstructure:"collaboration_enabled"`
 }
 
 // Drama 配置短剧新功能入口；关闭运营目录不影响已保存的提示词快照。
@@ -260,6 +266,7 @@ func Load(path string) (*Config, error) {
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 	v.SetDefault("drama.prompt_presets_enabled", true)
+	v.SetDefault("canvas.collaboration_enabled", false)
 	v.SetDefault("agent.web_enabled", true) // 联网工具默认开启
 	v.SetDefault("ai.queue.max_concurrency", 64)
 	v.SetDefault("update.check_enabled", true)

@@ -238,13 +238,14 @@ func (s *GenerationTaskService) Complete(ctx context.Context, t *model.Generatio
 		return false, err
 	}
 	charge := s.settleAmount(t, usage)
-	updated, applied, err := s.finish(ctx, t.ID, []string{model.TaskFinalizing}, model.TaskSucceeded, map[string]any{
+	staged := s.stageCollaborationOutputs(ctx, t, outputs)
+	updated, applied, err := s.finishWithCanvasMedia(ctx, t.ID, []string{model.TaskFinalizing}, model.TaskSucceeded, map[string]any{
 		"output_json":     datatypes.JSON(raw),
 		"progress":        100,
 		"error_code":      "",
 		"error_message":   "",
 		"charged_credits": charge,
-	})
+	}, staged)
 	if err != nil || !applied {
 		return false, err
 	}
@@ -466,6 +467,11 @@ func (s *GenerationTaskService) transit(ctx context.Context, id uint64, from []s
 }
 
 func (s *GenerationTaskService) finish(ctx context.Context, id uint64, from []string, target string, extra map[string]any) (*model.GenerationTask, bool, error) {
+	return s.finishWithCanvasMedia(ctx, id, from, target, extra, nil)
+}
+
+// finishWithCanvasMedia 结算任务并在同一个事务内确认已获授权的产物副本。
+func (s *GenerationTaskService) finishWithCanvasMedia(ctx context.Context, id uint64, from []string, target string, extra map[string]any, staged []model.CanvasGenerationMedia) (*model.GenerationTask, bool, error) {
 	fields := map[string]any{"status": target, "finished_at": s.now(), "lease_until": nil}
 	for k, v := range extra {
 		fields[k] = v
@@ -483,6 +489,12 @@ func (s *GenerationTaskService) finish(ctx context.Context, id uint64, from []st
 		if err := settleLedger(ctx, tx, t, target); err != nil {
 			return err
 		}
+		if t.CollaborationEpoch > 0 {
+			t.CollaborationMedia = staged
+			if err := settleCanvasCollaboration(ctx, tx, t); err != nil {
+				return err
+			}
+		}
 		// Agent 发起的任务：结束的通知和结算同一个事务提交，不会出现“任务结束了但没人通知 Agent”
 		if t.AgentRunID != 0 {
 			return tx.EnqueueAgentNotify(ctx, t)
@@ -497,6 +509,20 @@ func (s *GenerationTaskService) finish(ctx context.Context, id uint64, from []st
 	}
 	logGenFinished(ctx, updated, target, extra)
 	return updated, true, nil
+}
+
+type canvasCollaborationSettlement interface {
+	// FinalizeCanvasCollaboration 提交与当前节点代数匹配的生成结果。
+	FinalizeCanvasCollaboration(context.Context, *model.GenerationTask) error
+}
+
+// settleCanvasCollaboration 让协作结果与任务和计费使用同一次数据库提交。
+func settleCanvasCollaboration(ctx context.Context, tx repository.GenerationTaskTx, task *model.GenerationTask) error {
+	writer, ok := tx.(canvasCollaborationSettlement)
+	if !ok {
+		return errors.New("协作任务缺少事务内回填仓储")
+	}
+	return writer.FinalizeCanvasCollaboration(ctx, task)
 }
 
 // chargeOf 是任务到终态时实扣的积分：成功扣 charged_credits（没有则扣冻结额）；已进入生成的用户取消按 charged_credits 扣；其余为 0。
@@ -557,7 +583,7 @@ func mergeProviderState(raw []byte, next provider.ProviderState) ([]byte, error)
 // writeCanvasNode 把任务终态写回所属画布的节点：跑完即写，不依赖浏览器在线。
 // 失败只记日志——任务与积分已经结算，不能因为回写失败把它算成失败。
 func (s *GenerationTaskService) writeCanvasNode(ctx context.Context, t *model.GenerationTask, outputs []model.TaskOutput) {
-	if s.nodeBackfill == nil {
+	if s.nodeBackfill == nil || t.CollaborationEpoch > 0 {
 		return
 	}
 	if err := s.nodeBackfill.BackfillNode(ctx, t, outputs); err != nil {

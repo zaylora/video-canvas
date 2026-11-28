@@ -265,16 +265,19 @@ export function TextEditorDialog({
   onSave?: (text: string) => void;
 }) {
   const readMarkdown = useRef<(() => string) | null>(null);
+  const initialMarkdown = useRef<string | null>(null);
   const setReader = useCallback((read: (() => string) | null) => {
     readMarkdown.current = read;
+    if (read && initialMarkdown.current === null) initialMarkdown.current = read();
   }, []);
 
   const handleOpenChange = (next: boolean) => {
     if (!next && editable && onSave && readMarkdown.current) {
       const { text: draft, clipped } = clipText(readMarkdown.current());
       if (clipped) toast.info(`文字太长，只保存了前 ${TEXT_BODY_MAX} 个字`);
-      if (draft !== text) onSave(draft);
+      if (draft !== initialMarkdown.current && draft !== text) onSave(draft);
     }
+    if (!next) initialMarkdown.current = null;
     onOpenChange(next);
   };
 

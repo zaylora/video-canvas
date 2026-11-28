@@ -23,6 +23,7 @@ import {
   refPanelOp,
   resolveBindings,
   switchModelParams,
+  videoReferencePrompt,
   type IncomingLink,
 } from "@/utils/tasks/capabilities";
 
@@ -516,6 +517,19 @@ describe("opDisabledHint：有没有参考素材决定哪些生成方式灰掉",
   test("清单没到不禁用", () => {
     expect(opDisabledHint(undefined, "omni", false)).toBeUndefined();
   });
+});
+
+test("视频引用入口按当前方式和模型能力提示可添加的素材", () => {
+  expect(videoReferencePrompt(video(), "i2v", false)).toEqual({
+    action: "添加参考图",
+    hint: "可选画布图片，或上传参考图",
+  });
+  const omni = videoReferencePrompt(video(), "omni", false);
+  expect(omni?.action).toBe("添加参考素材");
+  expect(omni?.hint).toContain("图片 / 音频");
+  expect(omni?.hint).not.toContain("视频");
+  expect(videoReferencePrompt(video(), "t2v", false)).toBeUndefined();
+  expect(videoReferencePrompt(video(), "i2v", true)).toBeUndefined();
 });
 
 describe("参考素材的共用规则（画布参考卡和首页输入卡片都用）", () => {

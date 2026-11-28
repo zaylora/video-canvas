@@ -21,8 +21,8 @@ export type GridSplitDeps = {
   isActive: (nodeId: string) => boolean;
   /** 把改动写回节点 */
   patch: (nodeId: string, patch: Partial<CanvasNodeData>) => void;
-  /** 放弃这个节点的占位（这一格切不出来，不会再有上传了） */
-  release: (nodeId: string) => void;
+  /** 切图失败时结束占位，并保存只重试这一格的文件准备函数 */
+  release: (nodeId: string, prepare: () => Promise<File>) => void;
 };
 
 /** 一次切分怎么收场 */
@@ -98,11 +98,18 @@ export async function runGridSplit(
         const tile = tiles[index];
         let file: File;
         try {
-          const blob = await deps.cut(loaded.image, tile);
-          file = new File([blob], gridTileFileName(tile.row, tile.col), { type: "image/png" });
+          file = await gridTileFile(deps, loaded.image, tile);
         } catch (error) {
+          if (!deps.isActive(id)) continue;
           failed++;
-          deps.release(id);
+          deps.release(id, async () => {
+            const source = await deps.load(input.src);
+            try {
+              return await gridTileFile(deps, source.image, tile);
+            } finally {
+              source.close?.();
+            }
+          });
           deps.patch(id, {
             status: "error",
             error: error instanceof Error ? error.message : "切图失败",
@@ -122,4 +129,13 @@ export async function runGridSplit(
   } finally {
     loaded.close?.();
   }
+}
+
+async function gridTileFile(
+  deps: GridSplitDeps,
+  image: CanvasImageSource,
+  tile: Tile,
+): Promise<File> {
+  const blob = await deps.cut(image, tile);
+  return new File([blob], gridTileFileName(tile.row, tile.col), { type: "image/png" });
 }

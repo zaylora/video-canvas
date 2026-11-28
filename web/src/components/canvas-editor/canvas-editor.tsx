@@ -35,6 +35,7 @@ import { MediaLightbox, type LightboxTarget } from "@/components/canvas/media-li
 import { SettingsDialog, type SettingModelGroup } from "@/components/setting";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
+  ANIMATED_EDGE_OPTIONS,
   NODE_LIBRARY,
   REMOTE_KIND_OF_NODE,
   UPLOAD_ACCEPT,
@@ -75,11 +76,15 @@ import { TEXT_BODY_MAX, clipFileName, clipText, type ClipboardContent } from "@/
 import { DEFAULT_NODE_SIZE } from "@/utils/canvas/placement";
 import {
   deserializeGraph,
+  deserializeNode,
   hasVolatileRunning,
   serializeGraph,
 } from "@/utils/canvas/canvas-persistence";
 import { useAgentCanvasSync } from "@/hooks/use-agent-canvas-sync";
 import { useCanvasPersistence } from "@/hooks/use-canvas-persistence";
+import type { CanvasCollaborationEditor } from "@/hooks/use-canvas-collaboration";
+import type { CanvasRoomPresence } from "@/utils/ws/canvas-presence";
+import type { CollaborationGesture } from "@/utils/canvas/collaboration-session";
 import {
   createViewportWriter,
   loadViewport,
@@ -95,8 +100,10 @@ import type { TakeoverState } from "@/hooks/use-canvas-lock";
 import { releaseObjectUrl } from "@/utils/canvas/media";
 import { trimRunner } from "@/utils/canvas/trim-runner";
 import { uploadRunner } from "@/utils/canvas/upload-runner";
+import { isUploadFailed, isUploading } from "@/utils/canvas/upload-state";
 import { collectPreviewItems, type PreviewItem } from "@/utils/canvas/preview-items";
 import { groupMembers, isGroupNode } from "@/utils/canvas/group";
+import { preserveOutpaintPreparation } from "@/utils/canvas/outpaint-node";
 
 import { AssetPickerDialog } from "@/components/assets/asset-picker-dialog";
 import { CanvasFlowSurface, CanvasWorkspace } from "./canvas-workspace";
@@ -141,8 +148,43 @@ const taskIdsOf = (nodes: FlowNode[]) =>
       : [...(node.data.taskId ? [node.data.taskId] : []), ...(node.data.pendingTaskIds ?? [])],
   );
 
+function projectCollaborationEdges(
+  edges: CanvasGraphDto["edges"],
+  previous: CanvasGraphDto["edges"],
+  projected: CanvasEdge[],
+  current: CanvasEdge[],
+  confirmedIds: Set<string>,
+  localUploads: FlowNode[],
+): CanvasEdge[] {
+  if (edges === previous && current === projected && current.length === edges.length)
+    return current;
+  const previousById = new Map(previous.map((edge) => [edge.id, edge]));
+  const projectedById = new Map(projected.map((edge) => [edge.id, edge]));
+  const currentById = new Map(current.map((edge) => [edge.id, edge]));
+  const next = edges.map((edge) => {
+    const shown = currentById.get(edge.id);
+    if (shown && shown === projectedById.get(edge.id) && previousById.get(edge.id) === edge)
+      return shown;
+    return { ...edge, ...ANIMATED_EDGE_OPTIONS, selected: shown?.selected };
+  });
+  if (!localUploads.length) return next;
+  const localIds = new Set(localUploads.map((node) => node.id));
+  return next.concat(
+    current.filter(
+      (edge) =>
+        (localIds.has(edge.source) || localIds.has(edge.target)) &&
+        (confirmedIds.has(edge.source) || localIds.has(edge.source)) &&
+        (confirmedIds.has(edge.target) || localIds.has(edge.target)),
+    ),
+  );
+}
+
 export type CanvasEditorProps = {
   canvas: CanvasDetailDto;
+  /** 协作模式使用提交队列和服务端增量。 */
+  collaboration?: CanvasCollaborationEditor;
+  /** 协作成员的临时视角和跟随控制。 */
+  collaborationPresence?: CanvasRoomPresence;
   /** 打开时本地草稿的对账结果：restored 是已用草稿恢复，conflict 是草稿基于的版本已过期 */
   recovery: Recovery | null;
   onConflict: (canvas: CanvasDetailDto) => void;
@@ -209,6 +251,8 @@ export type CanvasEditorProps = {
  */
 export const CanvasEditor = memo(function CanvasEditor({
   canvas,
+  collaboration,
+  collaborationPresence,
   recovery,
   onConflict,
   menuItems: buildMenuItems,
@@ -280,44 +324,142 @@ export const CanvasEditor = memo(function CanvasEditor({
   useEffect(() => {
     onSavedRef.current = onSaved;
   }, [onSaved]);
+  const previousCollaborationGraph = useRef(canvas.graph);
+  const isCollaborating = Boolean(collaboration);
   const getGraph = useCallback(
     () =>
       hydratedRef.current
-        ? serializeGraph(nodesRef.current, edgesRef.current, getViewport())
+        ? serializeGraph(
+            nodesRef.current,
+            edgesRef.current,
+            getViewport(),
+            isCollaborating
+              ? (id) => previousCollaborationGraph.current.nodes.some((node) => node.id === id)
+              : undefined,
+          )
         : null,
-    [getViewport],
+    [getViewport, isCollaborating],
   );
-  const {
-    status: saveStatus,
-    conflict,
-    changed,
-    flush,
-    rename,
-    dismissConflict,
-    getVersion,
-    mergeVersion,
-    hasUnsaved,
-  } = useCanvasPersistence({
-    canvasId: canvas.id,
-    initialVersion: canvas.version,
-    getGraph,
-    onConflict,
-    // 只读预览：保存与草稿整条链路不启动
-    readOnly,
-    // 同步要等撤销栈建好才能创建，这里先经 ref 转一道
-    autoMerge: () => agentSyncRef.current?.autoMerge() ?? Promise.resolve(null),
-    onSaved: (graph, version) => {
-      agentSyncRef.current?.saved(graph, version);
-      onSavedRef.current?.(graph);
+  const renderedNodes = useRef(nodes);
+  const renderedEdges = useRef(edges);
+  const collaborationGestures = useRef(new Map<string, CollaborationGesture>());
+  const readCollaborationGraph = useCallback(() => {
+    const graph = getGraph();
+    if (!graph || !collaborationGestures.current.size) return graph;
+    const positions = new Map(
+      previousCollaborationGraph.current.nodes.map((node) => [node.id, node.position]),
+    );
+    return {
+      ...graph,
+      nodes: graph.nodes.map((node) => {
+        const gesture = collaborationGestures.current.get(node.id);
+        return gesture?.active
+          ? { ...node, position: positions.get(node.id) ?? gesture.position }
+          : node;
+      }),
+    };
+  }, [getGraph]);
+  const takeFinishedGestures = useCallback(() => {
+    const finished = new Map<string, CollaborationGesture>();
+    for (const [id, gesture] of collaborationGestures.current) {
+      if (gesture.active) continue;
+      finished.set(id, gesture);
+      collaborationGestures.current.delete(id);
+    }
+    return finished;
+  }, []);
+  const renderCollaborationGraph = useCallback(
+    (graph: CanvasGraphDto) => {
+      const previous = previousCollaborationGraph.current;
+      const previousNodes = new Map(previous.nodes.map((node) => [node.id, node]));
+      const projectedNodes = new Map(renderedNodes.current.map((node) => [node.id, node]));
+      const currentNodes = new Map(nodesRef.current.map((node) => [node.id, node]));
+      const nextNodes = graph.nodes.map((node) => {
+        const current = currentNodes.get(node.id);
+        if (
+          current &&
+          current === projectedNodes.get(node.id) &&
+          previousNodes.get(node.id) === node
+        )
+          return current;
+        const next = deserializeNode(node);
+        if (current && !isGroupNode(current) && !isGroupNode(next)) {
+          next.data = preserveOutpaintPreparation(next.data, current.data);
+        }
+        return {
+          ...next,
+          measured: current?.measured,
+          selected: current?.selected,
+          dragging: current?.dragging,
+          ...(current?.dragging ? { position: current.position } : {}),
+        };
+      });
+      const confirmedIds = new Set(nextNodes.map((node) => node.id));
+      const localUploads = nodesRef.current.filter(
+        (node) =>
+          !confirmedIds.has(node.id) &&
+          !previousNodes.has(node.id) &&
+          !isGroupNode(node) &&
+          (isUploading(node.data) || isUploadFailed(node.data)),
+      );
+      nextNodes.push(...localUploads);
+      const currentEdges = edgesRef.current;
+      const nextEdges = projectCollaborationEdges(
+        graph.edges,
+        previous.edges,
+        renderedEdges.current,
+        currentEdges,
+        confirmedIds,
+        localUploads,
+      );
+      previousCollaborationGraph.current = graph;
+      renderedNodes.current = nextNodes;
+      renderedEdges.current = nextEdges;
+      changeSaveRef.current = false;
+      nodesRef.current = nextNodes;
+      edgesRef.current = nextEdges;
+      setNodes(nextNodes);
+      if (nextEdges !== currentEdges) setEdges(nextEdges);
     },
-  });
+    [setNodes, setEdges],
+  );
+  const connectCollaboration = collaboration?.connect;
+  useEffect(
+    () =>
+      connectCollaboration?.({
+        read: readCollaborationGraph,
+        render: renderCollaborationGraph,
+        takeFinishedGestures,
+      }),
+    [connectCollaboration, readCollaborationGraph, renderCollaborationGraph, takeFinishedGestures],
+  );
+  const { conflict, rename, dismissConflict, mergeVersion, hasUnsaved, ...legacySave } =
+    useCanvasPersistence({
+      canvasId: canvas.id,
+      initialVersion: canvas.version,
+      getGraph,
+      onConflict,
+      // 只读预览：保存与草稿整条链路不启动
+      readOnly: readOnly || !!collaboration,
+      // 同步要等撤销栈建好才能创建，这里先经 ref 转一道
+      autoMerge: () => agentSyncRef.current?.autoMerge() ?? Promise.resolve(null),
+      onSaved: (graph, version) => {
+        agentSyncRef.current?.saved(graph, version);
+        onSavedRef.current?.(graph);
+      },
+    });
+  const saveStatus = collaboration?.status ?? legacySave.status;
+  const changed = collaboration?.changed ?? legacySave.changed;
+  const flush = collaboration?.flush ?? legacySave.flush;
+  const getVersion = collaboration?.getVersion ?? legacySave.getVersion;
   const overlayGate = useOverlayGate(getNodes);
   const {
     adjustChanges,
     onNodeDragStart: alignDragStart,
     onNodeDragStop: alignDragStop,
-  } = useAlignGuides();
+  } = useAlignGuides(!!collaboration);
   const { pruneOnChange, onNodeClick: onGateNodeClick } = overlayGate;
+  const collaborationVersion = collaboration?.getVersion;
   const onNodesChange = useCallback(
     (incoming: NodeChange<FlowNode>[]) => {
       // 只读预览：节点变更里只放行选中与测量尺寸，拖动、删除、就地改数据（updateNodeData 发的是 replace）全丢掉。
@@ -330,7 +472,21 @@ export const CanvasEditor = memo(function CanvasEditor({
       const changes = adjustChanges(allowed);
       pruneOnChange(changes);
       for (const change of changes) {
+        if (collaborationVersion && change.type === "position" && change.dragging !== undefined) {
+          const gesture = collaborationGestures.current.get(change.id);
+          if (gesture) gesture.active = change.dragging;
+          else if (change.dragging) {
+            const node = nodesRef.current.find((candidate) => candidate.id === change.id);
+            if (node)
+              collaborationGestures.current.set(change.id, {
+                revision: collaborationVersion(),
+                position: node.position,
+                active: true,
+              });
+          }
+        }
         if (change.type === "remove") {
+          collaborationGestures.current.delete(change.id);
           // 删掉还在上传的节点就是取消上传
           uploadRunner.cancel(change.id);
           // 删掉正在修剪的源节点：编码结果没处挂，中止并清掉会话
@@ -359,7 +515,7 @@ export const CanvasEditor = memo(function CanvasEditor({
         !persistent.every((change) => change.type === "position" && change.dragging);
       applyNodesChange(changes);
     },
-    [adjustChanges, applyNodesChange, pruneOnChange, readOnly],
+    [adjustChanges, applyNodesChange, collaborationVersion, pruneOnChange, readOnly],
   );
   useEffect(() => {
     nodesRef.current = nodes;
@@ -377,24 +533,26 @@ export const CanvasEditor = memo(function CanvasEditor({
     [readOnly, setContentNodes],
   );
   // 任务结果回填节点；打开画布时对账还在 running 的节点
-  useTaskBackfill(contentNodes, writeContentNodes, canvas.id);
+  useTaskBackfill(contentNodes, writeContentNodes, canvas.id, !collaboration);
   // 保存撞上冲突要弹「画布已在别处修改」：先关掉导演台，弹窗显示在画布上（设计稿 3D导演台 §7）。
   // 场景早已写进节点，跟着弹窗里「另存为新画布 / 加载最新」走，和画布上其他本地改动一样
   useEffect(() => {
     if (conflict !== null || draftConflict !== null) useDirectorStore.getState().reset();
   }, [conflict, draftConflict]);
+  const [localTitle, setLocalTitle] = useState(canvas.title);
+  const confirmedTitle = collaboration?.title ?? canvas.title;
+  const title = collaboration?.title ?? localTitle;
   useEffect(() => {
-    rememberCanvasTitle(canvas.id, canvas.title);
-  }, [canvas.id, canvas.title]);
-  const [title, setTitle] = useState(canvas.title);
+    rememberCanvasTitle(canvas.id, confirmedTitle);
+  }, [canvas.id, confirmedTitle]);
   const onRename = useCallback(
     (next: string) => {
       const previous = title;
-      setTitle(next);
+      setLocalTitle(next);
       void rename(next).then((ok) => {
         if (ok) rememberCanvasTitle(canvas.id, next);
         else {
-          setTitle(previous);
+          setLocalTitle(previous);
           canvasNotice("error", "改名没保存上，请稍后再试", { id: "rename-failed" });
         }
       });
@@ -440,7 +598,7 @@ export const CanvasEditor = memo(function CanvasEditor({
     if (fresh) void flush();
   }, [nodes, edges, changed, flush]);
   const { tool, activeTool, setTool } = useCanvasTool();
-  const history = useCanvasHistory({ nodes, edges, setNodes, setEdges });
+  const history = useCanvasHistory({ nodes, edges, setNodes, setEdges, enabled: !collaboration });
   const agentSync = useAgentCanvasSync({
     canvas,
     getVersion,
@@ -457,7 +615,7 @@ export const CanvasEditor = memo(function CanvasEditor({
       for (const id of ids) knownTaskIdsRef.current.add(id);
     },
     resetHistory: history.reset,
-    readOnly,
+    readOnly: readOnly || !!collaboration,
   });
   useEffect(() => {
     agentSyncRef.current = agentSync;
@@ -865,13 +1023,14 @@ export const CanvasEditor = memo(function CanvasEditor({
     [addNodeAt, addUploadedNodes, beginUploadAt, viewportCenter],
   );
   useCanvasShortcuts({
-    undo: history.undo,
-    redo: history.redo,
+    undo: collaboration?.undo ?? history.undo,
+    redo: collaboration?.redo ?? history.redo,
     setTool,
     openShortcuts,
     save: saveNow,
     group: groupShortcuts,
     paste: pasteContent,
+    onLocalViewChange: collaborationPresence?.stopFollowing,
     readOnly,
   });
 
@@ -929,9 +1088,11 @@ export const CanvasEditor = memo(function CanvasEditor({
     [getNode],
   );
 
+  const beginTextEdit = collaboration?.beginTextEdit;
+  const beginSceneEdit = collaboration?.beginSceneEdit;
   const extensions = useMemo<NodeExtensions>(
-    () => ({ toolbarExtra, toolbarVisible, readOnly }),
-    [toolbarExtra, toolbarVisible, readOnly],
+    () => ({ toolbarExtra, toolbarVisible, readOnly, beginTextEdit, beginSceneEdit }),
+    [toolbarExtra, toolbarVisible, readOnly, beginTextEdit, beginSceneEdit],
   );
   const openSettings = useCallback(() => setSettingsOpen(true), []);
   const openAssetPicker = openAssetPickerAtCenter;
@@ -989,8 +1150,10 @@ export const CanvasEditor = memo(function CanvasEditor({
                             >
                               <CanvasFlowSurface
                                 minimap={minimap}
+                                onMiniMapInteraction={collaborationPresence?.stopFollowing}
                                 nodes={nodes}
                                 edges={edges}
+                                onlyRenderVisibleElements={!!collaboration && nodes.length >= 200}
                                 onNodesChange={onNodesChange}
                                 onEdgesChange={onEdgesChange}
                                 onInit={() => {
@@ -1007,6 +1170,9 @@ export const CanvasEditor = memo(function CanvasEditor({
                                     });
                                   }
                                 }}
+                                onMoveStart={(event) => {
+                                  if (event) collaborationPresence?.stopFollowing();
+                                }}
                                 onMoveEnd={(_event, viewport) => {
                                   // 恢复视口那一下不算用户移动，别把云端视口写成本机视口
                                   if (
@@ -1017,7 +1183,8 @@ export const CanvasEditor = memo(function CanvasEditor({
                                   appliedViewportRef.current = viewport;
                                   // 只读预览不写本机视口：视口按 user + canvas 存一份，
                                   // 在这里挪两下就把正在编辑那个标签页的位置改掉了
-                                  if (!readOnly) viewportWriter.schedule(viewport);
+                                  if (!readOnly && !collaborationPresence?.getFollowing())
+                                    viewportWriter.schedule(viewport);
                                 }}
                                 onNodeDragStart={
                                   readOnly

@@ -1,6 +1,6 @@
 {
   "name": "video-canvas-cli",
-  "version": "0.6.4",
+  "version": "0.7.0",
   "private": true,
   "description": "连镜（video-canvas）命令行：设备授权登录、画布读写与节点编辑、生成与任务等待、小镜 Agent、运行记录导出",
   "keywords": [

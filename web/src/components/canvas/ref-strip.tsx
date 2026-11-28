@@ -113,6 +113,7 @@ export function RefStrip({
   onRemoveManual,
   errors,
   notices = [],
+  referencePrompt,
   disabled,
 }: {
   items: RefItem[];
@@ -134,6 +135,7 @@ export function RefStrip({
   errors: string[];
   /** 非阻断提示：角色卡的声音未生效、参考图被截断等，提交照常进行 */
   notices?: string[];
+  referencePrompt?: { action: string; hint: string };
   disabled?: boolean;
 }) {
   const refs = usePromptRefs();
@@ -301,14 +303,16 @@ export function RefStrip({
         >
           <DropdownMenuTrigger
             disabled={disabled || uploading}
-            aria-label="引用画布里的素材"
-            title="引用画布里的素材（会自动连线）"
+            aria-label={referencePrompt?.action ?? "引用画布里的素材"}
+            title={referencePrompt?.hint ?? "引用画布里的素材（会自动连线）"}
             className={cn(
               TILE,
               "text-muted-foreground hover:text-foreground bg-foreground/5 ring-foreground/8 hover:bg-foreground/10 disabled:opacity-50",
+              referencePrompt && "flex w-auto gap-1 px-2.5 text-xs",
             )}
           >
             {uploading ? <Loader2 className="size-5 animate-spin" /> : <Plus className="size-5" />}
+            {referencePrompt?.action}
           </DropdownMenuTrigger>
           <DropdownMenuContent className="w-64" align="start" sideOffset={6}>
             <DropdownMenuGroup>
@@ -374,6 +378,7 @@ export function RefStrip({
         }}
       />
       {messages.length > 0 && <p className="text-destructive text-xs">{messages[0]}</p>}
+      {referencePrompt && <p className="text-muted-foreground text-xs">{referencePrompt.hint}</p>}
       {notices.map((notice) => (
         <p key={notice} data-slot="ref-notice" className="text-status-warning text-xs">
           {notice}

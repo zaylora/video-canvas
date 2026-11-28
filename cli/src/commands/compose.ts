@@ -1,32 +1,21 @@
-// 成片合成。后端接口就绪前入口关闭，实现与推导规则原样保留。
-
-import { APIError, request } from "../client.ts";
-import { boolFlag, intFlag, listFlag, stringFlag, toInt } from "./args.ts";
-import { fetchCanvas } from "./canvas.ts";
-import { baseOf, emit, requireToken, sleep } from "./shared.ts";
+import { APIError } from "../client.ts";
+import { retryNotice, withRetry } from "../retry.ts";
+import { boolFlag, intFlag, listFlag, stringFlag } from "./args.ts";
+import { versionFlag } from "./collaboration-version.ts";
+import { canvasPath, collaborationRequest, tryCollaboration } from "./collaboration.ts";
+import { emit, sleep } from "./shared.ts";
 import type {
   Args,
   CanvasNode,
   CanvasNodeData,
-  ComposeActive,
   ComposeJob,
   ComposeRow,
   Ctx,
   Graph,
+  WireVersion,
 } from "../types.ts";
 
 const TERMINAL_COMPOSE_STATUSES = new Set<string>(["succeeded", "failed", "canceled"]);
-
-/**
- * 后端目前没有 /canvas/:id/compose 系列接口（成片合成由另一个 PR 提供），
- * 所以三条命令的入口先关闭：实现与推导规则原样保留，后端就绪后把它改成 true 即可恢复，
- * 同时恢复帮助、README 与 skill 里被移除的说明。
- */
-const COMPOSE_SUPPORTED = false;
-
-function assertComposeSupported(): void {
-  if (!COMPOSE_SUPPORTED) throw new APIError(-1, "当前服务端暂不支持成片合成", 0);
-}
 
 /** 节点当前生效的素材 id：优先 activeOutputId 指向的那一版，老节点只有 assetId。 */
 function activeAssetIdOf(data?: CanvasNodeData): string {
@@ -109,171 +98,140 @@ function formatComposeJob(job: ComposeJob): string {
   if (job.result_asset_id) lines.push(`成片素材：${job.result_asset_id}`);
   if (job.result_asset_url) lines.push(`成片地址：${job.result_asset_url}`);
   if (job.error) lines.push(`错误：${job.error}`);
+  if (job.result_node) lines.push(`成片节点：${job.result_node}`);
   return lines.join("\n");
 }
+const usage =
+  "canvas compose <画布> (--nodes 视频节点,... | --node 成片节点) --epoch E --revision N --op-id ID";
 
-/**
- * 合成成片：POST /canvas/:id/compose，asset_ids 的顺序就是成片顺序。
- * 不给 --assets 时按画布里的成片节点推导（composeOrder 优先），并把推导结果打出来，
- * 用户能对着看是不是想要的顺序——顺序错了成片就错了，不能猜完不吭声。
- */
+function composePath(code: string, id?: string): string {
+  const base = `${canvasPath(code)}/collaboration/compose`;
+  return id ? `${base}/${encodeURIComponent(id)}` : base;
+}
+
+function requireEpoch(args: Args): WireVersion {
+  const epoch = versionFlag(args.flags, "epoch");
+  if (epoch === undefined) throw new APIError(-1, "--epoch 需要协作会话代数", 2);
+  return epoch;
+}
+
+function waitOptions(args: Args): { timeout: number; interval: number } {
+  return {
+    timeout: intFlag(args.flags, "timeout", 900, { min: 1, max: 86400 }),
+    interval: intFlag(args.flags, "interval", 5, { min: 1, max: 3600 }),
+  };
+}
+
 export async function canvasCompose(ctx: Ctx, args: Args): Promise<void> {
-  assertComposeSupported();
   const code = args.positional[0];
-  const usage =
-    "canvas compose <画布编号> --node <成片节点id> [--assets 素材id,素材id...] [--seqs 1,2,3] " +
-    "[--mode storyboard|compose|selection] [--wait] [--timeout 900] [--interval 5]";
-  const node = args.flags.node;
-  if (!code || node === undefined) throw new APIError(-1, `用法：${usage}`, 2);
-  if (node === true || typeof node !== "string")
-    throw new APIError(-1, `--node 需要成片节点 id。用法：${usage}`, 2);
-
-  let rows: ComposeRow[] = [];
-  let assetIds = listFlag(args.flags, "assets");
-  let derived = false;
-  if (!assetIds.length) {
-    const canvas = await fetchCanvas(ctx, code);
-    const graph: Graph = canvas.payload_json || {};
-    const result = deriveComposeAssets(graph, node);
-    rows = result.rows;
-    assetIds = result.rows.map((row) => row.assetId).filter(Boolean);
-    derived = true;
-    if (!assetIds.length)
-      throw new APIError(
-        -1,
-        `${formatComposeRows(rows)}\n成片节点 ${node} 的上游还没有可用的视频素材；` +
-          "先在画布里生成视频，或用 --assets 显式给素材 id",
-        0,
-      );
-  }
-
-  const body: Record<string, unknown> = { node_id: node, asset_ids: assetIds };
-  const seqs = listFlag(args.flags, "seqs").map((raw) => toInt(raw, "seqs", { min: 0 }));
-  if (seqs.length) body.seqs = seqs;
-  if (typeof args.flags.mode === "string") body.mode = args.flags.mode;
-
-  const token = requireToken(ctx);
-  const job = await request<ComposeJob>({
-    base: baseOf(ctx),
-    token,
-    method: "POST",
-    path: `/canvas/${encodeURIComponent(code)}/compose`,
-    body,
-    fetchImpl: ctx.fetchImpl,
-  });
-  const plan = derived ? formatComposeRows(rows) : `素材顺序：${assetIds.join(" → ")}`;
-
-  if (!boolFlag(args.flags, "wait")) {
-    emit(
-      ctx,
-      { job, assets: assetIds, rows },
-      [plan, "", formatComposeJob(job), "", "已提交，加 --wait 可以等它合成完。"].join("\n"),
-    );
-    return;
-  }
-
-  const timeoutSeconds = intFlag(args.flags, "timeout", 900, { max: 86400 });
-  const intervalSeconds = intFlag(args.flags, "interval", 5, { max: 3600 });
-  const deadline = Date.now() + timeoutSeconds * 1000;
-  let last = "";
-  let final = job;
-  while (Date.now() < deadline) {
-    final = await request<ComposeJob>({
-      base: baseOf(ctx),
-      token,
-      path: `/canvas/${encodeURIComponent(code)}/compose/${encodeURIComponent(String(job.id))}`,
-      fetchImpl: ctx.fetchImpl,
-    });
-    if (final.status !== last) {
-      ctx.stderr(`[${new Date().toISOString().slice(11, 19)}] ${final.status}`);
-      last = final.status;
-    }
-    if (TERMINAL_COMPOSE_STATUSES.has(final.status)) break;
-    await sleep(intervalSeconds * 1000);
-  }
-  if (!TERMINAL_COMPOSE_STATUSES.has(final.status))
-    throw new APIError(
-      -1,
-      `等待超时（${timeoutSeconds}s），合成任务 ${job.id} 仍未结束；可用 canvas compose-status 继续查`,
-      0,
-      3,
-    );
-
-  const human = [plan, "", formatComposeJob(final)].join("\n");
-  if (final.status === "succeeded") {
-    emit(ctx, { job: final, assets: assetIds, rows }, human);
-    return;
-  }
-  if (ctx.json) {
-    ctx.stdout(
-      JSON.stringify({
-        ok: false,
-        error: { code: -1, message: final.error || `合成${final.status}` },
-        data: { job: final, assets: assetIds, rows },
-      }),
-    );
-  } else {
-    ctx.stdout(human);
-  }
-  process.exitCode = 1;
-}
-
-/** 查合成任务：给 --job 就按任务 id 查，给 --node 就查该节点上最新的任务（含是否已过期）。 */
-export async function canvasComposeStatus(ctx: Ctx, args: Args): Promise<void> {
-  assertComposeSupported();
-  const code = args.positional[0];
-  const usage =
-    "canvas compose-status <画布编号> [--job <任务id> | --node <成片节点id> [--assets 素材id,...]]";
   if (!code) throw new APIError(-1, `用法：${usage}`, 2);
-  const jobId = args.flags.job;
-  const node = args.flags.node;
-  if (jobId === undefined && node === undefined)
-    throw new APIError(-1, `要给 --job 或 --node 其中之一。用法：${usage}`, 2);
-  const token = requireToken(ctx);
-  if (jobId !== undefined) {
-    if (jobId === true || typeof jobId !== "string")
-      throw new APIError(-1, `--job 需要任务 id。用法：${usage}`, 2);
-    const job = await request<ComposeJob>({
-      base: baseOf(ctx),
-      token,
-      path: `/canvas/${encodeURIComponent(code)}/compose/${encodeURIComponent(jobId)}`,
-      fetchImpl: ctx.fetchImpl,
-    });
-    emit(ctx, job, formatComposeJob(job));
-    return;
-  }
-  if (node === true || typeof node !== "string")
-    throw new APIError(-1, `--node 需要成片节点 id。用法：${usage}`, 2);
-  const assets = listFlag(args.flags, "assets");
-  const res = await request<ComposeActive | null>({
-    base: baseOf(ctx),
-    token,
-    path: `/canvas/${encodeURIComponent(code)}/compose/active`,
-    query: { node_id: node, asset_ids: assets.join(",") },
-    fetchImpl: ctx.fetchImpl,
+  const epoch = requireEpoch(args);
+  const revision = versionFlag(args.flags, "revision");
+  if (revision === undefined) throw new APIError(-1, `用法：${usage}`, 2);
+  const opId = stringFlag(args.flags, "op-id", usage);
+  if (!/^[a-zA-Z0-9_-]{1,64}$/.test(opId)) throw new APIError(-1, "无效的 --op-id", 2);
+  const selected = listFlag(args.flags, "nodes");
+  const byNode = args.flags.node !== undefined;
+  if (Boolean(selected.length) === byNode) throw new APIError(-1, `用法：${usage}`, 2);
+  const wait = boolFlag(args.flags, "wait");
+  const options = wait ? waitOptions(args) : undefined;
+  const snapshot = await tryCollaboration(ctx, code);
+  if (!snapshot?.capabilities?.actions?.includes("compose"))
+    throw new APIError(-1, "当前服务端暂不支持成片合成，或当前成员无成片权限", 0);
+  if (snapshot.epoch !== epoch) throw new APIError(30018, "协作会话已变更", 409);
+  if (byNode && snapshot.canvas.revision !== revision)
+    throw new APIError(-1, "成片节点的观察版本已变化，请核对顺序或用原 --nodes 列表重试", 409);
+  const rows = byNode
+    ? deriveComposeAssets(snapshot.canvas.payload_json ?? {}, stringFlag(args.flags, "node", usage))
+        .rows
+    : [];
+  if (rows.some((row) => !row.assetId))
+    throw new APIError(-1, `存在未生成视频的片段：\n${formatComposeRows(rows)}`, 2);
+  const nodes = byNode ? rows.map((row) => row.node) : selected;
+  if (nodes.length < 1 || nodes.length > 24) throw new APIError(-1, "成片需要 1–24 段视频", 2);
+  const job = await collaborationRequest<ComposeJob>(ctx, composePath(code), {
+    method: "POST",
+    body: { epoch, revision, opId, nodes },
   });
-  if (!res) {
-    emit(ctx, {}, "这个节点上没有进行中的合成任务");
-    return;
-  }
-  const stale = res.stale === undefined ? "" : res.stale ? "（素材已变，成片过期）" : "";
-  emit(ctx, res, `${formatComposeJob(res)}${stale}`);
+  const final = options ? await waitCompose(ctx, code, epoch, job.id, options, job) : job;
+  const plan = byNode ? formatComposeRows(rows) : `节点顺序：${nodes.join(" → ")}`;
+  emit(ctx, { job: final, nodes, opId, epoch, revision }, `${plan}\n\n${formatComposeJob(final)}`);
+  if (wait && final.status !== "succeeded") process.exitCode = 1;
 }
 
-/** 取消还没落终态的合成任务。 */
-export async function canvasComposeCancel(ctx: Ctx, args: Args): Promise<void> {
-  assertComposeSupported();
-  const code = args.positional[0];
-  const usage = "canvas compose-cancel <画布编号> --job <任务id>";
-  if (!code || args.flags.job === undefined) throw new APIError(-1, `用法：${usage}`, 2);
-  const jobId = stringFlag(args.flags, "job", usage);
-  const token = requireToken(ctx);
-  const job = await request<ComposeJob>({
-    base: baseOf(ctx),
-    token,
-    method: "POST",
-    path: `/canvas/${encodeURIComponent(code)}/compose/${encodeURIComponent(jobId)}/cancel`,
-    fetchImpl: ctx.fetchImpl,
-  });
+async function waitCompose(
+  ctx: Ctx,
+  code: string,
+  epoch: WireVersion,
+  id: string | number,
+  options: { timeout: number; interval: number },
+  initial?: ComposeJob,
+): Promise<ComposeJob> {
+  const deadline = Date.now() + options.timeout * 1000;
+  const path = composePath(code, String(id));
+  let last = initial?.status;
+  if (initial && TERMINAL_COMPOSE_STATUSES.has(initial.status)) return initial;
+  while (Date.now() < deadline) {
+    const job = await withRetry(
+      () =>
+        collaborationRequest<ComposeJob>(ctx, path, {
+          query: { epoch },
+          signal: AbortSignal.timeout(Math.max(1, deadline - Date.now())),
+        }),
+      { deadline, onRetry: (err, attempt, ms) => ctx.stderr(retryNotice(err, attempt, ms)) },
+    );
+    if (TERMINAL_COMPOSE_STATUSES.has(job.status)) return job;
+    if (last !== job.status) ctx.stderr(`成片任务 ${id}：${job.status}`);
+    last = job.status;
+    await sleep(Math.max(0, Math.min(options.interval * 1000, deadline - Date.now())));
+  }
+  throw new APIError(
+    -1,
+    `成片任务 ${id} 等待超时，可用 task wait ${id} --canvas ${code} --epoch ${epoch} 继续等待`,
+    0,
+    3,
+  );
+}
+
+export async function readComposeJob(
+  ctx: Ctx,
+  args: Args,
+  code: string,
+  id: string,
+  action: "get" | "wait" | "cancel",
+): Promise<void> {
+  const epoch = requireEpoch(args);
+  const job =
+    action === "wait"
+      ? await waitCompose(ctx, code, epoch, id, waitOptions(args))
+      : await collaborationRequest<ComposeJob>(ctx, composePath(code, id), {
+          method: action === "cancel" ? "DELETE" : "GET",
+          query: { epoch },
+        });
   emit(ctx, job, formatComposeJob(job));
+  if (action === "wait" && job.status !== "succeeded") process.exitCode = 1;
+}
+
+export async function canvasComposeStatus(ctx: Ctx, args: Args): Promise<void> {
+  const code = args.positional[0];
+  if (!code) throw new APIError(-1, "用法：canvas compose-status <画布> --job ID --epoch E", 2);
+  return readComposeJob(
+    ctx,
+    args,
+    code,
+    stringFlag(args.flags, "job", "canvas compose-status"),
+    "get",
+  );
+}
+
+export async function canvasComposeCancel(ctx: Ctx, args: Args): Promise<void> {
+  const code = args.positional[0];
+  if (!code) throw new APIError(-1, "用法：canvas compose-cancel <画布> --job ID --epoch E", 2);
+  return readComposeJob(
+    ctx,
+    args,
+    code,
+    stringFlag(args.flags, "job", "canvas compose-cancel"),
+    "cancel",
+  );
 }

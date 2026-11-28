@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"video-canvas/internal/model"
 )
@@ -115,8 +116,17 @@ func (r *AssetFolderRepository) CountItems(ctx context.Context, userID, folderID
 
 // DeleteItems 删除该用户在这个文件夹里的全部库归属行，返回删除的行数。
 func (r *AssetFolderRepository) DeleteItems(ctx context.Context, userID, folderID uint64) (int64, error) {
-	res := r.db.WithContext(ctx).Where("user_id = ? AND folder_id = ?", userID, folderID).Delete(&model.AssetLibraryItem{})
+	tx := r.db.WithContext(ctx)
+	if err := lockAssetFolder(tx, userID, folderID); err != nil {
+		return 0, err
+	}
+	res := tx.Where("user_id = ? AND folder_id = ?", userID, folderID).Delete(&model.AssetLibraryItem{})
 	return res.RowsAffected, res.Error
+}
+
+func lockAssetFolder(tx *gorm.DB, userID, folderID uint64) error {
+	return translate(tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id").
+		Where("id = ? AND user_id = ?", folderID, userID).Take(&model.AssetFolder{}).Error)
 }
 
 // Delete 删除文件夹本身，不存在或不属于该用户返回 ErrNotFound。

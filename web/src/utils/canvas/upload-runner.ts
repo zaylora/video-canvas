@@ -9,6 +9,7 @@ export type UploadOutcome = "done" | "failed" | "aborted";
 
 /** 把改动写回某个节点；节点已经被删了就什么也不做 */
 export type PatchNode = (id: string, patch: Partial<CanvasNodeData>) => void;
+type PrepareUpload = () => Promise<File>;
 
 /** 上传失败时节点上写的话 */
 const FAILED_TEXT = "上传失败，请重试";
@@ -25,7 +26,7 @@ export function createUploadRunner(
   /** 在传的任务：节点 id -> 它的中止控制器 */
   const running = new Map<string, AbortController>();
   /** 留着的文件：上传中和失败后都在，成功或取消就丢 */
-  const files = new Map<string, File>();
+  const files = new Map<string, File | PrepareUpload>();
 
   const start = async (id: string, file: File, patch: PatchNode): Promise<UploadOutcome> => {
     const controller = new AbortController();
@@ -59,6 +60,30 @@ export function createUploadRunner(
     }
   };
 
+  const prepare = async (
+    id: string,
+    makeFile: PrepareUpload,
+    patch: PatchNode,
+  ): Promise<UploadOutcome> => {
+    const controller = new AbortController();
+    running.set(id, controller);
+    patch(id, { status: "running", uploadProgress: 0, error: null });
+    try {
+      const file = await makeFile();
+      if (running.get(id) !== controller) return "aborted";
+      return start(id, file, patch);
+    } catch (error) {
+      if (running.get(id) !== controller) return "aborted";
+      running.delete(id);
+      patch(id, {
+        status: "error",
+        error: error instanceof Error ? error.message : "准备素材失败，请重试",
+        uploadProgress: undefined,
+      });
+      return "failed";
+    }
+  };
+
   return {
     /**
      * 开始上传一个文件到某个节点。
@@ -76,7 +101,11 @@ export function createUploadRunner(
     retry: async (id: string, patch: PatchNode): Promise<UploadOutcome> => {
       const file = files.get(id);
       if (!file || running.has(id)) return "failed";
-      return start(id, file, patch);
+      return typeof file === "function" ? prepare(id, file, patch) : start(id, file, patch);
+    },
+    rememberPreparation: (id: string, makeFile: PrepareUpload) => {
+      if (!running.delete(id)) return;
+      files.set(id, makeFile);
     },
     /**
      * 取消并忘掉某个节点的上传：节点被删时调用。在传的请求被中止，暂存的文件也丢掉。

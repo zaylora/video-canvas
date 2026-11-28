@@ -36,6 +36,9 @@ func validateCapabilities(kind string, c *Capabilities, issues *[]Issue) {
 	}
 	validateOps(kind, c, add)
 	validateRefs(kind, c, add)
+	if c.AudioOperation != "" {
+		validateAudioOperation(kind, c, add)
+	}
 	if c.Prompt.MaxLength < 1 || c.Prompt.MaxLength > maxPromptLength {
 		add("prompt.max_length", fmt.Sprintf("提示词字数上限必须在 1 – %d 之间（Agent 模型里是用户单条消息的字数上限）", maxPromptLength))
 	}
@@ -51,6 +54,21 @@ func validateCapabilities(kind string, c *Capabilities, issues *[]Issue) {
 	validatePromptFormat(kind, c.PromptFormat, add)
 	validateParams(c.Params, add)
 	validateContext(kind, c, add)
+}
+
+func validateAudioOperation(kind string, caps *Capabilities, add func(path, msg string)) {
+	if kind != KindAudio || caps.AudioOperation != AudioOperationVocalSeparation {
+		add("audio_operation", "只有音频模型可声明人声分离")
+		return
+	}
+	if !caps.Refs.Audio.On || caps.Refs.Audio.Max != 1 || caps.Refs.Image.On || caps.Refs.Video.On {
+		add("refs", "人声分离只接受一条音频素材")
+	}
+	for _, param := range caps.Params {
+		if param.Fanout {
+			add("params."+param.Name+".fanout", "人声分离每次仅提交一个任务")
+		}
+	}
 }
 
 // validatePromptFormat 只允许 seedance / h3（空 = 通用），且只有视频模型有提示词写法。
@@ -92,7 +110,7 @@ func validateOps(kind string, c *Capabilities, add func(path, msg string)) {
 
 func validateRefs(kind string, c *Capabilities, add func(path, msg string)) {
 	for _, m := range MediaKinds {
-		validateRefSpec(kind, m.Kind, c.Refs.Of(m.Kind), add)
+		validateRefSpec(kind, m.Kind, c.Refs.Of(m.Kind), c.AudioOperation, add)
 	}
 	// 图生需要图片素材；全能参考至少要开一种素材
 	for _, op := range c.Ops {
@@ -110,10 +128,11 @@ func validateRefs(kind string, c *Capabilities, add func(path, msg string)) {
 }
 
 // validateRefSpec 校验一种参考素材：模型种类是否接收，开启后数量与大小是否在固定范围内。
-func validateRefSpec(kind, refKind string, spec RefSpec, add func(path, msg string)) {
+func validateRefSpec(kind, refKind string, spec RefSpec, audioOperation string, add func(path, msg string)) {
 	path := "refs." + refKind
 	// 视频全部接收；图片、音频模型只接收图片参考（图片模型：图生图；音频模型：文本 + 图片生成音频）
-	supported := kind == KindVideo || ((kind == KindImage || kind == KindAudio) && refKind == "image")
+	supported := kind == KindVideo || ((kind == KindImage || kind == KindAudio) && refKind == "image") ||
+		(kind == KindAudio && refKind == "audio" && audioOperation == AudioOperationVocalSeparation)
 	if !supported {
 		if spec.On {
 			add(path+".on", "这个种类的模型不接收这种参考素材")

@@ -1,3 +1,5 @@
+import type { CanvasVersion } from "@/utils/canvas/collaboration-version";
+
 import { uploadAsset } from "@/api/asset";
 import type { AssetDto } from "@/api/asset/type";
 import type { CreateTaskItem, CreateTaskRequest } from "@/api/generation-task/type";
@@ -55,6 +57,15 @@ export type PatchNode = (
   update: (data: CanvasNodeData) => Partial<CanvasNodeData>,
 ) => void;
 
+type OutpaintCollaboration = {
+  epoch: CanvasVersion;
+  confirmGeneration: (
+    id: string,
+    model: string,
+    input: Record<string, unknown>,
+  ) => Promise<CanvasVersion | null>;
+};
+
 const MB = 1024 * 1024;
 
 const defaultDeps: OutpaintDeps = {
@@ -86,7 +97,11 @@ export function createOutpaintRunner(deps: OutpaintDeps = defaultDeps) {
   /** 上传成功之前失败的任务，留着重试 */
   const jobs = new Map<string, OutpaintJob>();
 
-  const run = async (job: OutpaintJob, patch: PatchNode): Promise<void> => {
+  const run = async (
+    job: OutpaintJob,
+    patch: PatchNode,
+    collaboration?: OutpaintCollaboration,
+  ): Promise<void> => {
     const id = job.nodeId;
     running.add(id);
     jobs.set(id, job);
@@ -145,12 +160,17 @@ export function createOutpaintRunner(deps: OutpaintDeps = defaultDeps) {
       if (firstError) return fail(firstError);
       let items: CreateTaskItem[];
       try {
+        const revision = await collaboration?.confirmGeneration(id, job.modelKey, built.input);
+        if (collaboration && !revision) return fail("请先处理未同步的编辑，再发起扩图");
         items = await deps.submit({
           kind: "image",
           model_id: job.modelKey,
           canvas_id: job.canvasId,
           node_id: id,
           input: built.input,
+          ...(collaboration && revision
+            ? { collaboration: { epoch: collaboration.epoch, revision } }
+            : {}),
         });
       } catch (error) {
         return fail(describeSubmitError(error).message);
@@ -158,7 +178,7 @@ export function createOutpaintRunner(deps: OutpaintDeps = defaultDeps) {
       const item = items.find((entry) => entry.node_id === id) ?? items[0];
       if (!item?.task) return fail(describeSubmitError(item?.error ?? null).message);
       const taskId = String(item.task.id);
-      patch(id, (data) => buildSubmittedPatch("image", taskId, data));
+      if (!collaboration) patch(id, (data) => buildSubmittedPatch("image", taskId, data));
     } finally {
       running.delete(id);
     }
@@ -170,15 +190,19 @@ export function createOutpaintRunner(deps: OutpaintDeps = defaultDeps) {
      * @param job 这次要做的事
      * @param patch 把进度和结果写回节点
      */
-    start: (job: OutpaintJob, patch: PatchNode) => run(job, patch),
+    start: run,
     /**
      * 重试读图 / 合成 / 上传阶段失败的节点。重试材料已经没了（刷新过页面）或正在跑时不动。
      * @returns 有没有重新开始
      */
-    retry: async (id: string, patch: PatchNode): Promise<boolean> => {
+    retry: async (
+      id: string,
+      patch: PatchNode,
+      collaboration?: OutpaintCollaboration,
+    ): Promise<boolean> => {
       const job = jobs.get(id);
       if (!job || running.has(id)) return false;
-      await run(job, patch);
+      await run(job, patch, collaboration);
       return true;
     },
     /** 这个节点正在合成 / 上传 / 提交：这段时间没有可以取消的任务 */

@@ -8,6 +8,7 @@ import (
 
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
+	"video-canvas/internal/provider"
 )
 
 // 平台 API 的「上下文模式」。
@@ -29,8 +30,9 @@ type RunContext struct {
 	ModelKey  string   `json:"model_key"`           // 本次运行的 Agent 模型（模型代理和看图工具要用）
 	Selection []string `json:"selection,omitempty"` // 用户选中的节点，读画布时优先展示
 
-	BudgetCredits int `json:"budget_credits,omitempty"` // 本轮积分预算，0 表示不限制，只看账户可用积分
-	SpentExtra    int `json:"spent_extra,omitempty"`    // 除模型调用外本轮已花的积分（已批准的生成）；模型调用的部分由 Go 按 agent_model_calls 累加
+	BudgetCredits      int    `json:"budget_credits,omitempty"` // 本轮积分预算，0 表示不限制，只看账户可用积分
+	SpentExtra         int    `json:"spent_extra,omitempty"`    // 除模型调用外本轮已花的积分（已批准的生成）；模型调用的部分由 Go 按 agent_model_calls 累加
+	CollaborationEpoch uint64 `json:"collaboration_epoch,omitempty"`
 }
 
 // validate 检查上下文：身份字段必须齐，任务模式必须认识（空模式按全能创作）。
@@ -49,6 +51,7 @@ func (rc RunContext) run() *model.AgentRun {
 	return &model.AgentRun{
 		ID: rc.RunID, SessionID: rc.SessionID, CanvasID: rc.CanvasID, UserID: rc.UserID,
 		Status: model.RunRunning, Mode: rc.Mode, BudgetCredits: rc.BudgetCredits, SpentCredits: rc.SpentExtra,
+		CollaborationEpoch: rc.CollaborationEpoch,
 	}
 }
 
@@ -109,9 +112,10 @@ func (b *AgentBridge) ExecutePlatformTool(ctx context.Context, rc RunContext, to
 	if err := rc.validate(); err != nil {
 		return nil, err
 	}
-	if err := b.requireAdminRun(ctx, rc); err != nil {
+	if err := b.authorizePlatformRun(ctx, rc); err != nil {
 		return nil, err
 	}
+	ctx = provider.WithCanvasAccess(ctx, rc.CanvasID, rc.CollaborationEpoch)
 	spec := findTool(name)
 	if spec != nil && platformExcluded[name] {
 		return nil, errcode.ErrInvalidParams.WithMsg("工具 " + name + " 不能经这个接口执行")

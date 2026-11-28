@@ -1,3 +1,5 @@
+import type { CanvasVersion } from "@/utils/canvas/collaboration-version";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -37,9 +39,10 @@ const NO_SESSIONS: AgentSessionDto[] = [];
 const DEFAULT_MODE: AgentMode = "all";
 
 /** 可用的 Agent 模型：打开浮窗时拉一次；没有已发布的模型时入口按钮变淡 */
-export function useAgentModels() {
+export function useAgentModels(enabled = true) {
   const [models, setModels] = useState<AgentModelDto[] | null>(null);
   useEffect(() => {
+    if (!enabled) return;
     let active = true;
     void getAgentModels()
       .then((list) => active && setModels(list))
@@ -47,7 +50,7 @@ export function useAgentModels() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [enabled]);
   return models;
 }
 
@@ -65,6 +68,8 @@ export function useAgentController({
   getViewport,
   mode = DEFAULT_MODE,
   pageContext,
+  collaboration,
+  enabled = true,
 }: {
   canvasId: string;
   models: AgentModelDto[];
@@ -74,6 +79,8 @@ export function useAgentController({
   mode?: AgentMode;
   /** 后台助手（mode 为 admin）：发起运行时带上的页面上下文，没有为 undefined；其他入口忽略 */
   pageContext?: AdminPageContext;
+  collaboration?: { epoch: CanvasVersion; flush: () => Promise<boolean> };
+  enabled?: boolean;
 }) {
   const admin = mode === "admin" && canvasId === ADMIN_SESSION_SCOPE;
   const settings = useAgentSettings();
@@ -116,6 +123,7 @@ export function useAgentController({
 
   // 打开画布：拉会话列表，默认接着最近的一个
   useEffect(() => {
+    if (!enabled) return;
     let active = true;
     const store = useAgentStore.getState();
     void (admin ? store.loadAdminSessions() : store.loadSessions(canvasId))
@@ -128,7 +136,7 @@ export function useAgentController({
     return () => {
       active = false;
     };
-  }, [admin, canvasId, mode, openSession]);
+  }, [admin, canvasId, enabled, mode, openSession]);
 
   /** 正在打开：会话列表或这个会话最近一页聊天记录还在加载（新建的会话没有历史，不算） */
   const opening =
@@ -220,10 +228,11 @@ export function useAgentController({
   const send = useCallback(
     async (text: string, attachments?: AgentAttachmentReq[]) => {
       const message = text.trim();
-      if (!message || sendingRef.current) return false;
+      if (!enabled || !message || sendingRef.current) return false;
       sendingRef.current = true;
       setSending(true);
       try {
+        if (collaboration && !(await collaboration.flush())) return false;
         if (activeRun) {
           if (
             pending?.kind === "ask" &&
@@ -242,6 +251,7 @@ export function useAgentController({
           agent_model_key: modelKey || undefined,
           ...(attachments?.length && { attachments }),
           ...(admin && pageContext && { page_context: pageContext }),
+          ...(collaboration && { collaboration_epoch: collaboration.epoch }),
         });
         if (admin && pageContext) setSentContexts((prev) => ({ ...prev, [run.id]: pageContext }));
         useAgentStore.getState().ingestRun(run);
@@ -254,7 +264,19 @@ export function useAgentController({
         setSending(false);
       }
     },
-    [activeRun, admin, decide, ensureSession, getViewport, mode, modelKey, pageContext, pending],
+    [
+      activeRun,
+      admin,
+      collaboration,
+      decide,
+      enabled,
+      ensureSession,
+      getViewport,
+      mode,
+      modelKey,
+      pageContext,
+      pending,
+    ],
   );
 
   const stop = useCallback(async () => {

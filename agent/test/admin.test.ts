@@ -6,10 +6,10 @@ import { encodeRunContext } from "../src/platform-client.ts";
 import { withHttp } from "./http-helpers.ts";
 import { codec } from "./engine-helpers.ts";
 
-test("后台运行按用户互斥，画布仍按画布互斥", () => {
+test("后台按用户互斥，个人画布按画布互斥，协作按成员和代数互斥", () => {
   const s = openStore(":memory:", { workerId: 1 });
   try {
-    const create = (userId: string, canvasId: string) => {
+    const create = (userId: string, canvasId: string, collaborationEpoch = 0) => {
       const session = s.createSession({
         userId,
         canvasId,
@@ -23,6 +23,7 @@ test("后台运行按用户互斥，画布仍按画布互斥", () => {
         sessionId: session.id,
         mode: session.mode,
         status: "queued",
+        collaborationEpoch,
       });
     };
     create("1", "0");
@@ -30,6 +31,10 @@ test("后台运行按用户互斥，画布仍按画布互斥", () => {
     assert.throws(() => create("1", "0"), DuplicateError);
     create("1", "7");
     assert.throws(() => create("2", "7"), DuplicateError);
+    create("1", "8", 1);
+    create("2", "8", 1);
+    assert.throws(() => create("1", "8", 1), DuplicateError);
+    create("1", "8", 2);
   } finally {
     s.close();
   }

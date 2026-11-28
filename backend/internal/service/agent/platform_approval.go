@@ -50,7 +50,7 @@ func (b *AgentBridge) ProposeApproval(ctx context.Context, rc RunContext, kind s
 	if err := rc.validate(); err != nil {
 		return nil, err
 	}
-	if err := b.requireAdminRun(ctx, rc); err != nil {
+	if err := b.authorizePlatformRun(ctx, rc); err != nil {
 		return nil, err
 	}
 	name, ok := approvalTools[kind]
@@ -155,6 +155,11 @@ type ApprovalExecution struct {
 func (b *AgentBridge) ExecuteApproval(ctx context.Context, rc RunContext, kind string, approvalID uint64, toolCallID string, o ApprovalOutcome) (*ApprovalExecution, error) {
 	if err := rc.validate(); err != nil {
 		return nil, err
+	}
+	if rc.Mode != model.AgentModeAdmin && o.Status != model.ApprovalRejected {
+		if err := b.authorizePlatformRun(ctx, rc); err != nil {
+			return nil, err
+		}
 	}
 	if _, ok := approvalTools[kind]; !ok {
 		return nil, errcode.ErrInvalidParams.WithMsg("审批种类不对")

@@ -1,3 +1,5 @@
+import { maxCanvasVersion, type CanvasVersion } from "@/utils/canvas/collaboration-version";
+
 import type { CanvasGraphDto } from "@/api/canvas/type";
 
 import { LOCAL_IDLE_MS, LOCAL_MAX_WAIT_MS, nextSaveDelay } from "./save-schedule";
@@ -11,19 +13,19 @@ export const MAX_AUTO_MERGES = 3;
 
 type Draft = {
   /** 写草稿；返回 false 表示写入失败（配额、隐私模式等） */
-  save: (baseVersion: number, graph: CanvasGraphDto) => Promise<boolean>;
+  save: (baseVersion: CanvasVersion, graph: CanvasGraphDto) => Promise<boolean>;
   remove: () => Promise<void>;
 };
 
 type Deps = {
-  initialVersion: number;
+  initialVersion: CanvasVersion;
   /** 取当前完整图谱；还没准备好时返回 null */
   getGraph: () => CanvasGraphDto | null;
   saveCloud: (args: {
-    baseVersion: number;
+    baseVersion: CanvasVersion;
     graph: CanvasGraphDto;
     keepalive: boolean;
-  }) => Promise<{ version: number }>;
+  }) => Promise<{ version: CanvasVersion }>;
   isConflict: (error: unknown) => boolean;
   /** 撞上冲突：拉回最新画布交给界面弹窗；返回 false 表示没拉到，当作普通失败 */
   onConflict: () => Promise<boolean>;
@@ -31,9 +33,9 @@ type Deps = {
    * 撞上冲突时先尝试自动合并（别处的改动是 Agent 写的，不需要让用户选）：把最新画布并进本地，
    * 返回合并后的服务端版本号，接着用它重新保存；返回 null 表示不能自动合并，走 onConflict 弹窗。
    */
-  autoMerge?: () => Promise<number | null>;
+  autoMerge?: () => Promise<CanvasVersion | null>;
   /** 一次云端保存成功后：这份图谱就是服务端在该版本的内容 */
-  onSaved?: (graph: CanvasGraphDto, version: number) => void;
+  onSaved?: (graph: CanvasGraphDto, version: CanvasVersion) => void;
   /** 本地草稿；null 表示不可用（如认不出当前用户），退化为只走云端 */
   draft: Draft | null;
   onStatus: (status: SaveStatus) => void;
@@ -53,7 +55,7 @@ type Deps = {
  * - 云端上传本身不显示在状态栏上：内容已经在本地草稿里
  */
 export class SaveCoordinator {
-  private versionValue: number;
+  private versionValue: CanvasVersion;
   private dirty = false;
   private firstDirtyAt = 0;
   private lastChangeAt = 0;
@@ -92,7 +94,7 @@ export class SaveCoordinator {
   }
 
   /** 改名等不经过图谱保存的请求成功后，把服务端返回的新 revision 接过来 */
-  acceptVersion(version: number) {
+  acceptVersion(version: CanvasVersion) {
     this.versionValue = version;
   }
 
@@ -100,8 +102,8 @@ export class SaveCoordinator {
    * 别处的改动（Agent 的画布补丁、冲突时拉回的最新画布）已经并进本地：把版本接到它的 revision，
    * 之后的保存以它为基准。只会往前走，在途保存晚一步返回也不会把它倒回去。
    */
-  mergeVersion(version: number) {
-    this.versionValue = Math.max(this.versionValue, version);
+  mergeVersion(version: CanvasVersion) {
+    this.versionValue = maxCanvasVersion(this.versionValue, version);
   }
 
   get conflicted() {
@@ -281,7 +283,7 @@ export class SaveCoordinator {
       const saved = await this.exclusive(() =>
         this.deps.saveCloud({ baseVersion: this.versionValue, graph, keepalive }),
       );
-      this.versionValue = Math.max(this.versionValue, saved.version);
+      this.versionValue = maxCanvasVersion(this.versionValue, saved.version);
       this.deps.onSaved?.(graph, saved.version);
       this.retry = 0;
       this.autoMerges = 0;

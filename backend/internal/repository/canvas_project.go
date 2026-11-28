@@ -27,11 +27,9 @@ func (r *CanvasProjectRepository) Create(ctx context.Context, p *model.CanvasPro
 
 // GetByID 按 ID 查询，并限定所属用户，查不到或不属于该用户都返回 ErrNotFound。
 func (r *CanvasProjectRepository) GetByID(ctx context.Context, userID, id uint64) (*model.CanvasProject, error) {
-	var p model.CanvasProject
-	if err := r.db.WithContext(ctx).Where("id = ? AND user_id = ?", id, userID).First(&p).Error; err != nil {
-		return nil, translate(err)
-	}
-	return &p, nil
+	return readCanvasWithCollaboration(r.db.WithContext(ctx), func(db *gorm.DB, project *model.CanvasProject) error {
+		return db.Where("id = ? AND user_id = ?", id, userID).Take(project).Error
+	})
 }
 
 // List 分页查询用户不属于短剧的画布列表，不查 payload_json 大字段；左联 assets 带出封面素材的存储 key（素材没了就是空）。
@@ -73,7 +71,7 @@ func (r *CanvasProjectRepository) Update(ctx context.Context, userID, id, revisi
 	fields["revision"] = gorm.Expr("revision + 1")
 	var saved model.CanvasProject
 	res := r.db.WithContext(ctx).Model(&saved).Clauses(clause.Returning{}).
-		Where("id = ? AND user_id = ? AND revision = ?", id, userID, revision).
+		Where("id = ? AND user_id = ? AND revision = ? AND collaboration_active = false", id, userID, revision).
 		Updates(fields)
 	if res.Error != nil {
 		return nil, res.Error
@@ -81,28 +79,30 @@ func (r *CanvasProjectRepository) Update(ctx context.Context, userID, id, revisi
 	if res.RowsAffected > 0 {
 		return &saved, nil
 	}
-	// 没有更新到任何行：区分是记录不存在还是版本冲突
-	var count int64
-	if err := r.db.WithContext(ctx).Model(&model.CanvasProject{}).
-		Where("id = ? AND user_id = ?", id, userID).Count(&count).Error; err != nil {
-		return nil, err
-	}
-	if count == 0 {
-		return nil, ErrNotFound
-	}
-	return nil, ErrRevisionConflict
+	return nil, legacyCanvasWriteError(r.db.WithContext(ctx), userID, id, ErrRevisionConflict)
 }
 
 // Delete 按 id + user_id 软删除画布；不存在或不属于该用户返回 ErrNotFound。
 func (r *CanvasProjectRepository) Delete(ctx context.Context, userID, id uint64) error {
-	res := r.db.WithContext(ctx).Where("id = ? AND user_id = ?", id, userID).Delete(&model.CanvasProject{})
+	res := r.db.WithContext(ctx).Where("id = ? AND user_id = ? AND collaboration_active = false", id, userID).Delete(&model.CanvasProject{})
 	if res.Error != nil {
 		return res.Error
 	}
 	if res.RowsAffected == 0 {
-		return ErrNotFound
+		return legacyCanvasWriteError(r.db.WithContext(ctx), userID, id, ErrNotFound)
 	}
 	return nil
+}
+
+func legacyCanvasWriteError(db *gorm.DB, userID, id uint64, fallback error) error {
+	var project model.CanvasProject
+	if err := db.Select("collaboration_active").Where("id = ? AND user_id = ?", id, userID).Take(&project).Error; err != nil {
+		return translate(err)
+	}
+	if project.CollaborationActive {
+		return ErrCanvasCollaborationActive
+	}
+	return fallback
 }
 
 // escapeLike 转义 LIKE 通配符，避免用户输入的 % 和 _ 被当作通配符。

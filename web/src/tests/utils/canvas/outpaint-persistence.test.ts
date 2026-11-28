@@ -8,6 +8,8 @@ import {
   hasVolatileRunning,
   serializeGraph,
 } from "@/utils/canvas/canvas-persistence";
+import { diffCollaborationGraph } from "@/utils/canvas/collaboration-graph";
+import { buildDoodleNode } from "@/utils/canvas/doodle-node";
 
 import { makeData } from "../tasks/fixtures";
 
@@ -23,6 +25,41 @@ const node = (id: string, data: Partial<CanvasNode["data"]>): CanvasNode => ({
 /** 扩图结果节点在「读图、合成、上传、提交」这几步里的样子：生成中，还没有 taskId */
 const outpainting = (data: Partial<CanvasNode["data"]> = {}) =>
   node("out", { status: "running", outpaintFrom: "src", model: "m", prompt: "p", ...data });
+
+test("协作媒体加工上传成功后才同时同步节点和来源连线", () => {
+  const source = node("source", {});
+  const result = buildDoodleNode({ source, nodes: [source], aspect: 1 });
+  const before = serializeGraph([source], [], viewport);
+  const project = (data: Partial<CanvasNode["data"]>) =>
+    serializeGraph(
+      [source, { ...result.node, data: { ...result.node.data, ...data } }],
+      [result.edge],
+      viewport,
+      () => false,
+    );
+  expect(diffCollaborationGraph(before, project({}))).toEqual([]);
+  expect(diffCollaborationGraph(before, project({ status: "error" }))).toEqual([]);
+  expect(
+    diffCollaborationGraph(before, project({ status: "done", assetId: "42" })).map(
+      ({ kind, action }) => [kind, action],
+    ),
+  ).toEqual([
+    ["node", "create"],
+    ["edge", "create"],
+  ]);
+  const confirmedFailure = {
+    ...result.node,
+    data: { ...result.node.data, status: "error" as const },
+  };
+  expect(
+    serializeGraph(
+      [source, confirmedFailure],
+      [result.edge],
+      viewport,
+      (id) => id === result.node.id,
+    ).edges,
+  ).toHaveLength(1);
+});
 
 describe("扩图中途刷新：节点不能悄悄变成空壳", () => {
   test("合成、上传阶段（还没有参考图）存档成失败态，写明要回原图重新扩图", () => {
@@ -74,6 +111,16 @@ describe("扩图中途刷新：节点不能悄悄变成空壳", () => {
       viewport,
     });
     expect(graph.nodes[0].data).toMatchObject({ status: "error", error: OUTPAINT_INTERRUPTED });
+  });
+
+  test("协作成员视图通过生成版本识别已提交的扩图", () => {
+    const graph = deserializeGraph({
+      nodes: [outpainting({ generationRevision: 12 })],
+      edges: [],
+      viewport,
+    });
+    expect(graph.nodes[0].data).toMatchObject({ status: "running", generationRevision: 12 });
+    expect(hasVolatileRunning(graph.nodes)).toBe(false);
   });
 });
 

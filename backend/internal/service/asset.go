@@ -75,10 +75,16 @@ type AssetService struct {
 	cfg    config.Storage
 	now    func() time.Time
 
-	redirects redirectCache        // /files 跳转的签名结果缓存
-	intents   UploadIntentRepo     // 浏览器直传的上传意图；没有开启直传能力时为 nil
-	variants  AssetVariantResolver // 缩略图 / 封面的处理服务解析；没有配置时变体一律回退
-	avatars   AvatarLocator        // 头像反查（头像不在 assets 表里）；为 nil 时 /files/avatars/... 一律 404
+	redirects        redirectCache        // /files 跳转的签名结果缓存
+	intents          UploadIntentRepo     // 浏览器直传的上传意图；没有开启直传能力时为 nil
+	variants         AssetVariantResolver // 缩略图 / 封面的处理服务解析；没有配置时变体一律回退
+	avatars          AvatarLocator        // 头像反查（头像不在 assets 表里）；为 nil 时 /files/avatars/... 一律 404
+	canvasReferences *repository.CanvasCollaborationRepository
+}
+
+// SetCanvasReferences 配置协作模型调用所需的素材授权来源。
+func (s *AssetService) SetCanvasReferences(repo *repository.CanvasCollaborationRepository) {
+	s.canvasReferences = repo
 }
 
 // AvatarLocator 按头像 key 反查它所在的存储，由 repository.UserRepository 实现。
@@ -229,11 +235,40 @@ func (s *AssetService) Get(ctx context.Context, userID, assetID uint64) (*model.
 		// 2. 兜底查系统官方素材：只有 source=official 的公共素材放行，别的私有素材不放行
 		official, oerr := s.repo.GetByIDAnyUser(ctx, assetID)
 		if oerr != nil || official.Source != model.AssetSourceOfficial {
-			return nil, provider.ErrAssetNotFound
+			return s.getCanvasReference(ctx, userID, assetID)
 		}
 		return official, nil
 	}
 	return a, nil
+}
+
+func (s *AssetService) getCanvasReference(ctx context.Context, userID, assetID uint64) (*model.Asset, error) {
+	canvasID, epoch := provider.CanvasAccess(ctx)
+	if canvasID == 0 || s.canvasReferences == nil {
+		return nil, provider.ErrAssetNotFound
+	}
+	row, _, err := s.canvasReferences.Snapshot(ctx, userID, canvasID)
+	if errors.Is(err, repository.ErrNotFound) || errors.Is(err, repository.ErrCanvasCollaborationSession) {
+		return nil, provider.ErrAssetNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !row.CollaborationCanGenerate || row.CollaborationEpoch != epoch {
+		return nil, provider.ErrAssetNotFound
+	}
+	_, graph, err := projectedCanvas(row)
+	if err != nil {
+		return nil, err
+	}
+	if reference := graph.assets[assetID]; reference == nil || reference.coverOnly {
+		return nil, provider.ErrAssetNotFound
+	}
+	asset, err := s.repo.GetByID(ctx, row.UserID, assetID)
+	if errors.Is(err, repository.ErrNotFound) {
+		return nil, provider.ErrAssetNotFound
+	}
+	return asset, err
 }
 
 // Open 实现 provider.AssetStore：打开素材内容并生成可被平台访问的 URL。调用方负责关闭 Body。
@@ -368,6 +403,7 @@ type assetIngest struct {
 	MaxBytes     int64
 	Kind         string // 期望的种类（生成产物用），为空不限制
 	FallbackMime string // 嗅探失败时的兜底 mime（仅生成产物用），必须在白名单内
+	Stage        func(*model.Asset) error
 }
 
 // assetReadError 标记“读取来源 Body 失败”，与本地磁盘 / 存储失败区分开。
@@ -452,16 +488,6 @@ func (s *AssetService) ingest(ctx context.Context, p assetIngest) (*model.Asset,
 	//    扩展名取自嗅探结果而不是文件名，避免客户端塞入奇怪的后缀
 	key := fmt.Sprintf("%s%d/%s/%s%s", p.KeyPrefix, p.UserID, s.now().Format("200601"), newAssetUUID(), mimeExt(mime))
 
-	// 8. 写入存储；失败也尝试删一次，防止对象已部分落地却没有对应记录
-	if _, err := f.Seek(0, io.SeekStart); err != nil {
-		return nil, "", fmt.Errorf("回读素材临时文件失败: %w", err)
-	}
-	if err := h.Storage.Put(ctx, key, f, n, mime); err != nil {
-		s.cleanup(ctx, h.Storage, key)
-		return nil, "", fmt.Errorf("写入存储失败: %w", err)
-	}
-
-	// 9. 插入素材行；失败必须删除刚写入的对象，否则会留下永远没人引用的孤儿文件
 	name := p.FileName
 	if name == "" {
 		name = "unnamed" + mimeExt(mime)
@@ -481,8 +507,28 @@ func (s *AssetService) ingest(ctx context.Context, p assetIngest) (*model.Asset,
 		FileName:   name,
 		Sha256:     sum,
 	}
+	return s.storeIngestedAsset(ctx, h.Storage, f, asset, p.Stage)
+}
+
+func (s *AssetService) storeIngestedAsset(ctx context.Context, store storage.Storage, file *os.File, asset *model.Asset, stage func(*model.Asset) error) (*model.Asset, string, error) {
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return nil, "", fmt.Errorf("回读素材临时文件失败: %w", err)
+	}
+	if stage != nil {
+		if err := stage(asset); err != nil {
+			return nil, "", err
+		}
+	}
+	key := asset.StorageKey
+	if err := store.Put(ctx, key, file, asset.ByteSize, asset.MimeType); err != nil {
+		s.cleanup(ctx, store, key)
+		return nil, "", fmt.Errorf("写入存储失败: %w", err)
+	}
+	if stage != nil {
+		return asset, "", nil
+	}
 	if err := s.repo.Create(ctx, asset); err != nil {
-		s.cleanup(ctx, h.Storage, key)
+		s.cleanup(ctx, store, key)
 		return nil, "", fmt.Errorf("保存素材记录失败: %w", err)
 	}
 	url := s.fileURL(key)

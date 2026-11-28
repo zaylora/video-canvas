@@ -18,9 +18,11 @@ type BaseModel struct {
 func All() []any {
 	return []any{
 		&User{},
-		&CanvasProject{},
-		&CanvasViewer{}, &CanvasDelivery{}, &CanvasDeliveryStage{},
+		&CanvasProject{}, &CanvasViewer{}, &CanvasDelivery{}, &CanvasDeliveryStage{},
+		&CanvasCollaborationRecord{}, &CanvasCollaborationReceipt{}, &CanvasCollaborationEvent{}, &CanvasCollaborationComment{},
+		&CanvasCollaborationCheckpoint{}, &CanvasMediaDraft{}, &CanvasComposeJob{}, &CanvasAutomationKey{},
 		&GenerationTask{},
+		&CanvasGenerationBudget{},
 		&GenerationTaskEvent{},
 		&WorkerInstance{},
 		&UserCredit{},

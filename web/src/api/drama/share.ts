@@ -1,10 +1,23 @@
 import { ApiError } from "@/utils/requests/request";
 import service from "@/utils/requests/service";
 import { getCurrentUserId } from "@/utils/storage/user-id";
+import type { CanvasVersion } from "@/utils/canvas/collaboration-version";
 
 export type SharingMode = "view" | "copy" | "transfer";
-export type Viewer = { id: string; email: string };
-export type SharedDrama = { id: string; title: string; cover_asset?: string };
+export type Viewer = {
+  id: string;
+  email: string;
+  username?: string;
+  role?: "editor" | "viewer";
+  canGenerate?: boolean;
+  canCopyToLibrary?: boolean;
+};
+export type SharedDrama = {
+  id: string;
+  title: string;
+  cover_asset?: string;
+  role?: "editor" | "viewer";
+};
 export type SharedEpisode = {
   no: number;
   title: string;
@@ -114,7 +127,7 @@ function sharing(resource: "dramas" | "canvas") {
     members: (id: string) => service.get<Viewer[]>(`/${resource}/${id}/shares`),
     remove: (id: string, member: string) =>
       service.delete<void>(`/${resource}/${id}/shares/${member}`),
-    submit: async (id: string, mode: SharingMode, email: string, revision?: number) => {
+    submit: async (id: string, mode: SharingMode, email: string, revision?: CanvasVersion) => {
       if (mode === "view") {
         await service.post<void>(`/${resource}/${id}/shares`, { mode, email }, { silent: true });
         return;

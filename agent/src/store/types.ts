@@ -2,6 +2,8 @@
  * Agent 服务的领域对象。ID 一律是十进制字符串（雪花 ID 超过 2^53），时间一律是毫秒时间戳。
  * 字段含义和 Go 的 model.AgentSession / AgentRun / AgentEvent / AgentApproval 对应；会话历史不在这里，归 Pi Durable。
  */
+import type { CollaborationEpoch } from "../collaboration-epoch.ts";
+
 export type TitleSource = "draft" | "llm" | "user";
 
 export interface Session {
@@ -29,6 +31,7 @@ export interface Run {
   status: string;
   mode: string;
   budgetCredits: number;
+  collaborationEpoch?: CollaborationEpoch;
   spentCredits: number;
   contextTokens: number;
   steps: number;
@@ -92,6 +95,7 @@ export interface NewRun {
   status: string;
   mode: string;
   budgetCredits?: number;
+  collaborationEpoch?: CollaborationEpoch;
   maxSteps?: number;
   promptVersion?: number;
   toolsHash?: string;

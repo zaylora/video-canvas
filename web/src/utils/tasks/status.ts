@@ -44,6 +44,22 @@ export const cancelableTaskIds = <T extends string | number>(
     return !task || isCancelableTask(task);
   });
 
+export const cancelableCanvasNodeTaskIds = (
+  tasks: readonly TaskView[],
+  canvasId: string,
+  nodeId: string,
+  kind: string,
+): string[] =>
+  tasks
+    .filter(
+      (task) =>
+        task.canvas_id === canvasId &&
+        task.node_id === nodeId &&
+        task.kind === kind &&
+        isCancelableTask(task),
+    )
+    .map((task) => taskKey(task.id));
+
 /** 后端 id 是数字，前端一律当字符串用 */
 export const taskKey = (id: number | string) => String(id);
 

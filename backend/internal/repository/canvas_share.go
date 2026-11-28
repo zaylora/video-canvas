@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 
 	"gorm.io/gorm"
@@ -12,7 +13,15 @@ import (
 )
 
 func lockTaskCanvas(tx *gorm.DB, user, canvas uint64) error {
-	return translate(tx.Model(&model.CanvasProject{}).Select("id").Clauses(clause.Locking{Strength: "SHARE"}).Where("id = ? AND user_id = ?", canvas, user).Take(&model.CanvasProject{}).Error)
+	var project model.CanvasProject
+	err := tx.Model(&project).Select("id", "collaboration_active").Clauses(clause.Locking{Strength: "SHARE"}).Where("id = ? AND user_id = ?", canvas, user).Take(&project).Error
+	if err != nil {
+		return translate(err)
+	}
+	if project.CollaborationActive {
+		return ErrCanvasCollaborationActive
+	}
+	return nil
 }
 
 // CanvasShareRepository 持久化画布授权与交付收据。
@@ -32,26 +41,85 @@ func (r *CanvasShareRepository) Recipient(ctx context.Context, email string) (ui
 
 // Grant 为普通画布添加幂等的只读授权。
 func (r *CanvasShareRepository) Grant(ctx context.Context, owner, canvas, viewer uint64) error {
+	return r.grantRole(ctx, owner, canvas, viewer, model.CanvasRoleViewer, false)
+}
+
+// GrantRole 由所有者设置成员权限；编辑授权仅适用于协作画布。
+func (r *CanvasShareRepository) GrantRole(ctx context.Context, owner, canvas, member uint64, role string) error {
+	if owner == member || (role != model.CanvasRoleViewer && role != model.CanvasRoleEditor) {
+		return ErrCanvasCollaborationInvalidBatch
+	}
+	return r.grantRole(ctx, owner, canvas, member, role, true)
+}
+
+func (r *CanvasShareRepository) grantRole(ctx context.Context, owner, canvas, member uint64, role string, replace bool) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := NewCanvasShareRepository(tx).owned(ctx, owner, canvas).Clauses(clause.Locking{Strength: "SHARE"}).Select("id").Take(&model.CanvasProject{}).Error; err != nil {
+		var project model.CanvasProject
+		if err := NewCanvasShareRepository(tx).owned(ctx, owner, canvas).Clauses(clause.Locking{Strength: "UPDATE"}).
+			Select("id", "collaboration_active").Take(&project).Error; err != nil {
 			return translate(err)
+		}
+		if role == model.CanvasRoleEditor && !project.CollaborationActive {
+			return ErrCanvasCollaborationSession
 		}
 		var recipient model.User
-		if err := tx.Clauses(clause.Locking{Strength: "SHARE"}).Select("id").Where("id = ? AND status = ?", viewer, model.UserStatusActive).Take(&recipient).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "SHARE"}).Select("id").Where("id = ? AND status = ?", member, model.UserStatusActive).Take(&recipient).Error; err != nil {
 			return translate(err)
 		}
-		return tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&model.CanvasViewer{CanvasID: canvas, UserID: viewer}).Error
+		conflict := clause.OnConflict{DoNothing: true}
+		if replace {
+			conflict = clause.OnConflict{Columns: []clause.Column{{Name: "canvas_id"}, {Name: "user_id"}}, DoUpdates: clause.Assignments(map[string]any{
+				"role": role, "can_generate": gorm.Expr("canvas_viewers.can_generate AND ? = ?", role, model.CanvasRoleEditor),
+				"can_copy_to_library": gorm.Expr("canvas_viewers.can_copy_to_library AND ? = ?", role, model.CanvasRoleEditor),
+			})}
+		}
+		return tx.Clauses(conflict).Create(&model.CanvasViewer{CanvasID: canvas, UserID: member, Role: role}).Error
+	})
+}
+
+// SetGenerationPermission 修改编辑成员的独立生成授权。画布或编辑成员不存在时返回 ErrNotFound。
+func (r *CanvasShareRepository) SetGenerationPermission(ctx context.Context, owner, canvas, member uint64, enabled bool) error {
+	return r.setEditorPermission(ctx, owner, canvas, member, "can_generate", enabled)
+}
+
+// SetLibraryPermission 修改编辑成员收藏画布素材的授权。
+func (r *CanvasShareRepository) SetLibraryPermission(ctx context.Context, owner, canvas, member uint64, enabled bool) error {
+	return r.setEditorPermission(ctx, owner, canvas, member, "can_copy_to_library", enabled)
+}
+
+func (r *CanvasShareRepository) setEditorPermission(ctx context.Context, owner, canvas, member uint64, column string, enabled bool) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		project, err := lockCollaborationProject(tx, canvas)
+		if err != nil {
+			return err
+		}
+		if project.UserID != owner || !project.CollaborationActive {
+			return ErrNotFound
+		}
+		result := tx.Model(&model.CanvasViewer{}).Where("canvas_id = ? AND user_id = ? AND role = ?", canvas, member, model.CanvasRoleEditor).
+			Update(column, enabled)
+		if result.Error == nil && result.RowsAffected != 1 {
+			return ErrNotFound
+		}
+		return result.Error
 	})
 }
 
 // Remove 撤销单个成员的授权或退出共享。
 func (r *CanvasShareRepository) Remove(ctx context.Context, owner, canvas, viewer uint64) error {
-	if owner != viewer {
-		if err := r.owned(ctx, owner, canvas).Select("id").Take(&model.CanvasProject{}).Error; err != nil {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		query := tx.Model(&model.CanvasProject{}).Where("id = ? AND drama_id IS NULL", canvas)
+		if owner != viewer {
+			query = query.Where("user_id = ?", owner)
+		}
+		if err := query.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id").Take(&model.CanvasProject{}).Error; err != nil {
+			if owner == viewer && errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil
+			}
 			return translate(err)
 		}
-	}
-	return r.db.WithContext(ctx).Where("canvas_id = ? AND user_id = ?", canvas, viewer).Delete(&model.CanvasViewer{}).Error
+		return tx.Where("canvas_id = ? AND user_id = ?", canvas, viewer).Delete(&model.CanvasViewer{}).Error
+	})
 }
 
 // Members 列出当前所有者授权的查看成员。
@@ -59,12 +127,17 @@ func (r *CanvasShareRepository) Members(ctx context.Context, owner, canvas uint6
 	if err := r.owned(ctx, owner, canvas).Select("id").Take(&model.CanvasProject{}).Error; err != nil {
 		return nil, translate(err)
 	}
-	var users []model.User
-	err := r.db.WithContext(ctx).Select("users.id, users.email").Joins("JOIN canvas_viewers v ON v.user_id = users.id").
+	var users []struct {
+		model.User
+		CanGenerate      bool
+		CanCopyToLibrary bool
+	}
+	err := r.db.WithContext(ctx).Model(&model.User{}).Select("users.id, users.email, users.username, v.role, v.can_generate, v.can_copy_to_library").Joins("JOIN canvas_viewers v ON v.user_id = users.id").
 		Where("v.canvas_id = ?", canvas).Order("users.email").Find(&users).Error
 	items := make([]model.CanvasShareMember, 0, len(users))
 	for _, user := range users {
-		items = append(items, model.CanvasShareMember{ID: idcodec.Encode(user.ID), Email: user.Email})
+		items = append(items, model.CanvasShareMember{ID: idcodec.Encode(user.ID), Email: user.Email, Username: user.Username, Role: user.Role,
+			CanGenerate: user.CanGenerate && user.Role == model.CanvasRoleEditor, CanCopyToLibrary: user.CanCopyToLibrary && user.Role == model.CanvasRoleEditor})
 	}
 	return items, err
 }
@@ -79,21 +152,24 @@ func (r *CanvasShareRepository) Shared(ctx context.Context, user uint64, keyword
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	var rows []model.CanvasProject
-	err := query.Select("canvas_projects.id, canvas_projects.title, canvas_projects.cover_asset_id, canvas_projects.revision, canvas_projects.updated_at").
-		Order("canvas_projects.updated_at DESC, canvas_projects.id DESC").Offset(offset).Limit(limit).Find(&rows).Error
+	var rows []struct {
+		model.CanvasProject
+		Role string
+	}
+	err := query.Select("canvas_projects.id, canvas_projects.title, canvas_projects.cover_asset_id, canvas_projects.revision, canvas_projects.updated_at, CASE WHEN canvas_projects.collaboration_active THEN v.role ELSE 'viewer' END AS role").
+		Order("canvas_projects.updated_at DESC, canvas_projects.id DESC").Offset(offset).Limit(limit).Scan(&rows).Error
 	items := make([]model.CanvasShareItem, 0, len(rows))
 	for _, row := range rows {
-		items = append(items, model.CanvasShareItem{ID: idcodec.Encode(row.ID), Title: row.Title, CoverAsset: readCoverID(row.CoverAssetID), Revision: row.Revision, UpdatedAt: row.UpdatedAt})
+		items = append(items, model.CanvasShareItem{ID: idcodec.Encode(row.ID), Title: row.Title, CoverAsset: readCoverID(row.CoverAssetID), Revision: row.Revision, UpdatedAt: row.UpdatedAt, Role: row.Role})
 	}
 	return items, total, err
 }
 
 // SharedCanvas 仅按当前有效的查看授权读取原画布。
 func (r *CanvasShareRepository) SharedCanvas(ctx context.Context, user, canvas uint64) (*model.CanvasProject, error) {
-	var row model.CanvasProject
-	err := r.shared(ctx, user).Where("canvas_projects.id = ?", canvas).Take(&row).Error
-	return &row, translate(err)
+	return readCanvasWithCollaboration(r.db.WithContext(ctx), func(db *gorm.DB, project *model.CanvasProject) error {
+		return NewCanvasShareRepository(db).shared(ctx, user).Where("canvas_projects.id = ?", canvas).Take(project).Error
+	})
 }
 
 // SharedCanvasRevision 在同一套查看授权下读取版本号。
@@ -105,9 +181,30 @@ func (r *CanvasShareRepository) SharedCanvasRevision(ctx context.Context, user, 
 
 // Source 读取调用者拥有的普通画布。
 func (r *CanvasShareRepository) Source(ctx context.Context, owner, id uint64) (*model.CanvasProject, error) {
-	var row model.CanvasProject
-	err := r.owned(ctx, owner, id).Take(&row).Error
-	return &row, translate(err)
+	return readCanvasWithCollaboration(r.db.WithContext(ctx), func(db *gorm.DB, project *model.CanvasProject) error {
+		return NewCanvasShareRepository(db).owned(ctx, owner, id).Take(project).Error
+	})
+}
+
+// DeliverySource 为协作副本读取当前代数中指定的确认版本，其他交付要求源版本仍是最新。
+func (r *CanvasShareRepository) DeliverySource(ctx context.Context, request model.CanvasDelivery) (*model.CanvasProject, error) {
+	var source model.CanvasProject
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := NewCanvasShareRepository(tx).owned(ctx, request.UserID, request.CanvasID).Take(&source).Error; err != nil {
+			return translate(err)
+		}
+		if request.Mode == "copy" && source.CollaborationActive {
+			return loadHistoricalGraph(tx, &source, source.CollaborationEpoch, request.Revision)
+		}
+		if source.Revision != request.Revision {
+			return ErrRevisionConflict
+		}
+		return hydrateCollaborationProject(tx, &source)
+	}, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	if errors.Is(err, ErrCanvasVersionUnavailable) || errors.Is(err, ErrCanvasCollaborationSession) {
+		return nil, ErrRevisionConflict
+	}
+	return &source, err
 }
 
 // Claim 认领交付请求，已成功请求返回原结果。
@@ -151,11 +248,11 @@ type CanvasShareTx interface {
 	CreateCanvas(context.Context, *model.CanvasProject) error
 }
 
-// WithDelivery 锁定源版本，在同一事务内写入目标和交付收据。
-func (r *CanvasShareRepository) WithDelivery(ctx context.Context, request model.CanvasDelivery, cover uint64, create func(CanvasShareTx) (uint64, error)) error {
+// WithDelivery 锁定源画布并复核交付条件，在同一事务内写入目标和交付收据。
+func (r *CanvasShareRepository) WithDelivery(ctx context.Context, request model.CanvasDelivery, cover, epoch uint64, create func(CanvasShareTx) (uint64, error)) error {
 	return r.db.WithContext(ctx).Transaction(func(dbtx *gorm.DB) error {
 		tx := NewCanvasShareRepository(dbtx)
-		if err := tx.lockDelivery(ctx, request, cover); err != nil {
+		if err := tx.lockDelivery(ctx, request, cover, epoch); err != nil {
 			return err
 		}
 		id, err := create(tx)
@@ -192,15 +289,17 @@ func (r *CanvasShareRepository) Result(ctx context.Context, request model.Canvas
 	return row.ResultID, err
 }
 
-// Ready 检查可能回写画布的生成和拆分镜任务。
+// Ready 检查可能回写画布的生成、拆分镜和成片任务。
 func (r *CanvasShareRepository) Ready(ctx context.Context, user, canvas uint64) error {
 	checks := []struct {
 		model any
 		query string
 		args  []any
 	}{
-		{&model.GenerationTask{}, "user_id = ? AND canvas_project_id = ? AND status IN ?", []any{user, canvas, model.ActiveTaskStatuses}},
-		{&model.StoryboardSplitJob{}, "user_id = ? AND canvas_id = ? AND status IN ?", []any{user, canvas, []string{model.SplitJobPending, model.SplitJobRunning}}},
+		{&model.GenerationTask{}, "canvas_project_id = ? AND (user_id = ? OR collaboration_epoch > 0) AND status IN ?", []any{canvas, user, model.ActiveTaskStatuses}},
+		{&model.StoryboardSplitJob{}, "canvas_id = ? AND (user_id = ? OR collaboration_epoch > 0) AND status IN ?", []any{canvas, user, []string{model.SplitJobPending, model.SplitJobRunning}}},
+		{&model.CanvasComposeJob{}, "canvas_id = ? AND status IN ? AND EXISTS (SELECT 1 FROM canvas_projects WHERE id = canvas_compose_jobs.canvas_id AND collaboration_active AND collaboration_epoch = canvas_compose_jobs.epoch)",
+			[]any{canvas, []string{model.TaskPending, model.TaskRunning}}},
 	}
 	for _, check := range checks {
 		var count int64
@@ -256,23 +355,34 @@ func (r *CanvasShareRepository) SweepStages(ctx context.Context, remove func(con
 	}
 	var errs []error
 	for _, stage := range stages {
-		if err := remove(ctx, stage.StorageID, stage.StorageKey); err != nil {
-			errs = append(errs, err)
-			continue
-		}
-		if err := r.db.WithContext(ctx).Delete(&stage).Error; err != nil {
+		if err := r.sweepStage(ctx, stage, remove); err != nil {
 			errs = append(errs, err)
 		}
 	}
 	return errors.Join(errs...)
 }
 
-func (r *CanvasShareRepository) lockDelivery(ctx context.Context, request model.CanvasDelivery, cover uint64) error {
+func (r *CanvasShareRepository) sweepStage(ctx context.Context, stage model.CanvasDeliveryStage, remove func(context.Context, uint64, string) error) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		result := tx.Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).
+			Where("storage_key = ? AND created_at < now() - interval '10 minutes'", stage.StorageKey).Find(&stage)
+		if result.Error != nil || result.RowsAffected == 0 {
+			return result.Error
+		}
+		if err := remove(ctx, stage.StorageID, stage.StorageKey); err != nil {
+			return err
+		}
+		return tx.Delete(&stage).Error
+	})
+}
+
+func (r *CanvasShareRepository) lockDelivery(ctx context.Context, request model.CanvasDelivery, cover, epoch uint64) error {
 	var source model.CanvasProject
 	if err := r.owned(ctx, request.UserID, request.CanvasID).Clauses(clause.Locking{Strength: "UPDATE"}).Take(&source).Error; err != nil {
 		return translate(err)
 	}
-	if source.Revision != request.Revision || source.CoverAssetID != cover {
+	confirmedCopy := request.Mode == "copy" && source.CollaborationActive && source.Revision >= request.Revision
+	if (!confirmedCopy && source.Revision != request.Revision) || source.CoverAssetID != cover || source.CollaborationEpoch != epoch {
 		return ErrRevisionConflict
 	}
 	var user model.User

@@ -9,7 +9,7 @@ import (
 	"video-canvas/internal/pkg/idcodec"
 )
 
-// CanvasProject 画布主表，完整画布内容整体存放在 PayloadJSON 中。
+// CanvasProject 画布主表。个人画布在 PayloadJSON 中保存整图，协作画布在其中保留图以外的数据。
 type CanvasProject struct {
 	BaseModel
 	UserID      uint64         `gorm:"not null;index;" json:"user_id"`            //  所属用户
@@ -19,27 +19,38 @@ type CanvasProject struct {
 	Revision    uint64         `gorm:"not null;default:1;" json:"revision"`       //  乐观锁版本号
 	// CoverAssetID 是列表封面用的素材：画布里第一张生成成功的图，由任务完成时写回；0 表示还没有（旧画布都没有），
 	// 列表页据此回退到节点线框。素材被删掉时联查不到，同样回退。
-	CoverAssetID uint64 `gorm:"not null;default:0;" json:"-"`
+	CoverAssetID                  uint64 `gorm:"not null;default:0;" json:"-"`
+	CollaborationActive           bool   `gorm:"not null;default:false" json:"-"`
+	CollaborationCanGenerate      bool   `gorm:"-" json:"-"`
+	CollaborationCanCopyToLibrary bool   `gorm:"-" json:"-"`
+	CollaborationEpoch            uint64 `gorm:"not null;default:0" json:"-"`
 }
 
 func (CanvasProject) TableName() string { return "canvas_projects" }
 
 // CanvasProjectView 返回给前端的画布详情：ID 是十六进制串，不暴露自增主键。
 type CanvasProjectView struct {
-	ID          idcodec.ID     `json:"id"`           // 画布 ID
-	Title       string         `json:"title"`        // 画布标题
-	PayloadJSON datatypes.JSON `json:"payload_json"` // 完整画布内容
-	Revision    uint64         `json:"revision"`     // 乐观锁版本号
-	CreatedAt   time.Time      `json:"created_at"`   // 创建时间
-	UpdatedAt   time.Time      `json:"updated_at"`   // 更新时间
+	CollaborationActive bool           `json:"collaboration_active,omitempty"`
+	CollaborationEpoch  uint64         `json:"collaboration_epoch,omitempty"`
+	ID                  idcodec.ID     `json:"id"`           // 画布 ID
+	Title               string         `json:"title"`        // 画布标题
+	PayloadJSON         datatypes.JSON `json:"payload_json"` // 完整画布内容
+	Revision            uint64         `json:"revision"`     // 乐观锁版本号
+	CreatedAt           time.Time      `json:"created_at"`   // 创建时间
+	UpdatedAt           time.Time      `json:"updated_at"`   // 更新时间
 }
 
 // View 转成返回给前端的结构。
 func (p *CanvasProject) View() *CanvasProjectView {
-	return &CanvasProjectView{
+	view := &CanvasProjectView{
 		ID: idcodec.ID(p.ID), Title: p.Title, PayloadJSON: p.PayloadJSON,
 		Revision: p.Revision, CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt,
+		CollaborationActive: p.CollaborationActive,
 	}
+	if p.CollaborationActive {
+		view.CollaborationEpoch = p.CollaborationEpoch
+	}
+	return view
 }
 
 // CanvasPayload 描述 payload_json 的结构，各子项内容由前端自行定义。
@@ -66,6 +77,23 @@ type UpdateCanvasProjectReq struct {
 	Title       *string         `json:"title" binding:"omitempty,min=1,max=255" label:"画布标题"` // 新标题，不传表示不修改
 	PayloadJSON json.RawMessage `json:"payload_json" label:"画布内容"`                            // 新的画布内容，不传表示不修改
 	Revision    uint64          `json:"revision" binding:"required" label:"版本号"`              // 客户端当前持有的版本号
+}
+
+// CanvasManagementReq 确认普通画布的标题变更或归档所依据的版本。
+type CanvasManagementReq struct {
+	Revision uint64 `json:"revision" binding:"required"`
+	Title    string `json:"title" binding:"omitempty,max=255"`
+	Archive  bool   `json:"archive"`
+	Preview  string `json:"preview" binding:"omitempty,len=64,hexadecimal"`
+}
+
+// CanvasArchivePreview 描述归档时将失去访问权限的成员范围。
+type CanvasArchivePreview struct {
+	Revision uint64 `json:"revision"`
+	Title    string `json:"title"`
+	Preview  string `json:"preview"`
+	Editors  int    `json:"editors"`
+	Viewers  int    `json:"viewers"`
 }
 
 // 画布列表请求参数

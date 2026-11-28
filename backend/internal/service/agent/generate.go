@@ -257,6 +257,9 @@ func (g *AgentGenerator) Execute(ctx context.Context, run *model.AgentRun, appro
 	if err != nil {
 		return nil, err
 	}
+	if run.CollaborationEpoch > 0 {
+		return body, nil
+	}
 	if _, err := g.canvas.bindTasks(ctx, run, "approval-"+strconv.FormatUint(approvalID, 10), bind, body); err != nil {
 		return nil, fmt.Errorf("任务已创建但绑定到节点失败：%w", err)
 	}
@@ -265,7 +268,19 @@ func (g *AgentGenerator) Execute(ctx context.Context, run *model.AgentRun, appro
 
 // submit 提交一个条目。
 func (g *AgentGenerator) submit(ctx context.Context, run *model.AgentRun, approvalID uint64, idx int, it GenerateItem) (*model.GenerationTaskView, error) {
-	srcs, err := g.canvas.Generations(ctx, run, []string{it.NodeID})
+	key := fmt.Sprintf("agent-%d-%d", approvalID, idx)
+	if run.CollaborationEpoch > 0 {
+		lookup, ok := g.tasks.(interface {
+			FindAgentTask(context.Context, *model.AgentRun, string) (*model.GenerationTaskView, error)
+		})
+		if !ok {
+			return nil, errcode.ErrCanvasCollaborationSession
+		}
+		if task, err := lookup.FindAgentTask(ctx, run, key); err != nil || task != nil {
+			return task, err
+		}
+	}
+	srcs, revision, err := g.canvas.generationSources(ctx, run, []string{it.NodeID})
 	if err != nil {
 		return nil, errors.New("节点已经不存在")
 	}
@@ -277,7 +292,6 @@ func (g *AgentGenerator) submit(ctx context.Context, run *model.AgentRun, approv
 	if err != nil {
 		return nil, errors.New("模型已不可用")
 	}
-	key := fmt.Sprintf("agent-%d-%d", approvalID, idx)
 	input, err := buildGenInput(snap.Model.Capabilities, src)
 	if err != nil {
 		return nil, err
@@ -285,11 +299,15 @@ func (g *AgentGenerator) submit(ctx context.Context, run *model.AgentRun, approv
 	if err := validateCharacterVoiceTasks(ctx, g.tasks, src, run.UserID); err != nil {
 		return nil, err
 	}
-	resp, err := g.tasks.Create(ctx, run.UserID, key, &model.CreateGenerationTaskReq{
+	req := &model.CreateGenerationTaskReq{
 		Kind: snap.Model.Kind, ModelID: it.ModelKey, CanvasID: idcodec.ID(run.CanvasID), NodeID: it.NodeID,
 		AgentRunID: run.ID, // 任务结束时据此通知 Agent；不从请求体读，只有这里能填
 		Input:      input,
-	})
+	}
+	if run.CollaborationEpoch > 0 {
+		req.Collaboration = &model.CanvasGenerationBinding{Epoch: run.CollaborationEpoch, Revision: revision}
+	}
+	resp, err := g.tasks.Create(ctx, run.UserID, key, req)
 	if err != nil {
 		return nil, userFacing(err)
 	}

@@ -1,6 +1,7 @@
 import axios from "axios";
 
 import type { exportCanvas } from "@/api/canvas";
+import type { CanvasExportVersion } from "@/api/canvas/type";
 
 import { exportFileName } from "./transfer-file";
 
@@ -12,6 +13,8 @@ export type CanvasExportDeps = {
   title: string;
   /** 立即保存，返回保存后是否已经没有未保存的内容 */
   saveNow: () => Promise<boolean>;
+  /** 保存成功后读取协作会话的确认版本，个人画布省略 */
+  getVersion?: () => CanvasExportVersion;
   /** 向后端请求导出文档；signal 用来中止请求 */
   exportCanvas: typeof exportCanvas;
   /** 取消信号；不传表示不可取消 */
@@ -50,7 +53,9 @@ export async function runCanvasExport(deps: CanvasExportDeps): Promise<ExportOut
 
   let result: Awaited<ReturnType<typeof exportCanvas>>;
   try {
-    result = await deps.exportCanvas(canvasId, signal);
+    result = deps.getVersion
+      ? await deps.exportCanvas(canvasId, signal, deps.getVersion())
+      : await deps.exportCanvas(canvasId, signal);
   } catch (error) {
     // 主动取消不是失败：请求层不会为它弹提示，由调用方告诉用户「已取消」
     if (axios.isCancel(error)) return "cancelled";

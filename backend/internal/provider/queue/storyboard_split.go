@@ -25,8 +25,8 @@ const storyboardSplitJobTimeout = 40 * time.Minute
 
 // StoryboardSplitHandler 执行一条拆分镜任务，业务终态由服务持久化。
 type StoryboardSplitHandler interface {
-	// HandleStoryboardSplit 执行任务；业务失败由服务落成任务失败并返回 nil，只有基础设施错误才返回 error（队列重试）。
-	HandleStoryboardSplit(ctx context.Context, jobID uint64) error
+	// HandleStoryboardSplitAttempt 执行当前队列尝试，只有基础设施错误才交给队列重试。
+	HandleStoryboardSplitAttempt(ctx context.Context, jobID uint64, attempt int, final bool) error
 }
 
 // StoryboardSplitArgs 是拆分镜 job 的参数：一条 storyboard_split_jobs 行对应一个 job。
@@ -64,7 +64,7 @@ func (w *storyboardSplitWorker) Work(ctx context.Context, j *river.Job[Storyboar
 		return river.JobSnooze(time.Second)
 	}
 	defer w.rt.gate.release()
-	if err := w.rt.cfg.StoryboardSplit.HandleStoryboardSplit(ctx, j.Args.JobID); err != nil {
+	if err := w.rt.cfg.StoryboardSplit.HandleStoryboardSplitAttempt(ctx, j.Args.JobID, j.Attempt, j.Attempt >= j.MaxAttempts); err != nil {
 		w.rt.log.Warn("执行拆分镜失败，等待队列重试", zap.Uint64("job_id", j.Args.JobID), zap.Error(err))
 		return err
 	}

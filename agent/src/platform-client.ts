@@ -9,6 +9,7 @@
 import { createHash } from "node:crypto";
 import type { JsonValue } from "@earendil-works/chord";
 import type { AttachmentCheck } from "./attachments.ts";
+import { encodeEpoch, parseEpochJSON, type CollaborationEpoch } from "./collaboration-epoch.ts";
 import type { RelayEvent } from "./event-pusher.ts";
 import { parseDecimal } from "./ids.ts";
 import { waitForPlatform } from "./platform-wait.ts";
@@ -27,6 +28,7 @@ export interface RunContext {
   selection?: string[];
   /** 本轮积分预算，0 或不传表示不限制 */
   budget_credits?: number;
+  collaboration_epoch?: CollaborationEpoch;
   /** 除模型调用外本轮已花的积分（已批准的生成） */
   spent_extra?: number;
 }
@@ -76,7 +78,14 @@ export function encodeRunContext(rc: RunContext): string {
       throw new Error(`运行上下文的 ${f} 必须是正整数的十进制字符串，当前是 ${JSON.stringify(v)}`);
     }
   }
-  const header = Buffer.from(JSON.stringify(rc), "utf8").toString("base64url");
+  const header = Buffer.from(
+    JSON.stringify({
+      ...rc,
+      collaboration_epoch:
+        rc.collaboration_epoch === undefined ? undefined : encodeEpoch(rc.collaboration_epoch),
+    }),
+    "utf8",
+  ).toString("base64url");
   if (header.length > MAX_CONTEXT_HEADER)
     throw new Error(
       `运行上下文太大（${header.length} 字节，上限 ${MAX_CONTEXT_HEADER}）：选中的节点太多`,
@@ -85,7 +94,7 @@ export function encodeRunContext(rc: RunContext): string {
 }
 
 export function decodeRunContext(header: string): RunContext {
-  return JSON.parse(Buffer.from(header, "base64url").toString("utf8")) as RunContext;
+  return parseEpochJSON(Buffer.from(header, "base64url").toString("utf8")) as RunContext;
 }
 
 // ---- 响应类型：字段名和 Go 的 JSON 一致（蛇形） ----
@@ -243,7 +252,7 @@ export interface UndoResult {
   reverted: number;
   skipped: Array<Record<string, unknown>>;
   /** 撤销后的画布 revision；运行根本没改过画布时为 0（调用方据此不发 run.undone） */
-  revision: number;
+  revision: number | string;
 }
 
 export interface PlatformOptions {
@@ -293,7 +302,10 @@ export function createPlatform({ baseUrl, serviceToken, fetchImpl = fetch }: Pla
       if (extra.signal?.aborted) throw e;
       throw new PlatformError(`连接平台失败（${base}）：${String((e as Error)?.message ?? e)}`, 0);
     }
-    const env = (await res.json().catch(() => null)) as {
+    const env = (await res
+      .text()
+      .then(parseEpochJSON)
+      .catch(() => null)) as {
       code: number;
       msg?: string;
       data: T;

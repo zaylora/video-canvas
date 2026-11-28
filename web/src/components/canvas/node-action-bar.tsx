@@ -169,6 +169,7 @@ export function NodeActionBar({
   gate,
   onAction,
   onTail,
+  libraryPermissionRequired,
   onGridPick,
   extra,
 }: {
@@ -180,6 +181,7 @@ export function NodeActionBar({
   onAction?: Partial<Record<string, () => void>>;
   /** 放大、下载、复制的处理函数，没有就当占位；加入资产库、从资产库替换没有处理函数就不显示 */
   onTail?: Partial<Record<ToolbarTail, () => void>>;
+  libraryPermissionRequired?: boolean;
   /** 宫格切分「自定义」选定了行列；没有就当占位（选了也只提示敬请期待） */
   onGridPick?: (rows: number, cols: number) => void;
   /** 页面追加的内容（见 canvas-editor 的 toolbarExtra），接在查看类按钮之后 */
@@ -193,12 +195,19 @@ export function NodeActionBar({
 
   const tail = visibleTail(config.tail, onTail).map((item) => {
     const meta = TAIL_META[item];
+    const restricted = item === "addToLibrary" && libraryPermissionRequired;
+    const hint = restricted ? "加入资产库需所有者授权" : meta.label;
     return (
-      <ChromeTooltip key={item} label={meta.label}>
+      <ChromeTooltip key={item} label={hint}>
         <ChromeButton
-          aria-label={meta.label}
+          aria-label={hint}
+          aria-disabled={restricted || undefined}
+          className={restricted ? "opacity-50" : undefined}
           disabled={gate.actionsDisabled}
-          onClick={() => (onTail?.[item] ?? (() => comingSoon(meta.label)))()}
+          onClick={() => {
+            if (restricted) return;
+            (onTail?.[item] ?? (() => comingSoon(meta.label)))();
+          }}
         >
           <meta.icon />
         </ChromeButton>

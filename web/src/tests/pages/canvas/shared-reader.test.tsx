@@ -1,22 +1,236 @@
 import { expect, spyOn, test } from "bun:test";
-import type { ReactNode } from "react";
 import { canvasSharing } from "@/api/drama/share";
 import { useDirectorStore } from "@/store/director";
-import { installDom } from "@/tests/helpers/dom";
+import { installDom, installStaticMotionDom } from "@/tests/helpers/dom";
 import { createDefaultScene } from "@/utils/director/scene";
 import { ApiError } from "@/utils/requests/request";
 import service from "@/utils/requests/service";
+import { dispatchCanvasRoomMessage } from "@/utils/ws/canvas-room";
 
-async function installReaderDom() {
-  const dom = await installDom();
-  return {
-    ...dom,
-    async mount(element: ReactNode) {
-      const { MotionConfig } = await import("motion/react");
-      return dom.mount(<MotionConfig isStatic>{element}</MotionConfig>);
+test("协作查看开启实时订阅后同步标题，关闭后仍检查访问权限", async () => {
+  const dom = await installStaticMotionDom();
+  const { MemoryRouter, Routes, Route } = await import("react-router");
+  const { default: Reader } = await import("@/pages/canvas/shared-reader");
+  const canvas = {
+    id: "c1",
+    title: "协作样例",
+    revision: 8,
+    collaboration_active: true,
+    collaboration_epoch: 2,
+    payload_json: {
+      nodes: [
+        {
+          id: "shot",
+          type: "canvas",
+          position: { x: 0, y: 0 },
+          data: { kind: "script", label: "镜头", status: "running", generationRevision: 8 },
+        },
+      ],
+      edges: [],
     },
   };
-}
+  const get = spyOn(service, "get").mockImplementation(async (url, query) => {
+    if (url.endsWith("/events")) {
+      return query?.after === 8 && revision === 9
+        ? {
+            epoch: 2,
+            role: "viewer",
+            revision: 9,
+            cursor: 9,
+            title: "协作样例新标题",
+            events: [{ epoch: 2, revision: 9, changes: [] }],
+          }
+        : { epoch: 2, role: "viewer", revision: 8, cursor: 8, events: [] };
+    }
+    if (query && "access_only" in query) throw new ApiError("已撤权", "HTTP_404", 404);
+    return canvas;
+  });
+  let revision = 8;
+  const notice = (revision: number) =>
+    dom.act(async () =>
+      dispatchCanvasRoomMessage({
+        type: "canvas.collaboration",
+        channel: "canvas-collaboration:c1",
+        data: { canvasId: "c1", epoch: 2, revision },
+      }),
+    );
+  const progress = (runRevision: number, percent: number) =>
+    dom.act(async () =>
+      dispatchCanvasRoomMessage({
+        type: "canvas.generation_progress",
+        channel: "canvas-collaboration:c1",
+        data: { canvasId: "c1", epoch: 2, progress: { nodeId: "shot", runRevision, percent } },
+      }),
+    );
+  try {
+    const view = await dom.mount(
+      <MemoryRouter initialEntries={["/canvas/c1/reader"]}>
+        <Routes>
+          <Route path="/canvas/:id/reader" element={<Reader />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await notice(9);
+    await progress(8, 40);
+    expect(view.container.textContent).not.toContain("生成中 40%");
+    expect(get.mock.calls.some(([url]) => url.endsWith("/events"))).toBe(false);
+    await dom.click(view.container.querySelector('[aria-label="自动刷新设置"]'));
+    await dom.click(document.querySelector('input[value="live"]'));
+    expect(get.mock.calls.filter(([url]) => url.endsWith("/events"))).toHaveLength(1);
+    await progress(7, 99);
+    expect(view.container.textContent).not.toContain("生成中 99%");
+    await progress(8, 40);
+    expect(view.container.textContent).toContain("生成中 40%");
+    await progress(8, 35);
+    expect(view.container.textContent).toContain("生成中 40%");
+    await notice(7);
+    expect(get.mock.calls.filter(([url]) => url.endsWith("/events"))).toHaveLength(1);
+    revision = 9;
+    await notice(9);
+    expect(get.mock.calls.filter(([url]) => url.endsWith("/events"))).toHaveLength(2);
+    expect(view.container.textContent).toContain("协作样例新标题");
+    await dom.click(document.querySelector('input[value="disabled"]'));
+    expect(view.container.textContent).not.toContain("生成中 40%");
+    await notice(10);
+    expect(get.mock.calls.filter(([url]) => url.endsWith("/events"))).toHaveLength(2);
+    expect(view.container.textContent).toContain("协作样例新标题");
+    await dom.act(async () => window.dispatchEvent(new window.Event("focus")));
+    expect(get.mock.calls.at(-1)?.slice(0, 2)).toEqual([
+      "/canvas/c1/reader",
+      { access_only: true },
+    ]);
+    expect(view.container.textContent).toContain("你已失去这张画布的访问权限");
+    expect(view.container.textContent).not.toContain("协作样例");
+    await view.unmount();
+  } finally {
+    get.mockRestore();
+    dom.restore();
+  }
+});
+
+test("60 秒定时刷新期间独立检查权限，撤权后丢弃在途内容", async () => {
+  const dom = await installStaticMotionDom();
+  const { MemoryRouter, Routes, Route } = await import("react-router");
+  const { default: Reader } = await import("@/pages/canvas/shared-reader");
+  localStorage.setItem("canvas:shared-refresh-seconds", "60");
+  const canvas = {
+    id: "c1",
+    title: "撤权前的画布",
+    revision: 1,
+    collaboration_epoch: 2,
+    payload_json: { nodes: [], edges: [] },
+  };
+  const pendingContent = Promise.withResolvers<typeof canvas>();
+  let allowed = true;
+  const get = spyOn(service, "get").mockImplementation(async (_url, query) => {
+    if (query && "access_only" in query) {
+      if (!allowed) throw new ApiError("已撤权", "HTTP_404", 404);
+      return { unchanged: true };
+    }
+    return query ? pendingContent.promise : canvas;
+  });
+  const timer = spyOn(dom.win, "setInterval");
+  try {
+    const view = await dom.mount(
+      <MemoryRouter initialEntries={["/canvas/c1/reader"]}>
+        <Routes>
+          <Route path="/canvas/:id/reader" element={<Reader />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    try {
+      const accessTick = timer.mock.calls.find(([, interval]) => interval === 5_000)?.[0];
+      const contentTick = timer.mock.calls.find(([, interval]) => interval === 60_000)?.[0];
+      if (typeof accessTick !== "function" || typeof contentTick !== "function")
+        throw new Error("缺少独立的权限或内容检查定时器");
+
+      await dom.act(async () => accessTick());
+      expect(get.mock.calls.map(([, query]) => query)).toEqual([undefined, { access_only: true }]);
+      expect(view.container.textContent).toContain("撤权前的画布");
+
+      await dom.act(async () => contentTick());
+      const content = get.mock.calls.at(-1);
+      expect(content?.[1]).toEqual({ revision: 1 });
+      allowed = false;
+      await dom.act(async () => accessTick());
+      expect(get.mock.calls.at(-1)?.[1]).toEqual({ access_only: true });
+      expect(content?.[2]?.signal?.aborted).toBe(true);
+      expect(view.container.textContent).toContain("你已失去这张画布的访问权限");
+
+      await dom.act(async () =>
+        pendingContent.resolve({ ...canvas, title: "在途的旧响应", revision: 2 }),
+      );
+      expect(view.container.textContent).not.toContain("在途的旧响应");
+      expect(view.container.querySelector("[data-canvas-root]")).toBeNull();
+    } finally {
+      await view.unmount();
+    }
+  } finally {
+    timer.mockRestore();
+    get.mockRestore();
+    dom.restore();
+  }
+});
+
+test("实时查看的增量达到字节预算后改读共享快照", async () => {
+  const dom = await installStaticMotionDom();
+  const { MemoryRouter, Routes, Route } = await import("react-router");
+  const { default: Reader } = await import("@/pages/canvas/shared-reader");
+  const canvas = {
+    id: "c1",
+    title: "追赶前的画布",
+    revision: 1,
+    collaboration_epoch: 2,
+    payload_json: { nodes: [], edges: [] },
+  };
+  const get = spyOn(service, "get").mockImplementation(async (url, query) => {
+    if (url.endsWith("/events")) {
+      const after = Number(query?.after);
+      return {
+        epoch: 2,
+        role: "viewer",
+        revision: 6,
+        cursor: after + 1,
+        events: [
+          {
+            epoch: 2,
+            revision: after + 1,
+            changes: [
+              { kind: "node", id: "shot", fields: { "data.prompt": "镜头".repeat(1_000) } },
+            ],
+          },
+        ],
+      };
+    }
+    return query ? { ...canvas, title: "已追赶的共享快照", revision: 6 } : canvas;
+  });
+  try {
+    const view = await dom.mount(
+      <MemoryRouter initialEntries={["/canvas/c1/reader"]}>
+        <Routes>
+          <Route path="/canvas/:id/reader" element={<Reader />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    try {
+      await dom.click(view.container.querySelector('[aria-label="自动刷新设置"]'));
+      await dom.click(document.querySelector('input[value="live"]'));
+      expect(get.mock.calls.map(([url, query]) => [url, query])).toEqual([
+        ["/canvas/c1/reader", undefined],
+        ["/canvas/c1/collaboration/events", { epoch: 2, after: 1 }],
+        ["/canvas/c1/collaboration/events", { epoch: 2, after: 2 }],
+        ["/canvas/c1/collaboration/events", { epoch: 2, after: 3 }],
+        ["/canvas/c1/reader", { revision: 1 }],
+      ]);
+      expect(view.container.textContent).toContain("已追赶的共享快照");
+    } finally {
+      await view.unmount();
+    }
+  } finally {
+    get.mockRestore();
+    dom.restore();
+  }
+});
 
 test("导演台刷新沿用查看者的进度和有效机位，移除机位后回到导演视角", async () => {
   const dom = await installDom();
@@ -104,7 +318,7 @@ test("已打开的素材详情跟随作者保存的当前版本，保留查看�
 });
 
 test("编辑器共享遇到保存失败时停在原画布", async () => {
-  const dom = await installReaderDom();
+  const dom = await installStaticMotionDom();
   const { MemoryRouter } = await import("react-router");
   const { TopLeftBar } = await import("@/pages/canvas/chrome/top-left-bar");
   const { TooltipProvider } = await import("@/components/ui/tooltip");
@@ -149,7 +363,7 @@ test("编辑器共享遇到保存失败时停在原画布", async () => {
 });
 
 test("个人画布回前台时可看到接收的作品", async () => {
-  const dom = await installReaderDom();
+  const dom = await installDom();
   const { MemoryRouter } = await import("react-router");
   const { useCanvasList } = await import("@/hooks/use-canvas-list");
   const get = spyOn(service, "get")
@@ -184,7 +398,7 @@ test("个人画布回前台时可看到接收的作品", async () => {
 });
 
 test("查看者打开和刷新只读画布只读取共享投影，撤权后清除画布", async () => {
-  const dom = await installReaderDom();
+  const dom = await installStaticMotionDom();
   const { MemoryRouter, Routes, Route } = await import("react-router");
   const { default: Reader } = await import("@/pages/canvas/shared-reader");
   const get = spyOn(service, "get")
@@ -242,7 +456,7 @@ test("查看者打开和刷新只读画布只读取共享投影，撤权后清�
     await dom.act(async () => {
       window.dispatchEvent(new window.Event("focus"));
     });
-    expect(view.container.textContent).toContain("画布不可访问");
+    expect(view.container.textContent).toContain("你已失去这张画布的访问权限");
     expect(view.container.textContent).not.toContain("共享画布样例");
     await view.unmount();
     expect(get.mock.calls.map(([url]) => url)).toEqual(Array(3).fill("/canvas/c1/reader"));
@@ -255,7 +469,7 @@ test("查看者打开和刷新只读画布只读取共享投影，撤权后清�
 });
 
 test("查看历史和关联分镜只改变预览，撤权后的旧响应不会恢复画布", async () => {
-  const dom = await installReaderDom();
+  const dom = await installStaticMotionDom();
   const imageConstructor = Object.getOwnPropertyDescriptor(globalThis, "Image");
   Object.defineProperty(globalThis, "Image", { configurable: true, value: dom.win.Image });
   const { MemoryRouter, Routes, Route } = await import("react-router");
@@ -367,7 +581,7 @@ test("查看历史和关联分镜只改变预览，撤权后的旧响应不会�
     await dom.act(async () => window.dispatchEvent(new window.Event("focus")));
     expect(document.querySelector('[role="dialog"]')).toBeNull();
     await dom.act(async () => stale.resolve(response));
-    expect(view.container.textContent).toContain("画布不可访问");
+    expect(view.container.textContent).toContain("你已失去这张画布的访问权限");
     expect(view.container.textContent).not.toContain("混合画布");
     expect(get).toHaveBeenCalledTimes(3);
     await view.unmount();
@@ -380,7 +594,7 @@ test("查看历史和关联分镜只改变预览，撤权后的旧响应不会�
 });
 
 test("刷新读取新版画布并保留查看者调整后的视口", async () => {
-  const dom = await installReaderDom();
+  const dom = await installStaticMotionDom();
   if (!dom.win.customElements.get("number-flow-react")) {
     dom.win.customElements.define(
       "number-flow-react",
@@ -454,7 +668,7 @@ test("刷新读取新版画布并保留查看者调整后的视口", async () =>
 });
 
 test("共享画布使用工作台外壳并定时检查已保存版本", async () => {
-  const dom = await installReaderDom();
+  const dom = await installStaticMotionDom();
   const { MemoryRouter, Routes, Route } = await import("react-router");
   const { default: Reader } = await import("@/pages/canvas/shared-reader");
   const first = { id: "c1", title: "第一版", revision: 1, payload_json: { nodes: [], edges: [] } };
@@ -495,7 +709,7 @@ test("共享画布使用工作台外壳并定时检查已保存版本", async ()
 });
 
 test("查看者可调整刷新间隔，慢请求期间和后台停留时跳过自动检查", async () => {
-  const dom = await installReaderDom();
+  const dom = await installStaticMotionDom();
   const { MemoryRouter, Routes, Route } = await import("react-router");
   const { default: Reader } = await import("@/pages/canvas/shared-reader");
   const first = {
@@ -571,7 +785,7 @@ test("查看者可调整刷新间隔，慢请求期间和后台停留时跳过�
 });
 
 test("不刷新会停止自动检查并保留当前画布，仍可手动刷新", async () => {
-  const dom = await installReaderDom();
+  const dom = await installStaticMotionDom();
   localStorage.setItem("canvas:shared-refresh-seconds", "23");
   const { MemoryRouter, Routes, Route } = await import("react-router");
   const { default: Reader } = await import("@/pages/canvas/shared-reader");
@@ -639,7 +853,7 @@ test("不刷新会停止自动检查并保留当前画布，仍可手动刷新",
 });
 
 test("退出共享先说明权限变化，取消保留画布，确认成功后返回共享列表", async () => {
-  const dom = await installReaderDom();
+  const dom = await installStaticMotionDom();
   const { MemoryRouter, Routes, Route, useLocation } = await import("react-router");
   const { default: Reader } = await import("@/pages/canvas/shared-reader");
   const get = spyOn(service, "get").mockResolvedValue({
@@ -701,8 +915,52 @@ test("退出共享先说明权限变化，取消保留画布，确认成功后�
   }
 });
 
+test("共享画布允许操作媒体控件并关闭节点编辑", async () => {
+  const dom = await installDom();
+  const imageConstructor = Object.getOwnPropertyDescriptor(globalThis, "Image");
+  Object.defineProperty(globalThis, "Image", { configurable: true, value: dom.win.Image });
+  const { SharedCanvasScene } = await import("@/components/canvas-editor/shared-scene");
+  try {
+    const view = await dom.mount(
+      <SharedCanvasScene
+        overlay={() => null}
+        graph={{
+          nodes: [
+            {
+              id: "shared-video",
+              type: "canvas",
+              position: { x: 0, y: 0 },
+              data: {
+                kind: "video",
+                label: "共享视频",
+                mediaType: "video",
+                src: "/api/v1/canvas-media/canvas/video",
+                status: "done",
+              },
+            },
+          ],
+          edges: [],
+        }}
+      />,
+    );
+    try {
+      const node = view.container.querySelector<HTMLElement>('[data-id="shared-video"]');
+      expect(node?.style.pointerEvents).toBe("auto");
+      expect(node?.classList.contains("draggable")).toBe(false);
+      expect(node?.classList.contains("selectable")).toBe(false);
+      expect(node?.querySelector('button[aria-label="播放视频"]')).not.toBeNull();
+    } finally {
+      await view.unmount();
+    }
+  } finally {
+    if (imageConstructor) Object.defineProperty(globalThis, "Image", imageConstructor);
+    else Reflect.deleteProperty(globalThis, "Image");
+    dom.restore();
+  }
+});
+
 test("共享画布在角色素材和导演台封面加载失败时显示节点级提示", async () => {
-  const dom = await installReaderDom();
+  const dom = await installDom();
   const imageConstructor = Object.getOwnPropertyDescriptor(globalThis, "Image");
   Object.defineProperty(globalThis, "Image", { configurable: true, value: dom.win.Image });
   const { SharedCanvasScene } = await import("@/components/canvas-editor/shared-scene");

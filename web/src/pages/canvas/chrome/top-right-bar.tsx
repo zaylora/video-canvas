@@ -88,29 +88,35 @@ export function useCanEnterAdmin() {
 }
 
 /** 积分按钮里的内容：实时连接状态点 + 积分图标 + 可用积分；有待支付订单时右上角挂一个小圆点 */
-function CreditsFace({ showPendingDot }: { showPendingDot: boolean }) {
+function CreditsFace({ showPendingDot, personal }: { showPendingDot: boolean; personal: boolean }) {
   const credits = useCreditsStore((state) => state.credits);
   const connection = useWsStore((state) => state.connection);
   const down = connection === "reconnecting" || connection === "closed";
   const pending = connection === "connecting" || connection === "idle";
   return (
     <>
-      <span
-        title={WS_TEXT[connection]}
-        className={cn(
-          "size-1.5 rounded-full",
-          down
-            ? "bg-status-warning ring-status-warning/20 animate-pulse ring-3"
-            : pending
-              ? "bg-muted-foreground/50"
-              : "bg-status-success ring-status-success/15 ring-3",
-        )}
-      />
+      {!personal && (
+        <span
+          title={WS_TEXT[connection]}
+          className={cn(
+            "size-1.5 rounded-full",
+            down
+              ? "bg-status-warning ring-status-warning/20 animate-pulse ring-3"
+              : pending
+                ? "bg-muted-foreground/50"
+                : "bg-status-success ring-status-success/15 ring-3",
+          )}
+        />
+      )}
       <Sparkle className="fill-credit text-credit size-4.5!" strokeWidth={0} />
+      {personal && <span className="font-sans text-xs font-medium">我的积分</span>}
       {credits ? (
-        <NumberFlow value={credits.available} className="tabular-nums" />
+        <NumberFlow
+          value={credits.available}
+          className={cn("tabular-nums", personal && "max-sm:hidden")}
+        />
       ) : (
-        <span className="text-muted-foreground">—</span>
+        <span className={cn("text-muted-foreground", personal && "max-sm:hidden")}>—</span>
       )}
       {showPendingDot ? (
         <span
@@ -130,22 +136,25 @@ const CREDITS_BUTTON_CLASS =
  * 积分菜单（不带胶囊）：放进任意 ChromePill 里用。
  * 支付功能开启时，点它直接打开积分商城（余额、冻结信息在商城顶部）；没开启时保持原来的余额小卡片。
  */
-export function CreditsMenu() {
+export function CreditsMenu({ personal = false }: { personal?: boolean }) {
   const payEnabled = usePaymentEnabled();
   const hasPending = useHasPendingOrder();
   const credits = useCreditsStore((state) => state.credits);
   const refresh = useCreditsStore((state) => state.refresh);
   const connection = useWsStore((state) => state.connection);
   const down = connection === "reconnecting" || connection === "closed";
+  const label = personal ? "我的积分" : "积分";
+  const connectionLabel = personal ? "" : `，${WS_TEXT[connection]}`;
+  const buttonClass = cn(CREDITS_BUTTON_CLASS, personal && "max-sm:gap-1 max-sm:px-2");
 
   if (payEnabled) {
     return (
       <ChromeButton
-        aria-label={`积分，点击进入积分商城，${WS_TEXT[connection]}`}
-        className={CREDITS_BUTTON_CLASS}
+        aria-label={`${label}，点击进入积分商城${connectionLabel}`}
+        className={buttonClass}
         onClick={() => openPaymentStore()}
       >
-        <CreditsFace showPendingDot={hasPending} />
+        <CreditsFace showPendingDot={hasPending} personal={personal} />
       </ChromeButton>
     );
   }
@@ -154,11 +163,8 @@ export function CreditsMenu() {
     <Popover onOpenChange={(open) => open && void refresh()}>
       <PopoverTrigger
         render={
-          <ChromeButton
-            aria-label={`积分，${WS_TEXT[connection]}`}
-            className={CREDITS_BUTTON_CLASS}
-          >
-            <CreditsFace showPendingDot={false} />
+          <ChromeButton aria-label={`${label}${connectionLabel}`} className={buttonClass}>
+            <CreditsFace showPendingDot={false} personal={personal} />
           </ChromeButton>
         }
       />
@@ -175,14 +181,16 @@ export function CreditsMenu() {
           <dt className="text-muted-foreground">生成中冻结</dt>
           <dd className="font-mono tabular-nums">{credits?.frozen ?? "—"}</dd>
         </dl>
-        <p
-          className={cn(
-            "border-border flex items-center gap-2 border-t px-4 py-2.5 text-xs",
-            down ? "text-status-warning" : "text-muted-foreground",
-          )}
-        >
-          {WS_TEXT[connection]}
-        </p>
+        {!personal && (
+          <p
+            className={cn(
+              "border-border flex items-center gap-2 border-t px-4 py-2.5 text-xs",
+              down ? "text-status-warning" : "text-muted-foreground",
+            )}
+          >
+            {WS_TEXT[connection]}
+          </p>
+        )}
       </PopoverContent>
     </Popover>
   );

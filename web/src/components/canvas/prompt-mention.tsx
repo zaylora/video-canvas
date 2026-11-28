@@ -550,6 +550,8 @@ export function PromptEditor({
   ref,
   value,
   onValueChange,
+  beginComposition,
+  presenceNode,
   placeholder,
   disabled,
   onSubmit,
@@ -563,6 +565,10 @@ export function PromptEditor({
   ref?: Ref<PromptEditorHandle>;
   value: string;
   onValueChange: (value: string) => void;
+  /** 记录组字起点并返回确认最终文本的回调。 */
+  beginComposition?: (value: string) => ((confirmed: string) => void) | undefined;
+  /** 提示词属于哪个协作节点。 */
+  presenceNode?: { canvasId: string; nodeId: string };
   placeholder: string;
   disabled?: boolean;
   onSubmit: () => void;
@@ -611,12 +617,17 @@ export function PromptEditor({
   /** 用户点过编辑器：没点过的话，插风格和运镜就放在末尾，而不是文档开头 */
   const touched = useRef(false);
   const [initialContent] = useState(() => promptToDoc(value));
+  const composition = useRef<{ initial: string; commit: (value: string) => void } | null>(null);
   const editorProps = useMemo<UseEditorOptions["editorProps"]>(
     () => ({
       attributes: {
         "aria-label": "提示词",
         "aria-multiline": "true",
         role: "textbox",
+        ...(presenceNode && {
+          "data-canvas-prompt": presenceNode.canvasId,
+          "data-canvas-node": presenceNode.nodeId,
+        }),
         // 画布上按 Enter 时靠它找到并聚焦面板里的提示词
         ...(large ? {} : { "data-node-prompt": "" }),
         // nowheel 把滚轮留给编辑器，别让画布跟着平移
@@ -626,6 +637,34 @@ export function PromptEditor({
           large ? "max-h-[min(60vh,calc(100dvh_-_22rem))] min-h-72" : "max-h-50 min-h-18",
           className,
         ),
+      },
+      handleDOMEvents: {
+        compositionstart: (view) => {
+          if (disabled) return false;
+          const initial = docToPrompt(view.state.doc.toJSON());
+          composition.current = { initial, commit: beginComposition?.(initial) ?? onValueChange };
+          return false;
+        },
+        compositionend: (view) => {
+          const pending = composition.current;
+          if (!pending) return false;
+          window.setTimeout(() => {
+            if (view.isDestroyed || composition.current !== pending) return;
+            composition.current = null;
+            const confirmed = docToPrompt(view.state.doc.toJSON());
+            if (confirmed !== pending.initial) pending.commit(confirmed);
+            else if (confirmed !== value) {
+              const content = view.state.schema.nodeFromJSON(promptToDoc(value)).content;
+              const replacement = view.state.tr.replaceWith(
+                0,
+                view.state.doc.content.size,
+                content,
+              );
+              view.dispatch(replacement.setMeta("preventUpdate", true));
+            }
+          });
+          return false;
+        },
       },
       // 把素材拖到提示词里：在落点插入 chip（和 @ 选中的是同一种节点）
       handleDrop: (view, event) => {
@@ -673,7 +712,21 @@ export function PromptEditor({
         return true;
       },
     }),
-    [acceptDrop, className, current, entries, large, menu, onSubmit, pick],
+    [
+      acceptDrop,
+      beginComposition,
+      className,
+      current,
+      disabled,
+      entries,
+      large,
+      menu,
+      onSubmit,
+      onValueChange,
+      pick,
+      presenceNode,
+      value,
+    ],
   );
 
   const editor = useEditor({
@@ -686,12 +739,14 @@ export function PromptEditor({
     onFocus: () => {
       touched.current = true;
     },
-    onUpdate: ({ editor: self }) => onValueChange(docToPrompt(self.getJSON())),
+    onUpdate: ({ editor: self }) => {
+      if (!composition.current) onValueChange(docToPrompt(self.getJSON()));
+    },
   });
 
   // 撤销、换模型这类外部改动：内容对不上才重灌，自己打字回传的不动，免得光标乱跳
   useEffect(() => {
-    if (!editor || docToPrompt(editor.getJSON()) === value) return;
+    if (!editor || composition.current || docToPrompt(editor.getJSON()) === value) return;
     editor.commands.setContent(promptToDoc(value), { emitUpdate: false });
   }, [editor, value]);
 

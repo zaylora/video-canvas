@@ -1,3 +1,5 @@
+import type { CanvasVersion } from "@/utils/canvas/collaboration-version";
+
 import type { GraphChange } from "@/utils/canvas/graph-changes";
 
 /**
@@ -619,9 +621,9 @@ export interface CanvasPatchDto {
   /** 改动种类：apply_ops / arrange / delete / bind / undo / frames */
   kind: string;
   /** 改动前的画布 revision */
-  revision_before: number;
+  revision_before: CanvasVersion;
   /** 改动后的画布 revision */
-  revision_after: number;
+  revision_after: CanvasVersion;
   /** 逐节点、逐连线的改动 */
   changes: GraphChange[];
 }
@@ -683,6 +685,7 @@ export interface AgentAttachmentDto {
 
 /** 发起一轮运行 */
 export interface StartAgentRunReq {
+  collaboration_epoch?: CanvasVersion;
   /** 用户的消息，行内 chip 序列化为 @[名字](类型:id) */
   message: string;
   /** 任务模式，不传沿用会话的 */
@@ -728,7 +731,7 @@ export interface AgentUndoResult {
   /** 没处理的项和原因（用户之后改过） */
   skipped: Array<{ id: string; field?: string; reason: string }>;
   /** 撤销后的画布 revision，没有写入时为 0 */
-  revision: number;
+  revision: CanvasVersion;
 }
 
 /** @ 弹层里的一个技能：已启用的内置技能与导入技能 */

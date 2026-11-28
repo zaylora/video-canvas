@@ -1,3 +1,5 @@
+import { isPositiveCanvasVersion, type CanvasVersion } from "@/utils/canvas/collaboration-version";
+
 import type { CanvasGraphDto } from "@/api/canvas/type";
 
 /**
@@ -9,7 +11,7 @@ export type Draft = {
   schemaVersion: 1;
   graph: CanvasGraphDto;
   /** 这份草稿基于云端哪个 revision */
-  baseVersion: number;
+  baseVersion: CanvasVersion;
   /** true = 还没上传成功 */
   cloudDirty: boolean;
   /** 本地写入时间，用于清理过期草稿 */
@@ -36,7 +38,7 @@ function isDraft(value: unknown): value is Draft {
   const draft = value as Partial<Draft>;
   return (
     draft.schemaVersion === 1 &&
-    typeof draft.baseVersion === "number" &&
+    (draft.baseVersion === 0 || isPositiveCanvasVersion(draft.baseVersion)) &&
     typeof draft.cloudDirty === "boolean" &&
     typeof draft.savedAt === "number" &&
     typeof draft.graph === "object" &&

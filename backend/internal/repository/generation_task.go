@@ -268,10 +268,23 @@ func (r *GenerationTaskRepository) InsertTask(ctx context.Context, t *model.Gene
 	// 任务与 created 事件同事务写入：命中幂等唯一索引（没写入任务）时不产生事件
 	var inserted bool
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if t.CanvasProjectID != nil {
-			if err := lockTaskCanvas(tx, t.UserID, *t.CanvasProjectID); err != nil {
+		if err := guardGenerationCanvas(tx, t); err != nil {
+			return err
+		}
+		budget := t.BudgetRequest
+		if key, scoped := model.CanvasAutomationFromContext(ctx); scoped {
+			var err error
+			budget, err = automationTaskBudget(tx, key, t)
+			if err != nil {
 				return err
 			}
+		}
+		if budget != nil && t.CanvasProjectID != nil {
+			group, err := reserveCanvasGenerationBudget(tx, budget, *t.CanvasProjectID, t.UserID, t.CollaborationEpoch, t.Credits)
+			if err != nil {
+				return err
+			}
+			t.BudgetGroupID = group
 		}
 		res := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(t)
 		if res.Error != nil {
@@ -280,6 +293,11 @@ func (r *GenerationTaskRepository) InsertTask(ctx context.Context, t *model.Gene
 		inserted = res.RowsAffected > 0
 		if !inserted {
 			return nil
+		}
+		if t.CollaborationEpoch > 0 {
+			if err := writeGenerationStart(tx, t); err != nil {
+				return err
+			}
 		}
 		return insertTaskEvent(tx, &model.GenerationTaskEvent{
 			TaskID: t.ID, Event: model.TaskEventCreated, ToStatus: t.Status,

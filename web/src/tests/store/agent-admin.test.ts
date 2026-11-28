@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 import type { AgentEventDto, AgentSessionDto } from "@/api/agent/type";
 import { ADMIN_SESSION_SCOPE, useAgentStore } from "@/store/agent";
+import { type DomEnv, installDom } from "@/tests/helpers/dom";
 import { ADMIN_CONFIG_CHANGED } from "@/utils/admin/config-changed";
 
 const decided = (seq: number, kind = "admin_change"): AgentEventDto => ({
@@ -45,22 +46,22 @@ const session = (id: string, title: string): AgentSessionDto => ({
   updated_at: "2026-11-02T06:00:00Z",
 });
 
-const g = globalThis as unknown as { window?: EventTarget };
-let saved: EventTarget | undefined;
-let fired: unknown[];
-
 beforeEach(() => {
-  saved = g.window;
-  g.window = new EventTarget();
-  fired = [];
-  g.window.addEventListener(ADMIN_CONFIG_CHANGED, (e) => fired.push((e as CustomEvent).detail));
   useAgentStore.setState({ sessions: {}, sessionsByCanvas: {} });
-});
-afterEach(() => {
-  g.window = saved;
 });
 
 describe("后台助手：变更单应用后通知页面刷新", () => {
+  let dom: DomEnv;
+  let fired: unknown[];
+  beforeEach(async () => {
+    dom = await installDom();
+    fired = [];
+    dom.win.addEventListener(ADMIN_CONFIG_CHANGED, (event) => {
+      fired.push((event as CustomEvent).detail);
+    });
+  });
+  afterEach(() => dom.restore());
+
   test("实时收到已应用的 admin_change：派发 admin-config-changed", () => {
     useAgentStore.getState().handleEvent(decided(5), { live: true });
     expect(fired).toEqual([{ targets: ["pricing_settings"] }]);

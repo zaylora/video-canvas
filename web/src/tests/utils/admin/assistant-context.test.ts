@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import type { JSDOM } from "jsdom";
 
 import type { AgentApprovalDto, AgentEventDto } from "@/api/agent/type";
 import {
@@ -177,26 +178,33 @@ describe("admin-config-changed", () => {
   });
 
   describe("派发 window 事件", () => {
-    const g = globalThis as unknown as { window?: EventTarget };
-    let saved: EventTarget | undefined;
-    beforeEach(() => {
-      saved = g.window;
-      g.window = new EventTarget();
+    let dom: JSDOM;
+    let saved: PropertyDescriptor | undefined;
+    beforeEach(async () => {
+      const { JSDOM } = await import("jsdom");
+      dom = new JSDOM();
+      saved = Object.getOwnPropertyDescriptor(globalThis, "window");
+      Object.defineProperty(globalThis, "window", { configurable: true, value: dom.window });
     });
     afterEach(() => {
-      g.window = saved;
+      if (saved) Object.defineProperty(globalThis, "window", saved);
+      else Reflect.deleteProperty(globalThis, "window");
+      dom.window.close();
     });
 
     test("detail.targets 带上受影响的对象", () => {
       const got: unknown[] = [];
-      g.window!.addEventListener(ADMIN_CONFIG_CHANGED, (e) => got.push((e as CustomEvent).detail));
+      dom.window.addEventListener(ADMIN_CONFIG_CHANGED, (event) => {
+        expect(event).toBeInstanceOf(dom.window.CustomEvent);
+        got.push((event as CustomEvent).detail);
+      });
       notifyAdminConfigChanged(approvalEvent({}));
       expect(got).toEqual([{ targets: ["model"] }]);
     });
 
     test("不满足条件不派发", () => {
       let n = 0;
-      g.window!.addEventListener(ADMIN_CONFIG_CHANGED, () => n++);
+      dom.window.addEventListener(ADMIN_CONFIG_CHANGED, () => n++);
       notifyAdminConfigChanged(approvalEvent({ kind: "generate" }));
       expect(n).toBe(0);
     });
