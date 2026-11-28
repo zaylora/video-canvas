@@ -223,7 +223,7 @@ func (w *Worker) providerState(t *model.GenerationTask) provider.ProviderState {
 // taskRef 组装 Executor 认识的任务信息：带上插件上次返回的 state 与准备阶段的结果。
 func taskRef(t *model.GenerationTask, st provider.ProviderState) provider.TaskRef {
 	return provider.TaskRef{
-		ID: t.ID, UserID: t.UserID, ProviderTaskID: t.ProviderTaskID,
+		ID: t.ID, UserID: t.UserID, DeadlineAt: t.DeadlineAt, ProviderTaskID: t.ProviderTaskID,
 		State: st.Plugin, Prepared: st.Prepared,
 	}
 }

@@ -61,8 +61,17 @@ func (r *StorageConfigRepository) List(ctx context.Context) ([]model.StorageConf
 // Update 带乐观锁更新：只有 version 与数据库一致才更新，并把 version +1。
 // 记录不存在返回 ErrNotFound，版本不一致返回 ErrRevisionConflict，名称与其他存储重复返回 ErrDuplicate。
 func (r *StorageConfigRepository) Update(ctx context.Context, id uint64, version int, fields map[string]any) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := guardHybridLocation(tx, id, fields); err != nil {
+			return err
+		}
+		return updateStorageConfig(tx, id, version, fields)
+	})
+}
+
+func updateStorageConfig(tx *gorm.DB, id uint64, version int, fields map[string]any) error {
 	fields["version"] = gorm.Expr("version + 1")
-	res := r.db.WithContext(ctx).Model(&model.StorageConfig{}).
+	res := tx.Model(&model.StorageConfig{}).
 		Where("id = ? AND version = ?", id, version).Updates(fields)
 	if res.Error != nil {
 		if isUniqueViolation(res.Error) {
@@ -75,7 +84,7 @@ func (r *StorageConfigRepository) Update(ctx context.Context, id uint64, version
 	}
 	// 没更新到行：区分“记录不存在”和“版本已被别人改过”
 	var n int64
-	if err := r.db.WithContext(ctx).Model(&model.StorageConfig{}).Where("id = ?", id).Count(&n).Error; err != nil {
+	if err := tx.Model(&model.StorageConfig{}).Where("id = ?", id).Count(&n).Error; err != nil {
 		return err
 	}
 	if n == 0 {
@@ -102,6 +111,9 @@ func (r *StorageConfigRepository) RecordCheck(ctx context.Context, id uint64, ok
 // 存储不存在返回 ErrNotFound，此时旧的默认保持不变。
 func (r *StorageConfigRepository) SetDefault(ctx context.Context, id uint64) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := guardHybrid(tx, id, true); err != nil {
+			return err
+		}
 		var s model.StorageConfig
 		if err := tx.First(&s, id).Error; err != nil {
 			return translate(err)
@@ -140,6 +152,9 @@ func (r *StorageConfigRepository) CountRefs(ctx context.Context, id uint64, now 
 // 检查与删除在同一事务里，并先锁住存储行，避免检查通过之后又有新引用写入。
 func (r *StorageConfigRepository) Delete(ctx context.Context, id uint64, now time.Time) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := guardHybrid(tx, id, false); err != nil {
+			return err
+		}
 		var s model.StorageConfig
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&s, id).Error; err != nil {
 			return translate(err)

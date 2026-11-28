@@ -257,3 +257,27 @@ export type StorageOption = Pick<
   | "local_dir"
   | "is_default"
 >;
+
+/** 混合策略的持久化状态。 */
+export interface StorageHybridStatus {
+  /** 当前阶段。准备完成后才切换素材的有效写入位置。 */
+  state: "off" | "preparing" | "active" | "failed";
+  /** 入选云端的存储 ID，未选定时为 0。 */
+  cloud_id: number;
+  /** 内置本地存储的 ID，未选定时为 0。 */
+  local_id: number;
+  /** 临时云端对象的在管字节上限，0 表示不限额。 */
+  limit_bytes: number;
+  /** 检查或同步失败时可展示的原因。 */
+  error: string;
+  /** 全部配置中是否存在对象存储，不受列表分页影响。 */
+  has_cloud: boolean;
+}
+
+/** 管理端启用或关闭混合策略时的参数。 */
+export interface StorageHybridRequest {
+  /** 目标状态。 */
+  enabled: boolean;
+  /** 临时素材字节上限，0 表示不限额。 */
+  limit_bytes: number;
+}

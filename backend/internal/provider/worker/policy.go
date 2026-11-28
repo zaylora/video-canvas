@@ -47,6 +47,16 @@ func failureFor(class provider.ErrorClass, platformCode, upstream string) (code,
 		code, message = codeProviderBalance, "服务繁忙，请稍后再试"
 	case platformCode == codeInvalidParam:
 		code, message = codeInvalidParam, "参数不合法，请调整后重试"
+	case platformCode == provider.CodeReferenceCacheCapacity:
+		return platformCode, "临时参考素材容量不足，请稍后重试"
+	case platformCode == provider.CodeReferenceCacheTimeout:
+		return platformCode, "准备参考素材超时，请稍后重试"
+	case platformCode == provider.CodeReferenceCachePermission:
+		return platformCode, "临时参考素材存储拒绝访问，请联系管理员"
+	case platformCode == provider.CodeReferenceCacheMissing:
+		return platformCode, "找不到参考素材，请重新上传后重试"
+	case platformCode == provider.CodeReferenceCacheConfig || platformCode == provider.CodeReferenceCacheUnavailable:
+		return platformCode, "临时参考素材无法准备，请联系管理员"
 	}
 	// 上游自己的请求编号对用户没用，去掉；排查用平台的任务编号（界面上和失败原因一起展示）
 	if upstream = clipMessage(provider.StripTraceIDs(upstream)); upstream != "" {

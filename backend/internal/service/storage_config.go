@@ -354,6 +354,9 @@ func (s *StorageConfigService) secretSet(ctx context.Context, row *model.Storage
 }
 
 func storageNotFound(err error) error {
+	if errors.Is(err, repository.ErrStorageHybridLocked) {
+		return errcode.ErrStorageHybridLocked
+	}
 	if errors.Is(err, repository.ErrNotFound) {
 		return errcode.ErrStorageNotFound
 	}

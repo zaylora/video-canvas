@@ -16,16 +16,17 @@ import (
 
 // fakeVariantResolver 实现 AssetVariantResolver：按 变体 返回预置结果，并记录收到的参数。
 type fakeVariantResolver struct {
-	targets  map[string]VariantTarget // key: 变体
-	err      error
-	gotStore uint64
-	gotKey   string
-	calls    int
+	targets   map[string]VariantTarget // key: 变体
+	err       error
+	gotStore  uint64
+	gotHandle *storage.Handle
+	gotKey    string
+	calls     int
 }
 
-func (f *fakeVariantResolver) Resolve(_ context.Context, storageID uint64, _ *storage.Handle, key, variant string) (VariantTarget, bool, error) {
+func (f *fakeVariantResolver) Resolve(_ context.Context, storageID uint64, h *storage.Handle, key, variant string) (VariantTarget, bool, error) {
 	f.calls++
-	f.gotStore, f.gotKey = storageID, key
+	f.gotStore, f.gotHandle, f.gotKey = storageID, h, key
 	if f.err != nil {
 		return VariantTarget{}, false, f.err
 	}

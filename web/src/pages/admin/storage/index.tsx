@@ -31,7 +31,9 @@ import { ReadOnlyNotice } from "../shared";
 import { DefaultStorageCard, LocalDefaultNotice } from "./default-card";
 import { confirmSetDefault, requestDeleteStorage } from "./storage-dialogs";
 import { StorageDialog, type StorageDialogTarget } from "./storage-dialog";
+import { StorageHybridControl } from "./storage-hybrid-control";
 import { StorageTable } from "./storage-table";
+import { useStorageHybrid } from "./use-storage-hybrid";
 import { useStorageProcessing } from "./use-storage-processing";
 import { useStorages } from "./use-storages";
 
@@ -46,7 +48,13 @@ export default function StoragePage() {
   const list = useStorages();
   const processing = useStorageProcessing();
   const { items: storages, presets, state: status, reload, defaultStorage: current } = list;
-  useAdminConfigChanged("storage", () => void reload());
+  const hybrid = useStorageHybrid(reload);
+  const refreshHybrid = hybrid.refresh;
+  const reloadStorages = useCallback(() => {
+    void reload();
+    void refreshHybrid();
+  }, [reload, refreshHybrid]);
+  useAdminConfigChanged("storage", reloadStorages);
   const [target, setTarget] = useState<StorageDialogTarget | null>(null);
   /** 正在测试或做删除预检的存储，对应行的按钮转圈并禁用 */
   const [busyId, setBusyId] = useState<number | null>(null);
@@ -73,14 +81,14 @@ export default function StoragePage() {
     async (storage: StorageView) => {
       setBusyId(storage.id);
       try {
-        await requestDeleteStorage(storage, () => void reload());
+        await requestDeleteStorage(storage, reloadStorages);
       } catch {
         // 删除预检失败的全局 toast 已弹
       } finally {
         setBusyId(null);
       }
     },
-    [reload],
+    [reloadStorages],
   );
 
   return (
@@ -114,9 +122,17 @@ export default function StoragePage() {
 
       {status !== "error" && (
         <div className="flex min-h-0 flex-1 flex-col gap-4">
-          {current?.provider === "local" && <LocalDefaultNotice />}
+          {current?.provider === "local" && hybrid.status?.state !== "active" && (
+            <LocalDefaultNotice />
+          )}
           {status === "loading" && <Skeleton className="h-24 shrink-0 rounded-xl" />}
-          {current && <DefaultStorageCard storage={current} presets={presets} />}
+          {current && (
+            <DefaultStorageCard
+              storage={current}
+              presets={presets}
+              hybridActive={hybrid.status?.state === "active"}
+            />
+          )}
           <DataPanel className={cn(list.refreshing && "opacity-60")}>
             <TableToolbar>
               <ListSearch
@@ -124,11 +140,20 @@ export default function StoragePage() {
                 onCommit={list.setQ}
                 placeholder="搜索名称、服务商、桶或 Endpoint"
               />
-              <TableToolbarCount shown={storages.length} total={list.total} />
+              <div className="ml-auto flex items-center gap-4">
+                <StorageHybridControl
+                  status={hybrid.status}
+                  canWrite={canWrite}
+                  saving={hybrid.saving}
+                  onChange={hybrid.change}
+                />
+                <TableToolbarCount shown={storages.length} total={list.total} />
+              </div>
             </TableToolbar>
             <DataPanelBody>
               <StorageTable
                 storages={storages}
+                hybrid={hybrid.status}
                 presets={presets}
                 processors={processing.processors}
                 processorPresets={processing.presets}
@@ -166,7 +191,7 @@ export default function StoragePage() {
         canWrite={canWrite}
         onSaved={() => {
           setTarget(null);
-          void reload();
+          reloadStorages();
         }}
         onChanged={() => void reload()}
         onClose={() => setTarget(null)}

@@ -26,6 +26,7 @@ const filesRoutePrefix = "/files/"
 type LocalStorage struct {
 	dir     string // 存放目录的绝对路径
 	baseURL string // 对外访问前缀（已去掉末尾 /），为空表示相对路径
+	mirrors mirrorChecks
 }
 
 // NewLocal 创建本地存储，目录不存在时自动创建。

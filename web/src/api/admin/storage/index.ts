@@ -5,6 +5,8 @@ import type {
   ProbeResult,
   StorageCreateRequest,
   StorageDeleteCheck,
+  StorageHybridRequest,
+  StorageHybridStatus,
   StorageOption,
   StoragePage,
   StoragePreset,
@@ -49,6 +51,21 @@ export const listStoragePresets = async (): Promise<StoragePreset[]> => {
   const list = await service.get<StoragePreset[] | null>(ep.presets(), undefined);
   return (list ?? []).map((item) => ({ ...item, regions: item.regions ?? [] }));
 };
+
+/**
+ * 读取全局混合策略状态。
+ * @returns 当前状态及对象存储是否存在
+ */
+export const getStorageHybrid = () =>
+  service.get<StorageHybridStatus>(ep.hybrid(), undefined, { silent: true });
+
+/**
+ * 申请开启或关闭混合策略。
+ * @param body 目标状态与临时素材限额
+ * @returns 当前策略（开启时通常为准备中）
+ */
+export const setStorageHybrid = (body: StorageHybridRequest) =>
+  service.put<StorageHybridStatus>(ep.hybrid(), body);
 
 /**
  * 存储详情（409 冲突后用它重新拉取最新版本）

@@ -52,7 +52,13 @@ func (s *StorageConfigService) DeleteCheck(ctx context.Context, id uint64) (*Sto
 		return nil, storageNotFound(err)
 	}
 	c := &StorageDeleteCheck{Deletable: true, AssetCount: assets, PendingUploads: intents}
+	locked, err := s.hybridStorageLocked(ctx, id)
+	if err != nil {
+		return nil, storageNotFound(err)
+	}
 	switch {
+	case locked:
+		c.Deletable, c.Reason = false, errcode.ErrStorageHybridLocked.Msg
 	case row.Builtin:
 		c.Deletable, c.Reason = false, errcode.ErrStorageBuiltin.Msg
 	case row.IsDefault:
@@ -61,6 +67,18 @@ func (s *StorageConfigService) DeleteCheck(ctx context.Context, id uint64) (*Sto
 		c.Deletable, c.Reason = false, usedReason(assets, intents)
 	}
 	return c, nil
+}
+
+// hybridStorageLocked 返回入选云端的当前删除锁。
+func (s *StorageConfigService) hybridStorageLocked(ctx context.Context, id uint64) (bool, error) {
+	reader, ok := s.repo.(interface {
+		Hybrid(context.Context) (model.StorageHybridPolicy, error)
+	})
+	if !ok {
+		return false, nil
+	}
+	policy, err := reader.Hybrid(ctx)
+	return policy.CloudID == id && (policy.State == model.StorageHybridActive || policy.State == model.StorageHybridPreparing), err
 }
 
 func usedReason(assets, intents int64) string {

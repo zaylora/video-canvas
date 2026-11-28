@@ -40,8 +40,8 @@ func (s *AssetService) ResolveVariant(ctx context.Context, key, variant string) 
 		return nil, errcode.ErrAssetNotFound
 	}
 
-	// 2. 反查素材与所在存储
-	a, h, err := s.lookupFile(ctx, key)
+	// 2. 反查素材记录
+	a, err := s.lookupFile(ctx, key)
 	if err != nil {
 		return nil, err
 	}
@@ -52,8 +52,12 @@ func (s *AssetService) ResolveVariant(ctx context.Context, key, variant string) 
 		return nil, errcode.ErrAssetNotFound
 	}
 
-	// 4. 有处理服务就跳转到处理地址；生成地址出错只记日志并回退，不能让画布因为处理服务出问题而坏掉
+	// 4. 用素材登记的原存储配置生成处理地址，使云端缩略图和封面沿用桶名和签名参数。
 	if s.variants != nil {
+		h, err := s.stores.Get(ctx, a.StorageID)
+		if err != nil {
+			return nil, fileStorageError(a, err)
+		}
 		tgt, ok, err := s.variants.Resolve(ctx, a.StorageID, h, key, variant)
 		switch {
 		case err != nil:
@@ -67,7 +71,7 @@ func (s *AssetService) ResolveVariant(ctx context.Context, key, variant string) 
 	if variant == imageproc.VariantPoster {
 		return nil, errcode.ErrAssetNotFound
 	}
-	t, err := s.targetOf(ctx, h, key, a)
+	t, err := s.resolveOriginalFile(ctx, a)
 	if err != nil {
 		return nil, err
 	}

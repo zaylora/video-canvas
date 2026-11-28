@@ -3,6 +3,7 @@ package plugin
 import (
 	"encoding/json"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -31,11 +32,27 @@ func (r *redactor) add(secret string) {
 
 // str 脱敏一段文本。
 func (r *redactor) str(s string) string {
+	s = redactReferenceURLs(s)
 	if len(r.secrets) == 0 {
 		return s
 	}
 	out, _ := modelcfg.Redact(s, r.secrets...).(string) // 字符串入参一定得到字符串
 	return out
+}
+
+var signedURL = regexp.MustCompile(`https://[^\s"'<>]+`)
+
+// redactReferenceURLs 也遮盖异步上游在后续轮询中回显的临时链接。
+func redactReferenceURLs(text string) string {
+	if !strings.Contains(text, "X-Amz-Signature=") {
+		return text
+	}
+	return signedURL.ReplaceAllStringFunc(text, func(candidate string) string {
+		if strings.Contains(candidate, "/ref-cache/") && strings.Contains(candidate, "X-Amz-Signature=") {
+			return "***"
+		}
+		return candidate
+	})
 }
 
 // traceJSON 把一段 JSON 脱敏、截断成可放进追踪的 JSON：超过 limit 或脱敏后不再合法时，改为 JSON 字符串。

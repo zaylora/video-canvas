@@ -255,7 +255,7 @@ func (s *AssetService) Open(ctx context.Context, userID, assetID uint64) (*provi
 
 	// 2. 找到素材所在的存储（按素材自己记录的 storage_id，而不是当前默认存储）；
 	//    存储配置已不存在属于数据不一致，按“素材不存在”处理并留日志
-	h, err := s.stores.Get(ctx, a.StorageID)
+	h, err := s.storageForAsset(ctx, a)
 	if err != nil {
 		if errors.Is(err, storage.ErrStorageNotFound) {
 			logger.Error("素材所属的存储已不存在", zap.Uint64("asset_id", a.ID), zap.Uint64("storage_id", a.StorageID))
@@ -264,7 +264,16 @@ func (s *AssetService) Open(ctx context.Context, userID, assetID uint64) (*provi
 		return nil, fmt.Errorf("获取素材所在存储失败: %w", err)
 	}
 
-	// 3. 打开存储对象；行在但对象丢了属于数据不一致，对调用方按“素材不存在”处理，但要留日志排查
+	// 3. 读文件优先使用镜像，外部访问仍由原存储签发，局域网地址无法供上游平台读取。
+	origin := h
+	if h.ID != a.StorageID {
+		origin, err = s.stores.Get(ctx, a.StorageID)
+		if err != nil {
+			return nil, fmt.Errorf("获取素材原存储失败: %w", err)
+		}
+	}
+
+	// 4. 打开存储对象；行在但对象丢了属于数据不一致，对调用方按“素材不存在”处理，但要留日志排查
 	body, err := h.Storage.Open(ctx, a.StorageKey)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
@@ -274,14 +283,14 @@ func (s *AssetService) Open(ctx context.Context, userID, assetID uint64) (*provi
 		return nil, fmt.Errorf("打开素材失败: %w", err)
 	}
 
-	// 4. 生成可被上游平台访问的 URL：这里要直接给存储的签名 / 公开地址，不能给 /files 稳定地址
-	//    （上游未必跟随跳转，后端地址也可能是内网地址）；失败要关掉刚打开的 Body，避免泄漏
-	url, err := h.Storage.URL(ctx, a.StorageKey, s.signedTTL(h))
+	// 5. 直接使用原存储的签名或公开地址：上游未必跟随 /files 跳转。
+	//    生成地址失败时关掉刚打开的 Body，避免泄漏。
+	url, err := origin.Storage.URL(ctx, a.StorageKey, s.signedTTL(origin))
 	if err != nil {
 		_ = body.Close()
 		return nil, fmt.Errorf("生成素材访问地址失败: %w", err)
 	}
-	return &provider.AssetFile{Asset: a, Body: body, URL: url, Remote: h.Provider != storage.ProviderLocal}, nil
+	return &provider.AssetFile{Asset: a, Body: body, URL: url, Remote: origin.Provider != storage.ProviderLocal}, nil
 }
 
 // SaveGenerated 实现 provider.AssetSaver：把生成产物转存到自有存储并插入 assets 行，返回素材与访问 URL。
@@ -619,18 +628,18 @@ type FileTarget struct {
 // ResolveFile 按对象 key 找到素材所在的存储，并决定怎么提供这个文件。
 // 这条路由不鉴权（<video> / <img> 要直接引用），安全性靠 key 不可猜测，和原来的本地存储 /files 一致。
 func (s *AssetService) ResolveFile(ctx context.Context, key string) (*FileTarget, error) {
-	a, h, err := s.lookupFile(ctx, key)
+	a, err := s.lookupFile(ctx, key)
 	if err != nil {
 		return nil, err
 	}
-	return s.targetOf(ctx, h, key, a)
+	return s.resolveOriginalFile(ctx, a)
 }
 
-// lookupFile 校验 key、反查素材并取得它所在的存储，ResolveFile 与 ResolveVariant 共用。
-func (s *AssetService) lookupFile(ctx context.Context, key string) (*model.Asset, *storage.Handle, error) {
+// lookupFile 校验 key 并反查素材，ResolveFile 与 ResolveVariant 共用。
+func (s *AssetService) lookupFile(ctx context.Context, key string) (*model.Asset, error) {
 	// 1. 非法 key 不可能对应任何素材，直接按不存在处理，不必查库
 	if err := storage.ValidateKey(key); err != nil {
-		return nil, nil, errcode.ErrAssetNotFound
+		return nil, errcode.ErrAssetNotFound
 	}
 
 	// 2. 反查素材：拿到它所在的存储。头像不进 assets 表，按 avatars/ 前缀改从用户表反查
@@ -645,17 +654,26 @@ func (s *AssetService) lookupFile(ctx context.Context, key string) (*model.Asset
 	}
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			return nil, nil, errcode.ErrAssetNotFound
+			return nil, errcode.ErrAssetNotFound
 		}
-		return nil, nil, err
+		return nil, err
 	}
-	h, err := s.stores.Get(ctx, a.StorageID)
+	return a, nil
+}
+
+// resolveOriginalFile 为原文件选择本地副本或存储跳转。
+func (s *AssetService) resolveOriginalFile(ctx context.Context, a *model.Asset) (*FileTarget, error) {
+	h, err := s.storageForAsset(ctx, a)
 	if err != nil {
-		// 内部原因（解密失败、配置被删等）只写日志，不透传给浏览器
-		logger.Error("解析素材所在存储失败", zap.Uint64("asset_id", a.ID), zap.Uint64("storage_id", a.StorageID), zap.Error(err))
-		return nil, nil, errcode.ErrStorageUnavailable
+		return nil, fileStorageError(a, err)
 	}
-	return a, h, nil
+	return s.targetOf(ctx, h, a.StorageKey)
+}
+
+// fileStorageError 记录内部原因，避免向浏览器暴露存储配置或解密错误。
+func fileStorageError(a *model.Asset, err error) error {
+	logger.Error("解析素材所在存储失败", zap.Uint64("asset_id", a.ID), zap.Uint64("storage_id", a.StorageID), zap.Error(err))
+	return errcode.ErrStorageUnavailable
 }
 
 // lookupAvatar 把头像 key 包装成一条只含存储定位信息的“素材”，让 /files 的后续流程（本地直出 / 签名跳转 / 缩略图）原样复用。
@@ -672,7 +690,7 @@ func (s *AssetService) lookupAvatar(ctx context.Context, key string) (*model.Ass
 }
 
 // targetOf 决定原文件怎么提供：本地磁盘由后端直接提供，对象存储跳转到签名（或公开）地址。
-func (s *AssetService) targetOf(ctx context.Context, h *storage.Handle, key string, a *model.Asset) (*FileTarget, error) {
+func (s *AssetService) targetOf(ctx context.Context, h *storage.Handle, key string) (*FileTarget, error) {
 	// 1. 本地磁盘：后端直接提供（支持 Range，视频可拖动）
 	if ls, ok := h.Storage.(*storage.LocalStorage); ok {
 		return &FileTarget{Local: ls}, nil

@@ -86,6 +86,14 @@ storage:
   max_upload_bytes: 209715200 # 200MB
   max_result_bytes: 2147483648 # 2GB
   signed_ttl: 1h # 存储自己没配签名有效期时的兜底
+  reference_cache:
+    enabled: false
+    storage_id: 0 # 已配置的私有 R2 存储 ID，与默认素材写入存储独立
+    prefix: ref-cache/ # 为本部署独占的业务前缀
+    signed_ttl: 24h
+    max_bytes: 5000000000
+    prepare_timeout: 20s
+    unknown_grace: 24h
   local:
     dir: ./data/assets
     base_url: "" # 素材稳定地址 /files/<key> 的站点前缀，为空时使用相对路径；所有存储共用
